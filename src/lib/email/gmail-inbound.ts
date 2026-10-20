@@ -33,6 +33,7 @@ import {
 import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
+import { announceTrackedRecordReply } from "@/lib/email/tracked-record-replies"
 import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
 
@@ -567,6 +568,13 @@ async function importCandidate(input: {
     matchedStatus: "posted",
     postedMessageId: messageId,
     importedAt: now,
+  })
+  await announceTrackedRecordReply({
+    db: input.db,
+    replyThread,
+    candidate: input.candidate,
+  }).catch((error: unknown) => {
+    console.error("[gmail-inbound] reply announcement failed", error)
   })
 
   return "posted"

@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-20"
 }
 ---
 
@@ -22,13 +22,19 @@ An **RFI** asks for information or a decision. An **RFQ** requests pricing or sc
 
 ## RFIs {#rfis}
 
-Enter a clear subject and complete question, responsible contacts, response date, priority, narrowest useful audience, and supporting files. Continue the same RFI as answers and follow-up questions arrive, and keep its status current. Delete only an incorrect or unnecessary record using the available authorized action and review dependent tasks first.
+Enter a clear subject and complete question, responsible contacts, response date, priority, narrowest useful audience, and supporting files. Continue the same RFI as answers and follow-up questions arrive, and keep its status current.
+
+Use **Email** on an RFI to send it from Compass. Choose **To** and **Cc**, check the subject, and add an optional note; the RFI's question always follows your note. Replies come back to you and onto the RFI under **Email replies**, and the project team gets a notification. Replies stay internal until you add an approved response. Delete only an incorrect or unnecessary record using the available authorized action and review dependent tasks first.
 
 ## RFQs {#rfqs}
 
 Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Use the Sage division and cost-code pickers to code scope rows instead of typing an unrelated code. Verify each recipient and Drive link before sending; an RFQ does not grant general portal access.
 
 Staff can email external bidders and record a response received outside Compass using the manual-response workflow. Preserve the original quote and identify whose response it is. Compare pricing, scope, exclusions, and lead time before accepting or importing it into an estimate. Use duplication to prepare a related RFQ only after checking the new project, recipients, dates, and scope.
+
+## Replies to RFQ, P.O., and RFI Emails {#email-replies}
+
+RFQs, purchase orders, and RFIs emailed from Compass carry a reply address for that record. When the vendor or architect replies, the reply shows on the record under **Email replies**, and the person who sent the email plus the project's staff get a notification. The sender (or the department mailbox for a P.O.) still receives the reply directly too. Quotes and P.O. updates submitted through the vendor portal notify the same people. Each email sent, reply received, and portal response is also listed in the **Activity** log.
 
 ## Purchase Orders {#purchase-orders}
 

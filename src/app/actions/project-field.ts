@@ -1,5 +1,7 @@
 "use server"
 
+import { recordActivityEvent } from "@/lib/activity-log"
+import { announceOwnerUpdatePublished } from "@/lib/owner-updates/publish-notice"
 import {
   totalWorkLineHours,
   type DailyLogFormValues,
@@ -3434,6 +3436,14 @@ export async function publishOwnerProjectUpdate(
       updatedAt: now,
     })
     .where(eq(ownerProjectUpdates.id, updateId))
+  await announceOwnerUpdatePublished({
+    db,
+    organizationId: orgId,
+    projectId,
+    updateId,
+    title: update.title.trim(),
+    actor: user,
+  })
 
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(
@@ -3503,6 +3513,17 @@ export async function recallOwnerProjectUpdate(
           eq(ownerProjectUpdates.status, "published")
         )
       )
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "field",
+      action: "owner_update_recalled",
+      entityType: "owner_project_update",
+      entityId: updateId,
+      summary: "Recalled a published owner update to draft.",
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)

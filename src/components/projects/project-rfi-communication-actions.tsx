@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { IconMail, IconLoader2 } from "@tabler/icons-react"
+import { IconMail, IconLoader2, IconSend } from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { createProjectRfiEmailDraft } from "@/app/actions/project-rfis"
+import { sendProjectRfiEmail } from "@/app/actions/project-rfi-email"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,23 +16,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import type { EmailRecipientOption } from "@/lib/email/recipient-options"
+import { defaultRfiEmailSubject } from "@/lib/rfis/email"
 
 export function ProjectRfiCommunicationActions({
   projectId,
   rfiId,
   rfiNumber,
+  rfiSubject,
   recipientOptions,
 }: {
   readonly projectId: string
   readonly rfiId: string
   readonly rfiNumber: string
+  readonly rfiSubject: string
   readonly recipientOptions: readonly EmailRecipientOption[]
 }): React.ReactElement {
+  const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [to, setTo] = React.useState<readonly string[]>([])
   const [cc, setCc] = React.useState<readonly string[]>([])
-  const [starting, setStarting] = React.useState(false)
+  const [subject, setSubject] = React.useState("")
+  const [message, setMessage] = React.useState("")
+  const [sending, setSending] = React.useState(false)
 
   function openEmailDialog(): void {
     setTo(
@@ -40,31 +50,33 @@ export function ProjectRfiCommunicationActions({
         .map((option) => option.email)
     )
     setCc([])
+    setSubject(defaultRfiEmailSubject({ rfiNumber, subject: rfiSubject }))
+    setMessage("")
     setOpen(true)
   }
 
-  async function openDefaultEmailApp(): Promise<void> {
+  async function sendEmail(): Promise<void> {
     if (to.length === 0) {
       toast.error("Choose or enter at least one recipient.")
       return
     }
 
-    setStarting(true)
-    const result = await createProjectRfiEmailDraft(projectId, rfiId, {
+    setSending(true)
+    const result = await sendProjectRfiEmail(projectId, rfiId, {
       to,
       cc,
+      subject,
+      message,
     })
-    setStarting(false)
+    setSending(false)
     if (!result.success) {
       toast.error(result.error)
       return
     }
 
     setOpen(false)
-    toast.info(
-      "Keep Compass in CC or use Reply All so responses stay with this RFI."
-    )
-    window.location.href = result.href
+    toast.success(`${rfiNumber} emailed. Replies will appear on this RFI.`)
+    router.refresh()
   }
 
   return (
@@ -79,9 +91,9 @@ export function ProjectRfiCommunicationActions({
           <DialogHeader>
             <DialogTitle>Email {rfiNumber}</DialogTitle>
             <DialogDescription>
-              Opens your default email app. Compass is automatically copied so
-              replies can return to this RFI. Use the response area on the RFI
-              for Compass messages and @mentions.
+              Compass sends the RFI and its question. Replies come back to
+              this RFI and to you. Use the response area on the RFI for
+              Compass messages and @mentions.
             </DialogDescription>
           </DialogHeader>
 
@@ -105,6 +117,26 @@ export function ProjectRfiCommunicationActions({
               placeholder="Choose an optional contact..."
             />
           </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`rfi-email-subject-${rfiId}`}>Subject</Label>
+            <Input
+              id={`rfi-email-subject-${rfiId}`}
+              value={subject}
+              maxLength={300}
+              onChange={(event) => setSubject(event.currentTarget.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`rfi-email-message-${rfiId}`}>Note (optional)</Label>
+            <Textarea
+              id={`rfi-email-message-${rfiId}`}
+              value={message}
+              rows={4}
+              maxLength={10_000}
+              placeholder="Added above the RFI question."
+              onChange={(event) => setMessage(event.currentTarget.value)}
+            />
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
@@ -112,15 +144,15 @@ export function ProjectRfiCommunicationActions({
             </Button>
             <Button
               type="button"
-              disabled={starting || to.length === 0}
-              onClick={() => void openDefaultEmailApp()}
+              disabled={sending || to.length === 0 || subject.trim().length === 0}
+              onClick={() => void sendEmail()}
             >
-              {starting ? (
+              {sending ? (
                 <IconLoader2 className="size-4 animate-spin" />
               ) : (
-                <IconMail className="size-4" />
+                <IconSend className="size-4" />
               )}
-              Open email app
+              Send email
             </Button>
           </DialogFooter>
         </DialogContent>

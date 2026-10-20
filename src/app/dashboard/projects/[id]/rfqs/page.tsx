@@ -47,6 +47,8 @@ import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete
 import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-duplicate-dialog"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
+import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
+import { RecordEmailReplies } from "@/components/projects/record-email-replies"
 import { ProjectRfqManualResponse } from "@/components/projects/project-rfq-manual-response"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
@@ -181,6 +183,7 @@ function RfqCard({
   canImportBids,
   editableEstimates,
   emailDeliveries,
+  emailReplies,
   manualResponseEvents,
 }: {
   readonly brand: ProjectBrand
@@ -201,6 +204,7 @@ function RfqCard({
     readonly label: string
   }[]
   readonly emailDeliveries: readonly RfqEmailDeliveryItem[]
+  readonly emailReplies: readonly RecordEmailReplyItem[]
   readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
 }): React.ReactElement {
   return (
@@ -400,6 +404,7 @@ function RfqCard({
       </div>
 
       <ProjectRfqEmailHistory deliveries={emailDeliveries} />
+      <RecordEmailReplies replies={emailReplies} />
 
       {rfq.scopeItems.length > 0 && (
         <div className="mt-3 overflow-hidden border bg-muted/10">
@@ -503,6 +508,7 @@ export default async function ProjectRfqsPage({
     showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
     getProjectRfqEmailDeliveries(id),
     getProjectRfqManualResponseEvents(id),
+    showInternalHistory ? getProjectRecordEmailReplies(id, "rfq") : Promise.resolve([]),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -523,6 +529,7 @@ export default async function ProjectRfqsPage({
     historicalWorkspace,
     emailDeliveries,
     manualResponseEvents,
+    emailReplies,
   ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
@@ -638,6 +645,7 @@ export default async function ProjectRfqsPage({
               canImportBids={bidWorkspace.canImport}
               editableEstimates={bidWorkspace.editableEstimates}
               emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
+              emailReplies={emailReplies.filter((reply) => reply.recordId === rfq.id)}
               manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
             />
           ))

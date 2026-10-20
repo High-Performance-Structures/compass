@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
+  emailReplyThreads,
   organizationMembers,
   projectContacts,
   projectMembers,
@@ -9,10 +10,12 @@ import {
   users,
 } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
+import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
   createNotificationEvent,
+  createSystemNotificationEvent,
   type NotificationRecipientInput,
 } from "@/lib/notifications/create-event"
 import { channelMessageNotificationDelivery } from "@/lib/notifications/delivery"
@@ -275,6 +278,53 @@ async function projectInternalRecipients(
   return Array.from(recipients.values())
 }
 
+/**
+ * Adds the staff who emailed this RFQ or PO from Compass, so a vendor's
+ * answer reaches them even when they aren't on the project team.
+ */
+async function withRecordSenders(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  base: readonly NotificationRecipientInput[],
+  record: { readonly sourceType: "rfq" | "purchase_order"; readonly sourceId: string; readonly excludedUserId: string }
+): Promise<readonly NotificationRecipientInput[]> {
+  const senderIds = new Set<string>()
+  const threads = await db
+    .select({ createdBy: emailReplyThreads.createdBy })
+    .from(emailReplyThreads)
+    .where(
+      and(
+        eq(emailReplyThreads.organizationId, organizationId),
+        eq(emailReplyThreads.sourceType, record.sourceType),
+        eq(emailReplyThreads.sourceId, record.sourceId)
+      )
+    )
+  for (const thread of threads) if (thread.createdBy) senderIds.add(thread.createdBy)
+  if (record.sourceType === "rfq") {
+    const deliveries = await db
+      .select({ requestedBy: projectRfqEmailDeliveries.requestedBy })
+      .from(projectRfqEmailDeliveries)
+      .where(eq(projectRfqEmailDeliveries.rfqOperationId, record.sourceId))
+    for (const delivery of deliveries) if (delivery.requestedBy) senderIds.add(delivery.requestedBy)
+  }
+  const recipients = new Map(base.map((recipient) => [recipient.userId, recipient]))
+  const missing = [...senderIds].filter((id) => id !== record.excludedUserId && !recipients.has(id))
+  if (missing.length > 0) {
+    const senders = await db
+      .select({ userId: users.id, email: users.email, googleEmail: users.googleEmail })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId))
+      )
+      .where(and(inArray(users.id, missing), eq(users.isActive, true)))
+    for (const sender of senders) {
+      recipients.set(sender.userId, { userId: sender.userId, email: sender.googleEmail?.trim() || sender.email })
+    }
+  }
+  return Array.from(recipients.values())
+}
+
 function notificationPreview(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim()
   if (compact.length <= 240) return compact
@@ -444,14 +494,8 @@ export async function notifyRfiCreated(
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
+  // The person who wrote the RFI already knows about it.
   const recipients = new Map<string, NotificationRecipientInput>()
-  if (isInternalStaffRole(input.createdBy.role)) {
-    recipients.set(input.createdBy.id, {
-      userId: input.createdBy.id,
-      email: input.createdBy.email,
-    })
-  }
-
   const assignedRecipients = await projectAssignmentRecipients(
     db,
     input.organizationId,
@@ -459,7 +503,9 @@ export async function notifyRfiCreated(
     [input.assignedToName]
   )
   for (const recipient of assignedRecipients) {
-    recipients.set(recipient.userId, recipient)
+    if (recipient.userId !== input.createdBy.id) {
+      recipients.set(recipient.userId, recipient)
+    }
   }
   if (!isInternalStaffRole(input.createdBy.role) && recipients.size === 0) {
     const projectRecipients = await projectInternalRecipients(
@@ -473,6 +519,7 @@ export async function notifyRfiCreated(
     }
   }
 
+  if (recipients.size === 0) return
   const projectLabel = project?.projectNumber
     ? `${project.projectNumber} - ${project.name}`
     : project?.name ?? "Project"
@@ -575,31 +622,17 @@ export async function notifyRfqResponseReceived(
 ): Promise<void> {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  const members = await db
-    .select({
-      userId: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      role: users.role,
-    })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .where(
-      and(
-        eq(projectMembers.projectId, input.projectId),
-        eq(users.isActive, true)
-      )
-    )
-  const recipients = members
-    .filter(
-      (member) =>
-        member.userId !== input.respondedBy.id &&
-        isInternalStaffRole(member.role)
-    )
-    .map((member) => ({
-      userId: member.userId,
-      email: member.googleEmail?.trim() || member.email,
-    }))
+  const recipients = await withRecordSenders(
+    db,
+    input.organizationId,
+    await projectInternalRecipients(
+      db,
+      input.organizationId,
+      input.projectId,
+      input.respondedBy.id
+    ),
+    { sourceType: "rfq", sourceId: input.rfqId, excludedUserId: input.respondedBy.id }
+  )
   if (recipients.length === 0) return
 
   const responseLabel =
@@ -638,11 +671,16 @@ export async function notifyPurchaseOrderVendorUpdate(
 ): Promise<void> {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  const recipients = await projectInternalRecipients(
+  const recipients = await withRecordSenders(
     db,
     input.organizationId,
-    input.projectId,
-    input.respondedBy.id
+    await projectInternalRecipients(
+      db,
+      input.organizationId,
+      input.projectId,
+      input.respondedBy.id
+    ),
+    { sourceType: "purchase_order", sourceId: input.purchaseOrderId, excludedUserId: input.respondedBy.id }
   )
   if (recipients.length === 0) return
 
@@ -803,6 +841,71 @@ export async function notifyWarrantyClaimUpdated(
         email: claimant.googleEmail?.trim() || claimant.email,
       },
     ],
+    delivery: { inApp: true, email: true, push: true },
+  })
+}
+
+type ProjectStaffSystemNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly eventType: string
+  readonly sourceType: string
+  readonly sourceId: string
+  readonly title: string
+  readonly body: string
+  readonly href: string
+  readonly priority: "normal" | "high"
+  /** The person who started it (sent the email, sent for signature) always hears. */
+  readonly ownerUserId: string | null
+}
+
+/**
+ * Something happened outside Compass: an emailed reply, a client signature.
+ * It reaches the person who started it plus the project's staff. These run
+ * from the inbox sync or a webhook, so there is no signed-in user.
+ */
+export async function notifyProjectStaffOfOutsideEvent(
+  input: ProjectStaffSystemNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const recipients = new Map<string, NotificationRecipientInput>()
+  for (const recipient of await projectInternalRecipients(
+    db,
+    input.organizationId,
+    input.projectId,
+    ""
+  )) {
+    recipients.set(recipient.userId, recipient)
+  }
+  if (input.ownerUserId && !recipients.has(input.ownerUserId)) {
+    const owner = await db
+      .select({ userId: users.id, email: users.email, googleEmail: users.googleEmail })
+      .from(users)
+      .where(and(eq(users.id, input.ownerUserId), eq(users.isActive, true)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (owner) {
+      recipients.set(owner.userId, {
+        userId: owner.userId,
+        email: owner.googleEmail?.trim() || owner.email,
+      })
+    }
+  }
+  if (recipients.size === 0) return
+
+  await createSystemNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: input.eventType,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    title: input.title,
+    body: input.body,
+    href: input.href,
+    priority: input.priority,
+    audience: "project_team",
+    recipients: Array.from(recipients.values()),
     delivery: { inApp: true, email: true, push: true },
   })
 }

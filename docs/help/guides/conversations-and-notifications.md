@@ -74,7 +74,7 @@ The towers at the top show how many open messages are in each group. Taller, red
 
 ## Notification Preferences {#notification-preferences}
 
-In **Settings**, confirm the timezone and choose supported in-app, email, push, and text notifications. SMS requires the user's own current consent. Save changes and use a test action when available; never enable text delivery for another person without consent.
+In **Settings**, confirm the timezone and choose supported in-app, email, push, and text notifications. The **RFIs**, **Owner updates**, **Schedule**, and **Purchase orders** switches turn off that kind of notification for you. Staff are also notified when a client signs or declines an e-signature request (estimate, change order, or contract), and when someone replies by email to an RFQ, P.O., or RFI. SMS requires the user's own current consent. Save changes and use a test action when available; never enable text delivery for another person without consent.
 
 ## Use Drafts, Sent, and Global History {#drafts-and-sent}
 

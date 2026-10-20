@@ -303,6 +303,7 @@ export default async function ProjectRfisPage({
                       projectId={id}
                       rfiId={rfi.id}
                       rfiNumber={rfi.rfiNumber}
+                      rfiSubject={rfi.subject}
                       recipientOptions={buildProjectEmailRecipientOptions(
                         contacts,
                         [

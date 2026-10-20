@@ -18,11 +18,6 @@ import {
 import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { trackedMailtoHref } from "@/lib/email/mailto"
-import {
-  appendReplyTokenText,
-  createEmailReplyThread,
-} from "@/lib/email/reply-tracking"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { appendRfiCommunication } from "@/lib/rfis/communication"
@@ -118,19 +113,6 @@ export type UpdateProjectRfiInput = {
   readonly status: string
   readonly audience: string
   readonly mentionedUserIds?: readonly string[]
-}
-
-export type ProjectRfiEmailDraftResult =
-  | {
-      readonly success: true
-      readonly href: string
-      readonly trackingAddress: string
-    }
-  | { readonly success: false; readonly error: string }
-
-export type ProjectRfiEmailDraftInput = {
-  readonly to: readonly string[]
-  readonly cc: readonly string[]
 }
 
 async function verifyProjectAccess(
@@ -570,104 +552,6 @@ export async function updateProjectRfi(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update RFI",
-    }
-  }
-}
-
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function normalizedUniqueEmails(values: readonly string[]): readonly string[] {
-  return Array.from(
-    new Set(values.map((email) => email.trim().toLowerCase()))
-  ).filter(validEmail)
-}
-
-function appOrigin(env: unknown): string {
-  if (typeof env === "object" && env !== null) {
-    const value = Reflect.get(env, "NEXT_PUBLIC_APP_URL")
-    if (typeof value === "string" && value.trim()) return value.replace(/\/$/, "")
-  }
-  return "https://compass.openrangeconstruction.ltd"
-}
-
-export async function createProjectRfiEmailDraft(
-  projectId: string,
-  rfiId: string,
-  input: ProjectRfiEmailDraftInput
-): Promise<ProjectRfiEmailDraftResult> {
-  try {
-    const { db, env, user, orgId, projectNumber } =
-      await getProjectUpdateContext(projectId)
-    const to = normalizedUniqueEmails(input.to)
-    if (to.length === 0) {
-      return { success: false, error: "Choose at least one email recipient." }
-    }
-    const toSet = new Set(to)
-    const cc = normalizedUniqueEmails(input.cc).filter(
-      (email) => !toSet.has(email)
-    )
-    if (to.length + cc.length > 20) {
-      return { success: false, error: "Choose no more than 20 recipients." }
-    }
-
-    const rfi = await db
-      .select({
-        id: projectRfis.id,
-        rfiNumber: projectRfis.rfiNumber,
-        subject: projectRfis.subject,
-        question: projectRfis.question,
-      })
-      .from(projectRfis)
-      .where(
-        and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!rfi) return { success: false, error: "RFI not found." }
-
-    const subject = `[${rfi.rfiNumber}] ${rfi.subject}`
-    const thread = await createEmailReplyThread({
-      env,
-      db,
-      organizationId: orgId,
-      projectId,
-      sourceType: "rfi",
-      sourceId: rfi.id,
-      sourceNumber: rfi.rfiNumber,
-      subject,
-      createdBy: user.id,
-    })
-    const body = appendReplyTokenText({
-      token: thread.token,
-      body: [
-        `${projectNumber ?? "Project"} RFI ${rfi.rfiNumber}`,
-        rfi.subject,
-        "",
-        rfi.question,
-        "",
-        `Open in Compass: ${appOrigin(env)}/dashboard/projects/${encodeURIComponent(projectId)}/rfis?item=${encodeURIComponent(rfi.id)}`,
-        "",
-        "Please keep Compass in CC (or use Reply All) so the response stays attached to this RFI.",
-      ].join("\n"),
-    })
-
-    return {
-      success: true,
-      href: trackedMailtoHref({
-        to,
-        cc: [...cc, thread.replyToAddress],
-        subject,
-        body,
-      }),
-      trackingAddress: thread.replyToAddress,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to prepare RFI email.",
     }
   }
 }

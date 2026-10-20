@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { notificationPreferences, organizationMembers, projectBudgetApplications, projectContacts, projectMembers, projects, users } from "@/db/schema"
+import { notificationPreferences, projectBudgetApplications, projectContacts, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import {
@@ -23,6 +23,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { printPdfHref } from "@/lib/print/print-documents"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectOwnerPortalUsers, type OwnerPortalUser } from "@/lib/owner-portal/recipients"
 
 /*
  * After a pay application is approved for billing or a deposit is requested,
@@ -107,21 +108,8 @@ async function ownerDocument(ctx: NoticeContext, kind: OwnerDocumentKind, docume
   }
 }
 
-/** Active users with owner or client access to this project. */
-async function ownerPortalUsers(ctx: NoticeContext): Promise<readonly { readonly userId: string; readonly name: string; readonly email: string }[]> {
-  const rows = await ctx.db
-    .select({ userId: users.id, name: users.displayName, email: users.email })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, ctx.organizationId)))
-    .where(and(eq(projectMembers.projectId, ctx.project.id), inArray(projectMembers.role, ["owner", "client"]), eq(users.isActive, true)))
-  const seen = new Set<string>()
-  return rows.flatMap((row) => {
-    const email = normalizeRecipientEmail(row.email)
-    if (seen.has(row.userId) || !isValidRecipientEmail(email)) return []
-    seen.add(row.userId)
-    return [{ userId: row.userId, name: row.name ?? email, email }]
-  })
+function ownerPortalUsers(ctx: NoticeContext): Promise<readonly OwnerPortalUser[]> {
+  return projectOwnerPortalUsers(ctx.db, ctx.organizationId, ctx.project.id)
 }
 
 /** Owner contacts on the project, then owner portal users, without repeats. */
