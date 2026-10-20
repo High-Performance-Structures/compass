@@ -12,6 +12,7 @@ import {
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
 import { DepositRequestDialog } from "@/components/projects/deposit-request-dialog"
+import { OwnerDocumentNoticeActions } from "@/components/projects/owner-document-notice-actions"
 import { Badge } from "@/components/ui/badge"
 import { printPreviewHref } from "@/lib/print/print-documents"
 import { Button } from "@/components/ui/button"
@@ -333,6 +334,15 @@ export function ProjectContractDepositsPanel({
                       Deposit request
                     </a>
                   </Button>
+                )}
+                {summary.canEdit && deposit.sourceSystem === "compass" && deposit.status === "requested" && deposit.requestedAt && deposit.requestedAmountCents !== null && (
+                  <OwnerDocumentNoticeActions
+                    projectId={projectId}
+                    kind="deposit-request"
+                    documentId={deposit.id}
+                    documentLabel={`the ${money(deposit.requestedAmountCents)} deposit request`}
+                    size="sm"
+                  />
                 )}
                 {deposit.evidenceUrl && (
                   <Button variant="ghost" size="sm" asChild>

@@ -29,6 +29,7 @@ import { MessageCard } from "./correspondence-message-card"
 import { useConversationScroll } from "./use-conversation-scroll"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
 import { ProjectEmailComposer } from "./project-email-composer"
+import type { ProjectEmailPrefill } from "@/lib/billing/owner-document-notices"
 import {
   earliestSequence,
   applyMessageRevision,
@@ -43,19 +44,20 @@ import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, Corresp
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { removeCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
 import { retryFailedProjectEmail } from "@/app/actions/project-email"
-type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean }
+type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean; readonly initialEmail?: ProjectEmailPrefill | null; readonly initialStatus?: string | null }
 type InboxFilter = CorrespondenceInboxFilter
 type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] } | { readonly kind: "email" }
 type NewDraft = { readonly subject: string; readonly recipientIds: readonly string[]; readonly body: string; readonly version: number; readonly id: string; readonly attachmentIds: readonly string[]; readonly requestId: string | null }
 type PendingSend = { readonly input: SendCorrespondenceInput }
 type SearchHit = { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }
 const POLL_INTERVAL_MS = 20_000
-export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId, initialNewMessage = false }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
+export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId, initialNewMessage = false, initialEmail = null, initialStatus = null }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
   const [initialCompositionDraft] = React.useState(() => compositionDraft())
   const [discardedComposition, setDiscardedComposition] = React.useState<{ readonly id: string; readonly version: number } | null>(null)
   const [drafts, setDrafts] = React.useState<readonly ProjectDraft[]>([])
   const [emailDraft, setEmailDraft] = React.useState<SavedComposition | null>(null)
   const [emailKey, setEmailKey] = React.useState("initial-email")
+  const [emailPrefill, setEmailPrefill] = React.useState<ProjectEmailPrefill | null>(initialEmail)
   const emailHandle = React.useRef<CompositionDraftHandle | null>(null)
   const attachmentRef = React.useRef<readonly StagedAttachment[]>([])
   const replyToOpen = React.useRef<string | null>(null)
@@ -70,16 +72,16 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const [query, setQuery] = React.useState("")
   const [searchHits, setSearchHits] = React.useState<readonly SearchHit[]>([])
   const [searchHasMore, setSearchHasMore] = React.useState(false)
-  const [mobileDetail, setMobileDetail] = React.useState(initialConversationId !== undefined || initialNewMessage)
+  const [mobileDetail, setMobileDetail] = React.useState(initialConversationId !== undefined || initialNewMessage || initialEmail !== null)
   const [newDraft, setNewDraft] = React.useState<NewDraft>(initialCompositionDraft)
-  const [compose, setCompose] = React.useState<ComposeMode | null>(() => initialNewMessage ? {
+  const [compose, setCompose] = React.useState<ComposeMode | null>(() => initialEmail ? { kind: "email" } : initialNewMessage ? {
     kind: "new",
     subject: initialCompositionDraft.subject,
     recipientIds: initialCompositionDraft.recipientIds,
   } : null)
   const [replyBody, setReplyBody] = React.useState(() => initialNewMessage ? initialCompositionDraft.body : "")
   const [stagedAttachments, setStagedAttachments] = React.useState<readonly StagedAttachment[]>([])
-  const [status, setStatus] = React.useState<string | null>(null)
+  const [status, setStatus] = React.useState<string | null>(initialStatus)
   const [isLoadingDetail, setIsLoadingDetail] = React.useState(false)
   const [isSending, setIsSending] = React.useState(false)
   const [isNavigating, setIsNavigating] = React.useState(false)
@@ -114,6 +116,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     detailRef.current = detail
   }, [detail])
   React.useEffect(() => { composeRef.current = compose }, [compose])
+  React.useEffect(() => {
+    // Opened from Create email: drop the request so a reload doesn't start a second email.
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("email") && !url.searchParams.has("documentId")) return
+    url.searchParams.delete("email")
+    url.searchParams.delete("documentId")
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`)
+  }, [])
   React.useEffect(() => { editingMessageRef.current = editingMessage }, [editingMessage])
   React.useEffect(() => { replyBodyRef.current = replyBody }, [replyBody])
   React.useEffect(() => { newDraftRef.current = newDraft }, [newDraft])
@@ -345,6 +355,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setStatus(null)
     if (draft.content.kind === "email") {
       setStagedAttachments([])
+      setEmailPrefill(null)
       setEmailDraft(draft)
       setEmailKey(draft.id)
       composeRef.current = { kind: "email" }
@@ -403,6 +414,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     if (blockComposerTransition("starting a project email")) return
     if (!await flushComposerBeforeNavigation()) return
     setEmailDraft(null)
+    setEmailPrefill(null)
     setStagedAttachments([])
     setEmailKey(crypto.randomUUID())
     const nextCompose = { kind: "email" as const }
@@ -876,7 +888,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
       <main className={cn("min-h-0 min-w-0 flex-1", !composingEmail && !composingNew && activeSummary !== null ? "overflow-hidden" : "overflow-y-auto", !mobileDetail && "hidden md:block")}>
         {composingEmail ? (
-          <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
+          <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} prefill={emailDraft ? null : emailPrefill} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
         ) : composingNew ? (
           <NewMessagePanel
             projectId={projectId}

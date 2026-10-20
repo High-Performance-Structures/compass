@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { getCorrespondenceInbox } from "@/app/actions/project-correspondence"
+import { getOwnerDocumentEmailDraft } from "@/app/actions/owner-document-notices"
 import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
@@ -15,12 +16,20 @@ export default async function ProjectMessagesPage({
     readonly conversationId?: string | readonly string[]
     readonly messageId?: string | readonly string[]
     readonly quickAdd?: string | readonly string[]
+    readonly email?: string | readonly string[]
+    readonly documentId?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: routeProjectId } = await params
   const projectId = decodeProjectRouteId(routeProjectId)
   const query = await searchParams
   const initialInbox = await getCorrespondenceInbox(projectId)
+  // Create email from a billed pay application or a deposit request.
+  const emailKind = singleQueryValue(query.email)
+  const emailDocumentId = singleQueryValue(query.documentId)
+  const ownerEmail = initialInbox.success && initialInbox.data.workspace === "staff" && emailKind && emailDocumentId
+    ? await getOwnerDocumentEmailDraft(projectId, emailKind, emailDocumentId)
+    : null
 
   if (!initialInbox.success) {
     return (
@@ -57,6 +66,8 @@ export default async function ProjectMessagesPage({
       initialConversationId={singleQueryValue(query.conversationId)}
       initialMessageId={singleQueryValue(query.messageId)}
       initialNewMessage={singleQueryValue(query.quickAdd) === "message"}
+      initialEmail={ownerEmail?.success ? ownerEmail.data : null}
+      initialStatus={ownerEmail && !ownerEmail.success ? ownerEmail.error : null}
     />
     </div>
   )
