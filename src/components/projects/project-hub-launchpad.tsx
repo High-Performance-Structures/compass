@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -79,6 +80,10 @@ import {
 import { PageHeader } from "@/components/page-header"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
+
+function isDepartmentCode(value: DepartmentFilter): value is "O" | "H" | "N" | "D" {
+  return value !== "ALL" && value !== "OTHER"
+}
 type ProjectLayout = "cards" | "list"
 type ProjectPageSize = 5 | 10 | 25 | 50 | "all"
 
@@ -90,10 +95,11 @@ type DepartmentDefinition = {
 
 const DEPARTMENTS: readonly DepartmentDefinition[] = [
   { id: "ALL", label: "All", icon: <IconBuilding className="size-4" /> },
-  { id: "O", label: "ORC", icon: <IconBuilding className="size-4" /> },
-  { id: "H", label: "HPS", icon: <IconBuildingCommunity className="size-4" /> },
-  { id: "N", label: "Nu-Tech", icon: <IconTool className="size-4" /> },
-  { id: "D", label: "Design", icon: <IconPaint className="size-4" /> },
+  // Department tabs show the company's short names (Settings → Company).
+  { id: "O", label: "", icon: <IconBuilding className="size-4" /> },
+  { id: "H", label: "", icon: <IconBuildingCommunity className="size-4" /> },
+  { id: "N", label: "", icon: <IconTool className="size-4" /> },
+  { id: "D", label: "", icon: <IconPaint className="size-4" /> },
   { id: "OTHER", label: "Other", icon: <IconSettings className="size-4" /> },
 ]
 
@@ -480,6 +486,7 @@ export function ProjectHubLaunchpad({
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
+  const departmentProfiles = useDepartmentProfiles()
   const [currentDuplicateCandidates, setCurrentDuplicateCandidates] = useState(
     duplicateCandidates,
   )
@@ -648,7 +655,7 @@ export function ProjectHubLaunchpad({
                 )}
               >
                 {item.icon}
-                {item.label}
+                {isDepartmentCode(item.id) ? departmentProfiles[item.id].shortName : item.label}
                 <span className={cn("text-xs tabular-nums text-muted-foreground", department === item.id && "text-primary/80")}>
                   {departmentCounts.get(item.id) ?? 0}
                 </span>

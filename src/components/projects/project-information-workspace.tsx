@@ -39,6 +39,8 @@ import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/por
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { PageHeader } from "@/components/page-header"
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
+import { DEPARTMENT_CODES } from "@/lib/department-profiles"
 import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
 import { ClientInteractionForm } from "@/components/projects/client-interaction-form"
 
@@ -72,6 +74,7 @@ export function ProjectInformationWorkspace({
   readonly canManageJobStatuses: boolean
 }): ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
+  const departmentProfiles = useDepartmentProfiles()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [projectAddress, setProjectAddress] = useState(
@@ -343,10 +346,9 @@ export function ProjectInformationWorkspace({
                 <SelectValue placeholder="Choose department" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="O">ORC</SelectItem>
-                <SelectItem value="H">HPS</SelectItem>
-                <SelectItem value="N">Nu-Tech</SelectItem>
-                <SelectItem value="D">Design</SelectItem>
+                {DEPARTMENT_CODES.map((code) => (
+                  <SelectItem key={code} value={code}>{departmentProfiles[code].shortName}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p id="project-department-help" className="text-xs text-muted-foreground">

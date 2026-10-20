@@ -52,6 +52,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import type { ProjectIntakeDepartment } from "@/lib/google/project-intake-tracker"
 import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import {
   SAGE_CLIENT_STATUS_OPTIONS,
@@ -60,14 +61,12 @@ import {
   type SageJobTypeId,
 } from "@/lib/sage/client-project-write"
 
-const DEPARTMENTS: readonly {
-  readonly value: ProjectIntakeDepartment
-  readonly label: string
-}[] = [
-  { value: "O", label: "ORC" },
-  { value: "H", label: "HPS" },
-  { value: "N", label: "Nu-Tech" },
-  { value: "D", label: "Design" },
+// Labels are each company's department short names (Settings → Company).
+const DEPARTMENTS: readonly { readonly value: ProjectIntakeDepartment }[] = [
+  { value: "O" },
+  { value: "H" },
+  { value: "N" },
+  { value: "D" },
 ]
 
 function fieldValue(formData: FormData, name: string): string | null {
@@ -137,6 +136,7 @@ export function ProjectIntakeDrawer({
   readonly linked?: LinkedProjectIntake
 }): React.ReactElement {
   const defaults = linked?.defaults
+  const departmentProfiles = useDepartmentProfiles()
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
@@ -299,7 +299,7 @@ export function ProjectIntakeDrawer({
                   <SelectContent>
                     {DEPARTMENTS.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
-                        {item.label}
+                        {departmentProfiles[item.value].shortName}
                       </SelectItem>
                     ))}
                   </SelectContent>

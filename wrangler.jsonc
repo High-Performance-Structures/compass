@@ -142,5 +142,81 @@
 		"SAGE_SQUARE_PAYMENT_WEBHOOK_ENABLED": "true",
 		"SAGE_SQUARE_PAYMENT_WRITES_ENABLED": "true",
 		"YOUTUBE_API_AUDIT_APPROVED": "true"
+	},
+	// Demo copy for companies trying Compass (`--env demo`). Its own database and
+	// no scheduled jobs, Sage, Square or Jarvis: nothing here can reach
+	// production data or outside systems.
+	"env": {
+		"demo": {
+			"name": "compass-demo",
+			"routes": [
+				{
+					"pattern": "demo.openrangeconstruction.ltd",
+					"custom_domain": true
+				}
+			],
+			"triggers": {
+				"crons": []
+			},
+			"images": {
+				"binding": "IMAGES"
+			},
+			"browser": {
+				"binding": "BROWSER"
+			},
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "compass-demo"
+				}
+			],
+			"ai": {
+				"binding": "AI"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "compass-demo-db",
+					"database_id": "203a56fb-7c64-4401-ae3a-05502d032b84",
+					"migrations_dir": "drizzle"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "LISTENING_ROOM_COORDINATOR",
+						"class_name": "ListeningRoomCoordinator"
+					}
+				]
+			},
+			"secrets": {
+				"required": [
+					"WORKOS_API_KEY",
+					"WORKOS_CLIENT_ID",
+					"WORKOS_COOKIE_PASSWORD"
+				]
+			},
+			"vars": {
+				"COMPASS_CORRESPONDENCE_ENABLED": "false",
+				"CLOUDFLARE_ACCOUNT_ID": "8716137c706ea3d5c209b330084fa9e2",
+				"COMPASS_APP_URL": "https://demo.openrangeconstruction.ltd",
+				"COMPASS_PUBLIC_BASE_URL": "https://demo.openrangeconstruction.ltd",
+				"NEXT_PUBLIC_APP_URL": "https://demo.openrangeconstruction.ltd",
+				"NEXT_PUBLIC_WORKOS_REDIRECT_URI": "https://demo.openrangeconstruction.ltd/callback",
+				"SOCIAL_PUBLIC_BASE_URL": "https://demo.openrangeconstruction.ltd",
+				"WORKOS_REDIRECT_URI": "https://demo.openrangeconstruction.ltd/callback",
+				"WORKOS_COOKIE_MAX_AGE": "34560000",
+				"GIFTBIT_ENVIRONMENT": "testbed",
+				"GIFTBIT_ORDERING_ENABLED": "false",
+				"JARVIS_AGENT_BRIDGE_ENABLED": "false",
+				"ASK_JARVIS_RELAY_ENABLED": "false",
+				"SAGE_CLIENT_PROJECT_WRITES_ENABLED": "false",
+				"SAGE_CONTACT_WRITES_ENABLED": "false",
+				"SAGE_CONTACT_CREATES_ENABLED": "false",
+				"SAGE_SQUARE_PAYMENT_WEBHOOK_ENABLED": "false",
+				"SAGE_SQUARE_PAYMENT_WRITES_ENABLED": "false",
+				"YOUTUBE_API_AUDIT_APPROVED": "false"
+			}
+		}
 	}
 }
