@@ -125,7 +125,7 @@ export default async function DashboardLayout({
       canSubmitCherish={canUseCompassFieldDesk}
     >
     <ConversationPanelProvider enabled={canUseDirectMessages}>
-    <PresenceProvider>
+    <PresenceProvider enabled={!isDemo}>
     <VoiceProvider>
     <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
     <SettingsProvider>

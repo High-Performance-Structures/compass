@@ -114,6 +114,13 @@ PLAYWRIGHT_BASE_URL=https://compass.openrangeconstruction.ltd \
   bunx playwright test e2e/web/production-smoke.spec.ts --project=chromium
 ```
 
+The production smoke route sweep aborts every `POST` before it can reach the
+deployment. Next.js server-action transport is identified by its `next-action`
+header and is allowed as a blocked framework primitive; any POST without that
+header is recorded as an application endpoint and fails the test. The demo
+workspace also disables presence writes so the read-only sweep does not create
+or update a presence record.
+
 Run the native build checks:
 
 ```bash

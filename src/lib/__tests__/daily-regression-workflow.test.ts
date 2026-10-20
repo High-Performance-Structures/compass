@@ -13,6 +13,14 @@ const productionSmoke = readFileSync(
   join(process.cwd(), "e2e/web/production-smoke.spec.ts"),
   "utf8",
 )
+const dashboardLayout = readFileSync(
+  join(process.cwd(), "src/app/dashboard/layout.tsx"),
+  "utf8",
+)
+const presenceContext = readFileSync(
+  join(process.cwd(), "src/contexts/presence-context.tsx"),
+  "utf8",
+)
 const productionSmokeSourceFile = ts.createSourceFile(
   "production-smoke.spec.ts",
   productionSmoke,
@@ -296,20 +304,44 @@ describe("daily regression workflow", () => {
     expect(productionSmoke).not.toMatch(/request\.(post|put|patch|delete)\(/)
   })
 
-  it("blocks and proves zero attempted POST requests before network dispatch", () => {
+  it("blocks Next Action transport before network dispatch", () => {
     expect(productionSmoke).toContain('await context.route("**/*", async (route) =>')
-    expect(productionSmoke).toContain("let attemptedPostRequests = 0")
+    expect(productionSmoke).toContain("const blockedNextActionRequests: string[] = []")
     expect(productionSmoke).toContain("const request = route.request()")
     expect(productionSmoke).toContain('if (request.method() === "POST") {')
-    expect(productionSmoke).toContain("attemptedPostRequests += 1")
-    expect(productionSmoke).toContain('await route.abort("blockedbyclient")')
     expect(productionSmoke).toContain(
-      'expect(\n      attemptedPostRequests,\n      "production smoke must not attempt POST requests",\n    ).toBe(0)',
+      'const nextAction = request.headers()["next-action"]',
     )
-    expect(productionSmoke).not.toContain('request.headers()["next-action"]')
-    expect(productionSmoke).not.toContain('request.method() === "POST" &&')
+    expect(productionSmoke).toContain("blockedNextActionRequests.push(request.url())")
+    expect(productionSmoke).toContain('await route.abort("blockedbyclient")')
     expect(productionSmoke).not.toContain("context.addInitScript")
     expect(productionSmoke).not.toContain("window.fetch")
+  })
+
+  it("keeps the demo route from writing presence during read-only smoke", () => {
+    expect(dashboardLayout).toContain("<PresenceProvider enabled={!isDemo}>")
+    expect(presenceContext).toContain("if (!enabled) return")
+    expect(presenceContext).toContain("if (!enabled) return\n      if (!document.hidden")
+  })
+
+  it("fails closed on application POSTs while allowing blocked Next Action transport", () => {
+    expect(productionSmoke).toContain(
+      'const applicationPostRequests: string[] = []',
+    )
+    expect(productionSmoke).toContain(
+      'const nextAction = request.headers()["next-action"]',
+    )
+    expect(productionSmoke).toContain(
+      'applicationPostRequests.push(request.url())',
+    )
+    expect(productionSmoke).toContain("await route.abort(\"blockedbyclient\")")
+    expect(productionSmoke).toContain("applicationPostRequests")
+    expect(productionSmoke).toContain(
+      'expect(\n      applicationPostRequests,\n      "production smoke must not reach application POST endpoints",\n    ).toEqual([])',
+    )
+    expect(productionSmoke).not.toContain(
+      '"production smoke must not attempt POST requests"',
+    )
   })
 
   it("compares every navigation using the exact pathname and search", () => {

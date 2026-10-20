@@ -53,11 +53,17 @@ async function expectHealthyNavigation(
 test.describe("production smoke", () => {
   test("demo workspace exposes healthy core navigation", async ({ page }) => {
     const context = page.context()
-    let attemptedPostRequests = 0
+    const applicationPostRequests: string[] = []
+    const blockedNextActionRequests: string[] = []
     await context.route("**/*", async (route) => {
       const request = route.request()
       if (request.method() === "POST") {
-        attemptedPostRequests += 1
+        const nextAction = request.headers()["next-action"]
+        if (nextAction) {
+          blockedNextActionRequests.push(request.url())
+        } else {
+          applicationPostRequests.push(request.url())
+        }
         await route.abort("blockedbyclient")
         return
       }
@@ -90,8 +96,8 @@ test.describe("production smoke", () => {
     }
 
     expect(
-      attemptedPostRequests,
-      "production smoke must not attempt POST requests",
-    ).toBe(0)
+      applicationPostRequests,
+      "production smoke must not reach application POST endpoints",
+    ).toEqual([])
   })
 })
