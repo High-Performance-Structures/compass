@@ -1,6 +1,19 @@
 import type { InternalDutySettings } from "@/lib/feature-settings/registry"
 
-export type WorkspaceKind = "office" | "executive" | "field"
+export const WORKSPACE_KINDS = ["office", "executive", "field"] as const
+
+export type WorkspaceKind = (typeof WORKSPACE_KINDS)[number]
+
+export function isWorkspaceKind(value: string): value is WorkspaceKind {
+  return WORKSPACE_KINDS.some((kind) => kind === value)
+}
+
+/** What each kind of internal workspace is for, as people pick it. */
+export const WORKSPACE_KIND_LABELS: Readonly<Record<WorkspaceKind, string>> = {
+  office: "Office (duty log)",
+  executive: "Owner's office",
+  field: "Field crew or yard",
+}
 
 export type DutyOption = { readonly code: string; readonly label: string }
 

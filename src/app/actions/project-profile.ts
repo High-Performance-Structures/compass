@@ -82,6 +82,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { getProjectAccessRecord } from "@/lib/project-access"
+import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import {
   isProjectDepartment,
   resolvedProjectDepartment,
@@ -135,6 +136,9 @@ export type ProjectInformation = {
     readonly jobStatusId: string
     readonly status: string
     readonly portfolioMapVisibility: PortfolioMapVisibility
+    /** Internal workspace kind; null for client jobs. */
+    readonly workspaceKind: WorkspaceKind | null
+    readonly internalDepartment: boolean
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
   readonly interactionTypes: readonly ProjectInteractionTypeOption[]
@@ -408,6 +412,8 @@ export async function getProjectInformation(
         jobStatusId: projects.jobStatusId,
         status: projects.status,
         portfolioMapVisibility: projects.portfolioMapVisibility,
+        workspaceKind: projects.workspaceKind,
+        internalDepartment: projects.internalDepartment,
       })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))

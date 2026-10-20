@@ -394,6 +394,14 @@ export const internalDutySettingsSchema = z.object({
 
 export type InternalDutySettings = z.infer<typeof internalDutySettingsSchema>
 
+/** The Internal department: the Project Hub tab that lists internal workspaces. */
+export const internalDepartmentSettingsSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name for the Internal department.").max(24),
+  description: z.string().trim().max(200),
+})
+
+export type InternalDepartmentSettings = z.infer<typeof internalDepartmentSettingsSchema>
+
 /**
  * Daily logs: what every log must include before it can be saved, beyond the
  * date and the work completed. The same rules apply in the browser and in
@@ -520,6 +528,7 @@ type FeatureSettingsTypes = {
   readonly "project-timeline": ProjectTimelineSettings
   readonly "daily-log-reminders": DailyLogReminderSettings
   readonly "internal-duties": InternalDutySettings
+  readonly "internal-department": InternalDepartmentSettings
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
   readonly "department-profiles": DepartmentProfilesSettings
@@ -638,6 +647,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       ],
     },
     schema: internalDutySettingsSchema,
+  },
+  "internal-department": {
+    label: "Internal department",
+    description: "The name of the department that holds internal workspaces: the office, the owner's office and yards.",
+    defaults: { name: "Internal", description: "Office, owner's office and yard workspaces." },
+    schema: internalDepartmentSettingsSchema,
   },
   "contract-deposits": {
     label: "Contract deposits",

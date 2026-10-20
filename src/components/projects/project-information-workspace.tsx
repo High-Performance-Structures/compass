@@ -133,7 +133,7 @@ export function ProjectInformationWorkspace({
       return
     }
     if (!department) {
-      const error = "Choose ORC, HPS, Nu-Tech, or Design."
+      const error = "Choose a department."
       setProfileMessage(error)
       setMessage(error)
       return
@@ -444,7 +444,7 @@ export function ProjectInformationWorkspace({
               </SelectContent>
             </Select>
             <p id="map-visibility-help" className="text-xs text-muted-foreground" role="status" aria-live="polite">
-              {mapMessage ?? "By default, active HPS and Open Range jobs appear on the dashboard map; Internal and Nu-Tech jobs do not."}
+              {mapMessage ?? "By default, the dashboard map follows each department's setting in Settings → Workflows → Portfolio map."}
             </p>
           </div>
           {information.project.projectNumber && (

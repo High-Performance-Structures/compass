@@ -752,6 +752,12 @@ export const projects = sqliteTable("projects", {
    * Null for every client project.
    */
   workspaceKind: text("workspace_kind", { enum: ["office", "executive", "field"] }),
+  /**
+   * Listed under the company's Internal department on the Project Hub rather
+   * than its own department. Only internal workspaces set it; a workspace can
+   * stay with its department (a crew workspace for one department's orders).
+   */
+  internalDepartment: integer("internal_department", { mode: "boolean" }).notNull().default(false),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),

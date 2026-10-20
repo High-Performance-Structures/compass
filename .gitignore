@@ -25,6 +25,8 @@ release/
 .DS_Store
 *.tsbuildinfo
 *.png
+# Demo company logos are seed data (scripts/demo).
+!scripts/demo/logos/*.png
 
 # dev tools
 .playwright-mcp
