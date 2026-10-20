@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   emailReplyPreview,
+  isJobLevelKind,
   isTrackedRecordKind,
   trackedRecordHref,
   trackedRecordReplyEventType,
@@ -54,5 +55,13 @@ describe("tracked record routing", () => {
     expect(trackedRecordHref({ kind: "rfi", projectId: "p1", recordId: "r1" })).toBe("/dashboard/projects/p1/rfis?item=r1#rfi-r1")
     expect(trackedRecordReplyEventType("rfi")).toBe("rfi.email_reply")
     expect(trackedRecordReplyEventType("purchase_order")).toBe("po.email_reply")
+  })
+
+  it("sends job-level replies to the job", () => {
+    expect(isJobLevelKind("job_email")).toBe(true)
+    expect(isJobLevelKind("rfq")).toBe(false)
+    expect(trackedRecordHref({ kind: "job_email", projectId: "p1", recordId: "p1" })).toBe("/dashboard/projects/p1/information")
+    expect(trackedRecordHref({ kind: "nutech_email", projectId: "p1", recordId: "p1" })).toBe("/dashboard/projects/p1/nutech")
+    expect(trackedRecordReplyEventType("nutech_email")).toBe("nutech_email.reply")
   })
 })

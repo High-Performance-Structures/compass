@@ -11,9 +11,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { sendCompassEmail } from "@/lib/email/compass-email"
-import { appendReplyTokenHtml, appendReplyTokenText, createEmailReplyThread } from "@/lib/email/reply-tracking"
-import { trackedRecordReplyTo } from "@/lib/email/tracked-record-email"
+import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { projectTopLevelFolderOf } from "@/lib/google/project-folder-boundary"
@@ -248,32 +246,22 @@ export async function sendProjectRfqEmail(
       }
       // The vendor's reply comes back onto this RFQ and still reaches the
       // estimator who sent it.
-      const thread = await createEmailReplyThread({
+      const delivery = await sendTrackedEmail({
         env: access.env,
         db: access.db,
         organizationId: access.organizationId,
         projectId,
-        sourceType: "rfq",
-        sourceId: rfqId,
-        sourceNumber: rfq.sourceRecordNumber,
-        subject,
+        kind: "rfq",
+        recordId: rfqId,
+        recordLabel: rfq.sourceRecordNumber,
         createdBy: access.user.id,
-      })
-      const delivery = await sendCompassEmail({
-        env: access.env,
-        db: access.db,
-        organizationId: access.organizationId,
         to: [to],
         cc,
-        replyTo: trackedRecordReplyTo({
-          replyToAddress: thread.replyToAddress,
-          displayName: `${actorName} - ${rfq.sourceRecordNumber ?? "RFQ"}`,
-          alsoTo: [access.user.email],
-        }),
-        headers: [{ name: "X-Compass-Reply-Token", value: thread.token }],
         subject,
-        text: appendReplyTokenText({ body: rfqEmailText(emailInput), token: thread.token }),
-        html: appendReplyTokenHtml({ html: rfqEmailHtml(emailInput), token: thread.token }),
+        text: rfqEmailText(emailInput),
+        html: rfqEmailHtml(emailInput),
+        replyName: `${actorName} - ${rfq.sourceRecordNumber ?? "RFQ"}`,
+        alsoReplyTo: [access.user.email],
       })
       deliveryStatus = delivery.status === "sent" ? "sent" : "failed"
       provider = delivery.provider

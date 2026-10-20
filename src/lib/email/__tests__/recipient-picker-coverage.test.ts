@@ -19,6 +19,18 @@ describe("business email recipient picker coverage", () => {
     expect(component).toContain("excludedEmails={to}")
   })
 
+  it("uses the same To and Cc picker for RFQ and template emails", () => {
+    for (const file of [
+      "src/components/projects/project-rfq-email-button.tsx",
+      "src/components/email/template-email-menu.tsx",
+    ]) {
+      const component = source(file)
+      expect(component.match(/<EmailRecipientPicker/g)).toHaveLength(2)
+      expect(component).toContain('label="To"')
+      expect(component).toContain('label="Cc"')
+    }
+  })
+
   it("uses the same To and Cc picker for RFI email", () => {
     const component = source(
       "src/components/projects/project-rfi-communication-actions.tsx"
@@ -32,7 +44,7 @@ describe("business email recipient picker coverage", () => {
   it("sends RFIs from Compass with the RFI's tracked reply address", () => {
     const action = source("src/app/actions/project-rfi-email.ts")
 
-    expect(action).toContain('sourceType: "rfi"')
-    expect(action).toContain("replyToAddress: thread.replyToAddress")
+    expect(action).toContain("sendTrackedEmail({")
+    expect(action).toContain('kind: "rfi"')
   })
 })

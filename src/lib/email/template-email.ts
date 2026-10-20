@@ -1,3 +1,5 @@
+import type { EmailRecipientOption } from "@/lib/email/recipient-options"
+
 /** A template filled in for one job, ready to review. */
 export type TemplateEmailDraft = {
   readonly templateId: string
@@ -6,6 +8,8 @@ export type TemplateEmailDraft = {
   readonly description: string
   readonly to: readonly string[]
   readonly cc: readonly string[]
+  /** The job's contacts, offered in the To and Cc pickers. */
+  readonly recipientOptions: readonly EmailRecipientOption[]
   readonly subject: string
   readonly body: string
   /** Merge fields that were empty, to fill in before sending. */

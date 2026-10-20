@@ -123,6 +123,8 @@ Style & Conventions
   record type.
 - Aim to keep files under ~700 LOC; guideline only (not a hard guardrail).
 Split/refactor when it improves clarity or testability.
+- **outside email, notifications, and Activity** follow one standard: send with `sendTrackedEmail` so replies come back to the record, use the shared `EmailRecipientPicker` for To/Cc, notify the sender and project staff, and log to Activity. see [docs/development/email-workflows.md](docs/development/email-workflows.md); `email-workflow-standard.test.ts` enforces it.
+- **outside email, notifications, and Activity** follow one standard: send with `sendTrackedEmail` so replies come back to the record, use the shared `EmailRecipientPicker` for To/Cc, notify the sender and project staff, and log to Activity. see [docs/development/email-workflows.md](docs/development/email-workflows.md); `email-workflow-standard.test.ts` enforces it.
 - **server actions** for all data mutations (`src/app/actions/`). return `{ success: true }` or `{ success: false; error: string }`. revalidate paths after writes. access D1 via `getCloudflareContext()`. see [docs/architecture/server-actions.md](docs/architecture/server-actions.md).
 - **database**: drizzle ORM with D1 (SQLite). text IDs (UUIDs), text dates (ISO 8601). schema split across 10 files in `src/db/`. add new migrations, never modify old ones. see [docs/architecture/data-layer.md](docs/architecture/data-layer.md).
 - **auth**: WorkOS for SSO/email/password. middleware in `src/middleware.ts` redirects unauthenticated users. `getCurrentUser()` from `lib/auth.ts` for user info. RBAC via `lib/permissions.ts`. see [docs/architecture/auth-system.md](docs/architecture/auth-system.md).

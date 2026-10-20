@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react"
 
 import {
+  getProjectContactsSummary,
   getProjectTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
@@ -49,6 +50,7 @@ import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
 import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
 import { RecordEmailReplies } from "@/components/projects/record-email-replies"
+import { buildProjectEmailRecipientOptions, type ProjectEmailContact } from "@/lib/email/recipient-options"
 import { ProjectRfqManualResponse } from "@/components/projects/project-rfq-manual-response"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
@@ -184,6 +186,7 @@ function RfqCard({
   editableEstimates,
   emailDeliveries,
   emailReplies,
+  emailContacts,
   manualResponseEvents,
 }: {
   readonly brand: ProjectBrand
@@ -205,6 +208,7 @@ function RfqCard({
   }[]
   readonly emailDeliveries: readonly RfqEmailDeliveryItem[]
   readonly emailReplies: readonly RecordEmailReplyItem[]
+  readonly emailContacts: readonly ProjectEmailContact[]
   readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
 }): React.ReactElement {
   return (
@@ -256,6 +260,7 @@ function RfqCard({
             projectId={projectId}
             projectLabel={projectLabel}
             rfq={rfq}
+            recipientOptions={buildProjectEmailRecipientOptions(emailContacts, [rfq.recipientEmail, rfq.companyName])}
           />
           <ProjectRfqManualResponse
             projectId={projectId}
@@ -509,6 +514,8 @@ export default async function ProjectRfqsPage({
     getProjectRfqEmailDeliveries(id),
     getProjectRfqManualResponseEvents(id),
     showInternalHistory ? getProjectRecordEmailReplies(id, "rfq") : Promise.resolve([]),
+    // Contacts only fill the email pickers; never block the RFQ page on them.
+    getProjectContactsSummary(id, "internal").then((summary) => summary.allContacts, () => []),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -530,6 +537,7 @@ export default async function ProjectRfqsPage({
     emailDeliveries,
     manualResponseEvents,
     emailReplies,
+    emailContacts,
   ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
@@ -646,6 +654,7 @@ export default async function ProjectRfqsPage({
               editableEstimates={bidWorkspace.editableEstimates}
               emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
               emailReplies={emailReplies.filter((reply) => reply.recordId === rfq.id)}
+              emailContacts={emailContacts}
               manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
             />
           ))

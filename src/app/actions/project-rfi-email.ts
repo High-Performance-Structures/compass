@@ -9,10 +9,8 @@ import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { sendCompassEmail } from "@/lib/email/compass-email"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
-import { appendReplyTokenText, createEmailReplyThread } from "@/lib/email/reply-tracking"
-import { trackedRecordReplyTo } from "@/lib/email/tracked-record-email"
+import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
@@ -86,41 +84,28 @@ export async function sendProjectRfiEmail(
     if (!rfi) return { success: false, error: "RFI not found." }
 
     const senderName = user.displayName?.trim() || user.email
-    const thread = await createEmailReplyThread({
+    const delivery = await sendTrackedEmail({
       env,
       db,
       organizationId,
       projectId,
-      sourceType: "rfi",
-      sourceId: rfi.id,
-      sourceNumber: rfi.rfiNumber,
-      subject,
+      kind: "rfi",
+      recordId: rfi.id,
+      recordLabel: rfi.rfiNumber,
       createdBy: user.id,
-    })
-    const delivery = await sendCompassEmail({
-      env,
-      db,
-      organizationId,
       to,
       cc,
-      replyTo: trackedRecordReplyTo({
-        replyToAddress: thread.replyToAddress,
-        displayName: `${senderName} - ${rfi.rfiNumber}`,
-        alsoTo: [user.email],
-      }),
-      headers: [{ name: "X-Compass-Reply-Token", value: thread.token }],
       subject,
-      text: appendReplyTokenText({
-        token: thread.token,
-        body: rfiEmailText({
-          projectLabel: project.projectNumber ? projectNumberAndName(project, " - ") : project.name,
-          rfiNumber: rfi.rfiNumber,
-          subject: rfi.subject,
-          question: rfi.question,
-          dueDate: rfi.dueDate,
-          message,
-          senderName,
-        }),
+      replyName: `${senderName} - ${rfi.rfiNumber}`,
+      alsoReplyTo: [user.email],
+      text: rfiEmailText({
+        projectLabel: project.projectNumber ? projectNumberAndName(project, " - ") : project.name,
+        rfiNumber: rfi.rfiNumber,
+        subject: rfi.subject,
+        question: rfi.question,
+        dueDate: rfi.dueDate,
+        message,
+        senderName,
       }),
     })
     if (delivery.status !== "sent") {

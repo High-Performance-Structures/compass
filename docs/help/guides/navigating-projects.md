@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-15"
+  "lastReviewed": "2026-10-20"
 }
 ---
 
@@ -116,6 +116,8 @@ Turn on **Messages** to see your unread items stacked on jobs and listed in the 
 Follow-up flags appear on the map, pipelines, and tracker for job statuses that require client contact. **Follow-up due** is amber and **Overdue** is red. Aging is counted in business days since the last logged client contact, so record the actual contact in the job's follow-up workflow. Schedule lateness can also flag a construction job; inspect the panel to understand the reason.
 
 **Log contact** opens the client interaction record, which is also at the top of the project's **Information** page. Choose the client contact, how you reached them (call, email, text, meeting, site visit, or your own type), who reached out, and when, then describe what happened and the next step. Only a completed record counts as client contact and resets the clock. **Snooze** moves the next follow-up date but does not count as contact.
+
+The job's **Emails** buttons open a template filled in for the job. Choose **To** and **Cc** from the job's contacts or type an address, check the subject and message, attach files, and send. The email goes from the department's mailbox (or yours when the department has none) and is listed in the **Activity** log; a client email also counts as client contact. Replies reach the sending mailbox and come back to the job in Compass: the team gets a notification, and a client's reply is logged as client contact.
 
 By default, a job with no client contact logged shows **No contact logged**. When an admin turns on **Flag jobs with no logged contact** in **Settings → Workflows → Project aging**, those jobs start aging from the day it's turned on (or from when the job was created, if later). They then turn due and overdue on the same thresholds and send reminders like any other job.
 
