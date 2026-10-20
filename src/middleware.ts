@@ -59,18 +59,9 @@ export default async function middleware(request: NextRequest) {
     return handleAuthkitHeaders(request, headers)
   }
 
+  // The demo cookie only works with the local/E2E sign-in fallback above;
+  // with WorkOS configured, every page needs a real session.
   if (!session.user) {
-    const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
-    if (isDemoSession) {
-      const resolutionUrl = legacyResolutionUrl(request)
-      if (resolutionUrl) {
-        return handleAuthkitHeaders(request, headers, {
-          redirect: resolutionUrl.toString(),
-        })
-      }
-      return handleAuthkitHeaders(request, headers)
-    }
-
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", `${pathname}${request.nextUrl.search}`)
     return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
