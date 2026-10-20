@@ -29,9 +29,10 @@ describe("business email recipient picker coverage", () => {
     expect(component).toContain('label="Cc"')
   })
 
-  it("keeps the Compass reply address alongside selected RFI copies", () => {
-    const action = source("src/app/actions/project-rfis.ts")
+  it("sends RFIs from Compass with the RFI's tracked reply address", () => {
+    const action = source("src/app/actions/project-rfi-email.ts")
 
-    expect(action).toContain("cc: [...cc, thread.replyToAddress]")
+    expect(action).toContain('sourceType: "rfi"')
+    expect(action).toContain("replyToAddress: thread.replyToAddress")
   })
 })

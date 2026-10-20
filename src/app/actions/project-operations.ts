@@ -79,6 +79,9 @@ import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqu
 import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { nuTechOrderFormAttachments } from "@/lib/nutech/order-form-attachment"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { appendReplyTokenHtml, appendReplyTokenText, createEmailReplyThread } from "@/lib/email/reply-tracking"
+import { trackedRecordReplyTo } from "@/lib/email/tracked-record-email"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -3216,15 +3219,36 @@ export async function sendPurchaseOrderEmail(
     // Sent through the company's Google Workspace like every other Compass
     // email, from the department's shared mailbox when one is set.
     const departmentProfile = profiles[brand.department]
+    // Supplier replies come back onto this PO. The department mailbox (or the
+    // sender, when there is none) still gets them directly too.
+    const replyThread = await createEmailReplyThread({
+      env,
+      db,
+      organizationId: orgId,
+      projectId,
+      sourceType: "purchase_order",
+      sourceId: purchaseOrderId,
+      sourceNumber: operation.sourceRecordNumber,
+      subject,
+      createdBy: user.id,
+    })
+    const emailText = orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput)
+    const emailHtml = orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput)
     const delivery = await sendCompassEmail({
       env,
       db,
       organizationId: orgId,
       to,
       cc,
+      replyTo: trackedRecordReplyTo({
+        replyToAddress: replyThread.replyToAddress,
+        displayName: `${departmentProfile.senderName || departmentProfile.companyName || senderName} - ${operation.sourceRecordNumber ?? "Purchase order"}`,
+        alsoTo: [departmentProfile.senderAddress || user.email],
+      }),
+      headers: [{ name: "X-Compass-Reply-Token", value: replyThread.token }],
       subject,
-      text: orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput),
-      html: orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput),
+      text: appendReplyTokenText({ body: emailText, token: replyThread.token }),
+      html: appendReplyTokenHtml({ html: emailHtml, token: replyThread.token }),
       attachments: orderForm ?? [],
       sender: departmentProfile.senderAddress
         ? {
@@ -3256,6 +3280,18 @@ export async function sendPurchaseOrderEmail(
       .where(eq(projectOperations.id, purchaseOrderId))
     // Freeze a dated copy of exactly what the vendor received.
     await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "email",
+      action: "purchase_order_emailed",
+      entityType: "project_operation",
+      entityId: purchaseOrderId,
+      summary: `Emailed ${operation.sourceRecordNumber ?? "purchase order"} ${operation.title} to ${[...to, ...cc].join(", ")}.`,
+      metadata: { recipients: to.length + cc.length, orderForm: orderForm !== null, sentBy: activityActorName(user) },
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)

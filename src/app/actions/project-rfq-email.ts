@@ -10,7 +10,10 @@ import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import { appendReplyTokenHtml, appendReplyTokenText, createEmailReplyThread } from "@/lib/email/reply-tracking"
+import { trackedRecordReplyTo } from "@/lib/email/tracked-record-email"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { projectTopLevelFolderOf } from "@/lib/google/project-folder-boundary"
@@ -243,16 +246,34 @@ export async function sendProjectRfqEmail(
         lines: payload.scopeItems,
         documents,
       }
+      // The vendor's reply comes back onto this RFQ and still reaches the
+      // estimator who sent it.
+      const thread = await createEmailReplyThread({
+        env: access.env,
+        db: access.db,
+        organizationId: access.organizationId,
+        projectId,
+        sourceType: "rfq",
+        sourceId: rfqId,
+        sourceNumber: rfq.sourceRecordNumber,
+        subject,
+        createdBy: access.user.id,
+      })
       const delivery = await sendCompassEmail({
         env: access.env,
         db: access.db,
         organizationId: access.organizationId,
         to: [to],
         cc,
-        replyTo: access.user.email,
+        replyTo: trackedRecordReplyTo({
+          replyToAddress: thread.replyToAddress,
+          displayName: `${actorName} - ${rfq.sourceRecordNumber ?? "RFQ"}`,
+          alsoTo: [access.user.email],
+        }),
+        headers: [{ name: "X-Compass-Reply-Token", value: thread.token }],
         subject,
-        text: rfqEmailText(emailInput),
-        html: rfqEmailHtml(emailInput),
+        text: appendReplyTokenText({ body: rfqEmailText(emailInput), token: thread.token }),
+        html: appendReplyTokenHtml({ html: rfqEmailHtml(emailInput), token: thread.token }),
       })
       deliveryStatus = delivery.status === "sent" ? "sent" : "failed"
       provider = delivery.provider
@@ -282,6 +303,18 @@ export async function sendProjectRfqEmail(
       eq(projectOperations.projectId, projectId),
       eq(projectOperations.updatedAt, rfq.updatedAt)
     ))
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId,
+      actor: access.user,
+      category: "email",
+      action: "rfq_emailed",
+      entityType: "project_operation",
+      entityId: rfqId,
+      summary: `Emailed ${rfq.sourceRecordNumber ?? "RFQ"} ${rfq.title} to ${[to, ...cc].join(", ")}.`,
+      metadata: { recipients: 1 + cc.length, documents: documents.length, sentBy: activityActorName(access.user) },
+    })
     revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
     revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
     return { success: true, deliveryId }

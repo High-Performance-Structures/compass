@@ -30,7 +30,7 @@ Use only photos approved for owner visibility. Open them at full size and inspec
 
 ## Publish and Share {#publish-share}
 
-Publishing changes a working draft into an approved owner-facing record. Confirm required project-manager review first. Sharing controls may provide a print/save-PDF view, Compass link, or prepared email. Review the actual output and recipient access before sending.
+Publishing changes a working draft into an approved owner-facing record. Confirm required project-manager review first. When you publish, the project's owner portal users get a notification in Compass, on their phone, and by email, unless they turned off **Owner updates** in their own settings. The publish (and any recall) is recorded in the **Activity** log. Sharing controls may provide a print/save-PDF view, Compass link, or prepared email. Review the actual output and recipient access before sending.
 
 Use the deployed Compass address, not a local or preview URL. A Compass link cannot override a restricted Drive file's sharing settings.
 

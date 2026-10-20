@@ -12,6 +12,7 @@ import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-s
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
+import { announceEsignOutcome } from "@/lib/esign/announce"
 
 function objectValue(value: unknown): object | null {
   return value && typeof value === "object" ? value : null
@@ -109,11 +110,25 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     if (event === "folder_cancelled" || event === "folder_declined") {
+      const outcome = event === "folder_declined" ? "declined" : "cancelled"
       await db
         .update(contractPackets)
-        .set({ foxitStatus: event.replace("folder_", ""), updatedAt: now })
+        .set({ foxitStatus: outcome, updatedAt: now })
         .where(eq(contractPackets.id, packet.id))
         .run()
+      if (packet.foxitStatus !== outcome) {
+        await announceEsignOutcome({
+          db,
+          projectId: packet.projectId,
+          kind: "contract",
+          outcome,
+          recordId: packet.id,
+          number: packet.packetNumber,
+          title: packet.title,
+          changeOrderId: null,
+          sentBy: packet.createdBy,
+        })
+      }
       return Response.json({ success: true })
     }
 
@@ -180,6 +195,17 @@ export async function POST(request: Request): Promise<Response> {
           })
           .where(eq(projectEstimates.id, linkedEstimate.id)),
       ])
+      await announceEsignOutcome({
+        db,
+        projectId: packet.projectId,
+        kind: "contract",
+        outcome: "signed",
+        recordId: packet.id,
+        number: packet.packetNumber,
+        title: packet.title,
+        changeOrderId: null,
+        sentBy: packet.createdBy,
+      })
     }
     const budget = await rebuildProjectContractBudget({
       db,
@@ -220,11 +246,25 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (event === "folder_cancelled" || event === "folder_declined") {
+    const outcome = event === "folder_declined" ? "declined" : "cancelled"
     await db
       .update(projectEstimates)
-      .set({ foxitStatus: event.replace("folder_", ""), updatedAt: now })
+      .set({ foxitStatus: outcome, updatedAt: now })
       .where(eq(projectEstimates.id, estimate.id))
       .run()
+    if (estimate.foxitStatus !== outcome) {
+      await announceEsignOutcome({
+        db,
+        projectId: estimate.projectId,
+        kind: "estimate",
+        outcome,
+        recordId: estimate.id,
+        number: estimate.estimateNumber,
+        title: estimate.title,
+        changeOrderId: estimate.changeOrderId,
+        sentBy: estimate.createdBy,
+      })
+    }
     return Response.json({ success: true })
   }
 
@@ -284,6 +324,17 @@ export async function POST(request: Request): Promise<Response> {
         .where(eq(projectEstimates.id, estimate.id)),
       ...changeOrderExecution,
     ])
+    await announceEsignOutcome({
+      db,
+      projectId: estimate.projectId,
+      kind: "estimate",
+      outcome: "signed",
+      recordId: estimate.id,
+      number: estimate.estimateNumber,
+      title: estimate.title,
+      changeOrderId: estimate.changeOrderId,
+      sentBy: estimate.createdBy,
+    })
   }
   if (estimate.phaseProposalId) {
     // A phase estimate sets up its family phase instead of a contract budget.

@@ -27,6 +27,8 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
+import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
+import { RecordEmailReplies } from "@/components/projects/record-email-replies"
 import {
   ProjectPurchaseOrderCreateForm,
   ProjectPurchaseOrderEditForm,
@@ -138,6 +140,7 @@ function PurchaseOrderCard({
   catalogItems,
   orderForm,
   supplierRecipients,
+  emailReplies,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -164,6 +167,7 @@ function PurchaseOrderCard({
   readonly orderForm?: { readonly orderId: string; readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
   /** Set on the manufacturer's POs: the order desk and rep from Settings, in place of the supplier's own email. */
   readonly supplierRecipients?: { readonly to: string; readonly cc: string }
+  readonly emailReplies: readonly RecordEmailReplyItem[]
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -305,6 +309,7 @@ function PurchaseOrderCard({
             </p>
           </div>
         )}
+        <RecordEmailReplies replies={emailReplies} />
         {developerModeEnabled && (
           <div className="mt-3 rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -399,6 +404,7 @@ export default async function ProjectPurchaseOrdersPage({
     getProjectContactsSummary(id, "internal"),
     getProjectPurchaseOrderFormOptions(id),
     getProjectPaperTrail(id, "purchase_order"),
+    getProjectRecordEmailReplies(id, "purchase_order"),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -416,6 +422,7 @@ export default async function ProjectPurchaseOrdersPage({
     contactsSummary,
     purchaseOrderCodingOptions,
     paperTrail,
+    emailReplies,
   ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
@@ -573,6 +580,7 @@ export default async function ProjectPurchaseOrdersPage({
               }
               isCreated={order.id === createdPurchaseOrderId}
               isFocused={order.id === focusedPurchaseOrderId}
+              emailReplies={emailReplies.filter((reply) => reply.recordId === order.id)}
               taskAssigneeOptions={taskAssignees}
               siteContactOptions={siteContactOptions}
               emailRecipientOptions={emailRecipientOptions}

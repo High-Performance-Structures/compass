@@ -1,6 +1,7 @@
 "use server"
 
 import { and, eq, inArray } from "drizzle-orm"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -22,6 +23,7 @@ import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-c
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import {
   parsePortalPurchaseOrderPayload,
+  portalPurchaseOrderVendorStatusLabel,
   portalPurchaseOrderCanReceiveResponse,
   portalPurchaseOrderMatchesRecipient,
   withPortalPurchaseOrderAcknowledgement,
@@ -348,6 +350,17 @@ export async function respondToSubVendorPurchaseOrder(
         }
       }
       revalidateSubVendorWorkspace(projectId)
+      await recordActivityEvent({
+        db: context.db,
+        organizationId: context.organizationId,
+        projectId,
+        actor: context.user,
+        category: "email",
+        action: "purchase_order_vendor_acknowledged",
+        entityType: "project_operation",
+        entityId: purchaseOrderId,
+        summary: `${context.viewerContact.companyName ?? activityActorName(context.user)} acknowledged ${purchaseOrder.sourceRecordNumber ?? "a purchase order"} in the vendor portal.`,
+      })
       try {
         await notifyPurchaseOrderVendorUpdate({
           organizationId: context.organizationId,
@@ -407,6 +420,17 @@ export async function respondToSubVendorPurchaseOrder(
         }
       }
       revalidateSubVendorWorkspace(projectId)
+      await recordActivityEvent({
+        db: context.db,
+        organizationId: context.organizationId,
+        projectId,
+        actor: context.user,
+        category: "email",
+        action: "purchase_order_vendor_status",
+        entityType: "project_operation",
+        entityId: purchaseOrderId,
+        summary: `${context.viewerContact.companyName ?? activityActorName(context.user)} reported ${portalPurchaseOrderVendorStatusLabel(status).toLowerCase()} on ${purchaseOrder.sourceRecordNumber ?? "a purchase order"} in the vendor portal.`,
+      })
       try {
         await notifyPurchaseOrderVendorUpdate({
           organizationId: context.organizationId,
@@ -647,6 +671,19 @@ export async function submitSubVendorRfqResponse(
       }
     }
     revalidateSubVendorWorkspace(projectId)
+    await recordActivityEvent({
+      db: context.db,
+      organizationId: context.organizationId,
+      projectId,
+      actor: context.user,
+      category: "email",
+      action: input.decision === "quote" ? "rfq_quote_received" : "rfq_declined",
+      entityType: "project_operation",
+      entityId: rfqId,
+      summary: input.decision === "quote"
+        ? `${activityActorName(context.user)} submitted a quote on ${rfq.sourceRecordNumber ?? "an RFQ"} in the vendor portal.`
+        : `${activityActorName(context.user)} declined ${rfq.sourceRecordNumber ?? "an RFQ"} in the vendor portal.`,
+    })
 
     try {
       await notifyRfqResponseReceived({
