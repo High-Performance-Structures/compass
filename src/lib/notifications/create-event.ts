@@ -245,6 +245,7 @@ function notificationSmsEnabled(
 }
 
 function notificationEmailBody(
+  env: unknown,
   input: Pick<CreateNotificationInput, "title" | "body" | "href">
 ): string {
   return [
@@ -252,8 +253,15 @@ function notificationEmailBody(
     "",
     input.body,
     "",
-    `Open in Compass: ${input.href}`,
+    `Open in Compass: ${notificationLink(env, input.href)}`,
   ].join("\n")
+}
+
+/** Notification links are app paths; emails need the full address. */
+export function notificationLink(env: unknown, href: string): string {
+  if (/^https?:\/\//i.test(href)) return href
+  const base = envString(env, "COMPASS_APP_URL")?.replace(/\/$/, "") ?? "https://compass.openrangeconstruction.ltd"
+  return `${base}${href.startsWith("/") ? href : `/${href}`}`
 }
 
 export {
@@ -261,57 +269,34 @@ export {
   type NotificationDelivery,
 } from "@/lib/notifications/delivery"
 
-async function sendResendEmail(
-  env: unknown,
-  toAddress: string,
-  subject: string,
-  body: string
-): Promise<{
+/** Notification emails go out through the company's Google Workspace, like project email. */
+async function sendNotificationEmail(input: {
+  readonly env: unknown
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly toAddress: string
+  readonly subject: string
+  readonly body: string
+}): Promise<{
   readonly status: string
+  readonly provider: string
   readonly providerMessageId: string | null
   readonly error: string | null
 }> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
-    return {
-      status: "pending_provider",
-      providerMessageId: null,
-      error: "RESEND_API_KEY is not configured",
-    }
-  }
-
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromAddress,
-      to: [toAddress],
-      subject,
-      text: body,
-    }),
-  })
-
-  const responseText = await response.text()
-  let providerMessageId: string | null = null
   try {
-    const parsed: unknown = JSON.parse(responseText)
-    if (isRecord(parsed) && typeof parsed.id === "string") {
-      providerMessageId = parsed.id
-    }
-  } catch {
-    providerMessageId = null
-  }
-
-  return {
-    status: response.ok ? "sent" : "failed",
-    providerMessageId,
-    error: response.ok ? null : responseText.slice(0, 500),
+    // Loaded on send: the email sender is server-only.
+    const { sendCompassEmail } = await import("@/lib/email/compass-email")
+    const delivery = await sendCompassEmail({
+      env: input.env,
+      db: input.db,
+      organizationId: input.organizationId,
+      to: [input.toAddress],
+      subject: input.subject,
+      text: input.body,
+    })
+    return { status: delivery.status, provider: delivery.provider, providerMessageId: delivery.providerMessageId, error: delivery.error }
+  } catch (error) {
+    return { status: "failed", provider: "compass", providerMessageId: null, error: error instanceof Error ? error.message.slice(0, 500) : "Email delivery failed" }
   }
 }
 
@@ -727,12 +712,14 @@ async function persistNotificationEvent(
       })
 
       if (emailEnabled) {
-        const emailDelivery = await sendResendEmail(
+        const emailDelivery = await sendNotificationEmail({
           env,
-          recipient.googleEmail ?? recipient.email,
-          input.title,
-          notificationEmailBody(input)
-        )
+          db,
+          organizationId: input.organizationId,
+          toAddress: recipient.googleEmail ?? recipient.email,
+          subject: input.title,
+          body: notificationEmailBody(env, input),
+        })
         await db.insert(notificationDeliveries).values({
           id: crypto.randomUUID(),
           eventId,
@@ -741,7 +728,7 @@ async function persistNotificationEvent(
           channel: "email",
           status: emailDelivery.status,
           toAddress: recipient.email,
-          provider: "resend",
+          provider: emailDelivery.provider,
           providerMessageId: emailDelivery.providerMessageId,
           error: emailDelivery.error,
           attemptedAt: new Date().toISOString(),
