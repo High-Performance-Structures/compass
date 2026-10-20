@@ -29,7 +29,6 @@ import {
 } from "@/lib/notifications/delivery"
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
-import { sendCompassEmail } from "@/lib/email/compass-email"
 import {
   isConversationSmsEligibleChannel,
   isProjectActivitySmsEvent,
@@ -285,6 +284,8 @@ async function sendNotificationEmail(input: {
   readonly error: string | null
 }> {
   try {
+    // Loaded on send: the email sender is server-only.
+    const { sendCompassEmail } = await import("@/lib/email/compass-email")
     const delivery = await sendCompassEmail({
       env: input.env,
       db: input.db,

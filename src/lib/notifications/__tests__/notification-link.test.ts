@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
 
-vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { notificationLink } from "@/lib/notifications/create-event"
