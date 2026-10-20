@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 
 import { sendProjectRfqEmail, type RfqEmailDeliveryItem } from "@/app/actions/project-rfq-email"
 import type { ProjectRfqItem } from "@/app/actions/project-operations"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -14,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import type { EmailRecipientOption } from "@/lib/email/recipient-options"
 
 function defaultMessage(rfq: ProjectRfqItem, projectLabel: string): string {
   return [
@@ -22,17 +24,22 @@ function defaultMessage(rfq: ProjectRfqItem, projectLabel: string): string {
   ].join("\n")
 }
 
+function defaultTo(rfq: ProjectRfqItem): readonly string[] {
+  return rfq.recipientEmail ? [rfq.recipientEmail] : []
+}
+
 export function ProjectRfqEmailButton({
-  projectId, projectLabel, rfq,
+  projectId, projectLabel, rfq, recipientOptions,
 }: {
   readonly projectId: string
   readonly projectLabel: string
   readonly rfq: ProjectRfqItem
+  readonly recipientOptions: readonly EmailRecipientOption[]
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
-  const [to, setTo] = React.useState(rfq.recipientEmail ?? "")
-  const [cc, setCc] = React.useState("")
+  const [to, setTo] = React.useState<readonly string[]>(defaultTo(rfq))
+  const [cc, setCc] = React.useState<readonly string[]>([])
   const [subject, setSubject] = React.useState(`${rfq.sourceRecordNumber ?? "RFQ"} - ${rfq.title} - ${projectLabel}`)
   const [message, setMessage] = React.useState(defaultMessage(rfq, projectLabel))
   const [pending, setPending] = React.useState(false)
@@ -40,12 +47,17 @@ export function ProjectRfqEmailButton({
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    const [bidder, ...others] = to
+    if (!bidder || others.length > 0) {
+      setError("Send an RFQ to one bidder at a time. Put anyone else in Cc.")
+      return
+    }
     setPending(true)
     setError(null)
     const result = await sendProjectRfqEmail(projectId, rfq.id, {
       expectedUpdatedAt: rfq.updatedAt,
-      to,
-      cc: cc.split(/[,;\s]+/).filter(Boolean),
+      to: bidder,
+      cc,
       subject,
       message,
     })
@@ -63,8 +75,8 @@ export function ProjectRfqEmailButton({
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next)
       if (next) {
-        setTo(rfq.recipientEmail ?? "")
-        setCc("")
+        setTo(defaultTo(rfq))
+        setCc([])
         setSubject(`${rfq.sourceRecordNumber ?? "RFQ"} - ${rfq.title} - ${projectLabel}`)
         setMessage(defaultMessage(rfq, projectLabel))
         setError(null)
@@ -85,14 +97,25 @@ export function ProjectRfqEmailButton({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor={`rfq-to-${rfq.id}`}>To · vendor email</Label>
-              <Input id={`rfq-to-${rfq.id}`} type="email" value={to} onChange={(event) => setTo(event.currentTarget.value)} required />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`rfq-cc-${rfq.id}`}>Cc · optional</Label>
-              <Input id={`rfq-cc-${rfq.id}`} value={cc} onChange={(event) => setCc(event.currentTarget.value)} placeholder="Separate addresses with commas" />
-            </div>
+            <EmailRecipientPicker
+              id={`rfq-to-${rfq.id}`}
+              label="To"
+              options={recipientOptions}
+              value={to}
+              excludedEmails={cc}
+              onChange={setTo}
+              placeholder="Choose the bidder or enter an email..."
+              required
+            />
+            <EmailRecipientPicker
+              id={`rfq-cc-${rfq.id}`}
+              label="Cc"
+              options={recipientOptions}
+              value={cc}
+              excludedEmails={to}
+              onChange={setCc}
+              placeholder="Choose an optional contact..."
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`rfq-subject-${rfq.id}`}>Subject</Label>
@@ -112,10 +135,13 @@ export function ProjectRfqEmailButton({
               Compass grants each recipient viewer access to these project Drive files before sending.
               Google may ask a recipient without a Google account to verify their email.
             </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              The bidder&apos;s reply comes back to this RFQ in Compass and to you.
+            </p>
           </div>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="submit" disabled={pending || !to.trim()}>
+            <Button type="submit" disabled={pending || to.length === 0}>
               <IconSend className="size-4" /> {pending ? "Sending..." : "Send RFQ email"}
             </Button>
           </DialogFooter>

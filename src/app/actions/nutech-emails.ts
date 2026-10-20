@@ -9,7 +9,10 @@ import { projectContacts, projectInteractions, projectOperations, projectProfile
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { sendCompassEmail } from "@/lib/email/compass-email"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
+import type { EmailRecipientOption } from "@/lib/email/recipient-options"
+import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import {
@@ -32,6 +35,7 @@ export type NuTechEmailDraft = {
   readonly senderAddress: string
   readonly to: readonly string[]
   readonly cc: readonly string[]
+  readonly recipientOptions: readonly EmailRecipientOption[]
   readonly subject: string
   readonly body: string
   /** Merge fields that were empty, to fill in before sending. */
@@ -176,6 +180,7 @@ export async function getNuTechEmailDraft(projectId: string, templateId: string,
         senderAddress: ctx.sender.address,
         to: recipients.to,
         cc: recipients.cc,
+        recipientOptions: await projectEmailRecipientOptions(ctx.db, projectId, [...recipients.to]),
         subject: rendered.subject,
         body: rendered.body,
         missing: rendered.missing,
@@ -236,16 +241,24 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
       })),
     )
 
-    const delivery = await sendCompassEmail({
+    // Replies come back to this job in Compass and still reach the sending mailbox.
+    const delivery = await sendTrackedEmail({
       env: ctx.env,
       db: ctx.db,
       organizationId: ctx.organizationId,
+      projectId,
+      kind: "nutech_email",
+      recordId: projectId,
+      recordLabel: template.label,
+      createdBy: ctx.user.id,
       to,
       cc,
       subject: subject.trim(),
       text: body,
       attachments,
       sender: { address: ctx.sender.address, name: ctx.sender.name || null },
+      replyName: `${ctx.sender.name || ctx.sender.address} - ${template.label}`,
+      alsoReplyTo: [ctx.sender.address],
     })
     if (delivery.status !== "sent") {
       return {
@@ -298,6 +311,18 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
         console.error("Unable to clear overdue follow-up reminders", error)
       })
     }
+    await recordActivityEvent({
+      db: ctx.db,
+      organizationId: ctx.organizationId,
+      projectId,
+      actor: ctx.user,
+      category: "email",
+      action: "nutech_email_sent",
+      entityType: "project",
+      entityId: projectId,
+      summary: `Emailed "${subject.trim()}" (${template.label}) to ${[...to, ...cc].join(", ")}.`.slice(0, 500),
+      metadata: { templateId, attachments: files.length, from: ctx.sender.address, sentBy: activityActorName(ctx.user) },
+    })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/information`)
     return { success: true, data: { loggedContact } }

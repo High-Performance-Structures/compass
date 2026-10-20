@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/nutech", "/dashboard/nutech/catalog", "/dashboard/projects/[id]/nutech"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-20"
 }
 ---
 
@@ -52,6 +52,6 @@ Authorized users can delete an unreleased workflow record with confirmation; the
 
 Use the stepper's email actions for price sheets, pickup or delivery estimates, invoice/payment instructions, manufacturer orders, pickup or delivery instructions, dock-time requests, missed-pickup notices, and carrier coordination. The template fills the available job, customer, quantities, PO, EPS number, dates, and warehouse details; resolve missing fields and verify recipients before sending.
 
-Review and attach the actual price sheet, estimate, acknowledgement, invoice, or generated order form called for by the email. Template wording that says “attached” does not attach a file by itself. Sending uses the department's configured Workspace mailbox and records a send audit; customer emails also log a client contact in the job's interaction history and reset follow-up aging. Sending an email does not automatically record payment, release a PO, or complete the order.
+Review and attach the actual price sheet, estimate, acknowledgement, invoice, or generated order form called for by the email. Template wording that says “attached” does not attach a file by itself. Choose **To** and **Cc** from the job's contacts or type an address. Sending uses the department's configured Workspace mailbox and is recorded in the **Activity** log; customer emails also log a client contact in the job's interaction history and reset follow-up aging. Replies go to the Nu-Tech mailbox and back to the job in Compass: the team is notified, and a customer's reply is logged as client contact. Sending an email does not automatically record payment, release a PO, or complete the order.
 
 Admins maintain wording and manufacturer/warehouse/dealer details in **Settings → Workflows → Nu-Tech emails**. The sending address, sender name, office phone, and hours come from **Settings → Company → Departments**. Use **Check sending mailbox** after saving those settings; the check sends no email.

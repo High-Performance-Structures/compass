@@ -11,7 +11,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import { addressLines } from "@/lib/department-profiles"
-import { sendCompassEmail } from "@/lib/email/compass-email"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
+import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   jobEmailTemplate,
@@ -99,6 +101,7 @@ export async function getJobEmailDraft(projectId: string, templateId: string): P
         description: `To ${audience}, from ${ctx.sender.address}.${template.audience === "client" ? " Sending logs it as a client contact." : ""}`,
         to: template.audience === "client" && ctx.client?.email ? [ctx.client.email] : [],
         cc: [],
+        recipientOptions: await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email]),
         subject: rendered.subject,
         body: rendered.body,
         missing: rendered.missing,
@@ -156,16 +159,24 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
       })),
     )
 
-    const delivery = await sendCompassEmail({
+    // Replies come back to this job in Compass and still reach the sending mailbox.
+    const delivery = await sendTrackedEmail({
       env: ctx.env,
       db: ctx.db,
       organizationId: ctx.organizationId,
+      projectId,
+      kind: "job_email",
+      recordId: projectId,
+      recordLabel: template.label,
+      createdBy: ctx.user.id,
       to,
       cc,
       subject: subject.trim(),
       text: body,
       attachments,
       sender: { address: ctx.sender.address, name: ctx.sender.name || null },
+      replyName: `${ctx.sender.name || ctx.sender.address} - ${template.label}`,
+      alsoReplyTo: [ctx.sender.address],
     })
     if (delivery.status !== "sent") {
       return {
@@ -218,6 +229,18 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
         console.error("Unable to clear overdue follow-up reminders", error)
       })
     }
+    await recordActivityEvent({
+      db: ctx.db,
+      organizationId: ctx.organizationId,
+      projectId,
+      actor: ctx.user,
+      category: "email",
+      action: "job_email_sent",
+      entityType: "project",
+      entityId: projectId,
+      summary: `Emailed "${subject.trim()}" (${template.label}) to ${[...to, ...cc].join(", ")}.`.slice(0, 500),
+      metadata: { templateId, attachments: files.length, from: ctx.sender.address, sentBy: activityActorName(ctx.user) },
+    })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/information`)
     return { success: true, data: { loggedContact } }

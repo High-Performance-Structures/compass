@@ -1,9 +1,9 @@
 /**
- * RFIs, RFQs and purchase orders go out from Compass with a tracked reply
- * address, so the other side's reply comes back onto the record instead of
- * landing in one person's inbox.
+ * Every email Compass sends to people outside the company carries a tracked
+ * reply address, so the reply comes back onto its record (or job) instead of
+ * landing in one person's inbox. See docs/development/email-workflows.md.
  */
-export const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order"] as const
+export const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email"] as const
 
 export type TrackedRecordKind = (typeof TRACKED_RECORD_KINDS)[number]
 
@@ -14,13 +14,22 @@ export function isTrackedRecordKind(value: string): value is TrackedRecordKind {
 export function trackedRecordLabel(kind: TrackedRecordKind): string {
   if (kind === "rfi") return "RFI"
   if (kind === "rfq") return "RFQ"
+  if (kind === "job_email") return "Job email"
+  if (kind === "nutech_email") return "Nu-Tech email"
   return "Purchase order"
+}
+
+/** Job-level emails have no record of their own; their replies belong to the job. */
+export function isJobLevelKind(kind: TrackedRecordKind): boolean {
+  return kind === "job_email" || kind === "nutech_email"
 }
 
 /** Notification event types use the prefixes the Settings switches filter on. */
 export function trackedRecordReplyEventType(kind: TrackedRecordKind): string {
   if (kind === "rfi") return "rfi.email_reply"
   if (kind === "rfq") return "rfq.email_reply"
+  if (kind === "job_email") return "job_email.reply"
+  if (kind === "nutech_email") return "nutech_email.reply"
   return "po.email_reply"
 }
 
@@ -33,6 +42,8 @@ export function trackedRecordHref(input: {
   const record = encodeURIComponent(input.recordId)
   if (input.kind === "rfi") return `${project}/rfis?item=${record}#rfi-${record}`
   if (input.kind === "rfq") return `${project}/rfqs#rfq-${record}`
+  if (input.kind === "job_email") return `${project}/information`
+  if (input.kind === "nutech_email") return `${project}/nutech`
   return `${project}/purchase-orders?item=${record}#purchase-order-${record}`
 }
 

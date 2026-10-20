@@ -276,6 +276,15 @@ one at a time.
 - Keep live selector options sourced from current server results or component
   props and recompute dependent selectors when their parent changes.
 
+## Email, notifications, and Activity
+
+Any workflow that emails people outside the company, or reacts to their reply,
+follows [Email, Notification, and Activity Standard](email-workflows.md):
+tracked replies shown on the record, the shared To/Cc `EmailRecipientPicker`,
+an editable subject with the record's content always included, a note saying
+where replies go, notifications to the sender and project staff, and an
+Activity entry for each send, reply, and outside response.
+
 ## Mutations and destructive actions
 
 - User-visible mutations use server actions, explicit success/error results, and
@@ -292,6 +301,9 @@ Before a PR that changes visible UI is merged or deployed, reviewers must check
 this document. Any new or changed list/table must explicitly verify page-size
 selection, mobile behavior, edit/delete page preservation, filtering behavior,
 empty/loading/error states, and accessibility labels.
+
+A PR that adds or changes an email or notification workflow must confirm it
+follows the email standard above.
 
 Every PR must confirm it adds no company-specific literals (names, addresses,
 phone numbers, email addresses, domains, logos, rates or wording) outside the

@@ -78,10 +78,8 @@ import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
 import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { nuTechOrderFormAttachments } from "@/lib/nutech/order-form-attachment"
-import { sendCompassEmail } from "@/lib/email/compass-email"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { appendReplyTokenHtml, appendReplyTokenText, createEmailReplyThread } from "@/lib/email/reply-tracking"
-import { trackedRecordReplyTo } from "@/lib/email/tracked-record-email"
+import { sendTrackedEmail } from "@/lib/email/tracked-send"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -3221,34 +3219,22 @@ export async function sendPurchaseOrderEmail(
     const departmentProfile = profiles[brand.department]
     // Supplier replies come back onto this PO. The department mailbox (or the
     // sender, when there is none) still gets them directly too.
-    const replyThread = await createEmailReplyThread({
+    const delivery = await sendTrackedEmail({
       env,
       db,
       organizationId: orgId,
       projectId,
-      sourceType: "purchase_order",
-      sourceId: purchaseOrderId,
-      sourceNumber: operation.sourceRecordNumber,
-      subject,
+      kind: "purchase_order",
+      recordId: purchaseOrderId,
+      recordLabel: operation.sourceRecordNumber,
       createdBy: user.id,
-    })
-    const emailText = orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput)
-    const emailHtml = orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput)
-    const delivery = await sendCompassEmail({
-      env,
-      db,
-      organizationId: orgId,
       to,
       cc,
-      replyTo: trackedRecordReplyTo({
-        replyToAddress: replyThread.replyToAddress,
-        displayName: `${departmentProfile.senderName || departmentProfile.companyName || senderName} - ${operation.sourceRecordNumber ?? "Purchase order"}`,
-        alsoTo: [departmentProfile.senderAddress || user.email],
-      }),
-      headers: [{ name: "X-Compass-Reply-Token", value: replyThread.token }],
       subject,
-      text: appendReplyTokenText({ body: emailText, token: replyThread.token }),
-      html: appendReplyTokenHtml({ html: emailHtml, token: replyThread.token }),
+      text: orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput),
+      html: orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput),
+      replyName: `${departmentProfile.senderName || departmentProfile.companyName || senderName} - ${operation.sourceRecordNumber ?? "Purchase order"}`,
+      alsoReplyTo: [departmentProfile.senderAddress || user.email],
       attachments: orderForm ?? [],
       sender: departmentProfile.senderAddress
         ? {

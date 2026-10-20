@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -47,6 +48,8 @@ export function TemplateEmailMenu({
 }): React.ReactElement {
   const router = useRouter()
   const [draft, setDraft] = React.useState<TemplateEmailDraft | null>(null)
+  const [to, setTo] = React.useState<readonly string[]>([])
+  const [cc, setCc] = React.useState<readonly string[]>([])
   const [loadingId, setLoadingId] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)
@@ -61,6 +64,8 @@ export function TemplateEmailMenu({
         toast.error(result.error)
         return
       }
+      setTo(result.data.to)
+      setCc(result.data.cc)
       setDraft(result.data)
     })
   }
@@ -129,15 +134,27 @@ export function TemplateEmailMenu({
                 </p>
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="template-email-to">To</Label>
-                  <Input id="template-email-to" name="to" defaultValue={draft.to.join(", ")} placeholder="name@example.com" required />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="template-email-cc">Cc</Label>
-                  <Input id="template-email-cc" name="cc" defaultValue={draft.cc.join(", ")} />
-                </div>
+                <EmailRecipientPicker
+                  id="template-email-to"
+                  label="To"
+                  options={draft.recipientOptions}
+                  value={to}
+                  excludedEmails={cc}
+                  onChange={setTo}
+                  required
+                />
+                <EmailRecipientPicker
+                  id="template-email-cc"
+                  label="Cc"
+                  options={draft.recipientOptions}
+                  value={cc}
+                  excludedEmails={to}
+                  onChange={setCc}
+                  placeholder="Choose an optional contact..."
+                />
               </div>
+              <input type="hidden" name="to" value={to.join(", ")} />
+              <input type="hidden" name="cc" value={cc.join(", ")} />
               <div className="space-y-1.5">
                 <Label htmlFor="template-email-subject">Subject</Label>
                 <Input id="template-email-subject" name="subject" defaultValue={draft.subject} required />
@@ -153,12 +170,13 @@ export function TemplateEmailMenu({
                   {attachmentHint} Up to 15 MB in total.
                 </p>
               </div>
+              <p className="text-xs text-muted-foreground">Replies come back to this job in Compass and to the sending mailbox.</p>
               {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setDraft(null)} disabled={pending}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={pending}>
+                <Button type="submit" disabled={pending || to.length === 0}>
                   {pending ? "Sending…" : "Send"}
                 </Button>
               </DialogFooter>
