@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { OwnerDocumentNoticeActions } from "@/components/projects/owner-document-notice-actions"
 
 /** Readable pay application statuses. */
 export function payApplicationStatusLabel(status: string): string {
@@ -84,8 +85,8 @@ export function PayApplicationBillingControls({
           <AlertDialogHeader>
             <AlertDialogTitle>Approve pay application {application.applicationNumber} for billing?</AlertDialogTitle>
             <AlertDialogDescription>
-              It&apos;s marked billed and published to the owner, who can open its G702/G703 in the client portal. Record the
-              Sage invoice number once it&apos;s entered in Sage.
+              It&apos;s marked billed and published to the owner, who can open its G702/G703 in the client portal. Then use Create
+              email or Send notification to let the owner know, and record the Sage invoice number once it&apos;s entered in Sage.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -110,6 +111,12 @@ export function PayApplicationBillingControls({
       {application.billedAt && (
         <span className="text-xs text-muted-foreground">Billed {billedDate(application.billedAt)} · visible to the owner</span>
       )}
+      <OwnerDocumentNoticeActions
+        projectId={projectId}
+        kind="pay-application"
+        documentId={application.id}
+        documentLabel={`pay application ${application.applicationNumber}`}
+      />
       <form onSubmit={saveInvoice} className="flex items-center gap-2">
         <Label htmlFor={`sage-invoice-${application.id}`} className="text-xs text-muted-foreground">Sage invoice</Label>
         <Input

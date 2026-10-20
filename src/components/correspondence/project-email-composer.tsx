@@ -18,7 +18,8 @@ import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { useCompositionDraft, type CompositionDraftHandle } from "./use-composition-draft"
 import type { CompositionContent, SavedComposition } from "@/lib/correspondence/types"
 import { ProjectEmailAttachments } from "./project-email-attachments"
-import type { StagedAttachment } from "./correspondence-workspace-utils"
+import { uploadStagedAttachment, type StagedAttachment } from "./correspondence-workspace-utils"
+import type { ProjectEmailPrefill } from "@/lib/billing/owner-document-notices"
 import { MAX_PROJECT_EMAIL_ATTACHMENT_BYTES } from "@/lib/correspondence/attachment-limits"
 
 type AudienceKind = "to" | "cc" | "bcc"
@@ -27,6 +28,8 @@ type Audience = Readonly<Record<AudienceKind, readonly string[]>>
 export function ProjectEmailComposer(props: {
   readonly ref: React.Ref<CompositionDraftHandle>
   readonly initialDraft: SavedComposition | null
+  /** A new email started from a document, such as a billed pay application. */
+  readonly prefill?: ProjectEmailPrefill | null
   readonly onDraftSaved: () => void
   readonly projectId: string
   readonly onBack: () => void
@@ -34,12 +37,13 @@ export function ProjectEmailComposer(props: {
   readonly onSent: (conversationId: string, status: "sent" | "failed" | "unknown", message: string | null) => Promise<void>
 }): React.ReactElement {
   const initial = props.initialDraft?.content.kind === "email" ? props.initialDraft.content : null
+  const prefill = props.initialDraft ? null : props.prefill ?? null
   const [files, setFiles] = React.useState<readonly StagedAttachment[]>(() => props.initialDraft?.attachments.map((file) => ({ localId: file.id, file: null, state: file.available ? "ready" : "failed", attachment: file })) ?? [])
   const [attachmentBusy, setAttachmentBusy] = React.useState(false)
-  const [audience, setAudience] = React.useState<Audience>({ to: initial?.to ?? [], cc: initial?.cc ?? [], bcc: initial?.bcc ?? [] })
+  const [audience, setAudience] = React.useState<Audience>({ to: initial?.to ?? prefill?.to ?? [], cc: initial?.cc ?? [], bcc: initial?.bcc ?? [] })
   const [projectOptions, setProjectOptions] = React.useState<readonly EmailRecipientOption[]>([])
-  const [subject, setSubject] = React.useState(initial?.subject ?? "")
-  const [body, setBody] = React.useState(initial?.body ?? "")
+  const [subject, setSubject] = React.useState(initial?.subject ?? prefill?.subject ?? "")
+  const [body, setBody] = React.useState(initial?.body ?? prefill?.body ?? "")
   const [status, setStatus] = React.useState<string | null>(null)
   const [sending, setSending] = React.useState(false)
   const [frozen, setFrozen] = React.useState(Boolean(initial?.requestId))
@@ -55,6 +59,32 @@ export function ProjectEmailComposer(props: {
   React.useImperativeHandle(props.ref, () => ({ flush: draft.flush }), [draft.flush])
   async function back(): Promise<void> { if (await draft.flush()) props.onBack() }
   async function discard(): Promise<void> { if (await draft.discard()) { setDiscarded(true); setDiscardOpen(false) } }
+
+  const startup = React.useRef({ attachment: prefill?.attachment ?? null, projectId: props.projectId, onBusyChange: props.onBusyChange })
+  React.useEffect(() => {
+    // Attach the document's PDF, rendered the same way as Print / Save PDF.
+    const { attachment: source, projectId, onBusyChange } = startup.current
+    if (!source) return
+    startup.current = { ...startup.current, attachment: null }
+    const localId = crypto.randomUUID()
+    setAttachmentBusy(true)
+    onBusyChange(true)
+    void (async () => {
+      try {
+        const response = await fetch(source.url, { credentials: "same-origin" })
+        const blob = response.ok ? await response.blob() : null
+        if (!blob || blob.type !== "application/pdf") throw new Error("PDF unavailable")
+        const candidate: StagedAttachment = { localId, file: new File([blob], source.fileName, { type: "application/pdf" }), state: "uploading", attachment: null }
+        setFiles((current) => [...current, candidate])
+        await uploadStagedAttachment(projectId, candidate, setFiles)
+      } catch {
+        setStatus(`${source.fileName} couldn't be attached. Open its Print Preview, save the PDF, and use Upload files.`)
+      } finally {
+        setAttachmentBusy(false)
+        onBusyChange(false)
+      }
+    })()
+  }, [])
 
   React.useEffect(() => {
     let active = true
