@@ -59,6 +59,7 @@ How to work on Compass.
 - [UI standards](development/ui-standards.md) -- canonical visual, responsive, list, accessibility, and release-review rules
 - [regression testing](development/regression-testing.md) -- pull-request, daily, native, and release regression strategy
 - [sidebar](development/sidebar.md) -- sidebar component architecture, desktop vs mobile, collapsed state, animations
+- [demo environment](development/demo-environment.md) -- the separate demo copy of Compass and its Summit Ridge sample company
 - [theming](development/theming.md) -- oklch color system, preset themes, custom theme generation, how applyTheme works
 - [plugins](development/plugins.md) -- skills system, plugin manifests, registry, building new plugins
 - [help authoring](help/README.md) -- canonical user-guide content, stable contextual topics, generation, and maintenance checks
