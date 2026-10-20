@@ -398,21 +398,9 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
     // WorkOS is configured -- try real auth first
     const session = await withAuth()
 
-    if (!session || !session.user) {
-      // no real session; fall back to demo cookie
-      try {
-        const cookieStore = await cookies()
-        const isDemoSession =
-          cookieStore.get("compass-demo")?.value === "true"
-        if (isDemoSession) return DEMO_USER
-      } catch {
-        // cookies() may throw in non-request contexts
-      }
-      return null
-    }
-
-    // demo cookie cleanup handled by middleware (can't delete
-    // cookies from Server Components -- only actions/routes)
+    // No anonymous demo session once WorkOS is configured: a demo cookie
+    // must never stand in for a real sign-in.
+    if (!session || !session.user) return null
 
     const workosUser = session.user
 
