@@ -160,3 +160,25 @@ export function projectHubStatusFilterOptions(
 
   return [...viewOptions, ...jobStatusOptions, ...customStatusOptions]
 }
+
+/**
+ * Internal workspaces carry the "Internal" job status, which the default
+ * Active view leaves out. On the Internal department's tab a running
+ * workspace counts as active, so the tab isn't empty by default.
+ */
+export function projectMatchesHubTabStatus(
+  project: ProjectHubStatusProject & { readonly internalDepartment: boolean },
+  filter: ProjectHubStatusFilter,
+  internalTab: boolean,
+): boolean {
+  if (
+    internalTab &&
+    project.internalDepartment &&
+    filter.kind === "bucket" &&
+    filter.bucket === "active" &&
+    projectMatchesProjectHubStatusFilter(project, { kind: "bucket", bucket: "internal" })
+  ) {
+    return true
+  }
+  return projectMatchesProjectHubStatusFilter(project, filter)
+}

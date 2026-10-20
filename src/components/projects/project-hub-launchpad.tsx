@@ -22,6 +22,7 @@ import {
   IconHash,
   IconPaint,
   IconSelector,
+  IconHome,
   IconSettings,
   IconTool,
 } from "@tabler/icons-react"
@@ -33,6 +34,7 @@ import type {
   ProjectListItem,
 } from "@/app/actions/projects"
 import { useActiveProject } from "@/components/project-list-provider"
+import { InternalWorkspaceCreateButton } from "@/components/projects/internal-workspace-create-button"
 import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer"
 import { ProjectDuplicateManager } from "@/components/projects/project-duplicate-manager"
 import { ProjectNumberReviewManager } from "@/components/projects/project-number-review-manager"
@@ -73,16 +75,16 @@ import {
   projectHubStatusFilterKey,
   projectHubStatusFilterLabel,
   projectHubStatusFilterOptions,
-  projectMatchesProjectHubStatusFilter,
+  projectMatchesHubTabStatus,
   type ProjectHubStatusFilter,
   type ProjectHubStatusFilterOption,
 } from "@/lib/project-hub-status-filter"
 import { PageHeader } from "@/components/page-header"
 
-type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
+type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "INTERNAL" | "OTHER"
 
 function isDepartmentCode(value: DepartmentFilter): value is "O" | "H" | "N" | "D" {
-  return value !== "ALL" && value !== "OTHER"
+  return value === "O" || value === "H" || value === "N" || value === "D"
 }
 type ProjectLayout = "cards" | "list"
 type ProjectPageSize = 5 | 10 | 25 | 50 | "all"
@@ -100,6 +102,8 @@ const DEPARTMENTS: readonly DepartmentDefinition[] = [
   { id: "H", label: "", icon: <IconBuildingCommunity className="size-4" /> },
   { id: "N", label: "", icon: <IconTool className="size-4" /> },
   { id: "D", label: "", icon: <IconPaint className="size-4" /> },
+  // Internal workspaces (the office, the owner's office, yards); named in Settings.
+  { id: "INTERNAL", label: "", icon: <IconHome className="size-4" /> },
   { id: "OTHER", label: "Other", icon: <IconSettings className="size-4" /> },
 ]
 
@@ -114,11 +118,20 @@ function parseProjectPageSize(value: string): ProjectPageSize {
 }
 
 function departmentForProject(project: ProjectListItem): DepartmentFilter {
+  if (project.internalDepartment) return "INTERNAL"
   const prefix = project.projectNumber?.trim().slice(0, 1).toUpperCase()
   if (prefix === "O" || prefix === "H" || prefix === "N" || prefix === "D") {
     return prefix
   }
   return "OTHER"
+}
+
+function matchesHubStatus(
+  project: ProjectListItem,
+  status: ProjectHubStatusFilter,
+  department: DepartmentFilter,
+): boolean {
+  return projectMatchesHubTabStatus(project, status, department === "INTERNAL")
 }
 
 function departmentAccent(department: DepartmentFilter): string {
@@ -475,6 +488,7 @@ export function ProjectHubLaunchpad({
   duplicateCandidates,
   approvedProjectNumberReviewKeys,
   intakeAssignees,
+  internalDepartmentName,
 }: {
   readonly projects: readonly ProjectListItem[]
   readonly overview: DashboardOverview
@@ -484,6 +498,8 @@ export function ProjectHubLaunchpad({
   readonly duplicateCandidates: readonly ProjectDuplicateCandidate[]
   readonly approvedProjectNumberReviewKeys: readonly string[]
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
+  /** The company's name for the Internal department (Settings → Company). */
+  readonly internalDepartmentName: string
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
   const departmentProfiles = useDepartmentProfiles()
@@ -552,15 +568,14 @@ export function ProjectHubLaunchpad({
   )
 
   const departmentCounts = useMemo(() => {
-    const inStatus = projects.filter(
-      (project) => projectMatchesProjectHubStatusFilter(project, status),
-    )
     return new Map(
       DEPARTMENTS.map((item) => [
         item.id,
-        item.id === "ALL"
-          ? inStatus.length
-          : inStatus.filter((project) => departmentForProject(project) === item.id).length,
+        projects.filter(
+          (project) =>
+            matchesHubStatus(project, status, item.id) &&
+            (item.id === "ALL" || departmentForProject(project) === item.id),
+        ).length,
       ])
     )
   }, [projects, status])
@@ -569,7 +584,7 @@ export function ProjectHubLaunchpad({
     () =>
       projects.filter(
         (project) =>
-          projectMatchesProjectHubStatusFilter(project, status) &&
+          matchesHubStatus(project, status, department) &&
           (department === "ALL" || departmentForProject(project) === department)
       ),
     [department, projects, status]
@@ -608,6 +623,9 @@ export function ProjectHubLaunchpad({
             <div className="flex flex-wrap gap-2">
               {canManageProjects ? (
                 <OfficeMaintenanceDrawer projects={projects} />
+              ) : null}
+              {canManageProjects && department === "INTERNAL" ? (
+                <InternalWorkspaceCreateButton departmentName={internalDepartmentName} />
               ) : null}
               {canManageProjects ? (
                 <ProjectIntakeDrawer assignees={intakeAssignees} />
@@ -655,7 +673,11 @@ export function ProjectHubLaunchpad({
                 )}
               >
                 {item.icon}
-                {isDepartmentCode(item.id) ? departmentProfiles[item.id].shortName : item.label}
+                {isDepartmentCode(item.id)
+                  ? departmentProfiles[item.id].shortName
+                  : item.id === "INTERNAL"
+                    ? internalDepartmentName
+                    : item.label}
                 <span className={cn("text-xs tabular-nums text-muted-foreground", department === item.id && "text-primary/80")}>
                   {departmentCounts.get(item.id) ?? 0}
                 </span>

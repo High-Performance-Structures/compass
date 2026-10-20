@@ -99,6 +99,8 @@ export type ProjectListItem = {
   readonly clientStatus: string
   readonly jobStatusId: string
   readonly jobStatusLabel: string
+  /** Listed under the Internal department on the Project Hub. */
+  readonly internalDepartment: boolean
   readonly createdAt: string
 }
 
@@ -1596,6 +1598,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
           clientStatus: projects.clientStatus,
           jobStatusId: projects.jobStatusId,
           customJobStatusLabel: projectJobStatuses.label,
+        internalDepartment: projects.internalDepartment,
           createdAt: projects.createdAt,
         })
         .from(projects)
@@ -1647,6 +1650,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         clientStatus: projects.clientStatus,
         jobStatusId: projects.jobStatusId,
         customJobStatusLabel: projectJobStatuses.label,
+        internalDepartment: projects.internalDepartment,
         createdAt: projects.createdAt,
       })
       .from(projectMembers)

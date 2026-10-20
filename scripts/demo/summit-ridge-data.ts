@@ -364,6 +364,18 @@ export const PROJECTS: readonly ProjectSeed[] = [
   },
 ]
 
+/** Internal workspaces listed under the Internal department. */
+export const INTERNAL_WORKSPACES: readonly {
+  readonly key: string
+  readonly name: string
+  readonly number: string
+  readonly kind: "office" | "executive" | "field"
+  readonly department: DepartmentCode
+}[] = [
+  { key: "office", name: "Main Office", number: "H-OFFICE", kind: "office", department: "H" },
+  { key: "yard", name: "Equipment Yard", number: "H-YARD", kind: "field", department: "H" },
+]
+
 export const CHANNEL_MESSAGES: readonly { readonly by: string; readonly daysAgo: number; readonly text: string }[] = [
   { by: "dana", daysAgo: 4, text: "Welcome to Summit Ridge on Compass! Post jobsite questions here or on each job's page." },
   { by: "cole", daysAgo: 2, text: "Trusses are set on Hartwell. Roofers need to be there Thursday." },

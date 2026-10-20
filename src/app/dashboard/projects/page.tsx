@@ -30,6 +30,7 @@ import {
 } from "@/lib/permissions"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { currentInternalDepartment } from "@/lib/department-profiles-server"
 
 export type ProjectsHubProject = {
   readonly id: string
@@ -82,12 +83,13 @@ export default async function ProjectsPage({
       params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys] = await Promise.all([
+    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys, internalDepartment] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
       getProjectIntakeAssignees(),
       canCreateOrUpdateProjects ? getProjectDuplicateCandidates() : Promise.resolve([]),
       canCreateOrUpdateProjects ? getApprovedProjectNumberReviewKeys() : Promise.resolve([]),
+      currentInternalDepartment(),
     ])
 
     return (
@@ -100,6 +102,7 @@ export default async function ProjectsPage({
         duplicateCandidates={duplicateCandidates}
         approvedProjectNumberReviewKeys={approvedProjectNumberReviewKeys}
         intakeAssignees={intakeAssignees}
+        internalDepartmentName={internalDepartment.name}
       />
     )
   }

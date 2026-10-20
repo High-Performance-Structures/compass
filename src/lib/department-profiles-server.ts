@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import type { DepartmentProfiles } from "@/lib/department-profiles"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
+import { FEATURE_SETTINGS, type InternalDepartmentSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 
 /**
@@ -35,5 +36,18 @@ export const currentDepartmentProfiles = cache(async (): Promise<DepartmentProfi
     return await readDepartmentProfiles(getDb(env.DB), user?.organizationId)
   } catch {
     return DEFAULT_DEPARTMENT_PROFILES
+  }
+})
+
+/** The company's Internal department name and description, once per request. */
+export const currentInternalDepartment = cache(async (): Promise<InternalDepartmentSettings> => {
+  const fallback = FEATURE_SETTINGS["internal-department"].defaults
+  try {
+    const user = await getCurrentUser()
+    const { env } = await getCloudflareContext()
+    if (!env?.DB || !user?.organizationId) return fallback
+    return await readFeatureSettings(getDb(env.DB), user.organizationId, "internal-department")
+  } catch {
+    return fallback
   }
 })

@@ -45,6 +45,7 @@ import {
   COMPANY,
   DEPARTMENTS,
   type DepartmentCode,
+  INTERNAL_WORKSPACES,
   PROJECTS,
   type ProjectSeed,
   STAFF,
@@ -529,6 +530,26 @@ function seedProject(project: ProjectSeed): void {
   })
 }
 
+function seedInternalWorkspaces(): void {
+  for (const workspace of INTERNAL_WORKSPACES) {
+    insert(db.insert(projects).values({
+      id: `sr-proj-${workspace.key}`,
+      organizationId: ORG,
+      projectNumber: workspace.number,
+      department: workspace.department,
+      name: workspace.name,
+      status: "OPEN",
+      clientStatus: "customer",
+      jobStatusId: "internal",
+      workspaceKind: workspace.kind,
+      internalDepartment: true,
+      ownerUpdatesEnabled: false,
+      createdAt: now,
+      updatedAt: now,
+    }))
+  }
+}
+
 function seedChat(): void {
   const channelId = "sr-channel-general"
   insert(db.insert(channels).values({
@@ -568,6 +589,7 @@ function main(): void {
   seedCompanySettings()
   seedVendors()
   for (const project of PROJECTS) seedProject(project)
+  seedInternalWorkspaces()
   seedChat()
   process.stdout.write(
     `-- Summit Ridge Builders demo seed, built ${now}. Demo database only.\n${statements.join("\n")}\n`,

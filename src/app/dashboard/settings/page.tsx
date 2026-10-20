@@ -32,6 +32,7 @@ import { TravelChargesTab } from "@/components/settings/travel-charges-tab"
 import { RateBookTab } from "@/components/settings/rate-book-tab"
 import { WorkflowsTab } from "@/components/settings/workflows-tab"
 import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
+import { InternalDepartmentSettingsSection } from "@/components/settings/internal-department-settings-section"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
@@ -117,7 +118,12 @@ export default function SettingsPage() {
       case "preferences":
         return <PreferencesTab />
       case "company":
-        return <DepartmentProfilesSection />
+        return (
+          <div className="space-y-8">
+            <DepartmentProfilesSection />
+            <InternalDepartmentSettingsSection />
+          </div>
+        )
       case "appearance":
         return <AppearanceTab />
       case "permissions":
