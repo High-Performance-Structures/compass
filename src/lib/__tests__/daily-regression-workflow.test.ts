@@ -115,6 +115,18 @@ function hasInitialDemoNavigationContract(): boolean {
     }
 
     const [page, response, path, expectedPath] = call.arguments
+    const hasApprovedExpectedPaths =
+      ts.isConditionalExpression(expectedPath) &&
+      ts.isIdentifier(expectedPath.condition) &&
+      expectedPath.condition.text === "demoRequiresAuthentication" &&
+      ts.isCallExpression(expectedPath.whenTrue) &&
+      ts.isIdentifier(expectedPath.whenTrue.expression) &&
+      expectedPath.whenTrue.expression.text === "loginPathFor" &&
+      expectedPath.whenTrue.arguments.length === 1 &&
+      ts.isStringLiteral(expectedPath.whenTrue.arguments[0]) &&
+      expectedPath.whenTrue.arguments[0].text === "/demo" &&
+      ts.isStringLiteral(expectedPath.whenFalse) &&
+      expectedPath.whenFalse.text === "/dashboard"
     return (
       ts.isIdentifier(page) &&
       page.text === "page" &&
@@ -122,8 +134,7 @@ function hasInitialDemoNavigationContract(): boolean {
       response.text === "demoResponse" &&
       ts.isStringLiteral(path) &&
       path.text === "/demo" &&
-      ts.isStringLiteral(expectedPath) &&
-      expectedPath.text === "/dashboard"
+      hasApprovedExpectedPaths
     )
   })
 }
@@ -294,6 +305,22 @@ describe("daily regression workflow", () => {
   it("applies the full navigation contract to the initial demo redirect", () => {
     expect(productionSmoke).toContain('const demoResponse = await page.goto("/demo")')
     expect(hasInitialDemoNavigationContract()).toBe(true)
+  })
+
+  it("accepts the configured WorkOS login redirect without bypassing auth", () => {
+    expect(productionSmoke).toContain(
+      'const demoRequiresAuthentication = new URL(page.url()).pathname === "/login"',
+    )
+    expect(productionSmoke).toContain(
+      'await expect(page.locator("body")).toContainText("Welcome back")',
+    )
+    expect(productionSmoke).toContain(
+      'await expectHealthyNavigation(\n              isolatedPage,\n              response,\n              area.path,\n              loginPathFor(area.path),',
+    )
+    expect(productionSmoke).toContain(
+      'return path === "/demo" ? "/login" : `/login?from=${encodeURIComponent(path)}`',
+    )
+    expect(productionSmoke).not.toContain('page.goto("/demo?anonymous=true")')
   })
 
   it("keeps production smoke navigation read-only", () => {

@@ -26,6 +26,10 @@ const productionAreas: readonly ProductionArea[] = [
   { path: "/dashboard/settings" },
 ]
 
+function loginPathFor(path: string): string {
+  return path === "/demo" ? "/login" : `/login?from=${encodeURIComponent(path)}`
+}
+
 async function expectHealthyNavigation(
   page: Page,
   response: Response | null,
@@ -70,12 +74,41 @@ test.describe("production smoke", () => {
       await route.continue()
     })
     const demoResponse = await page.goto("/demo")
+    const demoRequiresAuthentication = new URL(page.url()).pathname === "/login"
     await expectHealthyNavigation(
       page,
       demoResponse,
       "/demo",
-      "/dashboard",
+      demoRequiresAuthentication ? loginPathFor("/demo") : "/dashboard",
     )
+    if (demoRequiresAuthentication) {
+      await expect(page.locator("body")).toContainText("Welcome back")
+
+      for (const area of productionAreas) {
+        await test.step(`${area.path} redirects to login`, async () => {
+          const isolatedPage = await page.context().newPage()
+          try {
+            const response = await isolatedPage.goto(area.path)
+            await expectHealthyNavigation(
+              isolatedPage,
+              response,
+              area.path,
+              loginPathFor(area.path),
+            )
+            await expect(isolatedPage.locator("body")).toContainText("Welcome back")
+          } finally {
+            await isolatedPage.close()
+          }
+        })
+      }
+
+      expect(
+        applicationPostRequests,
+        "production smoke must not reach application POST endpoints",
+      ).toEqual([])
+      return
+    }
+
     test.slow()
 
     for (const area of productionAreas) {
