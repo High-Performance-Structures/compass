@@ -1,7 +1,12 @@
-import { and, desc, eq, isNotNull, isNull, lt, or } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { feedback } from "@/db/schema"
+import {
+  feedback,
+  organizationMembers,
+  organizations,
+  users,
+} from "@/db/schema"
 import {
   feedbackDeskItems,
   feedbackMaintenanceRuns,
@@ -30,6 +35,12 @@ import {
   feedbackIsResolved,
   feedbackSlaTarget,
 } from "@/lib/jarvis/feedback-lifecycle"
+import {
+  feedbackOwnerIdentityFromPayload,
+  resolveHistoricalFeedbackOwner,
+  type FeedbackOwnerAccount,
+  type FeedbackOwnerSourceEvent,
+} from "@/lib/jarvis/feedback-owner-reconciliation"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -43,7 +54,17 @@ export type FeedbackMaintenanceResult = Readonly<{
   deliveryRequestedCount: number
   scrubbedCount: number
   slaBackfilledCount: number
+  requesterOwnershipReconciledCount: number
+  requesterOwnershipRejectedCount: number
+  requesterOwnershipConflictCount: number
   failedCount: number
+}>
+
+export type FeedbackOwnershipReconciliationResult = Readonly<{
+  reconciledCount: number
+  rejectedCount: number
+  conflictCount: number
+  skippedCount: number
 }>
 
 export function feedbackGithubLinkAction(
@@ -98,8 +119,172 @@ export async function reconcileStaleFeatureGithubIssueApprovals(
   return rows.length
 }
 
+function metadataActorId(metadata: string | null): string | null {
+  if (!metadata) return null
+  try {
+    const parsed: unknown = JSON.parse(metadata)
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return null
+    }
+    const value = Reflect.get(parsed, "externalActorId")
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : null
+  } catch {
+    return null
+  }
+}
+
+async function sourceEventsForFeedbackItem(
+  db: CompassDb,
+  organizationId: string,
+  item: FeedbackDeskItem,
+): Promise<readonly FeedbackOwnerSourceEvent[]> {
+  return db.select({
+    id: jarvisBridgeEvents.id,
+    organizationId: jarvisBridgeEvents.organizationId,
+    feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
+    direction: jarvisBridgeEvents.direction,
+    source: jarvisBridgeEvents.source,
+    eventType: jarvisBridgeEvents.eventType,
+    payload: jarvisBridgeEvents.payload,
+  }).from(jarvisBridgeEvents).where(and(
+    eq(jarvisBridgeEvents.organizationId, organizationId),
+    eq(jarvisBridgeEvents.direction, "outbound"),
+    eq(jarvisBridgeEvents.source, "ask-jarvis"),
+    eq(jarvisBridgeEvents.eventType, "agent.prompt"),
+    or(
+      eq(jarvisBridgeEvents.feedbackDeskItemId, item.id),
+      eq(jarvisBridgeEvents.id, item.sourceId),
+    ),
+  ))
+}
+
+async function sourceOwnerAccount(
+  db: CompassDb,
+  organizationId: string,
+  sourceEvents: readonly FeedbackOwnerSourceEvent[],
+): Promise<FeedbackOwnerAccount | null> {
+  const firstEvent = sourceEvents[0]
+  if (!firstEvent) return null
+  const identity = feedbackOwnerIdentityFromPayload(firstEvent.payload)
+  if (!identity) return null
+  const user = await db.select({
+    id: users.id,
+    email: users.email,
+    googleEmail: users.googleEmail,
+    isActive: users.isActive,
+  }).from(users).where(eq(users.id, identity.userId)).get()
+  if (!user) return null
+  const membership = await db.select({
+    organizationId: organizationMembers.organizationId,
+    organizationIsActive: organizations.isActive,
+  }).from(organizationMembers)
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+    .where(and(
+      eq(organizationMembers.organizationId, organizationId),
+      eq(organizationMembers.userId, identity.userId),
+    )).get()
+  return {
+    id: user.id,
+    email: user.email,
+    googleEmail: user.googleEmail,
+    isActive: user.isActive,
+    organizationId: membership?.organizationId ?? organizationId,
+    organizationIsActive: membership?.organizationIsActive ?? false,
+    membershipExists: membership !== undefined,
+  }
+}
+
+export async function reconcileHistoricalFeedbackOwnership(
+  db: CompassDb,
+  organizationId: string,
+): Promise<FeedbackOwnershipReconciliationResult> {
+  const items = await db.select().from(feedbackDeskItems).where(and(
+    eq(feedbackDeskItems.organizationId, organizationId),
+    eq(feedbackDeskItems.source, "ask-jarvis"),
+  )).orderBy(feedbackDeskItems.createdAt).limit(500)
+  let reconciledCount = 0
+  let rejectedCount = 0
+  let conflictCount = 0
+  let skippedCount = 0
+
+  for (const item of items) {
+    const sourceEvents = await sourceEventsForFeedbackItem(db, organizationId, item)
+    const account = await sourceOwnerAccount(db, organizationId, sourceEvents)
+    const resolution = resolveHistoricalFeedbackOwner({
+      item,
+      sourceEvents,
+      account,
+    })
+    if (resolution.kind === "reject") {
+      rejectedCount += 1
+      continue
+    }
+    if (resolution.kind === "noop") {
+      skippedCount += 1
+      continue
+    }
+
+    const now = new Date().toISOString()
+    const currentActorId = metadataActorId(item.metadata)
+    const reporterFence = item.reporterEmail === null
+      ? isNull(feedbackDeskItems.reporterEmail)
+      : eq(feedbackDeskItems.reporterEmail, item.reporterEmail)
+    const actorFence = currentActorId === null
+      ? sql`json_extract(${feedbackDeskItems.metadata}, '$.externalActorId') IS NULL`
+      : sql`json_extract(${feedbackDeskItems.metadata}, '$.externalActorId') = ${currentActorId}`
+    const updatedRows = await db.update(feedbackDeskItems).set({
+      reporterEmail: resolution.reporterEmail,
+      metadata: resolution.metadata,
+      updatedAt: now,
+    }).where(and(
+      eq(feedbackDeskItems.id, item.id),
+      eq(feedbackDeskItems.organizationId, organizationId),
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      reporterFence,
+      actorFence,
+    )).returning({ id: feedbackDeskItems.id })
+    if (updatedRows.length === 0) {
+      conflictCount += 1
+      continue
+    }
+
+    const auditPayload = JSON.stringify({
+      schemaVersion: 1,
+      feedbackDeskItemId: item.id,
+      sourceEventCount: resolution.sourceEventCount,
+      updatedFields: ["reporterEmail", "metadata.externalActorId"],
+    })
+    await db.insert(jarvisBridgeEvents).values({
+      id: crypto.randomUUID(),
+      organizationId,
+      direction: "inbound",
+      source: "feedback-maintenance",
+      eventType: "feedback.requester_reconciled",
+      status: "completed",
+      idempotencyKey: `feedback-requester-reconcile:${item.id}`,
+      feedbackDeskItemId: item.id,
+      payload: auditPayload,
+      result: JSON.stringify({ success: true }),
+      availableAt: now,
+      completedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing()
+    reconciledCount += 1
+  }
+
+  return {
+    reconciledCount,
+    rejectedCount,
+    conflictCount,
+    skippedCount,
+  }
+}
+
 function objectValue(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value))
     : null
 }
@@ -375,6 +560,10 @@ export async function runFeedbackMaintenance(
       await reclaimStaleGithubIssueCreationClaims(db, organizationId) +
       await recoverLegacyFeedback(db, organizationId) +
       await recoverConfirmedPrompts(db, organizationId)
+    const requesterOwnership = await reconcileHistoricalFeedbackOwnership(
+      db,
+      organizationId,
+    )
     const staleIssueApprovalReconciledCount =
       await reconcileStaleFeatureGithubIssueApprovals(db, organizationId)
     const items = await db.select().from(feedbackDeskItems).where(and(
@@ -435,6 +624,9 @@ export async function runFeedbackMaintenance(
       deliveryRequestedCount,
       scrubbedCount: privacy.scrubbed,
       slaBackfilledCount,
+      requesterOwnershipReconciledCount: requesterOwnership.reconciledCount,
+      requesterOwnershipRejectedCount: requesterOwnership.rejectedCount,
+      requesterOwnershipConflictCount: requesterOwnership.conflictCount,
       failedCount,
     }
     const completedAt = new Date().toISOString()
@@ -444,7 +636,8 @@ export async function runFeedbackMaintenance(
       updatedCount:
         recoveredCount + linkedCount + staleIssueApprovalReconciledCount +
         syncedCount + privacy.scrubbed +
-        slaBackfilledCount + deliveryRequestedCount,
+        slaBackfilledCount + deliveryRequestedCount +
+        requesterOwnership.reconciledCount,
       failedCount,
       summary: JSON.stringify(result),
       completedAt,
