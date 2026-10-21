@@ -8,6 +8,7 @@ import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getPublishedEstimateTemplateOptions } from "@/app/actions/estimate-templates"
 import { getProjectFamilySummary } from "@/app/actions/project-families"
 import { getProjectPhaseProposals } from "@/app/actions/estimate-phase-proposals"
+import { getEstimateAssemblyCopies } from "@/app/actions/estimate-project-copies"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
@@ -33,6 +34,7 @@ export default async function ProjectEstimatePage({
     getProjectPhaseProposals(id),
   ])
   const activeEstimateId = workspace.activeEstimate?.id ?? null
+  const assemblyCopies = activeEstimateId ? await getEstimateAssemblyCopies(id, activeEstimateId) : []
   // Nu-Tech jobs show which order fills each estimate.
   const nuTechOrders =
     workspace.department === "N" && workspace.estimateMode === "multiple" ? await getNuTechOrdersForEstimates(id) : undefined
@@ -82,6 +84,7 @@ export default async function ProjectEstimatePage({
         estimateTemplates={estimateTemplates}
         family={family}
         phaseProposals={phaseProposals}
+        assemblyCopies={assemblyCopies}
       />
     </div>
   )

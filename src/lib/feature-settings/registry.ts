@@ -53,6 +53,12 @@ export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
  */
 export const estimateSettingsSchema = z.object({
   modes: z.record(z.string().regex(/^[A-Z]$/), z.enum(ESTIMATE_MODES)),
+  /**
+   * Line markup (percent) given to items copied into a job of this
+   * department from another job's estimate. A department without one keeps
+   * the source markup.
+   */
+  copyMarkupPercents: z.record(z.string().regex(/^[A-Z]$/), z.number().min(0).max(1000)).optional(),
 })
 
 export type EstimateSettings = z.infer<typeof estimateSettingsSchema>
@@ -737,7 +743,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   estimates: {
     label: "Estimates",
-    description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own.",
+    description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own; and the markup for items copied in from another job's estimate.",
     defaults: { modes: {} },
     schema: estimateSettingsSchema,
   },

@@ -350,6 +350,39 @@ export const projectEstimateAssemblies = sqliteTable(
   (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder)]
 )
 
+/**
+ * An assembly copied into another job's estimate. The source estimate is not
+ * changed; the row records where the copy went and at what markup.
+ */
+export const projectEstimateAssemblyCopies = sqliteTable(
+  "project_estimate_assembly_copies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id"),
+    sourceProjectId: text("source_project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sourceEstimateId: text("source_estimate_id").notNull(),
+    /** Null for items that were not in an assembly. */
+    sourceAssemblyId: text("source_assembly_id"),
+    assemblyName: text("assembly_name").notNull(),
+    targetProjectId: text("target_project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    targetEstimateId: text("target_estimate_id").notNull(),
+    targetEstimateNumber: text("target_estimate_number").notNull(),
+    lineCount: integer("line_count").notNull().default(0),
+    /** Null when the source markup was kept. */
+    markupRateBasisPoints: integer("markup_rate_basis_points"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_estimate_assembly_copies_source_idx").on(table.sourceEstimateId, table.createdAt),
+    index("project_estimate_assembly_copies_target_idx").on(table.targetProjectId, table.createdAt),
+  ]
+)
+
 export const projectEstimateLines = sqliteTable(
   "project_estimate_lines",
   {
