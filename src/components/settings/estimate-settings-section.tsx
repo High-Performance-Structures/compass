@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DEFAULT_DEPARTMENT_PROFILES, DEPARTMENT_CODES } from "@/lib/department-profiles"
@@ -35,6 +36,8 @@ export function EstimateSettingsSection(): React.ReactElement {
   const [customized, setCustomized] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [modes, setModes] = React.useState<Readonly<Record<string, EstimateMode>>>({})
+  // Percent text per department; blank keeps the source markup on copied items.
+  const [copyMarkups, setCopyMarkups] = React.useState<Readonly<Record<string, string>>>({})
   const [names, setNames] = React.useState<Readonly<Record<string, string>>>(
     Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, DEFAULT_DEPARTMENT_PROFILES[code].displayName])),
   )
@@ -55,7 +58,9 @@ export function EstimateSettingsSection(): React.ReactElement {
     }
     const parsed = estimateSettingsSchema.safeParse(result.data.settings)
     const stored = parsed.success ? parsed.data.modes : {}
+    const storedMarkups = parsed.success ? parsed.data.copyMarkupPercents ?? {} : {}
     setModes(Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, stored[code] ?? builtIn(code)])))
+    setCopyMarkups(Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, storedMarkups[code] === undefined ? "" : String(storedMarkups[code])])))
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -73,8 +78,19 @@ export function EstimateSettingsSection(): React.ReactElement {
       const mode = modes[code]
       if (mode && mode !== builtIn(code)) changed[code] = mode
     }
+    const markups: Record<string, number> = {}
+    for (const code of DEPARTMENT_CODES) {
+      const text = copyMarkups[code]?.trim() ?? ""
+      if (text === "") continue
+      const value = Number(text)
+      if (!Number.isFinite(value) || value < 0 || value > 1000) {
+        toast.error(`Enter a markup between 0 and 1000% for ${names[code] ?? code}, or leave it blank.`)
+        return
+      }
+      markups[code] = value
+    }
     startTransition(async () => {
-      const result = await saveFeatureSettings("estimates", { modes: changed })
+      const result = await saveFeatureSettings("estimates", { modes: changed, copyMarkupPercents: markups })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -103,17 +119,19 @@ export function EstimateSettingsSection(): React.ReactElement {
     <form onSubmit={save} className="grid gap-5">
       <p className="max-w-prose text-sm text-muted-foreground">
         How estimates work in each department. A job follows its department&apos;s setting; existing estimates are never
-        changed by it.
+        changed by it. Markup on copied items is offered when assemblies are copied into a job of that department from
+        another job&apos;s estimate; blank keeps each item&apos;s own markup.
       </p>
       <fieldset className="grid gap-2" disabled={!canEdit || pending}>
         <legend className="sr-only">Estimates per job</legend>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Department</th>
                 <th className="py-2 pr-4 font-medium">Estimates per job</th>
-                <th className="py-2 font-medium">When an estimate is accepted</th>
+                <th className="py-2 pr-4 font-medium">When an estimate is accepted</th>
+                <th className="py-2 font-medium">Markup on copied items</th>
               </tr>
             </thead>
             <tbody>
@@ -140,7 +158,20 @@ export function EstimateSettingsSection(): React.ReactElement {
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="py-2 text-muted-foreground">{ACCEPTED_TEXT[mode]}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">{ACCEPTED_TEXT[mode]}</td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          aria-label={`Markup on items copied into ${names[code] ?? code} jobs, percent`}
+                          className="h-8 w-20"
+                          inputMode="decimal"
+                          placeholder="Keep"
+                          value={copyMarkups[code] ?? ""}
+                          onChange={(event) => setCopyMarkups((current) => ({ ...current, [code]: event.target.value }))}
+                        />
+                        <span className="text-muted-foreground">%</span>
+                      </div>
+                    </td>
                   </tr>
                 )
               })}

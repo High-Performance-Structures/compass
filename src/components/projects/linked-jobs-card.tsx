@@ -82,7 +82,7 @@ export function LinkedJobsCard({
   }
 
   return (
-    <section aria-labelledby="linked-jobs-heading" className="clarity-panel grid gap-3 p-4">
+    <section id="linked-jobs" aria-labelledby="linked-jobs-heading" className="clarity-panel grid gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="linked-jobs-heading" className="flex items-center gap-2 text-sm font-semibold">
           <IconLink className="size-4" />

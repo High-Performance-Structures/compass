@@ -58,6 +58,8 @@ import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { EstimatePhaseExportButton, ProjectEstimatePhaseProposals } from "@/components/projects/project-estimate-phase-proposals"
 import type { ProjectPhaseProposalSummary } from "@/app/actions/estimate-phase-proposals"
+import type { EstimateAssemblyCopySummary } from "@/app/actions/estimate-project-copies"
+import { EstimateAssemblyCopyNotes, EstimateCopyToProjectButton } from "@/components/projects/estimate-copy-to-project"
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -213,12 +215,14 @@ export function ProjectEstimateWorkspacePanel({
   estimateTemplates,
   family,
   phaseProposals = [],
+  assemblyCopies = [],
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
   readonly estimateTemplates: readonly EstimateTemplateOption[]
   readonly family: ProjectFamilySummary | null
   readonly phaseProposals?: readonly ProjectPhaseProposalSummary[]
+  readonly assemblyCopies?: readonly EstimateAssemblyCopySummary[]
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -397,6 +401,13 @@ export function ProjectEstimateWorkspacePanel({
       key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items: items.sort(compareEstimateLineOrder),
     }))
   }, [workspace.lines, workspace.assemblies, buildView])
+  // What "Copy to another job" can offer: each assembly with its item count.
+  const copyGroups = useMemo(() => workspace.assemblies.map((assembly) => ({
+    id: assembly.id,
+    name: assembly.name,
+    lineCount: workspace.lines.filter((line) => line.assemblyId === assembly.id).length,
+  })), [workspace.assemblies, workspace.lines])
+  const unassignedLineCount = workspace.lines.filter((line) => line.assemblyId === null).length
   const selectedStartTemplate = estimateTemplates.find(
     (template) => template.id === startTemplateId
   )
@@ -1514,6 +1525,9 @@ export function ProjectEstimateWorkspacePanel({
           {editable && (
             <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={null} assemblies={workspace.assemblies} lines={workspace.lines} />
           )}
+          {workspace.canEdit && (
+            <EstimateCopyToProjectButton projectId={projectId} estimateId={estimate.id} groups={copyGroups} unassignedCount={unassignedLineCount} />
+          )}
           <p className="text-xs text-muted-foreground">Both views edit the same estimate. Choose the report format separately.</p>
         </div>
         <p
@@ -1610,6 +1624,9 @@ export function ProjectEstimateWorkspacePanel({
                           {items.length === 1 ? "line" : "lines"}
                           {group.description && ` · ${group.description}`}
                         </p>
+                        {buildView === "assembly" && (
+                          <EstimateAssemblyCopyNotes copies={assemblyCopies} assemblyId={group.assemblyId ?? null} />
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <p className="font-semibold">
@@ -1624,6 +1641,15 @@ export function ProjectEstimateWorkspacePanel({
                             estimateId={estimate.id}
                             assemblyId={group.assemblyId}
                             assemblyName={workspace.assemblies.find((assembly) => assembly.id === group.assemblyId)?.name ?? "Assembly"}
+                          />
+                        )}
+                        {workspace.canEdit && buildView === "assembly" && group.assemblyId && (
+                          <EstimateCopyToProjectButton
+                            projectId={projectId}
+                            estimateId={estimate.id}
+                            groups={copyGroups}
+                            unassignedCount={unassignedLineCount}
+                            preselectedAssemblyId={group.assemblyId}
                           />
                         )}
                         {editable && buildView === "assembly" && (
