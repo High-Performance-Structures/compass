@@ -2,6 +2,8 @@ import { drizzle } from "drizzle-orm/d1"
 import { createRequire } from "node:module"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+vi.mock("server-only", () => ({}))
+
 const mocks = {
   requireAuth: vi.fn(),
   getCloudflareContext: vi.fn(),
@@ -12,6 +14,8 @@ const mocks = {
   jarvisReadCapabilitiesForUser: vi.fn(),
   isDemoUser: vi.fn(),
   revalidatePath: vi.fn(),
+  recordActivityEvent: vi.fn(),
+  announceOwnerUpdatePublished: vi.fn(),
 }
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
@@ -42,6 +46,12 @@ vi.mock("@/lib/demo", () => ({
   DEMO_USER: {},
   isDemoUser: mocks.isDemoUser,
   isDemoOrg: (orgId: string) => orgId === "demo-org-meridian",
+}))
+vi.mock("@/lib/activity-log", () => ({
+  recordActivityEvent: mocks.recordActivityEvent,
+}))
+vi.mock("@/lib/owner-updates/publish-notice", () => ({
+  announceOwnerUpdatePublished: mocks.announceOwnerUpdatePublished,
 }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 
