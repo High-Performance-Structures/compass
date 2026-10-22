@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => {
       }),
       leave: vi.fn(async () => {}),
       ai: { on: vi.fn(), off: vi.fn(), transcripts: [] },
+      meta: { on: vi.fn(), off: vi.fn() },
       participants: {
         audioSubscribed: new Map<string, { audioEnabled: boolean; audioTrack: MediaStreamTrack | undefined }>(),
         kickAll: vi.fn(async () => {}),
@@ -422,6 +423,19 @@ describe("Talk joining workflow", () => {
     if (typeof roomLeft !== "function") throw new Error("Missing room-left subscription")
     await act(async () => { roomLeft() })
     expect(window.close).not.toHaveBeenCalled()
+  })
+
+  it("tells participants when the call connection drops and recovers", async () => {
+    await render()
+    await click("Join meeting")
+    const socketChanged = mocks.meeting.meta.on.mock.calls.find(([event]) => event === "socketConnectionUpdate")?.[1]
+    if (typeof socketChanged !== "function") throw new Error("Missing socket connection subscription")
+    await act(async () => { socketChanged({ state: "reconnecting", reconnected: false, reconnectionAttempt: 1 }) })
+    expect(document.body.textContent).toContain("Connection lost. Reconnecting...")
+    await act(async () => { socketChanged({ state: "connected", reconnected: true, reconnectionAttempt: 1 }) })
+    expect(document.body.textContent).toContain("Reconnected.")
+    await act(async () => { socketChanged({ state: "failed", reconnected: false, reconnectionAttempt: 5 }) })
+    expect(document.body.textContent).toContain("Leave and rejoin the call.")
   })
 
   it("keeps the main call microphone usable across mute and unmute cycles", async () => {
