@@ -60,6 +60,7 @@ const {
   deleteOwnerProjectUpdateDraft,
   draftOwnerProjectUpdateWithJarvis,
   draftOwnerUpdateFromDailyLogs,
+  getProjectOwnerUpdates,
   publishOwnerProjectUpdate,
   recallOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
@@ -226,6 +227,12 @@ function createDatabase(): {
       name TEXT NOT NULL,
       project_number TEXT
     );
+    CREATE TABLE project_members (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL
+    );
     CREATE TABLE owner_project_updates (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -307,6 +314,7 @@ function get(sqlite: Sqlite, sql: string, ...values: readonly unknown[]): unknow
 
 function seedDraft(sqlite: Sqlite): void {
   run(sqlite, "INSERT INTO organizations (id, type, is_active) VALUES (?, ?, ?)", "org-1", "internal", 1)
+  run(sqlite, "INSERT INTO organizations (id, type, is_active) VALUES (?, ?, ?)", "org-client", "client", 1)
   run(
     sqlite,
     "INSERT INTO projects (id, organization_id, name, project_number) VALUES (?, ?, ?, ?)",
@@ -335,6 +343,14 @@ function seedDraft(sqlite: Sqlite): void {
       "2026-07-28T14:00:00.000Z",
       version.expectedUpdatedAt,
       0
+  )
+  run(
+    sqlite,
+    "INSERT INTO project_members (id, project_id, user_id, role) VALUES (?, ?, ?, ?)",
+    "membership-1",
+    "project-1",
+    "client-1",
+    "owner"
   )
 }
 
@@ -418,6 +434,55 @@ describe("owner update mutation authorization and fencing", () => {
     })
     mocks.isDemoUser.mockReturnValue(false)
     seedDraft(sqlite)
+  })
+
+  it("applies the owner visibility scope in the list query for external readers", async () => {
+    run(
+      sqlite,
+      `INSERT INTO owner_project_updates
+         (id, project_id, created_by, title, update_date, summary, status, channel,
+          period_start, period_end, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "update-published",
+      "project-1",
+      "staff-1",
+      "Published update",
+      "2026-07-29",
+      "Published summary",
+      "published",
+      "compass",
+      "2026-07-29",
+      "2026-07-29",
+      "2026-07-29T14:00:00.000Z",
+      "2026-07-29T14:00:00.000Z",
+      0
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "client-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const updates = await getProjectOwnerUpdates("project-1")
+
+    expect(updates.map((update) => update.id)).toEqual(["update-published"])
+  })
+
+  it("rejects an inactive owner-update reader before database access", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      isActive: false,
+    })
+    mocks.getCloudflareContext.mockImplementation(() => {
+      throw new Error("database access reached")
+    })
+
+    await expect(getProjectOwnerUpdates("project-1")).rejects.toThrow(
+      "active account"
+    )
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
   })
 
   it("denies every owner-update mutation sibling to external roles before database access", async () => {

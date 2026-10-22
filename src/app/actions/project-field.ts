@@ -73,8 +73,14 @@ import {
   isLookAheadScheduleCandidate,
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
-import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
-import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
+import {
+  isOwnerUpdateVisibleToRole,
+  ownerUpdateVisibleStatuses,
+} from "@/lib/owner-updates/history"
+import {
+  assertOwnerUpdateReadAccess,
+  assertOwnerUpdateRouteAccess,
+} from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
@@ -671,10 +677,30 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
 }> {
   const viewer = await requireProjectAudienceReadUser(projectId)
+  const db = await assertOwnerUpdateReadAccess(viewer)
   await requireFeaturePermission(viewer, "owner-updates", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  await assertProjectAccess(db, viewer, projectId)
+
+  if (
+    isInternalStaffRole(viewer.role) &&
+    viewer.organizationType === "internal" &&
+    viewer.organizationId
+  ) {
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, viewer.organizationId)
+        )
+      )
+      .limit(1)
+      .get()
+    if (!project) throw new Error("Project not found")
+  } else {
+    await assertProjectAccess(db, viewer, projectId)
+  }
+
   if (!isInternalStaffRole(viewer.role)) {
     const membership = await db
       .select({ role: projectMembers.role })
@@ -691,6 +717,17 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
     }
   }
   return { db, viewer }
+}
+
+export async function getOwnerUpdatePageCapabilities(
+  projectId: string
+): Promise<{ readonly canManage: boolean }> {
+  const { viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  return {
+    canManage:
+      viewer.organizationType === "internal" &&
+      isInternalStaffRole(viewer.role),
+  }
 }
 
 async function verifyProjectMutationAccess(
@@ -1061,9 +1098,9 @@ function weatherLabel(row: {
 export async function getProjectFieldSummary(
   projectId: string
 ): Promise<ProjectFieldSummary> {
-  const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId)
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
 
   const logRows = await db
     .select({
@@ -1132,7 +1169,14 @@ export async function getProjectFieldSummary(
       summary: ownerProjectUpdates.summary,
     })
     .from(ownerProjectUpdates)
-    .where(eq(ownerProjectUpdates.projectId, projectId))
+    .where(
+      and(
+        eq(ownerProjectUpdates.projectId, projectId),
+        visibleStatuses === null
+          ? undefined
+          : inArray(ownerProjectUpdates.status, visibleStatuses)
+      )
+    )
     .orderBy(
       desc(ownerProjectUpdates.updateDate),
       desc(ownerProjectUpdates.createdAt)
@@ -1171,9 +1215,7 @@ export async function getProjectFieldSummary(
     .limit(1)
 
   const latestLog = logRows[0]
-  const visibleUpdateRows = updateRows.filter((update) =>
-    isOwnerUpdateVisibleToRole(update.status, viewer.role)
-  )
+  const visibleUpdateRows = updateRows
   const latestUpdate = visibleUpdateRows[0]
   const thumbnailPhotoRows = photoRows.filter(
     (photo) => photo.thumbnailUrl !== null
@@ -1270,6 +1312,7 @@ export async function getProjectOwnerUpdates(
   projectId: string
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
 
   const updateRows = await db
     .select({
@@ -1285,15 +1328,20 @@ export async function getProjectOwnerUpdates(
       updatedAt: ownerProjectUpdates.updatedAt,
     })
     .from(ownerProjectUpdates)
-    .where(eq(ownerProjectUpdates.projectId, projectId))
+    .where(
+      and(
+        eq(ownerProjectUpdates.projectId, projectId),
+        visibleStatuses === null
+          ? undefined
+          : inArray(ownerProjectUpdates.status, visibleStatuses)
+      )
+    )
     .orderBy(
       desc(ownerProjectUpdates.updateDate),
       desc(ownerProjectUpdates.createdAt)
     )
 
-  return updateRows.filter((update) =>
-    isOwnerUpdateVisibleToRole(update.status, viewer.role)
-  )
+  return updateRows
 }
 
 export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
@@ -2360,6 +2408,7 @@ export async function getOwnerProjectUpdateDocument(
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
 
   const [project] = await db
     .select({
@@ -2398,7 +2447,10 @@ export async function getOwnerProjectUpdateDocument(
     .where(
       and(
         eq(ownerProjectUpdates.id, updateId),
-        eq(ownerProjectUpdates.projectId, projectId)
+        eq(ownerProjectUpdates.projectId, projectId),
+        visibleStatuses === null
+          ? undefined
+          : inArray(ownerProjectUpdates.status, visibleStatuses)
       )
     )
     .limit(1)
@@ -2416,6 +2468,7 @@ export async function getOwnerProjectUpdateDocument(
     update.scheduleSnapshot
   )
   const canManage = can(viewer, "project", "update")
+  const internalViewer = visibleStatuses === null
 
   const allLogRows = await db
     .select({
@@ -2439,7 +2492,24 @@ export async function getOwnerProjectUpdateDocument(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(eq(dailyLogs.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogs.projectId, projectId),
+        internalViewer
+          ? undefined
+          : and(
+              inArray(dailyLogs.id, selectedDailyLogIds),
+              eq(dailyLogs.reviewStatus, "approved"),
+              eq(dailyLogs.isClientVisible, true),
+              update.periodStart === null
+                ? undefined
+                : gte(dailyLogs.logDate, update.periodStart),
+              update.periodEnd === null
+                ? undefined
+                : sql`${dailyLogs.logDate} <= ${update.periodEnd}`
+            )
+      )
+    )
     .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
   const allPhotoRows = await db
@@ -2461,37 +2531,43 @@ export async function getOwnerProjectUpdateDocument(
     .where(
       and(
         eq(dailyLogPhotos.projectId, projectId),
-        or(
-          inArray(dailyLogPhotos.id, selectedPhotoIds),
-          // The owner-update picker shares this query with the photo picker.
-          // Keep non-image attachments available for document selection; the
-          // alias read model is only relevant to image collection rows.
-          sql<boolean>`
-            ${dailyLogPhotos.mimeType} IS NULL
-            OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
-          `,
-          and(
-            dailyLogPhotoCollectionEligibility(),
-            not(sql<boolean>`EXISTS (
-              SELECT 1
-              FROM daily_log_photo_aliases AS alias
-              JOIN daily_log_photos AS canonical
-                ON canonical.id IS alias.canonical_photo_id
-              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-                AND alias.project_id IS ${dailyLogPhotos.projectId}
-                AND canonical.project_id IS ${dailyLogPhotos.projectId}
-                AND canonical.mime_type LIKE 'image/%'
-                AND canonical.drive_file_id IS NOT NULL
-                AND (
-                  canonical.drive_file_id IS NOT NULL
-                  OR canonical.thumbnail_url IS NOT NULL
-                )
-                AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
-                AND canonical.review_status IS 'approved'
-                AND canonical.owner_visible IS 1
-            )`),
-          ),
-        ),
+        internalViewer
+          ? or(
+              inArray(dailyLogPhotos.id, selectedPhotoIds),
+              // The owner-update picker shares this query with the photo picker.
+              // Keep non-image attachments available for document selection; the
+              // alias read model is only relevant to image collection rows.
+              sql<boolean>`
+                ${dailyLogPhotos.mimeType} IS NULL
+                OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+              `,
+              and(
+                dailyLogPhotoCollectionEligibility(),
+                not(sql<boolean>`EXISTS (
+                  SELECT 1
+                  FROM daily_log_photo_aliases AS alias
+                  JOIN daily_log_photos AS canonical
+                    ON canonical.id IS alias.canonical_photo_id
+                  WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                    AND alias.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.mime_type LIKE 'image/%'
+                    AND canonical.drive_file_id IS NOT NULL
+                    AND (
+                      canonical.drive_file_id IS NOT NULL
+                      OR canonical.thumbnail_url IS NOT NULL
+                    )
+                    AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
+                    AND canonical.review_status IS 'approved'
+                    AND canonical.owner_visible IS 1
+                )`),
+              ),
+            )
+          : and(
+              inArray(dailyLogPhotos.id, selectedPhotoIds),
+              eq(dailyLogPhotos.reviewStatus, "approved"),
+              eq(dailyLogPhotos.ownerVisible, true)
+            ),
       ),
     )
     .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))

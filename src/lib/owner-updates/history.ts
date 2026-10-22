@@ -12,3 +12,9 @@ export function isOwnerUpdateVisibleToRole(
 
   return status === "published" || status === "sent"
 }
+
+export function ownerUpdateVisibleStatuses(
+  role: string
+): readonly ["published", "sent"] | null {
+  return canViewOwnerUpdateDrafts(role) ? null : ["published", "sent"]
+}
