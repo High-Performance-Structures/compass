@@ -1266,7 +1266,7 @@ async function loadProjectEstimateWorkspace(
     estimates,
     activeEstimate: selected,
     changeOrder,
-    assemblies: assemblyRows.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
+    assemblies: assemblyRows.map(({ id, name, description, sortOrder, clientDetail }) => ({ id, name, description, sortOrder, clientDetail })),
     lines: lineRows.map((row) =>
       estimateLineItem(row, costItemsByLine.get(row.id) ?? [])
     ),
@@ -4116,7 +4116,9 @@ export async function prepareProjectEstimateForClientSignature(
       costItemsByLineId.set(item.estimateLineId, current)
     }
     const sourceHash = await estimateSourceHash({
-      assemblies: assemblies.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
+      // clientDetail joins the hash only when set, so estimates prepared before
+      // it existed keep their hash.
+      assemblies: assemblies.map(({ id, name, description, sortOrder, clientDetail }) => ({ id, name, description, sortOrder, ...(clientDetail ? { clientDetail } : {}) })),
       estimateId,
       versionNumber: estimate.versionNumber,
       title: reportTitle,

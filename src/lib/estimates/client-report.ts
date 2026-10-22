@@ -77,6 +77,8 @@ export type ClientEstimatePhase = {
   readonly name: string
   readonly custom: boolean
   readonly itemize: boolean
+  /** Print cost breakdowns under this group's cost codes whatever the estimate-wide setting. */
+  readonly costBreakdowns?: boolean
   readonly divisionCode: string
   readonly divisionName: string
   readonly description: string
@@ -446,7 +448,9 @@ export function clientEstimateReportGroups(input: {
       id: group.id ?? "unassigned",
       name: group.name,
       custom: true,
-      itemize: input.mode === "assembly_items",
+      // A totals report still itemizes the assemblies picked for client detail.
+      itemize: input.mode === "assembly_items" || group.clientDetail,
+      costBreakdowns: group.clientDetail,
       divisionCode: "",
       divisionName: group.name,
       description: group.description ?? "",

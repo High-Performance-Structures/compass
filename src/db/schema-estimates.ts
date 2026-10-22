@@ -344,6 +344,8 @@ export const projectEstimateAssemblies = sqliteTable(
     name: text("name").notNull(),
     description: text("description"),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** List this assembly's cost codes and breakdowns on an assembly-totals report. */
+    clientDetail: integer("client_detail", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

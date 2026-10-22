@@ -6,7 +6,7 @@ function line(id: string, total: number, extra: Partial<ClientEstimateLine> = {}
   return { id, assemblyId: id, reportPhaseId: null, divisionCode: "03", divisionName: "Concrete", costCode: "03 30 00", costCodeName: "Concrete", description: id, specifications: null, quantity: 1, unit: "LS", unitCostCents: total, taxCode: null, taxName: null, taxRateBasisPoints: 0, taxCents: 0, lineTotalCents: total, ownerVisible: true, includeInBuilderFee: true, sortOrder: 0, costItems: [], ...extra }
 }
 function allocate(lines: readonly ReturnType<typeof line>[], fee: number): ReturnType<typeof assemblyBuilderFeeAllocation> {
-  const assemblies = lines.map((item, index) => ({ id: item.id, name: item.id, description: null, sortOrder: index }))
+  const assemblies = lines.map((item, index) => ({ id: item.id, name: item.id, description: null, sortOrder: index, clientDetail: false }))
   const groups = clientEstimateReportGroups({ mode: "assembly_summary", assemblies, lines, phaseDescriptions: {} })
   return assemblyBuilderFeeAllocation({ groups, lines, builderFeeCents: fee })
 }
@@ -33,7 +33,7 @@ describe("assembly builder-fee allocation", () => {
   })
   it("keeps Other work and orphaned assignments in the allocation", () => {
     const lines = [line("a", 100), { ...line("b", 100), assemblyId: "missing" }]
-    const groups = clientEstimateReportGroups({ mode: "assembly_items", assemblies: [{ id: "a", name: "Phase A", description: null, sortOrder: 0 }], lines, phaseDescriptions: {} })
+    const groups = clientEstimateReportGroups({ mode: "assembly_items", assemblies: [{ id: "a", name: "Phase A", description: null, sortOrder: 0, clientDetail: false }], lines, phaseDescriptions: {} })
     expect([...assemblyBuilderFeeAllocation({ groups, lines, builderFeeCents: 30 }).byGroup.entries()]).toEqual([["a", 15], ["unassigned", 15]])
   })
   it("handles zero fees and a zero eligible base without inventing charges", () => {

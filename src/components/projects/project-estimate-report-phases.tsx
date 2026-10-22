@@ -257,7 +257,7 @@ export function ProjectEstimateReportPhases({
                           key={line.id}
                           line={line}
                           assemblyReport={assemblyReport}
-                          showCostBreakdowns={showCostBreakdowns}
+                          showCostBreakdowns={showCostBreakdowns || phase.costBreakdowns === true}
                         />
                       ))}
                     </tbody>

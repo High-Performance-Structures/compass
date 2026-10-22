@@ -273,6 +273,7 @@ export async function copyEstimateAssembliesToProject(input: {
         estimateId: targetEstimate.id,
         name: assembly.name,
         description: assembly.description,
+        clientDetail: assembly.clientDetail,
         sortOrder: assemblySort,
         createdAt: now,
         updatedAt: now,

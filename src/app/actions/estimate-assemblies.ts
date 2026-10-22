@@ -104,3 +104,50 @@ export async function deleteProjectEstimateAssembly(
     return { success: false, error: error instanceof Error ? error.message : "Unable to delete assembly." }
   }
 }
+
+/**
+ * Picks the assemblies whose cost codes and cost breakdowns the client report
+ * lists while every other assembly prints as one total.
+ */
+export async function setEstimateAssemblyClientDetail(
+  projectId: string,
+  estimateId: string,
+  assemblyIds: readonly string[]
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const parsed = z.array(z.string().min(1)).max(500).safeParse(assemblyIds)
+    if (!parsed.success) return { success: false, error: "Invalid assembly selection." }
+    const assemblies = await access.db.select({ id: projectEstimateAssemblies.id, name: projectEstimateAssemblies.name })
+      .from(projectEstimateAssemblies).where(eq(projectEstimateAssemblies.estimateId, estimateId))
+    const available = new Set(assemblies.map((assembly) => assembly.id))
+    const selected = [...new Set(parsed.data)]
+    if (selected.some((id) => !available.has(id))) {
+      return { success: false, error: "An assembly is no longer in this estimate. Refresh and try again." }
+    }
+    const now = new Date().toISOString()
+    await access.db.batch([
+      access.db.update(projectEstimateAssemblies).set({ clientDetail: false, updatedAt: now })
+        .where(eq(projectEstimateAssemblies.estimateId, estimateId)),
+      ...(selected.length > 0
+        ? [access.db.update(projectEstimateAssemblies).set({ clientDetail: true, updatedAt: now })
+            .where(and(eq(projectEstimateAssemblies.estimateId, estimateId), inArray(projectEstimateAssemblies.id, selected)))]
+        : []),
+      access.db.update(projectEstimates).set({ updatedAt: now }).where(eq(projectEstimates.id, estimateId)),
+    ])
+    const names = assemblies.filter((assembly) => selected.includes(assembly.id)).map((assembly) => assembly.name)
+    if (access.organizationId) await recordActivityEvent({
+      db: access.db, organizationId: access.organizationId, projectId, actor: access.user,
+      category: "financial", action: "estimate_assembly_client_detail_updated", entityType: "estimate", entityId: estimateId,
+      summary: names.length > 0
+        ? `Client report lists cost codes for: ${names.join(", ")}`
+        : "Client report shows every assembly as a total",
+      metadata: { estimateId, assemblyCount: selected.length },
+    })
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to save assembly detail." }
+  }
+}
