@@ -11,6 +11,7 @@ import {
   type DailyLogWorkLine,
 } from "@/lib/daily-logs/daily-log-form"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { dutiesFor, dutyDisplay, dutyOnPhones } from "@/lib/internal-duties/model"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 
@@ -29,13 +30,19 @@ export type DailyLogWorkLineView = {
 export const ON_BUDGET_GROUP = "On this job's budget"
 export const ALL_CODES_GROUP = "All cost codes"
 
+function preconstructionCostCodes(): readonly { readonly code: string; readonly description: string }[] {
+  // Sage's numeric cost-code snapshot omits 00/01. Estimates already fill
+  // those gaps from the company's workbook; D/H/O logs need the same codes.
+  return projectEstimateCostCodeCatalog([], []).filter((row) => row.divisionCode === "00" || row.divisionCode === "01")
+}
+
 /**
  * The cost codes a daily log can choose from:
  * - an internal workspace uses its duty list (the 500 codes for the office);
  * - a job in a labor-list department (H and O by default) uses the company's
  *   labor cost codes;
  * - any other job lists the codes on its budget first, then every active
- *   company cost code.
+ *   company cost code. D/H/O jobs also include the full 00/01 catalog.
  */
 /** Where a project's list comes from. */
 export type DailyLogCostCodeSource = "labor" | "duties" | "company"
@@ -78,6 +85,7 @@ export async function dailyLogCostCodeList(
   const dailyLogSettings = await readFeatureSettings(db, organizationId, "daily-logs")
   const department = resolvedProjectDepartment({ department: project?.department, projectId, projectNumber: project?.projectNumber })
   const inLaborDepartment = department !== null && dailyLogSettings.laborCodeDepartments.includes(department)
+  const includePreconstruction = department === "D" || department === "H" || department === "O"
   if (project?.workspaceKind) {
     const settings = await readFeatureSettings(db, organizationId, "internal-duties")
     const options = dutiesFor(settings, project.workspaceKind).map((duty) => ({
@@ -96,7 +104,13 @@ export async function dailyLogCostCodeList(
 
   const laborCodes = dailyLogSettings.laborCostCodes.filter((code) => code.active)
   if (inLaborDepartment && laborCodes.length > 0) {
-    const options = laborCodes.map((code) => ({ code: code.code, name: code.name, label: `${code.code} ${code.name}`, group: "" }))
+    const codes = new Map(laborCodes.map((code) => [code.code, code.name]))
+    if (includePreconstruction) {
+      for (const row of preconstructionCostCodes()) {
+        if (!codes.has(row.code)) codes.set(row.code, row.description)
+      }
+    }
+    const options = [...codes].map(([code, name]) => ({ code, name, label: `${code} ${name}`, group: "" }))
     return { source: "labor", options, phoneOptions: options }
   }
 
@@ -111,7 +125,10 @@ export async function dailyLogCostCodeList(
       .from(projectBudgetLines)
       .where(eq(projectBudgetLines.projectId, projectId)),
   ])
-  const companyLabels = new Map(companyCodes.map((row) => [row.code, row.description]))
+  const companyLabels = new Map([
+    ...(includePreconstruction ? preconstructionCostCodes() : []),
+    ...companyCodes,
+  ].map((row) => [row.code, row.description]))
   const budget = new Map<string, string>()
   for (const row of budgetRows) {
     const code = row.code.trim()
@@ -124,9 +141,10 @@ export async function dailyLogCostCodeList(
     ...[...budget.entries()]
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ON_BUDGET_GROUP })),
-    ...companyCodes
-      .filter((row) => !budget.has(row.code))
-      .map((row) => ({ code: row.code, name: row.description, label: `${row.code} ${row.description}`.trim(), group: ALL_CODES_GROUP })),
+    ...[...companyLabels.entries()]
+      .filter(([code]) => !budget.has(code))
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ALL_CODES_GROUP })),
     ],
   }
 }
