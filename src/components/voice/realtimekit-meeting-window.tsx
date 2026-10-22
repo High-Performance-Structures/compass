@@ -373,8 +373,6 @@ export function RealtimeKitMeetingWindow({
         meetingId: result.data.meetingId,
         meetingTitle: result.data.meetingTitle,
         presetName: result.data.cachedUserDetails.userDetails.preset.name,
-        socketBaseUri:
-          result.data.cachedUserDetails.userDetails.socket.baseUri,
         iceServerCount: result.data.cachedUserDetails.iceServers.length,
       })
       const initializedMeeting = await initMeeting({
@@ -523,6 +521,39 @@ export function RealtimeKitMeetingWindow({
     meeting.self.on("roomLeft", handleRoomLeft)
     return () => { meeting.self.off("roomLeft", handleRoomLeft) }
   }, [meeting, closeMeetingWindow])
+
+  // The SDK recovers dropped signaling and media connections itself; record
+  // each transition so intermittent drops can be traced, and tell the person.
+  React.useEffect(() => {
+    if (!meeting) return
+    const handleSocketConnection = (state: {
+      readonly state: string
+      readonly reconnected: boolean
+      readonly reconnectionAttempt: number
+    }): void => {
+      recordRealtimeKitDiagnostic("socket-connection", { ...state })
+      if (state.state === "reconnecting") showInfo("Connection lost. Reconnecting...")
+      else if (state.state === "connected" && state.reconnected) showInfo("Reconnected.")
+      else if (state.state === "failed") showError("Office Talk lost its connection. Leave and rejoin the call.")
+    }
+    const handleMediaConnection = (payload: {
+      readonly transport: string
+      readonly state: string
+    }): void => {
+      recordRealtimeKitDiagnostic("media-connection", { ...payload })
+    }
+    const handlePoorConnection = (payload: { readonly score: number }): void => {
+      recordRealtimeKitDiagnostic("poor-connection", { ...payload })
+    }
+    meeting.meta.on("socketConnectionUpdate", handleSocketConnection)
+    meeting.meta.on("mediaConnectionUpdate", handleMediaConnection)
+    meeting.meta.on("poorConnection", handlePoorConnection)
+    return () => {
+      meeting.meta.off("socketConnectionUpdate", handleSocketConnection)
+      meeting.meta.off("mediaConnectionUpdate", handleMediaConnection)
+      meeting.meta.off("poorConnection", handlePoorConnection)
+    }
+  }, [meeting, showError, showInfo])
 
   const leaveMeeting = React.useCallback(async (endForEveryone: boolean): Promise<void> => {
     if (!meeting || leaving) return

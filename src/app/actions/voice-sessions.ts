@@ -271,14 +271,11 @@ function isRealtimeKitUserDetails(value: unknown): value is UserDetailsResponseV
   const participant = recordValue(value, "participant")
   const preset = recordValue(value, "preset")
   const meeting = recordValue(value, "meeting")
-  const socket = recordValue(value, "socket")
   return (
     isRecord(participant) &&
     isRecord(preset) &&
     isRecord(meeting) &&
-    isRecord(socket) &&
-    typeof recordValue(meeting, "title") === "string" &&
-    typeof recordValue(socket, "baseUri") === "string"
+    typeof recordValue(meeting, "title") === "string"
   )
 }
 

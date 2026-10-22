@@ -24,9 +24,9 @@
         "@capacitor/status-bar": "^8.0.2",
         "@capgo/capacitor-native-biometric": "^8.4.5",
         "@capgo/capacitor-uploader": "^8.2.1",
-        "@cloudflare/realtimekit": "^2.0.0",
-        "@cloudflare/realtimekit-react": "^2.0.0",
-        "@cloudflare/realtimekit-react-ui": "^2.0.0",
+        "@cloudflare/realtimekit": "^2.0.4",
+        "@cloudflare/realtimekit-react": "^2.0.4",
+        "@cloudflare/realtimekit-react-ui": "^2.0.3",
         "@cloudflare/realtimekit-ui-addons": "0.1.0",
         "@cloudflare/realtimekit-virtual-background": "0.0.2",
         "@dnd-kit/core": "^6.3.1",
@@ -367,13 +367,13 @@
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
 
-    "@cloudflare/realtimekit": ["@cloudflare/realtimekit@2.0.1", "", { "dependencies": { "@protobuf-ts/runtime": "^2.7.0", "bowser": "^2.11.0", "sdp-transform": "^2.14.1", "uuid": "^8.3.2", "worker-timers": "7.0.60" } }, "sha512-GDZpFWqC/+ZHUfVSCIc8dpZza2E4HsyyU+48ENmGY2bB2EYyzsr5YNGUXtqLkap8YiUmPS1ZA1YPUA5e8d5mNA=="],
+    "@cloudflare/realtimekit": ["@cloudflare/realtimekit@2.0.4", "", { "dependencies": { "@protobuf-ts/runtime": "^2.7.0", "bowser": "^2.11.0", "sdp-transform": "^2.14.1", "uuid": "^8.3.2", "worker-timers": "7.0.60" } }, "sha512-7oCbdj+tLTMgq4TDoIux900eELcYJtiDq6fJIY9K3Ej50rPm9rjL7lkFkv8xX9zLdJI4TsJ1vqyENKq7fqTUoA=="],
 
-    "@cloudflare/realtimekit-react": ["@cloudflare/realtimekit-react@2.0.1", "", { "dependencies": { "@cloudflare/realtimekit": "2.0.1" }, "peerDependencies": { "react": ">=16.8.6" } }, "sha512-z5BL32ABEppwxofq7meV0enFyPa7XL3X3oyb2hcI9PE0WPx1VMVM7GdDjpBjF/r6Ff0LpFA64vlyzeto0/8Pew=="],
+    "@cloudflare/realtimekit-react": ["@cloudflare/realtimekit-react@2.0.4", "", { "dependencies": { "@cloudflare/realtimekit": "2.0.4" }, "peerDependencies": { "react": ">=16.8.6" } }, "sha512-+iurNv2nVNvUkXUF5w9wpOpx9edfFZ3YR5KNVIKB8EiwkhOUVtUfEr9ieJimbnJZqX+HAsZNhKHM2aXS8UYL0Q=="],
 
-    "@cloudflare/realtimekit-react-ui": ["@cloudflare/realtimekit-react-ui@2.0.1", "", { "dependencies": { "@cloudflare/realtimekit-ui": "2.0.1" } }, "sha512-G0lU6VxCDfFfo4z6NPfYvgctefr5yce7xgUyDQY66pDWlESSJqRCJr4EKqSg0zA2JswuYDjp36S6Ya8SBwyHpQ=="],
+    "@cloudflare/realtimekit-react-ui": ["@cloudflare/realtimekit-react-ui@2.0.3", "", { "dependencies": { "@cloudflare/realtimekit-ui": "2.0.3" } }, "sha512-8sUc3zGShSuiG4IHEQb+Ob+hicProTEq/fgRwgvGumhbnFXD0CAHODii1Qlmtt9hl3H/d50eB0c/AW5OTVG5uQ=="],
 
-    "@cloudflare/realtimekit-ui": ["@cloudflare/realtimekit-ui@2.0.1", "", { "dependencies": { "@floating-ui/dom": "^1.7.4", "hark": "^1.2.3", "hls.js": "^1.5.17", "lodash-es": "^4.17.21", "resize-observer-polyfill": "^1.5.1" } }, "sha512-F1Px1LJwpIw50QG76e2ViYjOv3utzd5wkoScRLqeMj7ZS8GtdX+vMVfG1+5jfvc9Ha/Qujauwsb13fam+7bfSg=="],
+    "@cloudflare/realtimekit-ui": ["@cloudflare/realtimekit-ui@2.0.3", "", { "dependencies": { "@floating-ui/dom": "^1.7.4", "hark": "^1.2.3", "hls.js": "^1.5.17", "lodash-es": "^4.17.21", "resize-observer-polyfill": "^1.5.1" } }, "sha512-kGdNvh+0lZdKXrHI6rHUo1UwXdcUWNYu0CkeyFs+lLdC8+09NZI0XJEBivKvMu1Zq1RT5I1VY8ZijBM9hiJcJg=="],
 
     "@cloudflare/realtimekit-ui-addons": ["@cloudflare/realtimekit-ui-addons@0.1.0", "", { "dependencies": { "@cloudflare/realtimekit-virtual-background": "0.0.2" }, "peerDependencies": { "@cloudflare/realtimekit": ">=1.0.1", "@cloudflare/realtimekit-ui": ">=1.0.1" } }, "sha512-e7qi+1Z6P3Yb+oeZD573IZn9s55EI1tHOEIqVMuuo61uoKexbFdwYbrBxlkIk4gkZd4LZlXlT23nFeZNo4m7RA=="],
 
