@@ -3,9 +3,9 @@ import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { clientEstimateReportGroups, isEstimateClientReportMode } from "@/lib/estimates/client-report"
 
 const assemblies = [
-  { id: "foundation", name: "Foundation package", description: "Complete foundation", sortOrder: 0 },
-  { id: "slab", name: "Slab package", description: null, sortOrder: 1 },
-  { id: "empty", name: "Future work", description: null, sortOrder: 2 },
+  { id: "foundation", name: "Foundation package", description: "Complete foundation", sortOrder: 0, clientDetail: false },
+  { id: "slab", name: "Slab package", description: null, sortOrder: 1, clientDetail: false },
+  { id: "empty", name: "Future work", description: null, sortOrder: 2, clientDetail: false },
 ]
 const lines = [
   { id: "excavation", assemblyId: "foundation", divisionCode: "31", divisionName: "Earthwork", costCode: "31-100", lineTotalCents: 1200000, ownerVisible: true },

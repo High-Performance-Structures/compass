@@ -14,6 +14,7 @@ import { z } from "zod/v4"
 import { useRouter } from "next/navigation"
 import { IconExternalLink, IconFileDescription } from "@tabler/icons-react"
 
+import { setEstimateAssemblyClientDetail } from "@/app/actions/estimate-assemblies"
 import {
   saveEstimateTextTemplate,
   saveProjectEstimatePhaseDescription,
@@ -41,6 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatCurrency } from "@/lib/utils"
 import type { EstimateWorkSection } from "@/lib/estimates/workspace-sections"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-estimate-report-phase-editor"
@@ -88,6 +90,24 @@ export function ProjectEstimateClientReportSettings({
   const showCostBreakdowns = reportForm.watch("showCostBreakdowns")
   const assemblyReport =
     reportMode === "assembly_summary" || reportMode === "assembly_items"
+  const savedDetailIds = useMemo(
+    () => workspace.assemblies.filter((assembly) => assembly.clientDetail).map((assembly) => assembly.id),
+    [workspace.assemblies]
+  )
+  const [detailIds, setDetailIds] = useState<readonly string[]>(savedDetailIds)
+  useEffect(() => setDetailIds(savedDetailIds), [savedDetailIds])
+  const detailChanged =
+    detailIds.length !== savedDetailIds.length ||
+    detailIds.some((id) => !savedDetailIds.includes(id))
+  const assemblyTotals = useMemo(() => {
+    const totals = new Map<string, { count: number; cents: number }>()
+    for (const line of workspace.lines) {
+      if (!line.assemblyId || !line.ownerVisible) continue
+      const current = totals.get(line.assemblyId) ?? { count: 0, cents: 0 }
+      totals.set(line.assemblyId, { count: current.count + 1, cents: current.cents + line.lineTotalCents })
+    }
+    return totals
+  }, [workspace.lines])
   const [acknowledgementIds, setAcknowledgementIds] = useState<readonly string[]>(
     workspace.selectedAcknowledgements.map((item) => item.templateId)
   )
@@ -155,7 +175,14 @@ export function ProjectEstimateClientReportSettings({
         showAssemblyBuilderFee,
         showCostBreakdowns
       )
-      setMessage(result.success ? "Client report view saved." : result.error)
+      const detailResult = result.success && detailChanged
+        ? await setEstimateAssemblyClientDetail(projectId, estimate.id, detailIds)
+        : result
+      setMessage(
+        !result.success ? result.error
+          : !detailResult.success ? detailResult.error
+            : "Client report view saved."
+      )
       if (result.success) router.refresh()
     })
   }
@@ -278,7 +305,8 @@ export function ProjectEstimateClientReportSettings({
                 isPending ||
                 (reportMode === workspace.reportMode &&
                   showAssemblyBuilderFee === estimate.showAssemblyBuilderFee &&
-                  showCostBreakdowns === estimate.showCostBreakdowns)
+                  showCostBreakdowns === estimate.showCostBreakdowns &&
+                  !detailChanged)
               }
             >
               Save report view
@@ -316,6 +344,42 @@ export function ProjectEstimateClientReportSettings({
             </span>
           </label>
         </div>
+          )}
+          {reportMode === "assembly_summary" && workspace.assemblies.length > 0 && (
+            <fieldset className="md:col-span-2 border-t pt-4">
+              <legend className="text-sm font-medium">Show cost codes for these assemblies</legend>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Every other assembly prints as one total. Ticked assemblies list their cost codes and cost breakdowns with quantities and amounts.
+              </p>
+              <ul className="mt-2 divide-y border-y">
+                {workspace.assemblies.map((assembly) => {
+                  const totals = assemblyTotals.get(assembly.id) ?? { count: 0, cents: 0 }
+                  const checked = detailIds.includes(assembly.id)
+                  return (
+                    <li key={assembly.id}>
+                      <label className="flex min-h-11 items-center gap-3 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) =>
+                            setDetailIds((current) =>
+                              value === true
+                                ? [...current.filter((id) => id !== assembly.id), assembly.id]
+                                : current.filter((id) => id !== assembly.id)
+                            )
+                          }
+                          disabled={!editable || isPending}
+                        />
+                        <span className={checked ? "flex-1 font-medium" : "flex-1"}>{assembly.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {totals.count} {totals.count === 1 ? "line" : "lines"}
+                        </span>
+                        <span className="w-28 text-right tabular-nums">{formatCurrency(totals.cents / 100)}</span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            </fieldset>
           )}
         </form>
       </div>

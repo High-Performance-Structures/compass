@@ -15,7 +15,7 @@ vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivity
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
-import { saveProjectEstimateAssembly, deleteProjectEstimateAssembly } from "@/app/actions/estimate-assemblies"
+import { saveProjectEstimateAssembly, deleteProjectEstimateAssembly, setEstimateAssemblyClientDetail } from "@/app/actions/estimate-assemblies"
 
 let sqlite: InstanceType<typeof Database>
 
@@ -35,6 +35,7 @@ beforeEach(() => {
     sqlite.exec(`CREATE TABLE "${config.name}" (${columns.join(",")})`)
   }
   sqlite.exec(readFileSync("drizzle/0177_estimate_assemblies.sql", "utf8"))
+  sqlite.exec(readFileSync("drizzle/0242_estimate_assembly_client_detail.sql", "utf8"))
   sqlite.exec("INSERT INTO projects (id, name, organization_id) VALUES ('project', 'Example', 'org')")
   const db = drizzle(sqlite)
   db.insert(projectEstimates).values([
@@ -110,12 +111,35 @@ describe("assembly server actions and persistence", () => {
       SELECT id || '-copy', project_id, 'foreign', assembly_id, division_code, division_name, cost_code, cost_code_name, description, line_total_cents, created_at, updated_at FROM project_estimate_lines WHERE estimate_id = 'estimate'`)
     const queries: { readonly sql: string; readonly values: readonly unknown[] }[] = []
     const db = vi.fn().mockReturnValue({ prepare: (sql: string) => ({ bind: (...values: unknown[]) => { const query = { sql, values }; queries.push(query); return query } }) })()
-    estimateAssemblyRevisionStatements({ db, projectId: "project", estimateId: "foreign", now: "later", assemblies: [{ id, name: "Foundation", description: "Complete scope", sortOrder: 0 }] })
+    estimateAssemblyRevisionStatements({ db, projectId: "project", estimateId: "foreign", now: "later", assemblies: [{ id, name: "Foundation", description: "Complete scope", sortOrder: 0, clientDetail: true }] })
     sqlite.transaction(() => { for (const query of queries) sqlite.prepare(query.sql).run(...query.values) })()
-    const copy = sqlite.prepare("SELECT id, name FROM project_estimate_assemblies WHERE estimate_id = 'foreign'").get()
-    expect(copy).toEqual({ id: expect.any(String), name: "Foundation" })
-    expect(copy).not.toEqual({ id, name: "Foundation" })
+    const copy = sqlite.prepare("SELECT id, name, client_detail FROM project_estimate_assemblies WHERE estimate_id = 'foreign'").get()
+    // A new version keeps which assemblies the client sees broken out.
+    expect(copy).toEqual({ id: expect.any(String), name: "Foundation", client_detail: 1 })
+    expect(copy).not.toEqual({ id, name: "Foundation", client_detail: 1 })
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM project_estimate_lines WHERE estimate_id = 'foreign' AND description != 'Foreign'").get()).toEqual({ count: 2 })
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM project_estimate_lines l JOIN project_estimate_assemblies a ON a.id = l.assembly_id WHERE l.estimate_id = 'foreign' AND a.estimate_id = 'foreign'").get()).toEqual({ count: 1 })
+  })
+
+  it("saves which assemblies the client report breaks out, replacing the earlier choice", async () => {
+    const foundation = await createAssembly("Foundation", ["concrete"])
+    const earthwork = await createAssembly("Earthwork", ["earth"])
+    const detail = (): unknown => sqlite.prepare("SELECT name, client_detail FROM project_estimate_assemblies ORDER BY name").all()
+    expect(detail()).toEqual([{ name: "Earthwork", client_detail: 0 }, { name: "Foundation", client_detail: 0 }])
+    expect((await setEstimateAssemblyClientDetail("project", "estimate", [foundation])).success).toBe(true)
+    expect(detail()).toEqual([{ name: "Earthwork", client_detail: 0 }, { name: "Foundation", client_detail: 1 }])
+    expect(mocks.recordActivityEvent).toHaveBeenLastCalledWith(expect.objectContaining({ summary: "Client report lists cost codes for: Foundation" }))
+    expect((await setEstimateAssemblyClientDetail("project", "estimate", [earthwork])).success).toBe(true)
+    expect(detail()).toEqual([{ name: "Earthwork", client_detail: 1 }, { name: "Foundation", client_detail: 0 }])
+    expect((await setEstimateAssemblyClientDetail("project", "estimate", [])).success).toBe(true)
+    expect(detail()).toEqual([{ name: "Earthwork", client_detail: 0 }, { name: "Foundation", client_detail: 0 }])
+  })
+
+  it("refuses another estimate's assembly and locked estimates without changing the choice", async () => {
+    const foundation = await createAssembly("Foundation", ["concrete"])
+    expect((await setEstimateAssemblyClientDetail("project", "foreign", [foundation])).success).toBe(false)
+    sqlite.exec("UPDATE project_estimates SET status = 'accepted' WHERE id = 'estimate'")
+    expect((await setEstimateAssemblyClientDetail("project", "estimate", [foundation])).success).toBe(false)
+    expect(sqlite.prepare("SELECT client_detail FROM project_estimate_assemblies").get()).toEqual({ client_detail: 0 })
   })
 })

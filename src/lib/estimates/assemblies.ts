@@ -5,6 +5,8 @@ export type EstimateAssembly = {
   readonly name: string
   readonly description: string | null
   readonly sortOrder: number
+  /** Show this assembly's cost codes and breakdowns to the client. */
+  readonly clientDetail: boolean
 }
 
 type AssemblyLine = {
@@ -19,6 +21,7 @@ export type EstimateAssemblyGroup<T> = {
   readonly id: string | null
   readonly name: string
   readonly description: string | null
+  readonly clientDetail: boolean
   readonly subtotalCents: number
   readonly lines: readonly T[]
 }
@@ -37,7 +40,7 @@ export function groupEstimateAssemblies<T extends AssemblyLine>(
   }
   const definitions = [
     ...[...assemblies].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    { id: null, name: "Other work", description: null },
+    { id: null, name: "Other work", description: null, clientDetail: false },
   ]
   return definitions.map((assembly) => {
     const items = buckets.get(assembly.id) ?? []

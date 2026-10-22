@@ -11,7 +11,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 
-const assembly = { id: "foundation", name: "Foundation", description: null, sortOrder: 0 }
+const assembly = { id: "foundation", name: "Foundation", description: null, sortOrder: 0, clientDetail: false }
 const lines: readonly ProjectEstimateLineItem[] = [
   { id: "earth", divisionCode: "31", divisionName: "Earthwork", costCode: "31-100", description: "Excavation", lineTotalCents: 1200000 },
   { id: "concrete", divisionCode: "03", divisionName: "Concrete", costCode: "03-100", description: "Footings", lineTotalCents: 1800000 },

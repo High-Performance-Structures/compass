@@ -13,9 +13,9 @@ export function estimateAssemblyRevisionStatements(input: {
   return [
     ...copies.map(({ assembly, id }) => input.db.prepare(
       `INSERT INTO project_estimate_assemblies
-       (id, estimate_id, name, description, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, input.estimateId, assembly.name, assembly.description, assembly.sortOrder, input.now, input.now)),
+       (id, estimate_id, name, description, sort_order, client_detail, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, input.estimateId, assembly.name, assembly.description, assembly.sortOrder, assembly.clientDetail ? 1 : 0, input.now, input.now)),
     ...copies.map(({ assembly, id }) => input.db.prepare(
       `UPDATE project_estimate_lines SET assembly_id = ?
        WHERE estimate_id = ? AND project_id = ? AND assembly_id = ?`
