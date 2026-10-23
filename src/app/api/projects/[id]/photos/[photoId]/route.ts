@@ -1,5 +1,5 @@
 import { resolveProjectRouteId } from "@/lib/project-route-id"
-import { and, eq, or } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import {
@@ -34,6 +34,12 @@ const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
 function audienceValue(value: string | null): ProjectAudience | null {
   if (value === "owner" || value === "sub_vendor") return value
   return null
+}
+
+function resourceTypeValue(
+  value: string | null
+): "photo" | "owner_update_document" {
+  return value === "owner_update_document" ? "owner_update_document" : "photo"
 }
 
 function environmentString(
@@ -76,6 +82,9 @@ export async function GET(
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Photo not found", { status: 404 })
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
+    const resourceType = resourceTypeValue(
+      request.nextUrl.searchParams.get("resourceType")
+    )
     const viewerIsInternal =
       user.organizationType === "internal" && isInternalStaffRole(user.role)
     let projectOrganizationId = user.organizationId
@@ -94,7 +103,7 @@ export async function GET(
         projectId,
         recipientUserId: user.id,
         resourceId: photoId,
-        resourceType: "photo",
+        resourceType,
         audience,
       })
       if (!granted) return new Response("Photo not found", { status: 404 })
@@ -141,7 +150,10 @@ export async function GET(
               eq(dailyLogPhotos.id, photoId),
               eq(dailyLogPhotos.projectId, projectId),
               eq(dailyLogPhotos.reviewStatus, "approved"),
-              visibility
+              visibility,
+              resourceType === "owner_update_document"
+                ? sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
+                : sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`,
             )
       )
       .limit(1)

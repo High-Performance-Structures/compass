@@ -70,6 +70,7 @@ const {
   draftOwnerUpdateFromDailyLogs,
   getProjectFieldSummary,
   getProjectOwnerUpdates,
+  getOwnerProjectUpdateDocument,
   publishOwnerProjectUpdate,
   recallOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
@@ -234,7 +235,10 @@ function createDatabase(): {
       id TEXT PRIMARY KEY,
       organization_id TEXT NOT NULL,
       name TEXT NOT NULL,
-      project_number TEXT
+      project_number TEXT,
+      address TEXT,
+      client_name TEXT,
+      project_manager TEXT
     );
     CREATE TABLE users (
       id TEXT PRIMARY KEY,
@@ -300,7 +304,14 @@ function createDatabase(): {
       author_id TEXT,
       source_system TEXT NOT NULL DEFAULT 'compass',
       log_date TEXT NOT NULL,
+      weather_temp_f REAL,
+      weather_conditions TEXT,
+      weather_precipitation TEXT,
       work_completed TEXT NOT NULL DEFAULT '',
+      issues TEXT,
+      notes TEXT,
+      crew_present TEXT,
+      safety_incidents TEXT,
       review_status TEXT NOT NULL DEFAULT 'draft',
       is_client_visible INTEGER NOT NULL DEFAULT 0,
       tags TEXT,
@@ -320,6 +331,7 @@ function createDatabase(): {
       caption TEXT,
       review_status TEXT NOT NULL,
       owner_visible INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT '2026-07-28T12:00:00.000Z'
     );
@@ -336,6 +348,22 @@ function createDatabase(): {
       external_url TEXT,
       metadata TEXT
     );
+    CREATE TRIGGER owner_update_publish_attachment_approval
+    AFTER UPDATE OF status ON owner_project_updates
+    FOR EACH ROW
+    WHEN OLD.status = 'draft' AND NEW.status = 'published'
+    BEGIN
+      UPDATE daily_log_photos
+      SET review_status = 'approved', owner_visible = 1, updated_at = NEW.updated_at
+      WHERE project_id = NEW.project_id
+        AND (
+          id IN (SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]')))
+          OR id IN (
+            SELECT json_extract(value, '$.id')
+            FROM json_each(COALESCE(NEW.schedule_snapshot, '{}'), '$.documents')
+          )
+        );
+    END;
   `)
   // @ts-expect-error The test adapter implements the D1 methods used by Drizzle.
   return { sqlite, db: drizzle(createD1(sqlite)) }
@@ -708,7 +736,8 @@ describe("owner update mutation authorization and fencing", () => {
     expect(document).toMatchObject({
       driveFileId: null,
       driveUrl: null,
-      compassUrl: projectAudiencePhotoUrl("project-client", "document-1", "owner"),
+      compassUrl:
+        "/api/projects/project-client/photos/document-1?audience=owner&resourceType=owner_update_document",
     })
     expect(JSON.stringify({ photo, document })).not.toContain("drive-secret")
   })
@@ -749,13 +778,191 @@ describe("owner update mutation authorization and fencing", () => {
         fileName: "visible.jpg",
         driveFileId: null,
         driveUrl: null,
-        thumbnailUrl: null,
+        thumbnailUrl:
+          "/api/projects/project-client/photos/client-visible-photo?audience=owner",
       }),
     ])
     expect(summary.photoReviewFolder).toBeNull()
     expect(summary.ownerUpdateCount).toBe(1)
     expect(summary.draftOwnerUpdateCount).toBe(0)
     expect(summary.nextScheduleItem).toBeNull()
+  })
+
+  it("closes external summary and list DTOs around hostile stored fields", async () => {
+    seedExternalOwnerSummary(sqlite)
+    run(
+      sqlite,
+      "UPDATE projects SET name = ?, project_number = ? WHERE id = ?",
+      "https://drive.google.com/project-name",
+      "drive-project-id-12345678901234567890",
+      "project-client"
+    )
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET title = ?, summary = ?, channel = ? WHERE id = ?",
+      "https://drive.google.com/title",
+      "Public update\nhttps://drive.google.com/summary",
+      "https://drive.google.com/channel",
+      "client-published"
+    )
+    run(
+      sqlite,
+      "UPDATE daily_log_photos SET source_system = ?, file_name = ?, caption = ? WHERE id = ?",
+      "https://drive.google.com/source",
+      "drive-file-id-12345678901234567890",
+      "Safe caption\nhttps://drive.google.com/caption",
+      "client-visible-photo"
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const [summary, updates] = await Promise.all([
+      getProjectFieldSummary("project-client"),
+      getProjectOwnerUpdates("project-client"),
+    ])
+    const serialized = JSON.stringify({ summary, updates })
+
+    expect(serialized).not.toContain("drive.google.com")
+    expect(serialized).not.toContain("12345678901234567890")
+    expect(summary.latestPhotos[0]).toMatchObject({
+      sourceSystem: "Compass",
+      driveFileId: null,
+      driveUrl: null,
+      thumbnailUrl:
+        "/api/projects/project-client/photos/client-visible-photo?audience=owner",
+    })
+    expect(updates[0]).toMatchObject({
+      title: "Owner update",
+      summary: "Public update",
+      channel: "compass",
+      createdAt: "",
+      updatedAt: "",
+    })
+  })
+
+  it("closes the external owner-update document DTO and ignores raw snapshot fields", async () => {
+    seedExternalOwnerSummary(sqlite)
+    run(
+      sqlite,
+      `UPDATE projects
+       SET name = ?, project_number = ?, address = ?, client_name = ?, project_manager = ?
+       WHERE id = ?`,
+      "https://drive.google.com/project-name",
+      "drive-project-id-12345678901234567890",
+      "https://drive.google.com/address",
+      "https://drive.google.com/client",
+      "https://drive.google.com/manager",
+      "project-client"
+    )
+    run(
+      sqlite,
+      `UPDATE daily_logs
+       SET source_system = ?, work_completed = ?, issues = ?, notes = ?,
+           crew_present = ?, safety_incidents = ?
+       WHERE id = ?`,
+      "https://drive.google.com/source",
+      "Published work\nhttps://drive.google.com/work",
+      "https://drive.google.com/issues",
+      "https://drive.google.com/notes",
+      "https://drive.google.com/crew",
+      "https://drive.google.com/safety",
+      "client-visible-log"
+    )
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, captured_at, source_system, file_name, mime_type,
+          drive_file_id, drive_url, caption, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, ?)`,
+      "client-visible-document",
+      "project-client",
+      "https://drive.google.com/date",
+      "https://drive.google.com/source",
+      "drive-document-id-12345678901234567890",
+      "application/pdf",
+      "drive-document-id",
+      "https://drive.google.com/document",
+      "Document caption\nhttps://drive.google.com/caption",
+      "2026-07-28T12:00:00.000Z"
+    )
+    run(
+      sqlite,
+      `UPDATE owner_project_updates
+       SET title = ?, summary = ?, channel = ?, source_daily_log_ids = ?,
+           selected_photo_ids = ?, schedule_snapshot = ?
+       WHERE id = ?`,
+      "https://drive.google.com/title",
+      "Summary\nhttps://drive.google.com/summary",
+      "https://drive.google.com/channel",
+      JSON.stringify(["client-visible-log"]),
+      JSON.stringify(["client-visible-photo"]),
+      JSON.stringify({
+        version: 2,
+        completedScheduleItems: [],
+        lookAheadScheduleItems: [
+          {
+            id: "schedule-provider-id-12345678901234567890",
+            title: "https://drive.google.com/schedule",
+            startDate: "2026-07-28",
+            endDate: "2026-07-29",
+            assignedTo: "https://drive.google.com/assignee",
+            status: "https://drive.google.com/status",
+            percentComplete: 50,
+            notes: "https://drive.google.com/notes",
+          },
+        ],
+        todos: [],
+        documents: [
+          {
+            id: "client-visible-document",
+            fileName: "drive-document-id-12345678901234567890",
+            mimeType: "application/pdf",
+            driveFileId: "drive-document-id",
+            driveUrl: "https://drive.google.com/document",
+            caption: "https://drive.google.com/document-caption",
+            capturedAt: "2026-07-28T12:00:00.000Z",
+            sourceSystem: "https://drive.google.com/source",
+          },
+        ],
+      }),
+      "client-published"
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const document = await getOwnerProjectUpdateDocument(
+      "project-client",
+      "client-published"
+    )
+    const serialized = JSON.stringify(document)
+
+    expect(serialized).not.toContain("drive.google.com")
+    expect(serialized).not.toContain("12345678901234567890")
+    expect(document.canManage).toBe(false)
+    expect(document.viewerId).toBe("")
+    expect(document.update.sourceDailyLogIds).toEqual([])
+    expect(document.update.selectedPhotoIds).toEqual([])
+    expect(document.todos).toEqual([])
+    expect(document.availableTodos).toEqual([])
+    expect(document.documents).toEqual([
+      expect.objectContaining({
+        id: "client-visible-document",
+        driveFileId: null,
+        driveUrl: null,
+        compassUrl:
+          "/api/projects/project-client/photos/client-visible-document?audience=owner&resourceType=owner_update_document",
+      }),
+    ])
   })
 
   it("rejects an inactive owner-update reader before database access", async () => {
