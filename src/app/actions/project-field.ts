@@ -27,6 +27,7 @@ import {
   dailyLogs,
   dailyLogTaskLinks,
   ownerProjectUpdates,
+  organizations,
   projectExternalLinks,
   projectMembers,
   projectOperations,
@@ -83,11 +84,13 @@ import {
 } from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
+import {
+  ownerUpdateExternalDocument,
+  ownerUpdateExternalPhoto,
+} from "@/lib/owner-updates/external-projection"
 import { can } from "@/lib/permissions"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
-import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
@@ -190,6 +193,30 @@ type OwnerUpdatePhoto = {
 
 type OwnerUpdatePhotoFolder = {
   readonly label: string
+}
+
+type OwnerProjectUpdateReadRow = {
+  readonly id: string
+  readonly projectId: string
+  readonly title: string
+  readonly updateDate: string
+  readonly summary: string
+  readonly status: string
+  readonly channel: string
+  readonly sourceDailyLogIds: string | null
+  readonly selectedPhotoIds: string | null
+  readonly periodStart: string | null
+  readonly periodEnd: string | null
+  readonly scheduleSnapshot: string | null
+  readonly publishedAt: string | null
+  readonly sentAt: string | null
+  readonly recalledAt: string | null
+  readonly revision: number
+  readonly updatedAt: string
+}
+
+type OwnerUpdateDocumentView = OwnerUpdateDocumentSelection & {
+  readonly compassUrl: string | null
 }
 
 type PhotoReviewFolder = {
@@ -386,7 +413,7 @@ export type OwnerProjectUpdateDocument = {
   readonly availableDailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
   readonly availablePhotos: readonly OwnerUpdatePhoto[]
-  readonly documents: readonly OwnerUpdateDocumentSelection[]
+  readonly documents: readonly OwnerUpdateDocumentView[]
   readonly availableDocuments: readonly OwnerUpdateDocumentSelection[]
   readonly photoFolder: OwnerUpdatePhotoFolder | null
   readonly nextScheduleItem: {
@@ -680,14 +707,22 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   const db = await assertOwnerUpdateReadAccess(viewer)
   await requireFeaturePermission(viewer, "owner-updates", "read")
 
-  if (
-    isInternalStaffRole(viewer.role) &&
-    viewer.organizationType === "internal" &&
-    viewer.organizationId
-  ) {
+  const internalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
+
+  if (internalViewer && viewer.organizationId) {
     const project = await db
       .select({ id: projects.id })
       .from(projects)
+      .innerJoin(
+        organizations,
+        and(
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId),
+          eq(organizations.type, "internal"),
+          eq(organizations.isActive, true)
+        )
+      )
       .where(
         and(
           eq(projects.id, projectId),
@@ -698,26 +733,32 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
       .get()
     if (!project) throw new Error("Project not found")
   } else {
-    await assertProjectAccess(db, viewer, projectId)
-  }
-
-  if (
-    !isInternalStaffRole(viewer.role) ||
-    viewer.organizationType !== "internal"
-  ) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .innerJoin(
+        projectMembers,
         and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, viewer.id)
+          eq(projectMembers.projectId, projects.id),
+          eq(projectMembers.userId, viewer.id),
+          inArray(projectMembers.role, ["client", "owner"])
         )
       )
+      .innerJoin(
+        organizations,
+        and(
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId ?? ""),
+          eq(organizations.type, viewer.organizationType ?? ""),
+          eq(organizations.isActive, true)
+        )
+      )
+      .where(
+        eq(projects.id, projectId)
+      )
+      .limit(1)
       .get()
-    if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-      throw new Error("Project not found")
-    }
+    if (!project) throw new Error("Project not found")
   }
   return { db, viewer }
 }
@@ -1219,28 +1260,67 @@ export async function getProjectFieldSummary(
         thumbnailUrl: null,
       }))
 
-  const updateRows = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      summary: ownerProjectUpdates.summary,
-    })
-    .from(ownerProjectUpdates)
-    .where(
-      and(
-        eq(ownerProjectUpdates.projectId, projectId),
-        visibleStatuses === null
-          ? undefined
-          : inArray(ownerProjectUpdates.status, visibleStatuses)
-      )
-    )
-    .orderBy(
-      desc(ownerProjectUpdates.updateDate),
-      desc(ownerProjectUpdates.createdAt)
-    )
+  const updateRows = isInternalViewer
+    ? await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+        })
+        .from(ownerProjectUpdates)
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            visibleStatuses === null
+              ? undefined
+              : inArray(ownerProjectUpdates.status, visibleStatuses)
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
+    : await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+        })
+        .from(ownerProjectUpdates)
+        .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            inArray(ownerProjectUpdates.status, ["published", "sent"])
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
 
   const [nextTask] = isInternalViewer
     ? await db
@@ -1378,33 +1458,70 @@ export async function getProjectOwnerUpdates(
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
   const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
+  const internalViewer = visibleStatuses === null
 
-  const updateRows = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      summary: ownerProjectUpdates.summary,
-      publishedAt: ownerProjectUpdates.publishedAt,
-      sentAt: ownerProjectUpdates.sentAt,
-      createdAt: ownerProjectUpdates.createdAt,
-      updatedAt: ownerProjectUpdates.updatedAt,
-    })
-    .from(ownerProjectUpdates)
-    .where(
-      and(
-        eq(ownerProjectUpdates.projectId, projectId),
-        visibleStatuses === null
-          ? undefined
-          : inArray(ownerProjectUpdates.status, visibleStatuses)
-      )
-    )
-    .orderBy(
-      desc(ownerProjectUpdates.updateDate),
-      desc(ownerProjectUpdates.createdAt)
-    )
+  const updateRows = internalViewer
+    ? await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+          publishedAt: ownerProjectUpdates.publishedAt,
+          sentAt: ownerProjectUpdates.sentAt,
+          createdAt: ownerProjectUpdates.createdAt,
+          updatedAt: ownerProjectUpdates.updatedAt,
+        })
+        .from(ownerProjectUpdates)
+        .where(eq(ownerProjectUpdates.projectId, projectId))
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
+    : await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+          publishedAt: ownerProjectUpdates.publishedAt,
+          sentAt: ownerProjectUpdates.sentAt,
+          createdAt: ownerProjectUpdates.createdAt,
+          updatedAt: ownerProjectUpdates.updatedAt,
+        })
+        .from(ownerProjectUpdates)
+        .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            inArray(ownerProjectUpdates.status, ["published", "sent"])
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
 
   return updateRows
 }
@@ -1414,17 +1531,56 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
   readonly name: string
   readonly projectNumber: string | null
 }> {
-  const { db } = await verifyOwnerUpdateReadAccess(projectId)
-  const project = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1)
-    .get()
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const internalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
+  const project = internalViewer
+    ? await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+        })
+        .from(projects)
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, "internal"),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(eq(projects.id, projectId))
+        .limit(1)
+        .get()
+    : await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+        })
+        .from(projects)
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(eq(projects.id, projectId))
+        .limit(1)
+        .get()
   if (!project) throw new Error("Project not found")
   return project
 }
@@ -2474,6 +2630,89 @@ export async function getOwnerProjectUpdateDocument(
 ): Promise<OwnerProjectUpdateDocument> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
   const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
+  const internalViewer = visibleStatuses === null
+
+  let update: OwnerProjectUpdateReadRow | undefined
+  if (internalViewer) {
+    const [internalUpdate] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        projectId: ownerProjectUpdates.projectId,
+        title: ownerProjectUpdates.title,
+        updateDate: ownerProjectUpdates.updateDate,
+        summary: ownerProjectUpdates.summary,
+        status: ownerProjectUpdates.status,
+        channel: ownerProjectUpdates.channel,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+        selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        periodStart: ownerProjectUpdates.periodStart,
+        periodEnd: ownerProjectUpdates.periodEnd,
+        scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
+        publishedAt: ownerProjectUpdates.publishedAt,
+        sentAt: ownerProjectUpdates.sentAt,
+        recalledAt: ownerProjectUpdates.recalledAt,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+      .from(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+    update = internalUpdate
+  } else {
+    const [externalUpdate] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        projectId: ownerProjectUpdates.projectId,
+        title: ownerProjectUpdates.title,
+        updateDate: ownerProjectUpdates.updateDate,
+        summary: ownerProjectUpdates.summary,
+        status: ownerProjectUpdates.status,
+        channel: ownerProjectUpdates.channel,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+        selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        periodStart: ownerProjectUpdates.periodStart,
+        periodEnd: ownerProjectUpdates.periodEnd,
+        scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
+        publishedAt: ownerProjectUpdates.publishedAt,
+        sentAt: ownerProjectUpdates.sentAt,
+        recalledAt: ownerProjectUpdates.recalledAt,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+      .from(ownerProjectUpdates)
+      .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+      .innerJoin(
+        projectMembers,
+        and(
+          eq(projectMembers.projectId, projects.id),
+          eq(projectMembers.userId, viewer.id),
+          inArray(projectMembers.role, ["client", "owner"])
+        )
+      )
+      .innerJoin(
+        organizations,
+        and(
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId ?? ""),
+          eq(organizations.type, viewer.organizationType ?? ""),
+          eq(organizations.isActive, true)
+        )
+      )
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          inArray(ownerProjectUpdates.status, ["published", "sent"])
+        )
+      )
+      .limit(1)
+    update = externalUpdate
+  }
 
   const [project] = await db
     .select({
@@ -2486,38 +2725,6 @@ export async function getOwnerProjectUpdateDocument(
     })
     .from(projects)
     .where(eq(projects.id, projectId))
-    .limit(1)
-
-  const [update] = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      projectId: ownerProjectUpdates.projectId,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      summary: ownerProjectUpdates.summary,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
-      selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
-      periodStart: ownerProjectUpdates.periodStart,
-      periodEnd: ownerProjectUpdates.periodEnd,
-      scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
-      publishedAt: ownerProjectUpdates.publishedAt,
-      sentAt: ownerProjectUpdates.sentAt,
-      recalledAt: ownerProjectUpdates.recalledAt,
-      revision: ownerProjectUpdates.revision,
-      updatedAt: ownerProjectUpdates.updatedAt,
-    })
-    .from(ownerProjectUpdates)
-    .where(
-      and(
-        eq(ownerProjectUpdates.id, updateId),
-        eq(ownerProjectUpdates.projectId, projectId),
-        visibleStatuses === null
-          ? undefined
-          : inArray(ownerProjectUpdates.status, visibleStatuses)
-      )
-    )
     .limit(1)
 
   if (!project || !update) {
@@ -2537,7 +2744,6 @@ export async function getOwnerProjectUpdateDocument(
     update.scheduleSnapshot
   )
   const canManage = can(viewer, "project", "update")
-  const internalViewer = visibleStatuses === null
 
   const allLogRows = await db
     .select({
@@ -2740,19 +2946,23 @@ export async function getOwnerProjectUpdateDocument(
         update.status !== "published" ||
         (row.reviewStatus === "approved" && row.ownerVisible)
     )
-    .map((row) => ({
-      id: row.id,
-      sourceSystem: row.sourceSystem,
-      fileName: row.fileName,
-      mimeType: row.mimeType,
-      driveUrl: row.driveUrl,
-      driveFileId: row.driveFileId,
-      thumbnailUrl: row.thumbnailUrl,
-      caption: row.caption,
-      capturedAt: row.capturedAt,
-      reviewStatus: row.reviewStatus,
-      ownerVisible: row.ownerVisible,
-    }))
+    .map((row) =>
+      internalViewer
+        ? {
+            id: row.id,
+            sourceSystem: row.sourceSystem,
+            fileName: row.fileName,
+            mimeType: row.mimeType,
+            driveUrl: row.driveUrl,
+            driveFileId: row.driveFileId,
+            thumbnailUrl: row.thumbnailUrl,
+            caption: row.caption,
+            capturedAt: row.capturedAt,
+            reviewStatus: row.reviewStatus,
+            ownerVisible: row.ownerVisible,
+          }
+        : ownerUpdateExternalPhoto(projectId, row)
+    )
 
   const selectablePhotoRows = retainSelectedAndScopedRows(
     imageRows,
@@ -2848,6 +3058,14 @@ export async function getOwnerProjectUpdateDocument(
     composerSnapshot.lookAheadScheduleItems,
     currentCandidates.lookAheadScheduleItems
   )
+  const documentsForViewer: readonly OwnerUpdateDocumentView[] = internalViewer
+    ? composerSnapshot.documents.map((document) => ({
+        ...document,
+        compassUrl: null,
+      }))
+    : composerSnapshot.documents.map((document) =>
+        ownerUpdateExternalDocument(projectId, document)
+      )
 
   return {
     canManage,
@@ -2875,7 +3093,7 @@ export async function getOwnerProjectUpdateDocument(
     availableDailyLogs,
     photos: photosForUpdate,
     availablePhotos,
-    documents: composerSnapshot.documents,
+    documents: documentsForViewer,
     availableDocuments,
     photoFolder:
       photoFolder
