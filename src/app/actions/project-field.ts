@@ -86,8 +86,14 @@ import {
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import {
+  ownerUpdateExternalDailyLog,
   ownerUpdateExternalDocument,
+  ownerUpdateExternalListItem,
   ownerUpdateExternalPhoto,
+  ownerUpdateExternalProject,
+  ownerUpdateExternalSchedule,
+  ownerUpdateExternalUpdate,
+  safeCompassId,
   selectCurrentOwnerVisibleDocuments,
 } from "@/lib/owner-updates/external-projection"
 import { can } from "@/lib/permissions"
@@ -565,6 +571,54 @@ async function getOwnerUpdateComposerCandidates(
     completedScheduleItems,
     lookAheadScheduleItems,
     todos,
+  }
+}
+
+async function getOwnerUpdatePublishedScheduleItems(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  selectedIds: readonly string[],
+  periodStart: string | null,
+  periodEnd: string | null
+): Promise<{
+  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
+}> {
+  if (
+    selectedIds.length === 0 ||
+    periodStart === null ||
+    periodEnd === null
+  ) {
+    return { completedScheduleItems: [], lookAheadScheduleItems: [] }
+  }
+
+  const rows = await db
+    .select({
+      id: scheduleTasks.id,
+      title: scheduleTasks.title,
+      startDate: scheduleTasks.startDate,
+      endDate: scheduleTasks.endDateCalculated,
+      assignedTo: scheduleTasks.assignedTo,
+      status: scheduleTasks.status,
+      percentComplete: scheduleTasks.percentComplete,
+    })
+    .from(scheduleTasks)
+    .where(
+      and(
+        eq(scheduleTasks.projectId, projectId),
+        inArray(scheduleTasks.id, selectedIds)
+      )
+    )
+    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+
+  const selections = rows.map((row) => ({ ...row, notes: "" }))
+  return {
+    completedScheduleItems: selections.filter((item) =>
+      isCompletedScheduleCandidate(item, periodStart, periodEnd)
+    ),
+    lookAheadScheduleItems: selections.filter((item) =>
+      isLookAheadScheduleCandidate(item, periodEnd)
+    ),
   }
 }
 
@@ -1388,6 +1442,17 @@ export async function getProjectFieldSummary(
   const latestLog = logRows[0]
   const visibleUpdateRows = updateRows
   const latestUpdate = visibleUpdateRows[0]
+  const latestAuthorName = latestLog
+    ? dailyLogAuthorName({
+        compassAuthorName: displayName({
+          displayName: latestLog.authorDisplayName,
+          firstName: latestLog.authorFirstName,
+          lastName: latestLog.authorLastName,
+          email: latestLog.authorEmail,
+        }),
+        tags: latestLog.tags,
+      })
+    : null
   const thumbnailPhotoRows = photoRows.filter(
     (photo) => photo.thumbnailUrl !== null
   )
@@ -1405,6 +1470,22 @@ export async function getProjectFieldSummary(
     ...imagePhotoRows,
     ...archivePhotoRows,
   ]
+  const externalLatestLog = latestLog
+    ? ownerUpdateExternalDailyLog({
+        id: latestLog.id,
+        sourceSystem: latestLog.sourceSystem,
+        logDate: latestLog.logDate,
+        workCompleted: latestLog.workCompleted,
+        weather: null,
+        manpower: null,
+        safetyNotes: null,
+        issues: null,
+        nextSteps: null,
+        authorName: latestAuthorName,
+        reviewStatus: latestLog.reviewStatus,
+        isClientVisible: latestLog.isClientVisible,
+      })
+    : null
 
   return {
     dailyLogCount: logRows.length,
@@ -1415,21 +1496,27 @@ export async function getProjectFieldSummary(
       .length,
     latestDailyLog: latestLog
       ? {
-          id: latestLog.id,
-          sourceSystem: latestLog.sourceSystem,
-          logDate: latestLog.logDate,
-          workCompleted: latestLog.workCompleted,
-          reviewStatus: latestLog.reviewStatus,
-          isClientVisible: latestLog.isClientVisible,
-          authorName: dailyLogAuthorName({
-            compassAuthorName: displayName({
-              displayName: latestLog.authorDisplayName,
-              firstName: latestLog.authorFirstName,
-              lastName: latestLog.authorLastName,
-              email: latestLog.authorEmail,
-            }),
-            tags: latestLog.tags,
-          }),
+          id: isInternalViewer
+            ? latestLog.id
+            : safeCompassId(latestLog.id),
+          sourceSystem: isInternalViewer
+            ? latestLog.sourceSystem
+            : externalLatestLog?.sourceSystem ?? "Compass",
+          logDate: isInternalViewer
+            ? latestLog.logDate
+            : externalLatestLog?.logDate ?? "1970-01-01",
+          workCompleted: isInternalViewer
+            ? latestLog.workCompleted
+            : externalLatestLog?.workCompleted ?? "No work details provided.",
+          reviewStatus: isInternalViewer
+            ? latestLog.reviewStatus
+            : externalLatestLog?.reviewStatus ?? "approved",
+          isClientVisible: isInternalViewer
+            ? latestLog.isClientVisible
+            : true,
+          authorName: isInternalViewer
+            ? latestAuthorName
+            : externalLatestLog?.authorName ?? null,
         }
       : null,
     photoCount: photoRows.length,
@@ -1438,18 +1525,22 @@ export async function getProjectFieldSummary(
     ).length,
     ownerVisiblePhotoCount: photoRows.filter((photo) => photo.ownerVisible)
       .length,
-    latestPhotos: latestPhotoRows.slice(0, 4).map((photo) => ({
-      id: photo.id,
-      sourceSystem: photo.sourceSystem,
-      fileName: photo.fileName,
-      driveFileId: photo.driveFileId,
-      driveUrl: photo.driveUrl,
-      thumbnailUrl: photo.thumbnailUrl,
-      caption: photo.caption,
-      reviewStatus: photo.reviewStatus,
-      ownerVisible: photo.ownerVisible,
-      capturedAt: photo.capturedAt,
-    })),
+    latestPhotos: latestPhotoRows.slice(0, 4).map((photo) =>
+      isInternalViewer
+        ? {
+            id: photo.id,
+            sourceSystem: photo.sourceSystem,
+            fileName: photo.fileName,
+            driveFileId: photo.driveFileId,
+            driveUrl: photo.driveUrl,
+            thumbnailUrl: photo.thumbnailUrl,
+            caption: photo.caption,
+            reviewStatus: photo.reviewStatus,
+            ownerVisible: photo.ownerVisible,
+            capturedAt: photo.capturedAt,
+          }
+        : ownerUpdateExternalPhoto(projectId, photo)
+    ),
     photoReviewFolder:
       photoReviewFolder?.url !== null && photoReviewFolder?.url !== undefined
         ? {
@@ -1463,14 +1554,37 @@ export async function getProjectFieldSummary(
       (update) => update.status === "draft"
     ).length,
     latestOwnerUpdate: latestUpdate
-      ? {
-          id: latestUpdate.id,
-          title: latestUpdate.title,
-          updateDate: latestUpdate.updateDate,
-          status: latestUpdate.status,
-          channel: latestUpdate.channel,
-          summary: latestUpdate.summary,
-        }
+      ? isInternalViewer
+        ? {
+            id: latestUpdate.id,
+            title: latestUpdate.title,
+            updateDate: latestUpdate.updateDate,
+            status: latestUpdate.status,
+            channel: latestUpdate.channel,
+            summary: latestUpdate.summary,
+          }
+        : (() => {
+            const safeUpdate = ownerUpdateExternalListItem({
+              id: latestUpdate.id,
+              title: latestUpdate.title,
+              updateDate: latestUpdate.updateDate,
+              status: latestUpdate.status,
+              channel: latestUpdate.channel,
+              summary: latestUpdate.summary,
+              publishedAt: null,
+              sentAt: null,
+              createdAt: "",
+              updatedAt: "",
+            })
+            return {
+              id: safeUpdate.id,
+              title: safeUpdate.title,
+              updateDate: safeUpdate.updateDate,
+              status: safeUpdate.status,
+              channel: safeUpdate.channel,
+              summary: safeUpdate.summary,
+            }
+          })()
       : null,
     nextScheduleItem:
       viewer.organizationType === "internal" &&
@@ -1550,7 +1664,9 @@ export async function getProjectOwnerUpdates(
           desc(ownerProjectUpdates.createdAt)
         )
 
-  return updateRows
+  return internalViewer
+    ? updateRows
+    : updateRows.map((update) => ownerUpdateExternalListItem(update))
 }
 
 export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
@@ -3029,6 +3145,12 @@ export async function getOwnerProjectUpdateDocument(
   const selectedDocumentIds = composerSnapshot.documents.map(
     (document) => document.id
   )
+  const selectedScheduleIds = [
+    ...new Set([
+      ...composerSnapshot.completedScheduleItems.map((item) => item.id),
+      ...composerSnapshot.lookAheadScheduleItems.map((item) => item.id),
+    ]),
+  ]
   const selectedDocumentIdSet = new Set(selectedDocumentIds)
   const scopedDocumentRows = documentRows.filter(
     (row) =>
@@ -3064,6 +3186,19 @@ export async function getOwnerProjectUpdateDocument(
           lookAheadScheduleItems: [],
           todos: [],
         }
+  const externalPublishedCandidates =
+    !internalViewer && (update.status === "published" || update.status === "sent")
+      ? await getOwnerUpdatePublishedScheduleItems(
+          db,
+          projectId,
+          selectedScheduleIds,
+          update.periodStart,
+          update.periodEnd
+        )
+      : {
+          completedScheduleItems: [],
+          lookAheadScheduleItems: [],
+        }
   function reconciledScheduleItems(
     selected: readonly OwnerUpdateScheduleSelection[],
     available: readonly OwnerUpdateScheduleSelection[]
@@ -3083,14 +3218,18 @@ export async function getOwnerProjectUpdateDocument(
         : { ...candidate, title: item.title, notes: item.notes }
     })
   }
-  const completedScheduleItems = reconciledScheduleItems(
-    composerSnapshot.completedScheduleItems,
-    currentCandidates.completedScheduleItems
-  )
-  const lookAheadScheduleItems = reconciledScheduleItems(
-    composerSnapshot.lookAheadScheduleItems,
-    currentCandidates.lookAheadScheduleItems
-  )
+  const completedScheduleItems = internalViewer
+    ? reconciledScheduleItems(
+        composerSnapshot.completedScheduleItems,
+        currentCandidates.completedScheduleItems
+      )
+    : externalPublishedCandidates.completedScheduleItems
+  const lookAheadScheduleItems = internalViewer
+    ? reconciledScheduleItems(
+        composerSnapshot.lookAheadScheduleItems,
+        currentCandidates.lookAheadScheduleItems
+      )
+    : externalPublishedCandidates.lookAheadScheduleItems
   const currentPublishedDocuments = selectCurrentOwnerVisibleDocuments(
     selectedDocumentIds,
     documentRows
@@ -3098,6 +3237,32 @@ export async function getOwnerProjectUpdateDocument(
   const selectedDocumentIdsForViewer = internalViewer
     ? selectedDocumentIds
     : currentPublishedDocuments.map((document) => document.id)
+  const externalDailyLogs = dailyLogsForUpdate.map((log) =>
+    ownerUpdateExternalDailyLog(log)
+  )
+  const externalCompletedScheduleItems = completedScheduleItems.map(
+    (item, index) => ownerUpdateExternalSchedule(item, index, true)
+  )
+  const externalLookAheadScheduleItems = lookAheadScheduleItems.map(
+    (item, index) => ownerUpdateExternalSchedule(item, index, false)
+  )
+  const externalProject = ownerUpdateExternalProject(project)
+  const externalUpdate = ownerUpdateExternalUpdate({
+    id: update.id,
+    title: update.title,
+    updateDate: update.updateDate,
+    status: update.status,
+    channel: update.channel,
+    summary: update.summary,
+    publishedAt: update.publishedAt,
+    sentAt: update.sentAt,
+    createdAt: "",
+    updatedAt: update.updatedAt,
+    recalledAt: update.recalledAt,
+    revision: update.revision,
+    periodStart: update.periodStart,
+    periodEnd: update.periodEnd,
+  })
   const documentsForViewer: readonly OwnerUpdateDocumentView[] = internalViewer
     ? composerSnapshot.documents.map((document) => ({
         ...document,
@@ -3108,48 +3273,70 @@ export async function getOwnerProjectUpdateDocument(
       )
 
   return {
-    canManage,
-    viewerId: viewer.id,
-    project,
-    update: {
-      id: update.id,
-      title: update.title,
-      updateDate: update.updateDate,
-      summary: update.summary,
-      status: update.status,
-      channel: update.channel,
-      publishedAt: update.publishedAt,
-      sentAt: update.sentAt,
-      recalledAt: update.recalledAt,
-      revision: update.revision,
-      updatedAt: update.updatedAt,
-      sourceDailyLogIds: selectedDailyLogIds,
-      selectedPhotoIds,
-      selectedDocumentIds: selectedDocumentIdsForViewer,
-      periodStart: update.periodStart,
-      periodEnd: update.periodEnd,
-    },
-    dailyLogs: dailyLogsForUpdate,
-    availableDailyLogs,
+    canManage: internalViewer && canManage,
+    viewerId: internalViewer ? viewer.id : "",
+    project: internalViewer ? project : externalProject,
+    update: internalViewer
+      ? {
+          id: update.id,
+          title: update.title,
+          updateDate: update.updateDate,
+          summary: update.summary,
+          status: update.status,
+          channel: update.channel,
+          publishedAt: update.publishedAt,
+          sentAt: update.sentAt,
+          recalledAt: update.recalledAt,
+          revision: update.revision,
+          updatedAt: update.updatedAt,
+          sourceDailyLogIds: selectedDailyLogIds,
+          selectedPhotoIds,
+          selectedDocumentIds: selectedDocumentIdsForViewer,
+          periodStart: update.periodStart,
+          periodEnd: update.periodEnd,
+        }
+      : {
+          id: externalUpdate.id,
+          title: externalUpdate.title,
+          updateDate: externalUpdate.updateDate,
+          summary: externalUpdate.summary,
+          status: externalUpdate.status,
+          channel: externalUpdate.channel,
+          publishedAt: externalUpdate.publishedAt,
+          sentAt: null,
+          recalledAt: null,
+          revision: 0,
+          updatedAt: "",
+          sourceDailyLogIds: [],
+          selectedPhotoIds: [],
+          selectedDocumentIds: [],
+          periodStart: externalUpdate.periodStart,
+          periodEnd: externalUpdate.periodEnd,
+        },
+    dailyLogs: internalViewer ? dailyLogsForUpdate : externalDailyLogs,
+    availableDailyLogs: internalViewer ? availableDailyLogs : [],
     photos: photosForUpdate,
-    availablePhotos,
+    availablePhotos: internalViewer ? availablePhotos : [],
     documents: documentsForViewer,
-    availableDocuments,
-    photoFolder:
-      photoFolder
-        ? {
-            label: photoFolder.label,
-          }
-        : null,
-    nextScheduleItem: lookAheadScheduleItems[0] ?? null,
-    completedScheduleItems,
-    lookAheadScheduleItems,
-    availableCompletedScheduleItems:
-      currentCandidates.completedScheduleItems,
-    availableLookAheadScheduleItems:
-      currentCandidates.lookAheadScheduleItems,
-    todos: composerSnapshot.todos,
-    availableTodos: currentCandidates.todos,
+    availableDocuments: internalViewer ? availableDocuments : [],
+    photoFolder: internalViewer && photoFolder ? { label: photoFolder.label } : null,
+    nextScheduleItem: internalViewer
+      ? lookAheadScheduleItems[0] ?? null
+      : externalLookAheadScheduleItems[0] ?? null,
+    completedScheduleItems: internalViewer
+      ? completedScheduleItems
+      : externalCompletedScheduleItems,
+    lookAheadScheduleItems: internalViewer
+      ? lookAheadScheduleItems
+      : externalLookAheadScheduleItems,
+    availableCompletedScheduleItems: internalViewer
+      ? currentCandidates.completedScheduleItems
+      : [],
+    availableLookAheadScheduleItems: internalViewer
+      ? currentCandidates.lookAheadScheduleItems
+      : [],
+    todos: internalViewer ? composerSnapshot.todos : [],
+    availableTodos: internalViewer ? currentCandidates.todos : [],
   }
 }
 
@@ -3879,24 +4066,12 @@ export async function publishOwnerProjectUpdate(
 
   const now = new Date().toISOString()
 
-  const attachmentBatches = ownerUpdateIdBatches(selectedAttachmentIds)
-  const attachmentFence =
-    selectedAttachmentIds.length === 0
-      ? null
-      : sql<boolean>`EXISTS (
-          SELECT 1
-          FROM owner_project_updates AS publish_update
-          WHERE publish_update.id = ${updateId}
-            AND publish_update.project_id = ${projectId}
-            AND publish_update.status = 'draft'
-            AND publish_update.revision = ${version.revision}
-            AND publish_update.updated_at = ${version.updatedAt}
-        )`
   // Keep the final attachment ownership check inside the publish CAS while
   // binding the selection as one JSON value instead of one value per ID.
-  // D1 rejects statements that exceed its bound-variable limit. Reuse this
-  // fence on attachment updates so a failed publish cannot partially approve
-  // files when a selected row disappears between validation and publication.
+  // D1 rejects statements that exceed its bound-variable limit. The
+  // owner_update_publish_attachment_approval trigger applies the selected
+  // attachment approval from this same CAS statement, so a stale revision
+  // cannot leave attachments approved.
   const selectedAttachmentsBelongToProject = sql<boolean>`NOT EXISTS (
     SELECT 1
     FROM json_each(${JSON.stringify(selectedAttachmentIds)}) AS selected_attachment
@@ -3907,31 +4082,7 @@ export async function publishOwnerProjectUpdate(
         AND publish_photo.id = selected_attachment.value
     )
   )`
-  const attachmentUpdates = attachmentBatches.map((idBatch) =>
-    db
-      .update(dailyLogPhotos)
-      .set({
-        reviewStatus: "approved",
-        ownerVisible: true,
-        updatedAt: now,
-      })
-      .where(
-        attachmentFence === null
-          ? and(
-              eq(dailyLogPhotos.projectId, projectId),
-              inArray(dailyLogPhotos.id, idBatch),
-              selectedAttachmentsBelongToProject
-            )
-          : and(
-              eq(dailyLogPhotos.projectId, projectId),
-              inArray(dailyLogPhotos.id, idBatch),
-              selectedAttachmentsBelongToProject,
-              attachmentFence
-            )
-      )
-      .returning({ id: dailyLogPhotos.id })
-  )
-  const publishStatement = db
+  const updatedRows = await db
     .update(ownerProjectUpdates)
     .set({
       status: "published",
@@ -3945,37 +4096,19 @@ export async function publishOwnerProjectUpdate(
       publishedAt: now,
       updatedAt: now,
     })
-    .where(
-      and(
-        eq(ownerProjectUpdates.id, updateId),
-        eq(ownerProjectUpdates.projectId, projectId),
-        eq(ownerProjectUpdates.status, "draft"),
-        eq(ownerProjectUpdates.revision, version.revision),
-        eq(ownerProjectUpdates.updatedAt, version.updatedAt),
-        selectedAttachmentsBelongToProject
-      )
-    )
+    .where(and(
+      eq(ownerProjectUpdates.id, updateId),
+      eq(ownerProjectUpdates.projectId, projectId),
+      eq(ownerProjectUpdates.status, "draft"),
+      eq(ownerProjectUpdates.revision, version.revision),
+      eq(ownerProjectUpdates.updatedAt, version.updatedAt),
+      selectedAttachmentsBelongToProject
+    ))
     .returning({
       revision: ownerProjectUpdates.revision,
       updatedAt: ownerProjectUpdates.updatedAt,
     })
-  const batchResults =
-    attachmentUpdates.length === 0
-      ? await db.batch([publishStatement])
-      : await db.batch([
-          attachmentUpdates[0],
-          ...attachmentUpdates.slice(1),
-          publishStatement,
-        ])
-  const lastBatchResult = batchResults[batchResults.length - 1]
-  const updated = Array.isArray(lastBatchResult)
-    ? lastBatchResult.find((row): row is OwnerUpdateMutationVersion => {
-        if (row === null || typeof row !== "object") return false
-        const revision = Reflect.get(row, "revision")
-        const updatedAt = Reflect.get(row, "updatedAt")
-        return typeof revision === "number" && typeof updatedAt === "string"
-      })
-    : undefined
+  const updated = updatedRows[0]
   if (!updated) {
     return {
       success: false,

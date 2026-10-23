@@ -76,6 +76,12 @@ const photo = {
   mimeType: "image/jpeg",
 } as const
 
+const document = {
+  driveFileId: "drive-document-1",
+  fileName: "plans.pdf",
+  mimeType: "application/pdf",
+} as const
+
 function query(result: unknown) {
   const chain = {
     from() {
@@ -102,7 +108,7 @@ function configureDb({
 }: {
   readonly viewerRole: string
   readonly membershipRole: string | null
-  readonly visiblePhoto: typeof photo | null
+  readonly visiblePhoto: typeof photo | typeof document | null
   readonly projectAccessError?: Error
 }): void {
   mocks.requireAuth.mockResolvedValue({
@@ -148,8 +154,14 @@ function configureDb({
   mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(true)
 }
 
-async function getPhoto(audience?: string): Promise<Response> {
-  const suffix = audience === undefined ? "" : `?audience=${audience}`
+async function getPhoto(
+  audience?: string,
+  resourceType?: string
+): Promise<Response> {
+  const search = new URLSearchParams()
+  if (audience !== undefined) search.set("audience", audience)
+  if (resourceType !== undefined) search.set("resourceType", resourceType)
+  const suffix = search.toString().length > 0 ? `?${search.toString()}` : ""
   return GET(
     new NextRequest(
       `https://compass.example/api/projects/project-1/photos/photo-1${suffix}`
@@ -206,6 +218,31 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
       resourceType: "photo",
       audience: "owner",
     })
+  })
+
+  it("serves an approved owner-visible composer document with its exact grant type", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: document,
+    })
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(200)
+    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith({
+      db: expect.anything(),
+      organizationId: "org-1",
+      projectId: "project-1",
+      recipientUserId: "viewer-1",
+      resourceId: "photo-1",
+      resourceType: "owner_update_document",
+      audience: "owner",
+    })
+    expect(mocks.downloadFile).toHaveBeenCalledWith(
+      "drive@example.com",
+      "drive-document-1"
+    )
   })
 
   it("serves an approved owner-visible photo to a member with the owner role", async () => {
@@ -277,6 +314,33 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     expect(response.status).toBe(404)
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("denies a revoked composer document before Drive access", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: document,
+    })
+    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("denies an unapproved composer document before Drive access", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: null,
+    })
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(404)
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 

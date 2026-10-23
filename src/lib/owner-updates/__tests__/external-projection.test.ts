@@ -94,7 +94,7 @@ describe("owner update external projection", () => {
       driveFileId: null,
       driveUrl: null,
       compassUrl:
-        "/api/projects/project-1/photos/document-1?audience=owner",
+        "/api/projects/project-1/photos/document-1?audience=owner&resourceType=owner_update_document",
       caption: null,
       capturedAt: "2026-10-20",
       sourceSystem: "Compass",
