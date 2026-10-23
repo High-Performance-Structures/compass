@@ -2,7 +2,6 @@ import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
-import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   projectMembers,
@@ -25,7 +24,9 @@ import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
+import { assertOwnerUpdateReadAccess } from "@/lib/owner-updates/access"
 import { assertProjectAccess } from "@/lib/project-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
@@ -70,22 +71,34 @@ export async function GET(
 ): Promise<Response> {
   try {
     const user = await requireAuth()
+    const db = await assertOwnerUpdateReadAccess(user)
     const { id: rawProjectId, photoId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Photo not found", { status: 404 })
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const project = await assertProjectAccess(db, user, projectId)
-    if (!project.organizationId) {
-      return new Response("Photo not found", { status: 404 })
-    }
+    const viewerIsInternal =
+      user.organizationType === "internal" && isInternalStaffRole(user.role)
+    let projectOrganizationId = user.organizationId
 
-    const viewerIsInternal = isInternalStaffRole(user.role)
+    if (viewerIsInternal) {
+      const project = await assertProjectAccess(db, user, projectId)
+      projectOrganizationId = project.organizationId
+    }
     if (!viewerIsInternal) {
-      if (audience === null) {
+      if (audience === null || projectOrganizationId === null) {
         return new Response("Photo not found", { status: 404 })
       }
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: projectOrganizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: photoId,
+        resourceType: "photo",
+        audience,
+      })
+      if (!granted) return new Response("Photo not found", { status: 404 })
+
       const [membership] = await db
         .select({ role: projectMembers.role })
         .from(projectMembers)
@@ -139,10 +152,15 @@ export async function GET(
       return new Response("Photo not found", { status: 404 })
     }
 
+    if (projectOrganizationId === null) {
+      return new Response("Photo not found", { status: 404 })
+    }
+    const { env } = await getCloudflareContext()
+
     const [auth] = await db
       .select()
       .from(googleAuth)
-      .where(eq(googleAuth.organizationId, project.organizationId))
+      .where(eq(googleAuth.organizationId, projectOrganizationId))
       .limit(1)
     if (!auth) {
       return new Response("Photo storage is unavailable", { status: 503 })

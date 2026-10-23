@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   isGoogleNativeFile: vi.fn(),
   getExportMimeType: vi.fn(),
   getExportExtension: vi.fn(),
+  assertOwnerUpdateReadAccess: vi.fn(),
+  hasActiveExternalProjectResourceGrant: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
@@ -24,6 +26,13 @@ vi.mock("@/lib/project-route-id", () => ({
 }))
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+}))
+vi.mock("@/lib/owner-updates/access", () => ({
+  assertOwnerUpdateReadAccess: mocks.assertOwnerUpdateReadAccess,
+}))
+vi.mock("@/lib/project-external-resource-access", () => ({
+  hasActiveExternalProjectResourceGrant:
+    mocks.hasActiveExternalProjectResourceGrant,
 }))
 vi.mock("@/lib/crypto", () => ({ decrypt: mocks.decrypt }))
 vi.mock("@/lib/google/config", () => ({
@@ -48,6 +57,9 @@ const baseUser = {
   id: "viewer-1",
   email: "viewer@example.com",
   role: "client",
+  isActive: true,
+  organizationId: "org-1",
+  organizationType: "client",
 } as const
 
 const project = {
@@ -90,7 +102,11 @@ function configureDb({
   readonly visiblePhoto: typeof photo | null
   readonly projectAccessError?: Error
 }): void {
-  mocks.requireAuth.mockResolvedValue({ ...baseUser, role: viewerRole })
+  mocks.requireAuth.mockResolvedValue({
+    ...baseUser,
+    role: viewerRole,
+    organizationType: viewerRole === "admin" ? "internal" : "client",
+  })
   mocks.resolveProjectRouteId.mockResolvedValue(project.id)
   if (projectAccessError) {
     mocks.assertProjectAccess.mockRejectedValue(projectAccessError)
@@ -125,6 +141,8 @@ function configureDb({
       return query({ serviceAccountKeyEncrypted: "encrypted" })
     },
   })
+  mocks.assertOwnerUpdateReadAccess.mockImplementation(() => mocks.getDb())
+  mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(true)
 }
 
 async function getPhoto(audience?: string): Promise<Response> {
@@ -166,6 +184,15 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     expect(response.status).toBe(200)
     expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith({
+      db: expect.anything(),
+      organizationId: "org-1",
+      projectId: "project-1",
+      recipientUserId: "viewer-1",
+      resourceId: "photo-1",
+      resourceType: "photo",
+      audience: "owner",
+    })
   })
 
   it("serves an approved owner-visible photo to a member with the owner role", async () => {
@@ -225,6 +252,21 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
+  it("denies an ungranted external photo before project or Drive lookup", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: photo,
+    })
+    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(404)
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
   it.each([
     ["a cross-project request", "project-2"],
     ["a cross-organization request", "project-from-org-2"],
@@ -236,17 +278,21 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
       projectAccessError: new Error("Project not found"),
     })
     mocks.resolveProjectRouteId.mockResolvedValue(resolvedProjectId)
+    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
 
     const response = await getPhoto("owner")
 
     // Access-helper rejection must have the same not-found semantics as the
     // route's other external denial paths, without touching photo or Drive.
     expect(response.status).toBe(404)
-    expect(mocks.assertProjectAccess).toHaveBeenCalledWith(
-      expect.objectContaining({ select: expect.any(Function) }),
-      expect.objectContaining({ id: "viewer-1", role: "client" }),
-      resolvedProjectId
+    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: resolvedProjectId,
+        resourceId: "photo-1",
+        audience: "owner",
+      })
     )
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 })

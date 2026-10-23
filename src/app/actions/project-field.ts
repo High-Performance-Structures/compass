@@ -44,6 +44,7 @@ import {
   type DailyLogFollowUpSetup,
 } from "@/lib/daily-logs/log-followups-server"
 import { getCloudflareContext } from "@/lib/db"
+import { canUseProjectDailyLogWorkspace } from "@/lib/daily-logs/workspace-access"
 import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
 import { resolveTown } from "@/lib/portfolio-map/model"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
@@ -85,6 +86,7 @@ import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import {
   ownerUpdateExternalDocument,
   ownerUpdateExternalPhoto,
+  selectCurrentOwnerVisibleDocuments,
 } from "@/lib/owner-updates/external-projection"
 import { can } from "@/lib/permissions"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -695,6 +697,31 @@ async function verifyProjectAccess(
   }
 
   return db
+}
+
+async function verifyProjectDailyLogWorkspaceAccess(projectId: string): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly viewer: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const viewer = await requireAuth()
+  if (!canUseProjectDailyLogWorkspace(viewer)) {
+    throw new Error("Project not found")
+  }
+  const db = await assertOwnerUpdateRouteAccess(viewer)
+  await requireFeaturePermission(viewer, "daily-logs", "read")
+  const organizationId = requireOrg(viewer)
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+  if (!project) throw new Error("Project not found")
+  return { db, viewer }
 }
 
 async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
@@ -1586,9 +1613,8 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
 export async function getProjectDailyLogWorkspace(
   projectId: string
 ): Promise<ProjectDailyLogWorkspace> {
-  const viewer = await requireAuth()
-  const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
-  const db = await verifyProjectAccess(projectId)
+  const { db, viewer } = await verifyProjectDailyLogWorkspaceAccess(projectId)
+  const canViewWorkingSchedule = isInternalStaffRole(viewer.role)
 
   const [projectRow] = await db
     .select({
@@ -2779,6 +2805,13 @@ export async function getOwnerProjectUpdateDocument(
     )
     .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
+  const selectedExternalAttachmentIds = [
+    ...new Set([
+      ...selectedPhotoIds,
+      ...composerSnapshot.documents.map((document) => document.id),
+    ]),
+  ]
+
   const allPhotoRows = await db
     .select({
       id: dailyLogPhotos.id,
@@ -2831,7 +2864,7 @@ export async function getOwnerProjectUpdateDocument(
               ),
             )
           : and(
-              inArray(dailyLogPhotos.id, selectedPhotoIds),
+              inArray(dailyLogPhotos.id, selectedExternalAttachmentIds),
               eq(dailyLogPhotos.reviewStatus, "approved"),
               eq(dailyLogPhotos.ownerVisible, true)
             ),
@@ -3050,12 +3083,19 @@ export async function getOwnerProjectUpdateDocument(
     composerSnapshot.lookAheadScheduleItems,
     currentCandidates.lookAheadScheduleItems
   )
+  const currentPublishedDocuments = selectCurrentOwnerVisibleDocuments(
+    selectedDocumentIds,
+    documentRows
+  )
+  const selectedDocumentIdsForViewer = internalViewer
+    ? selectedDocumentIds
+    : currentPublishedDocuments.map((document) => document.id)
   const documentsForViewer: readonly OwnerUpdateDocumentView[] = internalViewer
     ? composerSnapshot.documents.map((document) => ({
         ...document,
         compassUrl: null,
       }))
-    : composerSnapshot.documents.map((document) =>
+    : currentPublishedDocuments.map((document) =>
         ownerUpdateExternalDocument(projectId, document)
       )
 
@@ -3077,7 +3117,7 @@ export async function getOwnerProjectUpdateDocument(
       updatedAt: update.updatedAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
-      selectedDocumentIds,
+      selectedDocumentIds: selectedDocumentIdsForViewer,
       periodStart: update.periodStart,
       periodEnd: update.periodEnd,
     },
