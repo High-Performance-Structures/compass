@@ -65,6 +65,8 @@ It walks forward from the start date, counting only days that aren't weekends or
 
 Blank schedule items created in the manual form default to one workday, the smallest useful duration without making an assumption about the work. Template and import paths carry their own explicit workday counts and are not replaced by this UI default.
 
+**Schedule templates.** `saveScheduleAsTemplate` (`src/app/actions/schedule-template-export.ts`) captures a project's whole schedule as a published template of kind `schedule` (`src/lib/templates/schedule-template-capture.ts`). Start dates become workday offsets from the earliest item, measured on the source project's calendar. Predecessors keep their type and lag. Saving into an existing saved schedule adds a new version, and earlier versions stay for projects that used them. `importScheduleTemplateItems` brings a saved schedule back. The import dialog pre-selects every item of a saved schedule, keeps predecessors between selected items, and lays the dates out on the target project's calendar.
+
 The module also exports `countBusinessDays` (how many workdays between two dates) and `addBusinessDays` (move a date forward or backward by N business days). All three functions respect the project's workday exception calendar.
 
 

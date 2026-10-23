@@ -96,6 +96,7 @@ import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
+import { ScheduleSaveTemplateDialog } from "./schedule-save-template-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import {
   previewScheduleDocument,
@@ -285,6 +286,7 @@ export function ScheduleView({
     useState<SchedulePrintSelection | null>(null)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [bulkTemplateDialogOpen, setBulkTemplateDialogOpen] = useState(false)
+  const [saveTemplateDialogOpen, setSaveTemplateDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [publicationStatus, setPublicationStatus] =
     useState<SchedulePublicationStatus | null>(initialPublicationStatus)
@@ -299,6 +301,15 @@ export function ScheduleView({
   useEffect(() => {
     setPublicationStatus(initialPublicationStatus)
   }, [initialPublicationStatus])
+  const projectTaskIds = useMemo(
+    () =>
+      new Set(
+        initialData.tasks
+          .filter((task) => task.projectId === projectId)
+          .map((task) => task.id)
+      ),
+    [initialData.tasks, projectId]
+  )
   // Unknown (several projects at once) keeps asking; the server decides.
   const shiftReasonRequired = publicationStatus?.shiftReasonRequired ?? true
 
@@ -1295,6 +1306,10 @@ export function ScheduleView({
                     <IconTemplate className="size-4 mr-2" />
                     Add full project setup
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSaveTemplateDialogOpen(true)}>
+                    <IconTemplate className="size-4 mr-2" />
+                    Save schedule as template
+                  </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuItem asChild>
@@ -1432,6 +1447,18 @@ export function ScheduleView({
             open={templateDialogOpen}
             onOpenChange={setTemplateDialogOpen}
             projectId={projectId}
+          />
+          <ScheduleSaveTemplateDialog
+            open={saveTemplateDialogOpen}
+            onOpenChange={setSaveTemplateDialogOpen}
+            projectId={projectId}
+            projectName={projectName}
+            itemCount={projectTaskIds.size}
+            dependencyCount={
+              initialData.dependencies.filter((dependency) =>
+                projectTaskIds.has(dependency.successorId)
+              ).length
+            }
           />
         </>
       )}

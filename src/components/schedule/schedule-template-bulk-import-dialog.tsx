@@ -127,7 +127,11 @@ export function ScheduleTemplateBulkImportDialog({
 
   function chooseTemplate(nextTemplateId: string): void {
     setTemplateId(nextTemplateId)
-    setSelectedItemIds([])
+    // A schedule saved from a project comes in whole; staff can still untick items.
+    const nextGroup = templateGroups?.find((group) => group.templateId === nextTemplateId)
+    setSelectedItemIds(
+      nextGroup?.isSavedSchedule ? nextGroup.scheduleItems.map((item) => item.id) : []
+    )
     setTodoAssignments({})
   }
 
@@ -205,9 +209,9 @@ export function ScheduleTemplateBulkImportDialog({
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <DialogTitle>Import schedule items from a template</DialogTitle>
           <DialogDescription>
-            Choose only the items this project needs. Dates retain their template spacing,
-            dependencies are preserved between selected items, and optional to-dos can be
-            assigned to one selected schedule item.
+            Import a whole saved schedule or only the items this project needs. Dates keep
+            their template spacing, predecessors are kept between selected items, and
+            optional to-dos can be assigned to one selected schedule item.
           </DialogDescription>
         </DialogHeader>
 
@@ -249,6 +253,9 @@ export function ScheduleTemplateBulkImportDialog({
                     options={(templateGroups ?? []).map((group) => ({
                       value: group.templateId,
                       label: group.templateName,
+                      description: group.isSavedSchedule
+                        ? `Saved schedule · ${group.scheduleItems.length} items`
+                        : group.tradeCategory,
                     }))}
                     value={templateId}
                     onValueChange={chooseTemplate}
@@ -400,8 +407,10 @@ export function ScheduleTemplateBulkImportDialog({
             onClick={handleImport}
           >
             {isImporting && <IconLoader2 className="mr-2 size-4 animate-spin" />}
-            Import {selectedItems.length || "selected"} item
-            {selectedItems.length === 1 ? "" : "s"}
+            {selectedGroup && selectedItems.length > 1 &&
+            selectedItems.length === selectedGroup.scheduleItems.length
+              ? `Import whole schedule (${selectedItems.length} items)`
+              : `Import ${selectedItems.length || "selected"} item${selectedItems.length === 1 ? "" : "s"}`}
           </Button>
         </DialogFooter>
       </DialogContent>
