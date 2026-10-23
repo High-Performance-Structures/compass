@@ -45,6 +45,17 @@ export function projectAudiencePhotoUrl(
   return `/api/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}?audience=${audience}`
 }
 
+export function projectAudienceOwnerUpdateDocumentUrl(
+  projectId: string,
+  documentId: string,
+  audience: "owner" | "sub_vendor"
+): string {
+  return (
+    `/api/projects/${encodeURIComponent(projectId)}/photos/` +
+    `${encodeURIComponent(documentId)}?audience=${audience}&resourceType=owner_update_document`
+  )
+}
+
 export function projectInternalPhotoUrl(
   projectId: string,
   photoId: string
