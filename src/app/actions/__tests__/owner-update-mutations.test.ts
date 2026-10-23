@@ -2,6 +2,14 @@ import { drizzle } from "drizzle-orm/d1"
 import { createRequire } from "node:module"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import {
+  projectAudiencePhotoUrl,
+} from "@/lib/photo-sources"
+import {
+  ownerUpdateExternalDocument,
+  ownerUpdateExternalPhoto,
+} from "@/lib/owner-updates/external-projection"
+
 vi.mock("server-only", () => ({}))
 
 const mocks = {
@@ -624,22 +632,32 @@ describe("owner update mutation authorization and fencing", () => {
   })
 
   it("applies the owner visibility scope in the list query for external readers", async () => {
+    seedExternalOwnerSummary(sqlite)
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const updates = await getProjectOwnerUpdates("project-client")
+
+    expect(updates.map((update) => update.id)).toEqual(["client-published"])
+  })
+
+  it("does not let a foreign organization membership authorize owner updates", async () => {
     run(
       sqlite,
-      `INSERT INTO owner_project_updates
-         (id, project_id, created_by, title, update_date, summary, status, channel,
-          period_start, period_end, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      "update-published",
+      "INSERT INTO owner_project_updates (id, project_id, created_by, title, update_date, summary, status, channel, created_at, updated_at, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "foreign-published",
       "project-1",
       "staff-1",
-      "Published update",
+      "Foreign project update",
       "2026-07-29",
-      "Published summary",
+      "Foreign summary",
       "published",
       "compass",
-      "2026-07-29",
-      "2026-07-29",
       "2026-07-29T14:00:00.000Z",
       "2026-07-29T14:00:00.000Z",
       0
@@ -652,23 +670,62 @@ describe("owner update mutation authorization and fencing", () => {
       organizationType: "client",
     })
 
-    const updates = await getProjectOwnerUpdates("project-1")
+    await expect(getProjectOwnerUpdates("project-1")).rejects.toThrow(
+      "Project not found"
+    )
+  })
 
-    expect(updates.map((update) => update.id)).toEqual(["update-published"])
+  it("replaces provider capabilities with Compass audience routes in external DTOs", () => {
+    const photo = ownerUpdateExternalPhoto("project-client", {
+      id: "photo-1",
+      sourceSystem: "buildertrend",
+      fileName: "photo.jpg",
+      mimeType: "image/jpeg",
+      driveFileId: "drive-secret",
+      driveUrl: "https://drive.google.com/file/d/drive-secret",
+      thumbnailUrl: "https://drive.google.com/thumbnail/drive-secret",
+      caption: "Published photo",
+      capturedAt: "2026-07-28T12:00:00.000Z",
+      reviewStatus: "approved",
+      ownerVisible: true,
+    })
+    const document = ownerUpdateExternalDocument("project-client", {
+      id: "document-1",
+      fileName: "plan.pdf",
+      mimeType: "application/pdf",
+      driveFileId: "drive-secret",
+      driveUrl: "https://drive.google.com/file/d/drive-secret",
+      caption: "Published plan",
+      capturedAt: "2026-07-28T12:00:00.000Z",
+      sourceSystem: "buildertrend",
+    })
+
+    expect(photo).toMatchObject({
+      driveFileId: null,
+      driveUrl: null,
+      thumbnailUrl: projectAudiencePhotoUrl("project-client", "photo-1", "owner"),
+    })
+    expect(document).toMatchObject({
+      driveFileId: null,
+      driveUrl: null,
+      compassUrl: projectAudiencePhotoUrl("project-client", "document-1", "owner"),
+    })
+    expect(JSON.stringify({ photo, document })).not.toContain("drive-secret")
   })
 
   it("does not let an internal-looking external reader see drafts", async () => {
+    seedExternalOwnerSummary(sqlite)
     mocks.requireAuth.mockResolvedValue({
       ...internalUser,
-      id: "client-1",
+      id: "owner-1",
       role: "office",
       organizationId: "org-client",
       organizationType: "client",
     })
 
-    const updates = await getProjectOwnerUpdates("project-1")
+    const updates = await getProjectOwnerUpdates("project-client")
 
-    expect(updates).toEqual([])
+    expect(updates.map((update) => update.id)).toEqual(["client-published"])
   })
 
   it("scopes the external field summary to owner-visible data and removes provider pointers", async () => {
