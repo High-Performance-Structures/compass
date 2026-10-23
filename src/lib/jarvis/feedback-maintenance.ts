@@ -229,12 +229,18 @@ export async function reconcileHistoricalFeedbackOwnership(
     const now = new Date().toISOString()
     const currentActorId = metadataActorId(item.metadata)
     const reporterFence = item.reporterEmail === null
-      ? isNull(feedbackDeskItems.reporterEmail)
-      : eq(feedbackDeskItems.reporterEmail, item.reporterEmail)
+      ? sql`reporter_email IS NULL`
+      : sql`reporter_email = ${item.reporterEmail}`
     const actorFence = currentActorId === null
       ? sql`json_extract(${feedbackDeskItems.metadata}, '$.externalActorId') IS NULL`
       : sql`json_extract(${feedbackDeskItems.metadata}, '$.externalActorId') = ${currentActorId}`
-    const updatedRows = await db.update(feedbackDeskItems).set({
+    const auditPayload = JSON.stringify({
+      schemaVersion: 1,
+      feedbackDeskItemId: item.id,
+      sourceEventCount: resolution.sourceEventCount,
+      updatedFields: ["reporterEmail", "metadata.externalActorId"],
+    })
+    const updateStatement = db.update(feedbackDeskItems).set({
       reporterEmail: resolution.reporterEmail,
       metadata: resolution.metadata,
       updatedAt: now,
@@ -245,33 +251,42 @@ export async function reconcileHistoricalFeedbackOwnership(
       reporterFence,
       actorFence,
     )).returning({ id: feedbackDeskItems.id })
-    if (updatedRows.length === 0) {
+
+    // D1 batches are atomic. The audit insert selects only the row updated by
+    // the fenced statement, so a concurrent change cannot create a free audit.
+    const auditInsert = db.insert(jarvisBridgeEvents).select(sql`
+      SELECT
+        ${crypto.randomUUID()},
+        ${organizationId},
+        'inbound',
+        'feedback-maintenance',
+        'feedback.requester_reconciled',
+        'completed',
+        ${`feedback-requester-reconcile:${item.id}`},
+        ${item.id},
+        ${auditPayload},
+        ${JSON.stringify({ success: true })},
+        0,
+        ${now},
+        NULL,
+        NULL,
+        ${now},
+        NULL,
+        ${now},
+        ${now}
+      FROM feedback_desk_items
+      WHERE id = ${item.id}
+        AND organization_id = ${organizationId}
+        AND updated_at = ${now}
+        AND reporter_email = ${resolution.reporterEmail}
+        AND metadata = ${resolution.metadata}
+    `).onConflictDoNothing()
+    const batchResults = await db.batch([updateStatement, auditInsert])
+    const updatedRows = batchResults[0]
+    if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
       conflictCount += 1
       continue
     }
-
-    const auditPayload = JSON.stringify({
-      schemaVersion: 1,
-      feedbackDeskItemId: item.id,
-      sourceEventCount: resolution.sourceEventCount,
-      updatedFields: ["reporterEmail", "metadata.externalActorId"],
-    })
-    await db.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId,
-      direction: "inbound",
-      source: "feedback-maintenance",
-      eventType: "feedback.requester_reconciled",
-      status: "completed",
-      idempotencyKey: `feedback-requester-reconcile:${item.id}`,
-      feedbackDeskItemId: item.id,
-      payload: auditPayload,
-      result: JSON.stringify({ success: true }),
-      availableAt: now,
-      completedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
     reconciledCount += 1
   }
 

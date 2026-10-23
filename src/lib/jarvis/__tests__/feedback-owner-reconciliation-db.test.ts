@@ -120,7 +120,11 @@ class FakeUpdate {
     return this
   }
 
-  public async returning(): Promise<readonly { id: string }[]> {
+  public returning(): FakeUpdate {
+    return this
+  }
+
+  public apply(): readonly { id: string }[] {
     const item = this.db.items[0]
     if (!item) return []
     const next = {
@@ -141,14 +145,40 @@ class FakeUpdate {
 }
 
 class FakeInsert {
+  private pendingValues: Record<string, unknown> | null = null
+
   public constructor(private readonly db: FakeDb) {}
 
   public values(values: Record<string, unknown>): FakeInsert {
-    this.db.auditEvents.push(values)
+    this.pendingValues = values
     return this
   }
 
-  public async onConflictDoNothing(): Promise<void> {}
+  public select(): FakeInsert {
+    this.pendingValues = {
+      source: "feedback-maintenance",
+      eventType: "feedback.requester_reconciled",
+      payload: JSON.stringify({
+        schemaVersion: 1,
+        feedbackDeskItemId: "item-1",
+        sourceEventCount: 3,
+        updatedFields: ["reporterEmail", "metadata.externalActorId"],
+      }),
+    }
+    return this
+  }
+
+  public onConflictDoNothing(): FakeInsert {
+    return this
+  }
+
+  public commit(): void {
+    if (this.db.failNextAuditInsert) {
+      this.db.failNextAuditInsert = false
+      throw new Error("simulated audit failure")
+    }
+    if (this.pendingValues) this.db.auditEvents.push(this.pendingValues)
+  }
 }
 
 class FakeDb {
@@ -157,6 +187,7 @@ class FakeDb {
   public user: User | null = null
   public membership: Membership | null = null
   public auditEvents: Record<string, unknown>[] = []
+  public failNextAuditInsert = false
 
   public select(): FakeQuery {
     return new FakeQuery(this)
@@ -168,6 +199,24 @@ class FakeDb {
 
   public insert(): FakeInsert {
     return new FakeInsert(this)
+  }
+
+  public async batch(queries: readonly unknown[]): Promise<readonly unknown[]> {
+    const items = this.items
+    const auditEvents = [...this.auditEvents]
+    try {
+      const update = queries[0]
+      if (!(update instanceof FakeUpdate)) throw new Error("missing update")
+      const updated = update.apply()
+      const audit = queries[1]
+      if (!(audit instanceof FakeInsert)) throw new Error("missing audit")
+      audit.commit()
+      return [updated, []]
+    } catch (error) {
+      this.items = items
+      this.auditEvents = auditEvents
+      throw error
+    }
   }
 }
 
@@ -260,5 +309,36 @@ describe("Feedback ownership maintenance path", () => {
     })
     expect(db.items[0]).toMatchObject({ reporterEmail: null, metadata: null })
     expect(db.auditEvents).toHaveLength(0)
+  })
+
+  it("recovers an atomic audit failure after restart exactly once", async () => {
+    const db = createFixture()
+    db.failNextAuditInsert = true
+
+    // @ts-expect-error This fixture implements only the DB methods exercised by this maintenance function.
+    await expect(reconcileHistoricalFeedbackOwnership(db, "org-1"))
+      .rejects.toThrow("simulated audit failure")
+    expect(db.items[0]).toMatchObject({ reporterEmail: null, metadata: null })
+    expect(db.auditEvents).toHaveLength(0)
+
+    // @ts-expect-error This fixture implements only the DB methods exercised by this maintenance function.
+    const recovered = await reconcileHistoricalFeedbackOwnership(db, "org-1")
+    expect(recovered).toEqual({
+      reconciledCount: 1,
+      rejectedCount: 0,
+      conflictCount: 0,
+      skippedCount: 0,
+    })
+    expect(db.auditEvents).toHaveLength(1)
+
+    // @ts-expect-error This fixture implements only the DB methods exercised by this maintenance function.
+    const rerun = await reconcileHistoricalFeedbackOwnership(db, "org-1")
+    expect(rerun).toEqual({
+      reconciledCount: 0,
+      rejectedCount: 0,
+      conflictCount: 0,
+      skippedCount: 1,
+    })
+    expect(db.auditEvents).toHaveLength(1)
   })
 })
