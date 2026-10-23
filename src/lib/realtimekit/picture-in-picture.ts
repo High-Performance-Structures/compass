@@ -70,6 +70,46 @@ function tileUnloadParticipantId(event: Event): string | null {
   return participantIdFromValue(Reflect.get(event, "detail"))
 }
 
+function participantTileForVideo(video: HTMLVideoElement): Element | null {
+  let current: Node | null = video
+  while (current) {
+    if (current instanceof Element && current.localName === "rtk-participant-tile") {
+      return current
+    }
+    current = current instanceof ShadowRoot ? current.host : current.parentNode
+  }
+  return null
+}
+
+function scanExistingTiles(root: EventTarget): readonly TileLoadDetail[] {
+  if (!(root instanceof Node)) return []
+
+  const details: TileLoadDetail[] = []
+  const visit = (node: Node): void => {
+    if (node instanceof HTMLVideoElement) {
+      const tileTarget = participantTileForVideo(node)
+      const participantId = tileTarget
+        ? participantIdFromValue(Reflect.get(tileTarget, "participant"))
+        : null
+      if (tileTarget && participantId) {
+        details.push({
+          participantId,
+          videoElement: node,
+          tileTarget,
+        })
+      }
+    }
+
+    if (node instanceof Element && node.shadowRoot) {
+      visit(node.shadowRoot)
+    }
+    for (const child of node.childNodes) visit(child)
+  }
+
+  visit(root)
+  return details
+}
+
 export function createPictureInPictureTileRegistry(): PictureInPictureTileRegistry {
   const participantVideos = new Map<
     HTMLVideoElement,
@@ -143,12 +183,22 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
     processTileUnload(event)
   }
 
+  const registerTile = (detail: TileLoadDetail): void => {
+    removeVideoRegistration(detail.videoElement)
+    detail.tileTarget?.addEventListener("tileUnload", handleTileUnloadFromTile)
+    participantVideos.set(detail.videoElement, {
+      participantId: detail.participantId,
+      tileTarget: detail.tileTarget,
+    })
+  }
+
   return {
     attach(root: EventTarget): () => void {
       if (attachedRoot === root && detachAttachedRoot) return detachAttachedRoot
       detachAttachedRoot?.()
       root.addEventListener("tileLoad", handleTileLoad)
       root.addEventListener("tileUnload", handleTileUnload)
+      for (const detail of scanExistingTiles(root)) registerTile(detail)
 
       const detach = (): void => {
         if (attachedRoot !== root) return

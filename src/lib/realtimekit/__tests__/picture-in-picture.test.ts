@@ -15,17 +15,21 @@ function loadTile(
   root: HTMLDivElement,
   participantId: string,
   video: HTMLVideoElement,
+  dispatchLoad = true,
 ): HTMLElement {
   const tile = document.createElement("rtk-participant-tile")
+  Reflect.set(tile, "participant", { id: participantId })
   const tileShadowRoot = tile.attachShadow({ mode: "open" })
   tileShadowRoot.append(video)
   const meetingShadowRoot = root.shadowRoot ?? root.attachShadow({ mode: "open" })
   meetingShadowRoot.append(tile)
-  tile.dispatchEvent(new CustomEvent("tileLoad", {
-    bubbles: true,
-    composed: true,
-    detail: { participant: { id: participantId }, videoElement: video },
-  }))
+  if (dispatchLoad) {
+    tile.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: { participant: { id: participantId }, videoElement: video },
+    }))
+  }
   return tile
 }
 
@@ -110,6 +114,26 @@ describe("RealtimeKit picture-in-picture tile registry", () => {
 
     expect(secondDetach).toBe(firstDetach)
     firstDetach()
+    root.remove()
+  })
+
+  it("replays an already loaded shadow-DOM tile after detach and reopen", () => {
+    const root = document.createElement("div")
+    const registry = createPictureInPictureTileRegistry()
+    const video = document.createElement("video")
+    markReady(video)
+    document.body.appendChild(root)
+    loadTile(root, "self", video, false)
+
+    const firstDetach = registry.attach(root)
+    expect(registry.getCandidates("self").map((candidate) => candidate.video)).toEqual([video])
+
+    firstDetach()
+    expect(registry.getCandidates("self")).toHaveLength(0)
+
+    registry.attach(root)
+    expect(registry.getCandidates("self").map((candidate) => candidate.video)).toEqual([video])
+
     root.remove()
   })
 
