@@ -10,4 +10,11 @@ describe("owner-update SQL visibility scope", () => {
   it("leaves internal readers unfiltered so drafts remain available", () => {
     expect(ownerUpdateVisibleStatuses("project_manager")).toBeNull()
   })
+
+  it("limits internal-looking roles in external organizations to published data", () => {
+    expect(ownerUpdateVisibleStatuses("office", "client")).toEqual([
+      "published",
+      "sent",
+    ])
+  })
 })

@@ -701,7 +701,10 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
     await assertProjectAccess(db, viewer, projectId)
   }
 
-  if (!isInternalStaffRole(viewer.role)) {
+  if (
+    !isInternalStaffRole(viewer.role) ||
+    viewer.organizationType !== "internal"
+  ) {
     const membership = await db
       .select({ role: projectMembers.role })
       .from(projectMembers)
@@ -1100,7 +1103,12 @@ export async function getProjectFieldSummary(
 ): Promise<ProjectFieldSummary> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
-  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
+  const visibleStatuses = ownerUpdateVisibleStatuses(
+    viewer.role,
+    viewer.organizationType
+  )
+  const isInternalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
 
   const logRows = await db
     .select({
@@ -1118,46 +1126,98 @@ export async function getProjectFieldSummary(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(eq(dailyLogs.projectId, projectId))
-    .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.createdAt))
-
-  const photoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      sourceSystem: dailyLogPhotos.sourceSystem,
-      fileName: dailyLogPhotos.fileName,
-      mimeType: dailyLogPhotos.mimeType,
-      driveFileId: dailyLogPhotos.driveFileId,
-      driveUrl: dailyLogPhotos.driveUrl,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      caption: dailyLogPhotos.caption,
-      reviewStatus: dailyLogPhotos.reviewStatus,
-      ownerVisible: dailyLogPhotos.ownerVisible,
-      capturedAt: dailyLogPhotos.capturedAt,
-    })
-    .from(dailyLogPhotos)
     .where(
       and(
-        eq(dailyLogPhotos.projectId, projectId),
-        dailyLogPhotoCollectionEligibility(),
-        not(sql<boolean>`EXISTS (
-          SELECT 1
-          FROM daily_log_photo_aliases AS alias
-          JOIN daily_log_photos AS canonical
-            ON canonical.id IS alias.canonical_photo_id
-          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-            AND alias.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
-            AND canonical.drive_file_id IS NOT NULL
-            AND (
-              canonical.drive_file_id IS NOT NULL
-              OR canonical.thumbnail_url IS NOT NULL
-            )
-        )`),
-      ),
+        eq(dailyLogs.projectId, projectId),
+        isInternalViewer ? undefined : eq(dailyLogs.isClientVisible, true)
+      )
     )
-    .orderBy(desc(dailyLogPhotos.createdAt))
+    .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.createdAt))
+
+  type FieldSummaryPhotoRow = LatestPhoto & {
+    readonly mimeType: string | null
+  }
+
+  const photoRows: readonly FieldSummaryPhotoRow[] = isInternalViewer
+    ? await db
+        .select({
+          id: dailyLogPhotos.id,
+          sourceSystem: dailyLogPhotos.sourceSystem,
+          fileName: dailyLogPhotos.fileName,
+          mimeType: dailyLogPhotos.mimeType,
+          driveFileId: dailyLogPhotos.driveFileId,
+          driveUrl: dailyLogPhotos.driveUrl,
+          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+          caption: dailyLogPhotos.caption,
+          reviewStatus: dailyLogPhotos.reviewStatus,
+          ownerVisible: dailyLogPhotos.ownerVisible,
+          capturedAt: dailyLogPhotos.capturedAt,
+        })
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              JOIN daily_log_photos AS canonical
+                ON canonical.id IS alias.canonical_photo_id
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
+                AND (
+                  canonical.drive_file_id IS NOT NULL
+                  OR canonical.thumbnail_url IS NOT NULL
+                )
+            )`)
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.createdAt))
+    : (
+        await db
+          .select({
+            id: dailyLogPhotos.id,
+            sourceSystem: dailyLogPhotos.sourceSystem,
+            fileName: dailyLogPhotos.fileName,
+            mimeType: dailyLogPhotos.mimeType,
+            caption: dailyLogPhotos.caption,
+            reviewStatus: dailyLogPhotos.reviewStatus,
+            ownerVisible: dailyLogPhotos.ownerVisible,
+            capturedAt: dailyLogPhotos.capturedAt,
+          })
+          .from(dailyLogPhotos)
+          .where(
+            and(
+              eq(dailyLogPhotos.projectId, projectId),
+              eq(dailyLogPhotos.ownerVisible, true),
+              dailyLogPhotoCollectionEligibility(),
+              not(sql<boolean>`EXISTS (
+                SELECT 1
+                FROM daily_log_photo_aliases AS alias
+                JOIN daily_log_photos AS canonical
+                  ON canonical.id IS alias.canonical_photo_id
+                WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                  AND alias.project_id IS ${dailyLogPhotos.projectId}
+                  AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                  AND canonical.mime_type LIKE 'image/%'
+                  AND canonical.drive_file_id IS NOT NULL
+                  AND (
+                    canonical.drive_file_id IS NOT NULL
+                    OR canonical.thumbnail_url IS NOT NULL
+                  )
+              )`)
+            )
+          )
+          .orderBy(desc(dailyLogPhotos.createdAt))
+      ).map((photo) => ({
+        ...photo,
+        driveFileId: null,
+        driveUrl: null,
+        thumbnailUrl: null,
+      }))
 
   const updateRows = await db
     .select({
@@ -1182,37 +1242,41 @@ export async function getProjectFieldSummary(
       desc(ownerProjectUpdates.createdAt)
     )
 
-  const [nextTask] = await db
-    .select({
-      title: scheduleTasks.title,
-      startDate: scheduleTasks.startDate,
-      endDate: scheduleTasks.endDateCalculated,
-      assignedTo: scheduleTasks.assignedTo,
-    })
-    .from(scheduleTasks)
-    .where(
-      and(
-        eq(scheduleTasks.projectId, projectId),
-        gte(scheduleTasks.endDateCalculated, today)
-      )
-    )
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(1)
+  const [nextTask] = isInternalViewer
+    ? await db
+        .select({
+          title: scheduleTasks.title,
+          startDate: scheduleTasks.startDate,
+          endDate: scheduleTasks.endDateCalculated,
+          assignedTo: scheduleTasks.assignedTo,
+        })
+        .from(scheduleTasks)
+        .where(
+          and(
+            eq(scheduleTasks.projectId, projectId),
+            gte(scheduleTasks.endDateCalculated, today)
+          )
+        )
+        .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+        .limit(1)
+    : []
 
-  const [photoReviewFolder] = await db
-    .select({
-      label: projectExternalLinks.label,
-      url: projectExternalLinks.externalUrl,
-      metadata: projectExternalLinks.metadata,
-    })
-    .from(projectExternalLinks)
-    .where(
-      and(
-        eq(projectExternalLinks.projectId, projectId),
-        eq(projectExternalLinks.system, "google_buildertrend_review_photos")
-      )
-    )
-    .limit(1)
+  const [photoReviewFolder] = isInternalViewer
+    ? await db
+        .select({
+          label: projectExternalLinks.label,
+          url: projectExternalLinks.externalUrl,
+          metadata: projectExternalLinks.metadata,
+        })
+        .from(projectExternalLinks)
+        .where(
+          and(
+            eq(projectExternalLinks.projectId, projectId),
+            eq(projectExternalLinks.system, "google_buildertrend_review_photos")
+          )
+        )
+        .limit(1)
+    : []
 
   const latestLog = logRows[0]
   const visibleUpdateRows = updateRows
@@ -1302,7 +1366,8 @@ export async function getProjectFieldSummary(
         }
       : null,
     nextScheduleItem:
-      isInternalStaffRole(viewer.role) || viewer.role === "developer"
+      viewer.organizationType === "internal" &&
+      (isInternalStaffRole(viewer.role) || viewer.role === "developer")
         ? nextTask ?? null
         : null,
   }
@@ -1312,7 +1377,7 @@ export async function getProjectOwnerUpdates(
   projectId: string
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
-  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
 
   const updateRows = await db
     .select({
@@ -2408,7 +2473,7 @@ export async function getOwnerProjectUpdateDocument(
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
-  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
 
   const [project] = await db
     .select({
@@ -2458,7 +2523,11 @@ export async function getOwnerProjectUpdateDocument(
   if (!project || !update) {
     throw new Error("Owner update not found")
   }
-  if (!isOwnerUpdateVisibleToRole(update.status, viewer.role)) {
+  if (!isOwnerUpdateVisibleToRole(
+    update.status,
+    viewer.role,
+    viewer.organizationType
+  )) {
     throw new Error("Owner update not found")
   }
 

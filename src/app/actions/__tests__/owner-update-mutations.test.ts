@@ -60,6 +60,7 @@ const {
   deleteOwnerProjectUpdateDraft,
   draftOwnerProjectUpdateWithJarvis,
   draftOwnerUpdateFromDailyLogs,
+  getProjectFieldSummary,
   getProjectOwnerUpdates,
   publishOwnerProjectUpdate,
   recallOwnerProjectUpdate,
@@ -227,6 +228,13 @@ function createDatabase(): {
       name TEXT NOT NULL,
       project_number TEXT
     );
+    CREATE TABLE users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      display_name TEXT
+    );
     CREATE TABLE project_members (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -281,7 +289,14 @@ function createDatabase(): {
     CREATE TABLE daily_logs (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
-      log_date TEXT NOT NULL
+      author_id TEXT,
+      source_system TEXT NOT NULL DEFAULT 'compass',
+      log_date TEXT NOT NULL,
+      work_completed TEXT NOT NULL DEFAULT '',
+      review_status TEXT NOT NULL DEFAULT 'draft',
+      is_client_visible INTEGER NOT NULL DEFAULT 0,
+      tags TEXT,
+      created_at TEXT NOT NULL DEFAULT '2026-07-28T12:00:00.000Z'
     );
     CREATE TABLE daily_log_photos (
       id TEXT PRIMARY KEY,
@@ -297,7 +312,21 @@ function createDatabase(): {
       caption TEXT,
       review_status TEXT NOT NULL,
       owner_visible INTEGER NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT '2026-07-28T12:00:00.000Z'
+    );
+    CREATE TABLE daily_log_photo_aliases (
+      source_photo_id TEXT PRIMARY KEY,
+      canonical_photo_id TEXT NOT NULL,
+      project_id TEXT NOT NULL
+    );
+    CREATE TABLE project_external_links (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      system TEXT NOT NULL,
+      label TEXT NOT NULL,
+      external_url TEXT,
+      metadata TEXT
     );
   `)
   // @ts-expect-error The test adapter implements the D1 methods used by Drizzle.
@@ -351,6 +380,164 @@ function seedDraft(sqlite: Sqlite): void {
     "project-1",
     "client-1",
     "owner"
+  )
+}
+
+function seedExternalOwnerSummary(sqlite: Sqlite): void {
+  run(
+    sqlite,
+    "INSERT INTO projects (id, organization_id, name, project_number) VALUES (?, ?, ?, ?)",
+    "project-client",
+    "org-client",
+    "Client Project",
+    "C-001"
+  )
+  run(
+    sqlite,
+    "INSERT INTO project_members (id, project_id, user_id, role) VALUES (?, ?, ?, ?)",
+    "membership-client-owner",
+    "project-client",
+    "owner-1",
+    "owner"
+  )
+  run(
+    sqlite,
+    "INSERT INTO users (id, email, first_name, last_name, display_name) VALUES (?, ?, ?, ?, ?)",
+    "author-1",
+    "author@example.com",
+    "Public",
+    "Author",
+    "Public Author"
+  )
+  run(
+    sqlite,
+    `INSERT INTO owner_project_updates
+       (id, project_id, created_by, title, update_date, summary, status, channel,
+        period_start, period_end, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-draft",
+    "project-client",
+    "staff-1",
+    "Private draft",
+    "2026-07-29",
+    "Private summary",
+    "draft",
+    "compass",
+    "2026-07-29",
+    "2026-07-29",
+    "2026-07-29T14:00:00.000Z",
+    "2026-07-29T14:00:00.000Z",
+    0
+  )
+  run(
+    sqlite,
+    `INSERT INTO owner_project_updates
+       (id, project_id, created_by, title, update_date, summary, status, channel,
+        period_start, period_end, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-published",
+    "project-client",
+    "staff-1",
+    "Published update",
+    "2026-07-28",
+    "Public summary",
+    "published",
+    "compass",
+    "2026-07-28",
+    "2026-07-28",
+    "2026-07-28T14:00:00.000Z",
+    "2026-07-28T14:00:00.000Z",
+    0
+  )
+  run(
+    sqlite,
+    `INSERT INTO daily_logs
+       (id, project_id, author_id, source_system, log_date, work_completed,
+        review_status, is_client_visible, tags, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-hidden-log",
+    "project-client",
+    "author-1",
+    "private-import",
+    "2026-07-29",
+    "Private work",
+    "draft",
+    0,
+    "private",
+    "2026-07-29T12:00:00.000Z"
+  )
+  run(
+    sqlite,
+    `INSERT INTO daily_logs
+       (id, project_id, author_id, source_system, log_date, work_completed,
+        review_status, is_client_visible, tags, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-visible-log",
+    "project-client",
+    "author-1",
+    "compass",
+    "2026-07-28",
+    "Published work",
+    "approved",
+    1,
+    null,
+    "2026-07-28T12:00:00.000Z"
+  )
+  run(
+    sqlite,
+    `INSERT INTO daily_log_photos
+       (id, project_id, daily_log_id, captured_at, source_system, file_name,
+        mime_type, drive_file_id, drive_url, thumbnail_url, caption,
+        review_status, owner_visible, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-hidden-photo",
+    "project-client",
+    "client-hidden-log",
+    "2026-07-29T12:00:00.000Z",
+    "private-import",
+    "private.jpg",
+    "image/jpeg",
+    "private-drive-id",
+    "https://drive.google.com/private",
+    "https://drive.google.com/private-thumb",
+    "Private photo",
+    "approved",
+    0,
+    "2026-07-29T12:00:00.000Z",
+    "2026-07-29T12:00:00.000Z"
+  )
+  run(
+    sqlite,
+    `INSERT INTO daily_log_photos
+       (id, project_id, daily_log_id, captured_at, source_system, file_name,
+        mime_type, drive_file_id, drive_url, thumbnail_url, caption,
+        review_status, owner_visible, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "client-visible-photo",
+    "project-client",
+    "client-visible-log",
+    "2026-07-28T12:00:00.000Z",
+    "compass",
+    "visible.jpg",
+    "image/jpeg",
+    "visible-drive-id",
+    "https://drive.google.com/visible",
+    "https://drive.google.com/visible-thumb",
+    "Visible photo",
+    "approved",
+    1,
+    "2026-07-28T12:00:00.000Z",
+    "2026-07-28T12:00:00.000Z"
+  )
+  run(
+    sqlite,
+    "INSERT INTO project_external_links (id, project_id, system, label, external_url, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+    "client-review-folder",
+    "project-client",
+    "google_buildertrend_review_photos",
+    "Private review folder",
+    "https://drive.google.com/folder/private",
+    '{"photoCount":2}'
   )
 }
 
@@ -468,6 +655,50 @@ describe("owner update mutation authorization and fencing", () => {
     const updates = await getProjectOwnerUpdates("project-1")
 
     expect(updates.map((update) => update.id)).toEqual(["update-published"])
+  })
+
+  it("does not let an internal-looking external reader see drafts", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "client-1",
+      role: "office",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const updates = await getProjectOwnerUpdates("project-1")
+
+    expect(updates).toEqual([])
+  })
+
+  it("scopes the external field summary to owner-visible data and removes provider pointers", async () => {
+    seedExternalOwnerSummary(sqlite)
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "office",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const summary = await getProjectFieldSummary("project-client")
+
+    expect(summary.dailyLogCount).toBe(1)
+    expect(summary.latestDailyLog?.workCompleted).toBe("Published work")
+    expect(summary.photoCount).toBe(1)
+    expect(summary.latestPhotos).toEqual([
+      expect.objectContaining({
+        id: "client-visible-photo",
+        fileName: "visible.jpg",
+        driveFileId: null,
+        driveUrl: null,
+        thumbnailUrl: null,
+      }),
+    ])
+    expect(summary.photoReviewFolder).toBeNull()
+    expect(summary.ownerUpdateCount).toBe(1)
+    expect(summary.draftOwnerUpdateCount).toBe(0)
+    expect(summary.nextScheduleItem).toBeNull()
   })
 
   it("rejects an inactive owner-update reader before database access", async () => {
