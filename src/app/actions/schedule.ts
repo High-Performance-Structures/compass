@@ -59,10 +59,11 @@ import {
 } from "@/lib/templates/schedule-template-bulk-selection"
 import { isOwnerScheduleView, type OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
 import {
   summarizeScheduleShift,
-  validateScheduleShiftReason,
+  resolveScheduleShiftReason,
 } from "@/lib/schedule/shift-tracking"
 import type {
   TaskStatus,
@@ -1308,10 +1309,11 @@ export async function updateTask(
       })
     }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)
-    const shiftReasonResult =
-      shiftSummary.affectedItemCount > 0
-        ? validateScheduleShiftReason(data.shiftReason)
-        : null
+    const shiftReasonResult = resolveScheduleShiftReason(
+      shiftSummary.affectedItemCount > 0 &&
+        (await isScheduleShiftReasonRequired(db, task.projectId)),
+      data.shiftReason
+    )
     if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
@@ -1888,8 +1890,11 @@ export async function createDependency(data: {
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
     }
-    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      await isScheduleShiftReasonRequired(db, data.projectId),
+      data.shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
 
@@ -1972,17 +1977,19 @@ export async function createDependency(data: {
       updatedTasks,
       new Date().toISOString()
     )
-    await recordScheduleShift({
-      db,
-      organizationId: orgId,
-      projectId: data.projectId,
-      actor: user,
-      sourceType: "schedule_dependency",
-      sourceId: dependencyId,
-      sourceLabel: "a new dependency",
-      reason: shiftReasonResult.reason,
-      summary: shiftSummary,
-    })
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId: data.projectId,
+        actor: user,
+        sourceType: "schedule_dependency",
+        sourceId: dependencyId,
+        sourceLabel: "a new dependency",
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
 
     await recordActivityEvent({
       db,
@@ -2036,8 +2043,11 @@ export async function updateDependency(data: {
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
     }
-    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      await isScheduleShiftReasonRequired(db, data.projectId),
+      data.shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
     if (data.predecessorId === data.successorId) {
@@ -2132,17 +2142,19 @@ export async function updateDependency(data: {
     if (results.some((result) => !result.success)) {
       throw new Error("Dependency update batch failed")
     }
-    await recordScheduleShift({
-      db,
-      organizationId: orgId,
-      projectId: data.projectId,
-      actor: user,
-      sourceType: "schedule_dependency",
-      sourceId: data.dependencyId,
-      sourceLabel: "an updated dependency",
-      reason: shiftReasonResult.reason,
-      summary: shiftSummary,
-    })
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId: data.projectId,
+        actor: user,
+        sourceType: "schedule_dependency",
+        sourceId: data.dependencyId,
+        sourceLabel: "an updated dependency",
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
 
     await recordActivityEvent({
       db,

@@ -77,7 +77,7 @@ import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import { countBusinessDays } from "@/lib/schedule/business-days"
-import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
+import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
   DEFAULT_DISPLAY_COLOR_LABELS,
@@ -138,6 +138,8 @@ interface ScheduleGanttViewProps {
   /** Items whose crew is booked on another job over the same days. */
   readonly conflicts?: ReadonlyMap<string, readonly ScheduleConflict[]>
   readonly onGroupByPhaseChange?: (grouped: boolean) => void
+  /** False until the schedule is first published; drafts need no shift reason. */
+  readonly shiftReasonRequired?: boolean
 }
 
 const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
@@ -200,6 +202,7 @@ export function ScheduleGanttView({
   conflictSettings = NO_CONFLICT_SETTINGS,
   conflicts = NO_CONFLICTS,
   onGroupByPhaseChange,
+  shiftReasonRequired = true,
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -704,11 +707,16 @@ export function ScheduleGanttView({
         endDate,
         taskExceptions
       )
-      const shiftReasonInput = window.prompt(
-        `Why is “${scheduleTask?.title ?? task.name}” shifting? This will be saved in schedule history.`
+      const shiftReasonInput = shiftReasonRequired
+        ? window.prompt(
+            `Why is “${scheduleTask?.title ?? task.name}” shifting? This will be saved in schedule history.`
+          )
+        : ""
+      const shiftReasonResult = resolveScheduleShiftReason(
+        shiftReasonRequired,
+        shiftReasonInput
       )
-      const shiftReasonResult = validateScheduleShiftReason(shiftReasonInput)
-      if (!shiftReasonResult.success) {
+      if (shiftReasonResult !== null && !shiftReasonResult.success) {
         if (shiftReasonInput !== null) toast.error(shiftReasonResult.error)
         setGanttRevision((revision) => revision + 1)
         return
@@ -717,7 +725,7 @@ export function ScheduleGanttView({
       const result = await updateTask(task.id, {
         startDate,
         workdays: Math.max(1, workdays),
-        shiftReason: shiftReasonResult.reason,
+        shiftReason: shiftReasonResult?.reason,
       })
 
       if (result.success) {
@@ -727,7 +735,7 @@ export function ScheduleGanttView({
         setGanttRevision((revision) => revision + 1)
       }
     },
-    [exceptions, router, tasks]
+    [exceptions, router, shiftReasonRequired, tasks]
   )
 
   const handleTodayScrollReady = useCallback(
@@ -1306,6 +1314,7 @@ export function ScheduleGanttView({
               exception.projectId === (editingTask?.projectId ?? projectId)
           )}
           assigneeOptions={assigneeOptions}
+          shiftReasonRequired={shiftReasonRequired}
         />
       )}
     </div>

@@ -87,3 +87,11 @@ export function summarizeScheduleShift(
       nextProjectEnd > previousProjectEnd,
   }
 }
+
+/** Null when the schedule was never published and no reason is needed. */
+export function resolveScheduleShiftReason(
+  required: boolean,
+  value: string | null | undefined
+): ScheduleShiftReasonResult | null {
+  return required ? validateScheduleShiftReason(value) : null
+}

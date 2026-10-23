@@ -86,6 +86,8 @@ interface ScheduleListViewProps {
   readonly visibleColumns?: readonly ScheduleListColumn[]
   /** Items whose crew is booked on another job over the same days. */
   readonly conflicts?: ReadonlyMap<string, readonly ScheduleConflict[]>
+  /** False until the schedule is first published; drafts need no shift reason. */
+  readonly shiftReasonRequired?: boolean
 }
 
 const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
@@ -157,6 +159,7 @@ export function ScheduleListView({
   projects = [],
   visibleColumns = SCHEDULE_LIST_COLUMNS,
   conflicts = NO_CONFLICTS,
+  shiftReasonRequired = true,
 }: ScheduleListViewProps) {
   const router = useRouter()
   const displayColorPalette = useScheduleDisplayPalette(projectId ?? "unified")
@@ -752,6 +755,7 @@ export function ScheduleListView({
               exception.projectId === (editingTask?.projectId ?? projectId)
           )}
           assigneeOptions={assigneeOptions}
+          shiftReasonRequired={shiftReasonRequired}
         />
       )}
 
@@ -762,6 +766,7 @@ export function ScheduleListView({
           projectId={projectId}
           tasks={localTasks}
           dependencies={dependencies}
+          shiftReasonRequired={shiftReasonRequired}
         />
       )}
 

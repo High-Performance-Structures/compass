@@ -299,6 +299,8 @@ export function ScheduleView({
   useEffect(() => {
     setPublicationStatus(initialPublicationStatus)
   }, [initialPublicationStatus])
+  // Unknown (several projects at once) keeps asking; the server decides.
+  const shiftReasonRequired = publicationStatus?.shiftReasonRequired ?? true
 
   function handlePublish(): void {
     if (!projectId) return
@@ -315,6 +317,7 @@ export function ScheduleView({
         publishedAt: result.publishedAt,
         publishedBy: null,
         changeReason: hadPublication ? publishReason.trim() : "Initial publication.",
+        shiftReasonRequired: true,
       })
       setPublishReason("")
       setPublishOpen(false)
@@ -1368,6 +1371,7 @@ export function ScheduleView({
             projects={scheduleProjects}
             visibleColumns={visibleColumns}
             conflicts={conflicts}
+            shiftReasonRequired={shiftReasonRequired}
           />
         )}
         {view === "gantt" && (
@@ -1386,6 +1390,7 @@ export function ScheduleView({
             onGroupByPhaseChange={(grouped) =>
               setGroupMode(grouped ? "phase" : "none")
             }
+            shiftReasonRequired={shiftReasonRequired}
           />
         )}
       </div>
@@ -1416,6 +1421,7 @@ export function ScheduleView({
               setTaskFormOpen(false)
               setBulkTemplateDialogOpen(true)
             }}
+            shiftReasonRequired={shiftReasonRequired}
           />
           <ScheduleTemplateBulkImportDialog
             open={bulkTemplateDialogOpen}
@@ -1644,6 +1650,7 @@ export function ScheduleView({
               <WorkdayExceptionsView
                 projectId={projectId}
                 exceptions={initialData.exceptions}
+                shiftReasonRequired={shiftReasonRequired}
               />
             ) : (
               <p className="text-sm text-muted-foreground">

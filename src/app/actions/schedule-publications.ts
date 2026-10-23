@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -30,6 +30,7 @@ import {
   publishedScheduleSnapshotSchema,
 } from "@/lib/schedule/publications"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
+import { latestSchedulePublication } from "@/lib/schedule/publication-history"
 
 export type SchedulePublicationStatus = {
   readonly hasPublishedSchedule: boolean
@@ -37,6 +38,8 @@ export type SchedulePublicationStatus = {
   readonly publishedAt: string | null
   readonly publishedBy: string | null
   readonly changeReason: string | null
+  /** True once people have published this schedule, even if it is now a draft. */
+  readonly shiftReasonRequired: boolean
 }
 
 async function requireProject(
@@ -81,18 +84,7 @@ export async function getSchedulePublicationStatus(
   const db = getDb(env.DB)
   const project = await requireProject(db, projectId, organizationId)
 
-  const latest = await db
-    .select({
-      publishedAt: schedulePublications.publishedAt,
-      publishedBy: schedulePublications.publishedBy,
-      changeReason: schedulePublications.changeReason,
-      snapshotData: schedulePublications.snapshotData,
-    })
-    .from(schedulePublications)
-    .where(eq(schedulePublications.projectId, projectId))
-    .orderBy(desc(schedulePublications.publishedAt))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
+  const latest = await latestSchedulePublication(db, projectId)
 
   if (!latest) {
     const firstTask = await db
@@ -107,6 +99,7 @@ export async function getSchedulePublicationStatus(
       publishedAt: null,
       publishedBy: null,
       changeReason: null,
+      shiftReasonRequired: false,
     }
   }
 
@@ -156,6 +149,7 @@ export async function getSchedulePublicationStatus(
     publishedAt: latest.publishedAt,
     publishedBy: latest.publishedBy,
     changeReason: latest.changeReason,
+    shiftReasonRequired: true,
   }
 }
 
@@ -182,13 +176,7 @@ export async function publishSchedule(
     const db = getDb(env.DB)
     await requireProject(db, projectId, organizationId)
 
-    const previousPublication = await db
-      .select({ snapshotData: schedulePublications.snapshotData })
-      .from(schedulePublications)
-      .where(eq(schedulePublications.projectId, projectId))
-      .orderBy(desc(schedulePublications.publishedAt))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
+    const previousPublication = await latestSchedulePublication(db, projectId)
     const changeReasonError = getPublicationChangeReasonError(
       changeReason,
       previousPublication !== null

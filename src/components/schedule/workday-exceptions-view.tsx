@@ -27,11 +27,13 @@ import type { WorkdayExceptionData } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { addDays, format, isWeekend, parseISO } from "date-fns"
-import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
+import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 
 interface WorkdayExceptionsViewProps {
   projectId: string
   exceptions: WorkdayExceptionData[]
+  /** False until the schedule is first published; drafts need no shift reason. */
+  shiftReasonRequired?: boolean
 }
 
 function formatDate(dateStr: string): string {
@@ -69,6 +71,7 @@ function nextWeekendDate(): string {
 export function WorkdayExceptionsView({
   projectId,
   exceptions,
+  shiftReasonRequired = true,
 }: WorkdayExceptionsViewProps) {
   const router = useRouter()
   const [formOpen, setFormOpen] = useState(false)
@@ -92,18 +95,25 @@ export function WorkdayExceptionsView({
   const handleDelete = useCallback(
     async (id: string) => {
       const exception = exceptions.find((candidate) => candidate.id === id)
-      const input = window.prompt(
-        `Why is “${exception?.title ?? "this workday exception"}” being deleted?`
-      )
+      const title = exception?.title ?? "this workday exception"
+      if (!shiftReasonRequired) {
+        if (!window.confirm(`Delete “${title}”?`)) return
+      }
+      const input = shiftReasonRequired
+        ? window.prompt(`Why is “${title}” being deleted?`)
+        : ""
       if (input === null) return
-      const shiftReasonResult = validateScheduleShiftReason(input)
-      if (!shiftReasonResult.success) {
+      const shiftReasonResult = resolveScheduleShiftReason(
+        shiftReasonRequired,
+        input
+      )
+      if (shiftReasonResult !== null && !shiftReasonResult.success) {
         toast.error(shiftReasonResult.error)
         return
       }
       const result = await deleteWorkdayException(
         id,
-        shiftReasonResult.reason
+        shiftReasonResult?.reason ?? ""
       )
       if (result.success) {
         router.refresh()
@@ -111,7 +121,7 @@ export function WorkdayExceptionsView({
         toast.error(result.error)
       }
     },
-    [exceptions, router]
+    [exceptions, router, shiftReasonRequired]
   )
 
   const handleWeekendToggle = useCallback(async () => {
@@ -119,14 +129,19 @@ export function WorkdayExceptionsView({
       toast.error("Choose a Saturday or Sunday for a weekend override")
       return
     }
-    const input = window.prompt(
-      weekendOverride
-        ? "Why is this weekend being restored as non-working?"
-        : "Why is this weekend being made a workday?"
-    )
+    const input = shiftReasonRequired
+      ? window.prompt(
+          weekendOverride
+            ? "Why is this weekend being restored as non-working?"
+            : "Why is this weekend being made a workday?"
+        )
+      : ""
     if (input === null) return
-    const shiftReasonResult = validateScheduleShiftReason(input)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      shiftReasonRequired,
+      input
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       toast.error(shiftReasonResult.error)
       return
     }
@@ -135,7 +150,7 @@ export function WorkdayExceptionsView({
     const result = weekendOverride
       ? await deleteWorkdayException(
           weekendOverride.id,
-          shiftReasonResult.reason
+          shiftReasonResult?.reason ?? ""
         )
       : await createWorkdayException(projectId, {
           title: `Weekend workday — ${format(
@@ -147,7 +162,7 @@ export function WorkdayExceptionsView({
           type: "working",
           category: "extra_workday",
           recurrence: "one_time",
-          shiftReason: shiftReasonResult.reason,
+          shiftReason: shiftReasonResult?.reason ?? "",
         })
     setWeekendSaving(false)
 
@@ -161,7 +176,7 @@ export function WorkdayExceptionsView({
     } else {
       toast.error(result.error)
     }
-  }, [projectId, router, weekendDate, weekendOverride])
+  }, [projectId, router, shiftReasonRequired, weekendDate, weekendOverride])
 
   return (
     <div>
@@ -304,6 +319,7 @@ export function WorkdayExceptionsView({
         onOpenChange={setFormOpen}
         projectId={projectId}
         editingException={editingException}
+        shiftReasonRequired={shiftReasonRequired}
       />
     </div>
   )
