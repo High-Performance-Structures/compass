@@ -7,12 +7,12 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "templates"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-23"
 }
 ---
 
@@ -53,6 +53,12 @@ Use a non-working exception for a holiday, closure, or shutdown and a working ex
 ## Baselines {#baselines}
 
 A baseline is a saved snapshot for comparison. Create one before a major approved revision and use its overlay to compare prior planned dates with the live schedule. A baseline is historical evidence, not another editable live schedule.
+
+## Schedule Templates {#schedule-templates}
+
+To reuse a schedule, open the schedule's **⋯** menu and choose **Save schedule as template**. Compass saves every item with its workdays, spacing, phase, color, crew placeholder, owner and trade-partner visibility, notes, and predecessors (type and lag). Dates are stored as workdays from the first item, so the template can start on any date. Progress, confirmations, and named users stay with the original project. To update a saved schedule, choose **Save as a new version of a saved schedule**. Projects that already used an earlier version keep it.
+
+To bring a saved schedule into a project, choose **Import schedule items**, pick the template, and set the first-item start date. A saved schedule comes in whole, with every item selected and its predecessors kept. Untick any items the project doesn't need. Imported items follow this project's workday calendar. Saved schedules appear in the **Template Library** as Schedule templates, where they can be set inactive or deleted.
 
 ## Tasks and To-Dos {#tasks}
 

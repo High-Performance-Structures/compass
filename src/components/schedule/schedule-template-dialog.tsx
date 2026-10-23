@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { SAVED_SCHEDULE_TEMPLATE_KIND } from "@/lib/templates/schedule-template-capture"
 
 type ScheduleTemplateDialogProps = {
   readonly open: boolean
@@ -78,7 +79,9 @@ export function ScheduleTemplateDialog({
           template.lifecycleStatus === "active" &&
           template.reviewStatus === "verified" &&
           template.currentVersionStatus === "published" &&
-          template.scheduleItemCount > 0
+          template.scheduleItemCount > 0 &&
+          // Saved schedules come in through Import schedule items.
+          template.templateKind !== SAVED_SCHEDULE_TEMPLATE_KIND
       ),
     [templates]
   )

@@ -856,9 +856,9 @@ export async function importScheduleTemplateItems(
             is_critical_path, is_milestone, percent_complete, assigned_to,
             assigned_user_id, owner_visible, sub_vendor_visible,
             confirmation_required, confirmation_status, sort_order,
-            created_at, updated_at
+            created_at, updated_at, notes
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, 0, ?, NULL,
-            ?, ?, 0, 'not_requested', ?, ?, ?)`
+            ?, ?, 0, 'not_requested', ?, ?, ?, ?)`
         ).bind(
           task.id,
           projectId,
@@ -874,7 +874,8 @@ export async function importScheduleTemplateItems(
           task.subVendorVisible ? 1 : 0,
           task.sortOrder,
           now,
-          now
+          now,
+          task.notes
         ),
         env.DB.prepare(
           `INSERT INTO project_template_application_items (

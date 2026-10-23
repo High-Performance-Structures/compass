@@ -16,6 +16,7 @@ export type ScheduleTemplateItemDefinition = {
   readonly ownerVisible: boolean
   readonly subVendorVisible: boolean
   readonly sortOrder: number
+  readonly notes?: string | null
 }
 
 export type ScheduleTemplateDependencyDefinition = {
@@ -40,6 +41,7 @@ export type InstantiatedScheduleTask = {
   readonly ownerVisible: boolean
   readonly subVendorVisible: boolean
   readonly sortOrder: number
+  readonly notes: string | null
 }
 
 export type InstantiatedScheduleDependency = {
@@ -197,6 +199,7 @@ export function buildScheduleTemplateApplication(input: {
       ownerVisible: item.ownerVisible,
       subVendorVisible: item.subVendorVisible,
       sortOrder: input.firstSortOrder + index,
+      notes: item.notes?.trim() || null,
     }
   })
 

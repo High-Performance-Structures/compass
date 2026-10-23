@@ -337,7 +337,7 @@ export function TemplateLibraryView({
                         {template.name}
                       </Link>
                       <Badge variant="outline">
-                        {template.templateKind === "project" ? "Project" : template.templateKind === "estimate" ? "Estimate" : "Assembly"}
+                        {template.templateKind === "project" ? "Project" : template.templateKind === "estimate" ? "Estimate" : template.templateKind === "schedule" ? "Schedule" : "Assembly"}
                       </Badge>
                       <Badge variant="secondary">{template.tradeCategory ?? "Other"}</Badge>
                     </div>

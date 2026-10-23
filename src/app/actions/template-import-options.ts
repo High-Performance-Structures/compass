@@ -21,6 +21,7 @@ import {
   parseTemplateChoiceOptions,
   resolveTemplateSchedulePhase
 } from "@/lib/templates/template-creation-import"
+import { SAVED_SCHEDULE_TEMPLATE_KIND } from "@/lib/templates/schedule-template-capture"
 
 export type ScheduleTemplateImportTodo = {
   readonly id: string
@@ -46,6 +47,8 @@ export type ScheduleTemplateImportGroup = {
   readonly templateId: string
   readonly templateName: string
   readonly tradeCategory: string
+  /** True for a whole schedule saved from a project; imported as one piece by default. */
+  readonly isSavedSchedule: boolean
   readonly scheduleItems: readonly ScheduleTemplateImportItem[]
   readonly linkedTodos: readonly ScheduleTemplateImportTodo[]
 }
@@ -72,6 +75,7 @@ type PublishedTemplateVersion = {
   readonly templateId: string
   readonly templateName: string
   readonly tradeCategory: string | null
+  readonly templateKind: string
   readonly versionId: string
 }
 
@@ -91,6 +95,7 @@ async function publishedTemplateVersions(
       templateId: projectTemplates.id,
       templateName: projectTemplates.name,
       tradeCategory: projectTemplates.tradeCategory,
+      templateKind: projectTemplates.templateKind,
       versionId: projectTemplateVersions.id
     })
     .from(projectTemplates)
@@ -149,6 +154,7 @@ export async function getScheduleTemplateImportOptions(): Promise<
         templateId: version.templateId,
         templateName: version.templateName,
         tradeCategory: version.tradeCategory ?? "Other",
+        isSavedSchedule: version.templateKind === SAVED_SCHEDULE_TEMPLATE_KIND,
         scheduleItems: items.map((item) => ({
           id: item.id,
           title: item.title,

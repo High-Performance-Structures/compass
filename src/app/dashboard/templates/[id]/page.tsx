@@ -54,7 +54,7 @@ export default async function EstimateTemplatePage({
           actions={
             <>
               <Badge variant="outline">
-                {preview.templateKind === "project" ? "Project" : "Assembly"}
+                {preview.templateKind === "project" ? "Project" : preview.templateKind === "schedule" ? "Schedule" : "Assembly"}
               </Badge>
               {preview.tradeCategory && (
                 <Badge variant="secondary">{preview.tradeCategory}</Badge>
