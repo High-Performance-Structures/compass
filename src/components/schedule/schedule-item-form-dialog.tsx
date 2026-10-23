@@ -65,7 +65,7 @@ import {
   type ScheduleTaskChangeProposal,
 } from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
-import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
+import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -178,6 +178,8 @@ interface ScheduleItemFormDialogProps {
   exceptions?: readonly WorkdayExceptionData[]
   assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   onBulkTemplateImport?: () => void
+  /** False until the schedule is first published; drafts need no shift reason. */
+  shiftReasonRequired?: boolean
 }
 
 interface PendingPredecessor {
@@ -195,7 +197,8 @@ export function ScheduleItemFormDialog({
   dependencies = [],
   exceptions = [],
   assigneeOptions = [],
-  onBulkTemplateImport
+  onBulkTemplateImport,
+  shiftReasonRequired = true,
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
@@ -535,10 +538,11 @@ export function ScheduleItemFormDialog({
     const dependencyAdded = pendingPredecessors.some(
       (predecessor) => predecessor.taskId.length > 0
     )
-    const shiftReasonResult =
-      datesChanged || existingDependencyChanged || dependencyAdded
-        ? validateScheduleShiftReason(values.shiftReason)
-        : null
+    const shiftReasonResult = resolveScheduleShiftReason(
+      shiftReasonRequired &&
+        (datesChanged || existingDependencyChanged || dependencyAdded),
+      values.shiftReason
+    )
     if (shiftReasonResult !== null && !shiftReasonResult.success) {
       form.setError("shiftReason", { message: shiftReasonResult.error })
       return
@@ -1192,6 +1196,7 @@ export function ScheduleItemFormDialog({
                 </FormItem>
               </div>
 
+              {shiftReasonRequired && (
               <FormField
                 control={form.control}
                 name="shiftReason"
@@ -1216,6 +1221,7 @@ export function ScheduleItemFormDialog({
                   </FormItem>
                 )}
               />
+              )}
 
               {/* === DETAILS (collapsible) === */}
               <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>

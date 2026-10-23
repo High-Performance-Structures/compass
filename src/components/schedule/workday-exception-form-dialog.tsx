@@ -39,6 +39,7 @@ import type {
 } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 
 const categories: { value: ExceptionCategory; label: string }[] = [
   { value: "national_holiday", label: "National Holiday" },
@@ -81,7 +82,6 @@ const exceptionSchema = z
     shiftReason: z
       .string()
       .trim()
-      .min(3, "Enter a schedule shift reason")
       .max(500, "Reason must be 500 characters or fewer"),
   })
   .refine((values) => values.endDate >= values.startDate, {
@@ -96,6 +96,8 @@ interface ExceptionFormDialogProps {
   onOpenChange: (open: boolean) => void
   projectId: string
   editingException: WorkdayExceptionData | null
+  /** False until the schedule is first published; drafts need no shift reason. */
+  shiftReasonRequired?: boolean
 }
 
 export function WorkdayExceptionFormDialog({
@@ -103,6 +105,7 @@ export function WorkdayExceptionFormDialog({
   onOpenChange,
   projectId,
   editingException,
+  shiftReasonRequired = true,
 }: ExceptionFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingException
@@ -148,6 +151,14 @@ export function WorkdayExceptionFormDialog({
   }, [editingException, form])
 
   async function onSubmit(values: ExceptionFormValues) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      shiftReasonRequired,
+      values.shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
+      form.setError("shiftReason", { message: shiftReasonResult.error })
+      return
+    }
     let result
     if (isEditing) {
       result = await updateWorkdayException(editingException.id, {
@@ -308,6 +319,7 @@ export function WorkdayExceptionFormDialog({
               )}
             />
 
+            {shiftReasonRequired && (
             <FormField
               control={form.control}
               name="shiftReason"
@@ -329,6 +341,7 @@ export function WorkdayExceptionFormDialog({
                 </FormItem>
               )}
             />
+            )}
 
             <FormField
               control={form.control}

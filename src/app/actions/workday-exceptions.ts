@@ -18,10 +18,11 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
 import {
   summarizeScheduleShift,
-  validateScheduleShiftReason,
+  resolveScheduleShiftReason,
 } from "@/lib/schedule/shift-tracking"
 import type {
   DependencyType,
@@ -205,8 +206,11 @@ export async function createWorkdayException(
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
     }
-    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      await isScheduleShiftReasonRequired(db, projectId),
+      data.shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
 
@@ -265,17 +269,19 @@ export async function createWorkdayException(
       now,
       updatedTasks
     )
-    await recordScheduleShift({
-      db,
-      organizationId: orgId,
-      projectId,
-      actor: user,
-      sourceType: "workday_exception",
-      sourceId: exceptionId,
-      sourceLabel: `workday exception “${data.title}”`,
-      reason: shiftReasonResult.reason,
-      summary: shiftSummary,
-    })
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId,
+        actor: user,
+        sourceType: "workday_exception",
+        sourceId: exceptionId,
+        sourceLabel: `workday exception “${data.title}”`,
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
     await recordActivityEvent({
       db,
       organizationId: orgId,
@@ -341,8 +347,11 @@ export async function updateWorkdayException(
     if (!project) {
       return { success: false, error: "Access denied" }
     }
-    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      await isScheduleShiftReasonRequired(db, existing.projectId),
+      data.shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
 
@@ -401,17 +410,19 @@ export async function updateWorkdayException(
       updatedAt,
       updatedTasks
     )
-    await recordScheduleShift({
-      db,
-      organizationId: orgId,
-      projectId: existing.projectId,
-      actor: user,
-      sourceType: "workday_exception",
-      sourceId: exceptionId,
-      sourceLabel: `workday exception “${updatedException.title}”`,
-      reason: shiftReasonResult.reason,
-      summary: shiftSummary,
-    })
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId: existing.projectId,
+        actor: user,
+        sourceType: "workday_exception",
+        sourceId: exceptionId,
+        sourceLabel: `workday exception “${updatedException.title}”`,
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
     await recordActivityEvent({
       db,
       organizationId: orgId,
@@ -470,8 +481,11 @@ export async function deleteWorkdayException(
     if (!project) {
       return { success: false, error: "Access denied" }
     }
-    const shiftReasonResult = validateScheduleShiftReason(shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      await isScheduleShiftReasonRequired(db, existing.projectId),
+      shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
 
@@ -506,17 +520,19 @@ export async function deleteWorkdayException(
       updatedAt,
       updatedTasks
     )
-    await recordScheduleShift({
-      db,
-      organizationId: orgId,
-      projectId: existing.projectId,
-      actor: user,
-      sourceType: "workday_exception",
-      sourceId: exceptionId,
-      sourceLabel: `deleted workday exception “${existing.title}”`,
-      reason: shiftReasonResult.reason,
-      summary: shiftSummary,
-    })
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId: existing.projectId,
+        actor: user,
+        sourceType: "workday_exception",
+        sourceId: exceptionId,
+        sourceLabel: `deleted workday exception “${existing.title}”`,
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
     await recordActivityEvent({
       db,
       organizationId: orgId,

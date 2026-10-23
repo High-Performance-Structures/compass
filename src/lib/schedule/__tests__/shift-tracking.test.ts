@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  resolveScheduleShiftReason,
   summarizeScheduleShift,
   validateScheduleShiftReason,
 } from "@/lib/schedule/shift-tracking"
@@ -78,5 +79,23 @@ describe("summarizeScheduleShift", () => {
     ])
 
     expect(summarizeScheduleShift(tasks, updates).affectedItemCount).toBe(0)
+  })
+})
+
+describe("resolveScheduleShiftReason", () => {
+  it("asks for nothing on a schedule that was never published", () => {
+    expect(resolveScheduleShiftReason(false, "")).toBeNull()
+    expect(resolveScheduleShiftReason(false, undefined)).toBeNull()
+  })
+
+  it("requires a reason once the schedule has been published", () => {
+    expect(resolveScheduleShiftReason(true, "")).toEqual({
+      success: false,
+      error: "Enter a schedule shift reason (at least 3 characters)",
+    })
+    expect(resolveScheduleShiftReason(true, " Rain delay ")).toEqual({
+      success: true,
+      reason: "Rain delay",
+    })
   })
 })

@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { createDependency } from "@/app/actions/schedule"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
-import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
+import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -43,6 +43,8 @@ interface DependencyDialogProps {
   projectId: string
   tasks: ScheduleTaskData[]
   dependencies: TaskDependencyData[]
+  /** False until the schedule is first published; drafts need no shift reason. */
+  shiftReasonRequired?: boolean
 }
 
 export function DependencyDialog({
@@ -51,6 +53,7 @@ export function DependencyDialog({
   projectId,
   tasks,
   dependencies,
+  shiftReasonRequired = true,
 }: DependencyDialogProps) {
   const router = useRouter()
   const [predecessorId, setPredecessorId] = useState("")
@@ -73,8 +76,11 @@ export function DependencyDialog({
       setError("This dependency would create a circular reference")
       return false
     }
-    const shiftReasonResult = validateScheduleShiftReason(shiftReason)
-    if (!shiftReasonResult.success) {
+    const shiftReasonResult = resolveScheduleShiftReason(
+      shiftReasonRequired,
+      shiftReason
+    )
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
       setError(shiftReasonResult.error)
       return false
     }
@@ -186,6 +192,7 @@ export function DependencyDialog({
             </div>
           </div>
 
+          {shiftReasonRequired && (
           <div>
             <Label htmlFor="dependency-shift-reason">Schedule shift reason</Label>
             <Textarea
@@ -200,6 +207,7 @@ export function DependencyDialog({
               Saved in activity history and used in any end-date warning.
             </p>
           </div>
+          )}
 
           {error && (
             <p className="text-sm text-destructive">{error}</p>
