@@ -16,6 +16,10 @@ import {
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
 import { requireAuth } from "@/lib/auth"
+import {
+  payApplicationChangeOrders,
+  type PayApplicationChangeOrder,
+} from "@/lib/financials/pay-application-change-orders"
 import { getCloudflareContext } from "@/lib/db"
 import { chunkD1Rows } from "@/lib/d1-query"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -561,6 +565,8 @@ export async function getProjectOwnerPayApplicationDraft(
 
 export type ProjectOwnerPayApplicationReport = {
   readonly draft: ProjectOwnerPayApplicationDraft
+  /** Executed change orders in this contract budget, split by assembly. */
+  readonly changeOrders: readonly PayApplicationChangeOrder[]
   readonly project: {
     readonly name: string
     readonly projectNumber: string | null
@@ -592,7 +598,12 @@ export async function getProjectOwnerPayApplicationReport(
     .where(eq(projects.id, projectId))
     .get()
   if (!project) return null
-  return { draft, project }
+  const changeOrders = await payApplicationChangeOrders(db, {
+    projectId,
+    applicationId,
+    budgetRevisionId: draft.budgetRevisionId,
+  })
+  return { draft, project, changeOrders }
 }
 
 function nonnegativeAmount(value: number | null, label: string): number {

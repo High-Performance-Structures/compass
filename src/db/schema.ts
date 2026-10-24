@@ -2564,6 +2564,9 @@ export const projectChangeOrderLines = sqliteTable(
     changeKind: text("change_kind"),
     previousAmountCents: integer("previous_amount_cents"),
     newAmountCents: integer("new_amount_cents"),
+    // From a change-order estimate: the contract assembly the line changes.
+    contractAssemblyId: text("contract_assembly_id"),
+    assemblyName: text("assembly_name"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

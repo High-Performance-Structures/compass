@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne, type SQL } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
-import { projectEstimates } from "@/db/schema-estimates"
+import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
 import type { EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
 
@@ -42,23 +42,52 @@ export type ChangeOrderLineDraft = {
   readonly phaseCode: string
   readonly costCode: string
   readonly amountCents: number
+  /** The contract assembly the line adds to or reduces, when it has one. */
+  readonly contractAssemblyId: string | null
+  readonly assemblyName: string | null
 }
+
+export type LineAssembly = { readonly contractAssemblyId: string | null; readonly name: string }
 
 /**
  * Change-order lines from an accepted change-order estimate: one per cost
- * code, at the client price (the contract budget tracks contract value).
+ * code within each assembly, at the client price (the contract budget tracks
+ * contract value). Lines outside an assembly group by cost code alone.
  */
-export function changeOrderLinesFromEstimate(lines: readonly EstimateLedgerLine[]): readonly ChangeOrderLineDraft[] {
-  const byCode = new Map<string, { description: string; phaseCode: string; amountCents: number }>()
+export function changeOrderLinesFromEstimate(
+  lines: readonly EstimateLedgerLine[],
+  assemblyForLine: (lineId: string | null) => LineAssembly | null = () => null
+): readonly ChangeOrderLineDraft[] {
+  const groups = new Map<
+    string,
+    { costCode: string; description: string; phaseCode: string; amountCents: number; assembly: LineAssembly | null }
+  >()
   for (const line of lines) {
     if (line.lineTotalCents === 0) continue
-    const current = byCode.get(line.costCode)
+    const assembly = assemblyForLine(line.id)
+    const key = `${assembly?.contractAssemblyId ?? assembly?.name ?? ""}|${line.costCode}`
+    const current = groups.get(key)
     if (current) current.amountCents += line.lineTotalCents
-    else byCode.set(line.costCode, { description: line.description, phaseCode: line.divisionCode, amountCents: line.lineTotalCents })
+    else
+      groups.set(key, {
+        costCode: line.costCode,
+        description: line.description,
+        phaseCode: line.divisionCode,
+        amountCents: line.lineTotalCents,
+        assembly,
+      })
   }
-  return [...byCode.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([costCode, value], index) => ({ lineNumber: index + 1, costCode, ...value }))
+  return [...groups.values()]
+    .sort((left, right) => left.costCode.localeCompare(right.costCode) || (left.assembly?.name ?? "").localeCompare(right.assembly?.name ?? ""))
+    .map((group, index) => ({
+      lineNumber: index + 1,
+      costCode: group.costCode,
+      description: group.description,
+      phaseCode: group.phaseCode,
+      amountCents: group.amountCents,
+      contractAssemblyId: group.assembly?.contractAssemblyId ?? null,
+      assemblyName: group.assembly?.name ?? null,
+    }))
 }
 
 /**
@@ -87,16 +116,28 @@ export async function changeOrderExecutionFromEstimate(input: {
   if (CLOSED_CHANGE_ORDER_STATUSES.has(changeOrder.status)) {
     throw new Error(`Change order ${changeOrder.changeOrderNumber} is ${changeOrder.status}; reopen it before accepting its estimate.`)
   }
-  const ledger = await estimateBudgetLedgerLines(input.db, input.estimate)
-  const lines = changeOrderLinesFromEstimate(ledger.lines)
+  const [ledger, lineAssemblies] = await Promise.all([
+    estimateBudgetLedgerLines(input.db, input.estimate),
+    input.db
+      .select({
+        lineId: projectEstimateLines.id,
+        name: projectEstimateAssemblies.name,
+        contractAssemblyId: projectEstimateAssemblies.contractAssemblyId,
+      })
+      .from(projectEstimateLines)
+      .innerJoin(projectEstimateAssemblies, eq(projectEstimateAssemblies.id, projectEstimateLines.assemblyId))
+      .where(eq(projectEstimateLines.estimateId, input.estimate.id)),
+  ])
+  const assemblyByLine = new Map(lineAssemblies.map((row) => [row.lineId, row]))
+  const lines = changeOrderLinesFromEstimate(ledger.lines, (lineId) => (lineId ? assemblyByLine.get(lineId) ?? null : null))
   if (lines.length === 0) throw new Error("The change-order estimate has no priced lines.")
   const totalCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
   const lineInserts = []
-  // Each line binds 9 columns; ten per statement stays under D1's limit.
-  for (let index = 0; index < lines.length; index += 10) {
+  // Each line binds 11 columns; eight per statement stays under D1's limit.
+  for (let index = 0; index < lines.length; index += 8) {
     lineInserts.push(
       input.db.insert(projectChangeOrderLines).values(
-        lines.slice(index, index + 10).map((line) => ({
+        lines.slice(index, index + 8).map((line) => ({
           id: crypto.randomUUID(),
           projectId: input.estimate.projectId,
           changeOrderId,
@@ -105,6 +146,8 @@ export async function changeOrderExecutionFromEstimate(input: {
           phaseCode: line.phaseCode,
           costCode: line.costCode,
           amountCents: line.amountCents,
+          contractAssemblyId: line.contractAssemblyId,
+          assemblyName: line.assemblyName,
           createdAt: input.now,
           updatedAt: input.now,
         }))

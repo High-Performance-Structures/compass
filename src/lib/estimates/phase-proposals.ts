@@ -236,7 +236,10 @@ export async function completePhaseProposal(input: {
       } else if (contract.status === "accepted") {
         contractRemoval = "deduct_change_order"
         const ledger = await estimateLinesBudgetLedgerLines(db, contract, assemblyLines)
-        const lines = changeOrderLinesFromEstimate(ledger).map((line) => ({ ...line, amountCents: -line.amountCents }))
+        // The deduct takes its lines out of the contract assembly it removes.
+        const lines = changeOrderLinesFromEstimate(ledger, (lineId) =>
+          lineId ? { contractAssemblyId: assembly.id, name: assembly.name } : null
+        ).map((line) => ({ ...line, amountCents: -line.amountCents }))
         const amountCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
         const existing = await db
           .select({ id: projectChangeOrders.id })
@@ -287,10 +290,10 @@ export async function completePhaseProposal(input: {
             createdAt: now,
           }),
         )
-        // Each line binds 10 columns; ten per statement stays under D1's limit.
-        for (let index = 0; index < lines.length; index += 10) {
+        // Each line binds 12 columns; eight per statement stays under D1's limit.
+        for (let index = 0; index < lines.length; index += 8) {
           removalStatements.push(db.insert(projectChangeOrderLines).values(
-            lines.slice(index, index + 10).map((line) => ({
+            lines.slice(index, index + 8).map((line) => ({
               id: crypto.randomUUID(),
               projectId: project.id,
               changeOrderId,
@@ -299,6 +302,8 @@ export async function completePhaseProposal(input: {
               phaseCode: line.phaseCode,
               costCode: line.costCode,
               amountCents: line.amountCents,
+              contractAssemblyId: line.contractAssemblyId,
+              assemblyName: line.assemblyName,
               createdAt: now,
               updatedAt: now,
             }))

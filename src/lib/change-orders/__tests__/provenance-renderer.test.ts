@@ -22,7 +22,7 @@ import { ProjectChangeOrderDetail } from "@/components/projects/project-change-o
 import { changeOrderReport } from "@/lib/print/audience-record-reports"
 
 const formOptions: ProjectChangeOrderFormOptions = {
-  phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null,
+  phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null, contractAssemblies: [],
 }
 
 function item(overrides: Partial<ProjectChangeOrderItem> = {}): ProjectChangeOrderItem {

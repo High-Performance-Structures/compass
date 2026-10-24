@@ -346,6 +346,8 @@ export const projectEstimateAssemblies = sqliteTable(
     sortOrder: integer("sort_order").notNull().default(0),
     /** List this assembly's cost codes and breakdowns on an assembly-totals report. */
     clientDetail: integer("client_detail", { mode: "boolean" }).notNull().default(false),
+    // On a change-order estimate: the contract assembly this one changes.
+    contractAssemblyId: text("contract_assembly_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -659,6 +661,9 @@ export const projectContractBudgetAdjustments = sqliteTable(
     costCode: text("cost_code").notNull(),
     description: text("description").notNull(),
     amountCents: integer("amount_cents").notNull(),
+    // The contract assembly the change belongs to, when it was tied to one.
+    contractAssemblyId: text("contract_assembly_id"),
+    assemblyName: text("assembly_name"),
     executedAt: text("executed_at").notNull(),
     createdAt: text("created_at").notNull(),
   },

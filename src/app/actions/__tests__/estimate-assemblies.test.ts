@@ -36,6 +36,10 @@ beforeEach(() => {
   }
   sqlite.exec(readFileSync("drizzle/0177_estimate_assemblies.sql", "utf8"))
   sqlite.exec(readFileSync("drizzle/0242_estimate_assembly_client_detail.sql", "utf8"))
+  // 0245 also alters change-order tables this test doesn't create.
+  for (const statement of readFileSync("drizzle/0245_change_order_assemblies.sql", "utf8").split("--> statement-breakpoint")) {
+    if (statement.includes("`project_estimate_assemblies`")) sqlite.exec(statement)
+  }
   sqlite.exec("INSERT INTO projects (id, name, organization_id) VALUES ('project', 'Example', 'org')")
   const db = drizzle(sqlite)
   db.insert(projectEstimates).values([

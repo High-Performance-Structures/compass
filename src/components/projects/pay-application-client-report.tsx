@@ -71,7 +71,7 @@ export function PayApplicationClientReport({
 }): React.ReactElement {
   const { draft, project } = report
   const g703 = payApplicationReport(draft.lines, draft.ownerDetail)
-  const changeOrders = payApplicationChangeOrderSummary(draft.lines)
+  const changeOrders = payApplicationChangeOrderSummary(draft.lines, report.changeOrders)
   const depositCarried = Math.max(0, Math.round((draft.depositAvailable - draft.depositApplied) * 100) / 100)
   const contractNumber = project.projectNumber ?? project.name
   const title = `Pay application ${draft.applicationNumber}`
@@ -193,7 +193,18 @@ export function PayApplicationClientReport({
                 <tbody>
                   <tr><td /><td>Approved in previous months</td><td className="num">{money(changeOrders.previous)}</td></tr>
                   {changeOrders.currentItems.map((item) => (
-                    <tr key={item.name}><td /><td>Approved this month · {item.name}</td><td className="num">{money(item.amount)}</td></tr>
+                    <tr key={item.name}>
+                      <td />
+                      <td>
+                        Approved this month · {item.name}
+                        {item.assemblies.length > 0 && (
+                          <small className="block text-muted-foreground">
+                            {item.assemblies.map((assembly) => `${assembly.name} ${money(assembly.amount)}`).join(" · ")}
+                          </small>
+                        )}
+                      </td>
+                      <td className="num">{money(item.amount)}</td>
+                    </tr>
                   ))}
                   {changeOrders.currentItems.length === 0 ? (
                     <tr><td /><td>Approved this month</td><td className="num">{money(changeOrders.current)}</td></tr>

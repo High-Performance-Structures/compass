@@ -17,7 +17,7 @@ import {
   projects,
   sageCostCodes,
 } from "@/db/schema"
-import { projectEstimates } from "@/db/schema-estimates"
+import { projectEstimateAssemblies, projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
 import { cleanScheduleImpactDays } from "@/lib/change-orders/schedule-impact"
@@ -115,6 +115,8 @@ export type ProjectChangeOrderFormOptions = {
   readonly companies: readonly ProjectChangeOrderCompanyOption[]
   readonly estimates: readonly ProjectChangeOrderEstimateOption[]
   readonly currentBaselineEstimateId: string | null
+  /** The accepted contract estimate's assemblies a change can add to or reduce. */
+  readonly contractAssemblies: readonly { readonly id: string; readonly name: string }[]
 }
 
 export type ProjectChangeOrderItem = {
@@ -170,6 +172,8 @@ export type ProjectChangeOrderItem = {
     readonly changeKind: string | null
     readonly previousAmountCents: number | null
     readonly newAmountCents: number | null
+    /** The contract assembly the line adds to or reduces. */
+    readonly assemblyName: string | null
   }[]
   readonly documents: readonly {
     readonly id: string
@@ -754,6 +758,7 @@ export async function getProjectChangeOrderFormOptions(
       companies: [],
       estimates: [],
       currentBaselineEstimateId: null,
+      contractAssemblies: [],
     }
   }
   const [sageRows, budgetRows, contactRows, estimateRows] = await Promise.all([
@@ -856,6 +861,14 @@ export async function getProjectChangeOrderFormOptions(
     })
   }
 
+  const baselineId = estimateRows.find((estimate) => estimate.status === "accepted")?.id ?? null
+  const contractAssemblies = baselineId
+    ? await context.db
+        .select({ id: projectEstimateAssemblies.id, name: projectEstimateAssemblies.name })
+        .from(projectEstimateAssemblies)
+        .where(eq(projectEstimateAssemblies.estimateId, baselineId))
+        .orderBy(asc(projectEstimateAssemblies.sortOrder))
+    : []
   return {
     phases: Array.from(phaseMap.values()).sort((left, right) =>
       left.label.localeCompare(right.label)
@@ -867,8 +880,8 @@ export async function getProjectChangeOrderFormOptions(
       left.label.localeCompare(right.label)
     ),
     estimates: estimateRows.map(estimateOption),
-    currentBaselineEstimateId:
-      estimateRows.find((estimate) => estimate.status === "accepted")?.id ?? null,
+    currentBaselineEstimateId: baselineId,
+    contractAssemblies,
   }
 }
 
@@ -903,6 +916,7 @@ export async function getProjectChangeOrder(
         changeKind: projectChangeOrderLines.changeKind,
         previousAmountCents: projectChangeOrderLines.previousAmountCents,
         newAmountCents: projectChangeOrderLines.newAmountCents,
+        assemblyName: projectChangeOrderLines.assemblyName,
       })
       .from(projectChangeOrderLines)
       .where(eq(projectChangeOrderLines.changeOrderId, changeOrderId))

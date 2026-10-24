@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { draftSplitIsStale } from "../owner-pay-application-refresh"
 import {
+  contractAssemblyFor,
   distributeCents,
   g703ByCostCode,
   payApplicationShares,
@@ -110,5 +111,30 @@ describe("g703ByCostCode", () => {
     expect(combined).toHaveLength(1)
     expect(combined[0]?.adjustedEstimate).toBe(9_500)
     expect(combined[0]?.currentWorkCompleted).toBe(1_000.3)
+  })
+})
+
+describe("change orders tied to an assembly", () => {
+  it("adds the change to that assembly's row instead of a separate change-order row", () => {
+    const shares = payApplicationShares({
+      revisionLines: [waterproofing],
+      estimateAllocations: [{ costCode: "07 10 00", key: "asm:kitchen", name: "Kitchen", sort: 1, cents: 500_000 }],
+      changeAllocations: [
+        { costCode: "07 10 00", key: "asm:kitchen", name: "Kitchen", sort: 1, cents: 120_000 },
+        { costCode: "07 10 00", key: "co:co-2", name: "Change order CO-002", sort: 500_000, cents: 50_000 },
+      ],
+    })
+    expect(shares.map((share) => [share.assemblyKey, share.originalEstimateCents, share.approvedChangeCents, share.adjustedBudgetCents])).toEqual([
+      ["asm:kitchen", 500_000, 120_000, 620_000],
+      ["co:co-2", 0, 50_000, 50_000],
+    ])
+  })
+
+  it("finds the assembly by id, or by name after a newer contract version, and only for tied changes", () => {
+    const assemblies = [{ id: "asm-v2-kitchen", name: "Kitchen" }, { id: "asm-v2-garage", name: "Garage" }]
+    expect(contractAssemblyFor(assemblies, { contractAssemblyId: "asm-v2-garage", assemblyName: "Garage" })?.id).toBe("asm-v2-garage")
+    expect(contractAssemblyFor(assemblies, { contractAssemblyId: "asm-v1-kitchen", assemblyName: " kitchen" })?.id).toBe("asm-v2-kitchen")
+    expect(contractAssemblyFor(assemblies, { contractAssemblyId: null, assemblyName: "Kitchen" })).toBeNull()
+    expect(contractAssemblyFor(assemblies, { contractAssemblyId: "asm-v1-deck", assemblyName: "Deck" })).toBeNull()
   })
 })
