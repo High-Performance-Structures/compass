@@ -20,6 +20,7 @@ import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import {
   createPictureInPictureTileRegistry,
+  exitPictureInPictureIfElementMatches,
   selectPictureInPictureVideo,
 } from "@/lib/realtimekit/picture-in-picture"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
@@ -328,7 +329,9 @@ export function RealtimeKitMeetingWindow({
     const meetingUi = meetingUiRef.current
     if (!meetingUi) return
 
-    return pipTileRegistryRef.current.attach(meetingUi)
+    return pipTileRegistryRef.current.attach(meetingUi, (video) => {
+      void exitPictureInPictureIfElementMatches(video)
+    })
   }, [error, joined, loading, meeting])
 
   React.useEffect(() => {
@@ -582,6 +585,13 @@ export function RealtimeKitMeetingWindow({
     setLeaving(true)
     setLeaveError(null)
     try {
+      const activePictureInPicture = document.pictureInPictureElement
+      if (
+        activePictureInPicture instanceof HTMLVideoElement &&
+        pipTileRegistryRef.current.hasVideo(activePictureInPicture)
+      ) {
+        await exitPictureInPictureIfElementMatches(activePictureInPicture)
+      }
       if (endForEveryone) {
         // kickAll sends a request without a server acknowledgement. Keep the
         // connection alive until roomLeft confirms that the host was removed.

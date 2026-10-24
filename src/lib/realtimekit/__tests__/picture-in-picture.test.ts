@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   createPictureInPictureTileRegistry,
+  exitPictureInPictureIfElementMatches,
   selectPictureInPictureVideo,
 } from "@/lib/realtimekit/picture-in-picture"
 
@@ -103,6 +104,131 @@ describe("RealtimeKit picture-in-picture tile registry", () => {
 
     detach()
     root.remove()
+  })
+
+  it("exits matching browser PiP when its registered tile unloads", async () => {
+    const root = document.createElement("div")
+    const registry = createPictureInPictureTileRegistry()
+    const video = document.createElement("video")
+    markReady(video)
+    document.body.appendChild(root)
+    const exitPictureInPicture = vi.fn(async () => {
+      Object.defineProperty(document, "pictureInPictureElement", {
+        configurable: true,
+        value: null,
+      })
+    })
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: video,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    const detach = registry.attach(root, (removedVideo) => {
+      void exitPictureInPictureIfElementMatches(removedVideo)
+    })
+    const tile = loadTile(root, "self", video)
+    tile.dispatchEvent(new CustomEvent("tileUnload", {
+      detail: { id: "self" },
+    }))
+
+    await Promise.resolve()
+    expect(exitPictureInPicture).toHaveBeenCalledOnce()
+    expect(registry.getCandidates("self")).toHaveLength(0)
+
+    detach()
+    root.remove()
+  })
+
+  it("does not exit unrelated browser PiP during tile cleanup or registry replacement", async () => {
+    const root = document.createElement("div")
+    const registry = createPictureInPictureTileRegistry()
+    const firstVideo = document.createElement("video")
+    const replacementVideo = document.createElement("video")
+    const unrelatedVideo = document.createElement("video")
+    markReady(firstVideo)
+    markReady(replacementVideo)
+    markReady(unrelatedVideo)
+    document.body.appendChild(root)
+    const exitPictureInPicture = vi.fn(async () => {})
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: unrelatedVideo,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    const detach = registry.attach(root, (removedVideo) => {
+      void exitPictureInPictureIfElementMatches(removedVideo)
+    })
+    const firstTile = loadTile(root, "self", firstVideo)
+    loadTile(root, "self", replacementVideo)
+    firstTile.dispatchEvent(new CustomEvent("tileUnload", {
+      detail: { id: "self" },
+    }))
+    await Promise.resolve()
+    expect(exitPictureInPicture).not.toHaveBeenCalled()
+    expect(registry.getCandidates("self").map((candidate) => candidate.video)).toEqual([
+      replacementVideo,
+    ])
+
+    detach()
+    root.remove()
+  })
+
+  it("exits matching browser PiP when the registry detaches for leave or unmount", async () => {
+    const root = document.createElement("div")
+    const registry = createPictureInPictureTileRegistry()
+    const video = document.createElement("video")
+    markReady(video)
+    document.body.appendChild(root)
+    const exitPictureInPicture = vi.fn(async () => {})
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: video,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    const detach = registry.attach(root, (removedVideo) => {
+      void exitPictureInPictureIfElementMatches(removedVideo)
+    })
+    loadTile(root, "self", video)
+    detach()
+
+    await Promise.resolve()
+    expect(exitPictureInPicture).toHaveBeenCalledOnce()
+    root.remove()
+  })
+
+  it("coalesces concurrent exit requests for the same browser PiP element", async () => {
+    const video = document.createElement("video")
+    let resolveExit: (() => void) | undefined
+    const exitPictureInPicture = vi.fn(
+      () => new Promise<void>((resolve) => { resolveExit = resolve })
+    )
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: video,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    const firstExit = exitPictureInPictureIfElementMatches(video)
+    const secondExit = exitPictureInPictureIfElementMatches(video)
+    expect(exitPictureInPicture).toHaveBeenCalledOnce()
+    resolveExit?.()
+    await expect(firstExit).resolves.toBe(true)
+    await expect(secondExit).resolves.toBe(true)
   })
 
   it("does not duplicate root listeners when attached more than once", () => {

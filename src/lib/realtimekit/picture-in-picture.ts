@@ -6,10 +6,14 @@ export type PictureInPictureVideoCandidate<T> = {
 }
 
 type PictureInPictureTileRegistry = {
-  readonly attach: (root: EventTarget) => () => void
+  readonly attach: (
+    root: EventTarget,
+    onVideoRemoved?: (video: HTMLVideoElement) => void
+  ) => () => void
   readonly getCandidates: (
     selfParticipantId: string
   ) => readonly PictureInPictureVideoCandidate<HTMLVideoElement>[]
+  readonly hasVideo: (video: HTMLVideoElement) => boolean
 }
 
 type TileLoadDetail = {
@@ -22,6 +26,32 @@ type PictureInPictureVideoRegistration = {
   readonly participantId: string
   readonly tileTarget: EventTarget | null
 }
+
+export async function exitPictureInPictureIfElementMatches(
+  video: HTMLVideoElement
+): Promise<boolean> {
+  const pendingExit = pendingPictureInPictureExits.get(video)
+  if (pendingExit) return pendingExit
+  if (
+    typeof document === "undefined" ||
+    document.pictureInPictureElement !== video
+  ) {
+    return false
+  }
+
+  const exit = document.exitPictureInPicture().then(
+    () => true,
+    () => false
+  )
+  pendingPictureInPictureExits.set(video, exit)
+  void exit.finally(() => pendingPictureInPictureExits.delete(video))
+  return exit
+}
+
+const pendingPictureInPictureExits = new WeakMap<
+  HTMLVideoElement,
+  Promise<boolean>
+>()
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -118,6 +148,11 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
   const handledTileUnloadEvents = new WeakSet<Event>()
   let attachedRoot: EventTarget | null = null
   let detachAttachedRoot: (() => void) | null = null
+  let onVideoRemoved: ((video: HTMLVideoElement) => void) | null = null
+
+  const notifyVideoRemoved = (video: HTMLVideoElement): void => {
+    onVideoRemoved?.(video)
+  }
 
   const removeTileUnloadListener = (
     registration: PictureInPictureVideoRegistration
@@ -125,24 +160,16 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
     registration.tileTarget?.removeEventListener("tileUnload", handleTileUnloadFromTile)
   }
 
-  const removeVideoRegistration = (video: HTMLVideoElement): boolean => {
+  const removeVideoRegistration = (
+    video: HTMLVideoElement,
+    notify = true
+  ): boolean => {
     const registration = participantVideos.get(video)
     if (!registration) return false
     removeTileUnloadListener(registration)
     participantVideos.delete(video)
+    if (notify) notifyVideoRemoved(video)
     return true
-  }
-
-  const handleTileLoad = (event: Event): void => {
-    const detail = tileLoadDetail(event)
-    if (!detail) return
-
-    removeVideoRegistration(detail.videoElement)
-    detail.tileTarget?.addEventListener("tileUnload", handleTileUnloadFromTile)
-    participantVideos.set(detail.videoElement, {
-      participantId: detail.participantId,
-      tileTarget: detail.tileTarget,
-    })
   }
 
   const processTileUnload = (event: Event): void => {
@@ -184,7 +211,17 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
   }
 
   const registerTile = (detail: TileLoadDetail): void => {
-    removeVideoRegistration(detail.videoElement)
+    if (detail.tileTarget) {
+      for (const [video, registration] of Array.from(participantVideos.entries())) {
+        if (
+          registration.tileTarget === detail.tileTarget &&
+          video !== detail.videoElement
+        ) {
+          removeVideoRegistration(video)
+        }
+      }
+    }
+    removeVideoRegistration(detail.videoElement, false)
     detail.tileTarget?.addEventListener("tileUnload", handleTileUnloadFromTile)
     participantVideos.set(detail.videoElement, {
       participantId: detail.participantId,
@@ -192,10 +229,19 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
     })
   }
 
+  const handleTileLoad = (event: Event): void => {
+    const detail = tileLoadDetail(event)
+    if (detail) registerTile(detail)
+  }
+
   return {
-    attach(root: EventTarget): () => void {
+    attach(
+      root: EventTarget,
+      videoRemovedHandler?: (video: HTMLVideoElement) => void
+    ): () => void {
       if (attachedRoot === root && detachAttachedRoot) return detachAttachedRoot
       detachAttachedRoot?.()
+      onVideoRemoved = videoRemovedHandler ?? null
       root.addEventListener("tileLoad", handleTileLoad)
       root.addEventListener("tileUnload", handleTileUnload)
       for (const detail of scanExistingTiles(root)) registerTile(detail)
@@ -204,12 +250,12 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
         if (attachedRoot !== root) return
         root.removeEventListener("tileLoad", handleTileLoad)
         root.removeEventListener("tileUnload", handleTileUnload)
-        for (const registration of participantVideos.values()) {
-          removeTileUnloadListener(registration)
+        for (const video of Array.from(participantVideos.keys())) {
+          removeVideoRegistration(video)
         }
-        participantVideos.clear()
         attachedRoot = null
         detachAttachedRoot = null
+        onVideoRemoved = null
       }
       attachedRoot = root
       detachAttachedRoot = detach
@@ -226,6 +272,9 @@ export function createPictureInPictureTileRegistry(): PictureInPictureTileRegist
           isReady: video.videoWidth > 0 && video.videoHeight > 0,
           canUsePictureInPicture: !video.disablePictureInPicture,
         }))
+    },
+    hasVideo(video: HTMLVideoElement): boolean {
+      return participantVideos.has(video)
     },
   }
 }
