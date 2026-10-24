@@ -20,12 +20,14 @@ import {
 import { projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
+import { cleanScheduleImpactDays } from "@/lib/change-orders/schedule-impact"
 import {
-  changeOrderCostLinesTotalCents,
-  cleanChangeOrderCostLines,
-  cleanScheduleImpactDays,
-  type ChangeOrderCostLineInput,
-} from "@/lib/change-orders/cost-lines"
+  budgetTreatmentForKind,
+  isChangeOrderKind,
+  isChoosableChangeOrderKind,
+  type ChangeOrderKind,
+  type ChoosableChangeOrderKind,
+} from "@/lib/change-orders/kinds"
 import {
   allowedChangeOrderTransitions,
   canEditChangeOrderContent,
@@ -135,6 +137,8 @@ export type ProjectChangeOrderItem = {
   readonly sourceHref: string | null
   readonly internalNotes: string | null
   readonly budgetTreatment: ChangeOrderBudgetTreatment
+  /** How it's built; null for older change orders with recorded lines. */
+  readonly kind: ChangeOrderKind | null
   readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
   readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
   /** This change order's own estimate (built like the contract estimate). */
@@ -190,14 +194,14 @@ export type CreateProjectChangeOrderInput = {
   readonly scope: string
   readonly reason: string | null
   readonly scheduleImpactDays: number | null
-  readonly lines: readonly ChangeOrderCostLineInput[]
+  /** estimate, description or replacement; outside requesters get estimate. */
+  readonly kind: string
   readonly audience: ChangeOrderAudience
   readonly requesterCompany: string | null
   readonly sourceRecordId: string | null
   readonly sourceHref: string | null
   readonly initialStatus: "draft" | "submitted"
   readonly documents: readonly ChangeOrderDocumentInput[]
-  readonly budgetTreatment: ChangeOrderBudgetTreatment
   readonly replacementEstimateId: string | null
 }
 
@@ -206,13 +210,13 @@ export type UpdateProjectChangeOrderInput = {
   readonly scope: string
   readonly reason: string | null
   readonly scheduleImpactDays: number | null
-  readonly lines: readonly ChangeOrderCostLineInput[]
   readonly audience: ChangeOrderAudience
   readonly internalNotes: string | null
   readonly status: ChangeOrderStatus
   readonly transitionNote: string | null
   readonly documents: readonly ChangeOrderDocumentInput[]
-  readonly budgetTreatment: ChangeOrderBudgetTreatment
+  /** Staff may change how an unexecuted change order is built. */
+  readonly kind: string | null
   readonly replacementEstimateId: string | null
   readonly executedDocument: ChangeOrderExecutedDocumentInput | null
 }
@@ -618,6 +622,7 @@ function viewModel(
     sourceHref: context.internal ? row.sourceHref : null,
     internalNotes: context.internal ? row.internalNotes : null,
     budgetTreatment: row.budgetTreatment,
+    kind: isChangeOrderKind(row.changeOrderKind) ? row.changeOrderKind : null,
     baselineEstimate: canSeeRebaselineEstimates
       ? rebaseline.baselineEstimate
       : null,
@@ -1003,12 +1008,16 @@ export async function createProjectChangeOrder(
     if (!validAudience(audience)) {
       return { success: false, error: "Choose a valid audience." }
     }
-    const budgetTreatment: ChangeOrderBudgetTreatment = internal
-      ? input.budgetTreatment
-      : "additive"
-    if (!isChangeOrderBudgetTreatment(budgetTreatment)) {
-      return { success: false, error: "Choose a valid budget treatment." }
+    // Outside requests are priced by staff with a change-order estimate.
+    const kind: ChoosableChangeOrderKind | null = internal
+      ? isChoosableChangeOrderKind(input.kind)
+        ? input.kind
+        : null
+      : "estimate"
+    if (!kind) {
+      return { success: false, error: "Choose how the change order is built." }
     }
+    const budgetTreatment = budgetTreatmentForKind(kind)
     const rebaselineSelection =
       budgetTreatment === "baseline_replacement"
         ? await requireRebaselineSelection({
@@ -1018,14 +1027,13 @@ export async function createProjectChangeOrder(
           })
         : null
     const documents = cleanDocuments(input.documents)
-    const lines =
-      budgetTreatment === "baseline_replacement"
-        ? []
-        : cleanChangeOrderCostLines(input.lines)
+    // Lines come from an accepted estimate, never from typed entry.
     const amountCents = rebaselineSelection
       ? rebaselineSelection.replacement.estimateTotalCents -
         rebaselineSelection.baseline.estimateTotalCents
-      : changeOrderCostLinesTotalCents(lines)
+      : kind === "description"
+        ? 0
+        : null
     const scheduleImpactDays = cleanScheduleImpactDays(
       input.scheduleImpactDays
     )
@@ -1060,6 +1068,7 @@ export async function createProjectChangeOrder(
       sourceHref: input.sourceHref ? safeDocumentUrl(input.sourceHref) : null,
       internalNotes: null,
       budgetTreatment,
+      changeOrderKind: kind,
       baselineEstimateId: rebaselineSelection?.baseline.id ?? null,
       replacementEstimateId: rebaselineSelection?.replacement.id ?? null,
       rebaselineExecutionToken: null,
@@ -1082,18 +1091,6 @@ export async function createProjectChangeOrder(
       createdBy: context.user.id,
       createdAt: now,
     }))
-    const lineRows = lines.map((line) => ({
-      id: crypto.randomUUID(),
-      projectId,
-      changeOrderId: id,
-      lineNumber: line.lineNumber,
-      description: line.description,
-      phaseCode: line.phaseCode,
-      costCode: line.costCode,
-      amountCents: line.amountCents,
-      createdAt: now,
-      updatedAt: now,
-    }))
     const historyRow = {
       id: crypto.randomUUID(),
       projectId,
@@ -1109,28 +1106,15 @@ export async function createProjectChangeOrder(
         audience,
         sourceType,
         budgetTreatment,
+        kind,
         baselineEstimateId: rebaselineSelection?.baseline.id ?? null,
         replacementEstimateId: rebaselineSelection?.replacement.id ?? null,
-        lineCount: lineRows.length,
         scheduleImpactDays,
       }),
       createdAt: now,
     }
 
-    if (documentRows.length > 0 && lineRows.length > 0) {
-      await context.db.batch([
-        context.db.insert(projectChangeOrders).values(row),
-        context.db.insert(projectChangeOrderLines).values(lineRows),
-        context.db.insert(projectChangeOrderDocuments).values(documentRows),
-        context.db.insert(projectChangeOrderHistory).values(historyRow),
-      ])
-    } else if (lineRows.length > 0) {
-      await context.db.batch([
-        context.db.insert(projectChangeOrders).values(row),
-        context.db.insert(projectChangeOrderLines).values(lineRows),
-        context.db.insert(projectChangeOrderHistory).values(historyRow),
-      ])
-    } else if (documentRows.length > 0) {
+    if (documentRows.length > 0) {
       await context.db.batch([
         context.db.insert(projectChangeOrders).values(row),
         context.db.insert(projectChangeOrderDocuments).values(documentRows),
@@ -1217,13 +1201,28 @@ export async function updateProjectChangeOrder(
     if (!isChangeOrderBudgetTreatment(existing.budgetTreatment)) {
       return { success: false, error: "The stored budget treatment is invalid." }
     }
-    const budgetTreatment =
-      contentAllowed && context.internal
-        ? input.budgetTreatment
-        : existing.budgetTreatment
-    if (!isChangeOrderBudgetTreatment(budgetTreatment)) {
-      return { success: false, error: "Choose a valid budget treatment." }
+    const existingKind = isChangeOrderKind(existing.changeOrderKind) ? existing.changeOrderKind : null
+    const requestedKind =
+      contentAllowed && context.internal && input.kind !== null && input.kind !== existingKind
+        ? input.kind
+        : null
+    if (requestedKind !== null) {
+      if (!isChoosableChangeOrderKind(requestedKind) || existingKind === "contract_version") {
+        return { success: false, error: "Choose how the change order is built." }
+      }
+      // An estimate that has been started stays the way this change order is priced.
+      const startedEstimate = await context.db
+        .select({ id: projectEstimates.id })
+        .from(projectEstimates)
+        .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.changeOrderId, changeOrderId)))
+        .get()
+      if (startedEstimate) {
+        return { success: false, error: "This change order already has an estimate; void the estimate before changing how it's built." }
+      }
     }
+    const kind: ChangeOrderKind | null = requestedKind ?? existingKind
+    const budgetTreatment: ChangeOrderBudgetTreatment =
+      requestedKind !== null ? budgetTreatmentForKind(requestedKind) : existing.budgetTreatment
     if (budgetTreatment === "baseline_replacement" && !context.internal) {
       return {
         success: false,
@@ -1276,11 +1275,6 @@ export async function updateProjectChangeOrder(
     }
     const now = new Date().toISOString()
     const documents = contentAllowed ? cleanDocuments(input.documents) : null
-    const lines = contentAllowed
-      ? budgetTreatment === "baseline_replacement"
-        ? []
-        : cleanChangeOrderCostLines(input.lines)
-      : null
     const title = contentAllowed
       ? requireText(input.title, "Title", 200)
       : existing.title
@@ -1290,12 +1284,15 @@ export async function updateProjectChangeOrder(
     const reason = contentAllowed
       ? cleanLimitedText(input.reason, "Reason", 4_000)
       : existing.reason
+    // The amount follows how it's built: an estimate sets it on acceptance.
     const amountCents = rebaselineSelection
       ? rebaselineSelection.replacement.estimateTotalCents -
         rebaselineSelection.baseline.estimateTotalCents
-      : lines
-        ? changeOrderCostLinesTotalCents(lines)
-        : existing.amountCents
+      : requestedKind === "description"
+        ? 0
+        : requestedKind === "estimate"
+          ? null
+          : existing.amountCents
     const scheduleImpactDays = contentAllowed
       ? cleanScheduleImpactDays(input.scheduleImpactDays)
       : existing.scheduleImpactDays
@@ -1318,9 +1315,19 @@ export async function updateProjectChangeOrder(
         executedDocumentLabel = executedDocument.label
       }
     }
-    if (input.status === "executed") {
+    if (
+      input.status === "executed" &&
+      !isExecutedChangeOrderStatus(existing.status) &&
+      kind === "estimate"
+    ) {
+      return {
+        success: false,
+        error: "Accept this change order's estimate to execute it; its cost lines come from the estimate.",
+      }
+    }
+    // A description-only change order has no cost lines and no budget effect.
+    if (input.status === "executed" && kind !== "description") {
       const executionLines =
-        lines ??
         (await context.db
           .select({
             costCode: projectChangeOrderLines.costCode,
@@ -1364,6 +1371,7 @@ export async function updateProjectChangeOrder(
           ? cleanLimitedText(input.internalNotes, "Internal notes", 4_000)
           : existing.internalNotes,
         budgetTreatment,
+        changeOrderKind: kind,
         baselineEstimateId:
           budgetTreatment === "baseline_replacement"
             ? rebaselineSelection?.baseline.id ?? existing.baselineEstimateId
@@ -1427,14 +1435,30 @@ export async function updateProjectChangeOrder(
               ? rebaselineSelection?.replacement.id ??
                 existing.replacementEstimateId
               : null,
+          kind,
+          previousKind: requestedKind !== null ? existingKind : undefined,
           documentCount: documents?.length ?? null,
-          lineCount: lines?.length ?? null,
           scheduleImpactDays,
         }),
         createdAt: now,
       })
-    if (documents === null || lines === null) {
-      await context.db.batch([updateStatement, historyStatement])
+    // Typed cost lines are retired: converting an older change order to a
+    // kind clears them, and its estimate supplies the lines on acceptance.
+    const deleteLinesStatements =
+      requestedKind !== null
+        ? [
+            context.db
+              .delete(projectChangeOrderLines)
+              .where(
+                and(
+                  eq(projectChangeOrderLines.changeOrderId, changeOrderId),
+                  eq(projectChangeOrderLines.projectId, projectId)
+                )
+              ),
+          ]
+        : []
+    if (documents === null) {
+      await context.db.batch([updateStatement, ...deleteLinesStatements, historyStatement])
     } else {
       const deleteDocumentsStatement = context.db
         .delete(projectChangeOrderDocuments)
@@ -1444,26 +1468,6 @@ export async function updateProjectChangeOrder(
             eq(projectChangeOrderDocuments.projectId, projectId)
           )
         )
-      const deleteLinesStatement = context.db
-        .delete(projectChangeOrderLines)
-        .where(
-          and(
-            eq(projectChangeOrderLines.changeOrderId, changeOrderId),
-            eq(projectChangeOrderLines.projectId, projectId)
-          )
-        )
-      const lineRows = lines.map((line) => ({
-        id: crypto.randomUUID(),
-        projectId,
-        changeOrderId,
-        lineNumber: line.lineNumber,
-        description: line.description,
-        phaseCode: line.phaseCode,
-        costCode: line.costCode,
-        amountCents: line.amountCents,
-        createdAt: now,
-        updatedAt: now,
-      }))
       const documentRows = documents.map((document) => ({
         id: crypto.randomUUID(),
         projectId,
@@ -1474,42 +1478,15 @@ export async function updateProjectChangeOrder(
         createdBy: context.user.id,
         createdAt: now,
       }))
-      if (documentRows.length === 0 && lineRows.length === 0) {
-        await context.db.batch([
-          updateStatement,
-          deleteDocumentsStatement,
-          deleteLinesStatement,
-          historyStatement,
-        ])
-      } else if (documentRows.length > 0 && lineRows.length > 0) {
-        await context.db.batch([
-          updateStatement,
-          deleteDocumentsStatement,
-          context.db.insert(projectChangeOrderDocuments).values(documentRows),
-          deleteLinesStatement,
-          context.db.insert(projectChangeOrderLines).values(lineRows),
-          historyStatement,
-        ])
-      } else if (documentRows.length > 0) {
-        const insertDocumentsStatement = context.db
-          .insert(projectChangeOrderDocuments)
-          .values(documentRows)
-        await context.db.batch([
-          updateStatement,
-          deleteDocumentsStatement,
-          insertDocumentsStatement,
-          deleteLinesStatement,
-          historyStatement,
-        ])
-      } else {
-        await context.db.batch([
-          updateStatement,
-          deleteDocumentsStatement,
-          deleteLinesStatement,
-          context.db.insert(projectChangeOrderLines).values(lineRows),
-          historyStatement,
-        ])
-      }
+      await context.db.batch([
+        updateStatement,
+        deleteDocumentsStatement,
+        ...(documentRows.length > 0
+          ? [context.db.insert(projectChangeOrderDocuments).values(documentRows)]
+          : []),
+        ...deleteLinesStatements,
+        historyStatement,
+      ])
     }
     if (statusChanged && input.status === "executed") {
       await rebuildProjectContractBudget({

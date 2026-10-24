@@ -32,7 +32,7 @@ function item(overrides: Partial<ProjectChangeOrderItem> = {}): ProjectChangeOrd
     amountCents: 12345, scheduleImpactDays: 2, status: "executed", audience: "owner",
     requesterType: "owner", requesterUserId: null, requesterName: "Legacy project owner",
     requesterCompany: "Legacy company", sourceType: "buildertrend_import", sourceRecordId: "source-1",
-    sourceHref: null, internalNotes: null, budgetTreatment: "additive", baselineEstimate: null,
+    sourceHref: null, internalNotes: null, budgetTreatment: "additive", kind: null, baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
     rebaselineCompletedAt: null, rebaselineBlockers: [], canExecuteRebaseline: false,
     foxitStatus: "not_started", sageStatus: "not_ready",

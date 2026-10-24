@@ -2492,6 +2492,8 @@ export const projectChangeOrders = sqliteTable(
     sourceHref: text("source_href"),
     internalNotes: text("internal_notes"),
     budgetTreatment: text("budget_treatment").notNull().default("additive"),
+    // See src/lib/change-orders/kinds.ts; NULL for older recorded change orders.
+    changeOrderKind: text("change_order_kind"),
     baselineEstimateId: text("baseline_estimate_id"),
     replacementEstimateId: text("replacement_estimate_id"),
     rebaselineExecutionToken: text("rebaseline_execution_token"),

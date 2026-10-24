@@ -33,7 +33,7 @@ export function ProjectChangeOrderVersionLines({
   readonly affectsBudget: boolean
 }): React.ReactElement | null {
   const compared = lines.filter((line) => line.changeKind !== null)
-  if (compared.length === 0) return null
+  if (compared.length === 0) return <ProjectChangeOrderCostLines lines={lines} />
   const net = compared.reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
   return (
     <section className="border-y py-4">
@@ -69,6 +69,46 @@ export function ProjectChangeOrderVersionLines({
             <tr className="border-t font-medium">
               <td className="py-1.5 pr-3" colSpan={5}>Net change</td>
               <td className="py-1.5 text-right tabular-nums">{money(net)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * A change order's cost lines, read-only. They come from its accepted
+ * estimate, or were recorded before change orders were built from estimates.
+ */
+function ProjectChangeOrderCostLines({ lines }: { readonly lines: readonly VersionLine[] }): React.ReactElement | null {
+  if (lines.length === 0) return null
+  const total = lines.reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
+  return (
+    <section className="border-y py-4">
+      <h2 className="text-sm font-semibold">Cost lines</h2>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="py-1.5 pr-3 font-medium">Cost code</th>
+              <th className="py-1.5 pr-3 font-medium">Line</th>
+              <th className="py-1.5 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr key={line.id} className="border-t">
+                <td className="py-1.5 pr-3 tabular-nums">{line.costCode ?? "Not coded"}</td>
+                <td className="py-1.5 pr-3">{line.description}</td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {line.amountCents === null ? "Not priced" : money(line.amountCents)}
+                </td>
+              </tr>
+            ))}
+            <tr className="border-t font-medium">
+              <td className="py-1.5 pr-3" colSpan={2}>Total</td>
+              <td className="py-1.5 text-right tabular-nums">{money(total)}</td>
             </tr>
           </tbody>
         </table>

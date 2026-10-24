@@ -147,6 +147,7 @@ export async function versionChangeOrderStatements(db: Db, input: VersionChangeO
         sourceRecordId: input.replacement.id,
         internalNotes: null,
         budgetTreatment: replace ? "baseline_replacement" : "additive",
+        changeOrderKind: replace ? "replacement" : "contract_version",
         baselineEstimateId: input.baseline.id,
         replacementEstimateId: input.replacement.id,
         foxitStatus: replace ? "not_started" : "completed",

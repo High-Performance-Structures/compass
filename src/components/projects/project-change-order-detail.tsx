@@ -122,7 +122,16 @@ export function ProjectChangeOrderDetail({
       )}
 
       <section className="grid gap-4 lg:grid-cols-2">
-        {internal && item.budgetTreatment !== "baseline_replacement" && (
+        {item.kind === "description" && (
+          <div className="border-y bg-background p-4">
+            <h2 className="text-sm font-semibold">No cost change</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This change order documents a scope, plan or contract-language change. It doesn&apos;t change the
+              contract price or the budget.
+            </p>
+          </div>
+        )}
+        {internal && (item.kind === "estimate" || item.kind === null) && item.budgetTreatment !== "baseline_replacement" && (
           <ProjectChangeOrderEstimatePanel
             projectId={item.projectId}
             changeOrderId={item.id}
