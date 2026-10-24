@@ -85,6 +85,8 @@ an estimate.
 
 When a customer wants work that belongs to another department (pour help or ICF stacking on a Nu-Tech material sale, a full build after an HPS shell, a block order from a design), create it as a **linked job**. On the job's Overview, **Linked jobs** offers shortcuts for common cases and **Other department…** for anything else. Each opens the New Project form already filled in with this job's customer, contact, site address and a note of the work requested; check the department, name, statuses and project manager, then create it. The new job is numbered, tracked and set up like any other project.
 
+When both jobs already exist (for example a Design job and the Construction job it led to), choose **Link existing job**, search for the other job by number, name or client, and optionally say what the link is for. Neither job is renumbered or copied.
+
 Both jobs show the link under **Linked jobs**, with the other job's number, name and status. Removing a link (the unlink button) leaves both jobs as they are. Admins edit the shortcuts in **Settings → Workflows → Linked jobs**.
 
 ## Review Duplicate Projects and Registry Cleanup {#duplicate-projects}

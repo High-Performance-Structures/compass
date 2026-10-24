@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import { projectContacts, projectJobStatuses, projects } from "@/db/schema"
 import { projectLinks } from "@/db/schema-project-links"
 import { createProjectIntake, type CreateProjectIntakeInput, type CreateProjectIntakeResult } from "@/app/actions/projects"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -27,8 +28,11 @@ export type LinkedJob = {
   readonly statusLabel: string
   /** What the link is for, e.g. "Pour help or stacking". */
   readonly label: string | null
-  /** "created": this job created the other one; "from": this job was created from it. */
-  readonly direction: "created" | "from"
+  /**
+   * "created": this job created the other one; "from": this job was created
+   * from it; "linked": two jobs that already existed were linked.
+   */
+  readonly direction: "created" | "from" | "linked"
 }
 
 /** What the New Project form starts with for a linked job: this job's customer and site. */
@@ -64,6 +68,22 @@ async function context() {
   return { user, organizationId, db: getDb(env.DB) }
 }
 
+// A job created as a linked job gets its link moments after it is created;
+// a link made well after both jobs existed joined two existing jobs.
+const CREATED_LINK_WINDOW_MS = 10 * 60 * 1000
+
+function linkDirection(
+  row: { readonly sourceId: string; readonly linkedId: string; readonly createdAt: string },
+  projectId: string,
+  jobs: readonly ({ readonly id: string; readonly createdAt: string } | undefined)[],
+): LinkedJob["direction"] {
+  const created = jobs.find((job) => job?.id === row.linkedId)
+  const linkedAt = Date.parse(row.createdAt)
+  const createdAt = created ? Date.parse(created.createdAt) : Number.NaN
+  if (Number.isFinite(linkedAt) && Number.isFinite(createdAt) && linkedAt - createdAt > CREATED_LINK_WINDOW_MS) return "linked"
+  return row.sourceId === projectId ? "created" : "from"
+}
+
 /** A job's linked jobs (both directions), its shortcuts, and the New Project prefill. */
 export async function getProjectLinks(projectId: string): Promise<ProjectLinksView | null> {
   try {
@@ -89,6 +109,7 @@ export async function getProjectLinks(projectId: string): Promise<ProjectLinksVi
           sourceId: projectLinks.projectId,
           linkedId: projectLinks.linkedProjectId,
           label: projectLinks.label,
+          createdAt: projectLinks.createdAt,
         })
         .from(projectLinks)
         .where(and(eq(projectLinks.organizationId, organizationId), or(eq(projectLinks.projectId, projectId), eq(projectLinks.linkedProjectId, projectId))))
@@ -116,6 +137,7 @@ export async function getProjectLinks(projectId: string): Promise<ProjectLinksVi
             id: projects.id,
             projectNumber: projects.projectNumber,
             name: projects.name,
+            createdAt: projects.createdAt,
             jobStatusId: projects.jobStatusId,
             customLabel: projectJobStatuses.label,
           })
@@ -138,7 +160,7 @@ export async function getProjectLinks(projectId: string): Promise<ProjectLinksVi
           name: other.name,
           statusLabel: projectJobStatusLabel({ jobStatusId: other.jobStatusId ?? "", customLabel: other.customLabel ?? null }),
           label: row.label,
-          direction: row.sourceId === projectId ? "created" : "from",
+          direction: linkDirection(row, projectId, others),
         },
       ]
     })
@@ -196,6 +218,75 @@ export async function createLinkedProject(
   return result
 }
 
+function jobLabel(job: { readonly projectNumber: string | null; readonly name: string }): string {
+  return job.projectNumber ? `${job.projectNumber} — ${job.name}` : job.name
+}
+
+/**
+ * Links this job to a job that already exists (for example a Design job and
+ * the Construction job it led to). Neither job is renumbered or copied.
+ */
+export async function linkExistingProject(
+  projectId: string,
+  otherProjectId: string,
+  label: string | null,
+): Promise<SimpleResult> {
+  try {
+    const { user, organizationId, db } = await context()
+    if (isDemoUser(user.id) || !can(user, "project", "update")) return { success: false, error: "You can't change linked jobs." }
+    if (projectId === otherProjectId) return { success: false, error: "Choose a different job to link." }
+    await assertProjectAccess(db, user, projectId)
+    const access = await getProjectAccessRecord(db, user, otherProjectId)
+    if (!access || access.organizationId !== organizationId) return { success: false, error: "The job to link was not found." }
+    const jobs = await db
+      .select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name })
+      .from(projects)
+      .where(and(eq(projects.organizationId, organizationId), or(eq(projects.id, projectId), eq(projects.id, otherProjectId))))
+    const job = jobs.find((row) => row.id === projectId)
+    const other = jobs.find((row) => row.id === otherProjectId)
+    if (!job || !other) return { success: false, error: "The job to link was not found." }
+    const existing = await db
+      .select({ id: projectLinks.id })
+      .from(projectLinks)
+      .where(
+        or(
+          and(eq(projectLinks.projectId, projectId), eq(projectLinks.linkedProjectId, otherProjectId)),
+          and(eq(projectLinks.projectId, otherProjectId), eq(projectLinks.linkedProjectId, projectId)),
+        ),
+      )
+      .get()
+    if (existing) return { success: false, error: `${jobLabel(other)} is already linked to this job.` }
+    const linkId = crypto.randomUUID()
+    await db.insert(projectLinks).values({
+      id: linkId,
+      organizationId,
+      projectId,
+      linkedProjectId: otherProjectId,
+      label: label?.trim().slice(0, 80) || null,
+      createdBy: user.id,
+      createdAt: new Date().toISOString(),
+    })
+    for (const [here, there] of [[job, other], [other, job]] as const) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: here.id,
+        actor: user,
+        category: "account",
+        action: "project.linked",
+        entityType: "project_link",
+        entityId: linkId,
+        summary: `Linked ${jobLabel(there)}.`,
+      })
+    }
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${otherProjectId}`)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Couldn't link the job." }
+  }
+}
+
 /** Removes a link between two jobs; both jobs stay as they are. */
 export async function removeProjectLink(projectId: string, linkId: string): Promise<SimpleResult> {
   try {
@@ -211,6 +302,24 @@ export async function removeProjectLink(projectId: string, linkId: string): Prom
       return { success: false, error: "That link is no longer on this job." }
     }
     await db.delete(projectLinks).where(eq(projectLinks.id, link.id))
+    const jobs = await db
+      .select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name })
+      .from(projects)
+      .where(or(eq(projects.id, link.projectId), eq(projects.id, link.linkedProjectId)))
+    for (const here of jobs) {
+      const there = jobs.find((row) => row.id !== here.id)
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: here.id,
+        actor: user,
+        category: "account",
+        action: "project.unlinked",
+        entityType: "project_link",
+        entityId: link.id,
+        summary: there ? `Removed the link to ${jobLabel(there)}.` : "Removed a linked job.",
+      })
+    }
     revalidatePath(`/dashboard/projects/${link.projectId}`)
     revalidatePath(`/dashboard/projects/${link.linkedProjectId}`)
     return { success: true }
