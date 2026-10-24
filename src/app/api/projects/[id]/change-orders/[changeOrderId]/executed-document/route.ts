@@ -1,3 +1,4 @@
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
@@ -25,7 +26,8 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await requireAuth()
+    const user = await conversationRequestViewer(await requireAuth())
+    if (!user) return new Response("Not found", { status: 404 })
     const { id: rawProjectId, changeOrderId } = await context.params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) {

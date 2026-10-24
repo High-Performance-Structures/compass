@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { organizationMembers, organizations, projectMembers, projects, users } from "@/db/schema"
 import { correspondence, correspondenceParticipants } from "@/db/schema-correspondence"
+import { getProjectAudienceRequestScope, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { getCloudflareContext } from "@/lib/db"
@@ -26,11 +27,16 @@ export type CorrespondenceContext = {
   readonly projectId: string
   readonly organizationId: string
   readonly projectName: string
+  readonly preview?: boolean
   readonly workspace: "staff" | "owner" | "sub_vendor"
 }
 
-export async function correspondenceContext(projectId: string): Promise<CorrespondenceContext> {
-  const user = await requireAuth()
+export async function correspondenceContext(projectId: string, access: "read" | "write" = "write"): Promise<CorrespondenceContext> {
+  if (access === "write") await assertAudiencePreviewWriteAllowed()
+  const scope = await getProjectAudienceRequestScope()
+  const resolved = scope ? await (await import("@/lib/project-audience-viewer")).resolveProjectAudienceViewer(projectId, scope.audience) : null
+  if (resolved?.isPreview && !resolved.viewer) throw new Error("Select a person to preview their messages.")
+  const user = resolved?.viewer ?? await requireAuth()
   const { env } = await getCloudflareContext()
   if (!isCorrespondenceEnabled(projectId, env) && !isCorrespondenceEnabled(projectId)) throw new Error("Project messaging is not enabled for this project yet.")
   if (isDemoUser(user.id)) throw new Error("Demo mode is read-only.")
@@ -50,7 +56,7 @@ export async function correspondenceContext(projectId: string): Promise<Correspo
   const staff = organizationMembership.type === "internal" && isInternalStaffRole(organizationMembership.role)
   const workspace = staff ? "staff" : role === "client" || role === "owner" ? "owner" : role === "subcontractor" || role === "supplier" ? "sub_vendor" : null
   if (!workspace || workspace !== "staff" && !membership) throw new Error("Project not found.")
-  return { db, env, user, projectId, organizationId: project.organizationId, projectName: row?.name ?? "Project", workspace }
+  return { db, env, user, projectId, organizationId: project.organizationId, projectName: row?.name ?? "Project", workspace, preview: resolved?.isPreview ?? false }
 }
 
 export async function correspondenceContacts(ctx: CorrespondenceContext): Promise<readonly CorrespondencePerson[]> {

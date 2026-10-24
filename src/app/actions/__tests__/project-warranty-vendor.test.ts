@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
+
 const mocks = vi.hoisted(() => ({ requireAuth: vi.fn(), getCloudflareContext: vi.fn() }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))

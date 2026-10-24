@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
+
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   getCloudflareContext: vi.fn(),

@@ -1,3 +1,4 @@
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projectMembers } from "@/db/schema"
@@ -21,7 +22,8 @@ export async function selectionAccess(
   readonly staff: boolean
   readonly actorName: string
 }> {
-  const user = await requireAuth()
+  if (write) await assertAudiencePreviewWriteAllowed()
+  const user = write ? await requireAuth() : await requireProjectAudienceReadUser(projectId)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   await assertProjectAccess(db, user, projectId)

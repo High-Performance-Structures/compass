@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { and, asc, desc, eq, inArray, isNotNull, or, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
@@ -71,7 +73,7 @@ type VendorContext = {
  * email on this project's contact list.
  */
 async function vendorWarrantyContext(projectId: string): Promise<VendorContext> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const access = await assertProjectAccess(db, user, projectId)
@@ -197,6 +199,7 @@ export async function updateVendorWarrantyClaim(
   input: { readonly scheduledFor: string | null; readonly status: string; readonly note: string | null },
 ): Promise<VendorUpdateResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await vendorWarrantyContext(projectId)
     if (context.viewerIsInternal) {
       return { success: false, error: "Staff update claims from the project's warranty page." }

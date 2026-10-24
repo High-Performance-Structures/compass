@@ -293,16 +293,16 @@ export default async function OwnerBudgetPage({
               role="status"
             >
               <p className="text-sm font-semibold">
-                {preview.viewerIsInternal
+                {false
                   ? "Sage reconciliation required"
                   : "Current detail is being reconciled"}
               </p>
               <p className="mt-1 text-xs leading-5">
-                {preview.viewerIsInternal
+                {false
                   ? "The certified pay-application header and imported G703 lines do not currently reconcile. Review the Sage progress-billing, deposit, retainage, and Schedule of Values data before publishing a regenerated package."
                   : "The detailed G703 is being checked against the certified pay application. The published application PDFs above remain available."}
               </p>
-              {preview.viewerIsInternal && (
+              {false && (
                 <p className="mt-2 text-xs tabular-nums">
                   Contract difference: {money(contractDifference)}
                   {" · "}

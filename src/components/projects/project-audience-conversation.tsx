@@ -1,8 +1,11 @@
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
 import type * as React from "react"
 import { notFound } from "next/navigation"
 
 import { getMessages } from "@/app/actions/chat-messages"
 import { getChannel } from "@/app/actions/conversations"
+import { resolveProjectAudienceViewer } from "@/lib/project-audience-viewer"
+
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageComposer } from "@/components/conversations/message-composer"
@@ -37,10 +40,9 @@ async function loadConversation(
   audience: ProjectAudience
 ) {
   try {
-    // Loading the preview first synchronizes the private audience channel's
-    // current owner/partner and internal-team memberships before message
-    // authorization runs.
     const preview = await getProjectAudiencePreview(projectId, audience)
+    const context = await resolveProjectAudienceViewer(projectId, audience)
+    if (!context.viewer || !(await getConversationChannelAccess({ db: context.db, user: context.viewer, channelId }))) notFound()
     const [channelResult, messagesResult] = await Promise.all([
       getChannel(channelId),
       getMessages(channelId),
@@ -119,7 +121,15 @@ export async function ProjectAudienceConversation({
       warrantyEnabled={preview.project.warrantyEnabled}
     >
       <main className="min-h-0 flex-1 overflow-hidden bg-background">
-        <ConversationsProvider>
+        {preview.viewerIsInternal ? <section className="h-full overflow-y-auto p-5">
+          <h1 className="text-lg font-medium">{channel.name}</h1>
+          <p className="my-3 text-sm text-muted-foreground">Read-only conversation preview.</p>
+          {messages.map((message) => <article key={message.id} className="border-b py-4">
+            <p className="text-sm font-medium">{message.user?.displayName ?? message.user?.email ?? "Project participant"}</p>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm">{message.content}</p>
+            {message.attachments.map((attachment) => <a className="mt-2 block text-sm underline" key={attachment.id} href={attachment.storageUrl}>{attachment.fileName}</a>)}
+          </article>)}
+        </section> : <ConversationsProvider>
           <div className="flex h-full w-full min-w-0 overflow-hidden">
             <div
               className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
@@ -149,7 +159,7 @@ export async function ProjectAudienceConversation({
             </div>
             <ThreadPanel currentUserId={preview.viewer.id} />
           </div>
-        </ConversationsProvider>
+        </ConversationsProvider>}
       </main>
     </ProjectAudiencePreviewShell>
   )

@@ -31,6 +31,8 @@ import {
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
 import { moneyCents, safeSelectionUrl } from "@/lib/selections/decisions"
 
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
+
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   cloudflare: vi.fn(),

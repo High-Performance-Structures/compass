@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -15,6 +15,10 @@ import {
   notifyRfiCreated,
   notifyRfiUpdated,
 } from "@/lib/notifications/events"
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
+import { assertProjectAccess } from "@/lib/project-access"
 import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -118,7 +122,7 @@ export type UpdateProjectRfiInput = {
 async function verifyProjectAccess(
   projectId: string
 ): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   await requireFeaturePermission(user, "rfis", "read")
   const orgId = requireOrg(user)
 
@@ -135,7 +139,20 @@ async function verifyProjectAccess(
     throw new Error("Project not found")
   }
 
+  await assertProjectAccess(db, user, projectId)
   return db
+}
+
+async function externalRfiVisibility(db: ReturnType<typeof getDb>, projectId: string): Promise<ReturnType<typeof or>> {
+  const user = await requireProjectAudienceReadUser(projectId)
+  if (isInternalStaffRole(user.role)) return undefined
+  const contact = await getProjectAudienceViewerContact(db, projectId, user)
+  if (contact?.contactType === "subcontractor" || contact?.contactType === "supplier") {
+    const ids = await vendorVisibleRfiSourceIds({ db, projectId, organizationId: requireOrg(user), viewerId: user.id, contact })
+    return and(or(eq(projectRfis.audience, "sub_vendor"), eq(projectRfis.audience, "public")), or(inArray(projectRfis.id, ids), inArray(projectRfis.sourceRecordId, ids)))
+  }
+  if (user.role === "client" || user.role === "owner") return or(eq(projectRfis.audience, "owner"), eq(projectRfis.audience, "public"))
+  return inArray(projectRfis.id, [])
 }
 
 async function verifyProjectUpdateAccess(
@@ -148,6 +165,7 @@ async function verifyProjectUpdateAccess(
 async function getProjectUpdateContext(
   projectId: string
 ): Promise<ProjectUpdateContext> {
+  await assertAudiencePreviewWriteAllowed()
   const user = await requireAuth()
   await requireFeaturePermission(user, "rfis", "update")
   const orgId = requireOrg(user)
@@ -253,7 +271,7 @@ export async function getProjectRfiSummary(
   const rows = await db
     .select()
     .from(projectRfis)
-    .where(eq(projectRfis.projectId, projectId))
+    .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
   const items = rows.map((row) => toRfiItem(row, []))
@@ -279,7 +297,7 @@ export async function getProjectRfis(
   const rows = await db
     .select()
     .from(projectRfis)
-    .where(eq(projectRfis.projectId, projectId))
+    .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
   let attachmentRows: ReadonlyArray<ProjectRfiAttachmentItem & {
@@ -327,7 +345,7 @@ export async function getProjectRfis(
 export async function getProjectRfiInboundEmails(
   projectId: string
 ): Promise<readonly ProjectRfiInboundEmailItem[]> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   await requireFeaturePermission(user, "rfis", "read")
   if (!isInternalStaffRole(user.role)) return []
   const db = await verifyProjectAccess(projectId)

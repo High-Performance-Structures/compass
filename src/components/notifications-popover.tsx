@@ -65,6 +65,7 @@ function InboxPanel({
   onMarkRead,
   onDone,
   showOnMap,
+  readOnly,
 }: {
   readonly sections: readonly InboxSection<NotificationCenterItem>[]
   readonly view: View
@@ -80,6 +81,7 @@ function InboxPanel({
   readonly onMarkRead: (row: Row) => void
   readonly onDone: (row: Row) => void
   /** Office bell only: link a project section to its job on the dashboard map. */
+  readonly readOnly: boolean
   readonly showOnMap: ((projectId: string) => void) | null
 }) {
   const visible = sections
@@ -112,7 +114,7 @@ function InboxPanel({
           variant="ghost"
           size="sm"
           className="h-8 text-xs"
-          disabled={totalUnread === 0}
+          disabled={readOnly || totalUnread === 0}
           onClick={onMarkAllRead}
         >
           Mark all read
@@ -190,7 +192,7 @@ function InboxPanel({
               variant="ghost"
               size="sm"
               className="h-8 text-xs"
-              disabled={!hasRead}
+              disabled={readOnly || !hasRead}
               onClick={onClearRead}
             >
               Clear read
@@ -204,7 +206,9 @@ function InboxPanel({
 
 export function NotificationsPopover({
   scope,
+  readOnly = false,
 }: {
+  readonly readOnly?: boolean
   readonly scope?: NotificationCenterScope
 }) {
   const isMobile = useIsMobile()
@@ -343,6 +347,7 @@ export function NotificationsPopover({
   }
 
   async function markAllRead(): Promise<void> {
+    if (readOnly) return
     const result = await markAllNotificationsRead(notificationScope)
     if (result.success) {
       markLocallyRead(new Set(notifications.map((item) => item.id)))
@@ -351,6 +356,7 @@ export function NotificationsPopover({
   }
 
   async function clearRead(): Promise<void> {
+    if (readOnly) return
     const result = await dismissReadNotifications(notificationScope)
     if (result.success) {
       setNotifications((items) => items.filter((item) => item.readAt === null))
@@ -359,6 +365,7 @@ export function NotificationsPopover({
   }
 
   async function markRowRead(row: Row): Promise<void> {
+    if (readOnly) return
     const unread = row.items.filter((item) => item.readAt === null)
     if (unread.length === 0) return
     markLocallyRead(new Set(unread.map((item) => item.id)))
@@ -372,6 +379,7 @@ export function NotificationsPopover({
   }
 
   async function markRowDone(row: Row): Promise<void> {
+    if (readOnly) return
     const ids = row.items.map((item) => item.id)
     const removed = new Set(ids)
     setNotifications((items) => items.filter((item) => !removed.has(item.id)))
@@ -384,6 +392,7 @@ export function NotificationsPopover({
   }
 
   async function undoDone(): Promise<void> {
+    if (readOnly) return
     if (!undo) return
     const { ids } = undo
     setUndo(null)
@@ -395,6 +404,7 @@ export function NotificationsPopover({
     row: Row,
     event: MouseEvent<HTMLAnchorElement>
   ): Promise<void> {
+    if (readOnly) { event.preventDefault(); return }
     const item = row.latest
     const channelId = notificationPanelChannelId({
       href: item.href,
@@ -452,6 +462,7 @@ export function NotificationsPopover({
       loading={loading}
       undo={undo}
       onUndo={() => void undoDone()}
+      readOnly={readOnly}
       onMarkAllRead={() => void markAllRead()}
       onClearRead={() => void clearRead()}
       onNavigate={(row, event) => void navigate(row, event)}

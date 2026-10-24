@@ -1,6 +1,10 @@
 "use server"
 
-import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm"
+import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
+import { getProjectAudienceRequestScope, requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -10,6 +14,7 @@ import {
   notificationPreferences,
   notificationRecipients,
   projectMembers,
+  projectRfis,
   projects,
 } from "@/db/schema"
 import { getCurrentUser, requireAuth, type AuthUser } from "@/lib/auth"
@@ -247,7 +252,8 @@ function notificationEventScopeCondition(
 
 export async function getNotificationPreferences(): Promise<NotificationPreferencesResult> {
   try {
-    const user = await requireAuth()
+    const previewScope = await getProjectAudienceRequestScope()
+    const user = previewScope ? await requireProjectAudienceReadUser(previewScope.projectId) : await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const data = await getPreferenceForUser(db, user.id)
@@ -270,6 +276,7 @@ export async function updateNotificationPreferences(
   input: NotificationPreferenceState
 ): Promise<NotificationActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const timeZone = input.timeZone.trim()
     if (!isValidTimeZone(timeZone)) {
       return { success: false, error: "Choose a valid timezone." }
@@ -377,6 +384,7 @@ export async function updateNotificationPreferences(
 
 export async function sendTestSmsNotification(): Promise<NotificationSmsTestResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
@@ -492,11 +500,18 @@ export async function getNotificationCenter(
   requestedScope?: NotificationCenterScope
 ): Promise<NotificationCenterResult> {
   try {
-    const user = await requireAuth()
+    const previewScope = await getProjectAudienceRequestScope()
+    const user = previewScope ? await requireProjectAudienceReadUser(previewScope.projectId) : await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
+    if (previewScope && requestedScope && (previewScope.projectId !== requestedScope.projectId || previewScope.audience !== requestedScope.audience)) throw new Error("Preview scope does not match notifications.")
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope ?? (previewScope ? { projectId: previewScope.projectId, audience: previewScope.audience } : undefined))
 
+    const vendorRfiIds = scope.projectId && !isInternalStaffRole(user.role) && ((requestedScope?.audience ?? previewScope?.audience) === "sub_vendor" || user.role === "supplier" || user.role === "subcontractor")
+      ? await vendorVisibleRfiSourceIds({ db, projectId: scope.projectId, organizationId: scope.organizationId, viewerId: user.id, contact: await getProjectAudienceViewerContact(db, scope.projectId, user) }) : null
+    const visibleRfis = vendorRfiIds !== null && vendorRfiIds.length > 0 && scope.projectId ? await db.select({ id: projectRfis.id }).from(projectRfis)
+      .where(and(eq(projectRfis.projectId, scope.projectId), or(inArray(projectRfis.id, vendorRfiIds), inArray(projectRfis.sourceRecordId, vendorRfiIds)))) : vendorRfiIds === null ? null : []
+    const rfiVisibility = visibleRfis === null ? (!isInternalStaffRole(user.role) && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inArray(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
     const rows = await db
       .select({
         id: notificationRecipients.id,
@@ -521,6 +536,7 @@ export async function getNotificationCenter(
       .leftJoin(projects, eq(projects.id, notificationEvents.projectId))
       .where(
         and(
+          rfiVisibility,
           eq(notificationRecipients.userId, user.id),
           eq(notificationRecipients.inApp, true),
           isNull(notificationRecipients.dismissedAt),
@@ -567,6 +583,7 @@ export async function markNotificationRead(
   requestedScope?: NotificationCenterScope
 ): Promise<NotificationActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -605,6 +622,7 @@ export async function markAllNotificationsRead(
   requestedScope?: NotificationCenterScope
 ): Promise<NotificationActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -655,6 +673,7 @@ export async function setNotificationsDismissed(
   requestedScope?: NotificationCenterScope
 ): Promise<NotificationActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     if (
       !Array.isArray(recipientIds) ||
       recipientIds.length === 0 ||
@@ -702,6 +721,7 @@ export async function dismissReadNotifications(
   requestedScope?: NotificationCenterScope
 ): Promise<NotificationActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)

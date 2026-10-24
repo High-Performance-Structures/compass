@@ -1,3 +1,5 @@
+import { audienceReadCacheControl } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq, isNotNull } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
@@ -29,7 +31,7 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) return new Response("Unauthorized", { status: 401 })
     const { id: rawProjectId, documentId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
@@ -122,7 +124,7 @@ export async function GET(
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": await audienceReadCacheControl(),
       },
     })
   } catch (error) {

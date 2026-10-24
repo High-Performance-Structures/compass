@@ -76,6 +76,14 @@ export const PERMISSION_ACCESS_LEVELS: readonly {
 
 export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
   {
+    id: "project-audience-preview",
+    group: "Confidential workflows",
+    label: "External person preview",
+    description: "Inspect an assigned owner's or vendor's workspace and messages in read-only preview.",
+    resource: "user",
+    staffAssignable: true,
+  },
+  {
     id: "project-hub",
     group: "Projects",
     label: "Project Hub",
@@ -742,6 +750,9 @@ export function getPermissionFeatureAccessLevel(
   if (!feature) return "none"
   if (feature.individualOnly) return "none"
 
+  if (featureId === "project-audience-preview") {
+    return role === "admin" || role === "secondary_admin" ? "view" : "none"
+  }
   const baseline = getPermissionAccessLevel(role, feature.resource)
   if (
     isInternalStaffRole(role) &&
