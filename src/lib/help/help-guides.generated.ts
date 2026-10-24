@@ -122,6 +122,70 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
     "readingMinutes": 6
   },
   {
+    "id": "client.meetings",
+    "featureId": "schedule",
+    "slug": "client-meetings",
+    "title": "Meet with a Client on Google Meet",
+    "summary": "Start or schedule a Google Meet with a project's clients from the project page, invite coworkers, and cancel a meeting.",
+    "contextSummary": "Client meetings are Google Meet calls hosted from the booking staff member's own Google Calendar. Google emails the invitations; Compass keeps the meeting on the project and logs it in Activity.",
+    "category": "Field & Project Work",
+    "tags": [
+      "Google Meet",
+      "client meeting",
+      "video call",
+      "invite",
+      "calendar",
+      "owner",
+      "clients"
+    ],
+    "audiences": [
+      "staff"
+    ],
+    "permissions": [
+      "help:read",
+      "schedule:read"
+    ],
+    "routes": [
+      "/dashboard/projects/[id]"
+    ],
+    "owner": "Office operations",
+    "lastReviewed": "2026-10-24",
+    "sourcePath": "docs/help/guides/client-meetings.md",
+    "content": "## Start or Schedule a Client Meeting\nOpen the project and choose **Meet with client** under **Client meetings** on the right side of the page.\n\n- **Start now** opens the Google Meet in a new tab right away and emails the link to everyone you invite.\n- **Schedule** books the call for a date and time. Google sends each guest a calendar invitation with the Meet link and phone dial-in details.\n\nPick the meeting length, check the title, and choose who to invite under **Clients and guests**. The project's client contacts are listed first, and you can type any email address. Guests don't need a Compass or Google account. Add coworkers under **Staff** if they should join. They get the invitation and a Compass notification. A note you add appears in the invitation.\n\n## Who Hosts the Call\nThe meeting goes on your own Google Calendar, so you are the host. You admit guests who knock, and the meeting's transcript and recording, when someone turns them on in Meet, are saved to your Google Drive. Your Compass account must use your company Google Workspace address. If it doesn't, an administrator can set your Google email mapping in Settings.\n\n## Join or Cancel a Meeting\nUpcoming meetings are listed under **Client meetings** with a **Join** button. **Cancel** removes the meeting from the host's Google Calendar, and Google emails a cancellation to every guest. Each meeting started, scheduled, or cancelled is recorded in the project's Activity.\n\n## Quick Check\n- Is the client's email on the project's contacts? It's listed first when you invite.\n- Did the guest get the invitation? Ask them to check spam for an email from Google Calendar. You can also copy the link from **Join** and send it yourself.",
+    "searchText": "meet with a client on google meet start or schedule a google meet with a project's clients from the project page, invite coworkers, and cancel a meeting. client meetings are google meet calls hosted from the booking staff member's own google calendar. google emails the invitations; compass keeps the meeting on the project and logs it in activity. google meet client meeting video call invite calendar owner clients start or schedule a client meeting open the project and choose meet with client under client meetings on the right side of the page. start now opens the google meet in a new tab right away and emails the link to everyone you invite. schedule books the call for a date and time. google sends each guest a calendar invitation with the meet link and phone dial in details. pick the meeting length, check the title, and choose who to invite under clients and guests . the project's client contacts are listed first, and you can type any email address. guests don't need a compass or google account. add coworkers under staff if they should join. they get the invitation and a compass notification. a note you add appears in the invitation. who hosts the call the meeting goes on your own google calendar, so you are the host. you admit guests who knock, and the meeting's transcript and recording, when someone turns them on in meet, are saved to your google drive. your compass account must use your company google workspace address. if it doesn't, an administrator can set your google email mapping in settings. join or cancel a meeting upcoming meetings are listed under client meetings with a join button. cancel removes the meeting from the host's google calendar, and google emails a cancellation to every guest. each meeting started, scheduled, or cancelled is recorded in the project's activity. quick check is the client's email on the project's contacts? it's listed first when you invite. did the guest get the invitation? ask them to check spam for an email from google calendar. you can also copy the link from join and send it yourself.",
+    "sections": [
+      {
+        "id": "meet-with-client",
+        "topicId": "client.meetings.meet-with-client",
+        "title": "Start or Schedule a Client Meeting",
+        "summary": "Open the project and choose Meet with client under Client meetings on the right side of the page.",
+        "content": "Open the project and choose **Meet with client** under **Client meetings** on the right side of the page.\n\n- **Start now** opens the Google Meet in a new tab right away and emails the link to everyone you invite.\n- **Schedule** books the call for a date and time. Google sends each guest a calendar invitation with the Meet link and phone dial-in details.\n\nPick the meeting length, check the title, and choose who to invite under **Clients and guests**. The project's client contacts are listed first, and you can type any email address. Guests don't need a Compass or Google account. Add coworkers under **Staff** if they should join. They get the invitation and a Compass notification. A note you add appears in the invitation."
+      },
+      {
+        "id": "host",
+        "topicId": "client.meetings.host",
+        "title": "Who Hosts the Call",
+        "summary": "The meeting goes on your own Google Calendar, so you are the host. You admit guests who knock, and the meeting's transcript and recording, when someone turns them on in Meet, are saved to your Google Drive. Your Compass account must use your company Google Workspace address. If it doesn't, an administrator can set your Google email mapping in Settings.",
+        "content": "The meeting goes on your own Google Calendar, so you are the host. You admit guests who knock, and the meeting's transcript and recording, when someone turns them on in Meet, are saved to your Google Drive. Your Compass account must use your company Google Workspace address. If it doesn't, an administrator can set your Google email mapping in Settings."
+      },
+      {
+        "id": "join-cancel",
+        "topicId": "client.meetings.join-cancel",
+        "title": "Join or Cancel a Meeting",
+        "summary": "Upcoming meetings are listed under Client meetings with a Join button. Cancel removes the meeting from the host's Google Calendar, and Google emails a cancellation to every guest. Each meeting started, scheduled, or cancelled is recorded in the project's Activity.",
+        "content": "Upcoming meetings are listed under **Client meetings** with a **Join** button. **Cancel** removes the meeting from the host's Google Calendar, and Google emails a cancellation to every guest. Each meeting started, scheduled, or cancelled is recorded in the project's Activity."
+      },
+      {
+        "id": "quick-check",
+        "topicId": "client.meetings.quick-check",
+        "title": "Quick Check",
+        "summary": "Is the client's email on the project's contacts? It's listed first when you invite. Did the guest get the invitation? Ask them to check spam for an email from Google Calendar. You can also copy the link from Join and send it yourself.",
+        "content": "- Is the client's email on the project's contacts? It's listed first when you invite.\n- Did the guest get the invitation? Ask them to check spam for an email from Google Calendar. You can also copy the link from **Join** and send it yourself."
+      }
+    ],
+    "readingMinutes": 2
+  },
+  {
     "id": "settings.company",
     "featureId": "help-resources",
     "slug": "company-settings",
