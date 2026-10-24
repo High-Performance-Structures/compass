@@ -3,7 +3,7 @@ import "server-only"
 import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectClientMeetings, projects } from "@/db/schema"
+import { dailyLogs, projectClientMeetings, projects, users } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -20,6 +20,8 @@ const SETTLE_MS = 10 * 60_000
 const RECHECK_MS = 10 * 60_000
 /** Stop looking once a call ended this long ago without a transcript. */
 const GIVE_UP_MS = 24 * 60 * 60_000
+/** Keeps a very long call's log row a reasonable size. */
+const MAX_LOG_TEXT = 200_000
 /** Google deletes transcript entries 30 days after the call. */
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000
 const BATCH_SIZE = 10
@@ -135,7 +137,7 @@ async function saveTranscripts(input: {
   readonly projectFolderId: string
   readonly docs: readonly TranscriptDoc[]
   readonly now: Date
-}): Promise<{ readonly fileId: string; readonly url: string | null }> {
+}): Promise<{ readonly fileId: string; readonly url: string | null; readonly text: string }> {
   const { db, env, meeting, now } = input
   const drive = await getProjectDocumentDriveContext({ db, env, organizationId: meeting.organizationId })
   const settings = await readFeatureSettings(db, meeting.organizationId, "paper-trail")
@@ -145,7 +147,7 @@ async function saveTranscripts(input: {
     db,
     drive,
     projectFolderId: input.projectFolderId,
-    category: "communications",
+    category: "meeting-notes",
     subfolders: [],
     internalDomains: internalDomainSet(drive.googleEmail, settings.internalDomains),
     now,
@@ -154,6 +156,7 @@ async function saveTranscripts(input: {
 
   const ordered = [...input.docs].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""))
   let first: { fileId: string; url: string | null } | null = null
+  const texts: string[] = []
   for (const [index, doc] of ordered.entries()) {
     // The Doc lives in the host's Drive, so export it as the host.
     const exported = await drive.client.exportFile(meeting.organizerEmail, doc.documentId, "application/pdf")
@@ -166,9 +169,90 @@ async function saveTranscripts(input: {
       appProperties: { compassRecordType: "client_meeting_transcript", compassRecordId: meeting.id },
     })
     first ??= { fileId: created.id, url: created.webViewLink ?? null }
+    const plain = await drive.client.exportFile(meeting.organizerEmail, doc.documentId, "text/plain")
+    if (plain.ok) texts.push((await plain.text()).trim())
   }
   if (!first) throw new Error("No transcript was available to save")
-  return first
+  return { ...first, text: texts.filter(Boolean).join("\n\n") }
+}
+
+function localDate(iso: string, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso))
+  } catch {
+    return iso.slice(0, 10)
+  }
+}
+
+function localTime(iso: string, timeZone: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit", timeZoneName: "short" })
+  } catch {
+    return iso
+  }
+}
+
+function emailList(value: string): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The transcript as an internal draft daily log on the meeting day, written
+ * as the host. Staff review it and may share it with the owner like any log.
+ */
+async function createTranscriptDailyLog(input: {
+  readonly db: Db
+  readonly meeting: typeof projectClientMeetings.$inferSelect
+  readonly text: string
+  readonly now: Date
+}): Promise<string> {
+  const { db, meeting } = input
+  const host = await db
+    .select({ displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email })
+    .from(users)
+    .where(eq(users.id, meeting.organizerUserId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const hostName =
+    host?.displayName?.trim() || [host?.firstName, host?.lastName].filter(Boolean).join(" ").trim() || meeting.organizerEmail
+  const guests = emailList(meeting.guestEmails)
+  const staff = emailList(meeting.staffEmails)
+  const header = [
+    `Client meeting: ${meeting.title}`,
+    `Google Meet hosted by ${hostName}, ${localTime(meeting.startsAt, meeting.timeZone)} to ${localTime(meeting.endsAt, meeting.timeZone)}`,
+    guests.length > 0 ? `Guests: ${guests.join(", ")}` : null,
+    staff.length > 0 ? `Staff: ${staff.join(", ")}` : null,
+  ].filter((line): line is string => line !== null)
+  const body = input.text || "Google saved a transcript for this call, but its text could not be read. Open the PDF in the project's Meeting Notes folder."
+  const workCompleted = `${header.join("\n")}\n\nTranscript\n\n${body}`.slice(0, MAX_LOG_TEXT)
+  const id = `meet-transcript-${meeting.id}`
+  const stamp = input.now.toISOString()
+  await db
+    .insert(dailyLogs)
+    .values({
+      id,
+      projectId: meeting.projectId,
+      authorId: meeting.organizerUserId,
+      sourceSystem: "google_meet",
+      sourceExternalId: meeting.id,
+      logDate: localDate(meeting.startsAt, meeting.timeZone),
+      workCompleted,
+      notes: "Saved automatically from the Google Meet transcript. The PDF is in the project's Meeting Notes folder in Drive. Review before sharing with the client.",
+      // Internal until staff choose to share it.
+      isClientVisible: false,
+      reviewStatus: "draft",
+      tags: "client-meeting",
+      syncStatus: "pending",
+      createdAt: stamp,
+      updatedAt: stamp,
+    })
+    .onConflictDoNothing({ target: dailyLogs.id })
+  return id
 }
 
 async function markTranscript(
@@ -185,7 +269,8 @@ async function markTranscript(
 
 /**
  * Scheduled: for client meetings that have ended, save the Meet transcript
- * to the project's Communications folder and note it in Activity.
+ * to the project's Meeting Notes folder, add it as an internal draft daily
+ * log, and note it in Activity.
  */
 export async function sweepClientMeetingTranscripts(
   db: Db,
@@ -247,10 +332,17 @@ export async function sweepClientMeetingTranscripts(
       }
       if (!projectFolderId) throw new Error("This project has no Google Drive folder yet.")
       const file = await saveTranscripts({ db, env, meeting, projectFolderId, docs: lookup.docs, now })
+      const dailyLogId = await createTranscriptDailyLog({ db, meeting, text: file.text, now })
       await markTranscript(
         db,
         meeting.id,
-        { transcriptStatus: "saved", transcriptDriveFileId: file.fileId, transcriptUrl: file.url, transcriptError: null },
+        {
+          transcriptStatus: "saved",
+          transcriptDriveFileId: file.fileId,
+          transcriptUrl: file.url,
+          transcriptError: null,
+          dailyLogId,
+        },
         now
       )
       await recordActivityEvent({
@@ -269,7 +361,7 @@ export async function sweepClientMeetingTranscripts(
         action: "client_meeting_transcript_saved",
         entityType: "project_client_meeting",
         entityId: meeting.id,
-        summary: `Saved the Google Meet transcript for "${meeting.title}" to the project's Communications folder`,
+        summary: `Saved the Google Meet transcript for "${meeting.title}" to Meeting Notes and as a draft daily log`,
       })
       saved += 1
     } catch (error) {

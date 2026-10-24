@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { getTableConfig } from "drizzle-orm/sqlite-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { dailyLogs } from "@/db/schema"
 
 const mocks = vi.hoisted(() => ({
   token: vi.fn(),
@@ -48,6 +51,11 @@ function open(): CorrespondenceTestDatabase {
   opened.sqlite.exec("UPDATE projects SET google_drive_folder_id = 'project-folder' WHERE id = 'project-a'")
   opened.sqlite.exec(migration("0246_project_client_meetings.sql"))
   opened.sqlite.exec(migration("0247_client_meeting_transcripts.sql"))
+  const config = getTableConfig(dailyLogs)
+  opened.sqlite.exec(
+    `CREATE TABLE "${config.name}" (${config.columns.map((c) => `"${c.name}" ${c.getSQLType()}${c.primary ? " PRIMARY KEY" : ""}`).join(",")})`
+  )
+  opened.sqlite.exec(migration("0249_client_meeting_daily_logs.sql"))
   mocks.token.mockResolvedValue({ success: true, accessToken: "meet-token", sender: "staff-a@example.test" })
   mocks.driveContext.mockResolvedValue({
     client: { exportFile: mocks.exportFile, uploadFile: mocks.uploadFile },
@@ -55,7 +63,9 @@ function open(): CorrespondenceTestDatabase {
     sharedDriveId: null,
   })
   mocks.resolveFolder.mockResolvedValue({ ok: true, folderId: "communications-folder", heldPrivate: false })
-  mocks.exportFile.mockResolvedValue(new Response("%PDF-1.4", { status: 200 }))
+  mocks.exportFile.mockImplementation(async (_user: string, _doc: string, mime: string) =>
+    mime === "text/plain" ? new Response("Staff A: Let's review selections.\nOwner A: Sounds good.") : new Response("%PDF-1.4")
+  )
   mocks.uploadFile.mockResolvedValue({ id: "drive-file-1", webViewLink: "https://drive.google.com/file/d/drive-file-1/view" })
   vi.stubGlobal("fetch", fetchMock)
   database = opened
@@ -102,18 +112,19 @@ describe("client meeting transcripts", () => {
     expect(meetingCodeFromUrl(null)).toBeNull()
   })
 
-  it("saves a generated transcript as a PDF in the project's Communications folder", async () => {
+  it("saves a generated transcript as a PDF in Meeting Notes and as an internal draft daily log", async () => {
     const db = open()
     insertMeeting(db)
     meetResponses([{ name: "t1", state: "FILE_GENERATED", docsDestination: { document: "doc-1" }, startTime: "2026-10-24T18:01:00Z" }])
 
-    expect(await sweepClientMeetingTranscripts(db.db, {} as CloudflareEnv, NOW)).toEqual({ checked: 1, saved: 1, none: 0, failed: 0 })
+    const result = await sweepClientMeetingTranscripts(db.db, {} as CloudflareEnv, NOW)
+    expect(result).toEqual({ checked: 1, saved: 1, none: 0, failed: 0 })
     expect(mocks.token).toHaveBeenCalledWith(expect.objectContaining({
       sender: "staff-a@example.test",
       scopes: ["https://www.googleapis.com/auth/meetings.space.readonly"],
     }))
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(encodeURIComponent('space.meeting_code = "abc-defg-hij"'))
-    expect(mocks.resolveFolder).toHaveBeenCalledWith(expect.objectContaining({ projectFolderId: "project-folder", category: "communications" }))
+    expect(mocks.resolveFolder).toHaveBeenCalledWith(expect.objectContaining({ projectFolderId: "project-folder", category: "meeting-notes" }))
     expect(mocks.exportFile).toHaveBeenCalledWith("staff-a@example.test", "doc-1", "application/pdf")
     expect(mocks.uploadFile).toHaveBeenCalledWith("drive-owner@example.test", expect.objectContaining({
       name: "Meeting transcript - Selections review - 2026-10-24.pdf",
@@ -125,6 +136,22 @@ describe("client meeting transcripts", () => {
       transcript_url: "https://drive.google.com/file/d/drive-file-1/view",
     })
     expect(mocks.activity).toHaveBeenCalledWith(expect.objectContaining({ action: "client_meeting_transcript_saved", projectId: "project-a" }))
+
+    const log: unknown = db.sqlite.prepare("SELECT * FROM daily_logs").get()
+    expect(log).toMatchObject({
+      id: "meet-transcript-meeting-1",
+      project_id: "project-a",
+      author_id: "staff-a",
+      source_system: "google_meet",
+      log_date: "2026-10-24",
+      is_client_visible: 0,
+      review_status: "draft",
+    })
+    const text = String(typeof log === "object" && log !== null ? Reflect.get(log, "work_completed") : "")
+    expect(text).toContain("Client meeting: Selections review")
+    expect(text).toContain("Guests: owner-a@example.test")
+    expect(text).toContain("Owner A: Sounds good.")
+    expect(meetingRow(db).daily_log_id).toBe("meet-transcript-meeting-1")
   })
 
   it("waits while Google is still writing the transcript, then stops after a day with none", async () => {

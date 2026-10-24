@@ -1908,6 +1908,8 @@ export const projectClientMeetings = sqliteTable(
     transcriptUrl: text("transcript_url"),
     transcriptError: text("transcript_error"),
     transcriptCheckedAt: text("transcript_checked_at"),
+    /** The internal draft daily log made from the transcript. */
+    dailyLogId: text("daily_log_id").references(() => dailyLogs.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

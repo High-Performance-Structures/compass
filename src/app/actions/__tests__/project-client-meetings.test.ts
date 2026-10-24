@@ -59,7 +59,8 @@ function open(email = "staff-a@example.test"): CorrespondenceTestDatabase {
     INSERT INTO project_contacts (id, project_id, contact_type, display_name, email, company_name)
       VALUES ('c-owner','project-a','owner','Owner A','client@home.test',NULL);
   `)
-  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql"]) {
+  sqlite.exec("CREATE TABLE daily_logs (id TEXT PRIMARY KEY)")
+  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql", "0249_client_meeting_daily_logs.sql"]) {
     sqlite.exec(
       readFileSync(resolve(process.cwd(), "drizzle", file), "utf8").replaceAll("--> statement-breakpoint", "")
     )
