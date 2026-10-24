@@ -1,6 +1,6 @@
 # Owner and vendor preview access plan
 
-Status: approved joint Codex and Claude design, implemented and validated locally on `codex/external-preview-access`, 2026-10-24. The implementation is deployed to the isolated demo environment only. Production remains unchanged; authenticated parity remains a rollout check.
+Status: approved joint Codex and Claude design, implemented and validated locally on `codex/external-preview-access`, 2026-10-24. The implementation is deployed to the isolated demo environment only. Production remains unchanged; the authenticated data comparison passes for the tested surfaces, while a successful attachment download remains unverified.
 
 Owner and vendor previews should use the same authorization rules as the selected external person. Staff authorization should determine whether an employee may open a preview; it must not determine the records, messages, or files shown inside it.
 
@@ -151,8 +151,28 @@ Deployed demo Worker version: `bf58f3a0-65e2-4b8c-b0c4-03dc91523484`. Deployment
 
 The additive fixture contains one staff user, two owners, two vendor companies, six distinct sent emails with per-person grants, four private drafts, published schedule items plus an unpublished negative control, an owner budget with an internal-note negative control, and company-specific RFIs plus internal/unlinked negative controls. It was checked twice against a local snapshot before application, then read back from the demo database. No existing demo projects were reset.
 
-Demo login and mobile health return HTTP 200; anonymous owner/vendor previews redirect to sign-in. Baseline QA message read receipts are zero and private draft count is four. **Authenticated owner/vendor-versus-preview parity has not yet been completed.** The approved `example.com` identities trigger WorkOS's test SSO policy; a proposed change to a reserved `.example` domain was blocked by automatic approval review pending explicit authorization for that different address domain. No domain, password, or SSO-policy changes were applied.
+Demo login and mobile health return HTTP 200; anonymous owner/vendor previews redirect to sign-in. The same five accounts were subsequently moved to `@preview-qa.example` after explicit approval, because `example.com` triggers WorkOS test SSO. Their passwords, identities, and demo-only access stayed unchanged; no SSO policy was changed. The public demo WorkOS client was checked against the test environment, and all five users authenticated successfully through the deployed application login endpoint. No emails were sent.
 
 The demo has no private correspondence Drive storage, so positive file-byte download parity remains unverified. Do not connect production storage or claim attachment download parity on the basis of these health checks.
 
 A read-only production audit found two vendor-visible RFIs with placeholder company labels and no verified company grants or stable activity evidence. Their associations remain unchanged. They will be withheld under the approved company rule until reviewed; company labels alone must never be used to backfill access. No production writes, merge, or production deployment occurred.
+
+## Authenticated demo results
+
+The deployed comparison used real WorkOS sessions issued by `/api/auth/login`, actual Cloudflare-rendered pages, and deployed server-action endpoints. It did not mock authorization or replace the database. This is HTTP integration proof; the earlier desktop/mobile browser proof exercises the real UI components with isolated action boundaries. A live browser session comparison across every workspace module is not claimed.
+
+| Check | Result |
+| --- | --- |
+| Four external accounts versus matching staff previews | 106 checks passed: exact inbox/message/recipient/attachment-metadata/search parity, draft exclusion, negative thread and project access, invalid target/audience denial, and owner/vendor page rendering. |
+| Vendor RFIs | Both real accounts and matching previews show their own company RFI; other-company and unlinked RFIs are absent. |
+| Notifications | Eight real-account baseline checks passed; all matching preview notification results agree. Broad historical RFI recipients cannot reveal another vendor company's RFI. |
+| Preview-only actions | 37 checks passed: reads and legacy channels work, drafts stay private, draft autosave/read-receipt/inbox/notification/typing mutations are denied, and the no-person page contains no personal inbox. Four of these checks confirm the expected missing attachment-storage response; they do not establish successful file transfer. |
+| Vendor RFQs and purchase orders | Eight delivered-record checks passed across both vendors and their previews; other recipients' records and drafts remain hidden. |
+| Owner budget | Four positive checks passed: both owners and their previews see published application QA-01 and its amount, while the internal note stays absent. |
+| Normal staff session | Two checks passed: switching previews preserves the staff identity and authorized internal inbox in the normal staff workspace. |
+
+Across those passes, 165 validation assertions succeeded. A separate before/after comparison of the preview-only pass found the following projections identical: 12 message-recipient rows, four private drafts, inbox state, three channels, four channel memberships, three expired typing rows, four channel read states, and seven notification-recipient rows. Security audit events are expected and were excluded from this project-state comparison.
+
+The successful staging checks required no further application-code changes. Fixture assertions were corrected to use the actual vendor RFI route and the published budget fields shown by the assembly view.
+
+A successful private attachment byte download remains the concrete validation gap. Authorized QA attachment requests reach the missing-storage boundary (HTTP 503); unauthorized users receive no attachment contents. The shared route currently returns a generic server error for some missing conversation grants; that existing error mapping is a follow-up, not a successful download signal. The demo must use an isolated test storage integration before download parity can be marked complete. Production storage credentials and customer files were not copied into the demo. No production merge or deployment is authorized by the demo-only approval or claimed here.
