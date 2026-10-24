@@ -307,6 +307,20 @@ export const workflowCustomStepSchema = z.object({
 
 const workflowCustomStepsSchema = z.array(workflowCustomStepSchema).max(20)
 
+const workflowDepartmentSchema = z.enum(["O", "H", "N", "D"])
+const workflowItemKeySchema = z.string().regex(/^[a-z0-9_-]{1,60}\.[a-z0-9_-]{1,60}$/)
+
+/**
+ * Which completed items on one department's job tick which items on a linked
+ * job in another department (Design → Construction by default). An item
+ * mapped to "" carries nothing.
+ */
+export const workflowCarryoverSchema = z.object({
+  from: workflowDepartmentSchema,
+  to: workflowDepartmentSchema,
+  items: z.record(workflowItemKeySchema, z.union([workflowItemKeySchema, z.literal("")])),
+})
+
 /**
  * Job workflows, per department: changes to each step (departments), the
  * company's step order, and steps the company added.
@@ -330,6 +344,8 @@ export const jobWorkflowsSettingsSchema = z.object({
     N: workflowCustomStepsSchema.optional(),
     D: workflowCustomStepsSchema.optional(),
   }),
+  /** Linked-job carryovers the company changed; missing pairs use the defaults. */
+  carryovers: z.array(workflowCarryoverSchema).max(12).optional(),
 })
 
 export type JobWorkflowsSettings = z.infer<typeof jobWorkflowsSettingsSchema>

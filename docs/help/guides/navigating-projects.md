@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-20"
+  "lastReviewed": "2026-10-24"
 }
 ---
 
@@ -88,6 +88,8 @@ When a customer wants work that belongs to another department (pour help or ICF 
 When both jobs already exist (for example a Design job and the Construction job it led to), choose **Link existing job**, search for the other job by number, name or client, and optionally say what the link is for. Neither job is renumbered or copied.
 
 Both jobs show the link under **Linked jobs**, with the other job's number, name and status. Removing a link (the unlink button) leaves both jobs as they are. Admins edit the shortcuts in **Settings → Workflows → Linked jobs**.
+
+When a Design job is linked to a Construction job, the Design steps already done carry over to the Construction job's workflow: for example, the design agreement and retainer, the preliminary plan, the preliminary estimate, engineering, the stamped set and the final design payment. Each keeps who ticked it and when, and is marked "carried from" the Design job. Items already ticked on the Construction job stay as they are, and you can untick any carried item. If the Design job ticks more items later, the Construction job's workflow offers **Carry over from linked jobs**. Admins choose which Design item ticks which Construction item in **Settings → Workflows**, on the Construction tab.
 
 ## Review Duplicate Projects and Registry Cleanup {#duplicate-projects}
 

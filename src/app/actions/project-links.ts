@@ -19,6 +19,7 @@ import { assertProjectAccess, getProjectAccessRecord } from "@/lib/project-acces
 import { splitAddress } from "@/lib/projects/address-parts"
 import { projectDepartment } from "@/lib/project-branding"
 import { projectJobStatusLabel } from "@/lib/project-profile"
+import { carryOverBetweenLinkedJobs } from "@/lib/job-workflows/carryover"
 
 export type LinkedJob = {
   readonly linkId: string
@@ -214,8 +215,25 @@ export async function createLinkedProject(
       createdAt: new Date().toISOString(),
     })
     .onConflictDoNothing()
+  await carryOverAfterLink(db, { organizationId, projectId: sourceProjectId, otherProjectId: result.id, actorUserId: user.id })
   revalidatePath(`/dashboard/projects/${sourceProjectId}`)
   return result
+}
+
+/**
+ * A Design job's completed steps tick its linked Construction job (and the
+ * other way round where a carryover applies). The link stands even if this
+ * fails; the job's workflow then offers to carry them over.
+ */
+async function carryOverAfterLink(
+  db: Parameters<typeof carryOverBetweenLinkedJobs>[0],
+  input: { readonly organizationId: string; readonly projectId: string; readonly otherProjectId: string; readonly actorUserId: string }
+): Promise<void> {
+  try {
+    await carryOverBetweenLinkedJobs(db, input)
+  } catch (error) {
+    console.error("Linked-job workflow carryover failed", error)
+  }
 }
 
 function jobLabel(job: { readonly projectNumber: string | null; readonly name: string }): string {
@@ -279,6 +297,7 @@ export async function linkExistingProject(
         summary: `Linked ${jobLabel(there)}.`,
       })
     }
+    await carryOverAfterLink(db, { organizationId, projectId, otherProjectId, actorUserId: user.id })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${otherProjectId}`)
     return { success: true }

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { WorkflowCarryoverEditor } from "@/components/settings/workflow-carryover-editor"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
 import { FEATURE_SETTINGS, jobWorkflowsSettingsSchema, type JobWorkflowsSettings } from "@/lib/feature-settings/registry"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
@@ -447,6 +448,17 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
               </Button>
               <span className="text-xs text-muted-foreground">Then add its checklist items. A step shows on jobs once it has at least one.</span>
             </div>
+          ) : null}
+          {active === "O" ? (
+            <WorkflowCarryoverEditor
+              settings={settings}
+              from="D"
+              to="O"
+              fromName={profiles.D.shortName}
+              toName={profiles.O.shortName}
+              disabled={disabled}
+              onChange={setSettings}
+            />
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
