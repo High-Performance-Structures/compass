@@ -1875,6 +1875,49 @@ export const workCalendarEvents = sqliteTable(
   ],
 )
 
+// Google Meet calls with a project's clients, hosted from the booking staff
+// member's own Google Calendar. Guest and staff lists are JSON email arrays.
+export const projectClientMeetings = sqliteTable(
+  "project_client_meetings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    organizerUserId: text("organizer_user_id")
+      .notNull()
+      .references(() => users.id),
+    organizerEmail: text("organizer_email").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    startsAt: text("starts_at").notNull(),
+    endsAt: text("ends_at").notNull(),
+    timeZone: text("time_zone").notNull(),
+    guestEmails: text("guest_emails").notNull().default("[]"),
+    staffEmails: text("staff_emails").notNull().default("[]"),
+    googleEventId: text("google_event_id"),
+    meetingUrl: text("meeting_url"),
+    status: text("status").notNull().default("scheduled"),
+    cancelledBy: text("cancelled_by").references(() => users.id),
+    cancelledAt: text("cancelled_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_project_client_meetings_project").on(
+      table.projectId,
+      table.startsAt,
+    ),
+    index("idx_project_client_meetings_org").on(
+      table.organizationId,
+      table.startsAt,
+    ),
+  ],
+)
+
 export const workCalendarEventAttendees = sqliteTable(
   "work_calendar_event_attendees",
   {

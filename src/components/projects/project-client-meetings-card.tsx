@@ -1,0 +1,368 @@
+"use client"
+
+import * as React from "react"
+import { IconExternalLink, IconVideo, IconVideoPlus } from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+
+import {
+  cancelProjectClientMeeting,
+  scheduleProjectClientMeeting,
+  type ProjectClientMeetingItem,
+  type ProjectClientMeetingsView,
+} from "@/app/actions/project-client-meetings"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+
+const DURATIONS = [15, 30, 45, 60, 90, 120] as const
+type When = "now" | "scheduled"
+
+function localDateInput(date: Date): string {
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+}
+
+function nextHalfHour(): Date {
+  const date = new Date()
+  date.setMinutes(date.getMinutes() < 30 ? 30 : 60, 0, 0)
+  return date
+}
+
+function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`
+  return minutes === 60 ? "1 hour" : `${minutes / 60} hours`
+}
+
+function meetingTimeLabel(meeting: ProjectClientMeetingItem): string {
+  const start = new Date(meeting.startsAt)
+  const end = new Date(meeting.endsAt)
+  const day = start.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+  const time = (value: Date): string =>
+    value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  return `${day} · ${time(start)}–${time(end)}`
+}
+
+function ScheduleMeetingDialog({
+  projectId,
+  view,
+}: {
+  readonly projectId: string
+  readonly view: ProjectClientMeetingsView
+}): React.ReactElement {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
+  const [when, setWhen] = React.useState<When>("now")
+  const [date, setDate] = React.useState("")
+  const [time, setTime] = React.useState("")
+  const [duration, setDuration] = React.useState("30")
+  const [title, setTitle] = React.useState(view.defaultTitle)
+  const [guests, setGuests] = React.useState<readonly string[]>([])
+  const [staff, setStaff] = React.useState<readonly string[]>([])
+  const [note, setNote] = React.useState("")
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  function reset(): void {
+    const start = nextHalfHour()
+    setWhen("now")
+    setDate(localDateInput(start))
+    setTime(start.toTimeString().slice(0, 5))
+    setDuration("30")
+    setTitle(view.defaultTitle)
+    const recommended = view.guestOptions.find((option) => option.recommended)
+    setGuests(recommended ? [recommended.email] : [])
+    setStaff([])
+    setNote("")
+    setError(null)
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    let startsAt: string | null = null
+    if (when === "scheduled") {
+      const start = new Date(`${date}T${time}`)
+      if (Number.isNaN(start.getTime())) {
+        setError("Choose a date and time for the meeting.")
+        return
+      }
+      startsAt = start.toISOString()
+    }
+    // Open the tab before awaiting so the browser treats it as user-initiated.
+    const meetTab = when === "now" ? window.open("", "_blank") : null
+    setPending(true)
+    setError(null)
+    const result = await scheduleProjectClientMeeting(projectId, {
+      title,
+      note,
+      startsAt,
+      durationMinutes: Number(duration),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      guestEmails: guests,
+      staffEmails: staff,
+    })
+    setPending(false)
+    if (!result.success) {
+      meetTab?.close()
+      setError(result.error)
+      return
+    }
+    if (meetTab && result.data.meetingUrl) {
+      meetTab.location.href = result.data.meetingUrl
+    } else {
+      meetTab?.close()
+    }
+    toast.success(
+      when === "now"
+        ? "Google Meet started. Your guests have been emailed the link."
+        : "Meeting scheduled. Google sent the invitations with the Meet link."
+    )
+    setOpen(false)
+    router.refresh()
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) reset()
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" className="w-full" disabled={!view.canSchedule}>
+          <IconVideoPlus className="size-4" /> Meet with client
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xl">
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Meet with client</DialogTitle>
+            <DialogDescription>
+              Compass books a Google Meet on your Google Calendar. Google emails
+              each guest the link. Guests don&apos;t need a Compass or Google account.
+            </DialogDescription>
+          </DialogHeader>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={when}
+            onValueChange={(value) => {
+              if (value === "now" || value === "scheduled") setWhen(value)
+            }}
+            className="w-full"
+          >
+            <ToggleGroupItem value="now" className="flex-1">Start now</ToggleGroupItem>
+            <ToggleGroupItem value="scheduled" className="flex-1">Schedule</ToggleGroupItem>
+          </ToggleGroup>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {when === "scheduled" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="client-meet-date">Date</Label>
+                  <Input id="client-meet-date" type="date" value={date} onChange={(event) => setDate(event.currentTarget.value)} required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="client-meet-time">Time</Label>
+                  <Input id="client-meet-time" type="time" value={time} onChange={(event) => setTime(event.currentTarget.value)} required />
+                </div>
+              </>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="client-meet-length">Length</Label>
+              <Select value={duration} onValueChange={setDuration}>
+                <SelectTrigger id="client-meet-length" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DURATIONS.map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {durationLabel(minutes)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="client-meet-title">Title</Label>
+            <Input id="client-meet-title" value={title} onChange={(event) => setTitle(event.currentTarget.value)} maxLength={200} required />
+          </div>
+          <EmailRecipientPicker
+            id="client-meet-guests"
+            label="Clients and guests"
+            options={view.guestOptions}
+            value={guests}
+            excludedEmails={staff}
+            onChange={setGuests}
+            placeholder="Choose a client or enter an email..."
+            required
+          />
+          <EmailRecipientPicker
+            id="client-meet-staff"
+            label="Staff (optional)"
+            options={view.staffOptions}
+            value={staff}
+            excludedEmails={guests}
+            onChange={setStaff}
+            placeholder="Add coworkers..."
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor="client-meet-note">Note for the invitation (optional)</Label>
+            <Textarea id="client-meet-note" value={note} onChange={(event) => setNote(event.currentTarget.value)} maxLength={4000} className="min-h-20" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            You host the call. The meeting is logged in this project&apos;s Activity.
+          </p>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="submit" disabled={pending || guests.length === 0}>
+              <IconVideo className="size-4" />
+              {pending ? "Booking..." : when === "now" ? "Start Google Meet" : "Schedule and send invites"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CancelMeetingButton({
+  projectId,
+  meeting,
+}: {
+  readonly projectId: string
+  readonly meeting: ProjectClientMeetingItem
+}): React.ReactElement {
+  const router = useRouter()
+  const [pending, setPending] = React.useState(false)
+
+  async function cancel(): Promise<void> {
+    setPending(true)
+    const result = await cancelProjectClientMeeting(projectId, meeting.id)
+    setPending(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Meeting cancelled. Google let the guests know.")
+    router.refresh()
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button type="button" size="sm" variant="ghost" disabled={pending}>
+          Cancel
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel this meeting?</AlertDialogTitle>
+          <AlertDialogDescription>
+            &ldquo;{meeting.title}&rdquo; is removed from the host&apos;s Google Calendar
+            and Google emails a cancellation to {meeting.guestEmails.join(", ")}.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep meeting</AlertDialogCancel>
+          <AlertDialogAction onClick={() => void cancel()}>Cancel meeting</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+export function ProjectClientMeetingsCard({
+  projectId,
+  view,
+}: {
+  readonly projectId: string
+  readonly view: ProjectClientMeetingsView
+}): React.ReactElement {
+  const [now] = React.useState(() => Date.now())
+  const upcoming = view.meetings
+    .filter((meeting) => meeting.status === "scheduled" && Date.parse(meeting.endsAt) > now)
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+  const recent = view.meetings
+    .filter((meeting) => !upcoming.includes(meeting))
+    .slice(0, 3)
+
+  return (
+    <section aria-labelledby={`client-meetings-${projectId}`} className="mb-5 space-y-3">
+      <h2 id={`client-meetings-${projectId}`} className="text-xs font-medium uppercase text-muted-foreground">
+        Client meetings
+      </h2>
+      <ScheduleMeetingDialog projectId={projectId} view={view} />
+      {upcoming.length > 0 && (
+        <ul className="space-y-2">
+          {upcoming.map((meeting) => (
+            <li key={meeting.id} className="rounded-md border p-2">
+              <p className="truncate text-sm font-medium">{meeting.title}</p>
+              <p className="text-xs text-muted-foreground">{meetingTimeLabel(meeting)}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                Host {meeting.organizerName} · {meeting.guestEmails.join(", ")}
+              </p>
+              <div className="mt-1.5 flex items-center gap-1">
+                {meeting.meetingUrl && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={meeting.meetingUrl} target="_blank" rel="noreferrer">
+                      <IconExternalLink className="size-4" /> Join
+                    </a>
+                  </Button>
+                )}
+                {meeting.canCancel && <CancelMeetingButton projectId={projectId} meeting={meeting} />}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {recent.length > 0 && (
+        <ul className="space-y-1">
+          {recent.map((meeting) => (
+            <li key={meeting.id} className="text-xs text-muted-foreground">
+              <span className="text-foreground">{meeting.title}</span>
+              {" · "}
+              {meetingTimeLabel(meeting)}
+              {meeting.status === "cancelled" ? " · Cancelled" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}

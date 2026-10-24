@@ -83,6 +83,8 @@ import {
 } from "@/lib/project-profile"
 import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 import { ClientRedirect } from "@/components/client-redirect"
+import { getProjectClientMeetings, type ProjectClientMeetingsView } from "@/app/actions/project-client-meetings"
+import { ProjectClientMeetingsCard } from "@/components/projects/project-client-meetings-card"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -210,6 +212,7 @@ export default async function ProjectSummaryPage({
   let internalWorkspace: InternalWorkspaceSummary | null = null
   let linkedJobs: ProjectLinksView | null = null
   let timeline: ProjectTimeline | null = null
+  let clientMeetings: ProjectClientMeetingsView | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -383,6 +386,7 @@ export default async function ProjectSummaryPage({
       loadedInternalWorkspace,
       loadedLinkedJobs,
       loadedTimeline,
+      loadedClientMeetings,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -417,6 +421,10 @@ export default async function ProjectSummaryPage({
       getProjectTimeline(id)
         .then((result) => (result.success ? result.data : null))
         .catch(() => null),
+      // Staff only; null for anyone else.
+      getProjectClientMeetings(id)
+        .then((result) => (result.success ? result.data : null))
+        .catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -432,6 +440,7 @@ export default async function ProjectSummaryPage({
     internalWorkspace = loadedInternalWorkspace
     linkedJobs = loadedLinkedJobs
     timeline = loadedTimeline
+    clientMeetings = loadedClientMeetings
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -682,6 +691,9 @@ export default async function ProjectSummaryPage({
 
       {/* right sidebar: week agenda */}
       <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l p-3 sm:p-4 shrink-0 lg:overflow-y-auto">
+        {clientMeetings && !internalWorkspace ? (
+          <ProjectClientMeetingsCard projectId={id} view={clientMeetings} />
+        ) : null}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium uppercase text-muted-foreground">
             This Week
