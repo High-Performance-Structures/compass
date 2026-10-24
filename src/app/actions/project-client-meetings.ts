@@ -34,6 +34,7 @@ import { projectNumberAndName } from "@/lib/project-display-name"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+const MEET_SETTINGS_SCOPE = "https://www.googleapis.com/auth/meetings.space.settings"
 const MAX_GUESTS = 50
 const MIN_DURATION_MINUTES = 15
 const MAX_DURATION_MINUTES = 480
@@ -56,6 +57,29 @@ export type ProjectClientMeetingItem = {
   readonly meetingUrl: string | null
   readonly status: "scheduled" | "cancelled"
   readonly canCancel: boolean
+  /** null until the call has ended and Compass has looked for a transcript. */
+  readonly transcript: TranscriptState | null
+}
+
+export type TranscriptState =
+  | { readonly status: "pending" }
+  | { readonly status: "saved"; readonly url: string | null }
+  | { readonly status: "none" }
+  | { readonly status: "error"; readonly message: string }
+
+function transcriptState(meeting: typeof projectClientMeetings.$inferSelect): TranscriptState | null {
+  switch (meeting.transcriptStatus) {
+    case "pending":
+      return { status: "pending" }
+    case "saved":
+      return { status: "saved", url: meeting.transcriptUrl }
+    case "none":
+      return { status: "none" }
+    case "error":
+      return { status: "error", message: meeting.transcriptError ?? "Transcript import failed" }
+    default:
+      return null
+  }
 }
 
 export type ProjectClientMeetingsView = {
@@ -75,6 +99,8 @@ export type ScheduleProjectClientMeetingInput = {
   readonly timeZone: string
   readonly guestEmails: readonly string[]
   readonly staffEmails: readonly string[]
+  /** Ask Google to start the transcript when the call starts. */
+  readonly autoTranscribe: boolean
 }
 
 type MeetingAccess = {
@@ -257,6 +283,45 @@ async function staffDirectory(
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/**
+ * Turns on Meet's automatic transcript for the meeting's space, so nobody
+ * has to remember to press Transcribe. Google announces it to everyone.
+ */
+async function enableAutoTranscription(
+  access: MeetingAccess,
+  organizerEmail: string,
+  meetingUrl: string
+): Promise<void> {
+  const meetingCode = new URL(meetingUrl).pathname.replace(/^\/+/, "")
+  const token = await getCompassGmailAccessToken({
+    env: access.env,
+    db: access.db,
+    organizationId: access.organizationId,
+    scopes: [MEET_SETTINGS_SCOPE],
+    sender: organizerEmail,
+  })
+  if (!token.success) throw new Error(token.error)
+  const headers = { Authorization: `Bearer ${token.accessToken}`, "Content-Type": "application/json" }
+  const space: unknown = await fetch(
+    `https://meet.googleapis.com/v2/spaces/${encodeURIComponent(meetingCode)}`,
+    { headers }
+  ).then((response) => (response.ok ? response.json() : null))
+  const name = typeof space === "object" && space !== null ? Reflect.get(space, "name") : null
+  if (typeof name !== "string") throw new Error("Google Meet did not return the meeting space")
+  const mask = "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration"
+  const response = await fetch(
+    `https://meet.googleapis.com/v2/${name}?updateMask=${encodeURIComponent(mask)}`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        config: { artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: "ON" } } },
+      }),
+    }
+  )
+  if (!response.ok) throw new Error(`Google Meet did not turn on the transcript (${response.status})`)
+}
+
 export async function getProjectClientMeetings(
   projectId: string
 ): Promise<ActionResult<ProjectClientMeetingsView>> {
@@ -297,6 +362,7 @@ export async function getProjectClientMeetings(
           meetingUrl: meeting.status === "scheduled" ? meeting.meetingUrl : null,
           status: meeting.status === "cancelled" ? "cancelled" : "scheduled",
           canCancel: canSchedule && meeting.status === "scheduled",
+          transcript: transcriptState(meeting),
         })),
         // Clients first: owner contacts are the people these calls are for.
         guestOptions: guestOptions.filter((option) => option.category !== "internal"),
@@ -322,7 +388,9 @@ export async function getProjectClientMeetings(
 export async function scheduleProjectClientMeeting(
   projectId: string,
   input: ScheduleProjectClientMeetingInput
-): Promise<ActionResult<{ readonly id: string; readonly meetingUrl: string | null }>> {
+): Promise<
+  ActionResult<{ readonly id: string; readonly meetingUrl: string | null; readonly warning: string | null }>
+> {
   try {
     const access = await meetingAccess(projectId, true)
     const title = input.title.trim()
@@ -409,8 +477,19 @@ export async function scheduleProjectClientMeeting(
       change: "invited",
     })
 
+    let warning: string | null = null
+    if (input.autoTranscribe && googleEvent.meetingUrl) {
+      try {
+        await enableAutoTranscription(access, organizerEmail, googleEvent.meetingUrl)
+      } catch (error) {
+        // The meeting is booked either way; someone can press Transcribe in Meet.
+        console.error("Could not turn on automatic Meet transcription:", error)
+        warning = "Compass couldn't turn on the transcript automatically. Press Transcribe in Meet when the call starts."
+      }
+    }
+
     revalidatePath(`/dashboard/projects/${projectId}`)
-    return { success: true, data: { id, meetingUrl: googleEvent.meetingUrl } }
+    return { success: true, data: { id, meetingUrl: googleEvent.meetingUrl, warning } }
   } catch (error) {
     return { success: false, error: errorMessage(error, "Failed to book the Google Meet") }
   }

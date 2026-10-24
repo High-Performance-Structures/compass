@@ -4,7 +4,7 @@
   "featureId": "schedule",
   "slug": "client-meetings",
   "title": "Meet with a Client on Google Meet",
-  "summary": "Start or schedule a Google Meet with a project's clients from the project page, invite coworkers, and cancel a meeting.",
+  "summary": "Start or schedule a Google Meet with a project's clients, transcribe it automatically, find the saved transcript, and cancel a meeting.",
   "contextSummary": "Client meetings are Google Meet calls hosted from the booking staff member's own Google Calendar. Google emails the invitations; Compass keeps the meeting on the project and logs it in Activity.",
   "category": "Field & Project Work",
   "tags": ["Google Meet", "client meeting", "video call", "invite", "calendar", "owner", "clients"],
@@ -27,7 +27,17 @@ Pick the meeting length, check the title, and choose who to invite under **Clien
 
 ## Who Hosts the Call {#host}
 
-The meeting goes on your own Google Calendar, so you are the host. You admit guests who knock, and the meeting's transcript and recording, when someone turns them on in Meet, are saved to your Google Drive. Your Compass account must use your company Google Workspace address. If it doesn't, an administrator can set your Google email mapping in Settings.
+The meeting goes on your own Google Calendar, so you are the host. You admit guests who knock. Google saves the transcript and any recording to your Google Drive, and Compass copies the transcript to the project. Your Compass account must use your company Google Workspace address. If it doesn't, an administrator can set your Google email mapping in Settings.
+
+## Transcripts {#transcripts}
+
+**Transcribe automatically** is on when you book a meeting. Google starts the transcript when the call begins and tells everyone on the call. Turn it off for calls that shouldn't be transcribed. If it's off, or Compass couldn't turn it on, press **Transcribe** in Meet during the call.
+
+About 10 to 20 minutes after the call ends, Compass saves the transcript as a PDF in the project's **Communications** folder in Drive. Find it from the **Transcript** link under **Client meetings**. Transcripts are internal: if the Communications folder is shared with the client or vendors, Compass saves the transcript in the project's private records folder. If the whole project folder is shared outside the company, Compass doesn't save it and shows **Transcript not saved**. **No transcript** means nobody transcribed the call.
+
+## What Clients and Vendors See {#guest-view}
+
+Guests join from the link in their invitation. Clients and vendors who use Compass also see a **Join meeting** button on their project workspace while a meeting they're invited to is upcoming.
 
 ## Join or Cancel a Meeting {#join-cancel}
 

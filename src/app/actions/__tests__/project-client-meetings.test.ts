@@ -59,10 +59,11 @@ function open(email = "staff-a@example.test"): CorrespondenceTestDatabase {
     INSERT INTO project_contacts (id, project_id, contact_type, display_name, email, company_name)
       VALUES ('c-owner','project-a','owner','Owner A','client@home.test',NULL);
   `)
-  sqlite.exec(
-    readFileSync(resolve(process.cwd(), "drizzle/0246_project_client_meetings.sql"), "utf8")
-      .replaceAll("--> statement-breakpoint", "")
-  )
+  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql"]) {
+    sqlite.exec(
+      readFileSync(resolve(process.cwd(), "drizzle", file), "utf8").replaceAll("--> statement-breakpoint", "")
+    )
+  }
   mocks.getCloudflareContext.mockResolvedValue({ env: { DB: opened.d1 } })
   mocks.requireAuth.mockResolvedValue({
     id: "staff-a",
@@ -89,6 +90,7 @@ function input(overrides: Partial<ScheduleProjectClientMeetingInput> = {}): Sche
     timeZone: "America/Denver",
     guestEmails: ["Client@Home.test"],
     staffEmails: ["staff-b@example.test"],
+    autoTranscribe: false,
     ...overrides,
   }
 }
@@ -100,7 +102,7 @@ describe("project client meetings", () => {
 
     expect(result).toEqual({
       success: true,
-      data: { id: expect.any(String), meetingUrl: "https://meet.google.com/abc-defg-hij" },
+      data: { id: expect.any(String), meetingUrl: "https://meet.google.com/abc-defg-hij", warning: null },
     })
     expect(mocks.token).toHaveBeenCalledWith(expect.objectContaining({
       sender: "staff-a@example.test",
