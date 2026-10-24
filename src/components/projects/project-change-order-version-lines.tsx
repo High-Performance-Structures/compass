@@ -18,6 +18,7 @@ type VersionLine = {
   readonly changeKind: string | null
   readonly previousAmountCents: number | null
   readonly newAmountCents: number | null
+  readonly assemblyName?: string | null
 }
 
 /**
@@ -84,6 +85,7 @@ export function ProjectChangeOrderVersionLines({
 function ProjectChangeOrderCostLines({ lines }: { readonly lines: readonly VersionLine[] }): React.ReactElement | null {
   if (lines.length === 0) return null
   const total = lines.reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
+  const showAssembly = lines.some((line) => line.assemblyName)
   return (
     <section className="border-y py-4">
       <h2 className="text-sm font-semibold">Cost lines</h2>
@@ -91,6 +93,7 @@ function ProjectChangeOrderCostLines({ lines }: { readonly lines: readonly Versi
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-muted-foreground">
             <tr>
+              {showAssembly && <th className="py-1.5 pr-3 font-medium">Assembly</th>}
               <th className="py-1.5 pr-3 font-medium">Cost code</th>
               <th className="py-1.5 pr-3 font-medium">Line</th>
               <th className="py-1.5 text-right font-medium">Amount</th>
@@ -99,6 +102,7 @@ function ProjectChangeOrderCostLines({ lines }: { readonly lines: readonly Versi
           <tbody>
             {lines.map((line) => (
               <tr key={line.id} className="border-t">
+                {showAssembly && <td className="py-1.5 pr-3">{line.assemblyName ?? "New work"}</td>}
                 <td className="py-1.5 pr-3 tabular-nums">{line.costCode ?? "Not coded"}</td>
                 <td className="py-1.5 pr-3">{line.description}</td>
                 <td className="py-1.5 text-right tabular-nums">
@@ -107,7 +111,7 @@ function ProjectChangeOrderCostLines({ lines }: { readonly lines: readonly Versi
               </tr>
             ))}
             <tr className="border-t font-medium">
-              <td className="py-1.5 pr-3" colSpan={2}>Total</td>
+              <td className="py-1.5 pr-3" colSpan={showAssembly ? 3 : 2}>Total</td>
               <td className="py-1.5 text-right tabular-nums">{money(total)}</td>
             </tr>
           </tbody>

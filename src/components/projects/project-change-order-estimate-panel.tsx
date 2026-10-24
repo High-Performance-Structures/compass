@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import type { ProjectChangeOrderEstimateOption } from "@/app/actions/project-change-orders"
 import { createChangeOrderEstimateDraft } from "@/app/actions/project-estimates"
+import { ContractAssemblyChecklist } from "@/components/projects/contract-assembly-checklist"
 import { Button } from "@/components/ui/button"
 
 function money(cents: number): string {
@@ -32,19 +33,22 @@ export function ProjectChangeOrderEstimatePanel({
   changeOrderId,
   estimate,
   canStart,
+  contractAssemblies,
 }: {
   readonly projectId: string
   readonly changeOrderId: string
   readonly estimate: ProjectChangeOrderEstimateOption | null
   readonly canStart: boolean
+  readonly contractAssemblies: readonly { readonly id: string; readonly name: string }[]
 }): React.ReactElement {
   const [pending, startTransition] = React.useTransition()
+  const [selectedAssemblies, setSelectedAssemblies] = React.useState<readonly string[]>([])
   const estimateHref = (id: string): string =>
     `/dashboard/projects/${encodeURIComponent(projectId)}/estimate?estimateId=${encodeURIComponent(id)}`
 
   function start(): void {
     startTransition(async () => {
-      const result = await createChangeOrderEstimateDraft(projectId, changeOrderId)
+      const result = await createChangeOrderEstimateDraft(projectId, changeOrderId, selectedAssemblies)
       if (!result.success || !result.id) {
         toast.error(result.success ? "Unable to start the estimate." : result.error)
         return
@@ -75,7 +79,7 @@ export function ProjectChangeOrderEstimatePanel({
           </Link>
           <p className="text-xs text-muted-foreground">
             Build, preview, print and send it for signature like the contract estimate. Accepting it executes this change order
-            and adds its priced cost codes to the budget.
+            and adds its lines to the budget, inside the contract assemblies they change.
           </p>
         </div>
       ) : (
@@ -84,6 +88,14 @@ export function ProjectChangeOrderEstimatePanel({
             Price this change with a full estimate (lines, assemblies, client report and signature), the same way as the contract
             estimate. Accepting it executes the change order and updates the budget.
           </p>
+          {canStart ? (
+            <ContractAssemblyChecklist
+              assemblies={contractAssemblies}
+              selected={selectedAssemblies}
+              onSelectedChange={setSelectedAssemblies}
+              disabled={pending}
+            />
+          ) : null}
           {canStart ? (
             <Button type="button" size="sm" disabled={pending} onClick={start}>
               {pending ? "Starting…" : "Build change-order estimate"}

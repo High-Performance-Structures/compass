@@ -55,7 +55,21 @@ describe("payApplicationChangeOrderSummary", () => {
     expect(payApplicationChangeOrderSummary(sources)).toEqual({
       previous: 0,
       current: 1_700,
-      currentItems: [{ name: "Change order CO-001", amount: 1_700 }],
+      currentItems: [{ name: "Change order CO-001", amount: 1_700, assemblies: [] }],
     })
+  })
+
+  it("names change orders that landed inside an assembly from the change-order list", () => {
+    const list = [
+      { name: "CO-000 · Earlier", amount: 400, current: false, assemblies: [] },
+      { name: "CO-001 · Plan revisions", amount: 1_700, current: true, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }] },
+    ]
+    expect(payApplicationChangeOrderSummary(sources, list).currentItems).toEqual([
+      { name: "CO-001 · Plan revisions", amount: 1_700, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }] },
+    ])
+    // A list that doesn't add up to this period's changes falls back to the rows.
+    expect(payApplicationChangeOrderSummary(sources, [{ ...list[1], amount: 99, assemblies: [] }]).currentItems).toEqual([
+      { name: "Change order CO-001", amount: 1_700, assemblies: [] },
+    ])
   })
 })

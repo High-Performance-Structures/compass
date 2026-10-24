@@ -19,6 +19,7 @@ import {
   changeOrderMoney,
   ProjectChangeOrderOptionPicker,
 } from "@/components/projects/project-change-order-option-picker"
+import { ContractAssemblyChecklist } from "@/components/projects/contract-assembly-checklist"
 import { ProjectChangeOrderKindChoice } from "@/components/projects/project-change-order-kind-choice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -98,6 +99,7 @@ export function ProjectChangeOrderCreateForm({
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [requesterCompany, setRequesterCompany] = React.useState("")
   const [kind, setKind] = React.useState<ChoosableChangeOrderKind>("estimate")
+  const [contractAssemblyIds, setContractAssemblyIds] = React.useState<readonly string[]>([])
   const [replacementEstimateId, setReplacementEstimateId] =
     React.useState("")
   const currentBaseline = formOptions.estimates.find(
@@ -161,13 +163,14 @@ export function ProjectChangeOrderCreateForm({
         setOpen(false)
         setRequesterCompany("")
         setKind("estimate")
+        setContractAssemblyIds([])
         setReplacementEstimateId("")
         setSelectedFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ""
         form.reset()
         // Staff price an estimate change order right away in the estimate editor.
         if (internal && kind === "estimate") {
-          const estimate = await createChangeOrderEstimateDraft(projectId, result.id)
+          const estimate = await createChangeOrderEstimateDraft(projectId, result.id, contractAssemblyIds)
           if (estimate.success && estimate.id) {
             toast.success("Change order created. Build its estimate.")
             window.location.assign(
@@ -286,6 +289,14 @@ export function ProjectChangeOrderCreateForm({
               replacementOptions={replacementOptions}
               currentBaseline={currentBaseline ?? null}
               disabled={false}
+            />
+          )}
+          {internal && kind === "estimate" && (
+            <ContractAssemblyChecklist
+              assemblies={formOptions.contractAssemblies}
+              selected={contractAssemblyIds}
+              onSelectedChange={setContractAssemblyIds}
+              disabled={saving}
             />
           )}
 

@@ -243,6 +243,8 @@ export async function rebuildProjectContractBudget(input: {
       costCode: projectChangeOrderLines.costCode,
       description: projectChangeOrderLines.description,
       amountCents: projectChangeOrderLines.amountCents,
+      contractAssemblyId: projectChangeOrderLines.contractAssemblyId,
+      assemblyName: projectChangeOrderLines.assemblyName,
       executedAt: projectChangeOrders.executedAt,
     })
     .from(projectChangeOrderLines)
@@ -380,6 +382,9 @@ export async function rebuildProjectContractBudget(input: {
     sortOrder: line.sortOrder,
     createdAt: now,
   }))
+  // Lines tied to a contract assembly keep it, so pay applications show the
+  // change inside that assembly.
+  const assemblyByChangeLine = new Map(changeRows.map((row) => [row.id, row]))
   const adjustmentRows = adjustments.map((adjustment) => ({
     id: crypto.randomUUID(),
     projectId: input.projectId,
@@ -389,6 +394,8 @@ export async function rebuildProjectContractBudget(input: {
     costCode: adjustment.costCode,
     description: adjustment.description,
     amountCents: adjustment.amountCents,
+    contractAssemblyId: assemblyByChangeLine.get(adjustment.id)?.contractAssemblyId ?? null,
+    assemblyName: assemblyByChangeLine.get(adjustment.id)?.assemblyName ?? null,
     executedAt: adjustment.executedAt,
     createdAt: now,
   }))

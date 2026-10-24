@@ -1449,9 +1449,79 @@ export async function createProjectEstimateDraft(
  * details (client, signers, terms, report style, builder-fee rates) come from
  * the accepted contract estimate when there is one.
  */
+/**
+ * A change-order estimate's starting assemblies: one per chosen contract
+ * assembly, empty and linked to it, with the report phases its lines use, so
+ * added and credited lines land in that assembly on the budget.
+ */
+async function changeOrderAssemblyStatements(
+  db: CompassDb,
+  input: {
+    readonly projectId: string
+    readonly estimateId: string
+    readonly contractEstimateId: string | null
+    readonly contractAssemblyIds: readonly string[]
+    readonly now: string
+  }
+) {
+  const ids = [...new Set(input.contractAssemblyIds)]
+  if (ids.length === 0) return []
+  if (!input.contractEstimateId) throw new Error("Accept the contract estimate before changing its assemblies.")
+  const [assemblies, phaseIds] = await Promise.all([
+    db
+      .select()
+      .from(projectEstimateAssemblies)
+      .where(and(eq(projectEstimateAssemblies.estimateId, input.contractEstimateId), inArray(projectEstimateAssemblies.id, ids))),
+    db
+      .selectDistinct({ id: projectEstimateLines.reportPhaseId })
+      .from(projectEstimateLines)
+      .where(and(eq(projectEstimateLines.estimateId, input.contractEstimateId), inArray(projectEstimateLines.assemblyId, ids))),
+  ])
+  if (assemblies.length !== ids.length) throw new Error("Choose assemblies from the accepted contract estimate.")
+  const usedPhaseIds = phaseIds.flatMap((row) => (row.id ? [row.id] : []))
+  const phases =
+    usedPhaseIds.length > 0
+      ? await db
+          .select()
+          .from(projectEstimateReportPhases)
+          .where(and(eq(projectEstimateReportPhases.estimateId, input.contractEstimateId), inArray(projectEstimateReportPhases.id, usedPhaseIds)))
+      : []
+  return [
+    ...assemblies.map((assembly) =>
+      db.insert(projectEstimateAssemblies).values({
+        id: crypto.randomUUID(),
+        estimateId: input.estimateId,
+        name: assembly.name,
+        description: assembly.description,
+        sortOrder: assembly.sortOrder,
+        clientDetail: assembly.clientDetail,
+        contractAssemblyId: assembly.id,
+        createdAt: input.now,
+        updatedAt: input.now,
+      })
+    ),
+    ...phases.map((phase) =>
+      db.insert(projectEstimateReportPhases).values({
+        id: crypto.randomUUID(),
+        projectId: input.projectId,
+        estimateId: input.estimateId,
+        divisionCode: phase.divisionCode,
+        name: phase.name,
+        description: phase.description,
+        itemize: phase.itemize,
+        sortOrder: phase.sortOrder,
+        createdAt: input.now,
+        updatedAt: input.now,
+      })
+    ),
+  ]
+}
+
 export async function createChangeOrderEstimateDraft(
   projectId: string,
-  changeOrderId: string
+  changeOrderId: string,
+  /** Contract assemblies this change adds to or reduces. */
+  contractAssemblyIds: readonly string[] = []
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
@@ -1494,6 +1564,13 @@ export async function createChangeOrderEstimateDraft(
       .get()
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
+    const assemblyStatements = await changeOrderAssemblyStatements(access.db, {
+      projectId,
+      estimateId: id,
+      contractEstimateId: contract?.id ?? null,
+      contractAssemblyIds,
+      now,
+    })
     const contactRows = contract
       ? []
       : await access.db
@@ -1552,6 +1629,7 @@ export async function createChangeOrderEstimateDraft(
     // An older recorded change order becomes one priced by this estimate.
     await access.db.batch([
       estimateInsert,
+      ...assemblyStatements,
       access.db
         .update(projectChangeOrders)
         .set({ changeOrderKind: "estimate", updatedAt: now })

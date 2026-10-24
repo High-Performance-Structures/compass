@@ -37,7 +37,7 @@ import { changeOrderReport } from "@/lib/print/audience-record-reports"
 import { portalReportHtml } from "@/lib/print/portal-report"
 
 const formOptions: ProjectChangeOrderFormOptions = {
-  phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null,
+  phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null, contractAssemblies: [],
 }
 
 // Synthetic Loomis CO0007-shaped regression, not a source attestation or copy

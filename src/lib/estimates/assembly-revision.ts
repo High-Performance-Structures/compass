@@ -7,15 +7,16 @@ export function estimateAssemblyRevisionStatements(input: {
   readonly projectId: string
   readonly estimateId: string
   readonly now: string
-  readonly assemblies: readonly EstimateAssembly[]
+  // A change-order estimate's assemblies keep the contract assembly they change.
+  readonly assemblies: readonly (EstimateAssembly & { readonly contractAssemblyId?: string | null })[]
 }): readonly D1PreparedStatement[] {
   const copies = input.assemblies.map((assembly) => ({ assembly, id: crypto.randomUUID() }))
   return [
     ...copies.map(({ assembly, id }) => input.db.prepare(
       `INSERT INTO project_estimate_assemblies
-       (id, estimate_id, name, description, sort_order, client_detail, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, input.estimateId, assembly.name, assembly.description, assembly.sortOrder, assembly.clientDetail ? 1 : 0, input.now, input.now)),
+       (id, estimate_id, name, description, sort_order, client_detail, contract_assembly_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, input.estimateId, assembly.name, assembly.description, assembly.sortOrder, assembly.clientDetail ? 1 : 0, assembly.contractAssemblyId ?? null, input.now, input.now)),
     ...copies.map(({ assembly, id }) => input.db.prepare(
       `UPDATE project_estimate_lines SET assembly_id = ?
        WHERE estimate_id = ? AND project_id = ? AND assembly_id = ?`

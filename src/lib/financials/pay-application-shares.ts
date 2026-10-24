@@ -99,6 +99,17 @@ export function payApplicationShares(input: {
       shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: item.cents, approvedChangeCents: 0, adjustedBudgetCents: item.cents })
     }
     for (const item of changes) {
+      // A change tied to an assembly joins that assembly's row (AIA "changes").
+      const index = shares.findIndex((share) => share.assemblyKey === item.key)
+      const existing = shares[index]
+      if (existing) {
+        shares[index] = {
+          ...existing,
+          approvedChangeCents: existing.approvedChangeCents + item.cents,
+          adjustedBudgetCents: existing.adjustedBudgetCents + item.cents,
+        }
+        continue
+      }
       shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: 0, approvedChangeCents: item.cents, adjustedBudgetCents: item.cents })
     }
     const originalLeft = line.originalEstimateCents - estimate.reduce((sum, item) => sum + item.cents, 0)
@@ -154,6 +165,22 @@ export function distributeCents(totalCents: number, weights: readonly number[]):
   return parts.map((part, index) => (index === largest ? part + remainder : part))
 }
 
+/**
+ * The accepted estimate's assembly a change belongs to: the one it was tied
+ * to, or one with the same name when a newer contract version renumbered it.
+ */
+export function contractAssemblyFor<T extends { readonly id: string; readonly name: string }>(
+  assemblies: readonly T[],
+  change: { readonly contractAssemblyId: string | null; readonly assemblyName: string | null }
+): T | null {
+  if (!change.contractAssemblyId && !change.assemblyName) return null
+  const byId = assemblies.find((assembly) => assembly.id === change.contractAssemblyId)
+  if (byId) return byId
+  if (!change.contractAssemblyId) return null
+  const name = change.assemblyName?.trim().toLowerCase()
+  return assemblies.find((assembly) => assembly.name.trim().toLowerCase() === name) ?? null
+}
+
 /** The pay application shares for a contract budget revision. */
 export async function loadPayApplicationShares(
   db: ReturnType<typeof getDb>,
@@ -198,6 +225,8 @@ export async function loadPayApplicationShares(
         amountCents: projectContractBudgetAdjustments.amountCents,
         changeOrderNumber: projectChangeOrders.changeOrderNumber,
         title: projectChangeOrders.title,
+        contractAssemblyId: projectContractBudgetAdjustments.contractAssemblyId,
+        assemblyName: projectContractBudgetAdjustments.assemblyName,
         executedAt: projectContractBudgetAdjustments.executedAt,
       })
       .from(projectContractBudgetAdjustments)
@@ -211,15 +240,21 @@ export async function loadPayApplicationShares(
     return [{ costCode: line.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: line.lineTotalCents }]
   })
   const changeOrderIds = [...new Set([...adjustments].sort((a, b) => a.executedAt.localeCompare(b.executedAt)).map((row) => row.changeOrderId))]
-  const changeAllocations: ShareAllocation[] = adjustments.map((row) => ({
-    costCode: row.costCode,
-    key: `co:${row.changeOrderId}`,
-    name: row.changeOrderNumber
-      ? `Change order ${row.changeOrderNumber}${row.title ? ` · ${row.title}` : ""}`
-      : "Change order",
-    sort: 500_000 + changeOrderIds.indexOf(row.changeOrderId),
-    cents: row.amountCents,
-  }))
+  const changeAllocations: ShareAllocation[] = adjustments.map((row) => {
+    const assembly = contractAssemblyFor(assemblies, row)
+    if (assembly) {
+      return { costCode: row.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: row.amountCents }
+    }
+    return {
+      costCode: row.costCode,
+      key: `co:${row.changeOrderId}`,
+      name: row.changeOrderNumber
+        ? `Change order ${row.changeOrderNumber}${row.title ? ` · ${row.title}` : ""}`
+        : "Change order",
+      sort: 500_000 + changeOrderIds.indexOf(row.changeOrderId),
+      cents: row.amountCents,
+    }
+  })
   return payApplicationShares({ revisionLines, estimateAllocations, changeAllocations })
 }
 

@@ -144,20 +144,42 @@ export function payApplicationReport(
   }
 }
 
-/** Change orders approved before and during this period, by name where known. */
-export function payApplicationChangeOrderSummary(sources: readonly PayApplicationReportSource[]): {
+export type ChangeOrderSummaryItem = {
+  readonly name: string
+  readonly amount: number
+  readonly assemblies: readonly { readonly name: string; readonly amount: number }[]
+}
+
+/**
+ * Change orders approved before and during this period, by name where known.
+ * With the change-order list, current items come from it, so changes that
+ * landed inside an assembly are still named; otherwise from change-order rows.
+ */
+export function payApplicationChangeOrderSummary(
+  sources: readonly PayApplicationReportSource[],
+  changeOrders: readonly (ChangeOrderSummaryItem & { readonly current: boolean })[] | null = null
+): {
   readonly previous: number
   readonly current: number
-  readonly currentItems: readonly { readonly name: string; readonly amount: number }[]
+  readonly currentItems: readonly ChangeOrderSummaryItem[]
 } {
+  const previous = roundCents(sources.reduce((total, source) => total + source.priorChanges, 0))
+  const current = roundCents(sources.reduce((total, source) => total + source.currentChanges, 0))
+  if (changeOrders) {
+    const items = changeOrders.filter((item) => item.current && item.amount !== 0)
+    // Use the list only when it accounts for this period's changes.
+    if (roundCents(items.reduce((total, item) => total + item.amount, 0)) === current) {
+      return { previous, current, currentItems: items.map(({ name, amount, assemblies }) => ({ name, amount, assemblies })) }
+    }
+  }
   const currentByName = new Map<string, number>()
   for (const source of sources) {
     if (source.currentChanges === 0 || !source.assemblyKey?.startsWith("co:") || !source.assemblyName) continue
     currentByName.set(source.assemblyName, roundCents((currentByName.get(source.assemblyName) ?? 0) + source.currentChanges))
   }
   return {
-    previous: roundCents(sources.reduce((total, source) => total + source.priorChanges, 0)),
-    current: roundCents(sources.reduce((total, source) => total + source.currentChanges, 0)),
-    currentItems: [...currentByName.entries()].map(([name, amount]) => ({ name, amount })),
+    previous,
+    current,
+    currentItems: [...currentByName.entries()].map(([name, amount]) => ({ name, amount, assemblies: [] })),
   }
 }

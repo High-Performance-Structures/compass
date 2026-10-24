@@ -137,6 +137,7 @@ export function ProjectChangeOrderDetail({
             changeOrderId={item.id}
             estimate={item.changeOrderEstimate}
             canStart={item.canEdit && !isExecutedChangeOrderStatus(item.status)}
+            contractAssemblies={formOptions.contractAssemblies}
           />
         )}
         {item.budgetTreatment === "baseline_replacement" && (

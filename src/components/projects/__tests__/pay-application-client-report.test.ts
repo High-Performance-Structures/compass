@@ -35,6 +35,7 @@ const line = {
 
 function report(ownerDetail: ProjectOwnerPayApplicationReport["draft"]["ownerDetail"]): string {
   const value: ProjectOwnerPayApplicationReport = {
+    changeOrders: [],
     project: {
       name: "Example Residence",
       projectNumber: "H-100-1000",
