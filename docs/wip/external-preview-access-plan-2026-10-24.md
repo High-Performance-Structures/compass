@@ -1,6 +1,6 @@
 # Owner and vendor preview access plan
 
-Status: approved joint Codex and Claude design, implemented and validated locally on `codex/external-preview-access`, 2026-10-24. No changes have been deployed. Production authentication parity remains a rollout check.
+Status: approved joint Codex and Claude design, implemented and validated locally on `codex/external-preview-access`, 2026-10-24. The implementation is deployed to the isolated demo environment only. Production remains unchanged; authenticated parity remains a rollout check.
 
 Owner and vendor previews should use the same authorization rules as the selected external person. Staff authorization should determine whether an employee may open a preview; it must not determine the records, messages, or files shown inside it.
 
@@ -92,7 +92,7 @@ Approved policy, 2026-10-24: vendors may see only RFIs involving their own compa
 
 Use verified project contact and company associations to establish involvement. An unresolved or ambiguous association must not broaden access to all vendor RFIs. Existing records may need association review before they become visible under this rule.
 
-The current real vendor workspace still returns all RFIs published to the vendor audience without a per-company filter. The restriction is implemented locally using reviewed active RFI participant grants and stable company/contact links, including native vendor-created RFIs and notification visibility. It has not been deployed.
+The current real vendor workspace still returns all RFIs published to the vendor audience without a per-company filter. The restriction is implemented locally using reviewed active RFI participant grants and stable company/contact links, including native vendor-created RFIs and notification visibility. It has not been deployed to production.
 
 ## Acceptance criteria
 
@@ -140,3 +140,19 @@ $AUTOREVIEW --mode local --model gpt-6.1-sol --no-web-search --stream-engine-out
 The helper exited 0 with no findings: `autoreview clean: no accepted/actionable findings reported`. Earlier findings were accepted because they exposed concrete gaps in the same preview boundary: inbound RFI emails retaining staff identity, channel discovery escaping the project, legacy project aliases losing scope, schedule assignee reads escaping the project, and typing mutations in preview. Each was fixed and covered by focused regressions. Related polling cleanup and signed-document cache behavior were checked at the same boundary. After the two-cycle scope pause, remaining findings were explicitly classified as in-scope blockers; no schema migration, new external protocol, or broader permission redesign was added.
 
 Before rollout, compare authorized real owner/vendor WorkOS sessions with matching staff previews on a staging deployment. The local browser fixture does not prove production authentication or inbox delivery. Review company/contact links for older RFIs before making them visible to vendors.
+
+## Demo deployment and remaining validation
+
+On 2026-10-24, explicit approval was received to create five isolated WorkOS test accounts and apply the nine pending existing main-branch migrations to `compass-demo-db`, then deploy only `compass-demo`. A database rollback snapshot was saved before changes. All nine migrations were applied; the final migration check reports none pending.
+
+The branch was rebased without conflicts onto main `f283768d`; the implementation commit is now `ea51a0f9` (formerly `4dd2968a`). The full OpenNext demo build and Wrangler deployment dry run pass, along with 33 focused permission regressions after the rebase.
+
+Deployed demo Worker version: `bf58f3a0-65e2-4b8c-b0c4-03dc91523484`. Deployment history and bindings were re-read after deployment. The three WorkOS secret bindings remain present. The database binding points to `compass-demo-db`; self-reference points to `compass-demo`; global correspondence remains disabled, with only synthetic project `preview-qa-20261024` temporarily allowlisted through `COMPASS_CORRESPONDENCE_PROJECT_IDS`. Subsequent demo deployments must intentionally preserve or remove that temporary QA allowlist.
+
+The additive fixture contains one staff user, two owners, two vendor companies, six distinct sent emails with per-person grants, four private drafts, published schedule items plus an unpublished negative control, an owner budget with an internal-note negative control, and company-specific RFIs plus internal/unlinked negative controls. It was checked twice against a local snapshot before application, then read back from the demo database. No existing demo projects were reset.
+
+Demo login and mobile health return HTTP 200; anonymous owner/vendor previews redirect to sign-in. Baseline QA message read receipts are zero and private draft count is four. **Authenticated owner/vendor-versus-preview parity has not yet been completed.** The approved `example.com` identities trigger WorkOS's test SSO policy; a proposed change to a reserved `.example` domain was blocked by automatic approval review pending explicit authorization for that different address domain. No domain, password, or SSO-policy changes were applied.
+
+The demo has no private correspondence Drive storage, so positive file-byte download parity remains unverified. Do not connect production storage or claim attachment download parity on the basis of these health checks.
+
+A read-only production audit found two vendor-visible RFIs with placeholder company labels and no verified company grants or stable activity evidence. Their associations remain unchanged. They will be withheld under the approved company rule until reviewed; company labels alone must never be used to backfill access. No production writes, merge, or production deployment occurred.
