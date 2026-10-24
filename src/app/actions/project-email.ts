@@ -13,6 +13,7 @@ import { releaseRejectedComposition, savedDraftGuard, retireSentComposition } fr
 import { correspondenceHash } from "@/lib/correspondence/send"
 import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import { resolveStaffEmailSender } from "@/lib/email/staff-sender"
 import { validateProjectEmailAudience, type ProjectEmailAudience } from "@/lib/email/project-email-validation"
 import { createReplyToken, trackedReplyAddress } from "@/lib/email/reply-tracking"
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
@@ -82,6 +83,11 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
   const conversationId = campaign.conversationId
   if (campaign.status === "sent") return { success: true, conversationId, status: "sent", error: null }
   if (campaign.status === "dispatching" || campaign.status === "unknown") return { success: true, conversationId, status: "unknown", error: "Delivery outcome needs review; do not resend this message." }
+  const resolved = await resolveStaffEmailSender({ db: ctx.db, env: ctx.env, organizationId: ctx.organizationId, userId: campaign.senderUserId })
+  if (!resolved.success) {
+    await ctx.db.update(projectEmailCampaigns).set({ status: "failed", error: resolved.error, updatedAt: new Date().toISOString() }).where(and(eq(projectEmailCampaigns.id, campaign.id), or(eq(projectEmailCampaigns.status, "queued"), eq(projectEmailCampaigns.status, "failed"))))
+    return { success: true, conversationId, status: "failed", error: resolved.error }
+  }
   let attachments: Awaited<ReturnType<typeof loadProjectEmailAttachments>>
   try { attachments = await loadProjectEmailAttachments(ctx, campaign.messageId) } catch {
     await ctx.db.update(projectEmailCampaigns).set({ status: "failed", error: "An email attachment could not be loaded.", updatedAt: new Date().toISOString() }).where(and(eq(projectEmailCampaigns.id, campaign.id), or(eq(projectEmailCampaigns.status, "queued"), eq(projectEmailCampaigns.status, "failed"))))
@@ -101,7 +107,7 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
     const replyName = `${ctx.projectName} - Project Messages`.replace(/[\r\n"\\]/g, " ")
     const replyTo = thread.replyToAddress.replace(/^Compass (?=<)/, () => `"${replyName}" `)
     const text = `Project: ${ctx.projectName}\nFrom: ${ctx.user.displayName ?? ctx.user.email}\n\n${body}\n\nReply to this email to respond in this project conversation.\nProject email: ${projectAddress}\nFor a new conversation, email the project address with [MESSAGE] at the start of the subject.`
-    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text, attachments })
+    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, sender: resolved.delivery === "gmail" ? resolved.sender : undefined, fromName: resolved.delivery === "system" ? resolved.sender.name ?? undefined : undefined, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text, attachments })
   } catch {
     delivery = { status: "unknown", provider: "unknown", providerMessageId: null, error: "Email provider outcome is unknown." }
   }

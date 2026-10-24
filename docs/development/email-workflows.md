@@ -22,6 +22,21 @@ that can be checked automatically. The rest is reviewed with the PR.
   from) in `alsoReplyTo`, so replies still reach them directly.
 - Send from Compass. Do not hand users a `mailto:` that relies on them keeping
   Compass copied.
+- The server resolves the sender from the active staff account and membership
+  in the record's organization. A primary email in the connected Workspace
+  domain is preferred and must match the live, verified WorkOS identity; an
+  administrator-managed Google email mapping supports staff who log in with
+  another address. A personal sender cannot use another user's assigned mailbox
+  or a reserved department mailbox. Explicit department senders take precedence.
+- Staff without a matching Workspace address use the tracked reply mailbox
+  when it belongs to that Workspace (Jarvis for HPS), identified by name with
+  "via Compass". Other companies retain their configured system sender and
+  provider chain, including when Google is not connected. Automatic personal
+  sender selection matches the configured Workspace domain exactly.
+- Individual and department Workspace senders use Gmail only. A rejected mailbox
+  authorization or delivery must be reported; never silently substitute the
+  shared sender or a fallback provider. Automated notifications retain their
+  configured system sender.
 - Record an Activity event once the email is sent (category `email`, an action
   like `<kind>_emailed`, and a summary naming the record and recipients).
 

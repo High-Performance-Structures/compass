@@ -87,4 +87,10 @@ describe("updateProfile WorkOS identity", () => {
     expect(mocks.updateLocal).toHaveBeenCalledWith(users)
     expect(mocks.runLocal).toHaveBeenCalledTimes(1)
   })
+
+  it("clears verification when changing email, so profile edits cannot grant send-as", async () => {
+    const result = await updateProfile({ firstName: "Stanley", lastName: "Platt", email: "new@example.com" })
+    expect(result.success).toBe(true)
+    expect(mocks.updateUser).toHaveBeenCalledWith(expect.objectContaining({ email: "new@example.com", emailVerified: false }))
+  })
 })

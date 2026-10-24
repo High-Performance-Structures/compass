@@ -14,6 +14,7 @@ import { addressLines } from "@/lib/department-profiles"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
+import { resolveStaffEmailSender } from "@/lib/email/staff-sender"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   jobEmailTemplate,
@@ -62,9 +63,10 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
   const profile = profiles[department]
   const userName = user.displayName?.trim() || [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email
   // A department mailbox when the company set one; otherwise the person sending.
-  const sender = profile.senderAddress
-    ? { address: profile.senderAddress, name: profile.senderName || profile.companyName }
-    : { address: user.googleEmail ?? user.email, name: userName }
+  const departmentSender = profile.senderAddress ? { address: profile.senderAddress, name: profile.senderName || profile.companyName } : undefined
+  const resolved = await resolveStaffEmailSender({ db, env, organizationId, userId: user.id, departmentSender })
+  if (!resolved.success && action === "update") throw new Error(resolved.error)
+  const sender = resolved.success ? resolved.sender : { address: "", name: userName }
   const clientName = client?.displayName ?? project.clientName ?? ""
   const context: JobEmailContext = {
     clientFirstName: clientName.trim().split(/\s+/)[0] ?? "",
@@ -73,7 +75,7 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
     projectName: project.name,
     jobAddress: project.address ?? "",
     senderName: userName,
-    senderEmail: user.googleEmail ?? user.email,
+    senderEmail: sender.address,
     companyName: profile.companyName,
     legalName: profile.legalName,
     companyEmail: profile.email,
@@ -82,7 +84,7 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
     website: profile.website,
     mailingAddress: addressLines(profile.mailingAddress).join(", "),
   }
-  return { user, organizationId, env, db, department, settings, sender, client: client ?? null, context }
+  return { user, organizationId, env, db, department, settings, sender, departmentSender, senderDelivery: resolved.success ? resolved.delivery : "system", client: client ?? null, context }
 }
 
 /** A template filled in for this job, ready to review in the composer. */
@@ -98,7 +100,7 @@ export async function getJobEmailDraft(projectId: string, templateId: string): P
       data: {
         templateId: template.id,
         label: template.label,
-        description: `To ${audience}, from ${ctx.sender.address}.${template.audience === "client" ? " Sending logs it as a client contact." : ""}`,
+        description: `To ${audience}, from ${ctx.sender.address || "your company mailbox after verification"}.${template.audience === "client" ? " Sending logs it as a client contact." : ""}`,
         to: template.audience === "client" && ctx.client?.email ? [ctx.client.email] : [],
         cc: [],
         recipientOptions: await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email]),
@@ -174,9 +176,9 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
       subject: subject.trim(),
       text: body,
       attachments,
-      sender: { address: ctx.sender.address, name: ctx.sender.name || null },
+      sender: ctx.departmentSender,
       replyName: `${ctx.sender.name || ctx.sender.address} - ${template.label}`,
-      alsoReplyTo: [ctx.sender.address],
+      alsoReplyTo: ctx.senderDelivery === "gmail" ? [ctx.sender.address] : [],
     })
     if (delivery.status !== "sent") {
       return {

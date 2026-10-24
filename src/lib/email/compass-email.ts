@@ -39,6 +39,8 @@ export type CompassEmailInput = {
    * the fallback provider, so replies always reach that mailbox.
    */
   readonly sender?: { readonly address: string; readonly name: string | null }
+  /** Staff attribution for the configured system sender, without changing its address. */
+  readonly fromName?: string
 }
 
 export type CompassEmailDeliveryResult = {
@@ -86,6 +88,22 @@ function safeHeaderName(value: string): string | null {
 function extractEmailAddress(value: string): string {
   const match = /<([^<>]+)>/.exec(value)
   return (match?.[1] ?? value).trim()
+}
+
+export function getCompassSystemSender(env: unknown): { readonly address: string; readonly name: null } {
+  return { address: extractEmailAddress(envString(env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM), name: null }
+}
+
+function fromHeader(input: CompassEmailInput): string {
+  const configured = envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
+  const address = input.sender?.address ?? extractEmailAddress(configured)
+  const name = input.sender?.name ?? input.fromName
+  if (!name) return input.sender ? address : configured
+  const safeName = name.replace(/[\r\n"\\<>]/g, " ").trim()
+  const display = /^[\x20-\x7e]*$/.test(safeName)
+    ? `"${safeName}"`
+    : `=?UTF-8?B?${Buffer.from(safeName, "utf8").toString("base64")}?=`
+  return `${display} <${address}>`
 }
 
 function base64urlString(value: string): string {
@@ -170,21 +188,20 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
     organizationId: input.organizationId,
     scopes: [COMPASS_GMAIL_SEND_SCOPE],
     sender: input.sender?.address,
-  })
+  }).catch((): { readonly success: false; readonly error: string } => ({
+    success: false,
+    error: "Google could not authorize this sending mailbox. Check the Workspace mailbox and Gmail send delegation before retrying.",
+  }))
   if (!access.success) {
     return {
-      status: "pending_provider",
+      status: input.sender ? "failed" : "pending_provider",
       provider: "gmail",
       providerMessageId: null,
       error: access.error,
     }
   }
 
-  const from = input.sender
-    ? input.sender.name
-      ? `${input.sender.name} <${input.sender.address}>`
-      : input.sender.address
-    : envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
+  const from = fromHeader(input)
   const raw = base64urlString(
     buildCompassMimeMessage({
       from,
@@ -241,8 +258,7 @@ async function sendResend(
   }
 
   const requestBody: Record<string, unknown> = {
-    from:
-      envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM,
+    from: fromHeader(input),
     to: input.to,
     subject: input.subject,
     text: input.text,

@@ -10,20 +10,25 @@ const mocks = vi.hoisted(() => ({
   contacts: vi.fn(),
   sendEmail: vi.fn(),
   download: vi.fn(),
+  identity: vi.fn(),
 }))
 vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/correspondence/access", () => ({ correspondenceContext: mocks.context, correspondenceContacts: mocks.contacts }))
 vi.mock("@/lib/correspondence/attachment-storage", () => ({ downloadCorrespondenceAttachment: mocks.download }))
 vi.mock("@/lib/email/compass-email", () => ({ sendCompassEmail: mocks.sendEmail }))
+vi.mock("@workos-inc/authkit-nextjs", () => ({ getWorkOS: () => ({ userManagement: { getUser: mocks.identity } }), withAuth: async () => ({ user: { id: "workos-staff-a" } }) }))
 
 let database: CorrespondenceTestDatabase | undefined
 function setup(): CorrespondenceTestDatabase {
   const db = openCorrespondenceTestDatabase()
   database = db
+  db.sqlite.exec("ALTER TABLE users ADD COLUMN google_email TEXT; CREATE TABLE google_auth (organization_id TEXT, workspace_domain TEXT); INSERT INTO google_auth VALUES ('org-a','example.test')")
+  db.sqlite.exec("CREATE TABLE organization_feature_settings (organization_id TEXT,feature_key TEXT,value TEXT)")
   db.sqlite.exec(readFileSync("drizzle/0053_email_reply_threads.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   mocks.context.mockResolvedValue(context(db, "staff-a", "project-a"))
   mocks.contacts.mockResolvedValue([{ userId: "revoked-a", name: "Staff Colleague", email: "revoked-a@example.test", role: "staff", delivery: "compass" }])
+  mocks.identity.mockResolvedValue({ email: "staff-a@example.test", emailVerified: true })
   return db
 }
 beforeEach(() => { vi.clearAllMocks() })
@@ -36,6 +41,31 @@ const email = {
 }
 
 describe("project email send", () => {
+  it("uses the persisted staff mailbox without accepting a caller-supplied sender", async () => {
+    const db = setup()
+    db.sqlite.exec("UPDATE users SET email='sender@example.test' WHERE id='staff-a'")
+    mocks.identity.mockResolvedValue({ email: "sender@example.test", emailVerified: true })
+    mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "sent", error: null })
+    const submitted = { ...email, sender: { address: "other@example.test", name: "Other" } }
+    expect(await sendProjectEmail(submitted)).toMatchObject({ success: true, status: "sent" })
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ sender: { address: "sender@example.test", name: "Staff A" } }))
+  })
+
+  it("uses Jarvis for staff without a Workspace address and retains the tracked reply route", async () => {
+    const db = setup()
+    db.sqlite.exec("UPDATE users SET email='personal@gmail.com' WHERE id='staff-a'")
+    db.sqlite.exec("UPDATE google_auth SET workspace_domain='hps-colorado.com'")
+    mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "sent", error: null })
+    expect(await sendProjectEmail(email)).toMatchObject({ success: true, status: "sent" })
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ sender: { address: "jarvis@hps-colorado.com", name: "Staff A via Compass" }, replyTo: expect.stringContaining("jarvis+cmp-") }))
+  })
+
+  it("does not dispatch for staff removed from the organization", async () => {
+    const db = setup()
+    db.sqlite.exec("DELETE FROM organization_members WHERE user_id='staff-a'")
+    expect(await sendProjectEmail(email)).toMatchObject({ success: false })
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+  })
   it.each(["text","audience"])("rejects changed %s under a reserved email draft", async (change) => {
     const db = setup()
     await saveProjectComposition("project-a","draft",0,{kind:"email",subject:email.subject,body:email.body,to:email.to,cc:email.cc,bcc:email.bcc,attachmentIds:[],requestId:email.requestId})

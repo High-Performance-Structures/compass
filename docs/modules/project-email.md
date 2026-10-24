@@ -10,6 +10,15 @@ Bcc list is available only to the original sender. Replies from Bcc recipients
 are granted only to the replying user and non-blind project staff. This applies to newly sent emails; earlier messages
 are not automatically shared retroactively.
 
+Outgoing email uses your verified primary address in the company's connected
+Google Workspace domain, or your administrator-managed Google address when your
+login uses another domain. Staff without a Workspace address use the shared
+sender with their name followed by "via Compass" (Jarvis for HPS). Companies
+without a matching reply mailbox or Google connection retain their configured
+system sender. Google must authorize
+the selected mailbox; a failure is reported without switching sender identities.
+The central tracked Reply-To address stays in place regardless of the sender.
+
 Incoming replies are attached to the original conversation through its tracked
 Reply-To address. Each reply is granted only to currently active conversation
 participants. Removing project access removes portal access to the conversation

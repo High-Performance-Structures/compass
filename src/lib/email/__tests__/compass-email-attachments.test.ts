@@ -3,11 +3,11 @@ import { Buffer } from "node:buffer"
 import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
 import { sendCompassEmail } from "../compass-email"
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), jwt: vi.fn(), token: vi.fn() }))
 vi.mock("server-only", () => ({}))
 vi.mock("@/lib/google/config", () => ({ getGoogleConfig: () => ({ encryptionKey: "test" }), getGoogleCryptoSalt: () => "test", parseServiceAccountKey: () => ({}) }))
 vi.mock("@/lib/crypto", () => ({ decrypt: async () => "test" }))
-vi.mock("@/lib/google/auth/service-account", () => ({ createServiceAccountJWT: async () => "test", exchangeJWTForAccessToken: async () => ({ access_token: "test" }) }))
+vi.mock("@/lib/google/auth/service-account", () => ({ createServiceAccountJWT: mocks.jwt, exchangeJWTForAccessToken: mocks.token }))
 let database: CorrespondenceTestDatabase | undefined
 afterEach(() => { database?.close(); vi.unstubAllGlobals(); vi.resetAllMocks() })
 function setup(): CorrespondenceTestDatabase {
@@ -15,11 +15,51 @@ function setup(): CorrespondenceTestDatabase {
   db.sqlite.exec("CREATE TABLE google_auth (id TEXT,organization_id TEXT,service_account_key_encrypted TEXT,workspace_domain TEXT,shared_drive_id TEXT,shared_drive_name TEXT,connected_by TEXT,created_at TEXT,updated_at TEXT); INSERT INTO google_auth VALUES ('auth','org-a','encrypted','example.test',NULL,NULL,'staff-a','now','now')")
   vi.stubGlobal("fetch", mocks.fetch)
   mocks.fetch.mockImplementation(async () => new Response(JSON.stringify({ id: "sent-1" })))
+  mocks.jwt.mockResolvedValue("test")
+  mocks.token.mockResolvedValue({ access_token: "test" })
   return db
 }
 const attachment = { filename: "Plan.pdf", contentType: "application/pdf", content: new Uint8Array([0, 255, 1, 2]) }
 
 describe("email provider attachment delivery", () => {
+  it("authenticates as the selected staff mailbox and sends its From with tracked Reply-To", async () => {
+    const db = setup()
+    await sendCompassEmail({ env: { COMPASS_EMAIL_PROVIDER: "resend", RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", sender: { address: "staff@example.test", name: "Staff, Person" }, to: ["owner@example.test"], replyTo: "Project <jarvis+track@example.test>", subject: "Plan", text: "Review" })
+    expect(mocks.jwt).toHaveBeenCalledWith({}, "staff@example.test", ["https://www.googleapis.com/auth/gmail.send"])
+    const request = JSON.parse(mocks.fetch.mock.calls[0]?.[1].body)
+    const mime = Buffer.from(request.raw, "base64url").toString("utf8")
+    expect(mime).toContain('From: "Staff, Person" <staff@example.test>')
+    expect(mime).toContain("Reply-To: Project <jarvis+track@example.test>")
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports authorization failure without sending or changing to the fallback provider", async () => {
+    const db = setup()
+    mocks.token.mockRejectedValue(new Error("unauthorized_client"))
+    const result = await sendCompassEmail({ env: { RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", sender: { address: "staff@example.test", name: "Staff" }, to: ["owner@example.test"], subject: "Plan", text: "Review" })
+    expect(result).toMatchObject({ status: "failed", provider: "gmail", error: expect.stringContaining("authorize") })
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
+  it("does not switch identities after Gmail rejects an explicit sender", async () => {
+    const db = setup()
+    mocks.fetch.mockResolvedValue(new Response("Mailbox rejected", { status: 403 }))
+    expect(await sendCompassEmail({ env: { RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", sender: { address: "staff@example.test", name: "Staff" }, to: ["owner@example.test"], subject: "Plan", text: "Review" })).toMatchObject({ status: "failed", provider: "gmail" })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("encodes non-ASCII names in the From header", async () => {
+    const db = setup()
+    await sendCompassEmail({ env: {}, db: db.db, organizationId: "org-a", sender: { address: "staff@example.test", name: "José" }, to: ["owner@example.test"], subject: "Plan", text: "Review" })
+    const request = JSON.parse(mocks.fetch.mock.calls[0]?.[1].body)
+    expect(Buffer.from(request.raw, "base64url").toString("utf8")).toContain(`From: =?UTF-8?B?${Buffer.from("José").toString("base64")}?= <staff@example.test>`)
+  })
+
+  it("keeps the configured system address when attributing a fallback send to staff", async () => {
+    const db = setup()
+    await sendCompassEmail({ env: { COMPASS_EMAIL_PROVIDER: "resend", RESEND_API_KEY: "test", COMPASS_EMAIL_FROM: "Compass <robot@other.test>" }, db: db.db, organizationId: "org-a", fromName: "Field Staff via Compass", to: ["owner@example.test"], subject: "Plan", text: "Review" })
+    expect(JSON.parse(mocks.fetch.mock.calls[0]?.[1].body)).toMatchObject({ from: '"Field Staff via Compass" <robot@other.test>' })
+  })
   it("sends Gmail multipart MIME with the binary attachment and tracked reply address", async () => {
     const db = setup()
     const result = await sendCompassEmail({ env: {}, db: db.db, organizationId: "org-a", to: ["owner@example.test"], replyTo: "Project <jarvis+track@example.test>", subject: "Plan", text: "Attached plan", attachments: [attachment] })

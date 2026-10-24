@@ -5,7 +5,7 @@ import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { getDb } from "@/db"
-import { projects, users } from "@/db/schema"
+import { organizationMembers, projects, users } from "@/db/schema"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
@@ -24,6 +24,13 @@ import { filterFieldDocumentRootFolders } from "@/lib/field/document-access"
 import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import type { FileItem } from "@/lib/files-data"
 import { isDemoUser } from "@/lib/demo"
+import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  describeSenderAddressConflict,
+  findSenderAddressConflict,
+  isAddressInWorkspaceDomain,
+  normalizeEmailAddress,
+} from "@/lib/sender-identity-guard"
 import {
   PROJECT_FILE_SOURCES,
   getProjectFolderMatch,
@@ -1261,6 +1268,12 @@ export async function getStarredFileIds(): Promise<
   }
 }
 
+/**
+ * Set or clear a user's Google Workspace address. Compass impersonates this
+ * address for Drive and sends mail as it, so the target must be an active
+ * member of the caller's organization and the address must be an unclaimed
+ * mailbox in that organization's connected Workspace domain.
+ */
 export async function updateUserGoogleEmail(
   userId: string,
   googleEmail: string | null
@@ -1268,19 +1281,102 @@ export async function updateUserGoogleEmail(
   try {
     const user = await requireAuth()
     requirePermission(user, "user", "update")
+    if (!user.organizationId) {
+      return { success: false, error: "No active organization selected" }
+    }
+    const organizationId = user.organizationId
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
+    const target = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        googleEmail: users.googleEmail,
+        isActive: users.isActive,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.userId, users.id),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .where(eq(users.id, userId))
+      .get()
+    if (!target || !target.isActive) {
+      return { success: false, error: "User not found in this organization" }
+    }
+
+    let nextGoogleEmail: string | null = null
+    if (googleEmail !== null && googleEmail.trim() !== "") {
+      const address = normalizeEmailAddress(googleEmail)
+      if (!address) {
+        return { success: false, error: "Enter a valid email address" }
+      }
+      const auth = await db
+        .select({ workspaceDomain: googleAuth.workspaceDomain })
+        .from(googleAuth)
+        .where(eq(googleAuth.organizationId, organizationId))
+        .get()
+      if (!auth) {
+        return {
+          success: false,
+          error: "Connect Google Workspace before setting Google emails",
+        }
+      }
+      if (!isAddressInWorkspaceDomain(address, auth.workspaceDomain)) {
+        return {
+          success: false,
+          error: `Google email must be an address in ${auth.workspaceDomain}`,
+        }
+      }
+      const conflict = await findSenderAddressConflict(db, {
+        organizationId,
+        address,
+        excludeUserId: target.id,
+      })
+      if (conflict) {
+        return { success: false, error: describeSenderAddressConflict(conflict) }
+      }
+      nextGoogleEmail = address
+    }
+
+    if (target.googleEmail === nextGoogleEmail) {
+      return { success: true }
+    }
+
     await db
       .update(users)
       .set({
-        googleEmail,
+        googleEmail: nextGoogleEmail,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(users.id, userId))
+      .where(eq(users.id, target.id))
       .run()
 
+    await recordActivityEvent({
+      db,
+      organizationId,
+      actor: user,
+      category: "account",
+      action: nextGoogleEmail
+        ? "user.google_email_set"
+        : "user.google_email_cleared",
+      entityType: "user",
+      entityId: target.id,
+      summary: nextGoogleEmail
+        ? `Set Google email for ${target.email} to ${nextGoogleEmail}`
+        : `Removed Google email override for ${target.email}`,
+      metadata: {
+        previousGoogleEmail: target.googleEmail,
+        googleEmail: nextGoogleEmail,
+      },
+    })
+
+    revalidatePath("/dashboard/people")
     return { success: true }
   } catch (err) {
     return {
