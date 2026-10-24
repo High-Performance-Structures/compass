@@ -1462,11 +1462,15 @@ export async function createChangeOrderEstimateDraft(
         title: projectChangeOrders.title,
         status: projectChangeOrders.status,
         budgetTreatment: projectChangeOrders.budgetTreatment,
+        kind: projectChangeOrders.changeOrderKind,
       })
       .from(projectChangeOrders)
       .where(and(eq(projectChangeOrders.id, changeOrderId), eq(projectChangeOrders.projectId, projectId)))
       .get()
     if (!changeOrder) throw new Error("Change order not found.")
+    if (changeOrder.kind === "description" || changeOrder.kind === "contract_version") {
+      throw new Error("This change order isn't priced with an estimate; change how it's built first.")
+    }
     if (["executed", "sage_pending", "synced", "closed", "declined", "void"].includes(changeOrder.status)) {
       throw new Error(`Change order ${changeOrder.number} is already ${changeOrder.status.replace("_", " ")}.`)
     }
@@ -1508,7 +1512,7 @@ export async function createChangeOrderEstimateDraft(
       }))
     const clientSigner = clientSigners[0]
     const companySigner = contactRows.find((contact) => contact.contactType === "internal")
-    await access.db.insert(projectEstimates).values({
+    const estimateInsert = access.db.insert(projectEstimates).values({
       id,
       projectId,
       changeOrderId,
@@ -1545,6 +1549,14 @@ export async function createChangeOrderEstimateDraft(
       createdAt: now,
       updatedAt: now,
     })
+    // An older recorded change order becomes one priced by this estimate.
+    await access.db.batch([
+      estimateInsert,
+      access.db
+        .update(projectChangeOrders)
+        .set({ changeOrderKind: "estimate", updatedAt: now })
+        .where(and(eq(projectChangeOrders.id, changeOrderId), eq(projectChangeOrders.projectId, projectId))),
+    ])
     revalidateEstimate(projectId)
     revalidatePath(`/dashboard/projects/${projectId}/change-orders/${changeOrderId}`)
     return { success: true, id }

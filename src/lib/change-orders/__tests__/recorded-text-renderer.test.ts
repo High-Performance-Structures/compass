@@ -51,7 +51,7 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
     amountCents: 0, scheduleImpactDays: 0, status: "executed", audience: "owner",
     requesterType: "owner", requesterUserId: null, requesterName: "Unverified project owner",
     requesterCompany: "Unverified company", sourceType, sourceRecordId: "synthetic-source-0007",
-    sourceHref: null, internalNotes: null, budgetTreatment: "additive", baselineEstimate: null,
+    sourceHref: null, internalNotes: null, budgetTreatment: "additive", kind: null, baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
     rebaselineCompletedAt: null, rebaselineBlockers: [], canExecuteRebaseline: false,
     foxitStatus: "not_started", sageStatus: "not_ready",
@@ -63,6 +63,7 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
       id: `line-${index + 1}`, lineNumber: index + 1, description: `G703 transfer ${index + 1}`,
       phaseCode: "01", costCode: `code-${index + 1}`,
       amountCents: (Math.floor(index / 2) + 1) * 10000 * (index % 2 === 0 ? 1 : -1),
+      changeKind: null, previousAmountCents: null, newAmountCents: null,
     })),
     documents: [
       { id: "doors", label: "Interior Door Homeowner Approval.pdf", url: "https://example.com/doors", notes: "Recorded door acceptance text" },
@@ -108,7 +109,8 @@ describe("recorded historical CO text is preserved without evidentiary claims", 
     expect(markup).toContain("Import operator")
     expect(markup).toContain("$0.00")
     expect(markup).not.toContain(">Executed<")
-    for (const line of item.lines) expect(markup).toContain(`value="${line.description}"`)
+    // Recorded lines are shown read-only; typed cost lines are retired.
+    for (const line of item.lines) expect(markup).toContain(`>${line.description}<`)
     for (const document of item.documents) {
       expect(markup).toContain(document.label)
       expect(markup).toContain(document.url)

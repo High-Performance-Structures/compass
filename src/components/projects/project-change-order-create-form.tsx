@@ -14,15 +14,12 @@ import {
   createProjectChangeOrder,
   type ProjectChangeOrderFormOptions,
 } from "@/app/actions/project-change-orders"
+import { createChangeOrderEstimateDraft } from "@/app/actions/project-estimates"
 import {
   changeOrderMoney,
-  draftChangeOrderTotalCents,
-  newDraftChangeOrderCostLine,
-  ProjectChangeOrderCostLinesEditor,
   ProjectChangeOrderOptionPicker,
-  toChangeOrderCostLineInput,
-  type DraftChangeOrderCostLine,
-} from "@/components/projects/project-change-order-cost-lines-editor"
+} from "@/components/projects/project-change-order-option-picker"
+import { ProjectChangeOrderKindChoice } from "@/components/projects/project-change-order-kind-choice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -42,7 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
+import type { ChoosableChangeOrderKind } from "@/lib/change-orders/kinds"
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
@@ -100,13 +97,9 @@ export function ProjectChangeOrderCreateForm({
   const [saving, startSaving] = React.useTransition()
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [requesterCompany, setRequesterCompany] = React.useState("")
-  const [budgetTreatment, setBudgetTreatment] =
-    React.useState<ChangeOrderBudgetTreatment>("additive")
+  const [kind, setKind] = React.useState<ChoosableChangeOrderKind>("estimate")
   const [replacementEstimateId, setReplacementEstimateId] =
     React.useState("")
-  const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>([
-    newDraftChangeOrderCostLine(),
-  ])
   const currentBaseline = formOptions.estimates.find(
     (estimate) => estimate.id === formOptions.currentBaselineEstimateId
   )
@@ -122,12 +115,12 @@ export function ProjectChangeOrderCreateForm({
     (estimate) => estimate.id === replacementEstimateId
   )
   const totalCents =
-    budgetTreatment === "baseline_replacement" &&
-    currentBaseline &&
-    replacementEstimate
+    kind === "replacement" && currentBaseline && replacementEstimate
       ? replacementEstimate.estimateTotalCents -
         currentBaseline.estimateTotalCents
-      : draftChangeOrderTotalCents(lines)
+      : kind === "description"
+        ? 0
+        : null
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -143,7 +136,7 @@ export function ProjectChangeOrderCreateForm({
           scope: requiredText(formData, "scope"),
           reason: optionalText(formData, "reason"),
           scheduleImpactDays: scheduleImpactDays(formData),
-          lines: lines.map(toChangeOrderCostLineInput),
+          kind: internal ? kind : "estimate",
           audience:
             optionalText(formData, "audience") === "owner"
               ? "owner"
@@ -158,9 +151,8 @@ export function ProjectChangeOrderCreateForm({
               ? "submitted"
               : "draft",
           documents,
-          budgetTreatment: internal ? budgetTreatment : "additive",
           replacementEstimateId:
-            internal && budgetTreatment === "baseline_replacement"
+            internal && kind === "replacement"
               ? replacementEstimateId || null
               : null,
         })
@@ -168,13 +160,25 @@ export function ProjectChangeOrderCreateForm({
 
         setOpen(false)
         setRequesterCompany("")
-        setBudgetTreatment("additive")
+        setKind("estimate")
         setReplacementEstimateId("")
-        setLines([newDraftChangeOrderCostLine()])
         setSelectedFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ""
         form.reset()
-        toast.success("Change order request created.")
+        // Staff price an estimate change order right away in the estimate editor.
+        if (internal && kind === "estimate") {
+          const estimate = await createChangeOrderEstimateDraft(projectId, result.id)
+          if (estimate.success && estimate.id) {
+            toast.success("Change order created. Build its estimate.")
+            window.location.assign(
+              `/dashboard/projects/${encodeURIComponent(projectId)}/estimate?estimateId=${encodeURIComponent(estimate.id)}`
+            )
+            return
+          }
+          toast.error(estimate.success ? "Change order created; start its estimate from the change order." : estimate.error)
+        } else {
+          toast.success("Change order request created.")
+        }
         router.push(`${detailBaseHref}/${encodeURIComponent(result.id)}`)
         router.refresh()
       } catch (error) {
@@ -197,8 +201,9 @@ export function ProjectChangeOrderCreateForm({
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Request a change order</SheetTitle>
           <SheetDescription>
-            Describe the scope, code each cost line, and record any schedule
-            impact. This does not approve work or send anything externally.
+            {internal
+              ? "Describe the change and choose how it's built: priced with an estimate, a description with no cost, or a replacement of the contract estimate. This does not approve work or send anything externally."
+              : "Describe the change you're asking for. The project team prices it and sends it back to you for approval."}
           </SheetDescription>
         </SheetHeader>
         <form
@@ -209,7 +214,9 @@ export function ProjectChangeOrderCreateForm({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
             <span className="font-medium">Draft change request</span>
             <span className="text-muted-foreground">
-              {changeOrderMoney(totalCents)} total · schedule impact entered below
+              {totalCents === null
+                ? "Priced by its estimate"
+                : `${changeOrderMoney(totalCents)} total`} · schedule impact entered below
             </span>
           </div>
 
@@ -271,86 +278,15 @@ export function ProjectChangeOrderCreateForm({
           </div>
 
           {internal && (
-            <div className="grid gap-4 border-y py-4 sm:grid-cols-2">
-              <Field label="Budget treatment">
-                <Select
-                  name="budgetTreatment"
-                  value={budgetTreatment}
-                  onValueChange={(value) =>
-                    setBudgetTreatment(
-                      value === "baseline_replacement"
-                        ? "baseline_replacement"
-                        : "additive"
-                    )
-                  }
-                >
-                  <SelectTrigger
-                    id="change-order-budget-treatment"
-                    className={DOCUMENT_SELECT_CLASS}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="additive">Budget adjustment</SelectItem>
-                    <SelectItem
-                      value="baseline_replacement"
-                      disabled={!currentBaseline}
-                    >
-                      Preconstruction baseline replacement
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {budgetTreatment === "baseline_replacement"
-                    ? "Uses the revised estimate as the new budget without adding this change order twice."
-                    : "Adds executed cost lines to the accepted estimate."}
-                </p>
-              </Field>
-              {budgetTreatment === "baseline_replacement" && (
-                <Field label="Replacement estimate">
-                  <Select
-                    name="replacementEstimateId"
-                    value={replacementEstimateId}
-                    required
-                    onValueChange={setReplacementEstimateId}
-                  >
-                    <SelectTrigger
-                      id="change-order-replacement-estimate"
-                      className={DOCUMENT_SELECT_CLASS}
-                    >
-                      <SelectValue placeholder="Choose a revised estimate" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {replacementOptions.map((estimate) => (
-                        <SelectItem key={estimate.id} value={estimate.id}>
-                          {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Current baseline: {currentBaseline
-                      ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
-                      : "No accepted estimate"}
-                  </p>
-                </Field>
-              )}
-            </div>
-          )}
-
-          {budgetTreatment === "additive" ? (
-            <ProjectChangeOrderCostLinesEditor
-              lines={lines}
-              phaseOptions={formOptions.phases}
-              costCodeOptions={formOptions.costCodes}
-              onLinesChange={setLines}
+            <ProjectChangeOrderKindChoice
+              kind={kind}
+              onKindChange={setKind}
+              replacementEstimateId={replacementEstimateId}
+              onReplacementEstimateChange={setReplacementEstimateId}
+              replacementOptions={replacementOptions}
+              currentBaseline={currentBaseline ?? null}
+              disabled={false}
             />
-          ) : (
-            <div className="border-l-2 border-l-primary px-3 py-2 text-sm">
-              The signed package will include the complete revised estimate and
-              a comparison to the current baseline. Its displayed amount is the
-              estimate difference; no additive cost lines are created.
-            </div>
           )}
 
           {internal && (
@@ -427,9 +363,11 @@ export function ProjectChangeOrderCreateForm({
             <Button type="submit" disabled={saving}>
               {saving
                 ? "Creating…"
-                : internal
-                  ? "Create request"
-                  : "Submit request"}
+                : !internal
+                  ? "Submit request"
+                  : kind === "estimate"
+                    ? "Create and build estimate"
+                    : "Create change order"}
             </Button>
           </SheetFooter>
         </form>

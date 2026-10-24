@@ -15,14 +15,8 @@ import {
   type ProjectChangeOrderFormOptions,
   type ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
-import {
-  changeOrderMoney,
-  draftChangeOrderTotalCents,
-  initialDraftChangeOrderCostLines,
-  ProjectChangeOrderCostLinesEditor,
-  toChangeOrderCostLineInput,
-  type DraftChangeOrderCostLine,
-} from "@/components/projects/project-change-order-cost-lines-editor"
+import { changeOrderMoney } from "@/components/projects/project-change-order-option-picker"
+import { ProjectChangeOrderKindChoice } from "@/components/projects/project-change-order-kind-choice"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -41,7 +35,11 @@ import {
   isChangeOrderStatus,
   isExecutedChangeOrderStatus,
 } from "@/lib/change-orders/status"
-import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
+import {
+  changeOrderKindLabel,
+  isChoosableChangeOrderKind,
+  type ChoosableChangeOrderKind,
+} from "@/lib/change-orders/kinds"
 
 function optionalText(formData: FormData, name: string): string | null {
   const value = formData.get(name)
@@ -74,11 +72,18 @@ export function ProjectChangeOrderEditForm({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [documents, setDocuments] = React.useState(item.documents)
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
-  const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>(
-    initialDraftChangeOrderCostLines(item.lines, item.amountCents)
+  const [kind, setKind] = React.useState<ChoosableChangeOrderKind | null>(
+    isChoosableChangeOrderKind(item.kind) ? item.kind : null
   )
-  const [budgetTreatment, setBudgetTreatment] =
-    React.useState<ChangeOrderBudgetTreatment>(item.budgetTreatment)
+  const budgetTreatment =
+    kind === "replacement" ? "baseline_replacement" : kind === null ? item.budgetTreatment : "additive"
+  // The kind can change until the change order is executed or its estimate is started.
+  const kindEditable =
+    internal &&
+    item.canEdit &&
+    item.kind !== "contract_version" &&
+    !isExecutedChangeOrderStatus(item.status)
+  const estimateStarted = Boolean(item.changeOrderEstimate)
   const [replacementEstimateId, setReplacementEstimateId] = React.useState(
     item.replacementEstimate?.id ?? ""
   )
@@ -112,7 +117,11 @@ export function ProjectChangeOrderEditForm({
     selectedReplacement
       ? selectedReplacement.estimateTotalCents -
         currentBaseline.estimateTotalCents
-      : draftChangeOrderTotalCents(lines)
+      : kind === "description"
+        ? 0
+        : kind !== item.kind
+          ? null
+          : item.amountCents
   const readOnly = !item.canEdit && item.allowedTransitions.length === 0
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
@@ -173,7 +182,6 @@ export function ProjectChangeOrderEditForm({
           scope: requiredText(formData, "scope"),
           reason: optionalText(formData, "reason"),
           scheduleImpactDays: scheduleImpactDays(formData),
-          lines: lines.map(toChangeOrderCostLineInput),
           audience:
             optionalText(formData, "audience") === "owner"
               ? "owner"
@@ -184,7 +192,7 @@ export function ProjectChangeOrderEditForm({
           status,
           transitionNote: optionalText(formData, "transitionNote"),
           documents: nextDocuments,
-          budgetTreatment: internal ? budgetTreatment : item.budgetTreatment,
+          kind: kindEditable ? kind : null,
           replacementEstimateId:
             internal && budgetTreatment === "baseline_replacement"
               ? replacementEstimateId || null
@@ -252,7 +260,7 @@ export function ProjectChangeOrderEditForm({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 text-sm">
         <span className="font-medium">Change order details</span>
         <span className="text-muted-foreground">
-          {changeOrderMoney(totalCents)} total
+          {totalCents === null ? "Priced by its estimate" : `${changeOrderMoney(totalCents)} total`}
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -296,86 +304,35 @@ export function ProjectChangeOrderEditForm({
           required
         />
       </div>
-      {internal && (
-        <div className="grid gap-4 border-y py-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="change-order-edit-budget-treatment">
-              Budget treatment
-            </Label>
-            <Select
-              name="budgetTreatment"
-              value={budgetTreatment}
-              disabled={!item.canEdit}
-              onValueChange={(value) =>
-                setBudgetTreatment(
-                  value === "baseline_replacement"
-                    ? "baseline_replacement"
-                    : "additive"
-                )
-              }
-            >
-              <SelectTrigger id="change-order-edit-budget-treatment" className="h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="additive">Budget adjustment</SelectItem>
-                <SelectItem value="baseline_replacement">
-                  Preconstruction baseline replacement
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {budgetTreatment === "baseline_replacement"
-                ? "Replaces the current estimate baseline without adding this amount again."
-                : "Adds executed cost lines to the current estimate baseline."}
-            </p>
-          </div>
-          {budgetTreatment === "baseline_replacement" && (
-            <div className="space-y-2">
-              <Label htmlFor="change-order-edit-replacement-estimate">
-                Replacement estimate
-              </Label>
-              <Select
-                name="replacementEstimateId"
-                value={replacementEstimateId}
-                disabled={!item.canEdit}
-                required
-                onValueChange={setReplacementEstimateId}
-              >
-                <SelectTrigger id="change-order-edit-replacement-estimate" className="h-9 w-full">
-                  <SelectValue placeholder="Choose a revised estimate" />
-                </SelectTrigger>
-                <SelectContent>
-                  {replacementOptions.map((estimate) => (
-                    <SelectItem key={estimate.id} value={estimate.id}>
-                      {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Current baseline: {currentBaseline
-                  ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
-                  : "No accepted estimate"}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-      {budgetTreatment === "additive" ? (
-        <ProjectChangeOrderCostLinesEditor
-          lines={lines}
-          phaseOptions={formOptions.phases}
-          costCodeOptions={formOptions.costCodes}
-          disabled={!item.canEdit}
-          onLinesChange={setLines}
+      {kindEditable ? (
+        <ProjectChangeOrderKindChoice
+          kind={kind}
+          onKindChange={setKind}
+          replacementEstimateId={replacementEstimateId}
+          onReplacementEstimateChange={setReplacementEstimateId}
+          replacementOptions={replacementOptions}
+          currentBaseline={currentBaseline ?? null}
+          disabled={false}
+          lockedKinds={
+            estimateStarted
+              ? [
+                  { kind: "description", reason: "This change order already has an estimate." },
+                  { kind: "replacement", reason: "This change order already has an estimate." },
+                ]
+              : []
+          }
         />
       ) : (
-        <div className="border-l-2 border-l-primary px-3 py-2 text-sm">
-          The linked estimate controls the replacement budget. The displayed
-          amount is the difference between estimate versions and will not be
-          applied as an additional change-order line.
-        </div>
+        <p className="border-y py-3 text-sm">
+          <span className="text-muted-foreground">How it&apos;s built: </span>
+          {changeOrderKindLabel(item.kind)}
+        </p>
+      )}
+      {kind === null && item.kind === null && item.lines.length > 0 && kindEditable && (
+        <p className="text-xs text-muted-foreground">
+          This change order was recorded with typed cost lines. Choosing how it&apos;s built replaces them; build an
+          estimate to price it with phases and assemblies.
+        </p>
       )}
       <div className="space-y-2">
         <Label htmlFor="change-order-edit-reason">

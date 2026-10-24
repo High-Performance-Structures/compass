@@ -48,9 +48,19 @@ Division and assembly reports use grey group headings and subtotal bands, with c
 
 **Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report view** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
 
+## Choose How a Change Order Is Built {#change-order-kinds}
+
+When you create a change order, choose how it's built:
+
+- **Price it with an estimate**: Compass creates the change order and opens its estimate, so the change is priced with phases, assemblies and cost codes like any estimate. Accepting the estimate executes the change order and updates the budget. Owner and sub/vendor requests are priced this way by staff.
+- **Description only (no cost)**: documents a scope, plan or contract-language change that doesn't change the price. It can be executed without cost lines and never changes the budget.
+- **Replace the contract estimate**: a newer contract-estimate version becomes the baseline before work is bought or billed. Recording the owners' acceptance of a new version on the estimate page creates this change order for you.
+
+Change orders no longer take typed cost lines. Their lines come from the accepted estimate and are shown read-only. Older change orders keep the lines they were recorded with; choosing how one is built clears those lines, and **Build change-order estimate** prices it with an estimate instead. Once its estimate is started, a change order stays priced by that estimate.
+
 ## Price a Change Order with an Estimate {#change-order-estimates}
 
-On a change order, choose **Build change-order estimate**. It opens a full estimate for just that change, numbered after the change order (for example H-430-1900-CO-001). It has the same lines, assemblies, report phases, Print Preview, printing and signature options as the contract estimate. The client, signers, terms and report style start from the accepted contract estimate.
+On a change order priced with an estimate, choose **Build change-order estimate** if the estimate isn't open yet. It opens a full estimate for just that change, numbered after the change order (for example H-430-1900-CO-001). It has the same lines, assemblies, report phases, Print Preview, printing and signature options as the contract estimate. The client, signers, terms and report style start from the accepted contract estimate.
 
 To offer one assembly as its own later phase, open the contract estimate, switch to the assembly view and choose **Export as phase** on that assembly. Name the phase. Compass creates a separate phase estimate (numbered like H-430-1900-P1) with just that assembly, priced with the contract estimate's builder-fee rates, to print, sign and approve on its own. Nothing changes in the contract estimate or the project family until the phase estimate is accepted. When it is accepted, the phase is added to the project family (the family is created if the job doesn't have one yet), authorized at the accepted amount and ready to activate, and the assembly comes out of the contract estimate. If the contract estimate is already signed, Compass drafts a deduct change order for the assembly instead, to approve like any change order; if it is out for signature, it stays as it is and Compass says so. The contract estimate lists its **Phase estimates**; delete one that isn't accepted and the contract estimate stays as it is.
 
