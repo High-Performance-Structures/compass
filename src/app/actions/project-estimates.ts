@@ -116,6 +116,15 @@ import {
 } from "@/lib/estimates/signature-pdf"
 import { contractEstimateConditions, estimateFamilyKey } from "@/lib/estimates/estimate-family"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
+import {
+  contractVersionBaseline,
+  contractVersionDifference,
+  isContractVersionTreatment,
+  versionChangeOrderStatements,
+  type ContractVersionTreatment,
+} from "@/lib/change-orders/contract-version-acceptance"
+import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
+import type { VersionDifferenceLine } from "@/lib/change-orders/version-difference"
 
 export type ProjectEstimateSummary = {
   readonly id: string
@@ -360,7 +369,26 @@ export type ProjectEstimateManualAcceptanceInput = {
   readonly evidenceLabel: string | null
   readonly acceptanceNote: string | null
   readonly attested: boolean
+  /** Required when a newer contract version meets an accepted contract. */
+  readonly versionTreatment: string | null
+  readonly versionSummary: string | null
 }
+
+export type ContractVersionAcceptancePreview =
+  | { readonly replacesContract: false }
+  | {
+      readonly replacesContract: true
+      readonly baseline: {
+        readonly estimateNumber: string
+        readonly versionNumber: number
+        readonly totalCents: number
+      }
+      readonly newTotalCents: number
+      readonly netChangeCents: number
+      readonly lines: readonly VersionDifferenceLine[]
+      /** Why "Replace the contract" can't be chosen yet; empty when it can. */
+      readonly replaceBlockers: readonly string[]
+    }
 
 export type ProjectEstimateUploadSessionResult =
   | { readonly success: true; readonly uploadUrl: string }
@@ -4374,6 +4402,8 @@ async function acceptProjectEstimate(input: {
   readonly signedAt: string
   readonly foxitStatus: string
   readonly foxitEnvelopeId: string | null
+  /** Run in the acceptance batch, e.g. a difference change order. */
+  readonly versionChangeOrder: Awaited<ReturnType<typeof versionChangeOrderStatements>> | null
 }): Promise<ProjectEstimateActionResult> {
   const now = new Date().toISOString()
   const recordedByName = activityActorName(input.access.user)
@@ -4419,6 +4449,7 @@ async function acceptProjectEstimate(input: {
       })
       .where(eq(projectEstimates.id, input.estimate.id)),
     ...changeOrderExecution,
+    ...(input.versionChangeOrder?.statements ?? []),
   ])
 
   // A phase estimate creates its family phase and takes its assembly out of
@@ -4519,16 +4550,18 @@ export async function recordManualProjectEstimateAcceptance(
     ) {
       throw new Error("Choose how the client signed the estimate.")
     }
-    const evidenceUrl = safeEvidenceUrl(input.evidenceUrl)
+    // A Foxit-signed version waiting for a contract choice already has its copy.
+    const foxitSignedUrl =
+      estimate.foxitStatus === "completed" && estimate.signaturePackageUrl?.startsWith("/api/integrations/foxit/")
+        ? estimate.signaturePackageUrl
+        : null
+    const evidenceUrl = safeEvidenceUrl(input.evidenceUrl) ?? foxitSignedUrl
     if (!evidenceUrl) {
       throw new Error("Upload or link the saved signed document.")
     }
-    const evidenceLabel = limitedText(
-      input.evidenceLabel,
-      "Signed document label",
-      200,
-      true
-    )
+    const evidenceLabel =
+      limitedText(input.evidenceLabel, "Signed document label", 200, !foxitSignedUrl) ??
+      "Completed Foxit estimate"
     const acceptanceNote = limitedText(
       input.acceptanceNote,
       "Acceptance note",
@@ -4538,16 +4571,40 @@ export async function recordManualProjectEstimateAcceptance(
       throw new Error("Signed document label is required.")
     }
 
-    return acceptProjectEstimate({
+    const signedAt = estimateAcceptanceDate(input.clientAcceptedAt)
+    const mode = await readEstimateMode(access.db, access.organizationId, access.department)
+    const baseline = await contractVersionBaseline(access.db, estimate, mode)
+    if (!baseline) {
+      return await acceptProjectEstimate({
+        access,
+        estimate,
+        acceptanceMethod: input.acceptanceMethod,
+        evidenceUrl,
+        evidenceLabel,
+        acceptanceNote,
+        signedAt,
+        foxitStatus: "not_applicable",
+        foxitEnvelopeId: null,
+        versionChangeOrder: null,
+      })
+    }
+    // A newer version of an accepted contract never replaces it silently:
+    // staff choose, and a change order records the change either way.
+    if (!isContractVersionTreatment(input.versionTreatment)) {
+      throw new Error("Choose whether this version replaces the contract or becomes a change order.")
+    }
+    const versionSummary = limitedText(input.versionSummary, "Description of the change", 10_000, true) ?? ""
+    return await acceptContractVersion({
       access,
       estimate,
+      baseline,
+      treatment: input.versionTreatment,
+      summary: versionSummary,
       acceptanceMethod: input.acceptanceMethod,
       evidenceUrl,
       evidenceLabel,
       acceptanceNote,
-      signedAt: estimateAcceptanceDate(input.clientAcceptedAt),
-      foxitStatus: "not_applicable",
-      foxitEnvelopeId: null,
+      signedAt,
     })
   } catch (error) {
     return {
@@ -4556,6 +4613,165 @@ export async function recordManualProjectEstimateAcceptance(
         error instanceof Error
           ? error.message
           : "Unable to record manual estimate acceptance.",
+    }
+  }
+}
+
+async function acceptContractVersion(input: {
+  readonly access: EstimateAccess
+  readonly estimate: typeof projectEstimates.$inferSelect
+  readonly baseline: typeof projectEstimates.$inferSelect
+  readonly treatment: ContractVersionTreatment
+  readonly summary: string
+  readonly acceptanceMethod: EstimateAcceptanceMethod
+  readonly evidenceUrl: string
+  readonly evidenceLabel: string
+  readonly acceptanceNote: string | null
+  readonly signedAt: string
+}): Promise<ProjectEstimateActionResult> {
+  const { access, estimate, baseline } = input
+  // Changing the contract is a change-order approval. Loaded here because
+  // the module is server-only and client components import these actions.
+  const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+  await requireFeaturePermission(access.user, "change-orders", "approve")
+  const actor = { id: access.user.id, name: activityActorName(access.user), role: access.user.role }
+  const now = new Date().toISOString()
+  const difference = await contractVersionDifference(access.db, baseline, estimate)
+  const changeOrder = await versionChangeOrderStatements(access.db, {
+    projectId: estimate.projectId,
+    treatment: input.treatment,
+    baseline,
+    replacement: estimate,
+    difference,
+    summary: input.summary,
+    signedAt: input.signedAt,
+    evidenceUrl: input.evidenceUrl,
+    evidenceLabel: input.evidenceLabel,
+    actor,
+    now,
+  })
+
+  if (input.treatment === "difference_change_order") {
+    return acceptProjectEstimate({
+      access,
+      estimate,
+      acceptanceMethod: input.acceptanceMethod,
+      evidenceUrl: input.evidenceUrl,
+      evidenceLabel: input.evidenceLabel,
+      acceptanceNote: input.acceptanceNote,
+      signedAt: input.signedAt,
+      foxitStatus: "not_applicable",
+      foxitEnvelopeId: null,
+      versionChangeOrder: changeOrder,
+    })
+  }
+
+  const blockers = await rebaselineBlockers(access.db, {
+    projectId: estimate.projectId,
+    changeOrderId: null,
+    ownerAudience: true,
+    baseline,
+    replacement: estimate,
+  })
+  if (blockers.length > 0) {
+    throw new Error(`This version can't replace the contract yet: ${blockers.join(" ")}`)
+  }
+  const executed = await executeBaselineReplacement(access.db, {
+    projectId: estimate.projectId,
+    changeOrder: {
+      id: changeOrder.changeOrderId,
+      changeOrderNumber: changeOrder.changeOrderNumber,
+      baselineEstimateId: baseline.id,
+      replacementEstimateId: estimate.id,
+    },
+    actor,
+    acceptance: {
+      acceptanceMethod: input.acceptanceMethod,
+      acceptanceNote:
+        input.acceptanceNote ?? `Replaces v${baseline.versionNumber} through change order ${changeOrder.changeOrderNumber}.`,
+      evidenceUrl: input.evidenceUrl,
+      evidenceLabel: input.evidenceLabel,
+      signedAt: input.signedAt,
+      foxitStatus: "not_applicable",
+    },
+    note: input.acceptanceNote,
+    leadingStatements: changeOrder.statements,
+  })
+  if (!executed.success) return executed
+
+  if (access.organizationId) {
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId: estimate.projectId,
+      actor: access.user,
+      category: "financial",
+      action: "estimate_client_acceptance_recorded",
+      entityType: "project_estimate",
+      entityId: estimate.id,
+      summary: `Recorded client acceptance for ${estimate.estimateNumber} v${estimate.versionNumber}; it replaces v${baseline.versionNumber} through ${changeOrder.changeOrderNumber}.`,
+      metadata: {
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceDate: input.signedAt.slice(0, 10),
+        estimateTotalCents: estimate.estimateTotalCents,
+        changeOrderId: changeOrder.changeOrderId,
+        netChangeCents: difference.netChangeCents,
+      },
+      createdAt: now,
+    })
+  }
+  revalidateEstimate(estimate.projectId)
+  revalidatePath(`/dashboard/projects/${estimate.projectId}/change-orders`)
+  revalidatePath(`/dashboard/projects/${estimate.projectId}/financials`)
+  return { success: true, id: estimate.id }
+}
+
+/**
+ * What accepting this estimate would do to an existing contract: the
+ * line-by-line differences, and whether it can replace the contract.
+ */
+export async function getContractVersionAcceptancePreview(
+  projectId: string,
+  estimateId: string
+): Promise<
+  | { readonly success: true; readonly preview: ContractVersionAcceptancePreview }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await signaturePendingEstimate(access, projectId, estimateId)
+    const mode = await readEstimateMode(access.db, access.organizationId, access.department)
+    const baseline = await contractVersionBaseline(access.db, estimate, mode)
+    if (!baseline) return { success: true, preview: { replacesContract: false } }
+    const [difference, replaceBlockers] = await Promise.all([
+      contractVersionDifference(access.db, baseline, estimate),
+      rebaselineBlockers(access.db, {
+        projectId,
+        changeOrderId: null,
+        ownerAudience: true,
+        baseline,
+        replacement: estimate,
+      }),
+    ])
+    return {
+      success: true,
+      preview: {
+        replacesContract: true,
+        baseline: {
+          estimateNumber: baseline.estimateNumber,
+          versionNumber: baseline.versionNumber,
+          totalCents: difference.previousTotalCents,
+        },
+        newTotalCents: difference.newTotalCents,
+        netChangeCents: difference.netChangeCents,
+        lines: difference.lines,
+        replaceBlockers,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to compare this version with the contract.",
     }
   }
 }

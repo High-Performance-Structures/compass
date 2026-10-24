@@ -81,6 +81,9 @@ export const invoices = sqliteTable("invoices", {
   amountDue: real("amount_due").notNull().default(0),
   memo: text("memo"),
   lineItems: text("line_items"),
+  // "preconstruction" billing (design, plans, engineering) sits beside the
+  // construction contract and never blocks replacing its estimate.
+  billingScope: text("billing_scope").notNull().default("construction"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
@@ -137,6 +140,7 @@ export const payments = sqliteTable("payments", {
   paymentMethod: text("payment_method"),
   referenceNumber: text("reference_number"),
   memo: text("memo"),
+  billingScope: text("billing_scope").notNull().default("construction"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [

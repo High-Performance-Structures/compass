@@ -2558,6 +2558,10 @@ export const projectChangeOrderLines = sqliteTable(
     phaseCode: text("phase_code"),
     costCode: text("cost_code"),
     amountCents: integer("amount_cents"),
+    // Set on lines from a contract-estimate version comparison.
+    changeKind: text("change_kind"),
+    previousAmountCents: integer("previous_amount_cents"),
+    newAmountCents: integer("new_amount_cents"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

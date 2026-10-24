@@ -9,6 +9,7 @@ import {
   ResponsiveDialogBody,
   ResponsiveDialogFooter,
 } from "@/components/ui/responsive-dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,6 +23,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { LineItemsEditor, type LineItem } from "./line-items-editor"
 import type { Invoice } from "@/db/schema-netsuite"
+import type { BillingScope } from "@/lib/financials/billing-scope"
 import type { Customer, Project } from "@/db/schema"
 
 const INVOICE_STATUSES = [
@@ -47,6 +49,7 @@ interface InvoiceDialogProps {
     issueDate: string
     dueDate: string
     memo: string
+    billingScope: BillingScope
     lineItems: string
     subtotal: number
     tax: number
@@ -71,6 +74,7 @@ export function InvoiceDialog({
   const [issueDate, setIssueDate] = React.useState("")
   const [dueDate, setDueDate] = React.useState("")
   const [memo, setMemo] = React.useState("")
+  const [preconstruction, setPreconstruction] = React.useState(false)
   const [tax, setTax] = React.useState(0)
   const [lines, setLines] = React.useState<LineItem[]>([])
 
@@ -83,6 +87,7 @@ export function InvoiceDialog({
       setIssueDate(initialData.issueDate)
       setDueDate(initialData.dueDate ?? "")
       setMemo(initialData.memo ?? "")
+      setPreconstruction(initialData.billingScope === "preconstruction")
       setTax(initialData.tax)
       setLines(
         initialData.lineItems
@@ -97,6 +102,7 @@ export function InvoiceDialog({
       setIssueDate(new Date().toISOString().split("T")[0])
       setDueDate("")
       setMemo("")
+      setPreconstruction(false)
       setTax(0)
       setLines([])
     }
@@ -117,6 +123,7 @@ export function InvoiceDialog({
       issueDate,
       dueDate,
       memo,
+      billingScope: preconstruction ? "preconstruction" : "construction",
       lineItems: JSON.stringify(lines),
       subtotal,
       tax,
@@ -213,6 +220,19 @@ export function InvoiceDialog({
           className="text-sm"
         />
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          checked={preconstruction}
+          onCheckedChange={(value) => setPreconstruction(value === true)}
+          className="mt-0.5"
+        />
+        <span>
+          Preconstruction billing
+          <span className="block text-xs text-muted-foreground">
+            Design, plans or engineering billed under a separate agreement. It doesn&apos;t block replacing the construction contract estimate.
+          </span>
+        </span>
+      </label>
     </>
   )
 

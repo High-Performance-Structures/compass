@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-16"
+  "lastReviewed": "2026-10-24"
 }
 ---
 
@@ -63,6 +63,17 @@ Send it for signature with Foxit, or mark it signed outside Compass and record t
 - The signed document is attached to the change order.
 
 The contract budget then rebuilds with the change added. The contract estimate itself is not changed. A new version of a change-order estimate stays on the same change order.
+
+## Accept a New Version of the Contract Estimate {#contract-estimate-versions}
+
+Once a contract estimate is accepted, a newer version never quietly replaces it. When you record the owner's acceptance of a new version, Compass compares it with the accepted one line by line (added, removed and changed lines, with the old price, the new price and the difference) and asks what the new version does:
+
+- **Replace the contract estimate**: the old version is superseded and the budget is rebuilt from the new one, so the contract shows a single number (for example, when a lender needs it). This is only possible before work is bought or billed: no posted costs, purchase orders, vendor bills, construction invoices or payments, pay applications or executed change orders.
+- **Keep the contract and add a change order**: the original contract sum stays, and an executed change order carries the line-by-line differences into the budget.
+
+Either way, Compass creates an owner-visible change order with your description of what changed (plan changes, edits to the contract packet) and the comparison, so there's a record of the new estimate. If the new version was signed in Foxit, Compass keeps the signed copy and waits for you to make this choice. A contract packet for the new version is recorded after its estimate is accepted.
+
+**Preconstruction billing:** design, plans or engineering billed under a separate agreement can sit on the same job. Tick **Preconstruction billing** on those invoices and payments; they don't stop the contract estimate from being replaced.
 ## Choose the Documents in a Contract Packet {#contract-packet-documents}
 
 When you create a contract packet on the **Contracts** page, choose the estimate, then tick the documents to include. The agreement (CA00) and the construction estimate (CA22) are always included, because the packet can't be signed without them. Every other document is optional. After the packet is created you can still **Add document** or **Remove** one while it's being prepared.

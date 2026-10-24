@@ -10,6 +10,7 @@ import type {
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { ProjectChangeOrderExecutedDocument } from "@/components/projects/project-change-order-executed-document"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
+import { ProjectChangeOrderVersionLines } from "@/components/projects/project-change-order-version-lines"
 import {
   DeveloperOnly,
 } from "@/components/developer-mode-provider"
@@ -98,6 +99,11 @@ export function ProjectChangeOrderDetail({
         }
       />
       {paperTrailStatus}
+
+      <ProjectChangeOrderVersionLines
+        lines={item.lines}
+        affectsBudget={item.budgetTreatment !== "baseline_replacement"}
+      />
 
       <ProjectChangeOrderEditForm
         item={item}
