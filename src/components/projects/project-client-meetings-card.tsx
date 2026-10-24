@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -94,6 +95,7 @@ function ScheduleMeetingDialog({
   const [guests, setGuests] = React.useState<readonly string[]>([])
   const [staff, setStaff] = React.useState<readonly string[]>([])
   const [note, setNote] = React.useState("")
+  const [autoTranscribe, setAutoTranscribe] = React.useState(true)
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -108,6 +110,7 @@ function ScheduleMeetingDialog({
     setGuests(recommended ? [recommended.email] : [])
     setStaff([])
     setNote("")
+    setAutoTranscribe(true)
     setError(null)
   }
 
@@ -134,6 +137,7 @@ function ScheduleMeetingDialog({
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       guestEmails: guests,
       staffEmails: staff,
+      autoTranscribe,
     })
     setPending(false)
     if (!result.success) {
@@ -146,6 +150,7 @@ function ScheduleMeetingDialog({
     } else {
       meetTab?.close()
     }
+    if (result.data.warning) toast.warning(result.data.warning)
     toast.success(
       when === "now"
         ? "Google Meet started. Your guests have been emailed the link."
@@ -245,6 +250,20 @@ function ScheduleMeetingDialog({
             <Label htmlFor="client-meet-note">Note for the invitation (optional)</Label>
             <Textarea id="client-meet-note" value={note} onChange={(event) => setNote(event.currentTarget.value)} maxLength={4000} className="min-h-20" />
           </div>
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox
+              checked={autoTranscribe}
+              onCheckedChange={(checked) => setAutoTranscribe(checked === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Transcribe automatically</span>
+              <span className="block text-xs text-muted-foreground">
+                Google tells everyone on the call it is being transcribed. After the call,
+                Compass saves the transcript to this project&apos;s Communications folder.
+              </span>
+            </span>
+          </label>
           <p className="text-xs text-muted-foreground">
             You host the call. The meeting is logged in this project&apos;s Activity.
           </p>
@@ -307,6 +326,30 @@ function CancelMeetingButton({
   )
 }
 
+function TranscriptLabel({
+  meeting,
+}: {
+  readonly meeting: ProjectClientMeetingItem
+}): React.ReactElement | null {
+  const transcript = meeting.transcript
+  if (!transcript) return null
+  if (transcript.status === "saved") {
+    return transcript.url ? (
+      <>
+        {" · "}
+        <a href={transcript.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+          Transcript
+        </a>
+      </>
+    ) : (
+      <> · Transcript saved to Communications</>
+    )
+  }
+  if (transcript.status === "pending") return <> · Transcript pending</>
+  if (transcript.status === "none") return <> · No transcript</>
+  return <span title={transcript.message}> · Transcript not saved</span>
+}
+
 export function ProjectClientMeetingsCard({
   projectId,
   view,
@@ -359,6 +402,7 @@ export function ProjectClientMeetingsCard({
               {" · "}
               {meetingTimeLabel(meeting)}
               {meeting.status === "cancelled" ? " · Cancelled" : ""}
+              {meeting.status === "scheduled" && <TranscriptLabel meeting={meeting} />}
             </li>
           ))}
         </ul>

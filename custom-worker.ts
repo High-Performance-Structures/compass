@@ -21,6 +21,8 @@ const PROJECT_OVERDUE_REMINDER_TARGET =
 const DAILY_LOG_REMINDER_TARGET =
   "/api/operations/daily-logs/missing-reminders"
 const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
+const CLIENT_MEETING_TRANSCRIPTS_TARGET =
+  "/api/operations/client-meetings/transcripts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
   "/api/operations/sage/square-receipts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"
@@ -312,6 +314,10 @@ export default {
         // Every 10 minutes; each person is reminded once a day at their time.
         runMaintenanceJob("Missing daily log reminders", () =>
           checkBridgeHealth(env, DAILY_LOG_REMINDER_TARGET)
+        ),
+        // Every 10 minutes: saves finished client Meet transcripts to Drive.
+        runMaintenanceJob("Client meeting transcripts", () =>
+          checkBridgeHealth(env, CLIENT_MEETING_TRANSCRIPTS_TARGET)
         ),
       ]).then(() => undefined)
     )
