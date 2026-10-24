@@ -408,6 +408,101 @@ describe("Talk joining workflow", () => {
     expect(mocks.meeting.leave).not.toHaveBeenCalled()
   })
 
+  it("exits owned browser PiP before leaving the meeting", async () => {
+    await render()
+    await click("Join meeting")
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const video = document.createElement("video")
+    meetingUi.appendChild(video)
+    video.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: { participant: { id: mocks.self.id }, videoElement: video },
+    }))
+    const exitPictureInPicture = vi.fn(async () => {
+      Object.defineProperty(document, "pictureInPictureElement", {
+        configurable: true,
+        value: null,
+      })
+    })
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: video,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    await click("Leave")
+    await click("Leave meeting")
+    expect(exitPictureInPicture).toHaveBeenCalledOnce()
+    expect(mocks.meeting.leave).toHaveBeenCalledOnce()
+  })
+
+  it("does not exit unrelated browser PiP before leaving the meeting", async () => {
+    await render()
+    await click("Join meeting")
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const video = document.createElement("video")
+    const unrelatedVideo = document.createElement("video")
+    meetingUi.appendChild(video)
+    video.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: { participant: { id: mocks.self.id }, videoElement: video },
+    }))
+    const exitPictureInPicture = vi.fn(async () => {})
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: unrelatedVideo,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    await click("Leave")
+    await click("Leave meeting")
+    expect(exitPictureInPicture).not.toHaveBeenCalled()
+    expect(mocks.meeting.leave).toHaveBeenCalledOnce()
+  })
+
+  it("exits owned browser PiP when the meeting component unmounts", async () => {
+    await render()
+    await click("Join meeting")
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const video = document.createElement("video")
+    meetingUi.appendChild(video)
+    video.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: { participant: { id: mocks.self.id }, videoElement: video },
+    }))
+    const exitPictureInPicture = vi.fn(async () => {})
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: video,
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: exitPictureInPicture,
+    })
+
+    await act(async () => root.render(null))
+    await Promise.resolve()
+    expect(exitPictureInPicture).toHaveBeenCalledOnce()
+  })
+
   it("removes PiP tile listeners when the joined meeting unmounts", async () => {
     await render()
     await click("Join meeting")
