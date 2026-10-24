@@ -14,6 +14,7 @@ import {
 import {
   getProjectDailyLogWorkspace,
   getProjectFieldSummary,
+  getOwnerUpdatePageCapabilities,
   getOwnerUpdateProjectHeader,
   getProjectOwnerUpdates,
   type ProjectOwnerUpdateListItem,
@@ -29,10 +30,8 @@ import {
 } from "@/components/ui/card"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { OwnerUpdateCreateButton } from "@/components/projects/owner-update-create-button"
-import { getCurrentUser } from "@/lib/auth"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
-import { isInternalStaffRole } from "@/lib/user-roles"
 import { PageHeader } from "@/components/page-header"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -89,9 +88,7 @@ export default async function ProjectOwnerUpdatesPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const currentUser = await getCurrentUser()
-  const internalViewer =
-    currentUser !== null && isInternalStaffRole(currentUser.role)
+  let internalViewer = false
   let project: {
     readonly id: string
     readonly name: string
@@ -105,6 +102,7 @@ export default async function ProjectOwnerUpdatesPage({
   let ownerUpdates: Awaited<ReturnType<typeof getProjectOwnerUpdates>>
 
   try {
+    internalViewer = (await getOwnerUpdatePageCapabilities(id)).canManage
     if (internalViewer) {
       const [workspace, fieldSummary, updates] = await Promise.all([
         getProjectDailyLogWorkspace(id),

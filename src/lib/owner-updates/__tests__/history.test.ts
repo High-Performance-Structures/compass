@@ -36,4 +36,9 @@ describe("owner update history access", () => {
       expect(isOwnerUpdateVisibleToRole(status, "client")).toBe(true)
     }
   )
+
+  it("does not treat an internal-looking role in an external organization as staff", () => {
+    expect(canViewOwnerUpdateDrafts("office", "client")).toBe(false)
+    expect(isOwnerUpdateVisibleToRole("draft", "office", "client")).toBe(false)
+  })
 })

@@ -6,7 +6,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       // AuthKit imports this extensionless ESM path, which Node 24 no longer resolves.
-      "next/cache": path.resolve(__dirname, "./node_modules/next/cache.js"),
+      "next/cache": require.resolve("next/cache.js"),
+      // Next enforces this boundary during its server build; Vitest executes
+      // server actions directly and needs a no-op test resolver.
+      "server-only": path.resolve(__dirname, "./src/test/server-only.ts"),
     },
   },
   test: {

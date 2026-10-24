@@ -59,10 +59,16 @@ import {
   serializeOwnerUpdateDraftBackup,
   type OwnerUpdateDraftEdit,
 } from "@/lib/owner-updates/draft-recovery"
+import {
+  isOwnerUpdateEditorLocked,
+  isOwnerUpdateReconciled,
+  type OwnerUpdateVersion,
+} from "@/lib/owner-updates/editor-state"
 
 type DraftStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "saving"; readonly message: string }
+  | { readonly kind: "reconciling"; readonly message: string }
   | { readonly kind: "saved"; readonly message: string }
   | { readonly kind: "error"; readonly message: string }
 
@@ -116,15 +122,25 @@ function parseUploadedFiles(value: unknown): readonly UploadedFile[] {
 function parseDraftSaveResult(
   value: unknown
 ):
-  | { readonly success: true }
+  | ({ readonly success: true } & OwnerUpdateVersion)
   | { readonly success: false; readonly error: string } {
   if (
     typeof value === "object" &&
     value !== null &&
     "success" in value &&
-    value.success === true
+    value.success === true &&
+    "revision" in value &&
+    typeof value.revision === "number" &&
+    Number.isInteger(value.revision) &&
+    value.revision >= 0 &&
+    "updatedAt" in value &&
+    typeof value.updatedAt === "string"
   ) {
-    return { success: true }
+    return {
+      success: true,
+      revision: value.revision,
+      updatedAt: value.updatedAt,
+    }
   }
   if (
     typeof value === "object" &&
@@ -194,6 +210,10 @@ export function OwnerUpdateDraftEditor({
   const [uploadCaption, setUploadCaption] = React.useState("")
   const [isUploading, setIsUploading] = React.useState(false)
   const [draftRecoveryReady, setDraftRecoveryReady] = React.useState(false)
+  const [pendingReconciliation, setPendingReconciliation] =
+    React.useState<OwnerUpdateVersion | null>(null)
+  const editorLocked =
+    pendingReconciliation !== null || isOwnerUpdateEditorLocked(status.kind)
   const draftStorageKey = ownerUpdateDraftStorageKey(
     document.viewerId,
     document.project.id,
@@ -326,6 +346,29 @@ export function OwnerUpdateDraftEditor({
     draftStorageKey,
   ])
 
+  React.useEffect(() => {
+    if (pendingReconciliation === null) return
+    if (
+      !isOwnerUpdateReconciled(pendingReconciliation, {
+        revision: document.update.revision,
+        updatedAt: document.update.updatedAt,
+      })
+    ) {
+      return
+    }
+
+    setPendingReconciliation(null)
+    setDraftRecoveryReady(true)
+    setStatus({
+      kind: "saved",
+      message: "Draft saved. Choices were refreshed for this period.",
+    })
+  }, [
+    document.update.revision,
+    document.update.updatedAt,
+    pendingReconciliation,
+  ])
+
   function scrollToSection(id: string): void {
     globalThis.document.getElementById(id)?.scrollIntoView({
       behavior: "smooth",
@@ -446,7 +489,11 @@ export function OwnerUpdateDraftEditor({
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(currentDraft),
+          body: JSON.stringify({
+            ...currentDraft,
+            expectedRevision: document.update.revision,
+            expectedUpdatedAt: document.update.updatedAt,
+          }),
         }
       )
       const result = parseDraftSaveResult(await response.json())
@@ -472,9 +519,13 @@ export function OwnerUpdateDraftEditor({
 
       initialServerDraftJson.current = JSON.stringify(currentDraft)
       setDraftRecoveryReady(false)
+      setPendingReconciliation({
+        revision: result.revision,
+        updatedAt: result.updatedAt,
+      })
       setStatus({
-        kind: "saved",
-        message: "Draft saved. Choices were refreshed for this period.",
+        kind: "reconciling",
+        message: "Draft saved. Refreshing the latest choices...",
       })
       router.refresh()
       return true
@@ -514,9 +565,13 @@ export function OwnerUpdateDraftEditor({
         return
       }
       setSummary(result.summary)
+      setPendingReconciliation({
+        revision: result.revision,
+        updatedAt: result.updatedAt,
+      })
       setStatus({
-        kind: "saved",
-        message: "Jarvis drafted the summary. Review and edit it before publishing.",
+        kind: "reconciling",
+        message: "Jarvis drafted the summary. Refreshing the latest choices...",
       })
       router.refresh()
     } catch {
@@ -539,6 +594,7 @@ export function OwnerUpdateDraftEditor({
         }}
         className="space-y-6"
       >
+        <fieldset disabled={editorLocked}>
         <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
           <div>
             <div className="flex items-center gap-1.5">
@@ -601,6 +657,7 @@ export function OwnerUpdateDraftEditor({
                 <AlertDialogFooter>
                   <AlertDialogCancel>Review draft</AlertDialogCancel>
                   <AlertDialogAction
+                    disabled={editorLocked}
                     onClick={() => void saveDraft("publish")}
                   >
                     Save & publish
@@ -1073,6 +1130,7 @@ export function OwnerUpdateDraftEditor({
             {status.message}
           </p>
         )}
+        </fieldset>
       </form>
     </section>
   )
