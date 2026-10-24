@@ -52,6 +52,7 @@ that list on purpose, with a reason.
   (`src/lib/email/tracked-record-replies.ts`) logs the reply in Activity and
   notifies the sender plus project staff. A new kind only needs entries in
   `tracked-record-email.ts`.
+- Tracked replies are imported every minute by the scheduled inbox sync.
 - Show replies where the record is: an **Email replies** section on the
   record (`RecordEmailReplies`), or the job's interaction history for job
   emails. Replies stay internal until staff act on them.

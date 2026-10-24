@@ -282,6 +282,8 @@ export default {
     if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
       ctx.waitUntil(
         Promise.all([
+          // Import tracked replies every minute so project conversations stay current.
+          runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
           runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),
           runMaintenanceJob("Square authentication health", () => checkBridgeHealth(env, SQUARE_AUTH_HEALTH_TARGET)),
           // Every minute: refreshes Drive copies of records edited at least the
@@ -294,7 +296,6 @@ export default {
     ctx.waitUntil(
       Promise.all([
         runMaintenanceJob("feedback reconciliation", () => reconcile(env)),
-        runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
         runMaintenanceJob("GoTo message recovery", () =>
           recoverGotoMessageBodies(env)
         ),
