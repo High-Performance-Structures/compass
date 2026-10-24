@@ -85,6 +85,8 @@ export function orderedWorkflowSteps(
 export type WorkflowCheck = {
   readonly checkedAt: string
   readonly checkedByName: string | null
+  /** The linked job's number when the tick was carried over from it. */
+  readonly carriedFromNumber: string | null
 }
 
 export type WorkflowItem = {

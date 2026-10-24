@@ -11,6 +11,7 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowProgress } from "@/lib/job-workflows/engine"
 import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
+import { carryOverWorkflowChecks, linkedProjectIds } from "@/lib/job-workflows/carryover"
 import { chunkD1Rows } from "@/lib/d1-query"
 import { loadWorkflowChecks, readWorkflowCustomization, jobWorkflowFacts } from "@/lib/job-workflows/server"
 import { requireOrg } from "@/lib/org-scope"
@@ -34,6 +35,8 @@ export type JobWorkflowOverview = {
   readonly suggestedJobStatus: { readonly id: string; readonly label: string } | null
   /** Offered when the job's status is ahead of its checklist (jobs already underway). */
   readonly catchUp: { readonly stepLabel: string; readonly itemCount: number } | null
+  /** Offered when linked jobs (a Design job, say) completed items this job hasn't ticked. */
+  readonly carryover: { readonly itemCount: number } | null
 }
 
 type Db = ReturnType<typeof getDb>
@@ -87,6 +90,7 @@ async function loadOverview(db: Db, organizationId: string, projectId: string): 
       .get(),
   ])
   const progress = workflowProgress(applyWorkflowOverrides(definition, customization.overrides, customization.layout), facts, checks)
+  const carryoverCount = await pendingCarryover(db, organizationId, projectId).catch(() => 0)
   const suggestedId = forwardJobStatusSuggestion(progress, project.jobStatusId)
   const catchUp = workflowCatchUp(progress, project.jobStatusId)
   return {
@@ -98,6 +102,37 @@ async function loadOverview(db: Db, organizationId: string, projectId: string): 
     suggestedJobStatus:
       suggestedId && !catchUp ? { id: suggestedId, label: projectJobStatusLabel({ jobStatusId: suggestedId, customLabel: null }) } : null,
     catchUp: catchUp ? { stepLabel: catchUp.stepLabel, itemCount: catchUp.itemKeys.length } : null,
+    carryover: carryoverCount > 0 ? { itemCount: carryoverCount } : null,
+  }
+}
+
+/** How many items linked jobs completed that would carry onto this job. */
+async function pendingCarryover(db: Db, organizationId: string, projectId: string): Promise<number> {
+  const linked = await linkedProjectIds(db, organizationId, projectId)
+  let total = 0
+  for (const sourceProjectId of linked) {
+    total += await carryOverWorkflowChecks(db, { organizationId, sourceProjectId, targetProjectId: projectId, actorUserId: null, dryRun: true })
+  }
+  return total
+}
+
+/**
+ * Tick the items this job's linked jobs already completed (a Design job's
+ * agreement, retainer and drawings on its Construction job), keeping who
+ * ticked them and when. Ticks already on this job stay as they are.
+ */
+export async function carryOverLinkedJobWorkflows(projectId: string): Promise<Result<{ readonly ticked: number }>> {
+  try {
+    const { db, organizationId, user } = await context(projectId, "update")
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
+    let ticked = 0
+    for (const sourceProjectId of await linkedProjectIds(db, organizationId, projectId)) {
+      ticked += await carryOverWorkflowChecks(db, { organizationId, sourceProjectId, targetProjectId: projectId, actorUserId: user.id })
+    }
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    return { success: true, data: { ticked } }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to carry over the checklist." }
   }
 }
 

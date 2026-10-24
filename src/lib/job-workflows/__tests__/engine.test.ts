@@ -29,7 +29,7 @@ const DEFINITION: WorkflowDefinition = {
   ],
 }
 
-const tick = (name: string | null = "Pat"): WorkflowCheck => ({ checkedAt: "2026-10-10T12:00:00.000Z", checkedByName: name })
+const tick = (name: string | null = "Pat"): WorkflowCheck => ({ checkedAt: "2026-10-10T12:00:00.000Z", checkedByName: name, carriedFromNumber: null })
 
 describe("workflowProgress", () => {
   it("makes the first incomplete step current and names its first open item", () => {

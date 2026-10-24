@@ -31,14 +31,16 @@ export async function loadWorkflowChecks(db: Db, organizationId: string, project
       displayName: users.displayName,
       firstName: users.firstName,
       lastName: users.lastName,
+      carriedFromNumber: projects.projectNumber,
     })
     .from(projectWorkflowChecks)
     .leftJoin(users, eq(users.id, projectWorkflowChecks.checkedBy))
+    .leftJoin(projects, eq(projects.id, projectWorkflowChecks.carriedFromProjectId))
     .where(and(eq(projectWorkflowChecks.projectId, projectId), eq(projectWorkflowChecks.organizationId, organizationId)))
   return new Map(
     rows.map((row) => {
       const name = row.displayName?.trim() || [row.firstName, row.lastName].filter(Boolean).join(" ").trim() || null
-      return [row.itemKey, { checkedAt: row.checkedAt, checkedByName: name }]
+      return [row.itemKey, { checkedAt: row.checkedAt, checkedByName: name, carriedFromNumber: row.carriedFromNumber }]
     }),
   )
 }

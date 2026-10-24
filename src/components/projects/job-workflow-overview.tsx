@@ -12,6 +12,7 @@ export function JobWorkflowOverviewPanel({ overview }: { readonly overview: JobW
       followUp={overview.followUp}
       footer={<JobEmailMenu projectId={overview.projectId} department={overview.department} step={overview.progress.current?.id ?? null} />}
       catchUp={overview.catchUp ? { ...overview.catchUp, jobStatusLabel: overview.jobStatus.label } : null}
+      carryover={overview.carryover}
       statusSuggestion={
         overview.suggestedJobStatus ? { current: overview.jobStatus.label, suggested: overview.suggestedJobStatus } : null
       }

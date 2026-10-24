@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { IconCheck } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { catchUpJobWorkflow, setJobWorkflowCheck } from "@/app/actions/job-workflows"
+import { carryOverLinkedJobWorkflows, catchUpJobWorkflow, setJobWorkflowCheck } from "@/app/actions/job-workflows"
 import { updateProjectJobStatus } from "@/app/actions/project-profile"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
@@ -23,7 +23,8 @@ type StatusSuggestion = {
 function checkedNote(item: WorkflowItem): string | null {
   if (item.source !== "tick" || !item.check) return null
   const date = new Date(item.check.checkedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-  return item.check.checkedByName ? `${item.check.checkedByName}, ${date}` : date
+  const note = item.check.checkedByName ? `${item.check.checkedByName}, ${date}` : date
+  return item.check.carriedFromNumber ? `${note} · carried from ${item.check.carriedFromNumber}` : note
 }
 
 /**
@@ -43,6 +44,7 @@ export function JobWorkflowPanel({
   followUp,
   statusSuggestion = null,
   catchUp = null,
+  carryover = null,
 }: {
   readonly projectId: string
   readonly department: ProjectDepartment
@@ -56,6 +58,8 @@ export function JobWorkflowPanel({
   readonly statusSuggestion?: StatusSuggestion | null
   /** The job's status is ahead of its checklist: offer to tick the earlier steps. */
   readonly catchUp?: { readonly jobStatusLabel: string; readonly stepLabel: string; readonly itemCount: number } | null
+  /** Linked jobs completed items this job hasn't ticked: offer to carry them over. */
+  readonly carryover?: { readonly itemCount: number } | null
 }): React.ReactElement {
   const router = useRouter()
   const profiles = useDepartmentProfiles()
@@ -101,6 +105,18 @@ export function JobWorkflowPanel({
         return
       }
       toast.success(`Marked ${result.data.ticked} earlier item${result.data.ticked === 1 ? "" : "s"} done.`)
+      router.refresh()
+    })
+  }
+
+  function applyCarryover(): void {
+    startStatus(async () => {
+      const result = await carryOverLinkedJobWorkflows(projectId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Carried over ${result.data.ticked} item${result.data.ticked === 1 ? "" : "s"} from linked jobs.`)
       router.refresh()
     })
   }
@@ -226,6 +242,18 @@ export function JobWorkflowPanel({
           </span>
           <Button type="button" size="sm" variant="outline" disabled={statusPending} onClick={applyCatchUp}>
             Mark steps before {catchUp.stepLabel} done
+          </Button>
+        </div>
+      ) : null}
+
+      {carryover && !cancelledMessage ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            A linked job already completed {carryover.itemCount} item{carryover.itemCount === 1 ? "" : "s"} on this checklist. Carry them
+            over with who did them and when; you can untick any afterwards.
+          </span>
+          <Button type="button" size="sm" variant="outline" disabled={statusPending} onClick={applyCarryover}>
+            Carry over from linked jobs
           </Button>
         </div>
       ) : null}

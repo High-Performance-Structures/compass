@@ -3,7 +3,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { projects } from "@/db/schema"
+import { projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectWorkflowChecks } from "@/db/schema-job-workflows"
 import { projectLinks } from "@/db/schema-project-links"
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   assertProjectAccess: vi.fn(),
   getProjectAccessRecord: vi.fn(),
   recordActivityEvent: vi.fn(),
+  readFeatureSettings: vi.fn(),
 }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
@@ -24,7 +26,7 @@ vi.mock("@/lib/project-access", () => ({
   getProjectAccessRecord: mocks.getProjectAccessRecord,
 }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))
-vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: vi.fn() }))
+vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: mocks.readFeatureSettings }))
 vi.mock("@/app/actions/projects", () => ({ createProjectIntake: vi.fn() }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: null } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
@@ -52,6 +54,9 @@ beforeEach(() => {
   sqlite = new Database(":memory:")
   createTable(projects)
   createTable(projectLinks)
+  createTable(projectWorkflowChecks)
+  createTable(projectProfileAuditEvents)
+  mocks.readFeatureSettings.mockResolvedValue({ departments: {}, order: {}, customSteps: {} })
   const db = drizzle(sqlite)
   db.insert(projects).values([
     { id: "design", name: "Mitchell Residence", projectNumber: "D-26-33", organizationId: "org", createdAt: "t", updatedAt: "t" },
@@ -117,5 +122,53 @@ describe("linking an existing job", () => {
     await expect(removeProjectLink("design", linkId)).resolves.toEqual({ success: true })
     expect(links()).toEqual([])
     expect(mocks.recordActivityEvent.mock.calls.map(([input]) => input.action)).toEqual(["project.unlinked", "project.unlinked"])
+  })
+})
+
+describe("carrying a Design job's workflow onto its linked Construction job", () => {
+  function tick(projectId: string, itemKey: string, checkedBy: string | null, checkedAt: string): void {
+    sqlite
+      .prepare("INSERT INTO project_workflow_checks (id, organization_id, project_id, item_key, checked_by, checked_at) VALUES (?, 'org', ?, ?, ?, ?)")
+      .run(crypto.randomUUID(), projectId, itemKey, checkedBy, checkedAt)
+  }
+  function checks(projectId: string): readonly unknown[] {
+    return sqlite
+      .prepare("SELECT item_key, checked_by, checked_at, carried_from_project_id, carried_from_item_key FROM project_workflow_checks WHERE project_id = ? ORDER BY item_key")
+      .all(projectId)
+  }
+
+  it("ticks the matching Construction items with who ticked them and when, leaving existing ticks alone", async () => {
+    tick("design", "agreement.signed", "pat", "2026-03-01T12:00:00.000Z")
+    tick("design", "agreement.retainer", "pat", "2026-03-02T12:00:00.000Z")
+    tick("design", "deliverables.documents", "sam", "2026-06-01T12:00:00.000Z")
+    tick("design", "complete.handoff", "sam", "2026-06-02T12:00:00.000Z")
+    tick("build", "design_agreement.retainer", "lee", "2026-03-05T12:00:00.000Z")
+
+    await expect(linkExistingProject("build", "design", null)).resolves.toEqual({ success: true })
+    expect(checks("build")).toEqual([
+      { item_key: "construction_documents.stamped_set", checked_by: "sam", checked_at: "2026-06-01T12:00:00.000Z", carried_from_project_id: "design", carried_from_item_key: "deliverables.documents" },
+      { item_key: "design_agreement.retainer", checked_by: "lee", checked_at: "2026-03-05T12:00:00.000Z", carried_from_project_id: null, carried_from_item_key: null },
+      { item_key: "design_agreement.signed", checked_by: "pat", checked_at: "2026-03-01T12:00:00.000Z", carried_from_project_id: "design", carried_from_item_key: "agreement.signed" },
+    ])
+    // Nothing carries from Construction back onto Design by default.
+    expect(checks("design")).toHaveLength(4)
+    expect(sqlite.prepare("SELECT project_id, event_type FROM project_profile_audit_events").all()).toEqual([
+      { project_id: "build", event_type: "workflow_carried_over" },
+    ])
+  })
+
+  it("follows the company's matching, where an item can carry nothing", async () => {
+    tick("design", "agreement.signed", "pat", "2026-03-01T12:00:00.000Z")
+    tick("design", "intake.meeting", "pat", "2026-02-01T12:00:00.000Z")
+    mocks.readFeatureSettings.mockResolvedValue({
+      departments: {},
+      order: {},
+      customSteps: {},
+      carryovers: [{ from: "D", to: "O", items: { "agreement.signed": "", "intake.meeting": "intake.meeting" } }],
+    })
+    await linkExistingProject("build", "design", null)
+    expect(checks("build")).toEqual([
+      expect.objectContaining({ item_key: "intake.meeting", carried_from_item_key: "intake.meeting" }),
+    ])
   })
 })

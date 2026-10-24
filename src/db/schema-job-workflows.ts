@@ -20,6 +20,9 @@ export const projectWorkflowChecks = sqliteTable(
     itemKey: text("item_key").notNull(),
     checkedBy: text("checked_by").references(() => users.id, { onDelete: "set null" }),
     checkedAt: text("checked_at").notNull(),
+    /** Set when the tick was carried over from a linked job's workflow. */
+    carriedFromProjectId: text("carried_from_project_id").references(() => projects.id, { onDelete: "set null" }),
+    carriedFromItemKey: text("carried_from_item_key"),
   },
   (table) => [
     uniqueIndex("project_workflow_checks_project_item_unique").on(table.projectId, table.itemKey),
