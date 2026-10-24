@@ -183,6 +183,15 @@ describe("My Compass calendar sync", () => {
     expect(itemKeys(db)).toEqual([])
   })
 
+  it("works with more open jobs than D1 binds in one query", async () => {
+    const db = open()
+    const insertProject = db.sqlite.prepare("INSERT INTO projects (id, organization_id, name, project_number) VALUES (?, 'org-a', ?, ?)")
+    for (let index = 0; index < 150; index += 1) insertProject.run(`bulk-${index}`, `Bulk ${index}`, `B-${index}`)
+    db.failures.setBindLimit(100)
+    expect(await sweepMyCompassCalendars(db.db, {}, NOW)).toMatchObject({ synced: 1, failed: 0 })
+    expect(itemKeys(db)).toContain("schedule:t-mine")
+  })
+
   it("only includes test people while testing, and skips accounts outside the Workspace domain", async () => {
     const db = open()
     mocks.settings.mockResolvedValue({ ...SETTINGS, mode: "pilot", pilotUserIds: ["revoked-a"] })
