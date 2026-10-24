@@ -50,15 +50,17 @@ If any job fails, the workflow creates or updates one rolling GitHub issue named
 screenshots/traces or native diagnostics. When all checks recover, the workflow
 comments on and closes that issue.
 
-The production browser journeys use the demo workspace and must remain
-read-only. The deployed demo currently has no project fixture, so the
+The production browser journeys attempt the demo workspace and must remain
+read-only. When WorkOS is configured, `/demo` is expected to redirect to
+`/login`; the smoke then verifies that the login document is healthy and that
+protected routes retain the same approved redirect rather than bypassing auth.
+When an anonymous demo session is available, the smoke instead sweeps the
+dashboard routes. The deployed demo currently has no project fixture, so the
 project-workspace journeys run against deterministic data on every pull request
-and skip during the production synthetic check. Once a production-safe demo
-project is provisioned, remove `PLAYWRIGHT_REQUIRE_PROJECT: "false"` from the
-daily workflow to enable them there as well. Browser emulation catches layout
-and navigation regressions, but it does not prove that the camera, biometric
-prompt, file picker, push notifications, background execution, or offline
-storage work on a real device.
+and skip during the production synthetic check. Browser emulation catches
+layout and navigation regressions, but it does not prove that the camera,
+biometric prompt, file picker, push notifications, background execution, or
+offline storage work on a real device.
 
 ## Coverage map
 
@@ -111,17 +113,25 @@ Run against the deployed demo without starting a local server:
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://compass.openrangeconstruction.ltd \
-  PLAYWRIGHT_REQUIRE_PROJECT=false \
-  bunx playwright test e2e/web --project=chromium
+  bunx playwright test e2e/web/production-smoke.spec.ts --project=chromium
 ```
+
+The production smoke route sweep aborts every `POST` before it can reach the
+deployment. Next.js server-action transport is identified by its `next-action`
+header and is allowed as a blocked framework primitive; any POST without that
+header is recorded as an application endpoint and fails the test. The demo
+workspace also disables presence writes so the read-only sweep does not create
+or update a presence record. If the deployment redirects `/demo` to `/login`,
+the test checks the login body and the approved redirect for each protected
+route instead of attempting credentials or weakening the authentication gate.
 
 Run the native build checks:
 
 ```bash
-bunx cap sync android
+bun run mobile:build && bunx cap sync android
 (cd android && ./gradlew testDebugUnitTest lintDebug assembleDebug)
 
-bunx cap sync ios
+bun run mobile:build && bunx cap sync ios
 xcodebuild -project ios/App/App.xcodeproj -scheme App \
   -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
