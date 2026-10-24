@@ -59,6 +59,8 @@ export type ProjectClientMeetingItem = {
   readonly canCancel: boolean
   /** null until the call has ended and Compass has looked for a transcript. */
   readonly transcript: TranscriptState | null
+  /** The internal draft daily log made from the transcript. */
+  readonly dailyLogHref: string | null
 }
 
 export type TranscriptState =
@@ -363,6 +365,9 @@ export async function getProjectClientMeetings(
           status: meeting.status === "cancelled" ? "cancelled" : "scheduled",
           canCancel: canSchedule && meeting.status === "scheduled",
           transcript: transcriptState(meeting),
+          dailyLogHref: meeting.dailyLogId
+            ? `/dashboard/projects/${encodeURIComponent(projectId)}/daily-logs#daily-log-${encodeURIComponent(meeting.dailyLogId)}`
+            : null,
         })),
         // Clients first: owner contacts are the people these calls are for.
         guestOptions: guestOptions.filter((option) => option.category !== "internal"),

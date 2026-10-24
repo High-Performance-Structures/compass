@@ -260,7 +260,7 @@ function ScheduleMeetingDialog({
               <span className="font-medium">Transcribe automatically</span>
               <span className="block text-xs text-muted-foreground">
                 Google tells everyone on the call it is being transcribed. After the call,
-                Compass saves the transcript to this project&apos;s Communications folder.
+                Compass saves the transcript to this project&apos;s Meeting Notes folder and as a draft daily log for review.
               </span>
             </span>
           </label>
@@ -342,7 +342,7 @@ function TranscriptLabel({
         </a>
       </>
     ) : (
-      <> · Transcript saved to Communications</>
+      <> · Transcript saved to Meeting Notes</>
     )
   }
   if (transcript.status === "pending") return <> · Transcript pending</>
@@ -403,6 +403,12 @@ export function ProjectClientMeetingsCard({
               {meetingTimeLabel(meeting)}
               {meeting.status === "cancelled" ? " · Cancelled" : ""}
               {meeting.status === "scheduled" && <TranscriptLabel meeting={meeting} />}
+              {meeting.dailyLogHref ? (
+                <>
+                  {" · "}
+                  <a href={meeting.dailyLogHref} className="text-primary hover:underline">Daily log</a>
+                </>
+              ) : null}
             </li>
           ))}
         </ul>
