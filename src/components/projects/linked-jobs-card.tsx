@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { removeProjectLink, type ProjectLinksView } from "@/app/actions/project-links"
 import type { ProjectIntakeAssignee } from "@/app/actions/projects"
+import { LinkExistingJobDialog } from "@/components/projects/link-existing-job-dialog"
 import { ProjectIntakeDrawer, type LinkedProjectIntake } from "@/components/projects/project-intake-drawer"
 import { Button } from "@/components/ui/button"
 import type { ProjectIntakeDepartment } from "@/lib/google/project-intake-tracker"
@@ -36,7 +37,7 @@ export function LinkedJobsCard({
 }): React.ReactElement | null {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
-  if (view.links.length === 0 && !view.canCreate) return null
+  if (view.links.length === 0 && !view.canCreate && !view.canUnlink) return null
 
   function intake(
     department: ProjectIntakeDepartment,
@@ -88,9 +89,12 @@ export function LinkedJobsCard({
           <IconLink className="size-4" />
           Linked jobs
         </h2>
-        {view.canCreate ? (
+        {view.canCreate || view.canUnlink ? (
           <div className="flex flex-wrap gap-2">
-            {view.shortcuts.map((shortcut) =>
+            {view.canUnlink ? (
+              <LinkExistingJobDialog projectId={projectId} linkedProjectIds={view.links.map((link) => link.projectId)} />
+            ) : null}
+            {view.canCreate ? view.shortcuts.map((shortcut) =>
               isIntakeDepartment(shortcut.toDepartment) ? (
                 <ProjectIntakeDrawer
                   key={shortcut.id}
@@ -98,17 +102,19 @@ export function LinkedJobsCard({
                   linked={intake(shortcut.toDepartment, shortcut.label, shortcut.label, shortcut.workItems)}
                 />
               ) : null,
-            )}
-            <ProjectIntakeDrawer
-              assignees={assignees}
-              linked={intake(view.shortcuts[0]?.toDepartment && isIntakeDepartment(view.shortcuts[0].toDepartment) ? view.shortcuts[0].toDepartment : "H", null, "Other department…", [])}
-            />
+            ) : null}
+            {view.canCreate ? (
+              <ProjectIntakeDrawer
+                assignees={assignees}
+                linked={intake(view.shortcuts[0]?.toDepartment && isIntakeDepartment(view.shortcuts[0].toDepartment) ? view.shortcuts[0].toDepartment : "H", null, "Other department…", [])}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
       {view.links.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Work this customer wants from another department gets its own job, linked here, with the same customer and site.
+          Work this customer wants from another department gets its own job, linked here, with the same customer and site. A job that already exists, such as the Design job that led to this one, can be linked too.
         </p>
       ) : (
         <ul className="grid gap-2">
@@ -123,7 +129,7 @@ export function LinkedJobsCard({
                   {link.name}
                 </Link>
                 <div className="text-xs text-muted-foreground">
-                  {link.direction === "created" ? "Created from this job" : "This job was created from it"}
+                  {link.direction === "created" ? "Created from this job" : link.direction === "from" ? "This job was created from it" : "Linked job"}
                   {link.label ? ` · ${link.label}` : ""}
                 </div>
               </div>
