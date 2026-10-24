@@ -31,6 +31,7 @@ import { ClientFollowUpSettingsSection } from "@/components/settings/client-foll
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
+import { MyCompassCalendarSettingsSection } from "@/components/settings/my-compass-calendar-settings-section"
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
@@ -221,6 +222,7 @@ const WORKFLOW_AREAS = [
   { value: "nutech-emails", label: "Nu-Tech emails", description: "Order and quote email templates." },
   { value: "bracing-rentals", label: "Bracing rentals", description: "Rental equipment, owned counts, daily rate and deposit rules." },
   { value: "paper-trail", label: "Project paper trail", description: "Which records are saved as PDFs in project Drive folders." },
+  { value: "my-compass-calendar", label: "My Compass calendar", description: "Each staff member's Google calendar of their assigned schedule items and to-dos." },
   { value: "shop-tickets", label: "Shop tickets", description: "Ticket numbering and letterhead." },
 ] as const
 
@@ -285,6 +287,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <BracingRentalSettingsSection />
     case "paper-trail":
       return <PaperTrailSettingsSection />
+    case "my-compass-calendar":
+      return <MyCompassCalendarSettingsSection />
     case "shop-tickets":
       return <ShopTicketSettingsSection />
   }

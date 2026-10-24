@@ -915,6 +915,79 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
     "readingMinutes": 3
   },
   {
+    "id": "my.compass.calendar",
+    "featureId": "schedule",
+    "slug": "my-compass-calendar",
+    "title": "My Compass Calendar in Google Calendar",
+    "summary": "See the schedule items and to-dos assigned to you on a My Compass calendar in your own Google Calendar, kept up to date by Compass.",
+    "contextSummary": "My Compass is a Google calendar Compass creates in each staff member's own Google account and keeps current every few minutes. Compass owns its content; edits made in Google are replaced. Admins choose who gets one and what goes on it in Settings → Workflows.",
+    "category": "Field & Project Work",
+    "tags": [
+      "Google Calendar",
+      "My Compass",
+      "calendar",
+      "schedule",
+      "to-dos",
+      "assignments",
+      "milestones",
+      "sync"
+    ],
+    "audiences": [
+      "staff"
+    ],
+    "permissions": [
+      "help:read",
+      "schedule:read"
+    ],
+    "routes": [
+      "/dashboard/settings",
+      "/dashboard/schedule"
+    ],
+    "owner": "Office operations",
+    "lastReviewed": "2026-10-24",
+    "sourcePath": "docs/help/guides/my-compass-calendar.md",
+    "content": "## What My Compass Is\n**My Compass** is a calendar Compass makes in your own Google Calendar. It shows the Compass work assigned to you, so you can see it next to your meetings on your phone or computer. It sits alongside your other calendars, and you can show, hide, or recolor it in Google Calendar like any other calendar.\n\nCompass is in charge of this calendar. When a date changes in Compass, the calendar updates within a few minutes. Items drop off when they're completed, reassigned, or moved outside the date range. Changes you make to these items in Google are replaced, so make changes in Compass. Each item has an **Open in Compass** link.\n\n## What's on It\nDepending on your company's settings, My Compass shows:\n\n- **Schedule items assigned to you**, from each job's schedule\n- **To-dos assigned to you**, on their due date\n- **Milestones** on jobs where you're on the project team\n\nItems from open and warranty jobs appear from a couple of weeks back to a few months ahead. They show as all-day items marked **free**, so they don't block your availability, and they don't send reminders.\n\n## Turn It On or Off\nOpen **Settings → Integrations** and find **My Compass calendar**. Use the switch to turn your calendar on or off. Turning it off removes the calendar from your Google Calendar. **Update now** refreshes it right away, and **Open in Google Calendar** takes you to it.\n\nIf you delete the calendar in Google, Compass stops updating it until you turn it back on in Settings.\n\n## When an Item Is Missing\nAssignments in Compass are often stored as names. Compass matches your display name, your first and last name, and your email. If you're sometimes assigned under another name, such as \"Wesley Jones\" for Wes, add it under **Other names you're assigned under**. Matching items appear within a few minutes.\n\nSchedule items assigned only to the company (for example, \"High Performance Structures, Inc.\") aren't on anyone's personal calendar. Assign the item to a person in Compass to put it on their calendar.\n\n## Company Settings\nAdmins manage My Compass in **Settings → Workflows → My Compass calendar**:\n\n- **Calendars**: Off, **Test people only** (choose who), or **All staff**\n- **What goes on each calendar**: assigned schedule items, assigned to-dos, and team milestones\n- **Days back** and **Days ahead**: how much of the past and future is shown\n\nStaff with a company Google Workspace account can use My Compass. Each person can still turn their own calendar off.",
+    "searchText": "my compass calendar in google calendar see the schedule items and to dos assigned to you on a my compass calendar in your own google calendar, kept up to date by compass. my compass is a google calendar compass creates in each staff member's own google account and keeps current every few minutes. compass owns its content; edits made in google are replaced. admins choose who gets one and what goes on it in settings → workflows. google calendar my compass calendar schedule to dos assignments milestones sync what my compass is my compass is a calendar compass makes in your own google calendar. it shows the compass work assigned to you, so you can see it next to your meetings on your phone or computer. it sits alongside your other calendars, and you can show, hide, or recolor it in google calendar like any other calendar. compass is in charge of this calendar. when a date changes in compass, the calendar updates within a few minutes. items drop off when they're completed, reassigned, or moved outside the date range. changes you make to these items in google are replaced, so make changes in compass. each item has an open in compass link. what's on it depending on your company's settings, my compass shows: schedule items assigned to you , from each job's schedule to dos assigned to you , on their due date milestones on jobs where you're on the project team items from open and warranty jobs appear from a couple of weeks back to a few months ahead. they show as all day items marked free , so they don't block your availability, and they don't send reminders. turn it on or off open settings → integrations and find my compass calendar . use the switch to turn your calendar on or off. turning it off removes the calendar from your google calendar. update now refreshes it right away, and open in google calendar takes you to it. if you delete the calendar in google, compass stops updating it until you turn it back on in settings. when an item is missing assignments in compass are often stored as names. compass matches your display name, your first and last name, and your email. if you're sometimes assigned under another name, such as \"wesley jones\" for wes, add it under other names you're assigned under . matching items appear within a few minutes. schedule items assigned only to the company (for example, \"high performance structures, inc.\") aren't on anyone's personal calendar. assign the item to a person in compass to put it on their calendar. company settings admins manage my compass in settings → workflows → my compass calendar : calendars : off, test people only (choose who), or all staff what goes on each calendar : assigned schedule items, assigned to dos, and team milestones days back and days ahead : how much of the past and future is shown staff with a company google workspace account can use my compass. each person can still turn their own calendar off.",
+    "sections": [
+      {
+        "id": "overview",
+        "topicId": "my.compass.calendar.overview",
+        "title": "What My Compass Is",
+        "summary": "My Compass is a calendar Compass makes in your own Google Calendar. It shows the Compass work assigned to you, so you can see it next to your meetings on your phone or computer. It sits alongside your other calendars, and you can show, hide, or recolor it in Google Calendar like any other calendar.",
+        "content": "**My Compass** is a calendar Compass makes in your own Google Calendar. It shows the Compass work assigned to you, so you can see it next to your meetings on your phone or computer. It sits alongside your other calendars, and you can show, hide, or recolor it in Google Calendar like any other calendar.\n\nCompass is in charge of this calendar. When a date changes in Compass, the calendar updates within a few minutes. Items drop off when they're completed, reassigned, or moved outside the date range. Changes you make to these items in Google are replaced, so make changes in Compass. Each item has an **Open in Compass** link."
+      },
+      {
+        "id": "whats-on-it",
+        "topicId": "my.compass.calendar.whats-on-it",
+        "title": "What's on It",
+        "summary": "Depending on your company's settings, My Compass shows:",
+        "content": "Depending on your company's settings, My Compass shows:\n\n- **Schedule items assigned to you**, from each job's schedule\n- **To-dos assigned to you**, on their due date\n- **Milestones** on jobs where you're on the project team\n\nItems from open and warranty jobs appear from a couple of weeks back to a few months ahead. They show as all-day items marked **free**, so they don't block your availability, and they don't send reminders."
+      },
+      {
+        "id": "turn-on",
+        "topicId": "my.compass.calendar.turn-on",
+        "title": "Turn It On or Off",
+        "summary": "Open Settings → Integrations and find My Compass calendar . Use the switch to turn your calendar on or off. Turning it off removes the calendar from your Google Calendar. Update now refreshes it right away, and Open in Google Calendar takes you to it.",
+        "content": "Open **Settings → Integrations** and find **My Compass calendar**. Use the switch to turn your calendar on or off. Turning it off removes the calendar from your Google Calendar. **Update now** refreshes it right away, and **Open in Google Calendar** takes you to it.\n\nIf you delete the calendar in Google, Compass stops updating it until you turn it back on in Settings."
+      },
+      {
+        "id": "missing-items",
+        "topicId": "my.compass.calendar.missing-items",
+        "title": "When an Item Is Missing",
+        "summary": "Assignments in Compass are often stored as names. Compass matches your display name, your first and last name, and your email. If you're sometimes assigned under another name, such as \"Wesley Jones\" for Wes, add it under Other names you're assigned under . Matching items appear within a few minutes.",
+        "content": "Assignments in Compass are often stored as names. Compass matches your display name, your first and last name, and your email. If you're sometimes assigned under another name, such as \"Wesley Jones\" for Wes, add it under **Other names you're assigned under**. Matching items appear within a few minutes.\n\nSchedule items assigned only to the company (for example, \"High Performance Structures, Inc.\") aren't on anyone's personal calendar. Assign the item to a person in Compass to put it on their calendar."
+      },
+      {
+        "id": "company-settings",
+        "topicId": "my.compass.calendar.company-settings",
+        "title": "Company Settings",
+        "summary": "Admins manage My Compass in Settings → Workflows → My Compass calendar :",
+        "content": "Admins manage My Compass in **Settings → Workflows → My Compass calendar**:\n\n- **Calendars**: Off, **Test people only** (choose who), or **All staff**\n- **What goes on each calendar**: assigned schedule items, assigned to-dos, and team milestones\n- **Days back** and **Days ahead**: how much of the past and future is shown\n\nStaff with a company Google Workspace account can use My Compass. Each person can still turn their own calendar off."
+      }
+    ],
+    "readingMinutes": 3
+  },
+  {
     "id": "projects.navigation",
     "featureId": "project-hub",
     "slug": "navigating-projects",
