@@ -10,6 +10,8 @@ import {
   linkExistingProjectToFamily,
   provisionProjectFamilyPhaseDriveFolder,
 } from "@/app/actions/project-families"
+import { useProjectList } from "@/components/project-list-provider"
+import { ProjectJobPicker } from "@/components/projects/project-job-picker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -219,9 +221,12 @@ export function ProjectFamilyExistingPhaseLinkForm({
   readonly nextSequence: number
 }): React.ReactElement {
   const router = useRouter()
+  const projects = useProjectList()
   const [sequence, setSequence] = useState(String(nextSequence))
-  const [projectNumber, setProjectNumber] = useState("")
+  const [linkedProjectId, setLinkedProjectId] = useState("")
   const [phaseName, setPhaseName] = useState("")
+  // The action looks the job up by number; jobs without one can't be linked here.
+  const projectNumber = projects.find((project) => project.id === linkedProjectId)?.projectNumber ?? ""
   const [message, setMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -239,7 +244,7 @@ export function ProjectFamilyExistingPhaseLinkForm({
         setMessage(result.error)
         return
       }
-      setProjectNumber("")
+      setLinkedProjectId("")
       setPhaseName("")
       setSequence(String(Number.parseInt(sequence, 10) + 1))
       setMessage(
@@ -258,7 +263,7 @@ export function ProjectFamilyExistingPhaseLinkForm({
         the family phase number, retains the former number as an alias, and
         queues the existing Drive and tracker update workflow when needed.
       </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-[6rem_12rem_1fr]">
+      <div className="mt-3 grid gap-3 sm:grid-cols-[6rem_minmax(12rem,1fr)_1fr]">
         <div className="space-y-1.5">
           <Label htmlFor="project-family-existing-sequence">Phase</Label>
           <Input
@@ -271,12 +276,12 @@ export function ProjectFamilyExistingPhaseLinkForm({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="project-family-existing-number">Existing project number</Label>
-          <Input
+          <Label htmlFor="project-family-existing-number">Existing project</Label>
+          <ProjectJobPicker
             id="project-family-existing-number"
-            value={projectNumber}
-            onChange={(event) => setProjectNumber(event.target.value)}
-            placeholder="O-31-2067-01"
+            value={linkedProjectId}
+            onValueChange={setLinkedProjectId}
+            excludeIds={projects.filter((project) => !project.projectNumber).map((project) => project.id)}
             disabled={isPending}
           />
         </div>
@@ -292,7 +297,7 @@ export function ProjectFamilyExistingPhaseLinkForm({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="outline" disabled={isPending}>
+        <Button type="submit" variant="outline" disabled={isPending || !projectNumber}>
           {isPending ? "Linking..." : "Link existing project"}
         </Button>
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
