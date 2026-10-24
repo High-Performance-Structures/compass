@@ -168,7 +168,12 @@ export async function desiredItems(input: {
     .where(and(eq(projects.organizationId, input.organizationId), inArray(projects.status, [...OPEN_PROJECT_STATUSES])))
   if (openProjects.length === 0) return []
   const projectById = new Map(openProjects.map((project) => [project.id, project]))
-  const projectIds = openProjects.map((project) => project.id)
+  // Filter by joining projects, not by listing ids: D1 allows 100 bound
+  // parameters per query and a company can have more open jobs than that.
+  const openProjectFilter = and(
+    eq(projects.organizationId, input.organizationId),
+    inArray(projects.status, [...OPEN_PROJECT_STATUSES])
+  )
   const items: MyCompassItem[] = []
 
   if (settings.scheduleItems || settings.projectMilestones) {
@@ -195,9 +200,10 @@ export async function desiredItems(input: {
         assignedUserId: scheduleTasks.assignedUserId,
       })
       .from(scheduleTasks)
+      .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
       .where(
         and(
-          inArray(scheduleTasks.projectId, projectIds),
+          openProjectFilter,
           ne(scheduleTasks.status, "COMPLETE"),
           gte(scheduleTasks.endDateCalculated, windowStart),
           lte(scheduleTasks.startDate, windowEnd)
@@ -226,9 +232,10 @@ export async function desiredItems(input: {
         assigneeName: projectOperations.assigneeName,
       })
       .from(projectOperations)
+      .innerJoin(projects, eq(projects.id, projectOperations.projectId))
       .where(
         and(
-          inArray(projectOperations.projectId, projectIds),
+          openProjectFilter,
           inArray(projectOperations.sourceRecordType, [...TODO_RECORD_TYPES]),
           inArray(projectOperations.status, [...OPEN_TODO_STATUSES]),
           gte(projectOperations.dueDate, windowStart),
@@ -517,20 +524,24 @@ export async function sweepMyCompassCalendars(db: Db, env: unknown, now = new Da
     }
     if (eligible.length === 0) continue
 
-    const due = await db
-      .select({ userId: myCompassCalendars.userId })
-      .from(myCompassCalendars)
-      .where(
-        and(
-          eq(myCompassCalendars.organizationId, workspace.organizationId),
-          eq(myCompassCalendars.enabled, true),
-          ne(myCompassCalendars.status, "removed"),
-          inArray(myCompassCalendars.userId, [...eligibleIds]),
-          or(isNull(myCompassCalendars.lastSyncedAt), lt(myCompassCalendars.lastSyncedAt, new Date(now.getTime() - RESYNC_MS).toISOString()))
+    // Eligibility is filtered here rather than with an id list in SQL (D1's
+    // 100-parameter limit); the table holds one row per person.
+    const due = (
+      await db
+        .select({ userId: myCompassCalendars.userId })
+        .from(myCompassCalendars)
+        .where(
+          and(
+            eq(myCompassCalendars.organizationId, workspace.organizationId),
+            eq(myCompassCalendars.enabled, true),
+            ne(myCompassCalendars.status, "removed"),
+            or(isNull(myCompassCalendars.lastSyncedAt), lt(myCompassCalendars.lastSyncedAt, new Date(now.getTime() - RESYNC_MS).toISOString()))
+          )
         )
-      )
-      .orderBy(myCompassCalendars.lastSyncedAt)
-      .limit(USERS_PER_RUN)
+        .orderBy(myCompassCalendars.lastSyncedAt)
+    )
+      .filter((row) => eligibleIds.has(row.userId))
+      .slice(0, USERS_PER_RUN)
     for (const { userId } of due) {
       try {
         const counts = await syncMyCompassCalendar({
