@@ -46,9 +46,10 @@ export function UserEmailMapping({
         </Label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Default: {currentEmail}. Set a different email if
-        your Google Workspace account uses a different
-        address.
+        Default: {currentEmail}. Administrators can map your Google Workspace
+        address for files and correspondence when your login uses another
+        address. Use your own mailbox; shared department senders are configured
+        separately.
       </p>
       <div className="flex gap-2">
         <Input

@@ -124,7 +124,7 @@ export async function updateProfile(
       userId: workosUserId,
       firstName,
       lastName,
-      ...(emailChanged ? { email } : {}),
+      ...(emailChanged ? { email, emailVerified: false } : {}),
     })
 
     // Update in local database

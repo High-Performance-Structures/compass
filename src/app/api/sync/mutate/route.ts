@@ -277,10 +277,37 @@ async function checkOrganizationAccess(
   return membership.length > 0
 }
 
+// Compass sends mail as users.email / users.googleEmail (Google domain-wide
+// delegation), so those columns are send-as power. Sync can only touch users
+// in the caller's active organization and never changes their addresses;
+// address changes go through the validated server actions instead.
+async function checkUserRowAuthorization(
+  db: ReturnType<typeof drizzle>,
+  callerOrganizationId: string | null,
+  operation: "insert" | "update" | "delete",
+  payload: Record<string, unknown> | null,
+  recordId: string,
+): Promise<{ authorized: boolean; reason?: string }> {
+  if (operation === "insert") {
+    return { authorized: false, reason: "Users can't be created through sync" }
+  }
+  if (payload && ("email" in payload || "googleEmail" in payload)) {
+    return { authorized: false, reason: "Email addresses can't be changed through sync" }
+  }
+  if (!callerOrganizationId) {
+    return { authorized: false, reason: "No active organization" }
+  }
+  if (!(await checkOrganizationAccess(db, recordId, callerOrganizationId))) {
+    return { authorized: false, reason: "User is not in your organization" }
+  }
+  return { authorized: true }
+}
+
 // Resource-specific authorization check
 async function checkResourceAuthorization(
   db: ReturnType<typeof drizzle>,
   userId: string,
+  callerOrganizationId: string | null,
   table: string,
   operation: "insert" | "update" | "delete",
   payload: Record<string, unknown> | null,
@@ -384,6 +411,10 @@ async function checkResourceAuthorization(
     if (organizationId && !(await checkOrganizationAccess(db, userId, organizationId))) {
       return { authorized: false, reason: "No access to organization" }
     }
+  }
+
+  if (table === "users") {
+    return checkUserRowAuthorization(db, callerOrganizationId, operation, payload, recordId)
   }
 
   return { authorized: true }
@@ -714,6 +745,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<MutateRes
   const authResult = await checkResourceAuthorization(
     db,
     user.id,
+    user.organizationId,
     table,
     operation,
     filteredPayload,
