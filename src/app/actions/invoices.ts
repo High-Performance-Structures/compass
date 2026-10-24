@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
+import { isBillingScope } from "@/lib/financials/billing-scope"
 
 export async function getInvoices(projectId?: string) {
   const user = await requireAuth()
@@ -59,6 +60,7 @@ export async function getInvoices(projectId?: string) {
       amountDue: invoices.amountDue,
       memo: invoices.memo,
       lineItems: invoices.lineItems,
+      billingScope: invoices.billingScope,
       createdAt: invoices.createdAt,
       updatedAt: invoices.updatedAt,
     })
@@ -96,6 +98,7 @@ export async function getInvoice(id: string) {
       amountDue: invoices.amountDue,
       memo: invoices.memo,
       lineItems: invoices.lineItems,
+      billingScope: invoices.billingScope,
       createdAt: invoices.createdAt,
       updatedAt: invoices.updatedAt,
     })
@@ -137,6 +140,9 @@ export async function createInvoice(
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const safeData = omitOwnerArSourceFields(data)
+    if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
+      return { success: false, error: "Choose construction or preconstruction billing." }
+    }
 
     await db.insert(invoices).values({
       id,
@@ -185,6 +191,9 @@ export async function updateInvoice(
     }
 
     const safeData = omitOwnerArSourceFields(data)
+    if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
+      return { success: false, error: "Choose construction or preconstruction billing." }
+    }
     if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
       const [project] = await db
         .select({ id: projects.id })

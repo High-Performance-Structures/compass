@@ -9,6 +9,7 @@ import {
   ResponsiveDialogBody,
   ResponsiveDialogFooter,
 } from "@/components/ui/responsive-dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { Payment } from "@/db/schema-netsuite"
+import type { BillingScope } from "@/lib/financials/billing-scope"
 import type { Customer, Vendor, Project } from "@/db/schema"
 
 const PAYMENT_METHODS = [
@@ -49,6 +51,7 @@ interface PaymentDialogProps {
     paymentMethod: string
     referenceNumber: string
     memo: string
+    billingScope: BillingScope
   }) => void
 }
 
@@ -70,6 +73,7 @@ export function PaymentDialog({
   const [paymentMethod, setPaymentMethod] = React.useState("")
   const [referenceNumber, setReferenceNumber] = React.useState("")
   const [memo, setMemo] = React.useState("")
+  const [preconstruction, setPreconstruction] = React.useState(false)
 
   React.useEffect(() => {
     if (initialData) {
@@ -82,6 +86,7 @@ export function PaymentDialog({
       setPaymentMethod(initialData.paymentMethod ?? "")
       setReferenceNumber(initialData.referenceNumber ?? "")
       setMemo(initialData.memo ?? "")
+      setPreconstruction(initialData.billingScope === "preconstruction")
     } else {
       setPaymentType("received")
       setCustomerId("")
@@ -92,6 +97,7 @@ export function PaymentDialog({
       setPaymentMethod("")
       setReferenceNumber("")
       setMemo("")
+      setPreconstruction(false)
     }
   }, [initialData, open])
 
@@ -108,6 +114,7 @@ export function PaymentDialog({
       paymentMethod,
       referenceNumber,
       memo,
+      billingScope: preconstruction ? "preconstruction" : "construction",
     })
   }
 
@@ -249,6 +256,19 @@ export function PaymentDialog({
           className="text-sm"
         />
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          checked={preconstruction}
+          onCheckedChange={(value) => setPreconstruction(value === true)}
+          className="mt-0.5"
+        />
+        <span>
+          Preconstruction billing
+          <span className="block text-xs text-muted-foreground">
+            Design, plans or engineering received under a separate agreement. It doesn&apos;t block replacing the construction contract estimate.
+          </span>
+        </span>
+      </label>
     </>
   )
 

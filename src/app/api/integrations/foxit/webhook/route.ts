@@ -12,6 +12,7 @@ import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-s
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
+import { contractVersionBaseline } from "@/lib/change-orders/contract-version-acceptance"
 import { announceEsignOutcome } from "@/lib/esign/announce"
 
 function objectValue(value: unknown): object | null {
@@ -141,6 +142,39 @@ export async function POST(request: Request): Promise<Response> {
 
     if (packet.status === "signature_pending") {
       const signedUrl = `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`
+      // A packet for a newer contract version keeps its signed document and
+      // waits until staff accept that version on the estimate page.
+      const project = await db
+        .select({ organizationId: projects.organizationId, projectNumber: projects.projectNumber })
+        .from(projects)
+        .where(eq(projects.id, packet.projectId))
+        .get()
+      const packetMode = await readEstimateMode(
+        db,
+        project?.organizationId ?? null,
+        projectDepartment({ projectId: packet.projectId, projectNumber: project?.projectNumber ?? null }),
+      )
+      if (await contractVersionBaseline(db, linkedEstimate, packetMode)) {
+        if (packet.foxitStatus !== "completed") {
+          await db
+            .update(contractPackets)
+            .set({ foxitStatus: "completed", signaturePackageUrl: signedUrl, signedAt: now, updatedAt: now })
+            .where(eq(contractPackets.id, packet.id))
+            .run()
+          await announceEsignOutcome({
+            db,
+            projectId: packet.projectId,
+            kind: "contract",
+            outcome: "signed",
+            recordId: packet.id,
+            number: packet.packetNumber,
+            title: packet.title,
+            changeOrderId: null,
+            sentBy: packet.createdBy,
+          })
+        }
+        return Response.json({ success: true, awaitingContractChoice: true })
+      }
       await db.batch([
         db
           .update(contractPackets)
@@ -289,6 +323,29 @@ export async function POST(request: Request): Promise<Response> {
   )
   if (estimate.status === "signature_pending") {
     const signedDocumentUrl = `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`
+    // A newer version of an accepted contract waits for staff to choose
+    // whether it replaces the contract or becomes a change order.
+    if (await contractVersionBaseline(db, estimate, mode)) {
+      if (estimate.foxitStatus !== "completed") {
+        await db
+          .update(projectEstimates)
+          .set({ foxitStatus: "completed", signaturePackageUrl: signedDocumentUrl, signedAt: now, updatedAt: now })
+          .where(eq(projectEstimates.id, estimate.id))
+          .run()
+        await announceEsignOutcome({
+          db,
+          projectId: estimate.projectId,
+          kind: "estimate",
+          outcome: "signed",
+          recordId: estimate.id,
+          number: estimate.estimateNumber,
+          title: estimate.title,
+          changeOrderId: estimate.changeOrderId,
+          sentBy: estimate.createdBy,
+        })
+      }
+      return Response.json({ success: true, awaitingContractChoice: true })
+    }
     // A signed change-order estimate executes its change order in the same batch.
     const changeOrderExecution = estimate.changeOrderId
       ? await changeOrderExecutionFromEstimate({

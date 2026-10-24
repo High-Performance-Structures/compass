@@ -9,6 +9,7 @@ import { Fragment } from "react"
 
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
 import { Badge } from "@/components/ui/badge"
+import { budgetApplicationLabel } from "@/lib/financials/budget-application-label"
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -107,7 +108,7 @@ export function ProjectBudgetPanel({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {summary.currentApplication
-              ? `Pay app ${summary.currentApplication.applicationNumber}`
+              ? budgetApplicationLabel(summary.currentApplication)
               : "Budget snapshot"}
           </Badge>
           <Badge variant="secondary">

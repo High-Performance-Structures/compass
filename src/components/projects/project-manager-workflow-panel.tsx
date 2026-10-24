@@ -34,6 +34,7 @@ import {
   type ProjectWorkspaceMode,
   type WorkflowStepId,
 } from "@/lib/project-workflow-roles"
+import { budgetApplicationLabel } from "@/lib/financials/budget-application-label"
 
 type WorkflowTone =
   | "project"
@@ -151,7 +152,7 @@ function ownerDetail(summary: ProjectFieldSummary | null): string {
 function budgetStatus(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) return "Needs budget"
   if (summary.currentApplication) {
-    return `Pay app ${summary.currentApplication.applicationNumber}`
+    return budgetApplicationLabel(summary.currentApplication)
   }
   return `${summary.allLines.length} lines`
 }
@@ -219,7 +220,7 @@ function purchaseOrderDetail(summary: ProjectOperationsSummary | null): string {
 function billsAndDrawsStatus(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) return "Needs budget"
   if (summary.currentApplication) {
-    return `Pay app ${summary.currentApplication.applicationNumber}`
+    return budgetApplicationLabel(summary.currentApplication)
   }
   return "Ready for billing"
 }

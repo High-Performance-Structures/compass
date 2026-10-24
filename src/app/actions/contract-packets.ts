@@ -32,6 +32,8 @@ import {
 } from "@/lib/contracts/packet-pdf"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { contractVersionBaseline } from "@/lib/change-orders/contract-version-acceptance"
+import { readEstimateMode } from "@/lib/estimates/numbering"
 import { createFoxitPreparedEnvelope } from "@/lib/foxit/esign"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -1278,6 +1280,20 @@ export async function recordManualProjectContractPacketExecution(
     if (Number.isNaN(signedAt.valueOf()) || signedAt > new Date()) {
       throw new Error("Choose a valid contract execution date that is not in the future.")
     }
+    const linkedEstimate = await access.db
+      .select()
+      .from(projectEstimates)
+      .where(and(eq(projectEstimates.id, packet.estimateId), eq(projectEstimates.projectId, projectId)))
+      .get()
+    if (!linkedEstimate) throw new Error("The contract packet's estimate was not found.")
+    // A newer version of an accepted contract is accepted on the estimate
+    // page first, where staff choose replacement or change order.
+    const mode = await readEstimateMode(access.db, access.organizationId, access.department)
+    if (await contractVersionBaseline(access.db, linkedEstimate, mode)) {
+      throw new Error(
+        `Estimate ${linkedEstimate.estimateNumber} v${linkedEstimate.versionNumber} changes the accepted contract. Record its acceptance on the estimate page first, choosing whether it replaces the contract or becomes a change order, then record this packet.`
+      )
+    }
     const now = new Date().toISOString()
     const signedAtIso = signedAt.toISOString()
     await access.db.batch([
@@ -1297,7 +1313,10 @@ export async function recordManualProjectContractPacketExecution(
         .where(
           and(
             eq(projectEstimates.projectId, projectId),
-            eq(projectEstimates.status, "accepted")
+            eq(projectEstimates.status, "accepted"),
+            ne(projectEstimates.id, packet.estimateId),
+            // Change-order and phase estimates aren't part of the contract.
+            ...contractEstimateConditions()
           )
         ),
       access.db

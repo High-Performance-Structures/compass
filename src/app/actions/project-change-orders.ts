@@ -14,16 +14,10 @@ import {
   projectChangeOrders,
   projectContacts,
   projectMembers,
-  projectOperations,
   projects,
   sageCostCodes,
 } from "@/db/schema"
-import { invoices, payments, vendorBills } from "@/db/schema-netsuite"
-import {
-  projectContractBudgetRevisions,
-  projectEstimateLines,
-  projectEstimates,
-} from "@/db/schema-estimates"
+import { projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
 import {
@@ -52,9 +46,9 @@ import {
 } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
 import {
   isChangeOrderBudgetTreatment,
-  preconstructionRebaselineBlockers,
   rebaselineEstimateDocumentLinks,
   type ChangeOrderBudgetTreatment,
 } from "@/lib/change-orders/rebaseline"
@@ -168,6 +162,10 @@ export type ProjectChangeOrderItem = {
     readonly phaseCode: string | null
     readonly costCode: string | null
     readonly amountCents: number | null
+    /** Set on lines compared between two contract-estimate versions. */
+    readonly changeKind: string | null
+    readonly previousAmountCents: number | null
+    readonly newAmountCents: number | null
   }[]
   readonly documents: readonly {
     readonly id: string
@@ -536,128 +534,12 @@ async function rebaselineViewData(
     }
   }
 
-  const [
-    currentBaselineRows,
-    replacementLines,
-    budgetRows,
-    applicationRows,
-    purchaseOrderRows,
-    billRows,
-    invoiceRows,
-    paymentRows,
-    executedAdjustmentRows,
-  ] = await Promise.all([
-    context.db
-      .select({ id: projectEstimates.id })
-      .from(projectEstimates)
-      .where(
-        and(
-          eq(projectEstimates.projectId, row.projectId),
-          eq(projectEstimates.status, "accepted"),
-          ...contractEstimateConditions()
-        )
-      )
-      .orderBy(desc(projectEstimates.versionNumber))
-      .limit(1),
-    context.db
-      .select({ id: projectEstimateLines.id })
-      .from(projectEstimateLines)
-      .where(eq(projectEstimateLines.estimateId, replacement.id))
-      .limit(1),
-    context.db
-      .select({
-        previousWorkCompleted: projectBudgetLines.previousWorkCompleted,
-        currentWorkCompleted: projectBudgetLines.currentWorkCompleted,
-        storedMaterials: projectBudgetLines.storedMaterials,
-        priorCosts: projectBudgetLines.priorCosts,
-        currentCosts: projectBudgetLines.currentCosts,
-        totalCosts: projectBudgetLines.totalCosts,
-      })
-      .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.projectId, row.projectId)),
-    context.db
-      .select({
-        sourceSystem: projectBudgetApplications.sourceSystem,
-        status: projectBudgetApplications.status,
-      })
-      .from(projectBudgetApplications)
-      .where(eq(projectBudgetApplications.projectId, row.projectId)),
-    context.db
-      .select({ status: projectOperations.status })
-      .from(projectOperations)
-      .where(
-        and(
-          eq(projectOperations.projectId, row.projectId),
-          inArray(projectOperations.sourceRecordType, [
-            "purchase_order",
-            "google_nutech_order",
-          ])
-        )
-      ),
-    context.db
-      .select({ id: vendorBills.id })
-      .from(vendorBills)
-      .where(eq(vendorBills.projectId, row.projectId))
-      .limit(1),
-    context.db
-      .select({ id: invoices.id })
-      .from(invoices)
-      .where(eq(invoices.projectId, row.projectId))
-      .limit(1),
-    context.db
-      .select({ id: payments.id })
-      .from(payments)
-      .where(eq(payments.projectId, row.projectId))
-      .limit(1),
-    context.db
-      .select({ id: projectChangeOrders.id })
-      .from(projectChangeOrders)
-      .where(
-        and(
-          eq(projectChangeOrders.projectId, row.projectId),
-          ne(projectChangeOrders.id, row.id),
-          eq(projectChangeOrders.budgetTreatment, "additive"),
-          inArray(projectChangeOrders.status, [
-            "executed",
-            "sage_pending",
-            "synced",
-            "closed",
-          ])
-        )
-      )
-      .limit(1),
-  ])
-
-  const hasActualCosts = budgetRows.some((budgetRow) =>
-    [
-      budgetRow.previousWorkCompleted,
-      budgetRow.currentWorkCompleted,
-      budgetRow.storedMaterials,
-      budgetRow.priorCosts,
-      budgetRow.currentCosts,
-      budgetRow.totalCosts,
-    ].some((amount) => amount !== 0)
-  )
-  const hasPaymentApplications = applicationRows.some(
-    (application) =>
-      application.sourceSystem !== "compass_contract_budget_projection"
-  )
-  const blockers = preconstructionRebaselineBlockers({
+  const blockers = await rebaselineBlockers(context.db, {
+    projectId: row.projectId,
+    changeOrderId: row.id,
     ownerAudience: row.audience === "owner",
-    replacementEstimateFrozen: replacement.status === "signature_pending",
-    replacementEstimateHasLines: replacementLines.length > 0,
-    currentBaselineMatches: currentBaselineRows[0]?.id === baseline.id,
-    hasActualCosts,
-    hasPurchaseOrders: purchaseOrderRows.some(
-      (purchaseOrder) =>
-        !["void", "cancelled", "canceled"].includes(
-          purchaseOrder.status.toLowerCase()
-        )
-    ),
-    hasVendorBills: billRows.length > 0,
-    hasInvoicesOrPayments: invoiceRows.length > 0 || paymentRows.length > 0,
-    hasPaymentApplications,
-    hasPriorExecutedAdjustments: executedAdjustmentRows.length > 0,
+    baseline,
+    replacement,
   })
 
   return {
@@ -1013,6 +895,9 @@ export async function getProjectChangeOrder(
         phaseCode: projectChangeOrderLines.phaseCode,
         costCode: projectChangeOrderLines.costCode,
         amountCents: projectChangeOrderLines.amountCents,
+        changeKind: projectChangeOrderLines.changeKind,
+        previousAmountCents: projectChangeOrderLines.previousAmountCents,
+        newAmountCents: projectChangeOrderLines.newAmountCents,
       })
       .from(projectChangeOrderLines)
       .where(eq(projectChangeOrderLines.changeOrderId, changeOrderId))
@@ -1800,142 +1685,30 @@ export async function executeProjectChangeOrderRebaseline(
       }
     }
 
-    const preparedBudget = await rebuildProjectContractBudget({
-      db: context.db,
-      projectId,
-      actorUserId: context.user.id,
-      acceptedEstimateId: changeOrder.replacementEstimateId,
-      publish: false,
-    })
-    if (!preparedBudget.success) {
-      return {
-        success: false,
-        error: `The replacement budget could not be prepared: ${preparedBudget.error}`,
-      }
-    }
-
     const now = new Date().toISOString()
     const note = cleanLimitedText(executionNote, "Execution note", 2_000)
-    const projectionId = `contract-budget-view:${preparedBudget.revisionId}`
-    const executionToken = crypto.randomUUID()
-    await context.db.batch([
-      context.db
-        .update(projectChangeOrders)
-        .set({ rebaselineExecutionToken: executionToken, updatedAt: now })
-        .where(
-          and(
-            eq(projectChangeOrders.id, changeOrderId),
-            eq(projectChangeOrders.projectId, projectId),
-            eq(projectChangeOrders.status, "signature_pending"),
-            eq(projectChangeOrders.budgetTreatment, "baseline_replacement")
-          )
-        ),
-      context.db
-        .update(projectEstimates)
-        .set({ status: "superseded", updatedAt: now })
-        .where(
-          and(
-            eq(projectEstimates.projectId, projectId),
-            eq(projectEstimates.id, changeOrder.baselineEstimateId),
-            eq(projectEstimates.status, "accepted")
-          )
-        ),
-      context.db
-        .update(projectEstimates)
-        .set({
-          status: "accepted",
-          foxitStatus: "completed",
-          signedAt: now,
-          acceptanceMethod: "external_esignature",
-          acceptanceNote:
-            note ??
-            `Accepted through preconstruction rebaseline amendment ${changeOrder.changeOrderNumber}.`,
-          acceptanceEvidenceLabel: changeOrder.changeOrderNumber,
-          acceptanceRecordedByName: actorName(context.user),
-          acceptedAt: now,
-          acceptedBy: context.user.id,
-          sageStatus: "ready",
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectEstimates.id, changeOrder.replacementEstimateId),
-            eq(projectEstimates.projectId, projectId),
-            eq(projectEstimates.status, "signature_pending")
-          )
-        ),
-      context.db
-        .update(projectContractBudgetRevisions)
-        .set({ status: "superseded" })
-        .where(
-          and(
-            eq(projectContractBudgetRevisions.projectId, projectId),
-            eq(projectContractBudgetRevisions.status, "current")
-          )
-        ),
-      context.db
-        .update(projectBudgetApplications)
-        .set({ status: "budget_superseded", updatedAt: now })
-        .where(
-          and(
-            eq(projectBudgetApplications.projectId, projectId),
-            eq(projectBudgetApplications.status, "budget_current"),
-            eq(
-              projectBudgetApplications.sourceSystem,
-              "compass_contract_budget_projection"
-            )
-          )
-        ),
-      context.db
-        .update(projectContractBudgetRevisions)
-        .set({ status: "current" })
-        .where(eq(projectContractBudgetRevisions.id, preparedBudget.revisionId)),
-      context.db
-        .update(projectBudgetApplications)
-        .set({ status: "budget_current", ownerVisible: true, updatedAt: now })
-        .where(eq(projectBudgetApplications.id, projectionId)),
-      context.db
-        .update(projectChangeOrders)
-        .set({
-          status: "executed",
-          executedAt: now,
-          rebaselineCompletedAt: now,
-          rebaselineCompletedBy: context.user.id,
-          foxitStatus: "completed",
-          sageStatus: "not_applicable_rebaseline",
-          updatedAt: now,
-        })
-        // Migration 0148 guards this status write against financial activity
-        // created after the read-side eligibility check. Any blocker aborts the
-        // entire D1 batch, including estimate and budget activation above.
-        .where(
-          and(
-            eq(projectChangeOrders.id, changeOrderId),
-            eq(projectChangeOrders.projectId, projectId),
-            eq(projectChangeOrders.status, "signature_pending"),
-            eq(projectChangeOrders.rebaselineExecutionToken, executionToken)
-          )
-        ),
-      context.db.insert(projectChangeOrderHistory).values({
-        id: crypto.randomUUID(),
-        projectId,
-        changeOrderId,
-        eventType: "baseline_replaced",
-        fromStatus: "signature_pending",
-        toStatus: "executed",
-        actorUserId: context.user.id,
-        actorName: actorName(context.user),
-        actorRole: context.user.role,
-        note,
-        metadataJson: JSON.stringify({
-          budgetTreatment: "baseline_replacement",
-          baselineEstimateId: changeOrder.baselineEstimateId,
-          replacementEstimateId: changeOrder.replacementEstimateId,
-          executionToken,
-        }),
-        createdAt: now,
-      }),
-    ])
+    const executed = await executeBaselineReplacement(context.db, {
+      projectId,
+      changeOrder: {
+        id: changeOrder.id,
+        changeOrderNumber: changeOrder.changeOrderNumber,
+        baselineEstimateId: changeOrder.baselineEstimateId,
+        replacementEstimateId: changeOrder.replacementEstimateId,
+      },
+      actor: { id: context.user.id, name: actorName(context.user), role: context.user.role },
+      acceptance: {
+        acceptanceMethod: "external_esignature",
+        acceptanceNote:
+          note ??
+          `Accepted through preconstruction rebaseline amendment ${changeOrder.changeOrderNumber}.`,
+        evidenceUrl: null,
+        evidenceLabel: changeOrder.changeOrderNumber,
+        signedAt: now,
+        foxitStatus: "completed",
+      },
+      note,
+    })
+    if (!executed.success) return executed
 
     revalidateChangeOrderPaths(projectId)
     revalidatePath(`/dashboard/projects/${projectId}/estimate`)

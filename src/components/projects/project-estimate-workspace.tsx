@@ -53,6 +53,7 @@ import {
   type EstimateWorkSection,
 } from "@/lib/estimates/workspace-sections"
 import { ProjectEstimateLineOrder } from "@/components/projects/project-estimate-line-order"
+import { EstimateVersionAcceptanceFields } from "@/components/projects/estimate-version-acceptance-fields"
 import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
@@ -238,6 +239,7 @@ export function ProjectEstimateWorkspacePanel({
     if (message) toast(message)
   }, [message])
   const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
+  const [acceptanceChangesContract, setAcceptanceChangesContract] = useState(false)
   const [manualAcceptanceAttested, setManualAcceptanceAttested] =
     useState(false)
   const [workSection, setWorkSection] = useState<EstimateWorkSection>("costs")
@@ -727,7 +729,7 @@ export function ProjectEstimateWorkspacePanel({
       setMessage("Choose either a file upload or an existing document link.")
       return
     }
-    if (!file && !linkedEvidenceUrl) {
+    if (!file && !linkedEvidenceUrl && estimate.foxitStatus !== "completed") {
       setMessage("Upload or link the saved signed document.")
       return
     }
@@ -749,6 +751,8 @@ export function ProjectEstimateWorkspacePanel({
               uploaded?.label ?? formText(formData, "acceptanceEvidenceLabel"),
             acceptanceNote: formText(formData, "acceptanceNote"),
             attested: manualAcceptanceAttested,
+            versionTreatment: formText(formData, "versionTreatment"),
+            versionSummary: formText(formData, "versionSummary"),
           }
         )
         if (result.success) {
@@ -757,7 +761,9 @@ export function ProjectEstimateWorkspacePanel({
         }
         finish(
           result.success
-            ? "Client acceptance recorded and the Budget/G703 was created."
+            ? acceptanceChangesContract
+              ? "Client acceptance recorded; the change order and Budget/G703 were updated."
+              : "Client acceptance recorded and the Budget/G703 was created."
             : result.error
         )
       } catch (error) {
@@ -2254,7 +2260,16 @@ export function ProjectEstimateWorkspacePanel({
             )}
             {estimate.status === "signature_pending" && workspace.canEdit && (
               <div className="mt-4 space-y-5 border-t pt-4">
-                {estimate.foxitStatus !== "not_applicable" && (
+                {estimate.foxitStatus === "completed" && (
+                  <div>
+                    <h3 className="text-sm font-semibold">Signed in Foxit</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Every signer completed this version. Because it changes the accepted contract, record the
+                      acceptance below and choose whether it replaces the contract or becomes a change order.
+                    </p>
+                  </div>
+                )}
+                {estimate.foxitStatus !== "not_applicable" && estimate.foxitStatus !== "completed" && (
                   <div>
                     <h3 className="text-sm font-semibold">Foxit signatures in progress</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -2294,6 +2309,9 @@ export function ProjectEstimateWorkspacePanel({
                     <div className="space-y-1.5 md:col-span-2">
                       <Label htmlFor="acceptanceEvidenceUrl">Or link an existing signed document</Label>
                       <Input id="acceptanceEvidenceUrl" name="acceptanceEvidenceUrl" type="url" placeholder="https://drive.google.com/..." />
+                      {estimate.foxitStatus === "completed" && (
+                        <p className="text-xs text-muted-foreground">Leave blank to use the Foxit-signed copy.</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="acceptanceEvidenceLabel">Document label</Label>
@@ -2305,6 +2323,11 @@ export function ProjectEstimateWorkspacePanel({
                       <Textarea id="acceptanceNote" name="acceptanceNote" placeholder="Optional context about how the signed contract was received." maxLength={2000} />
                     </div>
                   </div>
+                  <EstimateVersionAcceptanceFields
+                    projectId={projectId}
+                    estimateId={estimate.id}
+                    onReplacesContractChange={setAcceptanceChangesContract}
+                  />
                   <div className="flex items-start gap-2 border-t pt-3">
                     <Checkbox id="manualAcceptanceAttestation" checked={manualAcceptanceAttested} onCheckedChange={(checked) => setManualAcceptanceAttested(checked === true)} />
                     <Label htmlFor="manualAcceptanceAttestation" className="max-w-3xl text-sm font-normal leading-5">
@@ -2314,7 +2337,10 @@ export function ProjectEstimateWorkspacePanel({
                     </Label>
                   </div>
                   <Button type="submit" variant="outline" disabled={isPending || !manualAcceptanceAttested}>
-                    <IconUpload className="size-4" />Record executed contract and create Budget/G703
+                    <IconUpload className="size-4" />
+                    {acceptanceChangesContract
+                      ? "Record acceptance and create the change order"
+                      : "Record executed contract and create Budget/G703"}
                   </Button>
                 </form>
               </div>

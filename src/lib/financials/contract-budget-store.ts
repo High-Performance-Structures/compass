@@ -159,6 +159,43 @@ export async function estimateLinesBudgetLedgerLines(
   return [...lines, ...builderFeeLedgerLines(totals, await builderFeeSageRows(db))]
 }
 
+/**
+ * The estimate the original contract sum comes from. A version accepted
+ * through a difference change order keeps the earlier contract as the base;
+ * its changes reach the budget through that executed change order.
+ */
+async function originalContractEstimate(
+  db: CompassDb,
+  projectId: string,
+  accepted: typeof projectEstimates.$inferSelect
+): Promise<typeof projectEstimates.$inferSelect> {
+  let current = accepted
+  const seen = new Set<string>([accepted.id])
+  for (;;) {
+    const link = await db
+      .select({ baselineEstimateId: projectChangeOrders.baselineEstimateId })
+      .from(projectChangeOrders)
+      .where(
+        and(
+          eq(projectChangeOrders.projectId, projectId),
+          eq(projectChangeOrders.replacementEstimateId, current.id),
+          eq(projectChangeOrders.budgetTreatment, "additive"),
+          inArray(projectChangeOrders.status, BUDGET_CHANGE_ORDER_STATUSES)
+        )
+      )
+      .get()
+    if (!link?.baselineEstimateId || seen.has(link.baselineEstimateId)) return current
+    const previous = await db
+      .select()
+      .from(projectEstimates)
+      .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.id, link.baselineEstimateId)))
+      .get()
+    if (!previous) return current
+    seen.add(previous.id)
+    current = previous
+  }
+}
+
 export async function rebuildProjectContractBudget(input: {
   readonly db: CompassDb
   readonly projectId: string
@@ -191,7 +228,10 @@ export async function rebuildProjectContractBudget(input: {
     }
   }
 
-  const ledgerLines = await estimateBudgetLedgerLines(input.db, accepted)
+  const original = input.acceptedEstimateId
+    ? accepted
+    : await originalContractEstimate(input.db, input.projectId, accepted)
+  const ledgerLines = await estimateBudgetLedgerLines(input.db, original)
   if (ledgerLines.estimateLineCount === 0) {
     return { success: false, error: "The accepted estimate has no lines." }
   }
