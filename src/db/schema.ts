@@ -1923,6 +1923,47 @@ export const projectClientMeetings = sqliteTable(
   ],
 )
 
+// "My Compass": a Google calendar in each staff member's own account that
+// Compass fills with their assigned schedule items and to-dos.
+export const myCompassCalendars = sqliteTable("my_compass_calendars", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  /** JSON array of other names this person appears as on assignments. */
+  otherNames: text("other_names").notNull().default("[]"),
+  googleEmail: text("google_email"),
+  googleCalendarId: text("google_calendar_id"),
+  /** pending | active | removed (deleted in Google) | error */
+  status: text("status").notNull().default("pending"),
+  lastSyncedAt: text("last_synced_at"),
+  lastError: text("last_error"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const myCompassCalendarItems = sqliteTable(
+  "my_compass_calendar_items",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "<source>:<record id>", e.g. "schedule:abc". */
+    itemKey: text("item_key").notNull(),
+    googleEventId: text("google_event_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("my_compass_calendar_items_user_key").on(table.userId, table.itemKey),
+  ],
+)
+
 export const workCalendarEventAttendees = sqliteTable(
   "work_calendar_event_attendees",
   {

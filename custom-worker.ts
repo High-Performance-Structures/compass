@@ -21,6 +21,7 @@ const PROJECT_OVERDUE_REMINDER_TARGET =
 const DAILY_LOG_REMINDER_TARGET =
   "/api/operations/daily-logs/missing-reminders"
 const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
+const MY_COMPASS_CALENDAR_TARGET = "/api/operations/my-compass-calendar/sync"
 const CLIENT_MEETING_TRANSCRIPTS_TARGET =
   "/api/operations/client-meetings/transcripts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
@@ -291,6 +292,9 @@ export default {
           // Every minute: refreshes Drive copies of records edited at least the
           // company's quiet period ago. Idle runs cost one indexed query.
           runMaintenanceJob("project paper trail", () => checkBridgeHealth(env, PAPER_TRAIL_TARGET)),
+          // Every minute: refreshes a few people's My Compass calendars; each
+          // person is refreshed at most every 5 minutes.
+          runMaintenanceJob("My Compass calendars", () => checkBridgeHealth(env, MY_COMPASS_CALENDAR_TARGET)),
         ]).then(() => undefined)
       )
       return

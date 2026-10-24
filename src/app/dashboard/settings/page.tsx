@@ -37,6 +37,7 @@ import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-statu
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { GoogleCalendarConnectionCard } from "@/components/google/calendar-connection-status"
+import { MyCompassCalendarCard } from "@/components/google/my-compass-calendar-card"
 import { SocialConnectionsCard } from "@/components/settings/social-connections-card"
 import {
   DeveloperOnly,
@@ -68,6 +69,8 @@ function IntegrationsSection() {
       <GoogleDriveConnectionStatus />
       <Separator />
       <GoogleCalendarConnectionCard />
+      <Separator />
+      <MyCompassCalendarCard />
       <Separator />
       <SocialConnectionsCard />
       <DeveloperOnly>

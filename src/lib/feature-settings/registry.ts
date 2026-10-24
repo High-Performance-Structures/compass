@@ -210,6 +210,22 @@ export const paperTrailSettingsSchema = z.object({
 
 export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>
 
+/**
+ * My Compass calendar: a Google calendar in each staff member's account with
+ * the Compass items assigned to them, kept current every few minutes.
+ */
+export const myCompassCalendarSettingsSchema = z.object({
+  mode: z.enum(["off", "pilot", "on"]),
+  pilotUserIds: z.array(z.string().min(1).max(80)).max(50),
+  scheduleItems: z.boolean(),
+  todos: z.boolean(),
+  projectMilestones: z.boolean(),
+  daysBack: z.number().int().min(0).max(60),
+  daysAhead: z.number().int().min(14).max(365),
+})
+
+export type MyCompassCalendarSettings = z.infer<typeof myCompassCalendarSettingsSchema>
+
 /** Settings type for each registered feature key. */
 const LOGO_DATA_URL = /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i
 
@@ -542,6 +558,7 @@ type FeatureSettingsTypes = {
   readonly "project-aging": ProjectAgingSettings
   readonly "nutech-emails": NuTechEmailSettings
   readonly "paper-trail": PaperTrailSettings
+  readonly "my-compass-calendar": MyCompassCalendarSettings
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
@@ -795,6 +812,20 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       internalDomains: [],
     },
     schema: paperTrailSettingsSchema,
+  },
+  "my-compass-calendar": {
+    label: "My Compass calendar",
+    description: "A Google calendar in each staff member's account with the schedule items and to-dos assigned to them.",
+    defaults: {
+      mode: "off",
+      pilotUserIds: [],
+      scheduleItems: true,
+      todos: true,
+      projectMilestones: true,
+      daysBack: 14,
+      daysAhead: 120,
+    },
+    schema: myCompassCalendarSettingsSchema,
   },
   "job-workflows": {
     label: "Job workflows",
