@@ -15,7 +15,6 @@ import {
   projectChangeOrderLines,
   projectChangeOrders,
   projectContacts,
-  projectMembers,
   projects,
   sageCostCodes,
 } from "@/db/schema"
@@ -61,6 +60,7 @@ import {
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
@@ -405,16 +405,7 @@ async function changeOrderContext(
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const project = await assertProjectAccess(db, user, projectId)
-  const membership = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, user.id)
-      )
-    )
-    .get()
+  const membership = { role: await projectMemberRole(db, user.id, projectId) }
   const internal = isInternalStaffRole(user.role)
   const projectRole = membership?.role ?? null
   const canApprove =

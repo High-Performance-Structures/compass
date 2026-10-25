@@ -34,8 +34,10 @@ export type CorrespondenceContext = {
 export async function correspondenceContext(projectId: string, access: "read" | "write" = "write"): Promise<CorrespondenceContext> {
   if (access === "write") await assertAudiencePreviewWriteAllowed()
   const scope = await getProjectAudienceRequestScope()
-  const resolved = scope ? await (await import("@/lib/project-audience-viewer")).resolveProjectAudienceViewer(projectId, scope.audience) : null
+  const viewerModule = scope ? await import("@/lib/project-audience-viewer") : null
+  const resolved = scope && viewerModule ? await viewerModule.resolveProjectAudienceViewer(projectId, scope.audience) : null
   if (resolved?.isPreview && !resolved.viewer) throw new Error("Select a person to preview their messages.")
+  if (resolved?.viewer && viewerModule?.isInvitedPreviewId(resolved.viewer.id)) throw new Error("This person hasn't accepted the invitation yet, so they have no messages.")
   const user = resolved?.viewer ?? await requireAuth()
   const { env } = await getCloudflareContext()
   if (!isCorrespondenceEnabled(projectId, env) && !isCorrespondenceEnabled(projectId)) throw new Error("Project messaging is not enabled for this project yet.")

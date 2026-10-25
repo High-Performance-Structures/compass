@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { type NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers, projectVideos } from "@/db/schema"
+import { projectVideos } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
@@ -12,6 +12,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 function audienceValue(value: string | null): ProjectAudience | null {
@@ -53,16 +54,7 @@ export async function GET(
       if (!requestedAudience) {
         return new Response("Video not found", { status: 404 })
       }
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
+      const membership = { role: await projectMemberRole(db, user.id, projectId) }
       if (!canUseProjectAudience(membership?.role ?? null, requestedAudience)) {
         return new Response("Video not found", { status: 404 })
       }

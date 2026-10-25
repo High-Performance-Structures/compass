@@ -23,7 +23,9 @@ beforeEach(() => {
   for (const column of ["phone", "address", "avatar_url", "dashboard_desk_photo_url", "sidebar_desk_photo_url", "google_email", "last_login_at"]) database.sqlite.exec(`ALTER TABLE users ADD COLUMN ${column} TEXT`)
   database.sqlite.exec("ALTER TABLE organizations ADD COLUMN logo_url TEXT")
   database.sqlite.exec("ALTER TABLE project_contacts ADD COLUMN vendor_id TEXT")
-  database.sqlite.exec("CREATE TABLE project_access_invitations (id TEXT, project_id TEXT, project_contact_id TEXT, accepted_by TEXT, status TEXT, accepted_at TEXT)")
+  database.sqlite.exec(`CREATE TABLE project_access_invitations (id TEXT, organization_id TEXT, project_id TEXT, project_contact_id TEXT, email TEXT, role TEXT,
+    status TEXT, workos_invitation_id TEXT, workos_expires_at TEXT, email_provider TEXT, email_provider_message_id TEXT, email_error TEXT,
+    invited_by TEXT, invited_at TEXT, accepted_by TEXT, accepted_at TEXT, created_at TEXT, updated_at TEXT)`)
   mocks.actor.mockResolvedValue(context(database, "staff-a", "project-a").user)
   mocks.environment.mockResolvedValue({ env: { DB: database.d1, COMPASS_CORRESPONDENCE_ENABLED: "true" } })
   mocks.permission.mockResolvedValue(true)
@@ -75,6 +77,29 @@ describe("external viewer resolution", () => {
     scope = JSON.stringify({ projectId: "project-a", audience: "owner", targetUserId: null })
     expect((await resolveProjectAudienceViewer("project-a", "owner")).viewer).toBeNull()
     await expect(correspondenceContext("project-a", "read")).rejects.toThrow("Select a person")
+  })
+  it("lists people invited who haven't accepted and previews them by their contact", async () => {
+    database.sqlite.exec(`
+      INSERT INTO project_contacts (id, project_id, contact_type, display_name, email, company_name, active)
+        VALUES ('c-new','project-a','owner','New Owner','new@home.test','New Owner LLC',1),
+               ('c-sub','project-a','subcontractor','New Sub','sub@trade.test','Trade Co',1);
+      INSERT INTO project_access_invitations (id, organization_id, project_id, project_contact_id, email, role, status, invited_by, invited_at, created_at, updated_at)
+        VALUES ('inv-owner','org-a','project-a','c-new','new@home.test','client','sent','staff-a','2026-10-24T00:00:00Z','x','x'),
+               ('inv-sub','org-a','project-a','c-sub','sub@trade.test','subcontractor','sent','staff-a','2026-10-24T00:00:00Z','x','x'),
+               ('inv-done','org-a','project-a','c-new','old@home.test','client','expired','staff-a','2026-10-01T00:00:00Z','x','x');
+    `)
+    scope = JSON.stringify({ projectId: "project-a", audience: "owner", targetUserId: null })
+    const listed = await resolveProjectAudienceViewer("project-a", "owner")
+    expect(listed.previewOptions.filter((person) => person.invited)).toEqual([
+      { id: "invite:inv-owner", name: "New Owner", email: "new@home.test", companyName: "New Owner LLC", invited: true },
+    ])
+    scope = JSON.stringify({ projectId: "project-a", audience: "owner", targetUserId: "invite:inv-owner" })
+    const previewed = await resolveProjectAudienceViewer("project-a", "owner")
+    expect(previewed.viewer).toMatchObject({ id: "invite:inv-owner", email: "new@home.test", displayName: "New Owner", role: "client" })
+    await expect(correspondenceContext("project-a", "read")).rejects.toThrow("hasn't accepted")
+    // A vendor's invitation doesn't open the owner workspace.
+    await expect(resolveProjectAudienceViewer("project-a", "owner", "invite:inv-sub")).rejects.toThrow()
+    await expect(resolveProjectAudienceViewer("project-a", "owner", "invite:inv-done")).rejects.toThrow()
   })
   it("rejects removed, inactive, internal and wrong-audience targets", async () => {
     for (const id of ["staff-a", "owner-b", "missing-person"]) {

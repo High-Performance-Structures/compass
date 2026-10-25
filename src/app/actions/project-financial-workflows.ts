@@ -11,7 +11,6 @@ import {
   projectBudgetApplications,
   projectBudgetLines,
   projectOperations,
-  projectMembers,
   projects,
   sageCostCodes,
 } from "@/db/schema"
@@ -34,6 +33,7 @@ import {
 } from "@/lib/financials/pay-application-detail"
 import { requireOrg } from "@/lib/org-scope"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requirePermission } from "@/lib/permissions"
 import {
@@ -261,7 +261,7 @@ async function payApplicationReadAccess(projectId: string): Promise<{
   const db = getDb(env.DB)
   const project = await assertProjectAccess(db, user, projectId)
   if (!project.organizationId) throw new Error("Project not found")
-  const membership = await db.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, user.id))).get()
+  const membership = { role: await projectMemberRole(db, user.id, projectId) }
   if (!canUseProjectAudience(membership?.role ?? null, "owner")) throw new Error("Project not found")
   return { db, organizationId: project.organizationId, internal: false }
 }

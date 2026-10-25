@@ -14,7 +14,7 @@ const inbox: CorrespondenceInbox = {
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<main className="mx-auto grid max-w-5xl gap-4 p-4">
   <h1 className="text-xl font-semibold">Owner preview · Read only</h1>
-  <ProjectAudiencePersonSelector projectId="project-a" audience="owner" selectedUserId={person} options={[{ id: "owner-a", name: "Owner A", email: "a@example.test", companyName: "Example client" }, { id: "owner-b", name: "Owner B", email: "b@example.test", companyName: "Second client" }]} />
+  <ProjectAudiencePersonSelector projectId="project-a" audience="owner" selectedUserId={person} options={[{ id: "owner-a", name: "Owner A", email: "a@example.test", companyName: "Example client", invited: false }, { id: "owner-b", name: "Owner B", email: "b@example.test", companyName: "Second client", invited: false }]} />
   <ProjectAudiencePreviewScope readOnly canonicalScope={{ projectId: "project-a", audience: "owner", targetUserId: person }}>
     <Link href="/preview/projects/project-a/owner/schedule" className="text-sm underline">Schedule</Link>
     <ProjectAudienceCorrespondencePreview key={person} projectId="project-a" inbox={inbox} />

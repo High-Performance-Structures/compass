@@ -4,7 +4,6 @@ import { and, eq, isNotNull } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
 import { projectDocuments } from "@/db/schema-documents"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -14,6 +13,7 @@ import {
   isGoogleNativeFile,
 } from "@/lib/google/mapper"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
@@ -43,17 +43,7 @@ export async function GET(
 
     const viewerIsInternal = isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
+      const membership = { role: await projectMemberRole(db, user.id, projectId) }
       const role = membership?.role ?? null
       if (
         !canUseProjectAudience(role, "owner") &&

@@ -14,13 +14,18 @@ export { getProjectAudienceRequestScope, assertAudiencePreviewWriteAllowed } fro
 import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { invitedPreviewId, isInvitedPreviewId } from "@/lib/invited-preview"
+export { isInvitedPreviewId } from "@/lib/invited-preview"
 
 export type ProjectAudiencePreviewPerson = {
   readonly id: string
   readonly name: string
   readonly email: string
   readonly companyName: string | null
+  /** Invited to the project but hasn't accepted, so has no account yet. */
+  readonly invited: boolean
 }
+
 
 export type ProjectAudienceViewerContext = {
   readonly db: ReturnType<typeof getDb>
@@ -72,16 +77,62 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
     .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId)))
     .where(and(eq(projectMembers.projectId, projectId), eq(users.isActive, true)))
   const eligible = people.filter((person, index) => !isInternalStaffRole(person.role) && canUseProjectAudience(person.projectRole, audience) && people.findIndex((candidate) => candidate.user.id === person.user.id) === index)
-  const selected = target === null ? null : eligible.find((person) => person.user.id === target)
-  if (target !== null && !selected) throw new Error("The selected person no longer has this project access.")
-  const viewer: AuthUser | null = selected ? { ...selected.user, role: selected.role, organizationId, organizationType: membership.organization.type, organizationName: membership.organization.name } : null
+  // People invited who haven't accepted yet. Previewing one shows what their
+  // contact (matched by email) will see once they accept.
+  const eligibleEmails = new Set(eligible.map((person) => person.user.email.trim().toLowerCase()))
+  const pending = await db.select({
+    invitation: {
+      id: projectAccessInvitations.id,
+      email: projectAccessInvitations.email,
+      role: projectAccessInvitations.role,
+      invitedAt: projectAccessInvitations.invitedAt,
+      updatedAt: projectAccessInvitations.updatedAt,
+    },
+    contact: { displayName: projectContacts.displayName, companyName: projectContacts.companyName },
+  })
+    .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
+    .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectAccessInvitations.organizationId, organizationId), eq(projectAccessInvitations.status, "sent"), eq(projectContacts.active, true)))
+    .orderBy(desc(projectAccessInvitations.invitedAt))
+  const invited = pending.filter(({ invitation }, index) => {
+    const email = invitation.email.trim().toLowerCase()
+    return canUseProjectAudience(invitation.role, audience) && !eligibleEmails.has(email) &&
+      pending.findIndex((candidate) => candidate.invitation.email.trim().toLowerCase() === email) === index
+  })
+  const selected = target === null || isInvitedPreviewId(target) ? null : eligible.find((person) => person.user.id === target)
+  const selectedInvite = target !== null && isInvitedPreviewId(target)
+    ? invited.find(({ invitation }) => invitedPreviewId(invitation.id) === target)
+    : undefined
+  if (target !== null && !selected && !selectedInvite) throw new Error("The selected person no longer has this project access.")
+  const viewerOrganization = { organizationId, organizationType: membership.organization.type, organizationName: membership.organization.name }
+  const viewer: AuthUser | null = selected
+    ? { ...selected.user, role: selected.role, ...viewerOrganization }
+    : selectedInvite
+      ? {
+          id: invitedPreviewId(selectedInvite.invitation.id),
+          email: selectedInvite.invitation.email,
+          firstName: null,
+          lastName: null,
+          displayName: selectedInvite.contact.displayName,
+          avatarUrl: null,
+          role: selectedInvite.invitation.role,
+          googleEmail: null,
+          isActive: true,
+          lastLoginAt: null,
+          createdAt: selectedInvite.invitation.invitedAt,
+          updatedAt: selectedInvite.invitation.updatedAt,
+          ...viewerOrganization,
+        }
+      : null
   // Company labels are presentation only. Load accepted contact links once
   // rather than performing a contact lookup for every eligible person.
   const contactLinks = eligible.length === 0 ? [] : await db.select({ userId: projectAccessInvitations.acceptedBy, companyName: projectContacts.companyName })
     .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
     .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(projectAccessInvitations.status, "accepted"), eq(projectContacts.active, true)))
     .orderBy(desc(projectAccessInvitations.acceptedAt))
-  const previewOptions = eligible.map(({ user }): ProjectAudiencePreviewPerson => ({ id: user.id, name: user.displayName ?? user.email, email: user.email, companyName: contactLinks.find((link) => link.userId === user.id)?.companyName ?? null }))
+  const previewOptions = [
+    ...eligible.map(({ user }): ProjectAudiencePreviewPerson => ({ id: user.id, name: user.displayName ?? user.email, email: user.email, companyName: contactLinks.find((link) => link.userId === user.id)?.companyName ?? null, invited: false })),
+    ...invited.map(({ invitation, contact }): ProjectAudiencePreviewPerson => ({ id: invitedPreviewId(invitation.id), name: contact.displayName || invitation.email, email: invitation.email, companyName: contact.companyName, invited: true })),
+  ]
   return { db, env, actor: authorizedActor, viewer, organizationId, projectId, audience, isPreview, previewOptions }
 })
 

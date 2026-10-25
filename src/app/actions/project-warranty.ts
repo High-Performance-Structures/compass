@@ -6,7 +6,7 @@ import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
 import {
   projectWarrantyClaimAttachments,
   projectWarrantyClaimEvents,
@@ -20,6 +20,7 @@ import {
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolveWarrantyAssignee } from "@/lib/warranty/assignee"
@@ -180,17 +181,7 @@ async function warrantyContext(projectId: string): Promise<WarrantyContext> {
   if (viewerIsInternal) {
     await requireFeaturePermission(user, "warranty-claims", "read")
   } else {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
+    const membership = { role: await projectMemberRole(db, user.id, projectId) }
     if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
       throw new Error("Project not found.")
     }
