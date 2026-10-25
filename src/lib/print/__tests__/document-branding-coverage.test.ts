@@ -8,6 +8,7 @@ const REACT_PRINT_DOCUMENTS = [
   "src/app/preview/projects/[id]/owner/budget/page.tsx",
   "src/components/projects/estimate-client-report.tsx",
   "src/components/projects/daily-log-print-document.tsx",
+  "src/components/projects/meeting-transcript-document.tsx",
   "src/components/projects/owner-update-document.tsx",
   "src/components/schedule/schedule-print-document.tsx",
 ] as const

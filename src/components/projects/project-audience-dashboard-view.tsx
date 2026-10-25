@@ -14,7 +14,7 @@ import {
 
 import type { ProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ProjectAudienceDashboardPhoto } from "@/components/projects/project-audience-dashboard-photo"
-import { ClientMeetingJoinBanner } from "@/components/projects/client-meeting-join-banner"
+import { ProjectMeetingsAudienceButton } from "@/components/projects/project-meetings-audience-button"
 import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
 import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
@@ -173,20 +173,18 @@ export function ProjectAudienceDashboardView({
             </p>
             </div>
           </div>
-          {!owner && (
-            <ProjectAudienceRfiCreateDialog
-              projectId={data.project.id}
-              recipients={messageShortcut?.recipients ?? []}
-              viewerIsInternal={data.viewerIsInternal}
-            />
-          )}
-        </div>
-
-        {data.upcomingMeetings.length > 0 ? (
-          <div className="mt-5">
-            <ClientMeetingJoinBanner meetings={data.upcomingMeetings} />
+          {/* Top right, where staff find their Project Meetings button. */}
+          <div className="flex flex-wrap items-center gap-2 sm:self-start">
+            <ProjectMeetingsAudienceButton meetings={data.upcomingMeetings} />
+            {!owner && (
+              <ProjectAudienceRfiCreateDialog
+                projectId={data.project.id}
+                recipients={messageShortcut?.recipients ?? []}
+                viewerIsInternal={data.viewerIsInternal}
+              />
+            )}
           </div>
-        ) : null}
+        </div>
 
         {counts.length > 0 ? (
           <div className="mt-5">
