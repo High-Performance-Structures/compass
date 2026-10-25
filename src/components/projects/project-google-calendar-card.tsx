@@ -1,197 +1,159 @@
 "use client"
 
 import * as React from "react"
-import { IconBrandGoogle, IconCalendarPlus, IconRefresh } from "@tabler/icons-react"
+import { IconBrandGoogle, IconExternalLink, IconRefresh } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
-  addGoogleProjectCalendarToMine,
-  deleteGoogleProjectCalendarForProject,
-  enableGoogleProjectCalendar,
-  getGoogleProjectCalendarStatus,
-  setGoogleProjectCalendarDisabled,
-  setGoogleProjectCalendarPaused,
-  syncGoogleProjectCalendarAccess,
-  syncGoogleProjectCalendarEvents,
-  type GoogleProjectCalendarStatus,
-} from "@/app/actions/google-project-calendars"
-import { Badge } from "@/components/ui/badge"
+  getProjectCalendarStatus,
+  setProjectCalendarChoice,
+  syncProjectCalendarNow,
+  type ProjectCalendarStatus,
+} from "@/app/actions/project-calendars"
 import { Button } from "@/components/ui/button"
 
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+}
+
+type Available = Extract<ProjectCalendarStatus, { readonly available: true }>
+
+function statusLine(status: Available): string {
+  if (!status.included) {
+    if (status.mode === "off") return "Your company doesn't offer project calendars."
+    return status.choice === false
+      ? "Turned off for this job."
+      : "This job doesn't have a Google calendar. Create one to share its schedule with staff."
+  }
+  if (status.status === "error") return "Compass couldn't update the calendar. It will try again shortly."
+  if (status.status !== "active") return "Compass is setting up the calendar. It appears within a few minutes."
+  const people = `${status.memberCount} staff member${status.memberCount === 1 ? "" : "s"}`
+  const events = `${status.eventCount} event${status.eventCount === 1 ? "" : "s"}`
+  return `Shared with ${people}, ${events}.`
+}
+
+/** Staff-only: this job's Google calendar, owned by the company account. */
 export function ProjectGoogleCalendarCard({
   projectId,
 }: {
   readonly projectId: string
-}): React.ReactElement {
-  const [status, setStatus] = React.useState<GoogleProjectCalendarStatus | null>(null)
-  const [pendingAction, setPendingAction] = React.useState<string | null>(null)
+}): React.ReactElement | null {
+  const [status, setStatus] = React.useState<Available | null>(null)
+  const [hidden, setHidden] = React.useState(false)
+  const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async (): Promise<void> => {
-    setStatus(await getGoogleProjectCalendarStatus(projectId))
-  }, [projectId])
-
-  React.useEffect(() => { void load() }, [load])
-
-  async function run(
-    name: string,
-    action: () => Promise<
-      | { readonly success: true; readonly warning?: string }
-      | { readonly success: false; readonly error: string }
-    >,
-    successMessage: string,
-  ): Promise<void> {
-    setPendingAction(name)
-    const result = await action()
-    setPendingAction(null)
+    const result = await getProjectCalendarStatus(projectId)
     if (!result.success) {
       toast.error(result.error)
       return
     }
-    if (result.warning) toast.warning(result.warning)
-    else toast.success(successMessage)
-    await load()
+    if (!result.data.available) {
+      setHidden(true)
+      return
+    }
+    setStatus(result.data)
+  }, [projectId])
+
+  React.useEffect(() => {
+    void load()
+  }, [load])
+
+  function run(action: () => Promise<{ readonly success: boolean; readonly error?: string }>, done: string): void {
+    startTransition(async () => {
+      const result = await action()
+      if (!result.success) {
+        toast.error(result.error ?? "Something went wrong.")
+        return
+      }
+      toast.success(done)
+      await load()
+    })
   }
 
+  if (hidden) return null
   if (!status) {
-    return (
-      <section className="border-t pt-5 text-sm text-muted-foreground">
-        Loading project calendar settings…
-      </section>
-    )
+    return <section className="border-t pt-5 text-sm text-muted-foreground">Loading project calendar…</section>
   }
 
-  const calendar = status.calendar
-  const busy = pendingAction !== null
+  const followsCompany = status.choice === null
   return (
-    <section className="border-t pt-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <IconBrandGoogle className="mt-0.5 size-5" />
-          <div>
-            <h2 className="font-semibold">Project Google Calendar</h2>
-            <p className="text-sm text-muted-foreground">
-              Publishes this project’s Compass events to a dedicated Google calendar without mixing personal calendars into the shared Work Calendar.
-            </p>
-          </div>
+    <section className="border-t pt-5" aria-labelledby="project-google-calendar">
+      <div className="flex items-start gap-3">
+        <IconBrandGoogle className="mt-0.5 size-5 shrink-0" />
+        <div className="min-w-0 space-y-1">
+          <h2 id="project-google-calendar" className="font-semibold">Project Google calendar</h2>
+          <p className="text-sm text-muted-foreground">
+            This job&apos;s schedule, events and project meetings in Google Calendar, shared only with staff. Compass keeps
+            it up to date every few minutes.
+          </p>
+          <p className="text-sm">{statusLine(status)}</p>
+          {status.included && status.lastSyncedAt ? (
+            <p className="text-xs text-muted-foreground">Last updated {formatDateTime(status.lastSyncedAt)}</p>
+          ) : null}
+          {status.lastError ? <p className="text-xs text-destructive">{status.lastError}</p> : null}
         </div>
-        <Badge variant={calendar?.status === "active" ? "default" : "outline"}>
-          {calendar ? calendar.status : "Not enabled"}
-        </Badge>
       </div>
 
-      {!status.ownerConfigured ? (
-        <p className="mt-4 border-l-2 border-l-warning pl-3 text-sm text-warning">
-          An administrator must connect and designate the organization Google Calendar account in Settings before a project calendar can be enabled.
-        </p>
-      ) : null}
-
-      {calendar ? (
-        <div className="mt-4 space-y-3">
-          <div>
-            <p className="text-sm font-medium">{calendar.summary}</p>
-            <p className="text-xs text-muted-foreground">
-              Owned by {status.ownerAccountEmail}. Project members receive Google access according to their Compass role.
-            </p>
-          </div>
-          {calendar.lastError ? <p className="text-xs text-destructive">{calendar.lastError}</p> : null}
-          {status.requiresReconnect ? (
-            <p className="border-l-2 pl-3 text-sm">
-              Reconnect Google Calendar in Settings before adding this calendar to your account.
-            </p>
+      {status.mode !== "off" ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {status.calendarUrl && status.sharedWithMe ? (
+            <Button size="sm" variant="outline" asChild>
+              <a href={status.calendarUrl} target="_blank" rel="noreferrer">
+                <IconExternalLink />
+                Open in Google Calendar
+              </a>
+            </Button>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            {status.connected ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy || status.subscribed || calendar.status !== "active" || status.requiresReconnect}
-                onClick={() => void run("subscribe", () => addGoogleProjectCalendarToMine(projectId), "Project calendar added to Google Calendar.")}
-              >
-                <IconCalendarPlus />
-                {status.subscribed ? "Added to my Google Calendar" : "Add to my Google Calendar"}
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" asChild>
-                <a href="/dashboard/settings">Connect Google Calendar</a>
-              </Button>
-            )}
-            {status.canEnable && calendar.status !== "disabled" ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || calendar.status !== "active"}
-                  onClick={() => void run("events", () => syncGoogleProjectCalendarEvents(projectId), "Project calendar events synchronized.")}
-                >
-                  <IconRefresh className={pendingAction === "events" ? "animate-spin" : ""} />
-                  Sync events
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void run("access", () => syncGoogleProjectCalendarAccess(projectId), "Project calendar access synchronized.")}
-                >
-                  <IconRefresh className={pendingAction === "access" ? "animate-spin" : ""} />
-                  Sync access
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void run("pause", () => setGoogleProjectCalendarPaused(projectId, calendar.status === "active"), calendar.status === "active" ? "Project calendar paused." : "Project calendar resumed.")}
-                >
-                  {calendar.status === "active" ? "Pause publishing" : "Resume publishing"}
-                </Button>
-              </>
-            ) : null}
-            {status.canDelete ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void run("disable", () => setGoogleProjectCalendarDisabled(projectId, calendar.status !== "disabled"), calendar.status === "disabled" ? "Project calendar enabled." : "Project calendar disabled.")}
-                >
-                  {calendar.status === "disabled" ? "Enable calendar" : "Disable calendar"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => {
-                    if (!window.confirm("Delete this project calendar from Google Calendar? This cannot be undone.")) return
-                    void run("delete", () => deleteGoogleProjectCalendarForProject(projectId), "Project Google calendar deleted.")
-                  }}
-                >
-                  Delete calendar
-                </Button>
-              </>
-            ) : null}
-          </div>
+          {status.canManage && status.included ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => run(() => syncProjectCalendarNow(projectId), "Project calendar updated.")}
+            >
+              <IconRefresh className={pending ? "animate-spin" : ""} />
+              Update now
+            </Button>
+          ) : null}
+          {status.canManage && !status.included ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending}
+              onClick={() => run(() => setProjectCalendarChoice(projectId, true), "Project calendar created.")}
+            >
+              {pending ? "Setting up…" : "Create Google calendar"}
+            </Button>
+          ) : null}
+          {status.canManage && status.included ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm("Remove this job's Google calendar? Compass deletes it from Google for everyone it's shared with. Nothing in Compass changes.")) return
+                run(() => setProjectCalendarChoice(projectId, false), "Project calendar removed.")
+              }}
+            >
+              Remove Google calendar
+            </Button>
+          ) : null}
+          {status.canManage && !followsCompany && status.mode === "open" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => run(() => setProjectCalendarChoice(projectId, null), "This job now follows the company setting.")}
+            >
+              Use company setting
+            </Button>
+          ) : null}
         </div>
-      ) : status.canEnable ? (
-        <div className="mt-4">
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy || !status.ownerConfigured}
-            onClick={() => void run("enable", () => enableGoogleProjectCalendar(projectId), "Project Google calendar enabled.")}
-          >
-            <IconCalendarPlus />
-            {pendingAction === "enable" ? "Creating calendar…" : "Enable project Google Calendar"}
-          </Button>
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Office staff can enable a Google calendar for this project.
-        </p>
-      )}
+      ) : null}
     </section>
   )
 }

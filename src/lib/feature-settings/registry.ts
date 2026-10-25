@@ -226,6 +226,28 @@ export const myCompassCalendarSettingsSchema = z.object({
 
 export type MyCompassCalendarSettings = z.infer<typeof myCompassCalendarSettingsSchema>
 
+/**
+ * Project calendars: one Google calendar per job, owned by the company's
+ * Compass account and shared only with staff.
+ */
+export const projectCalendarSettingsSchema = z.object({
+  /** off = not offered; selected = each job off until staff create one (default); open = every open and warranty job. */
+  mode: z.enum(["off", "selected", "open"]),
+  /** project = staff on the job's team; all = every staff member. */
+  shareWith: z.enum(["project", "all"]),
+  /** Staff who never get project calendars, such as system accounts. */
+  excludedUserIds: z.array(z.string().min(1).max(80)).max(50),
+  addToStaffCalendars: z.boolean(),
+  milestones: z.boolean(),
+  scheduleItems: z.boolean(),
+  workCalendarEvents: z.boolean(),
+  clientMeetings: z.boolean(),
+  daysBack: z.number().int().min(0).max(60),
+  daysAhead: z.number().int().min(14).max(365),
+})
+
+export type ProjectCalendarSettings = z.infer<typeof projectCalendarSettingsSchema>
+
 /** Settings type for each registered feature key. */
 const LOGO_DATA_URL = /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i
 
@@ -575,6 +597,7 @@ type FeatureSettingsTypes = {
   readonly "nutech-emails": NuTechEmailSettings
   readonly "paper-trail": PaperTrailSettings
   readonly "my-compass-calendar": MyCompassCalendarSettings
+  readonly "project-calendars": ProjectCalendarSettings
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
@@ -842,6 +865,23 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       daysAhead: 120,
     },
     schema: myCompassCalendarSettingsSchema,
+  },
+  "project-calendars": {
+    label: "Project calendars",
+    description: "A Google calendar for each job with its schedule, events and project meetings, shared only with staff.",
+    defaults: {
+      mode: "selected",
+      shareWith: "project",
+      excludedUserIds: [],
+      addToStaffCalendars: true,
+      milestones: true,
+      scheduleItems: true,
+      workCalendarEvents: true,
+      clientMeetings: true,
+      daysBack: 14,
+      daysAhead: 180,
+    },
+    schema: projectCalendarSettingsSchema,
   },
   "job-workflows": {
     label: "Job workflows",

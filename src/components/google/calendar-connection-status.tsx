@@ -14,7 +14,6 @@ import {
   type GoogleCalendarSelectionConfiguration,
   type GoogleCalendarSelectionStatus,
 } from "@/app/actions/google-calendar"
-import { setOwnGoogleCalendarAsOrganizationOwner } from "@/app/actions/google-project-calendars"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -268,7 +267,6 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
     React.useState<GoogleCalendarConnectionStatus | null>(null)
   const [disconnecting, setDisconnecting] = React.useState(false)
   const [refreshing, setRefreshing] = React.useState(false)
-  const [settingOwner, setSettingOwner] = React.useState(false)
 
   const loadStatus = React.useCallback(async (): Promise<void> => {
     const result = await getGoogleCalendarConnectionStatus()
@@ -323,18 +321,6 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
     await loadStatus()
   }
 
-  async function setOrganizationOwner(): Promise<void> {
-    setSettingOwner(true)
-    const result = await setOwnGoogleCalendarAsOrganizationOwner()
-    setSettingOwner(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("This account now owns Compass-managed organization and project calendars.")
-    await loadStatus()
-  }
-
   if (!status) {
     return (
       <div className="flex items-center gap-3 border p-4">
@@ -375,12 +361,6 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
               <dt>Account:</dt>
               <dd className="text-foreground">{status.accountEmail}</dd>
             </div>
-            <div className="flex gap-2">
-              <dt>Organization calendar owner:</dt>
-              <dd className="text-foreground">
-                {status.organizationOwnerAccountEmail ?? "Not designated"}
-              </dd>
-            </div>
             <DeveloperOnly>
               <div className="flex gap-2">
                 <dt>Calendar sync:</dt>
@@ -394,7 +374,7 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
           </dl>
           {status.requiresReconnect ? (
             <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
-              Reconnect Google Calendar to authorize managed project calendars and subscriptions.
+              Reconnect Google Calendar to grant Compass the latest calendar permissions.
               <div className="mt-2">
                 <Button size="sm" asChild><a href="/api/google/calendar/connect">Reconnect</a></Button>
               </div>
@@ -418,17 +398,6 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
               <IconRefresh className={refreshing ? "animate-spin" : ""} />
               {refreshing ? "Refreshing..." : "Refresh calendars"}
             </Button>
-            {status.canManageOrganizationCalendars && !status.isOrganizationCalendarOwner ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={settingOwner || status.requiresReconnect}
-                onClick={() => void setOrganizationOwner()}
-              >
-                {settingOwner ? "Designating..." : "Use for Compass-managed calendars"}
-              </Button>
-            ) : null}
             <Button
               type="button"
               size="sm"
