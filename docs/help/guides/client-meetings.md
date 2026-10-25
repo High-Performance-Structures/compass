@@ -18,7 +18,7 @@
 
 ## Start or Schedule a Project Meeting {#meet-with-client}
 
-Open the project and choose **Project Meetings** under **Project meetings** on the right side of the page. Use it for calls with clients, vendors and subcontractors, or with coworkers only.
+Open the project and choose **Project Meetings** at the top right of the page. Use it for calls with clients, vendors and subcontractors, or with coworkers only.
 
 - **Start now** opens the Google Meet in a new tab right away and emails the link to everyone you invite.
 - **Schedule** books the call for a date and time. Google sends each guest a calendar invitation with the Meet link and phone dial-in details.
@@ -38,7 +38,7 @@ About 10 to 20 minutes after the call ends, Compass saves the transcript two way
 - **A PDF in the project's Meeting Notes folder** (13_MeetingNotes) in Drive.
 - **A draft daily log** on the meeting date, written as the host. It has the full transcript text, so you can search for it in Compass.
 
-Choose **Past meetings** under **Project meetings** to find a finished call. **Transcript** opens the transcript in Print Preview, with **Print / Save PDF** like other Compass documents. **Daily log** opens the draft log.
+Choose **Past meetings** under the **Project Meetings** button to find a finished call. **Transcript** opens the transcript in Print Preview, with **Print / Save PDF** like other Compass documents. **Daily log** opens the draft log.
 
 The daily log starts as an **internal draft**. The client can't see it. To share it, review the log, trim anything that shouldn't go to the client, and make it client-visible the same way as any other daily log.
 
@@ -50,7 +50,7 @@ Guests join from the link in their invitation. Clients and vendors who use Compa
 
 ## Join or Cancel a Meeting {#join-cancel}
 
-The next three upcoming meetings are listed under **Project meetings** with a **Join** button. Later ones are under **All other meetings**. **Cancel** removes the meeting from the host's Google Calendar, and Google emails a cancellation to every guest. Each meeting started, scheduled, or cancelled is recorded in the project's Activity.
+The next three upcoming meetings are listed under the **Project Meetings** button with a **Join** button. Later ones are under **All other meetings**. **Cancel** removes the meeting from the host's Google Calendar, and Google emails a cancellation to every guest. Each meeting started, scheduled, or cancelled is recorded in the project's Activity.
 
 ## Quick Check {#quick-check}
 

@@ -421,10 +421,8 @@ export function ProjectClientMeetingsCard({
   const more = [...upcoming.slice(MAX_UPCOMING_SHOWN), ...past]
 
   return (
-    <section aria-labelledby={`client-meetings-${projectId}`} className="mb-5 space-y-3">
-      <h2 id={`client-meetings-${projectId}`} className="text-xs font-medium uppercase text-muted-foreground">
-        Project meetings
-      </h2>
+    // The button already says Project Meetings, so the section needs no heading.
+    <section aria-label="Project meetings" className="mb-5 space-y-3">
       <ScheduleMeetingDialog projectId={projectId} view={view} />
       {upcoming.length > 0 && (
         <ul className="space-y-2">
