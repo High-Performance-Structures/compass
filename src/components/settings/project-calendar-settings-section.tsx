@@ -109,8 +109,8 @@ export function ProjectCalendarSettingsSection(): React.ReactElement {
             <div>
               <Label htmlFor="project-calendars-mode">Which jobs get a calendar</Label>
               <p className="text-xs text-muted-foreground">
-                With &ldquo;Jobs staff turn on&rdquo;, office staff use the Google calendar section on a job&apos;s
-                Information page.
+                Every job starts without a calendar. Office staff create one from the Project Google calendar section
+                on a job&apos;s Information page.
               </p>
             </div>
             <Select
@@ -122,8 +122,8 @@ export function ProjectCalendarSettingsSection(): React.ReactElement {
             >
               <SelectTrigger id="project-calendars-mode" className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="off">Off</SelectItem>
-                <SelectItem value="selected">Jobs staff turn on</SelectItem>
+                <SelectItem value="off">Not offered</SelectItem>
+                <SelectItem value="selected">Only jobs staff choose</SelectItem>
                 <SelectItem value="open">Every open and warranty job</SelectItem>
               </SelectContent>
             </Select>

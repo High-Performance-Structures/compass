@@ -143,6 +143,10 @@ describe("which jobs get a calendar", () => {
     const open = { status: "OPEN" }
     const closed = { status: "COMPLETE" }
     expect(projectCalendarIncluded({ ...SETTINGS, mode: "off" }, open, { enabled: true })).toBe(false)
+    const defaults = FEATURE_SETTINGS["project-calendars"].defaults
+    expect(defaults.mode).toBe("selected")
+    expect(projectCalendarIncluded(defaults, open, null)).toBe(false)
+    expect(projectCalendarIncluded(defaults, open, { enabled: true })).toBe(true)
     expect(projectCalendarIncluded({ ...SETTINGS, mode: "selected" }, open, null)).toBe(false)
     expect(projectCalendarIncluded({ ...SETTINGS, mode: "selected" }, closed, { enabled: true })).toBe(true)
     expect(projectCalendarIncluded({ ...SETTINGS, mode: "open" }, open, null)).toBe(true)

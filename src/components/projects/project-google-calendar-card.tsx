@@ -20,10 +20,10 @@ type Available = Extract<ProjectCalendarStatus, { readonly available: true }>
 
 function statusLine(status: Available): string {
   if (!status.included) {
-    if (status.mode === "off") return "Project calendars are off for the company."
+    if (status.mode === "off") return "Your company doesn't offer project calendars."
     return status.choice === false
       ? "Turned off for this job."
-      : "This job doesn't have a Google calendar."
+      : "This job doesn't have a Google calendar. Create one to share its schedule with staff."
   }
   if (status.status === "error") return "Compass couldn't update the calendar. It will try again shortly."
   if (status.status !== "active") return "Compass is setting up the calendar. It appears within a few minutes."
@@ -122,9 +122,9 @@ export function ProjectGoogleCalendarCard({
               type="button"
               size="sm"
               disabled={pending}
-              onClick={() => run(() => setProjectCalendarChoice(projectId, true), "Project calendar turned on.")}
+              onClick={() => run(() => setProjectCalendarChoice(projectId, true), "Project calendar created.")}
             >
-              {pending ? "Setting up…" : "Turn on for this job"}
+              {pending ? "Setting up…" : "Create Google calendar"}
             </Button>
           ) : null}
           {status.canManage && status.included ? (
@@ -134,11 +134,11 @@ export function ProjectGoogleCalendarCard({
               variant="ghost"
               disabled={pending}
               onClick={() => {
-                if (!window.confirm("Turn off this job's Google calendar? Compass deletes it from Google for everyone it's shared with. Nothing in Compass changes.")) return
-                run(() => setProjectCalendarChoice(projectId, false), "Project calendar turned off.")
+                if (!window.confirm("Remove this job's Google calendar? Compass deletes it from Google for everyone it's shared with. Nothing in Compass changes.")) return
+                run(() => setProjectCalendarChoice(projectId, false), "Project calendar removed.")
               }}
             >
-              Turn off for this job
+              Remove Google calendar
             </Button>
           ) : null}
           {status.canManage && !followsCompany && status.mode === "open" ? (

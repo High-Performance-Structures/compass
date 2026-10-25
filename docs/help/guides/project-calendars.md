@@ -5,7 +5,7 @@
   "slug": "project-calendars",
   "title": "Project Calendars in Google Calendar",
   "summary": "Give a job its own Google calendar with its schedule, events and client meetings, shared only with staff and kept up to date by Compass.",
-  "contextSummary": "A project calendar is a Google calendar for one job, owned by the company's Compass Google account and shared view-only with staff (the job's team or all staff). It never goes to clients or vendors. Compass refreshes it every few minutes and replaces edits made in Google. Admins set which jobs get one in Settings → Workflows → Project calendars; office staff turn it on or off per job on the job's Information page.",
+  "contextSummary": "A project calendar is a Google calendar for one job, owned by the company's Compass Google account and shared view-only with staff (the job's team or all staff). It never goes to clients or vendors. Compass refreshes it every few minutes and replaces edits made in Google. Every job starts without one. Office staff create or remove a job's calendar on its Information page; admins can change which jobs get one in Settings → Workflows → Project calendars.",
   "category": "Field & Project Work",
   "tags": ["Google Calendar", "project calendar", "job calendar", "schedule", "milestones", "client meetings", "sharing", "sync"],
   "audiences": ["staff"],
@@ -40,14 +40,14 @@ Compass shares the calendar **view-only** with either the staff on the job's tea
 
 Compass also adds the calendar to each person's Google Calendar list once, so they don't have to accept an invitation. Anyone can hide it, recolor it, or remove it from their list in Google like any other calendar.
 
-## Turn It On for a Job {#turn-on}
+## Create One for a Job {#turn-on}
 
-Open the job's **Information** page and find **Project Google calendar**. Office staff can:
+Every job starts **without** a Google calendar. To make one, open the job's **Overview → Information** page and find **Project Google calendar**. Office staff can:
 
-- **Turn on for this job**: makes the calendar now and shares it
+- **Create Google calendar**: makes the calendar now and shares it
 - **Update now**: refreshes it right away instead of waiting a few minutes
 - **Open in Google Calendar**: opens it, once it's shared with you
-- **Turn off for this job**: deletes the calendar from Google for everyone it was shared with. Nothing in Compass changes, and you can turn it back on later.
+- **Remove Google calendar**: deletes the calendar from Google for everyone it was shared with. Nothing in Compass changes, and you can create it again later.
 
 When every open job gets a calendar, closing a job (any status other than open or warranty) deletes its calendar from Google. **Use company setting** undoes a job's on/off choice.
 
@@ -55,7 +55,7 @@ When every open job gets a calendar, closing a job (any status other than open o
 
 Admins manage project calendars in **Settings → Workflows → Project calendars**:
 
-- **Which jobs get a calendar**: Off, **Jobs staff turn on**, or **Every open and warranty job**
+- **Which jobs get a calendar**: **Only jobs staff choose** (the default, so no job has one until staff create it), **Every open and warranty job**, or **Not offered**, which hides the option on every job
 - **Shared with**: staff on the job's team, or all staff
 - **Add it to each person's Google Calendar**: put the calendar in each person's calendar list automatically
 - **Never share with**: people who never get project calendars, such as system accounts

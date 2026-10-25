@@ -231,7 +231,7 @@ export type MyCompassCalendarSettings = z.infer<typeof myCompassCalendarSettings
  * Compass account and shared only with staff.
  */
 export const projectCalendarSettingsSchema = z.object({
-  /** off; selected = jobs staff turn on; open = every open and warranty job. */
+  /** off = not offered; selected = each job off until staff create one (default); open = every open and warranty job. */
   mode: z.enum(["off", "selected", "open"]),
   /** project = staff on the job's team; all = every staff member. */
   shareWith: z.enum(["project", "all"]),
@@ -870,7 +870,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     label: "Project calendars",
     description: "A Google calendar for each job with its schedule, events and client meetings, shared only with staff.",
     defaults: {
-      mode: "off",
+      mode: "selected",
       shareWith: "project",
       excludedUserIds: [],
       addToStaffCalendars: true,
