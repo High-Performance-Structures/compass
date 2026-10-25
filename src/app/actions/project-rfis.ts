@@ -16,11 +16,20 @@ import {
   notifyRfiUpdated,
 } from "@/lib/notifications/events"
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import {
+  listRfiVendorOptions,
+  loadRfiVendorAssignments,
+  resolveRfiVendorContact,
+  rfiVendorAssignmentStatement,
+  type RfiVendorAssignment,
+  type RfiVendorOption,
+} from "@/lib/rfis/vendor-assignment"
+import { recordActivityEvent } from "@/lib/activity-log"
+import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { assertProjectAccess } from "@/lib/project-access"
-import { requireAuth } from "@/lib/auth"
-import type { AuthUser } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -67,6 +76,8 @@ export type ProjectRfiItem = {
   readonly answeredAt: string | null
   readonly attachmentCount: number
   readonly attachments: readonly ProjectRfiAttachmentItem[]
+  /** Staff only: the vendor company that can see this RFI; null for externals. */
+  readonly assignedVendor: RfiVendorAssignment | null
 }
 
 export type ProjectRfiSummary = {
@@ -109,6 +120,8 @@ export type CreateProjectRfiInput = {
   readonly assignedToName: string | null
   readonly companyName: string | null
   readonly dueDate: string | null
+  /** Active subcontractor/supplier project contact whose company may see the RFI. */
+  readonly assignedVendorContactId: string | null
   readonly attachments: readonly ProjectRfiAttachmentInput[]
 }
 
@@ -147,9 +160,9 @@ async function externalRfiVisibility(db: ReturnType<typeof getDb>, projectId: st
   const user = await requireProjectAudienceReadUser(projectId)
   if (isInternalStaffRole(user.role)) return undefined
   const contact = await getProjectAudienceViewerContact(db, projectId, user)
-  if (contact?.contactType === "subcontractor" || contact?.contactType === "supplier") {
+  if (user.role === "subcontractor" || user.role === "supplier" || contact?.contactType === "subcontractor" || contact?.contactType === "supplier") {
     const ids = await vendorVisibleRfiSourceIds({ db, projectId, organizationId: requireOrg(user), viewerId: user.id, contact })
-    return and(or(eq(projectRfis.audience, "sub_vendor"), eq(projectRfis.audience, "public")), or(inArray(projectRfis.id, ids), inArray(projectRfis.sourceRecordId, ids)))
+    return and(or(eq(projectRfis.audience, "sub_vendor"), eq(projectRfis.audience, "public")), or(inJsonList(projectRfis.id, ids), inJsonList(projectRfis.sourceRecordId, ids)))
   }
   if (user.role === "client" || user.role === "owner") return or(eq(projectRfis.audience, "owner"), eq(projectRfis.audience, "public"))
   return inArray(projectRfis.id, [])
@@ -184,6 +197,11 @@ async function getProjectUpdateContext(
   }
 
   return { db, env, user, orgId, projectNumber: existing[0].projectNumber }
+}
+
+async function assertRfiVendorAssignmentAccess(db: ReturnType<typeof getDb>, user: AuthUser, projectId: string): Promise<void> {
+  if (!isInternalStaffRole(user.role)) throw new Error("Only project staff can assign vendor access.")
+  await assertProjectAccess(db, user, projectId)
 }
 
 function cleanText(value: string | null): string | null {
@@ -241,7 +259,8 @@ function isMissingAttachmentTableError(error: unknown): boolean {
 
 function toRfiItem(
   row: typeof projectRfis.$inferSelect,
-  attachments: readonly ProjectRfiAttachmentItem[]
+  attachments: readonly ProjectRfiAttachmentItem[],
+  assignedVendor: RfiVendorAssignment | null = null
 ): ProjectRfiItem {
   return {
     id: row.id,
@@ -260,6 +279,7 @@ function toRfiItem(
     answeredAt: row.answeredAt,
     attachmentCount: attachments.length,
     attachments,
+    assignedVendor,
   }
 }
 
@@ -339,7 +359,22 @@ export async function getProjectRfis(
     ])
   }
 
-  return rows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? []))
+  const user = await requireProjectAudienceReadUser(projectId)
+  const assignments = isInternalStaffRole(user.role)
+    ? await loadRfiVendorAssignments(db, { organizationId: requireOrg(user), projectId })
+    : new Map<string, RfiVendorAssignment>()
+
+  return rows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? [], assignments.get(row.id) ?? null))
+}
+
+/** Active subcontractor/supplier contacts staff can assign an RFI to. */
+export async function getProjectRfiVendorOptions(
+  projectId: string
+): Promise<readonly RfiVendorOption[]> {
+  const user = await requireProjectAudienceReadUser(projectId)
+  if (!isInternalStaffRole(user.role)) return []
+  const db = await verifyProjectAccess(projectId)
+  return listRfiVendorOptions(db, projectId)
 }
 
 export async function getProjectRfiInboundEmails(
@@ -392,6 +427,8 @@ export async function createProjectRfi(
   try {
     const { db, user, orgId, projectNumber } =
       await getProjectUpdateContext(projectId)
+    const vendorContactId = cleanText(input.assignedVendorContactId)
+    if (vendorContactId) await assertRfiVendorAssignmentAccess(db, user, projectId)
     const rows = await db
       .select({ id: projectRfis.id })
       .from(projectRfis)
@@ -407,6 +444,12 @@ export async function createProjectRfi(
     if (!audience) {
       return { success: false, error: "Please choose a valid RFI audience." }
     }
+    const vendorContact = vendorContactId
+      ? await resolveRfiVendorContact(db, projectId, vendorContactId)
+      : null
+    if (vendorContactId && !vendorContact) {
+      return { success: false, error: "Choose an active subcontractor or supplier on this project." }
+    }
     const inserted: typeof projectRfis.$inferInsert = {
       id,
       projectId,
@@ -417,8 +460,8 @@ export async function createProjectRfi(
       priority,
       audience,
       requesterName: cleanText(input.requesterName),
-      assignedToName: cleanText(input.assignedToName),
-      companyName: cleanText(input.companyName),
+      assignedToName: cleanText(input.assignedToName) ?? vendorContact?.displayName ?? null,
+      companyName: cleanText(input.companyName) ?? vendorContact?.companyName ?? null,
       dueDate: cleanText(input.dueDate),
       submittedAt: now,
       createdAt: now,
@@ -440,16 +483,16 @@ export async function createProjectRfi(
       updatedAt: now,
     }))
 
-    if (attachmentRows.length > 0) {
-      // D1 batches are atomic: the RFI and its attachment metadata either both
-      // commit or both roll back. A timeout/error must never leave a partial RFI.
-      await db.batch([
-        db.insert(projectRfis).values(inserted),
-        db.insert(projectRfiAttachments).values(attachmentRows),
-      ])
-    } else {
-      await db.insert(projectRfis).values(inserted)
-    }
+    // D1 batches are atomic: the RFI, its vendor assignment, and its attachment
+    // metadata either all commit or all roll back. A timeout/error must never
+    // leave a partial RFI.
+    const assignment = vendorContact
+      ? [rfiVendorAssignmentStatement(db, { organizationId: orgId, projectId, rfiId: id, contact: vendorContact, now })]
+      : []
+    const attachmentInsert = attachmentRows.length > 0
+      ? [db.insert(projectRfiAttachments).values(attachmentRows)]
+      : []
+    await db.batch([db.insert(projectRfis).values(inserted), ...assignment, ...attachmentInsert])
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
@@ -574,6 +617,70 @@ export async function updateProjectRfi(
   }
 }
 
+/**
+ * Sets the vendor company that can see an RFI (any active contact at that
+ * company), or clears it with `contactId: null`. Vendors never gain an RFI
+ * from its audience flag or company label alone.
+ */
+export async function setProjectRfiVendorAssignment(
+  projectId: string,
+  rfiId: string,
+  contactId: string | null
+): Promise<ProjectRfiActionResult> {
+  try {
+    const { db, user, orgId } = await getProjectUpdateContext(projectId)
+    await assertRfiVendorAssignmentAccess(db, user, projectId)
+    const [existing] = await db
+      .select({ id: projectRfis.id, rfiNumber: projectRfis.rfiNumber })
+      .from(projectRfis)
+      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+      .limit(1)
+    if (!existing) return { success: false, error: "RFI not found." }
+
+    const contact = contactId ? await resolveRfiVendorContact(db, projectId, contactId) : null
+    if (contactId && !contact) {
+      return { success: false, error: "Choose an active subcontractor or supplier on this project." }
+    }
+    const now = new Date().toISOString()
+    const assignment = rfiVendorAssignmentStatement(db, { organizationId: orgId, projectId, rfiId, contact, now })
+    if (contact) {
+      // Keep the visible assignment text in step with the stable assignment.
+      await db.batch([
+        assignment,
+        db.update(projectRfis)
+          .set({ assignedToName: contact.displayName, companyName: contact.companyName, updatedAt: now })
+          .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))),
+      ])
+    } else {
+      await assignment
+    }
+
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "access",
+      action: contact ? "rfi.vendor_assigned" : "rfi.vendor_cleared",
+      entityType: "rfi",
+      entityId: rfiId,
+      summary: contact
+        ? `Assigned ${existing.rfiNumber} to ${contact.companyName ?? contact.displayName}`
+        : `Removed the vendor company from ${existing.rfiNumber}`,
+      metadata: { contactId: contact?.id ?? null, vendorId: contact?.vendorId ?? null },
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+    return { success: true, id: rfiId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update the RFI vendor",
+    }
+  }
+}
+
 export async function deleteProjectRfi(
   projectId: string,
   rfiId: string
@@ -581,7 +688,7 @@ export async function deleteProjectRfi(
   try {
     const db = await verifyProjectUpdateAccess(projectId)
     const [existing] = await db
-      .select({ id: projectRfis.id })
+      .select({ id: projectRfis.id, sourceRecordId: projectRfis.sourceRecordId })
       .from(projectRfis)
       .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
       .limit(1)
@@ -590,11 +697,18 @@ export async function deleteProjectRfi(
       return { success: false, error: "RFI not found." }
     }
 
-    // The attachment foreign key uses ON DELETE CASCADE, so one statement is
-    // both faster and atomic. A failed delete cannot strip attachment metadata.
-    await db
-      .delete(projectRfis)
-      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+    // Attachments cascade through their foreign key. Participant grants key on
+    // the RFI id without a foreign key, so they are removed in the same batch.
+    await db.batch([
+      db.delete(projectRfis)
+        .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))),
+      db.delete(projectSourceRecordParticipants)
+        .where(and(
+          eq(projectSourceRecordParticipants.projectId, projectId),
+          eq(projectSourceRecordParticipants.sourceRecordType, "rfi"),
+          inJsonList(projectSourceRecordParticipants.sourceRecordId, existing.sourceRecordId ? [rfiId, existing.sourceRecordId] : [rfiId]),
+        )),
+    ])
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)

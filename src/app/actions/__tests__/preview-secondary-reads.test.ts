@@ -12,7 +12,7 @@ vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer
 import { setTyping, getChannelUpdates } from "@/app/actions/conversations-realtime"
 import { getScheduleTaskAssignees } from "@/app/actions/schedule-confirmations"
 import { listChannels, getChannel } from "@/app/actions/conversations"
-import { getProjectRfiInboundEmails } from "@/app/actions/project-rfis"
+import { createProjectRfi, setProjectRfiVendorAssignment, getProjectRfiInboundEmails } from "@/app/actions/project-rfis"
 let database: CorrespondenceTestDatabase
 beforeEach(() => {
   database = openCorrespondenceTestDatabase()
@@ -49,6 +49,15 @@ describe("preview secondary readers", () => {
     expect(result.data.map((row) => row.id)).toEqual(["a-owner"])
     expect(await getChannel("b-owner")).toMatchObject({ success: false })
     expect(await getChannel("a-vendor")).toMatchObject({ success: false })
+  })
+})
+
+describe("RFI vendor assignment authorization", () => {
+  it("denies non-staff assignment through both create and the dedicated action even with an update permission", async () => {
+    mocks.actor.mockResolvedValue({ ...context(database, "staff-a", "project-a").user, role: "developer" })
+    const created = await createProjectRfi("project-a", { subject: "Test", question: "Question", priority: "normal", audience: "sub_vendor", requesterName: null, assignedToName: null, companyName: null, dueDate: null, assignedVendorContactId: "vendor-contact", attachments: [] })
+    expect(created).toEqual({ success: false, error: "Only project staff can assign vendor access." })
+    expect(await setProjectRfiVendorAssignment("project-a", "rfi-1", "vendor-contact")).toEqual({ success: false, error: "Only project staff can assign vendor access." })
   })
 })
 

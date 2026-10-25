@@ -14,6 +14,7 @@ import {
   createProjectRfi,
   type ProjectRfiAttachmentInput,
 } from "@/app/actions/project-rfis"
+import type { RfiVendorOption } from "@/lib/rfis/vendor-assignment"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
@@ -44,6 +45,7 @@ type ProjectRfiCreateFormProps = {
   readonly projectDriveFolderId: string | null
   readonly companyOrTradeOptions: readonly string[]
   readonly peopleOptions: readonly RfiContactOption[]
+  readonly vendorOptions: readonly RfiVendorOption[]
 }
 
 const DOCUMENT_INPUT_CLASS =
@@ -136,6 +138,7 @@ export function ProjectRfiCreateForm({
   projectDriveFolderId,
   companyOrTradeOptions,
   peopleOptions,
+  vendorOptions,
 }: ProjectRfiCreateFormProps): React.ReactElement {
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
@@ -188,6 +191,7 @@ export function ProjectRfiCreateForm({
           "companyNameCustom"
         ),
         dueDate: cleanText(formText(formData, "dueDate")),
+        assignedVendorContactId: cleanText(formText(formData, "assignedVendorContactId")),
         attachments,
       })
 
@@ -322,6 +326,25 @@ export function ProjectRfiCreateForm({
                 className={`mt-2 ${DOCUMENT_INPUT_CLASS}`}
               />
             </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Vendor who can see this RFI
+            </label>
+            <SearchableComboboxField
+              name="assignedVendorContactId"
+              ariaLabel="Vendor who can see this RFI"
+              placeholder="No vendor"
+              searchPlaceholder="Search subcontractors and suppliers..."
+              className={DOCUMENT_SELECT_CLASS}
+              options={vendorOptions.map((option) => ({
+                value: option.contactId,
+                label: option.label,
+              }))}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Everyone at this company sees the RFI when it is sub/vendor visible.
+            </p>
           </div>
           <div>
             <label

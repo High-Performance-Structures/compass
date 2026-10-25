@@ -31,7 +31,7 @@ import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/sch
 import { projectDocuments } from "@/db/schema-documents"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { scopedAudienceHref } from "@/lib/project-audience-request"
-import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -785,7 +785,7 @@ export async function getProjectAudiencePreview(
       answeredAt: projectRfis.answeredAt,
     })
     .from(projectRfis)
-    .where(and(eq(projectRfis.projectId, projectId), rfiVisibility, audience === "sub_vendor" ? or(inArray(projectRfis.id, vendorRfiIds), inArray(projectRfis.sourceRecordId, vendorRfiIds)) : undefined))
+    .where(and(eq(projectRfis.projectId, projectId), rfiVisibility, audience === "sub_vendor" ? or(inJsonList(projectRfis.id, vendorRfiIds), inJsonList(projectRfis.sourceRecordId, vendorRfiIds)) : undefined))
     .orderBy(asc(projectRfis.dueDate), desc(projectRfis.submittedAt))
 
   const audienceContactId =

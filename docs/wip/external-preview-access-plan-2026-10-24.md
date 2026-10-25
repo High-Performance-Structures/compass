@@ -216,3 +216,17 @@ The secondary-reader fixture was updated for the explicit preview-mode guard. Al
 
 
 The final browser run additionally opened Schedule with a native middle click and confirmed that the new tab retained the selected person. The click interceptor is restricted to the primary button. The supplementary source review (`--mode local --model gpt-6.1-sol --no-web-search`, focused on native clicks and paired polling regressions) also exited 0 with no findings.
+
+
+## Assigned-company RFI integration
+
+Claude delivered local commit `2be3d4fe` with the staff vendor picker, stable assignee grants, submitter-only requester grants, and D1-safe ID predicates. Its handoff explicitly reported that tests and lint had not run in that isolated environment; Codex therefore treated it as an unverified implementation and retained integration ownership.
+
+Integration preserves both the owner-notification fix and company-scoped filtering. Staff can assign, reassign, or clear a vendor on an RFI. A managed assignment overrides historical assignee grants using canonical and imported source IDs. Clearing records an inactive managed marker, so older imported grants cannot restore the previous company's access. The submitter's personal grant remains independent of company assignment and does not extend to coworkers. Historical stable assignments appear in the staff queue; unresolved labels require a deliberate assignment. Deleting an RFI removes grants under both its canonical and source IDs.
+
+The RFI review's two-cycle scope pause classified both remaining findings as concrete blockers at the same access-grant boundary: directly clearing an imported assignment without a prior managed row, and creating a vendor assignment through the creation action without the dedicated action's staff/project gate. Both are fixed with targeted regression coverage. They do not change the approved assigned-company-plus-submitter policy, add a schema migration, or add a new external integration. Review continues only for this bounded slice.
+
+Large-list filtering uses one JSON parameter rather than expanding an unbounded set of SQL placeholders, supported by the [Cloudflare D1 JSON query documentation](https://developers.cloudflare.com/d1/sql-api/query-json/).
+
+
+Final integrated local proof: **336 tests in 30 files passed**; changed-file ESLint, UI standards, and whitespace/conflict checks passed. The full OpenNext demo build passed compilation, TypeScript, route generation, and Worker bundling with Node 22 and the 8 GiB heap setting. The last structured RFI review (`--mode local --model gpt-6.1-sol --no-web-search --stream-engine-output`, frozen assigned-company scope) exited 0 with no findings. The duplicate type import introduced while sharing the creation guard was removed and the affected authorization tests passed before this final review. No schema migration was added.

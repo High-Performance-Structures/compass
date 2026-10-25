@@ -116,6 +116,8 @@ describe("notification bell recipient routing", () => {
     "keeps the $audience workspace notification center and read state inside the active project",
     async ({ audience, projectRole }) => {
       database = openCorrespondenceTestDatabase()
+      database.sqlite.exec(readFileSync("drizzle/0140_project_source_record_participants.sql", "utf8"))
+      database.sqlite.exec("CREATE TABLE project_rfis (id TEXT PRIMARY KEY, project_id TEXT, source_record_id TEXT)")
       database.sqlite.exec(`
         CREATE TABLE notification_events (id TEXT PRIMARY KEY, organization_id TEXT, title TEXT, body TEXT, href TEXT, priority TEXT, event_type TEXT, project_id TEXT);
         CREATE TABLE notification_recipients (id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, in_app INTEGER, dismissed_at TEXT, read_at TEXT, created_at TEXT);
@@ -216,7 +218,7 @@ describe("vendor RFI notification privacy", () => {
       INSERT INTO project_contacts (id,project_id,contact_type,display_name,vendor_id,active) VALUES ('vendor-contact','project-a','supplier','Own vendor','vendor-a',1);
       UPDATE project_members SET role='supplier' WHERE user_id='owner-a' AND project_id='project-a';
       INSERT INTO project_source_record_participants (id,organization_id,project_id,source_record_type,source_record_id,source_participant_id,participant_role,capabilities_json,project_contact_id,identity_status,membership_status,review_status,active,created_at,updated_at)
-        VALUES ('p','org-a','project-a','rfi','own-rfi','p','recipient','["rfi.view"]','vendor-contact','matched','active','reviewed',1,'2026-10-24','2026-10-24');
+        VALUES ('p','org-a','project-a','rfi','own-rfi','p','assignee','["rfi.view"]','vendor-contact','matched','active','reviewed',1,'2026-10-24','2026-10-24');
       CREATE TABLE notification_events (id TEXT PRIMARY KEY,organization_id TEXT,title TEXT,body TEXT,href TEXT,priority TEXT,event_type TEXT,project_id TEXT,source_type TEXT,source_id TEXT);
       CREATE TABLE notification_recipients (id TEXT PRIMARY KEY,event_id TEXT,user_id TEXT,in_app INTEGER,dismissed_at TEXT,read_at TEXT,created_at TEXT);
       INSERT INTO notification_events VALUES ('own','org-a','Own RFI','Visible','/preview/projects/project-a/sub-vendor/rfis','normal','rfi.updated','project-a','rfi','own-rfi'),('other','org-a','Other company private RFI','Private','/preview/projects/project-a/sub-vendor/rfis','normal','rfi.updated','project-a','rfi','other-rfi');

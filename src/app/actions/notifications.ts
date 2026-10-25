@@ -1,6 +1,6 @@
 "use server"
 
-import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceRequestScope, requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
 
@@ -512,8 +512,8 @@ export async function getNotificationCenter(
     const vendorRfiIds = scope.projectId && !isInternalStaffRole(user.role) && ((requestedScope?.audience ?? previewScope?.audience) === "sub_vendor" || user.role === "supplier" || user.role === "subcontractor")
       ? await vendorVisibleRfiSourceIds({ db, projectId: scope.projectId, organizationId: scope.organizationId, viewerId: user.id, contact: await getProjectAudienceViewerContact(db, scope.projectId, user) }) : null
     const visibleRfis = vendorRfiIds !== null && vendorRfiIds.length > 0 && scope.projectId ? await db.select({ id: projectRfis.id }).from(projectRfis)
-      .where(and(eq(projectRfis.projectId, scope.projectId), or(inArray(projectRfis.id, vendorRfiIds), inArray(projectRfis.sourceRecordId, vendorRfiIds)))) : vendorRfiIds === null ? null : []
-    const rfiVisibility = visibleRfis === null ? ((user.role === "supplier" || user.role === "subcontractor") && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inArray(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
+      .where(and(eq(projectRfis.projectId, scope.projectId), or(inJsonList(projectRfis.id, vendorRfiIds), inJsonList(projectRfis.sourceRecordId, vendorRfiIds)))) : vendorRfiIds === null ? null : []
+    const rfiVisibility = visibleRfis === null ? ((user.role === "supplier" || user.role === "subcontractor") && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inJsonList(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
     const rows = await db
       .select({
         id: notificationRecipients.id,

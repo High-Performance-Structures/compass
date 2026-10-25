@@ -7,8 +7,10 @@ import {
 
 import {
   getProjectRfiInboundEmails,
+  getProjectRfiVendorOptions,
   getProjectRfis,
 } from "@/app/actions/project-rfis"
+import { ProjectRfiVendorAssignment } from "@/components/projects/project-rfi-vendor-assignment"
 import {
   getProjectContactsSummary,
   getProjectTaskAssigneeOptions,
@@ -123,6 +125,7 @@ export default async function ProjectRfisPage({
       getProjectTaskAssigneeOptions(id),
       getProjectRfiInboundEmails(id),
       getProjectPaperTrail(id, "rfi"),
+      getProjectRfiVendorOptions(id),
     ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -132,7 +135,7 @@ export default async function ProjectRfisPage({
     },
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
-  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail] = loaded.data
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail, vendorOptions] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
@@ -204,6 +207,7 @@ export default async function ProjectRfisPage({
               projectDriveFolderId={project?.googleDriveFolderId ?? null}
               companyOrTradeOptions={companyOrTradeOptions}
               peopleOptions={peopleOptions}
+              vendorOptions={vendorOptions}
             />
           </div>
         </div>
@@ -319,6 +323,7 @@ export default async function ProjectRfisPage({
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   {rfi.companyName && <span>{rfi.companyName}</span>}
                   {rfi.assignedToName && <span>Assigned: {rfi.assignedToName}</span>}
+                  {rfi.assignedVendor && <span>Vendor access: {rfi.assignedVendor.label}</span>}
                   <span>Response needed by {formatDate(rfi.dueDate)}</span>
                   {rfi.attachmentCount > 0 && (
                     <span>
@@ -401,6 +406,14 @@ export default async function ProjectRfisPage({
                     <p className="mt-2 whitespace-pre-wrap text-sm">{rfi.answer}</p>
                   </div>
                 ) : null}
+
+                <ProjectRfiVendorAssignment
+                  projectId={id}
+                  rfiId={rfi.id}
+                  audience={rfi.audience}
+                  assignment={rfi.assignedVendor}
+                  options={vendorOptions}
+                />
 
                 <ProjectRfiResponseComposer
                   projectId={id}
