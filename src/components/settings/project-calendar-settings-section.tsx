@@ -24,7 +24,7 @@ const ITEM_SWITCHES = [
   { key: "milestones", label: "Milestones" },
   { key: "scheduleItems", label: "Other schedule items" },
   { key: "workCalendarEvents", label: "Work Calendar events for the job (company-wide visibility only)" },
-  { key: "clientMeetings", label: "Client meetings, with the Meet link" },
+  { key: "clientMeetings", label: "Project meetings, with the Meet link" },
 ] as const
 
 type StaffOption = { readonly value: string; readonly label: string }
@@ -95,7 +95,7 @@ export function ProjectCalendarSettingsSection(): React.ReactElement {
       <div>
         <h2 id="project-calendar-settings" className="text-base font-semibold">{FEATURE_SETTINGS[KEY].label}</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Gives a job its own Google calendar with its schedule, events and client meetings. The company&apos;s Compass
+          Gives a job its own Google calendar with its schedule, events and project meetings. The company&apos;s Compass
           Google account owns each calendar, and it&apos;s shared only with staff, never with clients or vendors. Compass
           keeps it current every few minutes and replaces changes made in Google. Turning a job&apos;s calendar off, or
           closing the job, deletes the calendar from Google.

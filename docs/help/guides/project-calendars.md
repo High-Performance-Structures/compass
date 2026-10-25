@@ -4,10 +4,10 @@
   "featureId": "schedule",
   "slug": "project-calendars",
   "title": "Project Calendars in Google Calendar",
-  "summary": "Give a job its own Google calendar with its schedule, events and client meetings, shared only with staff and kept up to date by Compass.",
+  "summary": "Give a job its own Google calendar with its schedule, events and project meetings, shared only with staff and kept up to date by Compass.",
   "contextSummary": "A project calendar is a Google calendar for one job, owned by the company's Compass Google account and shared view-only with staff (the job's team or all staff). It never goes to clients or vendors. Compass refreshes it every few minutes and replaces edits made in Google. Every job starts without one. Office staff create or remove a job's calendar on its Information page; admins can change which jobs get one in Settings → Workflows → Project calendars.",
   "category": "Field & Project Work",
-  "tags": ["Google Calendar", "project calendar", "job calendar", "schedule", "milestones", "client meetings", "sharing", "sync"],
+  "tags": ["Google Calendar", "project calendar", "job calendar", "schedule", "milestones", "project meetings", "client meetings", "sharing", "sync"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/projects/[id]/information", "/dashboard/settings"],
@@ -30,7 +30,7 @@ Depending on your company's settings, a project calendar shows:
 
 - **Milestones** and **other schedule items** from the job's schedule, as all-day items
 - **Work Calendar events** for the job that everyone in the company can see. Private and invite-only events stay off.
-- **Client meetings** booked with **Meet with client**, at their times, with the Google Meet link
+- **Project meetings** booked with **Project Meetings** (with clients, vendors or coworkers), at their times, with the Google Meet link
 
 Events show as **free** time and don't send reminders, so the calendar never blocks anyone's availability. Items appear from a couple of weeks back to several months ahead.
 
@@ -59,7 +59,7 @@ Admins manage project calendars in **Settings → Workflows → Project calendar
 - **Shared with**: staff on the job's team, or all staff
 - **Add it to each person's Google Calendar**: put the calendar in each person's calendar list automatically
 - **Never share with**: people who never get project calendars, such as system accounts
-- **What goes on each calendar**: milestones, other schedule items, Work Calendar events, and client meetings
+- **What goes on each calendar**: milestones, other schedule items, Work Calendar events, and project meetings
 - **Days back** and **Days ahead**: how much of the past and future is shown
 
 Project calendars need the company's Google Workspace connection with permission to create calendars, share them, and add them to staff calendar lists. Your Google Workspace admin grants these once in Google Admin.

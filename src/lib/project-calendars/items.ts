@@ -157,7 +157,7 @@ export function clientMeetingItem(input: {
   const { meeting } = input
   return {
     key: `client-meeting:${meeting.id}`,
-    summary: `Client meeting: ${meeting.title}`,
+    summary: `Meeting: ${meeting.title}`,
     description: lines([
       meeting.note?.trim() || null,
       meeting.meetingUrl ? `Join Google Meet: ${meeting.meetingUrl}` : null,

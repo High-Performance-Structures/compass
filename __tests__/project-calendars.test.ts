@@ -175,8 +175,8 @@ describe("project calendar sync", () => {
   it("puts the schedule, company-visible events and client meetings on it", async () => {
     await sync()
     const summaries = [...googleEvents.values()].map((event) => Reflect.get(Object(event), "summary"))
-    expect(summaries.sort()).toEqual(["Client meeting: Selections review", "Milestone: Framing inspection", "Pour footings", "Site walk"])
-    const meeting = [...googleEvents.values()].find((event) => Reflect.get(Object(event), "summary") === "Client meeting: Selections review")
+    expect(summaries.sort()).toEqual(["Meeting: Selections review", "Milestone: Framing inspection", "Pour footings", "Site walk"])
+    const meeting = [...googleEvents.values()].find((event) => Reflect.get(Object(event), "summary") === "Meeting: Selections review")
     expect(Reflect.get(Object(meeting), "location")).toBe("https://meet.google.com/abc-defg-hij")
     expect(Reflect.get(Object(meeting), "attendees")).toBeUndefined()
   })

@@ -868,7 +868,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "project-calendars": {
     label: "Project calendars",
-    description: "A Google calendar for each job with its schedule, events and client meetings, shared only with staff.",
+    description: "A Google calendar for each job with its schedule, events and project meetings, shared only with staff.",
     defaults: {
       mode: "selected",
       shareWith: "project",

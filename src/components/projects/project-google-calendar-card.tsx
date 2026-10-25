@@ -84,7 +84,7 @@ export function ProjectGoogleCalendarCard({
         <div className="min-w-0 space-y-1">
           <h2 id="project-google-calendar" className="font-semibold">Project Google calendar</h2>
           <p className="text-sm text-muted-foreground">
-            This job&apos;s schedule, events and client meetings in Google Calendar, shared only with staff. Compass keeps
+            This job&apos;s schedule, events and project meetings in Google Calendar, shared only with staff. Compass keeps
             it up to date every few minutes.
           </p>
           <p className="text-sm">{statusLine(status)}</p>
