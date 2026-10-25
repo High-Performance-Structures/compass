@@ -16,6 +16,7 @@ const CONFIRMATION_TTL = "10m"
 const ACTIONS_REQUIRING_CONFIRMATION: ReadonlyMap<string, ReadonlySet<string>> =
   new Map([
     ["/api/compass/dashboards", new Set(["delete"])],
+    ["/api/compass/feedback", new Set(["file"])],
     [
       "/api/compass/schedule",
       new Set([
@@ -225,6 +226,12 @@ export async function describePendingAction(
     }
     case "deleteDependency":
       return "Remove a dependency between two schedule tasks."
+    case "file": {
+      const title = stringField(body, "title") ?? "your request"
+      const kind = stringField(body, "kind")
+      const label = kind === "bug" ? "problem report" : kind === "feature" ? "feature request" : "request"
+      return `File a ${label} with the Compass Feedback Desk: "${title}". You can follow it in My Requests.`
+    }
     default:
       return "Make a change in Compass."
   }

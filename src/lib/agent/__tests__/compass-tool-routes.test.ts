@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest"
 // this test only checks which paths it serves.
 vi.mock("server-only", () => ({}))
 vi.mock("@/app/api/compass/dashboards/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/feedback/route", () => ({ POST: vi.fn() }))
 vi.mock("@/app/api/compass/github/route", () => ({ POST: vi.fn() }))
 vi.mock("@/app/api/compass/memory/route", () => ({ POST: vi.fn() }))
 vi.mock("@/app/api/compass/messages/route", () => ({ POST: vi.fn() }))
@@ -41,6 +42,7 @@ const SAMPLE_INPUT: Readonly<Record<string, unknown>> = {
   uninstallSkill: { pluginId: "skill-1" },
   queryGitHub: { queryType: "issues" },
   createGitHubIssue: { title: "Bug", body: "Details" },
+  fileFeedback: { kind: "bug", title: "Gantt jumps left", description: "After saving, the Gantt scrolls back to the start." },
   getProjectSchedule: { projectId: "project-1" },
   createScheduleTask: {
     projectId: "project-1",

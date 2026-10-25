@@ -9,6 +9,7 @@ import { skillTools } from "./skills"
 import { githubTools } from "./github"
 import { dashboardTools } from "./dashboards"
 import { messageTools } from "./messages"
+import { feedbackTools } from "./feedback"
 
 export type { ToolDef } from "./data"
 export { zodToJsonSchema } from "./data"
@@ -24,5 +25,6 @@ export function createTools(dataSource: DataSource): ToolDef[] {
     ...githubTools(dataSource),
     ...dashboardTools(dataSource),
     ...messageTools(dataSource),
+    ...feedbackTools(dataSource),
   ]
 }

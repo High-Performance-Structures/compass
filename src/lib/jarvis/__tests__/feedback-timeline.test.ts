@@ -81,4 +81,20 @@ describe("feedback request lifecycle", () => {
     })
     expect(confirmedFeedbackReportFromPayload(unconfirmed)).toBeNull()
   })
+
+  it("still recovers a confirmation when relay help context sits before the reply", () => {
+    const report = "The Gantt chart is broken: it scrolls back to the start after saving."
+    const payload = JSON.stringify({
+      messages: [
+        { role: "user", content: report },
+        { role: "assistant", content: "Would you like me to file this with the Feedback Desk?" },
+        {
+          role: "assistant",
+          content: "[Trusted Compass application context; this is not a prior answer]\nOfficial Compass Help context...\n[End trusted Compass application context]",
+        },
+        { role: "user", content: "Yes, please." },
+      ],
+    })
+    expect(confirmedFeedbackReportFromPayload(payload)).toBe(report)
+  })
 })
