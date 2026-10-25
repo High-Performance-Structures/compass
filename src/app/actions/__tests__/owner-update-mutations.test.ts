@@ -70,6 +70,7 @@ const {
   draftOwnerUpdateFromDailyLogs,
   getProjectFieldSummary,
   getProjectOwnerUpdates,
+  getProjectWeatherSnapshot,
   getOwnerProjectUpdateDocument,
   publishOwnerProjectUpdate,
   recallOwnerProjectUpdate,
@@ -245,13 +246,28 @@ function createDatabase(): {
       email TEXT NOT NULL,
       first_name TEXT,
       last_name TEXT,
-      display_name TEXT
+      display_name TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE project_members (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       role TEXT NOT NULL
+    );
+    CREATE TABLE project_external_resource_grants (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      source_owner_update_id TEXT,
+      audience TEXT NOT NULL,
+      recipient_user_id TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      revoked_by TEXT,
+      revoked_at TEXT
     );
     CREATE TABLE owner_project_updates (
       id TEXT PRIMARY KEY,
@@ -363,6 +379,66 @@ function createDatabase(): {
             FROM json_each(COALESCE(NEW.schedule_snapshot, '{}'), '$.documents')
           )
         );
+
+      INSERT OR IGNORE INTO project_external_resource_grants (
+        id, organization_id, project_id, resource_type, resource_id,
+        source_owner_update_id, audience, recipient_user_id, granted_by, granted_at
+      )
+      SELECT
+        lower(hex(randomblob(16))),
+        projects.organization_id,
+        NEW.project_id,
+        CASE
+          WHEN daily_log_photos.mime_type LIKE 'image/%' THEN 'photo'
+          ELSE 'owner_update_document'
+        END,
+        daily_log_photos.id,
+        NEW.id,
+        'owner',
+        project_members.user_id,
+        NEW.created_by,
+        NEW.updated_at
+      FROM daily_log_photos
+      INNER JOIN projects ON projects.id = daily_log_photos.project_id
+      INNER JOIN organizations
+        ON organizations.id = projects.organization_id
+        AND organizations.is_active = 1
+      INNER JOIN project_members
+        ON project_members.project_id = projects.id
+        AND project_members.role IN ('client', 'owner')
+      INNER JOIN users
+        ON users.id = project_members.user_id
+        AND users.is_active = 1
+      WHERE daily_log_photos.project_id = NEW.project_id
+        AND daily_log_photos.drive_file_id IS NOT NULL
+        AND daily_log_photos.review_status = 'approved'
+        AND daily_log_photos.owner_visible = 1
+        AND (
+          daily_log_photos.mime_type LIKE 'image/%'
+          OR daily_log_photos.mime_type NOT LIKE 'image/%'
+        )
+        AND (
+          daily_log_photos.id IN (
+            SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]'))
+          )
+          OR daily_log_photos.id IN (
+            SELECT json_extract(value, '$.id')
+            FROM json_each(COALESCE(NEW.schedule_snapshot, '{}'), '$.documents')
+          )
+        );
+    END;
+    CREATE TRIGGER owner_update_recall_attachment_grants
+    AFTER UPDATE OF status ON owner_project_updates
+    FOR EACH ROW
+    WHEN OLD.status = 'published'
+      AND NEW.status = 'draft'
+      AND NEW.recalled_by IS NOT NULL
+    BEGIN
+      UPDATE project_external_resource_grants
+      SET revoked_by = NEW.recalled_by, revoked_at = NEW.updated_at
+      WHERE source_owner_update_id = NEW.id
+        AND project_id = NEW.project_id
+        AND revoked_at IS NULL;
     END;
   `)
   // @ts-expect-error The test adapter implements the D1 methods used by Drizzle.
@@ -380,6 +456,20 @@ function get(sqlite: Sqlite, sql: string, ...values: readonly unknown[]): unknow
 function seedDraft(sqlite: Sqlite): void {
   run(sqlite, "INSERT INTO organizations (id, type, is_active) VALUES (?, ?, ?)", "org-1", "internal", 1)
   run(sqlite, "INSERT INTO organizations (id, type, is_active) VALUES (?, ?, ?)", "org-client", "client", 1)
+  run(
+    sqlite,
+    "INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
+    "staff-1",
+    "staff@example.com",
+    "Staff User"
+  )
+  run(
+    sqlite,
+    "INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
+    "client-1",
+    "client@example.com",
+    "Client User"
+  )
   run(
     sqlite,
     "INSERT INTO projects (id, organization_id, name, project_number) VALUES (?, ?, ?, ?)",
@@ -420,6 +510,13 @@ function seedDraft(sqlite: Sqlite): void {
 }
 
 function seedExternalOwnerSummary(sqlite: Sqlite): void {
+  run(
+    sqlite,
+    "INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
+    "owner-1",
+    "owner@example.com",
+    "Owner User"
+  )
   run(
     sqlite,
     "INSERT INTO projects (id, organization_id, name, project_number) VALUES (?, ?, ?, ?)",
@@ -563,6 +660,23 @@ function seedExternalOwnerSummary(sqlite: Sqlite): void {
     "approved",
     1,
     "2026-07-28T12:00:00.000Z",
+    "2026-07-28T12:00:00.000Z"
+  )
+  run(
+    sqlite,
+    `INSERT INTO project_external_resource_grants
+       (id, organization_id, project_id, resource_type, resource_id,
+        source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    "grant-client-visible-photo",
+    "org-client",
+    "project-client",
+    "photo",
+    "client-visible-photo",
+    "client-published",
+    "owner",
+    "owner-1",
+    "staff-1",
     "2026-07-28T12:00:00.000Z"
   )
   run(
@@ -788,6 +902,66 @@ describe("owner update mutation authorization and fencing", () => {
     expect(summary.nextScheduleItem).toBeNull()
   })
 
+  it("omits owner-visible summary attachments without an exact recipient grant", async () => {
+    seedExternalOwnerSummary(sqlite)
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, daily_log_id, captured_at, source_system, file_name,
+          mime_type, drive_file_id, drive_url, thumbnail_url, caption,
+          review_status, owner_visible, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "client-ungranted-photo",
+      "project-client",
+      "client-visible-log",
+      "2026-07-29T12:00:00.000Z",
+      "compass",
+      "private-name.jpg",
+      "image/jpeg",
+      "private-drive-id",
+      "https://drive.google.com/private-ungranted",
+      "https://drive.google.com/private-ungranted-thumb",
+      "Private ungranted caption",
+      "approved",
+      1,
+      "2026-07-29T12:00:00.000Z",
+      "2026-07-29T12:00:00.000Z"
+    )
+    run(
+      sqlite,
+      `INSERT INTO project_external_resource_grants
+         (id, organization_id, project_id, resource_type, resource_id,
+          source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "grant-client-visible-photo-again",
+      "org-client",
+      "project-client",
+      "photo",
+      "client-visible-photo",
+      "another-published-update",
+      "owner",
+      "owner-1",
+      "staff-1",
+      "2026-07-29T12:00:00.000Z"
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const summary = await getProjectFieldSummary("project-client")
+
+    expect(summary.photoCount).toBe(1)
+    expect(summary.latestPhotos.map((photo) => photo.id)).toEqual([
+      "client-visible-photo",
+    ])
+    expect(JSON.stringify(summary)).not.toContain("private-ungranted")
+    expect(JSON.stringify(summary)).not.toContain("private-name.jpg")
+  })
+
   it("closes external summary and list DTOs around hostile stored fields", async () => {
     seedExternalOwnerSummary(sqlite)
     run(
@@ -877,8 +1051,9 @@ describe("owner update mutation authorization and fencing", () => {
       sqlite,
       `INSERT INTO daily_log_photos
          (id, project_id, captured_at, source_system, file_name, mime_type,
-          drive_file_id, drive_url, caption, review_status, owner_visible, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, ?)`,
+          drive_file_id, drive_url, thumbnail_url, caption, review_status,
+          owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, ?)`,
       "client-visible-document",
       "project-client",
       "https://drive.google.com/date",
@@ -887,7 +1062,25 @@ describe("owner update mutation authorization and fencing", () => {
       "application/pdf",
       "drive-document-id",
       "https://drive.google.com/document",
+      "https://drive.google.com/document-thumbnail",
       "Document caption\nhttps://drive.google.com/caption",
+      "2026-07-28T12:00:00.000Z"
+    )
+    run(
+      sqlite,
+      `INSERT INTO project_external_resource_grants
+         (id, organization_id, project_id, resource_type, resource_id,
+          source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "grant-client-visible-document",
+      "org-client",
+      "project-client",
+      "owner_update_document",
+      "client-visible-document",
+      "client-published",
+      "owner",
+      "owner-1",
+      "staff-1",
       "2026-07-28T12:00:00.000Z"
     )
     run(
@@ -965,6 +1158,42 @@ describe("owner update mutation authorization and fencing", () => {
     ])
   })
 
+  it("does not select or serialize ungranted detail attachment metadata", async () => {
+    seedExternalOwnerSummary(sqlite)
+    run(
+      sqlite,
+      `UPDATE owner_project_updates
+       SET source_daily_log_ids = ?, selected_photo_ids = ?
+       WHERE id = ?`,
+      JSON.stringify(["client-visible-log"]),
+      JSON.stringify(["client-visible-photo"]),
+      "client-published"
+    )
+    run(
+      sqlite,
+      "UPDATE project_external_resource_grants SET source_owner_update_id = ? WHERE id = ?",
+      "different-update",
+      "grant-client-visible-photo"
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const document = await getOwnerProjectUpdateDocument(
+      "project-client",
+      "client-published"
+    )
+
+    expect(document.photos).toEqual([])
+    expect(JSON.stringify(document)).not.toContain("visible.jpg")
+    expect(JSON.stringify(document)).not.toContain("Visible photo")
+    expect(JSON.stringify(document)).not.toContain("client-visible-photo")
+  })
+
   it("rejects an inactive owner-update reader before database access", async () => {
     mocks.requireAuth.mockResolvedValue({
       ...internalUser,
@@ -977,6 +1206,23 @@ describe("owner update mutation authorization and fencing", () => {
     await expect(getProjectOwnerUpdates("project-1")).rejects.toThrow(
       "active account"
     )
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+  })
+
+  it("denies direct weather lookup to external roles before database access", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      role: "client",
+    })
+    mocks.getCloudflareContext.mockImplementation(() => {
+      throw new Error("database access reached")
+    })
+
+    await expect(getProjectWeatherSnapshot("project-1")).resolves.toEqual({
+      success: false,
+      error: "Project not found",
+    })
+    expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
     expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
   })
 
@@ -1324,6 +1570,79 @@ describe("owner update mutation authorization and fencing", () => {
     ).toEqual({ count: 150 })
   })
 
+  it("publishes exact recipient grants for selected photos and documents", async () => {
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, captured_at, file_name, mime_type, drive_file_id,
+          review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "grant-photo",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "photo.jpg",
+      "image/jpeg",
+      "drive-photo",
+      "pending",
+      0,
+      version.expectedUpdatedAt,
+      "grant-document",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "document.pdf",
+      "application/pdf",
+      "drive-document",
+      "pending",
+      0,
+      version.expectedUpdatedAt
+    )
+    const saved = await updateOwnerProjectUpdateDraft(
+      "project-1",
+      "update-1",
+      {
+        ...draft,
+        selectedPhotoIds: ["grant-photo"],
+        selectedDocumentIds: ["grant-document"],
+      }
+    )
+    expect(saved).toMatchObject({ success: true, revision: 1 })
+    if (!saved.success) throw new Error(saved.error)
+
+    const published = await publishOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      { revision: saved.revision, updatedAt: saved.updatedAt }
+    )
+
+    expect(published).toMatchObject({ success: true, revision: 2 })
+    expect(
+      statement(
+        sqlite,
+        `SELECT resource_type, resource_id, source_owner_update_id,
+                audience, recipient_user_id, revoked_at
+         FROM project_external_resource_grants
+         ORDER BY resource_type, resource_id`
+      ).all()
+    ).toEqual([
+      {
+        resource_type: "owner_update_document",
+        resource_id: "grant-document",
+        source_owner_update_id: "update-1",
+        audience: "owner",
+        recipient_user_id: "client-1",
+        revoked_at: null,
+      },
+      {
+        resource_type: "photo",
+        resource_id: "grant-photo",
+        source_owner_update_id: "update-1",
+        audience: "owner",
+        recipient_user_id: "client-1",
+        revoked_at: null,
+      },
+    ])
+  })
+
   it("rejects a stale draft delete without removing the newer update", async () => {
     run(
       sqlite,
@@ -1422,6 +1741,51 @@ describe("owner update mutation authorization and fencing", () => {
       revision: 1,
       published_at: null,
       recalled_by: "staff-1",
+    })
+  })
+
+  it("atomically revokes attachment grants when recalling a publication", async () => {
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET status = ?, published_at = ? WHERE id = ?",
+      "published",
+      "2026-07-28T14:25:00.000Z",
+      "update-1"
+    )
+    run(
+      sqlite,
+      `INSERT INTO project_external_resource_grants
+         (id, organization_id, project_id, resource_type, resource_id,
+          source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "grant-recall",
+      "org-1",
+      "project-1",
+      "photo",
+      "photo-1",
+      "update-1",
+      "owner",
+      "client-1",
+      "staff-1",
+      "2026-07-28T14:25:00.000Z"
+    )
+
+    const result = await recallOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      mutationVersion
+    )
+
+    expect(result).toMatchObject({ success: true, revision: 1 })
+    expect(
+      get(
+        sqlite,
+        "SELECT revoked_by, revoked_at FROM project_external_resource_grants WHERE id = ?",
+        "grant-recall"
+      )
+    ).toEqual({
+      revoked_by: "staff-1",
+      revoked_at: expect.any(String),
     })
   })
 
