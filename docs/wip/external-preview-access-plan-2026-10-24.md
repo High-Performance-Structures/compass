@@ -84,11 +84,11 @@ Key client state and any permissible caches by project, audience, selected perso
 
 Do not label a partially converted workspace as an exact external preview. During conversion, clearly mark unsupported sections as unavailable in preview.
 
-Claude independently audited the source and collaborated on the design. Codex completed the implementation across the resolver, correspondence, domain readers, and shell in one isolated branch after sending an ownership update to avoid competing edits. Final structured implementation review used Codex; Claude has not yet reviewed the completed patch.
+Claude independently audited the source and collaborated on the design. Codex completed the implementation across the resolver, correspondence, domain readers, and shell in one isolated branch after sending an ownership update to avoid competing edits. Final structured implementation review used Codex. Claude subsequently reviewed the implementation and reported additional closeout findings; their disposition is recorded below.
 
 ## Vendor RFI access decision
 
-Approved policy, 2026-10-24: vendors may see only RFIs involving their own company. Apply this restriction to actual vendor access and the matching preview, including lists, dashboard counts, search, detail pages, printable output, and associated attachments. A vendor-audience label by itself must not authorize another company's RFI.
+Approved policy, refined on 2026-10-24: vendors may see RFIs assigned to their vendor company, including every active contact at that company, plus RFIs they submitted. Apply this restriction to actual vendor access and the matching preview, including lists, dashboard counts, search, detail pages, printable output, and associated attachments. A vendor-audience label by itself must not authorize another company's RFI.
 
 Use verified project contact and company associations to establish involvement. An unresolved or ambiguous association must not broaden access to all vendor RFIs. Existing records may need association review before they become visible under this rule.
 
@@ -176,3 +176,37 @@ Across those passes, 165 validation assertions succeeded. A separate before/afte
 The successful staging checks required no further application-code changes. Fixture assertions were corrected to use the actual vendor RFI route and the published budget fields shown by the assembly view.
 
 A successful private attachment byte download remains the concrete validation gap. Authorized QA attachment requests reach the missing-storage boundary (HTTP 503); unauthorized users receive no attachment contents. The shared route currently returns a generic server error for some missing conversation grants; that existing error mapping is a follow-up, not a successful download signal. The demo must use an isolated test storage integration before download parity can be marked complete. Production storage credentials and customer files were not copied into the demo. No production merge or deployment is authorized by the demo-only approval or claimed here.
+
+
+## Joint review closeout
+
+Claude reviewed the implementation and found remaining rollout issues. The previously reported 165 authenticated demo assertions remain valid for the deployed version and synthetic fixtures, but they do not prove historical RFI assignments. The clean initial source review did not establish that missing workflow either.
+
+The following corrections are implemented locally after that review:
+
+- **Staff access:** all internal staff default to view access for External person preview. Existing company permission overrides can narrow it, and external accounts remain denied. This follows the confirmed decision that all office staff should be able to preview. Help now explains selecting the exact assigned person and the read-only behavior.
+- **Audit volume:** the preview layout records the page visit. Resolving a viewer for polling, downloads, or thumbnails does not append another activity event.
+- **Files:** all six scoped project download handlers independently assert that the resource project matches the preview project. All API paths run through scope-header sanitization, including resource IDs ending in image extensions. A forged cross-project photo request returns not found before record or Drive access.
+- **Notifications:** owner RFI notifications remain in the account-wide notification center. Preview returns placeholder account preferences rather than exposing a person's phone number, SMS consent, or quiet hours.
+- **Read-only UI:** schedule confirmation/response capabilities are false in preview; owner warranty submission, resolution, and deletion controls and vendor warranty update forms are hidden. Existing server write guards remain in force. Real external polling retains its normal behavior.
+- **Links:** same-origin links carry the selected person before context-menu or middle-click navigation, including links rendered after initial hydration. The existing click guard still handles Next navigation.
+- **Membership rollout audit:** a read-only production query found 17 active external project memberships and zero missing organization memberships; it wrote zero rows.
+
+The closeout patch passed the structured helper with no findings:
+
+```sh
+$AUTOREVIEW --mode local --model gpt-6.1-sol --no-web-search --stream-engine-output --prompt 'Review the local closeout patch on the approved exact-person Owner/Vendor preview branch. Scope: staff preview default remains company-customizable; audit records only page visits; six download routes enforce project scope; API image-like IDs sanitize caller headers; owner RFI notifications remain visible; preview account preferences stay private; schedule and warranty controls are read only; links retain scope for new tabs. Validate concrete behavior and introduced authorization regressions. The assigned-company RFI feature is being handled separately; do not request restoring broad vendor visibility. Return repository-relative code locations only. Do not broaden into unrelated cleanup.'
+```
+
+### Remaining RFI ownership
+
+The final user policy is **assigned vendor company plus the submitter**, rather than arbitrary involvement or a vendor-audience label. Existing free-text company labels cannot establish permission. Staff need a stable assignment write/UI and a reviewable path for historical records before this policy is ready for production. The two production placeholder records have no verified association and were not automatically backfilled.
+
+Codex accepted Claude's offer to build that slice in a separate worktree based on this implementation, with local tests and no production changes. The handoff explicitly preserves the company restriction; restoring broad all-vendor exposure is not an acceptable shortcut. D1 parameter-safe RFI reads, notification filtering, stable assignment roles and historical association review are included in that slice. Codex retains integration and demo rollout ownership.
+
+The existing broader work-calendar external-read issue was reported outside this preview diff and remains a separate follow-up. It is not counted as fixed by the preview validation.
+
+The successful private attachment byte-download check still requires isolated demo storage; no production storage credentials or customer files were copied. These local closeout corrections have not yet replaced the previously deployed demo version. Production remains unchanged.
+
+
+Closeout verification: **298 tests in 22 files passed**, including permission defaults for every role, owner notification retention, real-versus-preview resolution, private preference placeholders, image-extension middleware matching, forged cross-project photo denial, warranty, attachment access, and help maintenance. The dedicated person-preview browser checks passed again; changed-file lint, UI standards, and whitespace checks passed. The first build exhausted the default 4 GiB JavaScript heap after compilation. Retrying the full Next build with the verified Node 22 runtime and an 8 GiB heap passed compilation, TypeScript, and route generation. The closeout structured review exited 0 with no findings. Existing trace warnings remain unchanged.

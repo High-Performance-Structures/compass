@@ -1,6 +1,6 @@
 "use server"
 
-import { assertAudiencePreviewWriteAllowed, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+import { assertAudiencePreviewWriteAllowed, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
@@ -88,7 +88,7 @@ export async function getChannelUpdates(
     const now = new Date().toISOString()
 
     // clean up expired typing sessions
-    if (!(await getProjectAudienceRequestScope())) await db
+    if (!(await isAudiencePreviewRequest())) await db
       .delete(typingSessions)
       .where(sql`${typingSessions.expiresAt} < ${now}`)
 

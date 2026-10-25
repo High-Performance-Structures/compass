@@ -1,4 +1,4 @@
-import { audienceReadCacheControl } from "@/lib/project-audience-request-server"
+import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
@@ -36,6 +36,7 @@ export async function GET(
     const { id: rawProjectId, claimId, attachmentId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Attachment not found", { status: 404 })
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)

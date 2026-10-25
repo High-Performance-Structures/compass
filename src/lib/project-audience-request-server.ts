@@ -12,6 +12,13 @@ export const getProjectAudienceRequestScope = cache(async function getProjectAud
   return { ...scope, projectId }
 })
 
+export async function isAudiencePreviewRequest(): Promise<boolean> {
+  const scope = await getProjectAudienceRequestScope()
+  if (!scope) return false
+  const { resolveProjectAudienceViewer } = await import("@/lib/project-audience-viewer")
+  return (await resolveProjectAudienceViewer(scope.projectId, scope.audience)).isPreview
+}
+
 export async function assertAudiencePreviewWriteAllowed(): Promise<void> {
   const scope = await getProjectAudienceRequestScope()
   if (!scope) return

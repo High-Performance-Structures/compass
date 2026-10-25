@@ -900,7 +900,7 @@ export async function getProjectAudiencePreview(
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm: item.legacyResponseAllowed && item.assignees.length === 0 &&
+    viewerCanConfirm: !previewMode && item.legacyResponseAllowed && item.assignees.length === 0 &&
       canViewerConfirmScheduleTask({
         viewerIsInternal,
         viewerId: viewer.id,
@@ -953,7 +953,7 @@ export async function getProjectAudiencePreview(
           ? assignee.responseMessage
           : null,
         viewerCanRespond:
-          item.confirmationRequired && !viewerIsInternal && viewerOwnsAssignee,
+          item.confirmationRequired && !previewMode && !viewerIsInternal && viewerOwnsAssignee,
       }
     }),
   })

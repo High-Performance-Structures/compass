@@ -751,7 +751,7 @@ export function getPermissionFeatureAccessLevel(
   if (feature.individualOnly) return "none"
 
   if (featureId === "project-audience-preview") {
-    return role === "admin" || role === "secondary_admin" ? "view" : "none"
+    return isInternalStaffRole(role) ? "view" : "none"
   }
   const baseline = getPermissionAccessLevel(role, feature.resource)
   if (

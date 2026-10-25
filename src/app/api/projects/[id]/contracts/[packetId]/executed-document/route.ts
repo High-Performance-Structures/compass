@@ -1,4 +1,4 @@
-import { audienceReadCacheControl } from "@/lib/project-audience-request-server"
+import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 
@@ -44,6 +44,7 @@ export async function GET(
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Contract document not found", { status: 404 })
 
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)

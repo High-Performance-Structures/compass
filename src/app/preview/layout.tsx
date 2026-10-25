@@ -1,4 +1,4 @@
-import { getProjectAudienceRequestScope, resolveProjectAudienceViewer } from "@/lib/project-audience-viewer"
+import { getProjectAudienceRequestScope, resolveProjectAudienceViewer, recordProjectAudiencePreviewVisit } from "@/lib/project-audience-viewer"
 import { ProjectAudiencePersonSelector } from "@/components/projects/project-audience-person-selector"
 import { ProjectAudiencePreviewScope } from "@/components/projects/project-audience-preview-scope"
 import type * as React from "react"
@@ -23,6 +23,7 @@ export default async function PreviewLayout({
 }): Promise<React.ReactElement> {
   const scope = await getProjectAudienceRequestScope()
   const context = scope ? await resolveProjectAudienceViewer(scope.projectId, scope.audience) : null
+  if (context) await recordProjectAudiencePreviewVisit(context)
   const user = context?.viewer ?? (context?.isPreview ? null : await getCurrentUser())
   const projects = context?.isPreview ? [] : await getProjects()
   const [quickAddProjects, helpAccess] = await Promise.all([

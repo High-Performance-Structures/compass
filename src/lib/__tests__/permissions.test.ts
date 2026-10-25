@@ -317,3 +317,10 @@ describe("private employee contact permissions", () => {
       .toBe("none")
   })
 })
+
+
+describe("external person preview defaults", () => {
+  it.each(USER_ROLES)("keeps %s at the internal staff boundary", (role) => {
+    expect(getPermissionFeatureAccessLevel(role, "project-audience-preview")).toBe(isInternalStaffRole(role) ? "view" : "none")
+  })
+})

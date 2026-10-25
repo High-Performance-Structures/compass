@@ -9,8 +9,9 @@ vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.environment }))
 vi.mock("next/headers", () => ({ headers: mocks.headers }))
 vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.permission }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.audit }))
-import { resolveProjectAudienceViewer, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-viewer"
-import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
+import { resolveProjectAudienceViewer, assertAudiencePreviewWriteAllowed, recordProjectAudiencePreviewVisit } from "@/lib/project-audience-viewer"
+import { audienceReadCacheControl, assertAudienceResourceProject, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
+import { getNotificationPreferences } from "@/app/actions/notifications"
 import { correspondenceContext } from "@/lib/correspondence/access"
 import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/read"
 
@@ -38,8 +39,13 @@ describe("external viewer resolution", () => {
     expect(resolved.actor.id).toBe("staff-a")
     expect(resolved.viewer?.id).toBe("owner-a")
     expect(resolved.isPreview).toBe(true)
+    expect(await isAudiencePreviewRequest()).toBe(true)
     expect(resolved.previewOptions.map((person) => person.id)).not.toContain("staff-a")
-    expect(mocks.audit).toHaveBeenCalled()
+    expect(mocks.audit).not.toHaveBeenCalled()
+    await recordProjectAudiencePreviewVisit(resolved)
+    expect(mocks.audit).toHaveBeenCalledTimes(1)
+    await resolveProjectAudienceViewer("project-a", "owner")
+    expect(mocks.audit).toHaveBeenCalledTimes(1)
   })
   it("normalizes an existing project alias in both the request scope and explicit loader input", async () => {
     database.sqlite.exec("INSERT INTO project_route_aliases VALUES ('legacy-a','project-a')")
@@ -57,6 +63,13 @@ describe("external viewer resolution", () => {
   it("requires a separate preview permission", async () => {
     mocks.permission.mockResolvedValue(false)
     await expect(resolveProjectAudienceViewer("project-a", "owner")).rejects.toThrow("permission")
+  })
+  it("returns placeholder account settings without reading the selected person's private preferences", async () => {
+    const result = await getNotificationPreferences()
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.smsPhoneNumber).toBeNull()
+    expect(result.success && result.data.smsConsentPhoneNumber).toBeNull()
+    expect(result.success && result.data.timeZone).toBe("America/Denver")
   })
   it("never substitutes staff identity when no person was selected", async () => {
     scope = JSON.stringify({ projectId: "project-a", audience: "owner", targetUserId: null })
@@ -82,6 +95,9 @@ describe("external viewer resolution", () => {
     const resolved = await resolveProjectAudienceViewer("project-a", "owner")
     expect(resolved.viewer?.id).toBe("owner-a")
     expect(resolved.isPreview).toBe(false)
+    expect(await isAudiencePreviewRequest()).toBe(false)
+    await recordProjectAudiencePreviewVisit(resolved)
+    expect(mocks.audit).not.toHaveBeenCalled()
     await expect(assertAudiencePreviewWriteAllowed()).resolves.toBeUndefined()
   })
   it("rejects preview writes while ordinary staff requests remain independent", async () => {

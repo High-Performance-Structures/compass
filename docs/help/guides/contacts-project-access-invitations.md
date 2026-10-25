@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-24"
 }
 ---
 
@@ -49,7 +49,9 @@ Linking a person to a Compass account is a separate, deliberate administrator ac
 
 ## Verify Access {#verify-access}
 
-After inviting, confirm Compass reports success, the person appears on the correct project, and the role and feature permissions fit their work. For an owner or project partner, use the appropriate audience preview when available.
+After inviting, confirm Compass reports success, the person appears on the correct project, and the role and feature permissions fit their work. Open **Owner preview** or **Vendor preview**, then choose the exact assigned person in **Preview as**. The preview follows that person's project records, emails, and files. With no person selected, private records stay hidden.
+
+Internal staff can use this read-only preview by default; administrators can narrow **External person preview** in **Settings > Permissions**. Preview visits do not send messages, save drafts, confirm work, mark messages read, or change the person's notification settings. Return to the staff workspace to make changes.
 
 If the person does not appear in the invitation list, check that the contact is active, assigned to the current project, has a valid email, and that you have invitation permission.
 

@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { VENDOR_WARRANTY_STATUSES } from "@/lib/warranty/status"
 import { cn } from "@/lib/utils"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 
 const STATUS_LABEL: Readonly<Record<string, string>> = {
   submitted: "Submitted",
@@ -163,6 +164,7 @@ export function VendorWarrantyList({
   readonly projectId: string
   readonly workspace: VendorWarrantyWorkspace
 }): React.ReactElement {
+  const readOnly = useAudiencePreviewReadOnly()
   return (
     <section aria-labelledby="vendor-warranty-title">
       <div className="flex flex-wrap items-baseline justify-between gap-3 border-b pb-3">
@@ -180,7 +182,7 @@ export function VendorWarrantyList({
         <p className="py-10 text-center text-sm text-muted-foreground">No warranty claims are assigned to you on this project.</p>
       ) : (
         workspace.claims.map((claim) => (
-          <VendorClaim key={claim.id} projectId={projectId} claim={claim} canUpdate={!workspace.viewerIsInternal} />
+          <VendorClaim key={claim.id} projectId={projectId} claim={claim} canUpdate={!readOnly && !workspace.viewerIsInternal} />
         ))
       )}
     </section>

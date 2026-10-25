@@ -101,6 +101,23 @@ describe("reading clears the bell", () => {
   })
 })
 
+describe("external notification audience", () => {
+  it("retains owner RFI notifications in the account-wide center", async () => {
+    database = open()
+    mocks.requireAuth.mockResolvedValue({ id: "u1", role: "client", organizationId: "org-a" })
+    const center = await getNotificationCenter()
+    expect(center.success && center.data.items.map((item) => item.id)).toContain("n-rfi")
+  })
+
+  it.each(["supplier", "subcontractor"])("withholds unscoped RFI notifications for %s", async (role) => {
+    database = open()
+    mocks.requireAuth.mockResolvedValue({ id: "u1", role, organizationId: "org-a" })
+    const center = await getNotificationCenter()
+    expect(center.success).toBe(true)
+    expect(center.success && center.data.items.map((item) => item.id)).not.toContain("n-rfi")
+  })
+})
+
 describe("Done, Undo and Clear read", () => {
   it("hides done items, restores them on undo, and clears read ones", async () => {
     database = open()

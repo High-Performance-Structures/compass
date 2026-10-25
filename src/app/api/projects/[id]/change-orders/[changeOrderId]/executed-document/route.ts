@@ -1,3 +1,4 @@
+import { assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 
@@ -34,6 +35,7 @@ export async function GET(
       return new Response("Change-order document not found", { status: 404 })
     }
 
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)

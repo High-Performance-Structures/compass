@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { cache } from "react"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getDb } from "@/db"
@@ -71,17 +71,33 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
     .from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId))
     .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId)))
     .where(and(eq(projectMembers.projectId, projectId), eq(users.isActive, true)))
-  const eligible = people.filter((person) => !isInternalStaffRole(person.role) && canUseProjectAudience(person.projectRole, audience))
+  const eligible = people.filter((person, index) => !isInternalStaffRole(person.role) && canUseProjectAudience(person.projectRole, audience) && people.findIndex((candidate) => candidate.user.id === person.user.id) === index)
   const selected = target === null ? null : eligible.find((person) => person.user.id === target)
   if (target !== null && !selected) throw new Error("The selected person no longer has this project access.")
   const viewer: AuthUser | null = selected ? { ...selected.user, role: selected.role, organizationId, organizationType: membership.organization.type, organizationName: membership.organization.name } : null
-  if (viewer) await recordActivityEvent({ db, organizationId, projectId, actor: authorizedActor, category: "access", action: "preview.external_view", entityType: "user", entityId: viewer.id, summary: "Opened a read-only external preview", metadata: { audience, previewUserId: viewer.id } })
   // Company labels are presentation only. Load accepted contact links once
   // rather than performing a contact lookup for every eligible person.
   const contactLinks = eligible.length === 0 ? [] : await db.select({ userId: projectAccessInvitations.acceptedBy, companyName: projectContacts.companyName })
     .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
-    .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(projectAccessInvitations.status, "accepted"), eq(projectContacts.active, true), inArray(projectAccessInvitations.acceptedBy, eligible.map(({ user }) => user.id))))
+    .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(projectAccessInvitations.status, "accepted"), eq(projectContacts.active, true)))
     .orderBy(desc(projectAccessInvitations.acceptedAt))
   const previewOptions = eligible.map(({ user }): ProjectAudiencePreviewPerson => ({ id: user.id, name: user.displayName ?? user.email, email: user.email, companyName: contactLinks.find((link) => link.userId === user.id)?.companyName ?? null }))
-  return { db, env, actor, viewer, organizationId, projectId, audience, isPreview, previewOptions }
+  return { db, env, actor: authorizedActor, viewer, organizationId, projectId, audience, isPreview, previewOptions }
 })
+
+/** Audit page visits, not every poll, thumbnail, or reader resolution. */
+export async function recordProjectAudiencePreviewVisit(context: ProjectAudienceViewerContext): Promise<void> {
+  if (!context.isPreview || !context.viewer) return
+  await recordActivityEvent({
+    db: context.db,
+    organizationId: context.organizationId,
+    projectId: context.projectId,
+    actor: context.actor,
+    category: "access",
+    action: "preview.external_view",
+    entityType: "user",
+    entityId: context.viewer.id,
+    summary: "Opened a read-only external preview",
+    metadata: { audience: context.audience, previewUserId: context.viewer.id },
+  })
+}

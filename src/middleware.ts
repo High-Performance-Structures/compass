@@ -90,6 +90,8 @@ export default async function middleware(incomingRequest: NextRequest) {
 
 export const config = {
   matcher: [
+    // API resource IDs may end in image extensions; always sanitize their scope.
+    "/api/:path*",
     "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

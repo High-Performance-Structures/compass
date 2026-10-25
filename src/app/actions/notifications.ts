@@ -2,7 +2,7 @@
 
 import { vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
-import { getProjectAudienceRequestScope, requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+import { getProjectAudienceRequestScope, requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
 
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -254,6 +254,8 @@ export async function getNotificationPreferences(): Promise<NotificationPreferen
   try {
     const previewScope = await getProjectAudienceRequestScope()
     const user = previewScope ? await requireProjectAudienceReadUser(previewScope.projectId) : await requireAuth()
+    // Account-wide phone numbers and quiet hours are outside a project preview.
+    if (await isAudiencePreviewRequest()) return { success: true, data: DEFAULT_PREFERENCES }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const data = await getPreferenceForUser(db, user.id)
@@ -511,7 +513,7 @@ export async function getNotificationCenter(
       ? await vendorVisibleRfiSourceIds({ db, projectId: scope.projectId, organizationId: scope.organizationId, viewerId: user.id, contact: await getProjectAudienceViewerContact(db, scope.projectId, user) }) : null
     const visibleRfis = vendorRfiIds !== null && vendorRfiIds.length > 0 && scope.projectId ? await db.select({ id: projectRfis.id }).from(projectRfis)
       .where(and(eq(projectRfis.projectId, scope.projectId), or(inArray(projectRfis.id, vendorRfiIds), inArray(projectRfis.sourceRecordId, vendorRfiIds)))) : vendorRfiIds === null ? null : []
-    const rfiVisibility = visibleRfis === null ? (!isInternalStaffRole(user.role) && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inArray(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
+    const rfiVisibility = visibleRfis === null ? ((user.role === "supplier" || user.role === "subcontractor") && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inArray(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
     const rows = await db
       .select({
         id: notificationRecipients.id,

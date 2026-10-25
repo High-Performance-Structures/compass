@@ -1,9 +1,10 @@
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
+vi.mock("next/headers", () => ({ headers: mocks.headers }))
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
+  headers: vi.fn(),
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
   resolveProjectRouteId: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getExportExtension: vi.fn(),
 }))
 
+vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer: async (user: unknown) => user }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
@@ -141,11 +143,21 @@ async function getPhoto(audience?: string): Promise<Response> {
 describe("GET /api/projects/:id/photos/:photoId", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.headers.mockResolvedValue(new Headers())
     configureDb({
       viewerRole: "admin",
       membershipRole: null,
       visiblePhoto: photo,
     })
+  })
+
+  it("rejects a forged cross-project scope before reading records or fetching Drive bytes", async () => {
+    mocks.headers.mockResolvedValue(new Headers({ "x-compass-audience-scope": JSON.stringify({ projectId: "project-2", audience: "owner", targetUserId: "owner-2" }) }))
+    mocks.resolveProjectRouteId.mockImplementation(async (id: string) => id)
+    const response = await getPhoto("owner")
+    expect(response.status).toBe(404)
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
   it("serves an internal review photo without requiring an audience query", async () => {
