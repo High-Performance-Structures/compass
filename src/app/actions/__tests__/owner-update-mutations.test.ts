@@ -389,7 +389,9 @@ function createDatabase(): {
         projects.organization_id,
         NEW.project_id,
         CASE
-          WHEN daily_log_photos.mime_type LIKE 'image/%' THEN 'photo'
+          WHEN daily_log_photos.id IN (
+            SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]'))
+          ) THEN 'photo'
           ELSE 'owner_update_document'
         END,
         daily_log_photos.id,
@@ -413,10 +415,6 @@ function createDatabase(): {
         AND daily_log_photos.drive_file_id IS NOT NULL
         AND daily_log_photos.review_status = 'approved'
         AND daily_log_photos.owner_visible = 1
-        AND (
-          daily_log_photos.mime_type LIKE 'image/%'
-          OR daily_log_photos.mime_type NOT LIKE 'image/%'
-        )
         AND (
           daily_log_photos.id IN (
             SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]'))
@@ -1575,14 +1573,15 @@ describe("owner update mutation authorization and fencing", () => {
       sqlite,
       `INSERT INTO daily_log_photos
          (id, project_id, captured_at, file_name, mime_type, drive_file_id,
-          review_status, owner_visible, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          thumbnail_url, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       "grant-photo",
       "project-1",
       "2026-07-28T12:00:00.000Z",
       "photo.jpg",
-      "image/jpeg",
+      "application/pdf",
       "drive-photo",
+      "https://example.test/photo-thumbnail",
       "pending",
       0,
       version.expectedUpdatedAt,
@@ -1590,8 +1589,9 @@ describe("owner update mutation authorization and fencing", () => {
       "project-1",
       "2026-07-28T12:00:00.000Z",
       "document.pdf",
-      "application/pdf",
+      "image/jpeg",
       "drive-document",
+      null,
       "pending",
       0,
       version.expectedUpdatedAt

@@ -1,7 +1,7 @@
 import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
-import { and, eq, or, sql } from "drizzle-orm"
+import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import {
@@ -155,9 +155,6 @@ export async function GET(
               eq(dailyLogPhotos.projectId, projectId),
               eq(dailyLogPhotos.reviewStatus, "approved"),
               visibility,
-              resourceType === "owner_update_document"
-                ? sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
-                : sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`,
             )
       )
       .limit(1)

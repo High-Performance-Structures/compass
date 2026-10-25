@@ -121,6 +121,8 @@ function seedSchema(sqlite: Sqlite): void {
     VALUES
       ('photo-1', 'project-1', 'image/jpeg', 'drive-photo', 'approved', 1, '2026-07-28T14:00:00.000Z'),
       ('document-1', 'project-1', 'application/pdf', 'drive-document', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('photo-provenance-pdf', 'project-1', 'application/pdf', 'drive-photo-pdf', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('document-provenance-image', 'project-1', 'image/jpeg', 'drive-document-image', 'approved', 1, '2026-07-28T14:00:00.000Z'),
       ('photo-scalar', 'project-1', 'image/jpeg', 'drive-scalar', 'pending', 0, '2026-07-28T14:00:00.000Z');
     INSERT INTO owner_project_updates
       (id, project_id, created_by, status, selected_photo_ids, schedule_snapshot, updated_at)
@@ -129,8 +131,8 @@ function seedSchema(sqlite: Sqlite): void {
       'project-1',
       'staff-1',
       'published',
-      '["photo-1"]',
-      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1"}]}',
+      '["photo-1","photo-provenance-pdf"]',
+      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1"},{"id":"document-provenance-image"}]}',
       '2026-07-28T14:00:00.000Z'
     );
     INSERT INTO owner_project_updates
@@ -197,12 +199,75 @@ describe("owner-update attachment grant lifecycle migration", () => {
           revoked_at: null,
         },
         {
+          resource_type: "owner_update_document",
+          resource_id: "document-provenance-image",
+          source_owner_update_id: "published-1",
+          recipient_user_id: "owner-1",
+          revoked_at: null,
+        },
+        {
           resource_type: "photo",
           resource_id: "photo-1",
           source_owner_update_id: "published-1",
           recipient_user_id: "owner-1",
           revoked_at: null,
         },
+        {
+          resource_type: "photo",
+          resource_id: "photo-provenance-pdf",
+          source_owner_update_id: "published-1",
+          recipient_user_id: "owner-1",
+          revoked_at: null,
+        },
+      ])
+
+      sqlite
+        .prepare(
+          `UPDATE daily_log_photos
+           SET mime_type = CASE id
+             WHEN 'photo-provenance-pdf' THEN 'image/png'
+             WHEN 'document-provenance-image' THEN 'application/pdf'
+           END
+           WHERE id IN ('photo-provenance-pdf', 'document-provenance-image')`
+        )
+        .run()
+      sqlite
+        .prepare(
+          `INSERT INTO owner_project_updates
+             (id, project_id, created_by, status, selected_photo_ids,
+              schedule_snapshot, updated_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, ?)`
+        )
+        .run(
+          "draft-after-mime-mutation",
+          "project-1",
+          "staff-1",
+          '["photo-provenance-pdf"]',
+          '{"version":2,"documents":[{"id":"document-provenance-image"}]}',
+          "2026-07-28T16:00:00.000Z"
+        )
+      sqlite
+        .prepare(
+          `UPDATE owner_project_updates
+           SET status = 'published', updated_at = ?
+           WHERE id = ? AND status = 'draft'`
+        )
+        .run("2026-07-28T16:01:00.000Z", "draft-after-mime-mutation")
+      expect(
+        sqlite
+          .prepare(
+            `SELECT resource_type, resource_id
+             FROM project_external_resource_grants
+             WHERE source_owner_update_id = ?
+             ORDER BY resource_type, resource_id`
+          )
+          .all("draft-after-mime-mutation")
+      ).toEqual([
+        {
+          resource_type: "owner_update_document",
+          resource_id: "document-provenance-image",
+        },
+        { resource_type: "photo", resource_id: "photo-provenance-pdf" },
       ])
 
       expect(

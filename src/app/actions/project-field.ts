@@ -85,6 +85,7 @@ import {
   assertOwnerUpdateRouteAccess,
 } from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
+import { ownerUpdateAttachmentKind } from "@/lib/owner-updates/attachment-taxonomy"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import {
   ownerUpdateExternalDailyLog,
@@ -3021,6 +3022,13 @@ export async function getOwnerProjectUpdateDocument(
         .select(attachmentSelection)
         .from(dailyLogPhotos)
         .innerJoin(
+          ownerProjectUpdates,
+          and(
+            eq(ownerProjectUpdates.id, updateId),
+            eq(ownerProjectUpdates.projectId, projectId)
+          )
+        )
+        .innerJoin(
           projectExternalResourceGrants,
           and(
             eq(
@@ -3036,14 +3044,45 @@ export async function getOwnerProjectUpdateDocument(
             or(
               and(
                 eq(projectExternalResourceGrants.resourceType, "photo"),
-                sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`
+                sql<boolean>`${dailyLogPhotos.id} IN (
+                  SELECT value
+                  FROM json_each(
+                    CASE
+                      WHEN json_valid(${ownerProjectUpdates.selectedPhotoIds})
+                      THEN CASE
+                        WHEN json_type(${ownerProjectUpdates.selectedPhotoIds}) = 'array'
+                        THEN ${ownerProjectUpdates.selectedPhotoIds}
+                        ELSE '[]'
+                      END
+                      ELSE '[]'
+                    END
+                  )
+                  WHERE type = 'text'
+                )`
               ),
               and(
                 eq(
                   projectExternalResourceGrants.resourceType,
                   "owner_update_document"
                 ),
-                sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
+                sql<boolean>`${dailyLogPhotos.id} IN (
+                  SELECT json_extract(json, fullkey || '.id')
+                  FROM json_each(
+                    CASE
+                      WHEN json_valid(${ownerProjectUpdates.scheduleSnapshot})
+                      THEN CASE
+                        WHEN json_type(${ownerProjectUpdates.scheduleSnapshot}) = 'object'
+                          AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.documents') = 'array'
+                        THEN ${ownerProjectUpdates.scheduleSnapshot}
+                        ELSE '{"documents":[]}'
+                      END
+                      ELSE '{"documents":[]}'
+                    END,
+                    '$.documents'
+                  )
+                  WHERE type = 'object'
+                    AND json_type(json, fullkey || '.id') = 'text'
+                )`
               )
             )
           )
@@ -3613,12 +3652,16 @@ export async function updateOwnerProjectUpdateDraft(
       }
 
       const selectedPhotoIdSet = new Set(selectedPhotoIds)
+      const selectedDocumentIdSet = new Set(selectedDocumentIds)
       if (
         selectedAttachments.some((attachment) => {
-          const isImage =
-            attachment.thumbnailUrl !== null ||
-            attachment.mimeType?.startsWith("image/") === true
-          return selectedPhotoIdSet.has(attachment.id) !== isImage
+          return (
+            ownerUpdateAttachmentKind(
+              attachment.id,
+              selectedPhotoIdSet,
+              selectedDocumentIdSet
+            ) === null
+          )
         })
       ) {
         return {
@@ -3830,10 +3873,13 @@ export async function draftOwnerProjectUpdateWithJarvis(
     const composerSnapshot = parseOwnerUpdateComposerSnapshot(
       update.scheduleSnapshot
     )
-    const selectedAttachmentIds = [
-      ...parseIdList(update.selectedPhotoIds),
-      ...composerSnapshot.documents.map((document) => document.id),
-    ]
+    const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
+    const selectedDocumentIds = composerSnapshot.documents.map(
+      (document) => document.id
+    )
+    const selectedPhotoIdSet = new Set(selectedPhotoIds)
+    const selectedDocumentIdSet = new Set(selectedDocumentIds)
+    const selectedAttachmentIds = [...selectedPhotoIds, ...selectedDocumentIds]
     const selectedAttachments = (
       await Promise.all(
         ownerUpdateIdBatches(selectedAttachmentIds).map((idBatch) =>
@@ -3864,10 +3910,12 @@ export async function draftOwnerProjectUpdateWithJarvis(
     const orderedAttachments = selectedAttachmentIds.flatMap((id) => {
       const attachment = selectedAttachmentById.get(id)
       if (attachment === undefined) return []
-      const isImage =
-        attachment.thumbnailUrl !== null ||
-        attachment.mimeType?.startsWith("image/") === true
-      const kind: "photo" | "document" = isImage ? "photo" : "document"
+      const kind = ownerUpdateAttachmentKind(
+        attachment.id,
+        selectedPhotoIdSet,
+        selectedDocumentIdSet
+      )
+      if (kind === null) return []
       return [
         {
           fileName: attachment.fileName,

@@ -61,13 +61,7 @@ WHEN NOT EXISTS (
     AND `daily_log_photos`.`project_id` = NEW.`project_id`
     AND `daily_log_photos`.`review_status` = 'approved'
     AND `daily_log_photos`.`drive_file_id` IS NOT NULL
-    AND (
-      NEW.`resource_type` = 'photo'
-      OR (
-        NEW.`resource_type` = 'owner_update_document'
-        AND `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-      )
-    )
+    AND NEW.`resource_type` IN ('photo', 'owner_update_document')
     AND (
       (NEW.`audience` = 'owner' AND (`daily_log_photos`.`owner_visible` = 1 OR `daily_log_photos`.`public_shareable` = 1))
       OR (NEW.`audience` = 'sub_vendor' AND (`daily_log_photos`.`sub_vendor_visible` = 1 OR `daily_log_photos`.`public_shareable` = 1))

@@ -90,8 +90,39 @@ BEGIN
     `projects`.`organization_id`,
     NEW.`project_id`,
     CASE
-      WHEN `daily_log_photos`.`mime_type` LIKE 'image/%' THEN 'photo'
-      ELSE 'owner_update_document'
+      WHEN `daily_log_photos`.`id` IN (
+        SELECT `value`
+        FROM json_each(
+          CASE
+            WHEN json_valid(NEW.`selected_photo_ids`)
+            THEN CASE
+              WHEN json_type(NEW.`selected_photo_ids`) = 'array'
+              THEN NEW.`selected_photo_ids`
+              ELSE '[]'
+            END
+            ELSE '[]'
+          END
+        )
+        WHERE `type` = 'text'
+      ) THEN 'photo'
+      WHEN `daily_log_photos`.`id` IN (
+        SELECT json_extract(`json`, `fullkey` || '.id')
+        FROM json_each(
+          CASE
+            WHEN json_valid(NEW.`schedule_snapshot`)
+            THEN CASE
+              WHEN json_type(NEW.`schedule_snapshot`) = 'object'
+                AND json_type(NEW.`schedule_snapshot`, '$.documents') = 'array'
+              THEN NEW.`schedule_snapshot`
+              ELSE '{"documents":[]}'
+            END
+            ELSE '{"documents":[]}'
+          END,
+          '$.documents'
+        )
+        WHERE `type` = 'object'
+          AND json_type(`json`, `fullkey` || '.id') = 'text'
+      ) THEN 'owner_update_document'
     END,
     `daily_log_photos`.`id`,
     NEW.`id`,
@@ -131,10 +162,6 @@ BEGIN
     AND `daily_log_photos`.`drive_file_id` IS NOT NULL
     AND `daily_log_photos`.`review_status` = 'approved'
     AND `daily_log_photos`.`owner_visible` = 1
-    AND (
-      `daily_log_photos`.`mime_type` LIKE 'image/%'
-      OR `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-    )
     AND (
       `daily_log_photos`.`id` IN (
         SELECT `value`
@@ -207,8 +234,42 @@ SELECT
   `projects`.`organization_id`,
   `owner_project_updates`.`project_id`,
   CASE
-    WHEN `daily_log_photos`.`mime_type` LIKE 'image/%' THEN 'photo'
-    ELSE 'owner_update_document'
+    WHEN `daily_log_photos`.`id` IN (
+      SELECT `value`
+      FROM json_each(
+        CASE
+          WHEN json_valid(`owner_project_updates`.`selected_photo_ids`)
+          THEN CASE
+            WHEN json_type(`owner_project_updates`.`selected_photo_ids`) = 'array'
+            THEN `owner_project_updates`.`selected_photo_ids`
+            ELSE '[]'
+          END
+          ELSE '[]'
+        END
+      )
+      WHERE `type` = 'text'
+    ) THEN 'photo'
+    WHEN `daily_log_photos`.`id` IN (
+      SELECT json_extract(`json`, `fullkey` || '.id')
+      FROM json_each(
+        CASE
+          WHEN json_valid(`owner_project_updates`.`schedule_snapshot`)
+          THEN CASE
+            WHEN json_type(`owner_project_updates`.`schedule_snapshot`) = 'object'
+              AND json_type(
+                `owner_project_updates`.`schedule_snapshot`,
+                '$.documents'
+              ) = 'array'
+            THEN `owner_project_updates`.`schedule_snapshot`
+            ELSE '{"documents":[]}'
+          END
+          ELSE '{"documents":[]}'
+        END,
+        '$.documents'
+      )
+      WHERE `type` = 'object'
+        AND json_type(`json`, `fullkey` || '.id') = 'text'
+    ) THEN 'owner_update_document'
   END,
   `daily_log_photos`.`id`,
   `owner_project_updates`.`id`,
@@ -287,7 +348,4 @@ WHERE `owner_project_updates`.`status` IN ('published', 'sent')
   AND `daily_log_photos`.`drive_file_id` IS NOT NULL
   AND `daily_log_photos`.`review_status` = 'approved'
   AND `daily_log_photos`.`owner_visible` = 1
-  AND (
-    `daily_log_photos`.`mime_type` LIKE 'image/%'
-    OR `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-  );
+  ;
