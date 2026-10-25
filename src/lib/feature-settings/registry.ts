@@ -14,6 +14,7 @@ import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
 import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
+import { DEFAULT_WEATHER_WORK_RULES, WEATHER_RULE_CHECKS } from "@/lib/weather/schedule-risk"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -52,6 +53,22 @@ export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
  * Weather & fire alerts: the limits that flag a job on the map's Weather and
  * Fire & smoke layers. Forecasts are for each job site's own grid cell.
  */
+/**
+ * A weather rule for scheduled work: items whose title contains one of the
+ * keywords are checked against one forecast limit over their days (plus
+ * `daysAfter`, e.g. concrete curing).
+ */
+export const weatherWorkRuleSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().trim().min(1).max(80),
+  keywords: z.array(z.string().trim().min(2).max(40)).min(1).max(20),
+  check: z.enum(WEATHER_RULE_CHECKS),
+  value: z.number().min(-60).max(130),
+  daysAfter: z.number().int().min(0).max(7),
+})
+
+export type WeatherWorkRule = z.infer<typeof weatherWorkRuleSchema>
+
 export const weatherAlertSettingsSchema = z.object({
   /** Snow in 24 hours, inches. */
   snowIn: z.number().min(0.5).max(48),
@@ -64,6 +81,10 @@ export const weatherAlertSettingsSchema = z.object({
   heatF: z.number().int().min(60).max(130),
   /** An active wildfire within this many miles of a job. */
   fireMiles: z.number().int().min(1).max(200),
+  /** Rules for scheduled work; every item is also checked for warnings, heavy snow and extreme cold or heat. */
+  workRules: z.array(weatherWorkRuleSchema).max(20),
+  /** Notify the item's assignee and the job's project administrators when a scheduled item is at risk. */
+  notifyScheduleRisks: z.boolean(),
 })
 
 export type WeatherAlertSettings = z.infer<typeof weatherAlertSettingsSchema>
@@ -879,8 +900,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "weather-alerts": {
     label: "Weather & fire alerts",
-    description: "When the map's Weather and Fire & smoke layers flag a job: snow, rain, wind, extreme cold or heat at the job site, and wildfires nearby.",
-    defaults: { ...DEFAULT_WEATHER_LIMITS },
+    description: "When the map's Weather and Fire & smoke layers flag a job, and which scheduled work is checked against the job site's forecast: snow, rain, wind, extreme cold or heat, and wildfires nearby.",
+    defaults: { ...DEFAULT_WEATHER_LIMITS, workRules: DEFAULT_WEATHER_WORK_RULES.map((rule) => ({ ...rule, keywords: [...rule.keywords] })), notifyScheduleRisks: true },
     schema: weatherAlertSettingsSchema,
   },
   "paper-trail": {

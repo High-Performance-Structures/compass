@@ -3961,3 +3961,28 @@ export const weatherZoneShapes = sqliteTable("weather_zone_shapes", {
   rings: text("rings").notNull(),
   fetchedAt: text("fetched_at").notNull(),
 })
+
+/** Schedule warnings from the weather layer; each item + rule + day notifies once. */
+export const weatherScheduleRisks = sqliteTable(
+  "weather_schedule_risks",
+  {
+    scheduleTaskId: text("schedule_task_id")
+      .notNull()
+      .references(() => scheduleTasks.id, { onDelete: "cascade" }),
+    ruleId: text("rule_id").notNull(),
+    riskDate: text("risk_date").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    detail: text("detail").notNull(),
+    firstSeenAt: text("first_seen_at").notNull(),
+    notifiedAt: text("notified_at"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scheduleTaskId, table.ruleId, table.riskDate] }),
+    index("idx_weather_schedule_risks_project").on(table.projectId, table.riskDate),
+  ],
+)

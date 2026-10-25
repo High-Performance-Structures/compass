@@ -85,6 +85,7 @@ import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectClientMeetings, type ProjectClientMeetingsView } from "@/app/actions/project-client-meetings"
 import { ProjectClientMeetingsCard } from "@/components/projects/project-client-meetings-card"
+import { ProjectSiteWeatherCard } from "@/components/projects/project-site-weather-card"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -694,6 +695,7 @@ export default async function ProjectSummaryPage({
         {clientMeetings && !internalWorkspace ? (
           <ProjectClientMeetingsCard projectId={id} view={clientMeetings} />
         ) : null}
+        {!internalWorkspace ? <ProjectSiteWeatherCard projectId={id} /> : null}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium uppercase text-muted-foreground">
             This Week

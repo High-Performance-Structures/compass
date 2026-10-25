@@ -146,3 +146,77 @@ export async function readFireLayer(db: Db, area: WeatherArea): Promise<FireLaye
     updatedAt: fireRow?.fetchedAt ?? null,
   }
 }
+
+export type SiteForecast = {
+  readonly series: NonNullable<ReturnType<typeof readCellSeries>>
+  readonly forecastElevationFt: number | null
+  readonly fetchedAt: string
+}
+
+/**
+ * Full stored forecasts (re-based to the current step) for job sites, plus a
+ * follow-up that queues new sites and keeps these cells refreshing.
+ */
+export async function readSiteForecasts(
+  db: Db,
+  sites: readonly WeatherJobSite[],
+  nowMs: number,
+  steps: number,
+): Promise<{ readonly byProject: ReadonlyMap<string, SiteForecast>; readonly markInUse: () => Promise<void> }> {
+  const siteKeys = new Map(sites.map((site) => [site.projectId, weatherPointKey(site.lat, site.lon)]))
+  const points = await selectPoints(db, [...siteKeys.values()])
+  const pointByKey = new Map(points.map((point) => [point.pointKey, point]))
+  const cellKeys = points.flatMap((point) => (point.cellKey ? [point.cellKey] : []))
+  const cells = await selectCells(db, cellKeys)
+  const cellByKey = new Map(cells.map((cell) => [cell.cellKey, cell]))
+  const start = stepStart(nowMs)
+  const byProject = new Map<string, SiteForecast>()
+  for (const [projectId, key] of siteKeys) {
+    const cellKey = pointByKey.get(key)?.cellKey
+    const cell = cellKey ? cellByKey.get(cellKey) : undefined
+    const series = readCellSeries(cell?.series ?? null)
+    if (!cell || !series || !cell.fetchedAt) continue
+    byProject.set(projectId, {
+      series: alignSeries(series, start, steps),
+      forecastElevationFt: cell.elevationM === null ? null : Math.round(cell.elevationM * 3.28084),
+      fetchedAt: cell.fetchedAt,
+    })
+  }
+  const markInUse = async (): Promise<void> => {
+    const now = new Date(nowMs).toISOString()
+    const touchBefore = new Date(nowMs - TOUCH_EVERY_MS).toISOString()
+    const newSites = sites.filter((site) => !pointByKey.has(weatherPointKey(site.lat, site.lon)))
+    for (let i = 0; i < newSites.length; i += 20) {
+      await db
+        .insert(weatherPoints)
+        .values(newSites.slice(i, i + 20).map((site) => ({
+          pointKey: weatherPointKey(site.lat, site.lon),
+          latitude: Number(site.lat.toFixed(2)),
+          longitude: Number(site.lon.toFixed(2)),
+          requestedAt: now,
+        })))
+        .onConflictDoNothing()
+    }
+    for (const part of chunks(points.filter((point) => point.requestedAt < touchBefore).map((point) => point.pointKey))) {
+      await db.update(weatherPoints).set({ requestedAt: now }).where(inArray(weatherPoints.pointKey, part))
+    }
+    for (const part of chunks(cellKeys)) {
+      await db
+        .update(weatherCells)
+        .set({ requestedAt: now })
+        .where(and(inArray(weatherCells.cellKey, part), lt(weatherCells.requestedAt, touchBefore)))
+    }
+  }
+  return { byProject, markInUse }
+}
+
+/** Current warnings and fires for an area, for checks outside the map. */
+export async function readAreaHazards(db: Db, area: WeatherArea) {
+  const [alertRow, fireRow] = await Promise.all([snapshot(db, area.key, "alerts"), snapshot(db, area.key, "fires")])
+  const alerts = readAlerts(alertRow?.payload ?? null)
+  return {
+    weatherAlerts: alerts.filter((alert) => alert.kind !== "fire"),
+    fireAlerts: alerts.filter((alert) => alert.kind === "fire"),
+    fires: readFires(fireRow?.payload ?? null),
+  }
+}

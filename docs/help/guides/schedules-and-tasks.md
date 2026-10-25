@@ -7,7 +7,7 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "templates"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
@@ -56,6 +56,10 @@ Authorized staff can choose **Move to draft** to hide the schedule from owners a
 ## Workday Exceptions {#workday-exceptions}
 
 Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Once the schedule has been published, add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
+
+## Weather Warnings on Scheduled Work {#weather}
+
+Compass checks schedule items starting in the next five days against the National Weather Service forecast for the job site's own area. An item is at risk when its title matches one of your company's weather rules (for example, a **pour** with a low below 40°F in the three days after it, or **roofing** with gusts over 30 mph), or when heavy snow, extreme cold or heat, or a weather warning falls on its days. The job's overview shows **Site weather** with the next three days and **Scheduled work at risk**; choose **Open in schedule** to move the item, or **Make to-do** for a linked, high-priority to-do due the day the weather turns. The item's assignee and the job's staff are notified once for each item, rule and day (turn this off in settings). Rules and limits are in **Settings → Workflows → Weather & fire alerts**. The forecast is a guide; confirm conditions on site before changing work.
 
 ## Baselines {#baselines}
 
