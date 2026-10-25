@@ -165,10 +165,10 @@ test("estimate reports save optional breakdowns and show readable group scopes a
     await page.bringToFront()
     await setting.check()
     await page
-      .getByRole("button", { name: "Save report view", exact: true })
+      .getByRole("button", { name: "Save report settings", exact: true })
       .click()
     await expect(
-      page.getByRole("main").getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Report settings saved.", { exact: true })
     ).toBeVisible()
     await page.reload()
     await workOn.click()
@@ -200,13 +200,13 @@ test("estimate reports save optional breakdowns and show readable group scopes a
         .click()
       await page.getByRole("option", { name: mode, exact: true }).click()
       await page
-        .getByRole("button", { name: "Save report view", exact: true })
+        .getByRole("button", { name: "Save report settings", exact: true })
         .click()
       await expect(
-        page.getByRole("main").getByText("Client report view saved.", { exact: true })
+        page.getByRole("main").getByText("Report settings saved.", { exact: true })
       ).toBeVisible()
       await expect(
-        page.getByRole("button", { name: "Save report view", exact: true })
+        page.getByRole("button", { name: "Save report settings", exact: true })
       ).toBeDisabled()
       await preview.goto(report)
       await expect(
@@ -238,10 +238,10 @@ test("estimate reports save optional breakdowns and show readable group scopes a
     await page.getByRole("option", { name: /^Customer report format/ }).click()
     await setting.uncheck()
     await page
-      .getByRole("button", { name: "Save report view", exact: true })
+      .getByRole("button", { name: "Save report settings", exact: true })
       .click()
     await expect(
-      page.getByRole("main").getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Report settings saved.", { exact: true })
     ).toBeVisible()
     await page.reload()
     await workOn.click()

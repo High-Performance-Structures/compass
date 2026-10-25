@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -40,13 +40,15 @@ To reorder items in a division or assembly, drag a row's handle, use its **Move 
 
 Use **Edit assembly** to rename it or change its items. Selecting items from another assembly moves them into the current assembly. **Delete assembly** requires confirmation and retains its estimate items and costs under Other work. Locked estimates require a revision; revisions copy assembly names and item assignments.
 
-In **Work on → Customer report format**, under **Client report presentation**, choose **Assembly totals**, **Assembly cost code detail**, **Division subtotals + grand total**, or **Line items + division totals**, then select **Save report view**. The existing **Phase subtotals + grand total** choice and custom report phases are also available. Assembly detail shows individual cost code items and an assembly subtotal; assembly totals show each assembly's amount. Report selection is independent of the build view. Client reports continue to exclude internal-only items and include the estimate's existing tax and builder-fee presentation.
+In **Work on → Customer report format**, under **Client report presentation**, choose **Assembly totals**, **Assembly cost code detail**, **Division subtotals + grand total**, or **Line items + division totals**, then select **Save report settings**. The existing **Phase subtotals + grand total** choice and custom report phases are also available. Assembly detail shows individual cost code items and an assembly subtotal; assembly totals show each assembly's amount. Report selection is independent of the build view. Client reports continue to exclude internal-only items and include the estimate's existing tax and builder-fee presentation.
 
-For either assembly report view, optionally select **Show builder-fee subtotal for each assembly** and **Save report view**. Each assembly then shows its work subtotal, combined overhead/margin/contingency fee, and total including that fee. Other work receives the same treatment. Fees use only eligible items, including their sales tax, and rounding reconciles to the existing estimate fee. The project fee summary is a recap of these fees, not an additional charge. Fees for internal-only work remain in the project summary. This setting defaults to off and carries forward into revisions; division and custom-phase reports keep their existing presentation.
+For either assembly report view, optionally select **Show builder-fee subtotal for each assembly** and **Save report settings**. Each assembly then shows its work subtotal, combined overhead/margin/contingency fee, and total including that fee. Other work receives the same treatment. Fees use only eligible items, including their sales tax, and rounding reconciles to the existing estimate fee. The project fee summary is a recap of these fees, not an additional charge. Fees for internal-only work remain in the project summary. This setting defaults to off and carries forward into revisions; division and custom-phase reports keep their existing presentation.
 
 Division and assembly reports use grey group headings and subtotal bands, with cost codes indented beneath their group and a darker band for the group total. Totals views show the saved assembly scope or **Default CSI group descriptions** beneath the heading. Without a saved description, the report summarizes the customer-visible cost code scopes. Edit assembly descriptions with **Edit assembly**; edit division descriptions in **Work on → Group descriptions & report phases**.
 
-**Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report view** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
+**Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report settings** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
+
+**Save report settings** saves everything you changed on the customer report at once: the report view and its options, the assemblies that show cost codes, CSI group descriptions, and appended acknowledgements. **Unsaved changes** shows until you save. If one part can't be saved, the message names it and the rest are still saved. **Save department template** stays separate because it adds a template for future estimates rather than changing this one.
 
 ## Choose How a Change Order Is Built {#change-order-kinds}
 
