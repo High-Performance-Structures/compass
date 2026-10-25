@@ -6,7 +6,7 @@ describe("external resource grant migration", () => {
   it("adds audience-bound photo and owner-update document grants after fencing", () => {
     const migrationPath = resolve(
       process.cwd(),
-      "drizzle/0244_external_resource_grants.sql"
+      "drizzle/0251_external_resource_grants.sql"
     )
     expect(existsSync(migrationPath)).toBe(true)
     const sql = readFileSync(migrationPath, "utf8")
