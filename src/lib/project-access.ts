@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projectAccessInvitations, projectMembers, projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
+import { invitedPreviewInvitationId } from "@/lib/invited-preview"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 type Db = ReturnType<typeof getDb>
@@ -46,6 +47,25 @@ export async function getProjectAccessRecord(
     usesOrganizationProjectScope(user, project.organizationId)
   ) {
     return project
+  }
+
+  // Staff previewing someone invited who hasn't accepted: the invitation stands
+  // in for the membership they'll get when they accept.
+  const invitationId = invitedPreviewInvitationId(user.id)
+  if (invitationId) {
+    const invitation = await db
+      .select({ id: projectAccessInvitations.id })
+      .from(projectAccessInvitations)
+      .where(
+        and(
+          eq(projectAccessInvitations.id, invitationId),
+          eq(projectAccessInvitations.projectId, projectId),
+          eq(projectAccessInvitations.status, "sent")
+        )
+      )
+      .limit(1)
+      .get()
+    return invitation ? project : null
   }
 
   const membership = await db

@@ -9,7 +9,6 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
-  projectMembers,
   projectOperations,
   projectRfis,
 } from "@/db/schema"
@@ -21,6 +20,7 @@ import {
   notifyRfqResponseReceived,
 } from "@/lib/notifications/events"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import type { ProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
@@ -129,17 +129,7 @@ async function getSubVendorWriteContext(
   const project = await assertProjectAccess(db, user, projectId)
   if (!project.organizationId) throw new Error("Project organization is missing.")
 
-  const membership = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, user.id)
-      )
-    )
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
+  const membership = { role: await projectMemberRole(db, user.id, projectId) }
   if (
     membership?.role !== "subcontractor" &&
     membership?.role !== "supplier"

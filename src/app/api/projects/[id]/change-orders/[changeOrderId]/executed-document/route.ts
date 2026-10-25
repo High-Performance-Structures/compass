@@ -3,12 +3,13 @@ import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { projectChangeOrders, projectMembers } from "@/db/schema"
+import { projectChangeOrders } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { isChangeOrderStatus, isExecutedChangeOrderStatus } from "@/lib/change-orders/status"
 import { serveSignedDocument } from "@/lib/contracts/serve-signed-document"
 import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -42,17 +43,7 @@ export async function GET(
     const internal = isInternalStaffRole(user.role)
 
     if (!internal) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
+      const membership = { role: await projectMemberRole(db, user.id, projectId) }
       if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
         return new Response("Change-order document not found", { status: 404 })
       }

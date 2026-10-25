@@ -18,7 +18,7 @@ export function ProjectAudiencePersonSelector({ options, selectedUserId }: {
     <SearchableCombobox
       ariaLabel="Preview as person"
       value={selectedUserId ?? ""}
-      options={[{ value: "", label: "Clear person selection", selectedLabel: "Choose an assigned person" }, ...options.map((person) => ({ value: person.id, label: person.name, selectedLabel: `${person.name} · ${person.companyName ?? person.email}`, description: [person.companyName, person.email].filter(Boolean).join(" · ") }))]}
+      options={[{ value: "", label: "Clear person selection", selectedLabel: "Choose an assigned person" }, ...options.map((person) => ({ value: person.id, label: person.invited ? `${person.name} (invited)` : person.name, selectedLabel: `${person.name} · ${person.invited ? "Invited, not accepted" : person.companyName ?? person.email}`, description: [person.companyName, person.email, person.invited ? "Hasn't accepted the invitation yet" : null].filter(Boolean).join(" · ") }))]}
       placeholder="Choose an assigned person"
       searchPlaceholder="Search people or companies"
       disabled={options.length === 0}
@@ -31,6 +31,6 @@ export function ProjectAudiencePersonSelector({ options, selectedUserId }: {
         window.location.assign(`${pathname}${next.size ? `?${next}` : ""}`)
       }}
     />
-    {options.length === 0 && <span>No active external accounts assigned.</span>}
+    {options.length === 0 && <span>No owners or vendors invited to this project.</span>}
   </div>
 }

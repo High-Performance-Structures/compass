@@ -7,7 +7,6 @@ import { NextRequest } from "next/server"
 import { getDb } from "@/db"
 import {
   projectBudgetApplications,
-  projectMembers,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
@@ -20,6 +19,7 @@ import {
 } from "@/lib/google/config"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
@@ -70,16 +70,7 @@ export async function GET(
     }
 
     if (!isInternalStaffRole(user.role)) {
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
+      const membership = { role: await projectMemberRole(db, user.id, projectId) }
       if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
         return new Response("Pay application not found", { status: 404 })
       }

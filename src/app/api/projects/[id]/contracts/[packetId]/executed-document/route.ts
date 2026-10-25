@@ -3,7 +3,7 @@ import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
 import { contractPackets } from "@/db/schema-contracts"
 import { requireAuth } from "@/lib/auth"
 import { executedContractDocumentSource } from "@/lib/contracts/executed-document-source"
@@ -17,6 +17,7 @@ import {
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -50,17 +51,7 @@ export async function GET(
     await assertProjectAccess(db, user, projectId)
 
     if (!isInternalStaffRole(user.role)) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
+      const membership = { role: await projectMemberRole(db, user.id, projectId) }
       if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
         return new Response("Contract document not found", { status: 404 })
       }

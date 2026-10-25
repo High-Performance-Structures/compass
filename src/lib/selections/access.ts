@@ -1,10 +1,9 @@
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectMemberRole } from "@/lib/project-member-role"
 import {
   canUseProjectAudience,
   type ProjectAudience,
@@ -40,17 +39,8 @@ export async function selectionAccess(
     if (write)
       throw new Error("Preview mode cannot record an owner's decision.")
   } else {
-    const member = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(member?.role ?? null, audience))
+    const role = await projectMemberRole(db, user.id, projectId)
+    if (!canUseProjectAudience(role, audience))
       throw new Error("Project not found")
     if (write && audience !== "owner")
       throw new Error("Only project owners can record selection decisions.")
