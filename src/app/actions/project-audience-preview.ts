@@ -45,6 +45,7 @@ import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-c
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { upcomingClientMeetingsForGuest, type GuestClientMeeting } from "@/lib/client-meetings/guest-meetings"
 import {
   isPortalVisiblePurchaseOrderStatus,
   parsePortalPurchaseOrderPayload,
@@ -257,6 +258,8 @@ export type ProjectAudiencePreview = {
     readonly schedulePublished: boolean
     readonly warrantyEnabled: boolean
   }
+  /** Google Meets the person whose workspace this is was invited to. */
+  readonly upcomingMeetings: readonly GuestClientMeeting[]
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
   readonly contractDocuments: readonly AudienceContractDocument[]
@@ -460,6 +463,15 @@ export async function getProjectAudiencePreview(
           resolvedViewerContact.contactType === "subcontractor")))
       ? resolvedViewerContact
       : null
+
+  // Staff previewing with no person picked have no invitations of their own.
+  const upcomingMeetings = viewer.id
+    ? await upcomingClientMeetingsForGuest(db, {
+        organizationId,
+        projectId,
+        emails: [viewer.email, viewerContact?.email],
+      }).catch(() => [])
+    : []
 
   const visibilityFilter =
     audience === "owner"
@@ -1140,6 +1152,7 @@ export async function getProjectAudiencePreview(
         jobStatusId: project.jobStatusId,
       }),
     },
+    upcomingMeetings,
     ownerUpdates: ownerUpdateRows,
     photos: photoRows.filter(isImage).map((photo) => {
       const resolvedPhotoDate = photoDate({

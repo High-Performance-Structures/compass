@@ -70,6 +70,7 @@ export function dashboardFixture(
       schedulePublished: true,
       warrantyEnabled: true,
     },
+    upcomingMeetings: [],
     ownerUpdates:
       audience === "owner"
         ? [

@@ -14,6 +14,7 @@ import {
 
 import type { ProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ProjectAudienceDashboardPhoto } from "@/components/projects/project-audience-dashboard-photo"
+import { ClientMeetingJoinBanner } from "@/components/projects/client-meeting-join-banner"
 import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
 import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
@@ -180,6 +181,12 @@ export function ProjectAudienceDashboardView({
             />
           )}
         </div>
+
+        {data.upcomingMeetings.length > 0 ? (
+          <div className="mt-5">
+            <ClientMeetingJoinBanner meetings={data.upcomingMeetings} />
+          </div>
+        ) : null}
 
         {counts.length > 0 ? (
           <div className="mt-5">
