@@ -1950,6 +1950,30 @@ export const myCompassCalendars = sqliteTable("my_compass_calendars", {
   updatedAt: text("updated_at").notNull(),
 })
 
+// Today's plan: each person's daily digest choice, and what was last sent so
+// the digest goes once a day and an overload warning once a week.
+export const morningPlanPreferences = sqliteTable(
+  "morning_plan_preferences",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    digestEnabled: integer("digest_enabled", { mode: "boolean" }).notNull().default(false),
+    /** Local hour (0–23, company time zone) the daily digest is sent. */
+    digestHour: integer("digest_hour").notNull().default(7),
+    /** Local date (YYYY-MM-DD) the last digest went out. */
+    lastDigestOn: text("last_digest_on"),
+    /** Monday (YYYY-MM-DD) of the last week an overload warning went out. */
+    lastOverloadWeek: text("last_overload_week"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_morning_plan_preferences_org").on(table.organizationId)],
+)
+
 export const myCompassCalendarItems = sqliteTable(
   "my_compass_calendar_items",
   {

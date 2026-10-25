@@ -10,6 +10,9 @@ import {
 } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { TodaysPlanCard } from "@/components/dashboard/todays-plan-card"
+import type { TodaysPlan, WeekLoad } from "@/lib/morning-plan/plan"
+import type { TeamWorkloadRow } from "@/lib/morning-plan/server"
 import {
   IconArrowRight,
   IconBuilding,
@@ -1194,6 +1197,8 @@ export function DashboardLaunchpad({
   cherishRecognitions,
   portfolio,
   salesPipelines,
+  todaysPlan,
+  teamWorkload,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1206,6 +1211,8 @@ export function DashboardLaunchpad({
   readonly cherishRecognitions: readonly CherishStory[]
   readonly portfolio: PortfolioMapData
   readonly salesPipelines: readonly SalesPipeline[]
+  readonly todaysPlan: { readonly plan: TodaysPlan; readonly load: WeekLoad | null } | null
+  readonly teamWorkload: readonly TeamWorkloadRow[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1267,6 +1274,10 @@ export function DashboardLaunchpad({
       <CherishStoryInvitation items={cherishRecognitions} quietWhenRead />
 
       <DashboardCountsStrip counts={counts} />
+
+      {todaysPlan ? (
+        <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
+      ) : null}
 
       <PortfolioSection
         jobs={portfolio.jobs}

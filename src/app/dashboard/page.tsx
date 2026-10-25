@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 
 import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
+import { getMyTodaysPlan, getTeamWorkload } from "@/app/actions/morning-plan"
 import { getProjectAudienceOptions } from "@/app/actions/project-audience-preview"
 import {
   getCurrentUserPresence,
@@ -68,6 +69,11 @@ export default async function Page(): Promise<React.ReactElement> {
     getPortfolioMapData(),
     getSalesPipelines(),
   ])
+  // Fetched after the main dashboard data so a slow plan never holds it up.
+  const [todaysPlanResult, teamWorkloadResult] = await Promise.all([
+    getMyTodaysPlan(),
+    getTeamWorkload(),
+  ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
     ? presenceResult.data?.statusMessage ?? null
@@ -104,6 +110,8 @@ export default async function Page(): Promise<React.ReactElement> {
       canPrepareGreetingCards={canPrepareGreetingCards(currentUser)}
       portfolio={portfolio}
       salesPipelines={salesPipelines}
+      todaysPlan={todaysPlanResult.success ? todaysPlanResult.data : null}
+      teamWorkload={teamWorkloadResult.success ? teamWorkloadResult.data : []}
       cherishRecognitions={
         cherishResult.success
           ? cherishResult.data

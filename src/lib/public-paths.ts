@@ -66,6 +66,7 @@ const scheduledMaintenancePaths = [
   "/api/operations/project-follow-up/overdue-reminders",
   "/api/operations/daily-logs/missing-reminders",
   "/api/operations/my-compass-calendar/sync",
+  "/api/operations/morning-plan/sweep",
   "/api/operations/project-calendars/sync",
   "/api/operations/client-meetings/transcripts",
 ]
