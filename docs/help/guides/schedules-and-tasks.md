@@ -49,11 +49,13 @@ Do not force a dependent item to an incompatible date until you know whether its
 
 The first **Publish schedule** makes selected visible items available in owner and trade-partner workspaces and does not require a change reason. Later edits remain internal while viewers continue to see the last published version. Use **Publish changes** and enter a concise reason for another revision, including republishing a previously published schedule after it was hidden.
 
+A schedule that has never been published is a draft: edit dates, predecessors, and workday exceptions freely, with no shift reason. Once a schedule has been published, including one later moved back to draft, any change that moves dates asks for a **Schedule shift reason**, which is saved in the schedule's activity history.
+
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
 
 ## Workday Exceptions {#workday-exceptions}
 
-Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
+Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Once the schedule has been published, add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
 
 ## Baselines {#baselines}
 
@@ -79,5 +81,5 @@ Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overal
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.
-- [ ] Workday exceptions have a reason.
+- [ ] On a published schedule, workday exceptions have a reason.
 - [ ] Completed work retains accurate history.

@@ -97,21 +97,57 @@ db.transaction(() => {
       .run(id, daysAgo(age), work, issues, crew, now, now)
   }
 
-  // A short schedule for the Jarvis schedule clip.
-  db.prepare(`DELETE FROM task_dependencies WHERE successor_id LIKE 'help-video-task-%' OR predecessor_id LIKE 'help-video-task-%'`).run()
-  db.prepare(`DELETE FROM schedule_tasks WHERE project_id = 'compass-developer'`).run()
+  // A second, empty job to import a saved schedule template into.
+  db.prepare(`INSERT INTO projects (id, project_number, name, status, address, client_name, project_manager,
+      organization_id, schedule_published, created_at, updated_at)
+    VALUES ('compass-developer-2', 'H-DEV-002', 'Lakeside Addition', 'OPEN', '200 Example Way, Woodland Park, CO',
+      'Example Owner', 'Dev User', 'hps-org-001', 0, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET organization_id = excluded.organization_id, status = 'OPEN'`).run(now, now)
+  db.prepare(`INSERT INTO project_members (id, project_id, user_id, role, assigned_at)
+    VALUES ('help-video-project-member-2', 'compass-developer-2', 'dev-user-1', 'project_manager', ?)
+    ON CONFLICT(id) DO NOTHING`).run(now)
+
+  // Schedule clips start from a draft that has never been published, with no
+  // workday exceptions and no schedule templates saved by an earlier run.
+  const projectIds = `('compass-developer', 'compass-developer-2')`
+  db.prepare(`UPDATE projects SET schedule_published = 0 WHERE id IN ${projectIds}`).run()
+  db.prepare(`DELETE FROM schedule_publications WHERE project_id IN ${projectIds}`).run()
+  db.prepare(`DELETE FROM schedule_baselines WHERE project_id IN ${projectIds}`).run()
+  db.prepare(`DELETE FROM workday_exceptions WHERE project_id IN ${projectIds}`).run()
+  const savedTemplates = `(SELECT id FROM project_templates WHERE template_kind = 'schedule')`
+  const savedVersions = `(SELECT id FROM project_template_versions WHERE template_id IN ${savedTemplates})`
+  db.prepare(`DELETE FROM project_template_application_items WHERE application_id IN
+    (SELECT id FROM project_template_applications WHERE template_id IN ${savedTemplates})`).run()
+  db.prepare(`DELETE FROM project_template_applications WHERE template_id IN ${savedTemplates}`).run()
+  db.prepare(`DELETE FROM schedule_template_dependencies WHERE version_id IN ${savedVersions}`).run()
+  db.prepare(`DELETE FROM schedule_template_items WHERE version_id IN ${savedVersions}`).run()
+  db.prepare(`DELETE FROM project_template_modules WHERE version_id IN ${savedVersions}`).run()
+  db.prepare(`DELETE FROM project_template_versions WHERE template_id IN ${savedTemplates}`).run()
+  db.prepare(`DELETE FROM project_templates WHERE template_kind = 'schedule'`).run()
+
+  // A short schedule, starting next Monday so every item lands on workdays.
+  db.prepare(`DELETE FROM task_dependencies WHERE successor_id IN (SELECT id FROM schedule_tasks WHERE project_id IN ${projectIds})
+    OR predecessor_id IN (SELECT id FROM schedule_tasks WHERE project_id IN ${projectIds})`).run()
+  db.prepare(`DELETE FROM schedule_tasks WHERE project_id IN ${projectIds}`).run()
+  const monday = new Date()
+  monday.setUTCHours(0, 0, 0, 0)
+  monday.setUTCDate(monday.getUTCDate() + ((8 - monday.getUTCDay()) % 7 || 7))
+  const workdate = (workdaysAfterMonday) => {
+    const weeks = Math.floor(workdaysAfterMonday / 5)
+    const date = new Date(monday.getTime() + (weeks * 7 + (workdaysAfterMonday % 5)) * 86_400_000)
+    return date.toISOString().slice(0, 10)
+  }
   const tasks = [
-    ["help-video-task-1", "Pour north footing", 1, 1, "Foundation"],
-    ["help-video-task-2", "Cure and strip forms", 2, 3, "Foundation"],
-    ["help-video-task-3", "Backfill north side", 5, 2, "Foundation"],
-    ["help-video-task-4", "Frame first-floor walls", 7, 5, "Framing"],
+    ["help-video-task-1", "Pour north footing", 0, 1, "Foundation"],
+    ["help-video-task-2", "Cure and strip forms", 1, 3, "Foundation"],
+    ["help-video-task-3", "Backfill north side", 4, 2, "Foundation"],
+    ["help-video-task-4", "Frame first-floor walls", 6, 5, "Framing"],
   ]
   for (const [index, [id, title, offset, workdays, phase]] of tasks.entries()) {
-    const start = new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
     db.prepare(`INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase,
         status, is_critical_path, sort_order, assigned_to, created_at, updated_at)
       VALUES (?, 'compass-developer', ?, ?, ?, ?, ?, 'PENDING', 1, ?, 'Dev User', ?, ?)`)
-      .run(id, title, start, workdays, start, phase, index + 1, now, now)
+      .run(id, title, workdate(offset), workdays, workdate(offset + workdays - 1), phase, index + 1, now, now)
   }
   for (const [index, successor] of ["help-video-task-2", "help-video-task-3", "help-video-task-4"].entries()) {
     db.prepare(`INSERT INTO task_dependencies (id, predecessor_id, successor_id, type, lag_days)
