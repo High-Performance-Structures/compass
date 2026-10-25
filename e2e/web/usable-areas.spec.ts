@@ -1026,7 +1026,7 @@ test.describe("usable Compass areas", () => {
 
     await page.keyboard.press("Escape")
     const ownerPath =
-      "/preview/projects/e2e-project-001/owner/schedule"
+      "/preview/projects/e2e-project-001/owner/schedule?previewAs=e2e-owner-001"
     const ownerPage = await page.context().newPage()
     try {
       const ownerResponse = await ownerPage.goto(ownerPath)
@@ -1060,7 +1060,7 @@ test.describe("usable Compass areas", () => {
     }
 
     const partnerPath =
-      "/preview/projects/e2e-project-001/sub-vendor/schedule"
+      "/preview/projects/e2e-project-001/sub-vendor/schedule?previewAs=e2e-vendor-001"
     const partnerPage = await page.context().newPage()
     try {
       const partnerResponse = await partnerPage.goto(partnerPath)

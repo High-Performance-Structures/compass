@@ -1,3 +1,4 @@
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ getCurrentUser: mocks.getCurrentUser }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/conversations/channel-access", () => ({
+vi.mock("@/lib/conversations/channel-access-server", () => ({
   getConversationChannelAccess: mocks.getConversationChannelAccess,
 }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))

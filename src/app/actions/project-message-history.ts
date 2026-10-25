@@ -20,7 +20,7 @@ export async function getProjectMessageHistory(
   cursor?: { readonly sentAt: string; readonly conversationId: string },
 ): Promise<CorrespondenceResult<ProjectMessageHistoryPage>> {
   try {
-    const ctx = await correspondenceContext(projectId)
+    const ctx = await correspondenceContext(projectId, "read")
     if (ctx.workspace !== "staff")
       throw new Error("Project history is unavailable.")
     if (
@@ -114,7 +114,7 @@ export async function getProjectMessageHistoryDetail(
   beforeSequence?: number,
 ): Promise<CorrespondenceResult<CorrespondenceDetail>> {
   try {
-    const ctx = await correspondenceContext(projectId)
+    const ctx = await correspondenceContext(projectId, "read")
     if (ctx.workspace !== "staff")
       throw new Error("Project history is unavailable.")
     return {

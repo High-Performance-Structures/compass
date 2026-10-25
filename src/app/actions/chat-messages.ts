@@ -1,5 +1,10 @@
 "use server"
 
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
+
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { getCloudflareContext } from "@/lib/db"
 import {
   eq,
@@ -41,14 +46,7 @@ import {
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
-import {
-  areArchiveMentionTypesAllowed,
-  areArchiveUserMentionsInternal,
-  canCreateConversationMessage,
-  getConversationChannelAccess,
-  isBuildertrendArchiveChannelId,
-  isReplyInConversationChannel,
-} from "@/lib/conversations/channel-access"
+import { areArchiveMentionTypesAllowed, areArchiveUserMentionsInternal, canCreateConversationMessage, isBuildertrendArchiveChannelId, isReplyInConversationChannel } from "@/lib/conversations/channel-access"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
@@ -226,6 +224,7 @@ export async function searchMentionableUsers(
   query: string
 ) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -466,6 +465,7 @@ export async function sendMessage(data: {
   contentHtml?: string
 }) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -898,6 +898,7 @@ export async function sendMessage(data: {
 
 export async function deleteMessage(messageId: string) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -954,7 +955,7 @@ export async function getMessages(
   options?: { limit?: number; cursor?: string }
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
@@ -1044,7 +1045,7 @@ export async function getThreadMessages(
   options?: { limit?: number; cursor?: string }
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
@@ -1143,6 +1144,7 @@ export async function getThreadMessages(
 
 export async function addReaction(messageId: string, emoji: string) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -1222,6 +1224,7 @@ export async function addReaction(messageId: string, emoji: string) {
 
 export async function removeReaction(messageId: string, emoji: string) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -1283,6 +1286,7 @@ export async function markThreadRead(
   parentMessageId: string
 ): Promise<{ readonly success: boolean; readonly error?: string }> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
     const { env } = await getCloudflareContext()
@@ -1301,6 +1305,7 @@ export async function markChannelRead(
   lastMessageId: string
 ) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }

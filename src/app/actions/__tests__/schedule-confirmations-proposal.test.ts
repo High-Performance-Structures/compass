@@ -1,3 +1,4 @@
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({

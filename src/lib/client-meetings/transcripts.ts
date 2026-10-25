@@ -223,7 +223,7 @@ async function createTranscriptDailyLog(input: {
   const guests = emailList(meeting.guestEmails)
   const staff = emailList(meeting.staffEmails)
   const header = [
-    `Client meeting: ${meeting.title}`,
+    `Project meeting: ${meeting.title}`,
     `Google Meet hosted by ${hostName}, ${localTime(meeting.startsAt, meeting.timeZone)} to ${localTime(meeting.endsAt, meeting.timeZone)}`,
     guests.length > 0 ? `Guests: ${guests.join(", ")}` : null,
     staff.length > 0 ? `Staff: ${staff.join(", ")}` : null,

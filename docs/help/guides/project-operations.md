@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-10-20"
+  "lastReviewed": "2026-10-24"
 }
 ---
 
@@ -23,6 +23,8 @@ An **RFI** asks for information or a decision. An **RFQ** requests pricing or sc
 ## RFIs {#rfis}
 
 Enter a clear subject and complete question, responsible contacts, response date, priority, narrowest useful audience, and supporting files. Continue the same RFI as answers and follow-up questions arrive, and keep its status current.
+
+For a vendor-visible RFI, choose **Vendor who can see this RFI**. Every active contact at the assigned vendor company can see it; the original submitter also keeps access to their own RFI. A company name or the vendor audience alone does not grant access. Use **Save vendor** on an existing RFI to assign, replace, or remove that company. Review older unassigned RFIs in this queue and choose the correct company deliberately; Compass does not guess from their labels.
 
 Use **Email** on an RFI to send it from Compass. Choose **To** and **Cc**, check the subject, and add an optional note; the RFI's question always follows your note. Replies come back to you and onto the RFI under **Email replies**, and the project team gets a notification. Replies stay internal until you add an approved response. Delete only an incorrect or unnecessary record using the available authorized action and review dependent tasks first.
 

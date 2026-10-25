@@ -1,3 +1,4 @@
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -97,6 +98,23 @@ describe("reading clears the bell", () => {
     database = open()
     await markCorrespondenceNotificationsRead(database.db, "u1", ["pm1"])
     expect(readIds(database)).toEqual(["n-pm"])
+  })
+})
+
+describe("external notification audience", () => {
+  it("retains owner RFI notifications in the account-wide center", async () => {
+    database = open()
+    mocks.requireAuth.mockResolvedValue({ id: "u1", role: "client", organizationId: "org-a" })
+    const center = await getNotificationCenter()
+    expect(center.success && center.data.items.map((item) => item.id)).toContain("n-rfi")
+  })
+
+  it.each(["supplier", "subcontractor"])("withholds unscoped RFI notifications for %s", async (role) => {
+    database = open()
+    mocks.requireAuth.mockResolvedValue({ id: "u1", role, organizationId: "org-a" })
+    const center = await getNotificationCenter()
+    expect(center.success).toBe(true)
+    expect(center.success && center.data.items.map((item) => item.id)).not.toContain("n-rfi")
   })
 })
 

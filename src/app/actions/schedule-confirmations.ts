@@ -1,5 +1,8 @@
 "use server"
 
+import { assertAudiencePreviewWriteAllowed, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+
 import { and, desc, eq, notInArray } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import { revalidatePath } from "next/cache"
@@ -183,6 +186,7 @@ export async function sendPublishedScheduleAssignment(
   taskId: string
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
@@ -430,6 +434,7 @@ export async function sendScheduleTaskReminder(
   taskId: string
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
@@ -596,6 +601,7 @@ export async function respondToScheduleTaskConfirmation(
   note = ""
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     if (response !== "confirmed" && response !== "declined") {
       return { success: false, error: "Unsupported confirmation response." }
     }
@@ -748,6 +754,7 @@ export async function proposeScheduleTaskChange(
   input: ScheduleChangeProposalInput
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const validation = validateScheduleChangeProposal(input)
     if (!validation.success) return validation
     const user = await requireAuth()
@@ -892,7 +899,8 @@ export async function proposeScheduleTaskChange(
 export async function getScheduleTaskChangeProposal(
   taskId: string
 ): Promise<ScheduleTaskChangeProposal | null> {
-  const user = await requireAuth()
+  const user = await conversationRequestViewer(await requireAuth())
+  if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "update")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
@@ -914,6 +922,7 @@ export async function getScheduleTaskChangeProposal(
       )
     )
     .get()
+  if (task) await assertAudienceResourceProject(task.projectId)
   if (
     !task?.proposedStartDate ||
     task.proposedWorkdays === null ||
@@ -933,6 +942,7 @@ export async function rejectScheduleTaskChangeProposal(
   taskId: string
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
@@ -1155,7 +1165,8 @@ async function resolveReviewedAssignmentTarget(
 export async function getScheduleTaskAssignees(
   taskId: string,
 ): Promise<readonly ScheduleTaskAssigneeView[]> {
-  const user = await requireAuth()
+  const user = await conversationRequestViewer(await requireAuth())
+  if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "read")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
@@ -1172,6 +1183,7 @@ export async function getScheduleTaskAssignees(
     )
     .get()
   if (!task) throw new Error("Schedule item not found or access denied")
+  await assertAudienceResourceProject(task.projectId)
   await assertProjectAccess(db, user, task.projectId)
   const rows = await db
     .select({
@@ -1228,6 +1240,7 @@ export async function setScheduleTaskAssignees(
   inputs: readonly (ScheduleTaskAssigneeInput | string)[],
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
@@ -1414,6 +1427,7 @@ export async function respondToScheduleTaskAssignee(
   input: ScheduleAssigneeProposalInput | ScheduleAssigneeResponse,
 ): Promise<ScheduleConfirmationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const responseInput: ScheduleAssigneeProposalInput =
       typeof input === "string" ? { response: input } : input
     if (

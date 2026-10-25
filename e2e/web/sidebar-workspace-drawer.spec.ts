@@ -71,43 +71,26 @@ test("Compass drawer reveals on demand, preserves scroll space, and remembers it
 })
 
 for (const audience of ["owner", "sub-vendor"]) {
-  test(`${audience} workspace preserves project navigation and personal controls`, async ({ page, baseURL, isMobile }, testInfo) => {
+  test(`${audience} preview keeps project navigation and hides the person's own controls`, async ({ page, baseURL, isMobile }, testInfo) => {
     test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "Uses the isolated local demo workspace.")
     if (!baseURL) throw new Error("A local URL is required.")
     await page.context().addCookies([{ name: "compass-demo", value: "true", url: baseURL }])
     if (!isMobile) await page.setViewportSize({ width: 1024, height: 600 })
-    await page.goto(`/preview/projects/e2e-project-001/${audience}`)
+    const person = audience === "owner" ? "e2e-owner-001" : "e2e-vendor-001"
+    const home = `/preview/projects/e2e-project-001/${audience}?previewAs=${person}`
+    await page.goto(home)
+    if (isMobile) await page.getByRole("button", { name: "Open menu", exact: true }).click()
     const nav = page.getByRole("navigation", { name: "Project workspace", exact: true }).filter({ visible: true })
-    await expect(nav.getByRole("link", { name: "Dashboard", exact: true })).toHaveAttribute("href", `/preview/projects/e2e-project-001/${audience}`)
-    const root = page.locator('[data-slot="sidebar-workspace-drawer"]:visible')
-    if (isMobile) {
-      await expect(root).toHaveCount(0)
-      await page.getByRole("button", { name: "Notification settings", exact: true }).click()
-      await expect(page.getByRole("dialog").getByRole("heading", { name: "Notification settings", exact: true })).toBeVisible()
-      return
-    }
-    const navHeight = await nav.evaluate((element) => element.clientHeight)
-    await expect(root).toHaveAttribute("data-open", "false")
-    await root.getByRole("button", { name: "Open Compass drawer", exact: true }).click()
-    await expect(root.getByRole("button", { name: "Notifications", exact: true })).toBeVisible()
-    await expect(root.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0)
-    await expect(root.getByRole("button", { name: "Open Office Talk", exact: true })).toHaveCount(0)
-    await root.getByRole("button", { name: "Appearance", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Light", exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Dark", exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Light", exact: true }).press("Escape")
-    await expect(root).toHaveAttribute("data-open", "true")
-    await root.getByRole("button", { name: "Pin Compass drawer open", exact: true }).click()
-    expect(await nav.evaluate((element) => element.clientHeight)).toBeLessThan(navHeight)
-    await page.reload()
-    await expect(root).toHaveAttribute("data-pinned", "true")
-    await root.getByRole("button", { name: "Edit sidebar photo", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Change photo", exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Reset", exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Change photo", exact: true }).press("Escape")
+    await expect(nav.getByRole("link", { name: "Dashboard", exact: true })).toHaveAttribute("href", home)
+    // A staff preview must never change the person's notifications,
+    // appearance or photo, so their drawer is replaced by a read-only label.
+    await expect(page.locator('[data-slot="sidebar-workspace-drawer"]:visible')).toHaveCount(0)
+    await expect(page.getByRole("paragraph").filter({ hasText: /^Read-only preview$/ }).filter({ visible: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Edit sidebar photo", exact: true })).toHaveCount(0)
     const lastLink = nav.getByRole("link").last()
     await lastLink.scrollIntoViewIfNeeded()
     await expect(lastLink).toBeInViewport()
-    await page.screenshot({ path: testInfo.outputPath(`${audience}-pinned-drawer.png`) })
+    await expect(lastLink).toHaveAttribute("href", new RegExp(`previewAs=${person}`))
+    await page.screenshot({ path: testInfo.outputPath(`${audience}-preview-sidebar.png`) })
   })
 }

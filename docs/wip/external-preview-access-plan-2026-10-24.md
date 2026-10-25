@@ -1,0 +1,259 @@
+# Owner and vendor preview access plan
+
+Status: approved joint Codex and Claude design, implemented and validated locally on `codex/external-preview-access`, 2026-10-24. The implementation is deployed to the isolated demo environment only. Production remains unchanged; the authenticated data comparison passes for the tested surfaces, while a successful attachment download remains unverified.
+
+Owner and vendor previews should use the same authorization rules as the selected external person. Staff authorization should determine whether an employee may open a preview; it must not determine the records, messages, or files shown inside it.
+
+## Confirmed causes
+
+These access behaviors are present in the inspected checkout at `d25ebd816` and in local `origin/main`, `64f2edd337`. The change-order action file also has unrelated differences between those revisions; its relevant audience-context and capability behavior remains the same.
+
+Real external accounts already use the same `/preview/projects/[id]/{owner,sub-vendor}` pages, through the redirects in `src/app/dashboard/projects/[id]/page.tsx`. The divergence is inside authentication-dependent loaders and controls. Changes to these readers therefore require regression coverage for real external sessions as well as staff preview.
+
+| Surface | Current behavior | Relevant source |
+| --- | --- | --- |
+| Viewer identity | The preview retains the authenticated employee's identity and internal status. | `src/app/actions/project-audience-preview.ts`, `verifyProjectAccess` |
+| Messages and email | The audience Conversations section calls the normal personal inbox action using staff authentication. It explicitly labels that inbox as the employee's staff inbox. | `src/components/projects/project-audience-preview.tsx`, `AudienceConversationSection`; `src/lib/correspondence/access.ts`, `correspondenceContext` |
+| Vendor RFQs | Internal preview skips the recipient match. | `src/app/actions/project-audience-preview.ts`, `audienceRfqs` |
+| Vendor commitments | Internal preview tests records against multiple external contacts and bypasses explicit purchase order delivery emails. | `src/app/actions/project-audience-preview.ts`, `portalOperationContacts`, `audienceOperations` |
+| Vendor selections | Procurement links reuse the broader preview RFQ and purchase order sets. | `src/app/actions/selection-decisions-read.ts`, `partnerOperations` |
+| Schedule | Internal viewers can preview unpublished working rows and receive broader assignee response data. | `src/app/actions/project-audience-preview.ts`; `src/lib/schedule/audience-publication.ts` |
+| Earlier conversations | Channel membership and message reads use the employee's account. Loading preview can reconcile or create audience channel membership. | `src/app/actions/project-audience-preview.ts`; `src/components/projects/project-audience-conversation.tsx` |
+| Owner warranty | The owner wrapper loads the warranty workspace under staff authentication, including internal notes, broader attachments/events, staff assignee choices, and access outside the warranty stage. | `src/components/projects/project-audience-warranty.tsx`; `src/app/actions/project-warranty.ts`, `getProjectWarrantyWorkspace` |
+| Vendor warranty | Internal preview returns claims assigned to any contact or vendor rather than one external viewer. | `src/app/actions/project-warranty-vendor.ts`, `vendorWarrantyContext` |
+| Change orders | Audience override retains the employee's ID, so requester exceptions and capabilities can still use the employee. | `src/lib/change-orders/access.ts`, `canViewChangeOrder`; `src/app/actions/project-change-orders.ts`, `audiencePreviewContext`, `getProjectChangeOrderCapabilities` |
+| Owner budget | Reconciliation explanations and differences branch on internal status. | `src/app/preview/projects/[id]/owner/budget/page.tsx` |
+| Shared controls | The preview layout builds Quick Add and help access from the authenticated employee. Notification controls also use the employee's account. | `src/app/preview/layout.tsx`; `src/components/projects/project-audience-header-controls.tsx` |
+
+These findings establish misleading internal previews. They do not, by themselves, establish that an actual external account can read internal data.
+
+## Proposed user experience
+
+Owner preview and vendor preview should offer a person selector for the current project. The selector must identify the person and company so that two contacts at the same company remain distinguishable. A persistent banner should state, for example, "Previewing as [person] · Owner · Read only."
+
+An exact preview requires an active external account with the matching project assignment. A directory contact or pending invitation alone does not establish login access or message grants. Such contacts should be identified as not yet activated, without inventing an account or granting access.
+
+The initial implementation requires selecting an assigned person before opening workspace sections. Generic preview does not load personal records. A future generic shared-content view must show only genuinely shared, published audience content. Never combine multiple people's private records into a generic owner or vendor preview, and never fall back to the employee's inbox.
+
+Available actions should reflect the external person's capabilities. In preview, explain that actions are disabled because the view is read only. Viewing a preview must not send email, save drafts, mark messages or notifications read, change preferences, submit approvals, or provision conversation membership. Personal unsent drafts are excluded from preview.
+
+## Authorization design
+
+Keep the authenticated staff actor separate from the effective external viewer. Do not change the employee's WorkOS identity, active organization cookie, or global authentication helpers to simulate another account.
+
+Introduce one server-owned project viewer resolver with separate live and preview modes. Its result should carry the authenticated actor, effective external viewer, project, organization, audience, and read-only mode. Do not accept an arbitrary client-provided role or trust a referrer header as authorization.
+
+For each preview request, the resolver must verify:
+
+1. The actor is authorized to preview the project and the requested external scope.
+2. The selected account is active, has access to the project's organization, and has a current project assignment for the requested audience.
+3. The selected account is an external participant rather than an internal employee with an owner-like project assignment.
+4. Any contact association needed for vendor records satisfies the same rules used by the actual external workspace.
+
+Invalid, removed, or mismatched targets must fail closed. Do not substitute the actor or another person. A preview may never grant access to the selected person or claim a pending invitation on their behalf.
+
+Thread the validated context into existing readers. Where a loader authenticates internally, separate context resolution from the reusable read so both the real external workspace and staff preview apply the same policy. Do not fork the readers or maintain a second copy of external visibility policy for preview.
+
+The employee's own permissions may further limit which external scopes they may inspect. They must never widen what the selected external person can see.
+
+Inspecting another person's messages requires an explicit preview permission, not ordinary project-read access alone. Record the actor, selected person, project, and preview access in the security audit trail. This audit entry must not change the selected person's inbox, read state, or project records.
+
+## Messages and files
+
+Existing correspondence readers already enforce current conversation participation and per-message recipient grants. Reuse those rules with the effective external viewer. Retain To/Cc/Bcc privacy and the same attachment authorization; an audience label alone is insufficient.
+
+The context must persist through inbox refreshes, detail reads, search, pagination, polling, legacy conversations, printable output, attachment previews, and downloads. Preview requests must not invoke the staff project-history scope. A download URL must revalidate the target and its grant before fetching the file.
+
+Use explicit read-only preview actions or endpoints. The preview client should not wire normal staff send, draft, state, read-receipt, upload, or approval actions into the view. Server boundaries must reject preview-scoped writes as well. Ordinary staff tabs keep their normal authorization.
+
+## Whole workspace coverage
+
+Apply the same viewer context to the dashboard, schedule, RFIs, RFQs, purchase orders, selections, change orders, budget and deposit requests, warranty, photos, documents, project team, help, notifications, and Quick Add. Existing audience-aware readers are starting points; their identity-dependent branches still need checking.
+
+Keep navigation and links inside the selected project and audience. If project switching is supported, validate the person's assignment on the destination project before rendering it. A manually opened detail or download route must enforce the same access as the list view.
+
+Key client state and any permissible caches by project, audience, selected person, and preview mode. On a person change, clear prior content immediately and ignore late responses from the previous selection. Sensitive responses should remain private and uncached. Do not store authorization in a browser-global preference that changes another staff tab.
+
+## Implementation sequence
+
+0. Contain misleading generic previews: apply no personal grants when no person is selected; remove staff-only widening, inbox/composer/draft fallback, internal reconciliation details, and channel provisioning. Show person-specific sections as unavailable until the selector exists. Treat this as containment rather than complete exact-person preview.
+1. Establish the validated viewer resolver and person selector. Preserve current staff authentication and actual external login behavior.
+2. Complete messages, search, legacy conversations, and attachment reads as one coherent slice, with no staff inbox fallback or preview side effects.
+3. Apply the resolver to remaining workspace readers and shared controls. Remove internal-only widening from external preview reads while preserving any separately named staff planning tools.
+4. Compare real external sessions with their matching staff previews before describing the preview as accurate across the workspace.
+
+Do not label a partially converted workspace as an exact external preview. During conversion, clearly mark unsupported sections as unavailable in preview.
+
+Claude independently audited the source and collaborated on the design. Codex completed the implementation across the resolver, correspondence, domain readers, and shell in one isolated branch after sending an ownership update to avoid competing edits. Final structured implementation review used Codex. Claude subsequently reviewed the implementation and reported additional closeout findings; their disposition is recorded below.
+
+## Vendor RFI access decision
+
+Approved policy, refined on 2026-10-24: vendors may see RFIs assigned to their vendor company, including every active contact at that company, plus RFIs they submitted. Apply this restriction to actual vendor access and the matching preview, including lists, dashboard counts, search, detail pages, printable output, and associated attachments. A vendor-audience label by itself must not authorize another company's RFI.
+
+Use verified project contact and company associations to establish involvement. An unresolved or ambiguous association must not broaden access to all vendor RFIs. Existing records may need association review before they become visible under this rule.
+
+The current real vendor workspace still returns all RFIs published to the vendor audience without a per-company filter. The restriction is implemented locally using reviewed active RFI participant grants and stable company/contact links, including native vendor-created RFIs and notification visibility. It has not been deployed to production.
+
+## Acceptance criteria
+
+| Scenario | Required result |
+| --- | --- |
+| Owner A real login versus preview as Owner A | Same authorized records, published schedule, messages, visible recipient information, and files. Preview writes are disabled. |
+| Vendor A versus Vendor B | Neither preview contains the other's private RFQs, purchase orders, correspondence, or attachments. |
+| Vendor RFI company scope | A real vendor and its matching preview can access RFIs involving their company and cannot discover another company's RFIs through lists, counts, search, details, print, or attachments. |
+| Message grant absent | No message body, search excerpt, recipient metadata, or attachment access. |
+| Unpublished schedule or internal warranty content | Excluded exactly as in the real external workspace. |
+| No selected person | No private inbox, recipient-specific records, or employee fallback. |
+| Target removed, deactivated, or changed to another audience | The next request is denied; cached content is cleared. |
+| Target changed during a pending request | The old person's response cannot populate the new person's view. |
+| Staff tab alongside preview | Staff authentication and ordinary authorized work continue independently. |
+| Preview navigation and file requests | No sends, autosaves, read receipts, notification-state changes, approvals, preference changes, or membership provisioning. |
+
+## Baseline verification
+
+The existing historical source audience, historical search, attachment access, audience conversation reconciliation, and preview route suites pass: 25 tests in five files. These tests verify selected existing authorization behavior; they do not establish preview parity or live browser behavior. New coverage must exercise both real external access and staff preview against the same fixtures, including direct routes and negative access cases.
+
+
+## Local validation
+
+The implementation includes a dedicated person selector, a request-scoped external viewer resolver, read-only message and notification views, scoped conversation and attachment reads, external-policy domain readers, and company-scoped vendor RFIs. The actor remains authenticated as staff; selected-person reads do not claim invitations or reconcile conversation membership.
+
+Browser verification uses the real selector, navigation scope wrapper, read-only correspondence view, message cards, and attachment components with isolated action boundaries. It covers switching people, clearing prior content, retaining download and navigation scope, search, and desktop/mobile layout. It does not exercise production authentication.
+
+Existing RFIs without a reviewed company/contact association are withheld from vendors. Unsent personal drafts are excluded. Raw internal print-source readers reject preview scope; reports assembled from already authorized workspace data remain available through the workspace print flow.
+
+## Validation results
+
+- Focused permission, correspondence, schedule, notification, RFI, and file regressions: **315 tests in 41 files passed** using `node node_modules/vitest/vitest.mjs run` with the affected suites.
+- `node scripts/verify-audience-person-preview.mjs`: passed selection, stale-content clearing, scoped navigation/download, read-only messages, search, and desktop/mobile layout checks. Desktop and mobile screenshots were inspected.
+- Changed-file ESLint, `bun run ui:check`, and `git diff --check HEAD`: passed.
+- `bun run build`: passed compilation, TypeScript, and production route generation.
+- `node scripts/verify-external-dashboard.mjs`: cannot bundle its existing isolated fixture because server dependencies reach its browser bundle. The same failure was reproduced from unchanged base `64f2edd337`; the dedicated person-preview browser proof above passes.
+- Manual whole-repository `tsc --noEmit` includes unrelated existing test typing failures. The standard production build's TypeScript check passes.
+
+Final structured source review command:
+
+```sh
+$AUTOREVIEW --mode local --model gpt-6.1-sol --no-web-search --stream-engine-output --prompt 'Review the approved exact-person external preview implementation. Focus on concrete introduced authorization, resource-scope, read-only, and live external regressions within the same preview boundary. Previously accepted inbound RFI email, cross-project channel, alias scope, task assignee, and typing findings have been fixed with regression tests. Read-only polling must not clean typing state. Preview downloads use no-store. Return code_location.file_path using repository-relative paths only, never absolute paths. Do not broaden into unrelated cleanup or speculative architecture changes.' --json-output /tmp/compass-preview-review-closeout.json
+```
+
+The helper exited 0 with no findings: `autoreview clean: no accepted/actionable findings reported`. Earlier findings were accepted because they exposed concrete gaps in the same preview boundary: inbound RFI emails retaining staff identity, channel discovery escaping the project, legacy project aliases losing scope, schedule assignee reads escaping the project, and typing mutations in preview. Each was fixed and covered by focused regressions. Related polling cleanup and signed-document cache behavior were checked at the same boundary. After the two-cycle scope pause, remaining findings were explicitly classified as in-scope blockers; no schema migration, new external protocol, or broader permission redesign was added.
+
+Before rollout, compare authorized real owner/vendor WorkOS sessions with matching staff previews on a staging deployment. The local browser fixture does not prove production authentication or inbox delivery. Review company/contact links for older RFIs before making them visible to vendors.
+
+## Demo deployment and remaining validation
+
+On 2026-10-24, explicit approval was received to create five isolated WorkOS test accounts and apply the nine pending existing main-branch migrations to `compass-demo-db`, then deploy only `compass-demo`. A database rollback snapshot was saved before changes. All nine migrations were applied; the final migration check reports none pending.
+
+The branch was rebased without conflicts onto main `f283768d`; the implementation commit is now `ea51a0f9` (formerly `4dd2968a`). The full OpenNext demo build and Wrangler deployment dry run pass, along with 33 focused permission regressions after the rebase.
+
+Deployed demo Worker version: `bf58f3a0-65e2-4b8c-b0c4-03dc91523484`. Deployment history and bindings were re-read after deployment. The three WorkOS secret bindings remain present. The database binding points to `compass-demo-db`; self-reference points to `compass-demo`; global correspondence remains disabled, with only synthetic project `preview-qa-20261024` temporarily allowlisted through `COMPASS_CORRESPONDENCE_PROJECT_IDS`. Subsequent demo deployments must intentionally preserve or remove that temporary QA allowlist.
+
+The additive fixture contains one staff user, two owners, two vendor companies, six distinct sent emails with per-person grants, four private drafts, published schedule items plus an unpublished negative control, an owner budget with an internal-note negative control, and company-specific RFIs plus internal/unlinked negative controls. It was checked twice against a local snapshot before application, then read back from the demo database. No existing demo projects were reset.
+
+Demo login and mobile health return HTTP 200; anonymous owner/vendor previews redirect to sign-in. The same five accounts were subsequently moved to `@preview-qa.example` after explicit approval, because `example.com` triggers WorkOS test SSO. Their passwords, identities, and demo-only access stayed unchanged; no SSO policy was changed. The public demo WorkOS client was checked against the test environment, and all five users authenticated successfully through the deployed application login endpoint. No emails were sent.
+
+The demo has no private correspondence Drive storage, so positive file-byte download parity remains unverified. Do not connect production storage or claim attachment download parity on the basis of these health checks.
+
+A read-only production audit found two vendor-visible RFIs with placeholder company labels and no verified company grants or stable activity evidence. Their associations remain unchanged. They will be withheld under the approved company rule until reviewed; company labels alone must never be used to backfill access. No production writes, merge, or production deployment occurred.
+
+## Authenticated demo results
+
+The deployed comparison used real WorkOS sessions issued by `/api/auth/login`, actual Cloudflare-rendered pages, and deployed server-action endpoints. It did not mock authorization or replace the database. This is HTTP integration proof; the earlier desktop/mobile browser proof exercises the real UI components with isolated action boundaries. A live browser session comparison across every workspace module is not claimed.
+
+| Check | Result |
+| --- | --- |
+| Four external accounts versus matching staff previews | 106 checks passed: exact inbox/message/recipient/attachment-metadata/search parity, draft exclusion, negative thread and project access, invalid target/audience denial, and owner/vendor page rendering. |
+| Vendor RFIs | Both real accounts and matching previews show their own company RFI; other-company and unlinked RFIs are absent. |
+| Notifications | Eight real-account baseline checks passed; all matching preview notification results agree. Broad historical RFI recipients cannot reveal another vendor company's RFI. |
+| Preview-only actions | 37 checks passed: reads and legacy channels work, drafts stay private, draft autosave/read-receipt/inbox/notification/typing mutations are denied, and the no-person page contains no personal inbox. Four of these checks confirm the expected missing attachment-storage response; they do not establish successful file transfer. |
+| Vendor RFQs and purchase orders | Eight delivered-record checks passed across both vendors and their previews; other recipients' records and drafts remain hidden. |
+| Owner budget | Four positive checks passed: both owners and their previews see published application QA-01 and its amount, while the internal note stays absent. |
+| Normal staff session | Two checks passed: switching previews preserves the staff identity and authorized internal inbox in the normal staff workspace. |
+
+Across those passes, 165 validation assertions succeeded. A separate before/after comparison of the preview-only pass found the following projections identical: 12 message-recipient rows, four private drafts, inbox state, three channels, four channel memberships, three expired typing rows, four channel read states, and seven notification-recipient rows. Security audit events are expected and were excluded from this project-state comparison.
+
+The successful staging checks required no further application-code changes. Fixture assertions were corrected to use the actual vendor RFI route and the published budget fields shown by the assembly view.
+
+A successful private attachment byte download remains the concrete validation gap. Authorized QA attachment requests reach the missing-storage boundary (HTTP 503); unauthorized users receive no attachment contents. The shared route currently returns a generic server error for some missing conversation grants; that existing error mapping is a follow-up, not a successful download signal. The demo must use an isolated test storage integration before download parity can be marked complete. Production storage credentials and customer files were not copied into the demo. No production merge or deployment is authorized by the demo-only approval or claimed here.
+
+
+## Joint review closeout
+
+Claude reviewed the implementation and found remaining rollout issues. The previously reported 165 authenticated demo assertions remain valid for the deployed version and synthetic fixtures, but they do not prove historical RFI assignments. The clean initial source review did not establish that missing workflow either.
+
+The following corrections are implemented locally after that review:
+
+- **Staff access:** all internal staff default to view access for External person preview. Existing company permission overrides can narrow it, and external accounts remain denied. This follows the confirmed decision that all office staff should be able to preview. Help now explains selecting the exact assigned person and the read-only behavior.
+- **Audit volume:** the preview layout records the page visit. Resolving a viewer for polling, downloads, or thumbnails does not append another activity event.
+- **Files:** all six scoped project download handlers independently assert that the resource project matches the preview project. All API paths run through scope-header sanitization, including resource IDs ending in image extensions. A forged cross-project photo request returns not found before record or Drive access.
+- **Notifications:** owner RFI notifications remain in the account-wide notification center. Preview returns placeholder account preferences rather than exposing a person's phone number, SMS consent, or quiet hours.
+- **Read-only UI:** schedule confirmation/response capabilities are false in preview; owner warranty submission, resolution, and deletion controls and vendor warranty update forms are hidden. Existing server write guards remain in force. Real external polling retains its normal behavior.
+- **Links:** same-origin links carry the selected person before context-menu or middle-click navigation, including links rendered after initial hydration. The existing click guard still handles Next navigation.
+- **Membership rollout audit:** a read-only production query found 17 active external project memberships and zero missing organization memberships; it wrote zero rows.
+
+The closeout patch passed the structured helper with no findings:
+
+```sh
+$AUTOREVIEW --mode local --model gpt-6.1-sol --no-web-search --stream-engine-output --prompt 'Review the local closeout patch on the approved exact-person Owner/Vendor preview branch. Scope: staff preview default remains company-customizable; audit records only page visits; six download routes enforce project scope; API image-like IDs sanitize caller headers; owner RFI notifications remain visible; preview account preferences stay private; schedule and warranty controls are read only; links retain scope for new tabs. Validate concrete behavior and introduced authorization regressions. The assigned-company RFI feature is being handled separately; do not request restoring broad vendor visibility. Return repository-relative code locations only. Do not broaden into unrelated cleanup.'
+```
+
+### Remaining RFI ownership
+
+The final user policy is **assigned vendor company plus the submitter**, rather than arbitrary involvement or a vendor-audience label. Existing free-text company labels cannot establish permission. Staff need a stable assignment write/UI and a reviewable path for historical records before this policy is ready for production. The two production placeholder records have no verified association and were not automatically backfilled.
+
+Codex accepted Claude's offer to build that slice in a separate worktree based on this implementation, with local tests and no production changes. The handoff explicitly preserves the company restriction; restoring broad all-vendor exposure is not an acceptable shortcut. D1 parameter-safe RFI reads, notification filtering, stable assignment roles and historical association review are included in that slice. Codex retains integration and demo rollout ownership.
+
+The existing broader work-calendar external-read issue was reported outside this preview diff and remains a separate follow-up. It is not counted as fixed by the preview validation.
+
+The successful private attachment byte-download check still requires isolated demo storage; no production storage credentials or customer files were copied. These local closeout corrections have not yet replaced the previously deployed demo version. Production remains unchanged.
+
+
+Closeout verification: **304 tests in 23 files passed**, including permission defaults for every role, owner notification retention, real-versus-preview resolution, private preference placeholders, image-extension middleware matching, forged cross-project photo denial, warranty, attachment access, and help maintenance. The dedicated person-preview browser checks passed again; changed-file lint, UI standards, and whitespace checks passed. The first build exhausted the default 4 GiB JavaScript heap after compilation. Retrying the full Next build with the verified Node 22 runtime and an 8 GiB heap passed compilation, TypeScript, and route generation. The closeout structured review exited 0 with no findings. Existing trace warnings remain unchanged.
+
+
+The secondary-reader fixture was updated for the explicit preview-mode guard. All six tests pass, including a new paired case proving that real external polling on the same audience route still cleans expired typing while staff preview polling leaves it unchanged.
+
+
+The final browser run additionally opened Schedule with a native middle click and confirmed that the new tab retained the selected person. The click interceptor is restricted to the primary button. The supplementary source review (`--mode local --model gpt-6.1-sol --no-web-search`, focused on native clicks and paired polling regressions) also exited 0 with no findings.
+
+
+## Assigned-company RFI integration
+
+Claude delivered local commit `2be3d4fe` with the staff vendor picker, stable assignee grants, submitter-only requester grants, and D1-safe ID predicates. Its handoff explicitly reported that tests and lint had not run in that isolated environment; Codex therefore treated it as an unverified implementation and retained integration ownership.
+
+Integration preserves both the owner-notification fix and company-scoped filtering. Staff can assign, reassign, or clear a vendor on an RFI. A managed assignment overrides historical assignee grants using canonical and imported source IDs. Clearing records an inactive managed marker, so older imported grants cannot restore the previous company's access. The submitter's personal grant remains independent of company assignment and does not extend to coworkers. Historical stable assignments appear in the staff queue; unresolved labels require a deliberate assignment. Deleting an RFI removes grants under both its canonical and source IDs.
+
+The RFI review's two-cycle scope pause classified both remaining findings as concrete blockers at the same access-grant boundary: directly clearing an imported assignment without a prior managed row, and creating a vendor assignment through the creation action without the dedicated action's staff/project gate. Both are fixed with targeted regression coverage. They do not change the approved assigned-company-plus-submitter policy, add a schema migration, or add a new external integration. Review continues only for this bounded slice.
+
+Large-list filtering uses one JSON parameter rather than expanding an unbounded set of SQL placeholders, supported by the [Cloudflare D1 JSON query documentation](https://developers.cloudflare.com/d1/sql-api/query-json/).
+
+
+Final integrated local proof: **336 tests in 30 files passed**; changed-file ESLint, UI standards, and whitespace/conflict checks passed. The full OpenNext demo build passed compilation, TypeScript, route generation, and Worker bundling with Node 22 and the 8 GiB heap setting. The last structured RFI review (`--mode local --model gpt-6.1-sol --no-web-search --stream-engine-output`, frozen assigned-company scope) exited 0 with no findings. The duplicate type import introduced while sharing the creation guard was removed and the affected authorization tests passed before this final review. No schema migration was added.
+
+
+## Updated demo closeout
+
+The integrated code is committed as `3b29e1a7` after preview closeout commits `2ef837a7` and `32daa9c2`. The reviewed bundle passed the demo deployment dry run and was deployed only to `compass-demo` as Worker version `f083fcd5-33bb-4716-b886-a8842de1b104`. Its version metadata was read back: D1 still points to the demo database, self-reference to the demo Worker, the three WorkOS secret bindings remain present, and only the synthetic QA project is allowlisted for correspondence. No new migrations were required.
+
+| Updated deployed proof | Assertions |
+| --- | ---: |
+| Real external accounts versus exact-person preview, including search, inbox, messages and negative access | 106 |
+| Read-only preview, notifications, legacy channels, and missing test storage boundary | 37 |
+| Actual notification baselines | 8 |
+| Recipient-specific RFQs and purchase orders | 8 |
+| Published owner budget and hidden internal note | 4 |
+| Normal staff identity and inbox retained | 2 |
+| RFI assignment, reassignment, removal, exact real/preview equality, staff review queue and denied non-staff/preview writes | 33 |
+| Ordinary office-staff preview access and restoration of the isolated account's original role | 3 |
+| **Total** | **201** |
+
+Nine before/after project-state projections are identical, now including RFI participants in addition to the previous eight. The four selected-person page visits produced exactly four preview audit entries; reader/action resolution did not multiply them. The staff-role test used the same isolated account and restored both its user and organization role to their original values, then verified the restoration. No new accounts were created.
+
+### Reliability and storage limits
+
+The first serial deployed comparison stopped on one vendor dashboard request. Direct repeat requests returned the expected authorized content. A complete concurrent comparison then passed all 106 assertions with one retry for individual failed GETs. However, HTTP 503 responses during that run included Cloudflare's **Worker exceeded resource limits** page. The initial failure's response was not retained; its exact cause is not claimed. The resource-limit responses are an unresolved reliability finding, not evidence of clean first-attempt availability. An error-only follow-up log watch produced no further diagnostic events; CPU versus memory cause has not been established. The read-only follow-up pass completed without that retry. Do not change infrastructure limits or claim this reliability issue is resolved on the basis of permission-test success. See [Cloudflare resource-limit errors](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1102/).
+
+Authorized QA attachment requests still reach the expected missing private Drive boundary, rather than transferring file bytes. That remains a separate storage validation gap. Production storage credentials and customer files were not copied to the demo.
+
+**Handoff:** preview and assigned-company RFI implementation, source review, local tests, and demo access validation are complete. Production rollout remains pending the isolated private-attachment download check, the demo resource-limit investigation, and production deployment authorization. Nothing was pushed, merged, or deployed to production. The original local A/B browser sample remains a separate simplified fixture.

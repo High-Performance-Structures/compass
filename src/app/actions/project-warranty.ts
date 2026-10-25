@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -10,7 +12,6 @@ import {
   projectWarrantyClaimEvents,
   projectWarrantyClaims,
 } from "@/db/schema-warranty"
-import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
@@ -149,7 +150,7 @@ function viewerName(user: AuthUser): string {
 }
 
 async function warrantyContext(projectId: string): Promise<WarrantyContext> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const access = await assertProjectAccess(db, user, projectId)
@@ -376,6 +377,7 @@ export async function createProjectWarrantyClaim(
   input: CreateWarrantyClaimInput
 ): Promise<WarrantyActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await warrantyContext(projectId)
     if (!context.viewerIsInternal && !isWarrantyProjectStage(context.project)) {
       return {
@@ -475,6 +477,7 @@ export async function updateProjectWarrantyClaim(
   input: UpdateWarrantyClaimInput
 ): Promise<WarrantyActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await warrantyContext(projectId)
     if (!context.viewerIsInternal) {
       return { success: false, error: "Staff access is required." }
@@ -593,6 +596,7 @@ export async function confirmProjectWarrantyResolution(
   claimId: string
 ): Promise<WarrantyActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await warrantyContext(projectId)
     if (context.viewerIsInternal) {
       return { success: false, error: "Open the internal claim workspace to close this claim." }
@@ -661,6 +665,7 @@ export async function deleteProjectWarrantyClaim(
   claimId: string
 ): Promise<WarrantyActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await warrantyContext(projectId)
     const existing = await context.db
       .select()

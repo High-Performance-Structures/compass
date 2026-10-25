@@ -8,18 +8,19 @@ import type {
   CorrespondenceMessage,
 } from "@/lib/correspondence/types"
 
-export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit, onRetract, onRetryEmail, projectHistory = false }: {
+export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit, onRetract, onRetryEmail, projectHistory = false, readOnly = false }: {
   readonly projectId: string
   readonly message: CorrespondenceMessage
   readonly viewerId: string
   readonly editDisabled: boolean
   readonly projectHistory?: boolean
+  readonly readOnly?: boolean
   readonly onEdit: (message: CorrespondenceMessage) => Promise<void>
   readonly onRetract: (message: CorrespondenceMessage) => void
   readonly onRetryEmail: (message: CorrespondenceMessage) => Promise<void>
 }): React.ReactElement {
   const initials = message.authorName.split(" ").map((part) => part[0]).join("").slice(0, 2)
-  const openable = !projectHistory && message.authorUserId !== viewerId && message.retractedAt === null
+  const openable = !readOnly && !projectHistory && message.authorUserId !== viewerId && message.retractedAt === null
   const sourceSentLabel = unknownSourceSentLabel(message)
   const isOwnMessage = message.authorUserId === viewerId
   // Observe the header so even messages taller than the viewport can be opened.
@@ -39,8 +40,8 @@ export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit
     {message.attachments.length > 0 && <ul className="mt-3 grid gap-2">{message.attachments.map((attachment) => <CorrespondenceAttachmentRow key={attachment.id} projectId={projectId} attachment={attachment} projectHistory={projectHistory} />)}</ul>}
     {message.sourceAttachmentReadiness !== null && message.sourceAttachmentReadiness !== undefined && message.sourceAttachmentReadiness.pendingFileCount > 0 && <p className="mt-3 text-xs text-muted-foreground">{message.sourceAttachmentReadiness.pendingFileCount} original {message.sourceAttachmentReadiness.pendingFileCount === 1 ? "file is" : "files are"} pending migration. Message text is available.</p>}
     {message.delivery === "imported" ? <p className="mt-3 text-xs text-muted-foreground">Original {sourceName(message.source)} message · Historical read status not available</p> : <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Delivery details</summary><ul className="mt-2 grid gap-1">{message.readReceipts.map((receipt) => <li key={receipt.userId}>{receipt.name} · {receiptLabel(receipt)}</li>)}</ul></details>}
-    {message.canEdit && message.retractedAt === null && <div className="mt-3 flex gap-2"><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => void onEdit(message)}>Edit</Button><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => onRetract(message)}>Retract</Button></div>}
-    {!projectHistory && message.emailDeliveryStatus === "failed" && message.authorUserId === viewerId && <Button className="mt-3" variant="outline" size="sm" disabled={editDisabled} onClick={() => void onRetryEmail(message)}>Retry failed email</Button>}
+    {!readOnly && message.canEdit && message.retractedAt === null && <div className="mt-3 flex gap-2"><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => void onEdit(message)}>Edit</Button><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => onRetract(message)}>Retract</Button></div>}
+    {!readOnly && !projectHistory && message.emailDeliveryStatus === "failed" && message.authorUserId === viewerId && <Button className="mt-3" variant="outline" size="sm" disabled={editDisabled} onClick={() => void onRetryEmail(message)}>Retry failed email</Button>}
   </article>
 }
 

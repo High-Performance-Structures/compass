@@ -382,11 +382,11 @@ export async function getProjectClientMeetings(
             recommended: false,
           })),
         canSchedule,
-        defaultTitle: `${projectNumberAndName(access.project)} - client meeting`,
+        defaultTitle: `${projectNumberAndName(access.project)} - project meeting`,
       },
     }
   } catch (error) {
-    return { success: false, error: errorMessage(error, "Failed to load client meetings") }
+    return { success: false, error: errorMessage(error, "Failed to load project meetings") }
   }
 }
 
@@ -405,11 +405,12 @@ export async function scheduleProjectClientMeeting(
     if (note.length > 4_000) throw new Error("Note must be 4,000 characters or fewer")
     const timeZone = input.timeZone.trim() || "America/Denver"
     const guestEmails = cleanEmails(input.guestEmails)
-    if (guestEmails.length === 0) throw new Error("Invite at least one client or guest")
     const organizerEmail = await organizerWorkspaceEmail(access)
     const staffEmails = cleanEmails(input.staffEmails).filter(
       (email) => email !== organizerEmail && !guestEmails.includes(email)
     )
+    // Meetings can be with clients, vendors, or only staff.
+    if (guestEmails.length + staffEmails.length === 0) throw new Error("Invite at least one person")
     if (guestEmails.length + staffEmails.length > MAX_GUESTS) {
       throw new Error(`A meeting can include up to ${MAX_GUESTS} invitees`)
     }
@@ -467,7 +468,7 @@ export async function scheduleProjectClientMeeting(
       action: input.startsAt === null ? "client_meeting_started" : "client_meeting_scheduled",
       entityType: "project_client_meeting",
       entityId: id,
-      summary: `${input.startsAt === null ? "Started" : "Scheduled"} Google Meet "${title}" with ${guestEmails.join(", ")}`,
+      summary: `${input.startsAt === null ? "Started" : "Scheduled"} Google Meet "${title}" with ${[...guestEmails, ...staffEmails].join(", ")}`,
       metadata: {
         guests: guestEmails.join(", "),
         staff: staffEmails.join(", "),
@@ -590,8 +591,8 @@ async function notifyInvitedStaff(
       title: `${input.title} ${input.change === "invited" ? "scheduled" : "cancelled"}`,
       body:
         input.change === "invited"
-          ? `${actorName} invited you to a client Google Meet for ${input.projectLabel}.`
-          : `${actorName} cancelled the client Google Meet for ${input.projectLabel}.`,
+          ? `${actorName} invited you to a project Google Meet for ${input.projectLabel}.`
+          : `${actorName} cancelled the project Google Meet for ${input.projectLabel}.`,
       href: `/dashboard/projects/${access.project.id}`,
       priority: "normal",
       audience: "attendees",
@@ -601,6 +602,6 @@ async function notifyInvitedStaff(
     })
   } catch (error) {
     // The meeting is booked even if a notification provider is unavailable.
-    console.error("Failed to notify staff about a client meeting:", error)
+    console.error("Failed to notify staff about a project meeting:", error)
   }
 }

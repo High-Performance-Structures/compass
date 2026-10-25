@@ -1,5 +1,8 @@
 "use server"
 
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+import { assertAudiencePreviewWriteAllowed, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, sql, ne, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
@@ -77,7 +80,7 @@ async function ensureChannelMember(
 
 export async function listDirectMessageRecipients() {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user || !isInternalStaffRole(user.role)) {
       return { success: false, error: "Only staff can start direct messages" }
     }
@@ -127,6 +130,7 @@ export async function listDirectMessageRecipients() {
 
 export async function createDirectMessage(targetUserIds: readonly string[]) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user || !isInternalStaffRole(user.role)) {
       return { success: false, error: "Only staff can start direct messages" }
@@ -225,10 +229,11 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
 
 export async function listChannels() {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user || !user.isActive) {
       return { success: false, error: "Unauthorized" }
     }
+    const scope = await getProjectAudienceRequestScope()
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -275,6 +280,8 @@ export async function listChannels() {
         and(
           // must be in user's org
           eq(channels.organizationId, orgId),
+          scope ? eq(channels.projectId, scope.projectId) : undefined,
+          scope ? eq(channels.audience, scope.audience === "owner" ? "clients" : "sub_vendors") : undefined,
           // External project users only discover conversations they belong to.
           viewerIsInternal
             ? sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`
@@ -299,7 +306,7 @@ export async function listChannels() {
 
 export async function getChannel(channelId: string) {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user || !user.isActive) {
       return { success: false, error: "Unauthorized" }
     }
@@ -319,6 +326,8 @@ export async function getChannel(channelId: string) {
       return { success: false, error: "Channel not found" }
     }
 
+    const scope = await getProjectAudienceRequestScope()
+    if (scope && (channel.projectId !== scope.projectId || channel.audience !== (scope.audience === "owner" ? "clients" : "sub_vendors"))) return { success: false, error: "Channel not found" }
     const orgId = requireOrg(user)
     if (channel.organizationId !== orgId) {
       return { success: false, error: "Channel not found" }
@@ -375,6 +384,7 @@ export async function createChannel(data: {
   isPrivate?: boolean
 }) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -467,6 +477,7 @@ export async function createChannel(data: {
 
 export async function joinChannel(channelId: string) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
@@ -562,6 +573,7 @@ export async function joinChannel(channelId: string) {
 
 export async function leaveChannel(channelId: string) {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }

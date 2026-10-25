@@ -1,3 +1,5 @@
+import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
@@ -29,11 +31,12 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) return new Response("Unauthorized", { status: 401 })
     const { id: rawProjectId, claimId, attachmentId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Attachment not found", { status: 404 })
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)
@@ -99,7 +102,7 @@ export async function GET(
       headers: {
         "Content-Type": row.mimeType ?? "application/octet-stream",
         "Content-Disposition": `inline; filename="${encodeURIComponent(row.fileName)}"`,
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": await audienceReadCacheControl(),
       },
     })
   } catch (error) {

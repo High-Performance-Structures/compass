@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { recordActivityEvent } from "@/lib/activity-log"
 import { announceOwnerUpdatePublished } from "@/lib/owner-updates/publish-notice"
 import {
@@ -673,7 +675,7 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
 }> {
-  const viewer = await requireAuth()
+  const viewer = await requireProjectAudienceReadUser(projectId)
   await requireFeaturePermission(viewer, "owner-updates", "read")
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -1620,6 +1622,7 @@ export async function createProjectDailyLog(
   input: CreateDailyLogInput
 ): Promise<CreateDailyLogResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, userId, orgId, user } = await verifyDailyLogStaffMutationAccess(projectId)
     const clientSubmissionId = input.clientSubmissionId?.trim()
     const dailyLogId = clientSubmissionId || crypto.randomUUID()
@@ -1726,6 +1729,7 @@ export async function updateProjectDailyLog(
   input: UpdateDailyLogInput
 ): Promise<UpdateDailyLogResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, userId, orgId, user } = await verifyDailyLogStaffMutationAccess(projectId)
     const dailyLogId = input.dailyLogId.trim()
     const targetProjectId = input.targetProjectId.trim()
@@ -1997,6 +2001,7 @@ export async function updateDailyLogReview(
   input: DailyLogReviewInput
 ): Promise<DailyLogMutationResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db } = await verifyProjectMutationAccess(projectId)
     const dailyLogId = input.dailyLogId.trim()
 
@@ -2041,6 +2046,7 @@ export async function draftOwnerUpdateFromDailyLogs(
   input: OwnerUpdateDraftInput
 ): Promise<OwnerUpdateDraftResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, userId } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
@@ -2190,6 +2196,7 @@ export async function createManualOwnerProjectUpdateDraft(
   updateDate: string
 ): Promise<OwnerUpdateDraftResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, userId } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
@@ -2271,6 +2278,7 @@ export async function deleteOwnerProjectUpdateDraft(
   | { readonly success: false; readonly error: string }
 > {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
@@ -2726,6 +2734,7 @@ export async function updateOwnerProjectUpdateDraft(
   | { readonly success: false; readonly error: string }
 > {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
@@ -3021,6 +3030,7 @@ export async function draftOwnerProjectUpdateWithJarvis(
   | { readonly success: false; readonly error: string }
 > {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
@@ -3461,6 +3471,7 @@ export async function recallOwnerProjectUpdate(
   | { readonly success: false; readonly error: string }
 > {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }

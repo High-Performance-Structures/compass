@@ -1,3 +1,5 @@
+import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
@@ -69,11 +71,13 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await requireAuth()
+    const user = await conversationRequestViewer(await requireAuth())
+    if (!user) return new Response("Not found", { status: 404 })
     const { id: rawProjectId, photoId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Photo not found", { status: 404 })
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const project = await assertProjectAccess(db, user, projectId)
@@ -199,12 +203,12 @@ export async function GET(
       headers: {
         "Content-Type": responseMimeType,
         "Content-Disposition": `${responseMimeType.startsWith("image/") ? "inline" : "attachment"}; filename="${safeFileName(responseFileName)}"`,
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": await audienceReadCacheControl(),
         "X-Content-Type-Options": "nosniff",
       },
     })
   } catch (error) {
-    if (error instanceof Error && error.message === "Project not found") {
+    if (error instanceof Error && (error.message === "Project not found" || error.message === "Record not found.")) {
       return new Response("Photo not found", { status: 404 })
     }
     console.error("Audience photo download error", error)

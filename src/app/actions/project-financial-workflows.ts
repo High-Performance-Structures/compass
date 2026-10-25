@@ -1,5 +1,8 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+import { canUseProjectAudience } from "@/lib/project-audience-access"
+
 import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -8,6 +11,7 @@ import {
   projectBudgetApplications,
   projectBudgetLines,
   projectOperations,
+  projectMembers,
   projects,
   sageCostCodes,
 } from "@/db/schema"
@@ -195,6 +199,7 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly project: ProjectHeader
 }> {
+  await assertAudiencePreviewWriteAllowed()
   const user = await requireAuth()
   requirePermission(user, "project", "update")
   const orgId = requireOrg(user)
@@ -220,7 +225,8 @@ async function verifyProjectReadAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
 }> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
+  if (!isInternalStaffRole(user.role)) throw new Error("Project not found")
   requirePermission(user, "project", "read")
   const orgId = requireOrg(user)
   const { env } = await getCloudflareContext()
@@ -245,7 +251,7 @@ async function payApplicationReadAccess(projectId: string): Promise<{
   readonly organizationId: string
   readonly internal: boolean
 }> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   if (isInternalStaffRole(user.role)) {
     const { db, organizationId } = await verifyProjectReadAccess(projectId)
     return { db, organizationId, internal: true }
@@ -255,6 +261,8 @@ async function payApplicationReadAccess(projectId: string): Promise<{
   const db = getDb(env.DB)
   const project = await assertProjectAccess(db, user, projectId)
   if (!project.organizationId) throw new Error("Project not found")
+  const membership = await db.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, user.id))).get()
+  if (!canUseProjectAudience(membership?.role ?? null, "owner")) throw new Error("Project not found")
   return { db, organizationId: project.organizationId, internal: false }
 }
 

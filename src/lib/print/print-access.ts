@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
+import { requireProjectAudienceReadUser, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -24,7 +24,8 @@ export async function printProjectAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly project: PrintProject
 }> {
-  const user = await requireAuth()
+  if (await getProjectAudienceRequestScope()) throw new Error("Use the reports available within the read-only preview workspace.")
+  const user = await requireProjectAudienceReadUser(projectId)
   requirePermission(user, "project", "read")
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

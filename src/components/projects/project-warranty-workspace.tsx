@@ -1,5 +1,7 @@
 "use client"
 
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
+
 import * as React from "react"
 import { warrantyAssigneeKey, type WarrantyAssigneeOption } from "@/lib/warranty/assignee"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
@@ -284,6 +286,7 @@ function ClaimActions({
 }): React.ReactElement {
   // Start on the claim's linked contact (or a name match, so one save links
   // an older text-only assignment).
+  const readOnly = useAudiencePreviewReadOnly()
   const assigneeKey = warrantyAssigneeKey(claim, assigneeOptions)
   const router = useRouter()
   const [message, setMessage] = React.useState<string | null>(null)
@@ -321,6 +324,7 @@ function ClaimActions({
     })
   }
 
+  if (readOnly) return <p className="mt-4 border-t pt-4 text-xs text-muted-foreground">Read-only preview</p>
   if (viewerIsInternal) {
     return (
       <form action={handleUpdate} className="mt-4 space-y-3 border-t pt-4">
@@ -489,6 +493,7 @@ export function ProjectWarrantyWorkspace({
   readonly workspace: WarrantyWorkspace
   readonly assigneeOptions?: readonly WarrantyAssigneeOption[]
 }): React.ReactElement {
+  const readOnly = useAudiencePreviewReadOnly()
   return (
     <section className="bg-background">
       <PageHeader
@@ -497,7 +502,7 @@ export function ProjectWarrantyWorkspace({
         title="Warranty claims"
         actions={
           <>
-            <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
+            <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} />{!readOnly && <ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} />}</div>
           </>
         }
       />

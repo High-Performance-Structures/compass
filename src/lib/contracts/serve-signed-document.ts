@@ -1,3 +1,4 @@
+import { audienceReadCacheControl } from "@/lib/project-audience-request-server"
 import { eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
@@ -134,7 +135,7 @@ export async function serveSignedDocument(input: {
     headers: {
       "Content-Type": contentType,
       "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": await audienceReadCacheControl(),
       "X-Content-Type-Options": "nosniff",
     },
   })

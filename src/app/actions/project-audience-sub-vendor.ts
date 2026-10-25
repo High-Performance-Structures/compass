@@ -1,5 +1,8 @@
 "use server"
 
+import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { and, eq, inArray } from "drizzle-orm"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { revalidatePath } from "next/cache"
@@ -119,6 +122,7 @@ function validDate(value: string | null): string | null {
 async function getSubVendorWriteContext(
   projectId: string
 ): Promise<SubVendorWriteContext> {
+  await assertAudiencePreviewWriteAllowed()
   const user = await requireAuth()
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -231,7 +235,17 @@ export async function createSubVendorRfi(
       createdAt: now,
       updatedAt: now,
     }
-    await context.db.insert(projectRfis).values(inserted)
+    await context.db.batch([
+      context.db.insert(projectRfis).values(inserted),
+      context.db.insert(projectSourceRecordParticipants).values({
+        id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
+        sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
+        participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),
+        projectContactId: context.viewerContact.id, userId: context.user.id,
+        identityStatus: "matched", membershipStatus: "active", reviewStatus: "reviewed", active: true,
+        createdAt: now, updatedAt: now,
+      }),
+    ])
     revalidateSubVendorWorkspace(projectId)
 
     try {
@@ -490,7 +504,17 @@ export async function respondToSubVendorPurchaseOrder(
       createdAt: now,
       updatedAt: now,
     }
-    await context.db.insert(projectRfis).values(inserted)
+    await context.db.batch([
+      context.db.insert(projectRfis).values(inserted),
+      context.db.insert(projectSourceRecordParticipants).values({
+        id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
+        sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
+        participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),
+        projectContactId: context.viewerContact.id, userId: context.user.id,
+        identityStatus: "matched", membershipStatus: "active", reviewStatus: "reviewed", active: true,
+        createdAt: now, updatedAt: now,
+      }),
+    ])
     revalidateSubVendorWorkspace(projectId)
 
     try {

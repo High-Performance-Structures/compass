@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { and, desc, eq, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -221,6 +223,7 @@ export async function saveProjectContractDeposit(
   input: ProjectContractDepositInput
 ): Promise<DepositActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, user } = await depositAccess(projectId, true)
     const received = input.status === "received"
     const paymentMethod = cleanText(input.paymentMethod, 20)
@@ -267,7 +270,7 @@ export async function saveProjectContractDeposit(
 
 /** Deposit requests the project's client can see (any project viewer). */
 export async function getProjectDepositRequests(projectId: string): Promise<readonly DepositRequestSummary[]> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   requirePermission(user, "project", "read")
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -291,6 +294,7 @@ export async function requestProjectContractDeposit(
   input: ProjectContractDepositRequestInput
 ): Promise<DepositActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db, user } = await depositAccess(projectId, true)
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -319,6 +323,7 @@ export async function requestProjectContractDeposit(
 
 export async function voidProjectContractDeposit(projectId: string, depositId: string): Promise<DepositActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const { db } = await depositAccess(projectId, true)
     const existing = await db
       .select({ status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents })

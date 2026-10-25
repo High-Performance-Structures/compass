@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -397,7 +399,8 @@ async function changeOrderContext(
   projectId: string,
   action: "create" | "read" | "update"
 ): Promise<ChangeOrderContext> {
-  const user = await requireAuth()
+  if (action !== "read") await assertAudiencePreviewWriteAllowed()
+  const user = action === "read" ? await requireProjectAudienceReadUser(projectId) : await requireAuth()
   await requireFeaturePermission(user, "change-orders", action)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -995,6 +998,7 @@ export async function createProjectChangeOrder(
   input: CreateProjectChangeOrderInput
 ): Promise<ChangeOrderActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await changeOrderContext(projectId, "create")
     if (!context.requesterType) {
       return {
@@ -1159,6 +1163,7 @@ export async function updateProjectChangeOrder(
   input: UpdateProjectChangeOrderInput
 ): Promise<ChangeOrderActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await changeOrderContext(projectId, "read")
     if (context.internal) {
       await requireFeaturePermission(context.user, "change-orders", "update")
@@ -1528,6 +1533,7 @@ export async function replaceExecutedProjectChangeOrderDocument(
   input: ChangeOrderExecutedDocumentReplacementInput
 ): Promise<ChangeOrderActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await changeOrderContext(projectId, "read")
     await requireFeaturePermission(context.user, "change-orders", "approve")
     if (!context.internal || !context.canApprove) {
@@ -1628,6 +1634,7 @@ export async function executeProjectChangeOrderRebaseline(
   executionNote: string | null
 ): Promise<ChangeOrderActionResult> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const context = await changeOrderContext(projectId, "read")
     await requireFeaturePermission(context.user, "change-orders", "approve")
     if (!context.internal || !context.canApprove) {
