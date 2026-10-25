@@ -1287,23 +1287,33 @@ export function DashboardLaunchpad({
       />
 
       {mode === "office" ? (
-        // Today's plan leads the wide column; office priorities sit in a
-        // narrow column beside it. Both stay below the map and pipeline.
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-          <div className="flex min-w-0 flex-col gap-6">
-            {todaysPlan ? (
+        // Three columns, all below the map and pipeline: Today's plan, the
+        // narrower office priorities, then the Five-day horizon with who's in.
+        <div
+          className={cn(
+            "grid gap-6",
+            todaysPlan
+              ? "xl:grid-cols-[minmax(0,1.5fr)_minmax(15rem,0.85fr)_minmax(18rem,1fr)]"
+              : "xl:grid-cols-[minmax(15rem,0.85fr)_minmax(18rem,1fr)]"
+          )}
+        >
+          {todaysPlan ? (
+            <div className="flex min-w-0 flex-col gap-6">
               <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
-            ) : null}
-            <Horizon
-              overview={overview}
-              mode={mode}
-              officeCalendarEvents={officeCalendarEvents}
-              officeProjectId={officeProjectId}
-            />
-          </div>
+            </div>
+          ) : null}
           <div className="flex min-w-0 flex-col gap-6">
             <OfficeTaskList
               overview={overview}
+              officeCalendarEvents={officeCalendarEvents}
+              officeProjectId={officeProjectId}
+            />
+            <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-6">
+            <Horizon
+              overview={overview}
+              mode={mode}
               officeCalendarEvents={officeCalendarEvents}
               officeProjectId={officeProjectId}
             />
@@ -1312,7 +1322,6 @@ export function DashboardLaunchpad({
               user={user}
               status={deskStatus}
             />
-            <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
           </div>
         </div>
       ) : (

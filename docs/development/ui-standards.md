@@ -218,9 +218,10 @@ greeting, the dashboard shows, in this order:
 3. the portfolio map and pipelines (`PortfolioSection`).
 
 Nothing else goes above or between them: no new cards, banners, plans or
-panels. New dashboard features go below the map and pipelines. In Office view,
-Today's plan leads the wide column and office priorities sit in the narrow
-column beside it. `dashboard-priority.test.ts` checks this order.
+panels. New dashboard features go below the map and pipelines. Below them,
+Office view uses three columns: Today's plan, the narrower office priorities,
+then the Five-day horizon with who's in today right below it.
+`dashboard-priority.test.ts` checks this order.
 
 ## Scrolling and long content
 
