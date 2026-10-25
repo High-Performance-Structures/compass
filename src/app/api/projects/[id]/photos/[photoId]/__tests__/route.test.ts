@@ -326,6 +326,26 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     )
   })
 
+  it("serves a photo grant by selection provenance even with non-image MIME", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: {
+        driveFileId: "drive-photo-1",
+        fileName: "plans.pdf",
+        mimeType: "application/pdf",
+      },
+    })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("application/pdf")
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="shared-photo"'
+    )
+  })
+
   it("serves an approved owner-visible photo to a member with the owner role", async () => {
     configureDb({
       viewerRole: "client",

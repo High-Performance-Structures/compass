@@ -186,6 +186,33 @@ function seedSchema(sqlite: Sqlite): void {
         '[]',
         '{"version":2,"completedScheduleItems":[{"id":"schedule-1"}],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"plans.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"}]}',
         '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-primitive-items',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"completedScheduleItems":["schedule-1"],"lookAheadScheduleItems":[],"todos":[],"documents":["document-1"]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-duplicate-document-key',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"plans.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"}],"documents":[]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-provenance-photo',
+        'project-1',
+        'staff-1',
+        'published',
+        '["document-1"]',
+        '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[]}',
+        '2026-07-28T14:00:00.000Z'
       );
   `)
 }
@@ -264,14 +291,25 @@ describe("owner-update attachment grant lifecycle migration", () => {
           .prepare(
             `SELECT resource_id
              FROM project_external_resource_grants
-             WHERE source_owner_update_id IN (?, ?)
+             WHERE source_owner_update_id IN (?, ?, ?, ?)
              ORDER BY source_owner_update_id, resource_id`
           )
           .all(
             "published-invalid-document-shape",
-            "published-invalid-schedule-shape"
+            "published-invalid-schedule-shape",
+            "published-primitive-items",
+            "published-duplicate-document-key"
           )
       ).toEqual([])
+      expect(
+        sqlite
+          .prepare(
+            `SELECT resource_type, resource_id
+             FROM project_external_resource_grants
+             WHERE source_owner_update_id = ?`
+          )
+          .all("published-provenance-photo")
+      ).toEqual([{ resource_type: "photo", resource_id: "document-1" }])
       expect(
         sqlite
           .prepare(

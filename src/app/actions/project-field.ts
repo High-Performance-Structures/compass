@@ -2988,7 +2988,11 @@ export async function getOwnerProjectUpdateDocument(
   }
   const allPhotoRows = internalViewer
     ? await db
-        .select(attachmentSelection)
+        .select({
+          ...attachmentSelection,
+          grantedResourceType:
+            sql<"photo" | "owner_update_document" | null>`NULL`,
+        })
         .from(dailyLogPhotos)
         .where(
           and(
@@ -3028,7 +3032,10 @@ export async function getOwnerProjectUpdateDocument(
         )
         .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
     : await db
-        .select(attachmentSelection)
+        .select({
+          ...attachmentSelection,
+          grantedResourceType: projectExternalResourceGrants.resourceType,
+        })
         .from(dailyLogPhotos)
         .innerJoin(
           projectExternalResourceGrants,
@@ -3042,32 +3049,7 @@ export async function getOwnerProjectUpdateDocument(
             eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
             eq(projectExternalResourceGrants.audience, "owner"),
             eq(projectExternalResourceGrants.recipientUserId, viewer.id),
-            isNull(projectExternalResourceGrants.revokedAt),
-            or(
-              and(
-                eq(projectExternalResourceGrants.resourceType, "photo"),
-                sql<boolean>`(
-                  ${dailyLogPhotos.mimeType} LIKE 'image/%'
-                  OR (
-                    ${dailyLogPhotos.mimeType} IS NULL
-                    AND ${dailyLogPhotos.thumbnailUrl} IS NOT NULL
-                  )
-                )`
-              ),
-              and(
-                eq(
-                  projectExternalResourceGrants.resourceType,
-                  "owner_update_document"
-                ),
-                sql<boolean>`(
-                  (
-                    ${dailyLogPhotos.mimeType} IS NULL
-                    AND ${dailyLogPhotos.thumbnailUrl} IS NULL
-                  )
-                  OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
-                )`
-              )
-            )
+            isNull(projectExternalResourceGrants.revokedAt)
           )
         )
         .innerJoin(
@@ -3188,10 +3170,15 @@ export async function getOwnerProjectUpdateDocument(
     : []
 
   const imageRows = allPhotoRows.filter((row) =>
-    isOwnerUpdatePhotoAttachment(row)
+    internalViewer
+      ? isOwnerUpdatePhotoAttachment(row)
+      : row.grantedResourceType === "photo"
   )
   const documentRows = allPhotoRows.filter(
-    (row) => !isOwnerUpdatePhotoAttachment(row)
+    (row) =>
+      internalViewer
+        ? !isOwnerUpdatePhotoAttachment(row)
+        : row.grantedResourceType === "owner_update_document"
   )
 
   const selectedPhotoIdsForViewer = internalViewer

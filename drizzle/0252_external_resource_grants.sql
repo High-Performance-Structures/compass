@@ -62,28 +62,6 @@ WHEN NOT EXISTS (
     AND `daily_log_photos`.`review_status` = 'approved'
     AND `daily_log_photos`.`drive_file_id` IS NOT NULL
     AND (
-      (
-        NEW.`resource_type` = 'photo'
-        AND (
-          `daily_log_photos`.`mime_type` LIKE 'image/%'
-          OR (
-            `daily_log_photos`.`mime_type` IS NULL
-            AND `daily_log_photos`.`thumbnail_url` IS NOT NULL
-          )
-        )
-      )
-      OR (
-        NEW.`resource_type` = 'owner_update_document'
-        AND (
-          (
-            `daily_log_photos`.`mime_type` IS NULL
-            AND `daily_log_photos`.`thumbnail_url` IS NULL
-          )
-          OR `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-        )
-      )
-    )
-    AND (
       (NEW.`audience` = 'owner' AND (`daily_log_photos`.`owner_visible` = 1 OR `daily_log_photos`.`public_shareable` = 1))
       OR (NEW.`audience` = 'sub_vendor' AND (`daily_log_photos`.`sub_vendor_visible` = 1 OR `daily_log_photos`.`public_shareable` = 1))
     )

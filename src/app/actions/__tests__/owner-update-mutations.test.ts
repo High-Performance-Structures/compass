@@ -1161,7 +1161,8 @@ describe("owner update mutation authorization and fencing", () => {
          (id, project_id, captured_at, source_system, file_name, mime_type,
           drive_file_id, thumbnail_url, review_status, owner_visible, updated_at)
        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'approved', 1, ?),
-              (?, ?, ?, ?, ?, NULL, ?, NULL, 'approved', 1, ?)`,
+              (?, ?, ?, ?, ?, NULL, ?, NULL, 'approved', 1, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, ?)`,
       "client-null-mime-photo",
       "project-client",
       "2026-07-28T12:00:00.000Z",
@@ -1176,10 +1177,20 @@ describe("owner update mutation authorization and fencing", () => {
       "compass",
       "legacy-document",
       "drive-null-document",
+      "2026-07-28T12:00:00.000Z",
+      "client-provenance-photo",
+      "project-client",
+      "2026-07-28T12:00:00.000Z",
+      "compass",
+      "plans.pdf",
+      "application/pdf",
+      "drive-provenance-photo",
+      "https://drive.google.com/document-thumbnail",
       "2026-07-28T12:00:00.000Z"
     )
     for (const [id, resourceType, resourceId] of [
       ["grant-null-photo", "photo", "client-null-mime-photo"],
+      ["grant-provenance-photo", "photo", "client-provenance-photo"],
       [
         "grant-null-document",
         "owner_update_document",
@@ -1240,6 +1251,7 @@ describe("owner update mutation authorization and fencing", () => {
     expect(document.photos).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "client-null-mime-photo" }),
+        expect.objectContaining({ id: "client-provenance-photo" }),
       ])
     )
     expect(document.documents).toEqual(
