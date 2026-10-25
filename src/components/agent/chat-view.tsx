@@ -172,6 +172,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   queryData: "Looking up records",
   queryGitHub: "Checking development status",
   createGitHubIssue: "Creating GitHub issue",
+  fileFeedback: "Filing with the Feedback Desk",
   navigateTo: "Navigating",
   showNotification: "Sending notification",
   generateUI: "Building interface",

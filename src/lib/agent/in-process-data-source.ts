@@ -2,6 +2,7 @@ import "server-only"
 
 import type { DataSource } from "agent-core"
 import { POST as dashboardsPOST } from "@/app/api/compass/dashboards/route"
+import { POST as feedbackPOST } from "@/app/api/compass/feedback/route"
 import { POST as githubPOST } from "@/app/api/compass/github/route"
 import { POST as memoryPOST } from "@/app/api/compass/memory/route"
 import { POST as messagesPOST } from "@/app/api/compass/messages/route"
@@ -15,6 +16,7 @@ type RouteHandler = (request: Request) => Promise<Response>
 /** Agent tool API paths and the route handlers that serve them. */
 export const AGENT_TOOL_ROUTES: ReadonlyMap<string, RouteHandler> = new Map([
   ["/api/compass/dashboards", dashboardsPOST],
+  ["/api/compass/feedback", feedbackPOST],
   ["/api/compass/github", githubPOST],
   ["/api/compass/memory", memoryPOST],
   ["/api/compass/messages", messagesPOST],

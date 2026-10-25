@@ -253,6 +253,9 @@ ${sourceBlocks}`.slice(0, MAX_JARVIS_HELP_CONTEXT_CHARACTERS)
   return { prompt, references }
 }
 
+/** Opens the help context message inserted before the latest user request. */
+export const TRUSTED_CONTEXT_MARKER = "[Trusted Compass application context"
+
 /**
  * Adds trusted application context as assistant history immediately before the
  * latest user request. It is never represented as text authored by the user.
@@ -272,7 +275,7 @@ export function addHelpContextToRelayMessages(
 
   const trustedContextMessage: JarvisHelpMessage = {
     role: "assistant",
-    content: `[Trusted Compass application context; this is not a prior answer]\n${context.prompt.slice(0, MAX_JARVIS_RELAY_HELP_CONTEXT_CHARACTERS)}\n[End trusted Compass application context]`,
+    content: `${TRUSTED_CONTEXT_MARKER}; this is not a prior answer]\n${context.prompt.slice(0, MAX_JARVIS_RELAY_HELP_CONTEXT_CHARACTERS)}\n[End trusted Compass application context]`,
   }
   if (latestUserIndex < 0) return [...messages, trustedContextMessage]
   return [

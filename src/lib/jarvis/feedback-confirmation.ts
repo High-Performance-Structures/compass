@@ -1,3 +1,4 @@
+import { TRUSTED_CONTEXT_MARKER } from "@/lib/help/jarvis-context"
 import type { FeedbackDeskKind } from "@/lib/jarvis/feedback-desk"
 
 type ConversationMessage = Readonly<{
@@ -21,6 +22,16 @@ function conversationFromPayload(payload: string): readonly ConversationMessage[
       const message = objectValue(value)
       const role = message?.role
       const content = message?.content
+      // The relay inserts trusted help context as an assistant message just
+      // before the latest request. It isn't part of the conversation, so it
+      // must not separate Jarvis's offer to file from the person's "yes".
+      if (
+        role === "assistant" &&
+        typeof content === "string" &&
+        content.trimStart().startsWith(TRUSTED_CONTEXT_MARKER)
+      ) {
+        continue
+      }
       if (
         (role === "user" || role === "assistant") &&
         typeof content === "string" &&
