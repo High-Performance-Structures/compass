@@ -12,7 +12,7 @@ import assert from "node:assert/strict"
 const root = process.cwd()
 const output = await mkdtemp(path.join(tmpdir(), "compass-person-preview-"))
 const mocks = {
-  "next/link": `import React from 'react';export default function Link({href,children,...props}){return React.createElement('a',{...props,href,onClick(e){e.preventDefault();history.pushState(null,'',href)}},children)}`,
+  "next/link": `import React from 'react';export default function Link({href,children,...props}){return React.createElement('a',{...props,href,onClick(e){if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();history.pushState(null,'',href)}},children)}`,
 
   "next/navigation": `export function usePathname(){return location.pathname} export function useSearchParams(){return new URLSearchParams(location.search)}`,
   "@/app/actions/project-correspondence": `
@@ -58,7 +58,15 @@ try {
   assert.equal(await page.getByText('Authorized message for owner-a',{exact:true}).count(),0)
   await page.getByRole('button',{name:/owner-b project email/}).click()
   await page.getByText('Authorized message for owner-b',{exact:true}).waitFor()
-  await page.getByRole('link',{name:'Schedule',exact:true}).click()
+  const scheduleLink = page.getByRole('link',{name:'Schedule',exact:true})
+  assert.ok((await scheduleLink.getAttribute('href'))?.includes('previewAs=owner-b'), 'new-tab links already carry the selected person')
+  const popupPromise = page.context().waitForEvent('page')
+  await scheduleLink.click({button:'middle'})
+  const popup = await popupPromise
+  await popup.waitForURL(/owner\/schedule\?previewAs=owner-b/)
+  assert.match(popup.url(), /owner\/schedule\?previewAs=owner-b/)
+  await popup.close()
+  await scheduleLink.click()
   await page.waitForURL(/owner\/schedule\?previewAs=owner-b/)
   for(const width of [1280,390]){
     await page.setViewportSize({width,height:900})

@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getTableConfig } from "drizzle-orm/sqlite-core"
 import { channels, channelMembers, channelReadState, messages, typingSessions } from "@/db/schema-conversations"
 import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
-const mocks = vi.hoisted(() => ({ actor: vi.fn(), viewer: vi.fn(), scope: vi.fn(), env: vi.fn(), writeGuard: vi.fn(), resourceProject: vi.fn() }))
+const mocks = vi.hoisted(() => ({ actor: vi.fn(), viewer: vi.fn(), scope: vi.fn(), env: vi.fn(), writeGuard: vi.fn(), resourceProject: vi.fn(), isPreview: vi.fn() }))
 vi.mock("server-only", () => ({}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.actor, getCurrentUser: mocks.actor }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.env }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn() }))
-vi.mock("@/lib/project-audience-request-server", () => ({ requireProjectAudienceReadUser: mocks.viewer, getProjectAudienceRequestScope: mocks.scope, assertAudiencePreviewWriteAllowed: mocks.writeGuard, assertAudienceResourceProject: mocks.resourceProject }))
+vi.mock("@/lib/project-audience-request-server", () => ({ requireProjectAudienceReadUser: mocks.viewer, getProjectAudienceRequestScope: mocks.scope, assertAudiencePreviewWriteAllowed: mocks.writeGuard, assertAudienceResourceProject: mocks.resourceProject, isAudiencePreviewRequest: mocks.isPreview }))
 vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer: mocks.viewer }))
 import { setTyping, getChannelUpdates } from "@/app/actions/conversations-realtime"
 import { getScheduleTaskAssignees } from "@/app/actions/schedule-confirmations"
@@ -21,6 +21,7 @@ beforeEach(() => {
     database.sqlite.exec(`CREATE TABLE "${config.name}" (${config.columns.map((column) => `"${column.name}" ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}`).join(",")})`)
   }
   database.sqlite.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+  mocks.isPreview.mockResolvedValue(true)
   mocks.writeGuard.mockResolvedValue(undefined)
   mocks.resourceProject.mockImplementation(async (id: string) => { if (id !== "project-a") throw new Error("Record not found.") })
   mocks.actor.mockResolvedValue(context(database, "staff-a", "project-a").user)
@@ -65,6 +66,16 @@ describe("preview state and resource boundaries", () => {
     `)
     expect(await getChannelUpdates("a-owner")).toMatchObject({ success: true })
     expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM typing_sessions").get()).toEqual({ count: 1 })
+  })
+  it("still cleans expired typing for a real external reader on the same audience route", async () => {
+    mocks.isPreview.mockResolvedValue(false)
+    database.sqlite.exec(`
+      INSERT INTO channels (id,name,type,organization_id,project_id,audience,is_private) VALUES ('a-owner','Current','text','org-a','project-a','clients',1);
+      INSERT INTO channel_members (id,channel_id,user_id,role) VALUES ('m','a-owner','owner-a','member');
+      INSERT INTO typing_sessions (id,channel_id,user_id,started_at,expires_at) VALUES ('expired','a-owner','staff-a','2020-01-01','2020-01-02');
+    `)
+    expect(await getChannelUpdates("a-owner")).toMatchObject({ success: true })
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM typing_sessions").get()).toEqual({ count: 0 })
   })
   it("rejects a task outside the preview before reading its private assignee responses", async () => {
     database.sqlite.exec(`

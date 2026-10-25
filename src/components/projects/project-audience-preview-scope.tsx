@@ -46,7 +46,7 @@ export function ProjectAudiencePreviewScope({ children, readOnly = false, canoni
     anchor.href = next
     // Next Link reads its props rather than the DOM href. Intercept navigation
     // so the selected viewer survives links authored by shared components.
-    if (anchor.pathname.startsWith("/preview/") && !anchor.download && !anchor.target && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    if (event.button === 0 && anchor.pathname.startsWith("/preview/") && !anchor.download && !anchor.target && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
       event.preventDefault()
       event.stopPropagation()
       window.location.assign(next)
