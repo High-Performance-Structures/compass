@@ -115,15 +115,19 @@ export function PortfolioLayerControl({
   onChange,
   weatherParts,
   onWeatherParts,
+  available,
 }: {
   readonly state: PortfolioLayerState
   readonly onChange: (next: PortfolioLayerState) => void
+  /** Layers offered here; all of them when omitted. */
+  readonly available?: readonly PortfolioLayerId[]
   readonly weatherParts?: WeatherSublayers
   readonly onWeatherParts?: (next: WeatherSublayers) => void
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const panelId = React.useId()
-  const activeCount = LAYERS.filter((layer) => state[layer.id]).length
+  const shown = available ? LAYERS.filter((layer) => available.includes(layer.id)) : LAYERS
+  const activeCount = shown.filter((layer) => state[layer.id]).length
   return (
     <div className="absolute left-4 top-4 flex flex-col items-start gap-1.5">
       <button
@@ -138,7 +142,7 @@ export function PortfolioLayerControl({
       </button>
       {open ? (
         <ul id={panelId} className="flex w-64 flex-col border border-border bg-popover text-popover-foreground">
-          {LAYERS.map((layer) => (
+          {shown.map((layer) => (
             <li key={layer.id}>
               <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-foreground hover:bg-accent">
                 <input
@@ -195,12 +199,13 @@ export function PortfolioLayerLegend({
   settings,
 }: {
   readonly state: PortfolioLayerState
-  readonly settings: TravelChargeSettings
+  /** Null where travel charges don't apply (client and trade partner maps). */
+  readonly settings: TravelChargeSettings | null
 }): React.ReactElement | null {
   if (!state.zones && !state.elevation && !state.messages && !state.weather && !state.fire) return null
   return (
     <div className="inline-flex max-w-full flex-col gap-1 border border-border bg-background/85 px-3 py-1.5 font-mono text-xs tracking-[0.06em] text-foreground backdrop-blur">
-      {state.zones ? (
+      {state.zones && settings ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
           <span className="text-muted-foreground">ZONES FROM {settings.homeBase.label.toUpperCase()} · /MAN-HR</span>
           {settings.zones.map((zone, index) => (
@@ -212,7 +217,7 @@ export function PortfolioLayerLegend({
           ))}
         </p>
       ) : null}
-      {state.elevation ? (
+      {state.elevation && settings ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
           <span className="text-muted-foreground">MOUNTAIN · SITE ELEVATION · /MAN-HR</span>
           {settings.mountainBands.length === 0 ? (

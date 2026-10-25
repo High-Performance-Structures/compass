@@ -80,7 +80,8 @@ type PortfolioTerrainProps = {
   /** Zone and mountain layers; omitted where travel charges do not apply (owner and vendor maps). */
   readonly layers?: {
     readonly state: PortfolioLayerState
-    readonly settings: TravelChargeSettings
+    /** Null on client and trade partner maps: only Weather and Fire & smoke are offered. */
+    readonly settings: TravelChargeSettings | null
     readonly onChange: (next: PortfolioLayerState) => void
   }
   readonly weather?: PortfolioWeatherProps
@@ -390,6 +391,7 @@ export default function PortfolioTerrain({
           onChange={layers.onChange}
           weatherParts={weather?.parts}
           onWeatherParts={weather?.onParts}
+          available={layers.settings ? undefined : ["weather", "fire"]}
         />
       ) : null}
       {weatherOn && weather ? (

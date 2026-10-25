@@ -63,6 +63,10 @@ export function usePortfolioWeather(enabled: boolean, projectIds: readonly strin
   return useLayerData(enabled, key, load, (data) => data.warming)
 }
 
-export function usePortfolioFires(enabled: boolean): LayerState<FireLayerData> {
-  return useLayerData(enabled, "", getPortfolioFires, (data) => data.updatedAt === null)
+export function usePortfolioFires(enabled: boolean, projectIds: readonly string[] = []): LayerState<FireLayerData> {
+  const key = [...projectIds].sort().join(",")
+  const idsRef = React.useRef(projectIds)
+  idsRef.current = projectIds
+  const load = React.useCallback(() => getPortfolioFires(idsRef.current), [])
+  return useLayerData(enabled, key, load, (data) => data.updatedAt === null)
 }

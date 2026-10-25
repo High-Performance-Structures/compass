@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { useMapWeatherLayers } from "@/components/dashboard/portfolio-map/use-map-weather-layers"
+import { WeatherJobsList } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { MessagesSquare } from "lucide-react"
@@ -129,6 +131,8 @@ export function VendorJobMap({
     [hoveredId, selectedId],
   )
 
+  const placedJobs = React.useMemo(() => jobs.filter((job) => job.lat !== null && job.lon !== null), [jobs])
+  const mapWeather = useMapWeatherLayers(placedJobs, showMap && placedJobs.length > 0)
   if (jobs.length === 0) return null
 
   const placed = jobs.filter((job) => job.lat !== null && job.lon !== null)
@@ -187,6 +191,8 @@ export function VendorJobMap({
               onUnavailable={hideMap}
               messageStacks={messageStacks}
               focusSelectedOnLoad={jobs.length === 1}
+              layers={mapWeather.layers}
+              weather={mapWeather.weather}
             />
           </div>
         ) : null}
@@ -197,6 +203,11 @@ export function VendorJobMap({
             showMap && placed.length > 0 ? "h-[30rem] border-l border-border" : "max-h-[30rem]",
           )}
         >
+          {mapWeather.panel ? (
+            <div className="border-b border-border p-4">
+              <WeatherJobsList data={mapWeather.panel} onSelectJob={selectJob} />
+            </div>
+          ) : null}
           {selected ? (
             <AudienceJobPanel
               heading={
