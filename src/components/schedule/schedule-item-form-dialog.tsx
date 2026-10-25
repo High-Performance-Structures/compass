@@ -50,8 +50,19 @@ import {
   updateTask,
   createDependency,
   updateDependency,
-  deleteDependency
+  deleteDependency,
+  deleteScheduleTasks
 } from "@/app/actions/schedule"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   deleteSchedulePhaseOption,
   getSchedulePhaseOptions,
@@ -64,7 +75,13 @@ import {
   sendScheduleTaskReminder,
   type ScheduleTaskChangeProposal,
 } from "@/app/actions/schedule-confirmations"
-import { calculateEndDate } from "@/lib/schedule/business-days"
+import { calculateEndDate, workdaysFromEndDate } from "@/lib/schedule/business-days"
+import { normalizeScheduleItemTimes } from "@/lib/schedule/item-time"
+import {
+  RECENT_SCHEDULE_COLORS_KEY,
+  parseRecentScheduleColors,
+  rememberRecentScheduleColor,
+} from "@/lib/schedule/recent-colors"
 import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
@@ -153,6 +170,8 @@ const scheduleItemSchema = z.object({
   title: z.string().min(1, "Title is required"),
   startDate: z.string().min(1, "Start date is required"),
   workdays: z.number().min(1, "Must be at least 1 day"),
+  startTime: z.string(),
+  endTime: z.string(),
   phase: z.string().trim().min(1, "Phase is required"),
   displayColor: z.string(),
   status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
@@ -164,6 +183,11 @@ const scheduleItemSchema = z.object({
   confirmationRequired: z.boolean(),
   notes: z.string(),
   shiftReason: z.string().max(500, "Reason must be 500 characters or fewer")
+}).superRefine((values, context) => {
+  const times = normalizeScheduleItemTimes(values.startTime, values.endTime)
+  if (!times.success) {
+    context.addIssue({ code: "custom", path: ["endTime"], message: times.error })
+  }
 })
 
 type ScheduleItemFormValues = z.infer<typeof scheduleItemSchema>
@@ -180,6 +204,8 @@ interface ScheduleItemFormDialogProps {
   onBulkTemplateImport?: () => void
   /** False until the schedule is first published; drafts need no shift reason. */
   shiftReasonRequired?: boolean
+  /** Called after the item being edited is deleted from this dialog. */
+  onDeleted?: (taskId: string) => void
 }
 
 interface PendingPredecessor {
@@ -199,6 +225,7 @@ export function ScheduleItemFormDialog({
   assigneeOptions = [],
   onBulkTemplateImport,
   shiftReasonRequired = true,
+  onDeleted,
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
@@ -238,6 +265,10 @@ export function ScheduleItemFormDialog({
   const [proposalLoading, setProposalLoading] = useState(false)
   const [proposalActionPending, setProposalActionPending] = useState(false)
   const [acceptProposalOnSave, setAcceptProposalOnSave] = useState(false)
+  const [endDateNote, setEndDateNote] = useState<string | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [recentColors, setRecentColors] = useState<readonly string[]>([])
+  const [deleting, setDeleting] = useState(false)
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -254,6 +285,8 @@ export function ScheduleItemFormDialog({
       title: "",
       startDate: new Date().toISOString().split("T")[0],
       workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
+      startTime: "",
+      endTime: "",
       phase: "preconstruction",
       displayColor: DEFAULT_DISPLAY_COLOR,
       status: "PENDING",
@@ -318,11 +351,23 @@ export function ScheduleItemFormDialog({
 
   useEffect(() => {
     if (!open) return
+    try {
+      setRecentColors(parseRecentScheduleColors(window.localStorage.getItem(RECENT_SCHEDULE_COLORS_KEY)))
+    } catch {
+      // Recent colors are a convenience; without storage the list stays empty.
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setEndDateNote(null)
     if (editingTask) {
       form.reset({
         title: editingTask.title,
         startDate: editingTask.startDate,
         workdays: editingTask.workdays,
+        startTime: editingTask.startTime ?? "",
+        endTime: editingTask.endTime ?? "",
         phase: editingTask.phase,
         displayColor: editingTask.displayColor ?? DEFAULT_DISPLAY_COLOR,
         status: editingTask.status,
@@ -348,6 +393,8 @@ export function ScheduleItemFormDialog({
         title: "",
         startDate: new Date().toISOString().split("T")[0],
         workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
+        startTime: "",
+        endTime: "",
         phase: "preconstruction",
         displayColor: DEFAULT_DISPLAY_COLOR,
         status: "PENDING",
@@ -506,6 +553,24 @@ export function ScheduleItemFormDialog({
     setAssignedOptionId(null)
   }
 
+  const watchedStartTime = form.watch("startTime")
+
+  // Picking an end date sets the duration from the same workday calendar
+  // that calculates the end, so the two always agree.
+  function chooseEndDate(endDate: string): void {
+    const result = workdaysFromEndDate(watchedStart, endDate, exceptions)
+    if (!result.success) {
+      setEndDateNote(result.error)
+      return
+    }
+    form.setValue("workdays", result.workdays, { shouldDirty: true, shouldValidate: true })
+    setEndDateNote(
+      result.snapped
+        ? `${format(parseISO(endDate), "MMM d")} isn't a workday, so the item ends ${format(parseISO(result.endDate), "EEE, MMM d")}.`
+        : null
+    )
+  }
+
   const calculatedEnd = useMemo(() => {
     if (!watchedStart || !watchedWorkdays || watchedWorkdays < 1) return ""
     return calculateEndDate(watchedStart, watchedWorkdays, exceptions)
@@ -519,6 +584,23 @@ export function ScheduleItemFormDialog({
           : [...current, todoId]
         : current.filter((id) => id !== todoId)
     )
+  }
+
+  // Same action, confirmation and dependency cleanup as the List view delete.
+  async function confirmDelete(): Promise<void> {
+    if (!editingTask) return
+    setDeleting(true)
+    const result = await deleteScheduleTasks(editingTask.projectId, [editingTask.id])
+    setDeleting(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    setConfirmDeleteOpen(false)
+    onOpenChange(false)
+    onDeleted?.(editingTask.id)
+    toast.success("Schedule item deleted.")
+    router.refresh()
   }
 
   async function onSubmit(values: ScheduleItemFormValues) {
@@ -568,9 +650,20 @@ export function ScheduleItemFormDialog({
         return [...withoutDuplicate, phaseResult.option]
       })
     }
+    const nextRecentColors = rememberRecentScheduleColor(recentColors, values.displayColor)
+    if (nextRecentColors !== recentColors) {
+      setRecentColors(nextRecentColors)
+      try {
+        window.localStorage.setItem(RECENT_SCHEDULE_COLORS_KEY, JSON.stringify(nextRecentColors))
+      } catch {
+        // Saving the item matters; remembering the color is optional.
+      }
+    }
     const { shiftReason, ...valuesWithoutShiftReason } = values
     const taskValues = {
       ...valuesWithoutShiftReason,
+      startTime: values.startTime || null,
+      endTime: values.startTime ? values.endTime || null : null,
       phase: submittedPhase,
       notes: values.notes.trim() || null
     }
@@ -1116,6 +1209,35 @@ export function ScheduleItemFormDialog({
                   Custom
                 </label>
               </div>
+              {recentColors.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">Recent</span>
+                  <div className="flex items-center gap-1.5" aria-label="Recently used colors">
+                    {recentColors.map((color) => {
+                      const selected = watchedDisplayColor.toLowerCase() === color
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          title={color}
+                          aria-label={`Recent color ${color}`}
+                          aria-pressed={selected}
+                          className={cn(
+                            "size-5 rounded-full border-2 transition-transform",
+                            selected
+                              ? "border-foreground scale-110"
+                              : "border-transparent hover:scale-110"
+                          )}
+                          style={{ backgroundColor: color }}
+                          onClick={() =>
+                            form.setValue("displayColor", color, { shouldDirty: true })
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Date row: Start | Duration | End */}
               <div className="grid grid-cols-[1fr_100px_1fr] gap-2 items-end">
@@ -1147,6 +1269,7 @@ export function ScheduleItemFormDialog({
                             selected={field.value ? parseISO(field.value) : undefined}
                             onSelect={(date) => {
                               if (date) {
+                                setEndDateNote(null)
                                 field.onChange(format(date, "yyyy-MM-dd"))
                               }
                             }}
@@ -1173,7 +1296,10 @@ export function ScheduleItemFormDialog({
                             min={1}
                             className="h-9 text-center"
                             value={field.value}
-                            onChange={(e) => field.onChange(Number(e.target.value) || 0)}
+                            onChange={(e) => {
+                              setEndDateNote(null)
+                              field.onChange(Number(e.target.value) || 0)
+                            }}
                             onBlur={field.onBlur}
                             ref={field.ref}
                             name={field.name}
@@ -1190,10 +1316,86 @@ export function ScheduleItemFormDialog({
                   <FormLabel className="text-xs text-muted-foreground font-medium">
                     End
                   </FormLabel>
-                  <div className="flex items-center h-9 px-3 rounded-md bg-muted/40 text-sm text-muted-foreground tabular-nums">
-                    {calculatedEnd ? format(parseISO(calculatedEnd), "MMM d, yyyy") : "\u2014"}
-                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-label="End date"
+                        className="w-full h-9 justify-start text-left font-normal text-sm tabular-nums"
+                      >
+                        <IconCalendar className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                        {calculatedEnd ? format(parseISO(calculatedEnd), "MMM d, yyyy") : "Pick date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <Calendar
+                        mode="single"
+                        selected={calculatedEnd ? parseISO(calculatedEnd) : undefined}
+                        disabled={watchedStart ? { before: parseISO(watchedStart) } : undefined}
+                        onSelect={(date) => {
+                          if (date) chooseEndDate(format(date, "yyyy-MM-dd"))
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </FormItem>
+              </div>
+              {endDateNote && (
+                <p className="text-xs text-muted-foreground" role="status">{endDateNote}</p>
+              )}
+
+              {/* Optional times; an item with no start time is all day. */}
+              <div className="grid grid-cols-2 gap-2">
+                <FormField
+                  control={form.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs text-muted-foreground font-medium">
+                        Start time <span className="font-normal">(optional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          className="h-9"
+                          value={field.value}
+                          onChange={(event) => {
+                            field.onChange(event.target.value)
+                            if (!event.target.value) form.setValue("endTime", "")
+                          }}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          name={field.name}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs text-muted-foreground font-medium">
+                        End time <span className="font-normal">(optional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          className="h-9"
+                          disabled={!watchedStartTime}
+                          value={field.value}
+                          onChange={(event) => field.onChange(event.target.value)}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          name={field.name}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               {shiftReasonRequired && (
@@ -1827,6 +2029,18 @@ export function ScheduleItemFormDialog({
 
             {/* Footer */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-t shrink-0">
+              {isEditing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                >
+                  <IconTrash className="size-3.5" />
+                  Delete schedule item
+                </Button>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 {!isEditing && selectedTemplateItemId
                   ? `1 schedule item + ${selectedTemplateTodoIds.length} to-do${
@@ -1851,6 +2065,28 @@ export function ScheduleItemFormDialog({
           </form>
         </Form>
       </DialogContent>
+      <AlertDialog
+        open={confirmDeleteOpen}
+        onOpenChange={(next) => {
+          if (!deleting) setConfirmDeleteOpen(next)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this schedule item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This also removes dependencies connected to the deleted item. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep item</AlertDialogCancel>
+            <AlertDialogAction disabled={deleting} onClick={confirmDelete}>
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

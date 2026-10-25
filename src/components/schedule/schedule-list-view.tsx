@@ -44,6 +44,7 @@ import type {
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
+import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import {
   DataTablePagination,
@@ -322,11 +323,15 @@ export function ScheduleListView({
       {
         accessorKey: "startDate",
         header: "Start",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {formatDate(row.original.startDate)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const time = scheduleItemTimeLabel(row.original)
+          return (
+            <span className="text-xs text-muted-foreground">
+              {formatDate(row.original.startDate)}
+              {time ? <span className="block">{time}</span> : null}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "endDateCalculated",
@@ -756,6 +761,9 @@ export function ScheduleListView({
           )}
           assigneeOptions={assigneeOptions}
           shiftReasonRequired={shiftReasonRequired}
+          onDeleted={(taskId) =>
+            setLocalTasks((current) => current.filter((task) => task.id !== taskId))
+          }
         />
       )}
 

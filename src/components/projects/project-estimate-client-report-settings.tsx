@@ -43,6 +43,12 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/lib/utils"
+import {
+  changedReportSettings,
+  reportSettingsSaveMessage,
+  type ReportSettingsSaveResult,
+  type ReportSettingsState,
+} from "@/lib/estimates/report-settings-save"
 import type { EstimateWorkSection } from "@/lib/estimates/workspace-sections"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-estimate-report-phase-editor"
@@ -96,9 +102,6 @@ export function ProjectEstimateClientReportSettings({
   )
   const [detailIds, setDetailIds] = useState<readonly string[]>(savedDetailIds)
   useEffect(() => setDetailIds(savedDetailIds), [savedDetailIds])
-  const detailChanged =
-    detailIds.length !== savedDetailIds.length ||
-    detailIds.some((id) => !savedDetailIds.includes(id))
   const assemblyTotals = useMemo(() => {
     const totals = new Map<string, { count: number; cents: number }>()
     for (const line of workspace.lines) {
@@ -145,45 +148,65 @@ export function ProjectEstimateClientReportSettings({
       ),
     [workspace.phaseDescriptions]
   )
+  const [phaseDrafts, setPhaseDrafts] = useState<ReadonlyMap<string, string>>(phaseDescriptions)
+  useEffect(() => setPhaseDrafts(phaseDescriptions), [phaseDescriptions])
+  const savedAcknowledgementIds = useMemo(
+    () => workspace.selectedAcknowledgements.map((item) => item.templateId),
+    [workspace.selectedAcknowledgements]
+  )
+  useEffect(() => setAcknowledgementIds(savedAcknowledgementIds), [savedAcknowledgementIds])
+  const includeAcknowledgements = workspace.department === "N"
+  const savedSettings: ReportSettingsState = {
+    view: {
+      reportMode: workspace.reportMode,
+      showAssemblyBuilderFee: estimate.showAssemblyBuilderFee,
+      showCostBreakdowns: estimate.showCostBreakdowns,
+    },
+    assemblyDetailIds: savedDetailIds,
+    phaseDescriptions,
+    acknowledgementIds: savedAcknowledgementIds,
+  }
+  const draftSettings: ReportSettingsState = {
+    view: { reportMode, showAssemblyBuilderFee, showCostBreakdowns },
+    assemblyDetailIds: detailIds,
+    phaseDescriptions: phaseDrafts,
+    acknowledgementIds,
+  }
+  const changes = changedReportSettings(savedSettings, draftSettings, phases, includeAcknowledgements)
+  const hasUnsavedChanges = changes.length > 0
 
-  function savePhase(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const divisionCode = String(formData.get("divisionCode") ?? "").trim()
-    const description = String(formData.get("description") ?? "").trim()
-    setMessage(null)
-    startTransition(async () => {
-      const result = await saveProjectEstimatePhaseDescription(
-        projectId,
-        estimate.id,
-        { divisionCode, description }
-      )
-      setMessage(
-        result.success ? "Phase description saved." : result.error
-      )
-      if (result.success) router.refresh()
-    })
+  function setPhaseDraft(divisionCode: string, description: string): void {
+    setPhaseDrafts((current) => new Map(current).set(divisionCode, description))
   }
 
-  function saveReportMode(): void {
+  // Saves every changed section and reports exactly which ones failed.
+  function saveReportSettings(): void {
+    if (changes.length === 0) return
     setMessage(null)
     startTransition(async () => {
-      const result = await setProjectEstimateClientReportMode(
-        projectId,
-        estimate.id,
-        reportMode,
-        showAssemblyBuilderFee,
-        showCostBreakdowns
-      )
-      const detailResult = result.success && detailChanged
-        ? await setEstimateAssemblyClientDetail(projectId, estimate.id, detailIds)
-        : result
-      setMessage(
-        !result.success ? result.error
-          : !detailResult.success ? detailResult.error
-            : "Client report view saved."
-      )
-      if (result.success) router.refresh()
+      const results: ReportSettingsSaveResult[] = []
+      for (const section of changes) {
+        const result =
+          section.kind === "view"
+            ? await setProjectEstimateClientReportMode(
+                projectId,
+                estimate.id,
+                reportMode,
+                showAssemblyBuilderFee,
+                showCostBreakdowns
+              )
+            : section.kind === "assemblyDetail"
+              ? await setEstimateAssemblyClientDetail(projectId, estimate.id, detailIds)
+              : section.kind === "phase"
+                ? await saveProjectEstimatePhaseDescription(projectId, estimate.id, {
+                    divisionCode: section.divisionCode,
+                    description: (phaseDrafts.get(section.divisionCode) ?? "").trim(),
+                  })
+                : await setProjectEstimateAcknowledgements(projectId, estimate.id, acknowledgementIds)
+        results.push({ section, error: result.success ? null : result.error })
+      }
+      setMessage(reportSettingsSaveMessage(results))
+      if (results.some((result) => result.error === null)) router.refresh()
     })
   }
 
@@ -193,21 +216,6 @@ export function ProjectEstimateClientReportSettings({
         ? [...current.filter((id) => id !== templateId), templateId]
         : current.filter((id) => id !== templateId)
     )
-  }
-
-  function saveAcknowledgements(): void {
-    setMessage(null)
-    startTransition(async () => {
-      const result = await setProjectEstimateAcknowledgements(
-        projectId,
-        estimate.id,
-        acknowledgementIds
-      )
-      setMessage(
-        result.success ? "Acknowledgement selections saved." : result.error
-      )
-      if (result.success) router.refresh()
-    })
   }
 
   function saveTextTemplate(event: FormEvent<HTMLFormElement>): void {
@@ -281,7 +289,7 @@ export function ProjectEstimateClientReportSettings({
       )}
 
       <div hidden={workSection !== undefined && workSection !== "report"}>
-        <form onSubmit={reportForm.handleSubmit(saveReportMode)} className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <div className="space-y-1.5">
             <Label htmlFor="client-report-view">Client report view</Label>
             <SearchableCombobox
@@ -297,21 +305,6 @@ export function ProjectEstimateClientReportSettings({
               disabled={!editable}
             />
           </div>
-          {editable && (
-            <Button
-              type="submit"
-              variant="outline"
-              disabled={
-                isPending ||
-                (reportMode === workspace.reportMode &&
-                  showAssemblyBuilderFee === estimate.showAssemblyBuilderFee &&
-                  showCostBreakdowns === estimate.showCostBreakdowns &&
-                  !detailChanged)
-              }
-            >
-              Save report view
-            </Button>
-          )}
           <div className="md:col-span-2">
             <label className="flex items-start gap-3 text-sm">
               <Checkbox
@@ -381,7 +374,7 @@ export function ProjectEstimateClientReportSettings({
               </ul>
             </fieldset>
           )}
-        </form>
+        </div>
       </div>
       <div hidden={workSection !== undefined && workSection !== "descriptions"}>
         {workspace.assemblies.length > 0 && (
@@ -427,12 +420,10 @@ export function ProjectEstimateClientReportSettings({
               </p>
             </div>
             {phases.map(([divisionCode, divisionName]) => (
-            <form
+            <div
               key={divisionCode}
-              className="grid gap-2 md:grid-cols-[9rem_minmax(0,1fr)_auto] md:items-end"
-              onSubmit={savePhase}
+              className="grid gap-2 md:grid-cols-[9rem_minmax(0,1fr)] md:items-end"
             >
-              <input type="hidden" name="divisionCode" value={divisionCode} />
               <div className="space-y-1.5">
                 <Label>Phase</Label>
                 <div className="flex h-9 items-center text-sm font-medium">
@@ -445,18 +436,13 @@ export function ProjectEstimateClientReportSettings({
                 </Label>
                 <Input
                   id={`phase-description-${divisionCode}`}
-                  name="description"
-                  defaultValue={phaseDescriptions.get(divisionCode) ?? ""}
+                  value={phaseDrafts.get(divisionCode) ?? ""}
+                  onChange={(event) => setPhaseDraft(divisionCode, event.target.value)}
                   placeholder={divisionName}
-                  disabled={!editable}
+                  disabled={!editable || isPending}
                 />
               </div>
-              {editable && (
-                <Button type="submit" variant="outline" disabled={isPending}>
-                  Save phase
-                </Button>
-              )}
-            </form>
+            </div>
           ))}
           </div>
         )}
@@ -501,20 +487,26 @@ export function ProjectEstimateClientReportSettings({
               </div>
             ))}
           </div>
-          {editable && (
-            <Button
-              type="button"
-              className="mt-3"
-              variant="outline"
-              disabled={isPending}
-              onClick={saveAcknowledgements}
-            >
-              Save acknowledgements
-            </Button>
-          )}
         </div>
       )}
       </div>
+      {editable && (
+        <div
+          hidden={workSection === "text"}
+          className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t pt-4"
+        >
+          <p className="text-sm text-muted-foreground" role="status">
+            {hasUnsavedChanges ? "Unsaved changes" : "All report settings saved"}
+          </p>
+          <Button
+            type="button"
+            disabled={isPending || !hasUnsavedChanges}
+            onClick={saveReportSettings}
+          >
+            {isPending ? "Saving..." : "Save report settings"}
+          </Button>
+        </div>
+      )}
       <details
         hidden={
           workSection !== undefined &&

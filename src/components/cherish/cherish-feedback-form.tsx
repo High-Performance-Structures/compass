@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
@@ -9,6 +9,7 @@ import {
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
 import type { CherishRecipientOption } from "@/app/actions/cherish-recipients"
+import { CherishValueField } from "@/components/cherish/cherish-value-field"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -19,17 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { suggestCherishValue } from "@/lib/cherish/value-suggestion"
 import { cn } from "@/lib/utils"
-
-export const CHERISH_VALUES: readonly CherishValue[] = [
-  "Camaraderie",
-  "Honor",
-  "Excellence",
-  "Reliability",
-  "Integrity",
-  "Servitude",
-  "Humility",
-]
 
 export const CHERISH_RESPONSE_TYPES: readonly {
   readonly value: CherishPulseResponseType
@@ -47,8 +39,9 @@ export function CherishFeedbackForm({
 }: {
   readonly recipients: readonly CherishRecipientOption[]
 }): React.ReactElement {
-  const [cherishValue, setCherishValue] =
-    useState<CherishValue>("Reliability")
+  // Nothing is preselected: the value is the person's choice, or else the
+  // one suggested from what they wrote.
+  const [chosenValue, setChosenValue] = useState<CherishValue | null>(null)
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
   const [message, setMessage] = useState("")
@@ -56,6 +49,8 @@ export function CherishFeedbackForm({
   const [recipientId, setRecipientId] = useState(COMPANY_RECIPIENT)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const suggestedValue = useMemo(() => suggestCherishValue(message), [message])
+  const cherishValue = chosenValue ?? suggestedValue
 
   function submitResponse(): void {
     const trimmedMessage = message.trim()
@@ -66,6 +61,11 @@ export function CherishFeedbackForm({
 
     if (trimmedMessage.length > 1_200) {
       setFeedback("Keep CHERISH responses under 1,200 characters.")
+      return
+    }
+
+    if (!cherishValue) {
+      setFeedback("Choose the CHERISH value that fits best.")
       return
     }
 
@@ -89,6 +89,7 @@ export function CherishFeedbackForm({
       }
 
       setMessage("")
+      setChosenValue(null)
       setAnonymous(false)
       setRecipientId(COMPANY_RECIPIENT)
       const selectedRecipient = recipients.find(
@@ -114,27 +115,7 @@ export function CherishFeedbackForm({
         submitResponse()
       }}
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">
-            CHERISH value
-          </label>
-          <SearchableCombobox
-            value={cherishValue}
-            onValueChange={(value) => {
-              const nextValue = CHERISH_VALUES.find(
-                (candidate) => candidate === value,
-              )
-              if (nextValue) setCherishValue(nextValue)
-            }}
-            options={CHERISH_VALUES.map((value) => ({ value, label: value }))}
-            ariaLabel="CHERISH value"
-            placeholder="Choose a value"
-            searchPlaceholder="Search values..."
-            emptyMessage="No matching values."
-          />
-        </div>
-
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
         <div>
           <label className="mb-1.5 block text-sm font-medium">
             Response type
@@ -209,6 +190,15 @@ export function CherishFeedbackForm({
         />
       </div>
 
+      <CherishValueField
+        id="cherish-value"
+        value={cherishValue}
+        suggested={suggestedValue}
+        chosen={chosenValue !== null}
+        hasMessage={message.trim().length >= 3}
+        onChoose={setChosenValue}
+      />
+
       <label className="flex items-start gap-3 border-y py-3 text-sm">
         <Checkbox
           checked={anonymous}
@@ -248,7 +238,7 @@ export function CherishFeedbackForm({
         </p>
         <Button
           type="submit"
-          disabled={isPending || message.trim().length < 3}
+          disabled={isPending || message.trim().length < 3 || !cherishValue}
         >
           {isPending ? "Saving..." : "Submit CHERISH feedback"}
         </Button>

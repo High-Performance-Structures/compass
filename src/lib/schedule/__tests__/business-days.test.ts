@@ -4,6 +4,7 @@ import {
   calculateEndDate,
   countBusinessDays,
   isNonWorkday,
+  workdaysFromEndDate,
 } from "../business-days"
 import type { WorkdayExceptionData } from "../types"
 
@@ -65,5 +66,53 @@ describe("business-day calendar", () => {
 
   it("supports negative leads when counting business days", () => {
     expect(addBusinessDays("2026-07-27", -1)).toBe("2026-07-24")
+  })
+})
+
+describe("workdaysFromEndDate", () => {
+  // 2026-10-26 is a Monday.
+  it("counts workdays from the start to a chosen weekday end", () => {
+    expect(workdaysFromEndDate("2026-10-26", "2026-10-30")).toEqual({
+      success: true, workdays: 5, endDate: "2026-10-30", snapped: false,
+    })
+  })
+
+  it("moves a weekend end back to Friday and says so", () => {
+    expect(workdaysFromEndDate("2026-10-26", "2026-11-01")).toEqual({
+      success: true, workdays: 5, endDate: "2026-10-30", snapped: true,
+    })
+  })
+
+  it("skips company holidays like calculateEndDate does", () => {
+    const holiday = exception({ startDate: "2026-10-28", endDate: "2026-10-28" })
+    const result = workdaysFromEndDate("2026-10-26", "2026-10-30", [holiday])
+    expect(result).toEqual({ success: true, workdays: 4, endDate: "2026-10-30", snapped: false })
+    expect(calculateEndDate("2026-10-26", 4, [holiday])).toBe("2026-10-30")
+  })
+
+  it("moves an end on a holiday back to the workday before", () => {
+    const holiday = exception({ startDate: "2026-10-30", endDate: "2026-10-30" })
+    expect(workdaysFromEndDate("2026-10-26", "2026-10-30", [holiday])).toEqual({
+      success: true, workdays: 4, endDate: "2026-10-29", snapped: true,
+    })
+  })
+
+  it("treats the same day as one workday", () => {
+    expect(workdaysFromEndDate("2026-10-26", "2026-10-26")).toEqual({
+      success: true, workdays: 1, endDate: "2026-10-26", snapped: false,
+    })
+  })
+
+  it("rejects an end before the start", () => {
+    expect(workdaysFromEndDate("2026-10-26", "2026-10-23")).toEqual({
+      success: false, error: "The end date can't be before the start date.",
+    })
+  })
+
+  it("round-trips with calculateEndDate for every duration in a month", () => {
+    for (let workdays = 1; workdays <= 22; workdays += 1) {
+      const end = calculateEndDate("2026-10-26", workdays)
+      expect(workdaysFromEndDate("2026-10-26", end)).toMatchObject({ success: true, workdays, endDate: end })
+    }
   })
 })

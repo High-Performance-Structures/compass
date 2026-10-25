@@ -43,10 +43,10 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
     await expect(setting).not.toBeChecked()
     await setting.check()
     await page
-      .getByRole("button", { name: "Save report view", exact: true })
+      .getByRole("button", { name: "Save report settings", exact: true })
       .click()
     await expect(
-      page.getByRole("main").getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Report settings saved.", { exact: true })
     ).toBeVisible()
     await expect(setting).toBeEnabled()
     await page.reload()
@@ -59,8 +59,8 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
         await page.bringToFront()
         await page.getByRole("combobox", { name: "Client report presentation" }).click()
         await page.getByRole("option", { name: mode, exact: true }).click()
-        await page.getByRole("button", { name: "Save report view", exact: true }).click()
-        await expect(page.getByRole("main").getByText("Client report view saved.", { exact: true })).toBeVisible()
+        await page.getByRole("button", { name: "Save report settings", exact: true }).click()
+        await expect(page.getByRole("main").getByText("Report settings saved.", { exact: true })).toBeVisible()
       }
       await preview.goto(report)
       const assemblies = preview.getByRole("region", {
@@ -83,10 +83,10 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
     await expect(setting).toBeEnabled()
     await setting.uncheck()
     await page
-      .getByRole("button", { name: "Save report view", exact: true })
+      .getByRole("button", { name: "Save report settings", exact: true })
       .click()
     await expect(
-      page.getByRole("main").getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Report settings saved.", { exact: true })
     ).toBeVisible()
     await preview.goto(report)
     await expect(

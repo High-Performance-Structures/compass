@@ -1287,6 +1287,7 @@ export function DashboardLaunchpad({
         rules={portfolio.rules}
         travel={portfolio.travel}
         salesPipelines={salesPipelines}
+        canOpenFiles={portfolio.canOpenFiles}
       />
 
       {mode === "office" ? (

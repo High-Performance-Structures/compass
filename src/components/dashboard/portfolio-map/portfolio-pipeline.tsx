@@ -1,7 +1,10 @@
 "use client"
 
 import type * as React from "react"
+import Link from "next/link"
+import { FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { projectFilesHref } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import { HEALTH_LABEL, healthColor, phaseColor } from "@/components/dashboard/portfolio-map/portfolio-style"
 import { FollowUpChip } from "@/components/projects/project-follow-up-aging"
 import {
@@ -17,6 +20,8 @@ type PortfolioPipelineProps = {
   readonly selectedPhase: PortfolioPhaseId | null
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
+  /** Shows a Files link on each job row; staff only. */
+  readonly canOpenFiles?: boolean
 }
 
 /**
@@ -29,6 +34,7 @@ export function PortfolioPipeline({
   selectedPhase,
   onSelectJob,
   onSelectPhase,
+  canOpenFiles = false,
 }: PortfolioPipelineProps): React.ReactElement {
   return (
     <div className="h-full overflow-auto bg-card">
@@ -56,14 +62,11 @@ export function PortfolioPipeline({
                   const progress = job.progress ?? 0
                   const alert = portfolioMarkerAlert(job)
                   return (
-                    <li key={job.id}>
+                    <li key={job.id} className={cn("flex border-b border-border", selected && "bg-accent")}>
                       <button
                         type="button"
                         aria-pressed={selected}
-                        className={cn(
-                          "flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors hover:bg-accent",
-                          selected && "bg-accent",
-                        )}
+                        className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent"
                         onClick={() => onSelectJob(job.id)}
                       >
                         <span
@@ -92,6 +95,16 @@ export function PortfolioPipeline({
                           </span>
                         </span>
                       </button>
+                      {canOpenFiles ? (
+                        <Link
+                          href={projectFilesHref(job.id)}
+                          aria-label={`Files for ${job.name}`}
+                          title="Files"
+                          className="flex w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                          <FolderOpen className="size-4" aria-hidden="true" />
+                        </Link>
+                      ) : null}
                     </li>
                   )
                 })}

@@ -25,6 +25,7 @@ import { scheduleTaskAssignees } from "@/db/schema-participants"
 import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
+import { normalizeScheduleItemTimes } from "@/lib/schedule/item-time"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import {
   wouldCreateCycle,
@@ -995,6 +996,8 @@ export async function createTask(
     title: string
     startDate: string
     workdays: number
+    startTime?: string | null
+    endTime?: string | null
     phase: string
     displayColor?: string
     status?: TaskStatus
@@ -1065,6 +1068,9 @@ export async function createTask(
       }
     }
 
+    const times = normalizeScheduleItemTimes(data.startTime, data.endTime)
+    if (!times.success) return { success: false, error: times.error }
+
     const exceptions = await fetchExceptions(db, projectId)
     const endDate = calculateEndDate(data.startDate, data.workdays, exceptions)
     const now = new Date().toISOString()
@@ -1094,6 +1100,8 @@ export async function createTask(
       startDate: data.startDate,
       workdays: data.workdays,
       endDateCalculated: endDate,
+      startTime: times.startTime,
+      endTime: times.endTime,
       phase: data.phase,
       displayColor: data.displayColor ?? "blue",
       status: progress.status,
@@ -1198,6 +1206,8 @@ export async function updateTask(
     title?: string
     startDate?: string
     workdays?: number
+    startTime?: string | null
+    endTime?: string | null
     phase?: string
     displayColor?: string
     status?: TaskStatus
@@ -1318,6 +1328,14 @@ export async function updateTask(
     if (shiftReasonResult !== null && !shiftReasonResult.success) {
       return { success: false, error: shiftReasonResult.error }
     }
+    const timesChanged = data.startTime !== undefined || data.endTime !== undefined
+    const times = normalizeScheduleItemTimes(
+      data.startTime !== undefined ? data.startTime : task.startTime,
+      data.endTime !== undefined ? data.endTime : task.endTime
+    )
+    if (timesChanged && !times.success) {
+      return { success: false, error: times.error }
+    }
 
     // Leave dates untouched until the paired D1 batch below. Linked to-dos
     // must calculate their offsets from the previous schedule dates.
@@ -1329,6 +1347,10 @@ export async function updateTask(
           notes: data.notes?.trim() || null
         }),
         workdays,
+        ...(timesChanged && times.success && {
+          startTime: times.startTime,
+          endTime: times.endTime
+        }),
         ...(data.phase && { phase: data.phase }),
         ...(data.displayColor && { displayColor: data.displayColor }),
         status: progress.status,

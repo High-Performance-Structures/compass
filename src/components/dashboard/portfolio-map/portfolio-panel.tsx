@@ -71,6 +71,8 @@ type PortfolioPanelProps = {
   /** Messages layer on: the selected job's unread items; null otherwise. */
   readonly jobMessages?: PortfolioJobMessages | null
   readonly statusMove?: PortfolioStatusMove | null
+  /** Shows a Files link to the job's Plans & Documents; staff only. */
+  readonly canOpenFiles?: boolean
 }
 
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
@@ -174,6 +176,7 @@ function JobDetail({
   onClear,
   messages,
   statusMove,
+  canOpenFiles,
 }: {
   readonly job: PortfolioMapJob
   readonly travel: PortfolioJobTravel | null
@@ -181,6 +184,7 @@ function JobDetail({
   readonly onClear: () => void
   readonly messages: PortfolioJobMessages | null
   readonly statusMove: PortfolioStatusMove | null
+  readonly canOpenFiles: boolean
 }): React.ReactElement {
   const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
@@ -193,6 +197,7 @@ function JobDetail({
         ["Schedule", "schedule"],
         ["Daily logs", "daily-logs"],
       ]}
+      files={canOpenFiles}
     />
   )
   return (
@@ -414,6 +419,7 @@ export function PortfolioPanel({
   onClear,
   jobMessages = null,
   statusMove = null,
+  canOpenFiles = false,
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
@@ -426,6 +432,7 @@ export function PortfolioPanel({
           onClear={onClear}
           messages={jobMessages}
           statusMove={statusMove}
+          canOpenFiles={canOpenFiles}
         />
       )
     }
