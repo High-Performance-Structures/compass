@@ -1275,10 +1275,6 @@ export function DashboardLaunchpad({
 
       <DashboardCountsStrip counts={counts} />
 
-      {todaysPlan ? (
-        <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
-      ) : null}
-
       <PortfolioSection
         jobs={portfolio.jobs}
         unplaced={portfolio.unplaced}
@@ -1301,6 +1297,10 @@ export function DashboardLaunchpad({
             <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
           </div>
           <div className="flex min-w-0 flex-col gap-6">
+            {/* Below the map and pipeline so they keep their place. */}
+            {todaysPlan ? (
+              <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
+            ) : null}
             <Horizon
               overview={overview}
               mode={mode}
@@ -1316,6 +1316,9 @@ export function DashboardLaunchpad({
         </div>
       ) : (
         <div className="flex flex-col gap-6">
+          {todaysPlan ? (
+            <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
+          ) : null}
           <Horizon
             overview={overview}
             mode={mode}
