@@ -1,4 +1,5 @@
 import { addDays } from "@/lib/my-compass-calendar/items"
+import { scheduleItemTimedWindow, scheduleItemTimeLabel } from "@/lib/schedule/item-time"
 import { scheduleItemHref } from "@/lib/work-calendar"
 
 /** When an event happens: all day across dates, or at set times. */
@@ -59,17 +60,24 @@ export function scheduleTaskItem(input: {
     readonly isMilestone: boolean
     readonly assignedTo: string | null
     readonly status: string
+    readonly startTime?: string | null
+    readonly endTime?: string | null
   }
+  /** Needed for an item with a time; without it the item stays all day. */
+  readonly timeZone?: string
 }): ProjectCalendarItem {
   const { task } = input
   const start = task.isMilestone ? task.endDate : task.startDate
   const end = task.endDate < start ? start : task.endDate
+  const window = input.timeZone ? scheduleItemTimedWindow(task) : null
+  const timeLabel = scheduleItemTimeLabel(task)
   return {
     key: `schedule:${task.id}`,
     summary: `${task.isMilestone ? "Milestone: " : ""}${task.title}`,
     description: lines([
       task.phase ? `Phase: ${task.phase}` : null,
       task.assignedTo ? `Assigned to: ${task.assignedTo}` : null,
+      timeLabel && !window ? `Time: ${timeLabel}` : null,
       `Status: ${task.status}`,
       "",
       `Open in Compass: ${link(input.baseUrl, scheduleItemHref(task.projectId, task.id))}`,
@@ -77,7 +85,9 @@ export function scheduleTaskItem(input: {
       FOOTER,
     ]),
     location: null,
-    timing: { kind: "date", startDate: start, endDateExclusive: addDays(end, 1) },
+    timing: window && input.timeZone
+      ? { kind: "time", startsAt: window.startsAt, endsAt: window.endsAt, timeZone: input.timeZone }
+      : { kind: "date", startDate: start, endDateExclusive: addDays(end, 1) },
     recurrence: [],
   }
 }

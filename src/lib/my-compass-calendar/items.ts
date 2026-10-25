@@ -1,6 +1,7 @@
+import { scheduleItemTimedWindow, scheduleItemTimeLabel } from "@/lib/schedule/item-time"
 import { projectTodoHref, scheduleItemHref } from "@/lib/work-calendar"
 
-/** One all-day event Compass keeps on a person's My Compass calendar. */
+/** One event Compass keeps on a person's My Compass calendar; all day unless timed. */
 export type MyCompassItem = {
   /** "<source>:<record id>"; stable across syncs. */
   readonly key: string
@@ -10,6 +11,8 @@ export type MyCompassItem = {
   readonly startDate: string
   /** Exclusive end day, YYYY-MM-DD (Google's all-day convention). */
   readonly endDateExclusive: string
+  /** Set for a single-day schedule item with a time. */
+  readonly timed?: { readonly startsAt: string; readonly endsAt: string; readonly timeZone: string }
 }
 
 export type PersonIdentity = {
@@ -80,12 +83,18 @@ export function scheduleItem(input: {
     readonly phase: string
     readonly isMilestone: boolean
     readonly assignedTo: string | null
+    readonly startTime?: string | null
+    readonly endTime?: string | null
   }
   readonly project: { readonly name: string; readonly projectNumber: string | null }
+  /** Needed for an item with a time; without it the item stays all day. */
+  readonly timeZone?: string
 }): MyCompassItem {
   const { task, project } = input
   const start = task.isMilestone ? task.endDate : task.startDate
   const end = task.endDate < start ? start : task.endDate
+  const window = input.timeZone ? scheduleItemTimedWindow(task) : null
+  const timeLabel = scheduleItemTimeLabel(task)
   return {
     key: `schedule:${task.id}`,
     summary: `${projectPrefix(project)} · ${task.isMilestone ? "Milestone: " : ""}${task.title}`,
@@ -93,6 +102,7 @@ export function scheduleItem(input: {
       `${project.projectNumber ? `${project.projectNumber} ` : ""}${project.name}`,
       task.phase ? `Phase: ${task.phase}` : null,
       task.assignedTo ? `Assigned to: ${task.assignedTo}` : null,
+      timeLabel && !window ? `Time: ${timeLabel}` : null,
       "",
       `Open in Compass: ${link(input.baseUrl, scheduleItemHref(task.projectId, task.id))}`,
       "",
@@ -102,6 +112,7 @@ export function scheduleItem(input: {
       .join("\n"),
     startDate: start,
     endDateExclusive: addDays(end, 1),
+    ...(window && input.timeZone ? { timed: { ...window, timeZone: input.timeZone } } : {}),
   }
 }
 
@@ -138,7 +149,14 @@ export function todoItem(input: {
 /** Changes whenever anything Google shows for the item changes. */
 export async function itemHash(item: MyCompassItem): Promise<string> {
   const data = new TextEncoder().encode(
-    JSON.stringify([item.summary, item.description, item.startDate, item.endDateExclusive])
+    JSON.stringify([
+      item.summary,
+      item.description,
+      item.startDate,
+      item.endDateExclusive,
+      // Left out for all-day items so their existing hashes don't change.
+      ...(item.timed ? [item.timed] : []),
+    ])
   )
   const digest = await crypto.subtle.digest("SHA-256", data)
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")

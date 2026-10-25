@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-23"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -33,6 +33,11 @@ The critical path is calculated from activity duration, dependencies, dates, and
 ## Create or Edit a Schedule Item {#schedule-item}
 
 Enter a clear title, start date, workday duration, phase, assignee, and any dependency details. Use **Notes** for additional activity context that belongs with the schedule item, then review calculated dates before saving. If an assignee lacks project access, grant only the project role and permissions their work requires.
+
+- **End date or duration.** Type a duration in workdays, or pick an **End** date and Compass works out the duration from the project's workday calendar, skipping weekends and holidays. If you pick a day that isn't a workday, the item ends on the workday before it, and Compass tells you.
+- **Time (optional).** Items are all day unless you add a **Start time**; an **End time** is optional too. A one-day item with a time shows at that time on My Compass and project Google calendars. A longer item stays all day there, with the time in its details.
+- **Color.** Pick a palette color or **Custom**. The custom colors you used most recently appear under **Recent**, so you can match them again.
+- **Delete.** Open the item and select **Delete schedule item**, or use the trash button on its row in the **List** view. Deleting also removes its dependencies and can't be undone.
 
 ## Predecessors {#predecessors}
 

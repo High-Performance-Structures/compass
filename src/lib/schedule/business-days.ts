@@ -118,3 +118,46 @@ export function calculateStartDate(
   if (workdays <= 1) return endDate
   return addBusinessDays(endDate, -(workdays - 1), exceptions)
 }
+
+export type WorkdaysFromEndDateResult =
+  | {
+      readonly success: true
+      readonly workdays: number
+      /** The end date used: the chosen one, or the workday before it. */
+      readonly endDate: string
+      /** True when the chosen end fell on a non-workday and was moved back. */
+      readonly snapped: boolean
+    }
+  | { readonly success: false; readonly error: string }
+
+/**
+ * The duration that makes an item starting on startDate end on endDate, using
+ * the same workday calendar as calculateEndDate. An end on a non-workday moves
+ * back to the previous workday; endDate is always what calculateEndDate gives
+ * for the returned workdays.
+ */
+export function workdaysFromEndDate(
+  startDate: string,
+  endDate: string,
+  exceptions: readonly WorkdayExceptionData[] = []
+): WorkdaysFromEndDateResult {
+  if (endDate < startDate) {
+    return { success: false, error: "The end date can't be before the start date." }
+  }
+  let current = parseISO(endDate)
+  const start = parseISO(startDate)
+  while (current > start && isNonWorkday(current, exceptions)) {
+    current = addDays(current, -1)
+  }
+  const snappedEnd = format(current, "yyyy-MM-dd")
+  const workdays = Math.max(1, countBusinessDays(startDate, snappedEnd, exceptions))
+  // A start on a non-workday counts forward, so the end can land after the
+  // chosen date (e.g. Saturday to Sunday becomes one workday ending Monday).
+  const resultEnd = calculateEndDate(startDate, workdays, exceptions)
+  return {
+    success: true,
+    workdays,
+    endDate: resultEnd,
+    snapped: resultEnd !== endDate,
+  }
+}
