@@ -230,3 +230,30 @@ Large-list filtering uses one JSON parameter rather than expanding an unbounded 
 
 
 Final integrated local proof: **336 tests in 30 files passed**; changed-file ESLint, UI standards, and whitespace/conflict checks passed. The full OpenNext demo build passed compilation, TypeScript, route generation, and Worker bundling with Node 22 and the 8 GiB heap setting. The last structured RFI review (`--mode local --model gpt-6.1-sol --no-web-search --stream-engine-output`, frozen assigned-company scope) exited 0 with no findings. The duplicate type import introduced while sharing the creation guard was removed and the affected authorization tests passed before this final review. No schema migration was added.
+
+
+## Updated demo closeout
+
+The integrated code is committed as `3b29e1a7` after preview closeout commits `2ef837a7` and `32daa9c2`. The reviewed bundle passed the demo deployment dry run and was deployed only to `compass-demo` as Worker version `f083fcd5-33bb-4716-b886-a8842de1b104`. Its version metadata was read back: D1 still points to the demo database, self-reference to the demo Worker, the three WorkOS secret bindings remain present, and only the synthetic QA project is allowlisted for correspondence. No new migrations were required.
+
+| Updated deployed proof | Assertions |
+| --- | ---: |
+| Real external accounts versus exact-person preview, including search, inbox, messages and negative access | 106 |
+| Read-only preview, notifications, legacy channels, and missing test storage boundary | 37 |
+| Actual notification baselines | 8 |
+| Recipient-specific RFQs and purchase orders | 8 |
+| Published owner budget and hidden internal note | 4 |
+| Normal staff identity and inbox retained | 2 |
+| RFI assignment, reassignment, removal, exact real/preview equality, staff review queue and denied non-staff/preview writes | 33 |
+| Ordinary office-staff preview access and restoration of the isolated account's original role | 3 |
+| **Total** | **201** |
+
+Nine before/after project-state projections are identical, now including RFI participants in addition to the previous eight. The four selected-person page visits produced exactly four preview audit entries; reader/action resolution did not multiply them. The staff-role test used the same isolated account and restored both its user and organization role to their original values, then verified the restoration. No new accounts were created.
+
+### Reliability and storage limits
+
+The first serial deployed comparison stopped on one vendor dashboard request. Direct repeat requests returned the expected authorized content. A complete concurrent comparison then passed all 106 assertions with one retry for individual failed GETs. However, HTTP 503 responses during that run included Cloudflare's **Worker exceeded resource limits** page. The initial failure's response was not retained; its exact cause is not claimed. The resource-limit responses are an unresolved reliability finding, not evidence of clean first-attempt availability. An error-only follow-up log watch produced no further diagnostic events; CPU versus memory cause has not been established. The read-only follow-up pass completed without that retry. Do not change infrastructure limits or claim this reliability issue is resolved on the basis of permission-test success. See [Cloudflare resource-limit errors](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1102/).
+
+Authorized QA attachment requests still reach the expected missing private Drive boundary, rather than transferring file bytes. That remains a separate storage validation gap. Production storage credentials and customer files were not copied to the demo.
+
+**Handoff:** preview and assigned-company RFI implementation, source review, local tests, and demo access validation are complete. Production rollout remains pending the isolated private-attachment download check, the demo resource-limit investigation, and production deployment authorization. Nothing was pushed, merged, or deployed to production. The original local A/B browser sample remains a separate simplified fixture.
