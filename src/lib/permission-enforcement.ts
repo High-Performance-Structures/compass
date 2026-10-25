@@ -20,7 +20,7 @@ import {
   type Action,
   type PermissionAccessLevel,
 } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 
 export class FeaturePermissionDeniedError extends Error {
   readonly featureId: string
@@ -85,8 +85,13 @@ export async function getEffectivePermissionAccessLevel(
   // Shared directories include other companies' people. External accounts
   // may edit only their explicitly linked person through the self-service
   // Sage proposal path, never browse the full internal directory.
+  // A demo company may preview its own people but never sees the shared
+  // directory, which lists other companies' people.
+  const staffOrganization = featureId === "project-audience-preview"
+    ? isStaffOrganizationType(user.organizationType)
+    : user.organizationType === "internal"
   if (feature.staffAssignable && (
-    user.organizationType !== "internal" || !isInternalStaffRole(user.role)
+    !staffOrganization || !isInternalStaffRole(user.role)
   )) return "none"
 
   if (feature.individualOnly) {

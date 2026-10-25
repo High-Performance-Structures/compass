@@ -1,5 +1,7 @@
 "use server"
 
+import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
+
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
@@ -7,7 +9,6 @@ import {
   projectBudgetApplications,
   projectBudgetLines,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -135,7 +136,7 @@ type ProjectAccess = {
 }
 
 async function verifyProjectAccess(projectId: string): Promise<ProjectAccess> {
-  const user = await requireAuth()
+  const user = await requireProjectAudienceReadUser(projectId)
   requirePermission(user, "budget", "read")
 
   const { env } = await getCloudflareContext()

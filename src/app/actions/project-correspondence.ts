@@ -22,15 +22,15 @@ function refresh(projectId: string): void { revalidatePath(`/dashboard/projects/
 
 export async function getCorrespondenceInbox(projectId: string): Promise<CorrespondenceResult<CorrespondenceInbox>> {
   try {
-    const ctx = await correspondenceContext(projectId)
-    const draft = await ctx.db.select().from(correspondenceCompositionDrafts).where(and(eq(correspondenceCompositionDrafts.projectId, projectId), eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.userId, ctx.user.id))).get()
+    const ctx = await correspondenceContext(projectId, "read")
+    const draft = ctx.preview ? null : await ctx.db.select().from(correspondenceCompositionDrafts).where(and(eq(correspondenceCompositionDrafts.projectId, projectId), eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.userId, ctx.user.id))).get()
     return { success: true, data: { compositionDraft: draft ? { subject: draft.subject, body: draft.body, recipientUserIds: draft.recipientUserIds, version: draft.version } : null, viewerId: ctx.user.id, projectName: ctx.projectName, workspace: ctx.workspace, conversations: await listCorrespondence(ctx), contacts: (await correspondenceContacts(ctx)).filter((p) => p.userId !== ctx.user.id) } }
   } catch (error) { return failure(error) }
 }
 export async function getCorrespondenceDetail(projectId: string, conversationId: string, beforeSequence?: number): Promise<CorrespondenceResult<CorrespondenceDetail>> {
   try {
     if (beforeSequence !== undefined && (!Number.isSafeInteger(beforeSequence) || beforeSequence < 1)) throw new Error("Invalid message page.")
-    return { success: true, data: await readCorrespondence(await correspondenceContext(projectId), conversationId, beforeSequence) }
+    return { success: true, data: await readCorrespondence(await correspondenceContext(projectId, "read"), conversationId, beforeSequence) }
   } catch (error) {
     return failure(error)
   }
@@ -154,7 +154,7 @@ export async function searchCorrespondence(projectId: string, query: string, fil
 }>> {
   try {
     if (typeof query !== "string" || query.trim().length < 2 || query.length > 200) throw new Error("Enter between 2 and 200 characters to search messages.")
-    const ctx = await correspondenceContext(projectId)
+    const ctx = await correspondenceContext(projectId, "read")
     if (filter !== undefined && !["inbox", "unread", "follow-up", "saved", "archived", "sent"].includes(filter)) throw new Error("Invalid inbox filter.")
     const term = query.trim()
     const stateValue = (field: "archived" | "follow_up" | "saved") => sql`COALESCE((SELECT ${sql.raw(field)} FROM correspondence_user_state s WHERE s.conversation_id=${correspondence.id} AND s.user_id=${ctx.user.id}), 0)`

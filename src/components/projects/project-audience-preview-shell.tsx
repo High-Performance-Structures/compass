@@ -240,7 +240,7 @@ export function ProjectAudiencePreviewShell({
         </div>
 
         <div className="border-b border-sidebar-border p-3">
-          {projectOptions.length > 1 ? (
+          {projectOptions.length > 1 && !viewerIsInternal ? (
             <div className="grid gap-1">
               <p className="px-2 text-xs text-sidebar-foreground/60">
                 {audience === "owner" ? "Owner workspace" : "Partner workspace"} · Current project
@@ -291,7 +291,7 @@ export function ProjectAudiencePreviewShell({
           ))}
         </nav>
 
-        <ProjectAudienceSidebarProfile viewer={viewer} />
+        <ProjectAudienceSidebarProfile viewer={viewer} readOnly={viewerIsInternal} />
         <div className="border-t border-sidebar-border pt-2">
           <ReleaseStageLabel />
         </div>
@@ -317,6 +317,7 @@ export function ProjectAudiencePreviewShell({
             messageShortcut={messageShortcut}
             projectId={projectId}
             audience={audience}
+            readOnly={viewerIsInternal}
           />
         </header>
 
@@ -325,7 +326,7 @@ export function ProjectAudiencePreviewShell({
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-xs font-medium">
                 <IconEye className="size-4" />
-                Preview mode — external users see this same guarded workspace.
+                Read-only preview · Content follows the selected person's access.
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -374,9 +375,10 @@ export function ProjectAudiencePreviewShell({
               messageShortcut={messageShortcut}
               projectId={projectId}
               audience={audience}
+            readOnly={viewerIsInternal}
             />
           </div>
-          {projectOptions.length > 1 && (
+          {projectOptions.length > 1 && !viewerIsInternal && (
             <div className="mt-2">
               <p className="sr-only">Current project</p>
               <ProjectAudienceSwitcher

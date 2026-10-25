@@ -1,3 +1,4 @@
+vi.mock("server-only", () => ({}))
 vi.mock("@/app/actions/selection-decisions-read", () => ({
   getSelectionWorkspace: vi.fn().mockResolvedValue({ items: [] }),
 }))

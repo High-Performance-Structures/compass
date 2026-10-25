@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useAudiencePreviewHref } from "@/components/projects/project-audience-preview-scope"
 import { Download, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +26,8 @@ export function CorrespondenceAttachmentRow({
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
-  const href = `/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}${projectHistory ? "&scope=project" : ""}`
+  const scopedHref = useAudiencePreviewHref()
+  const href = scopedHref(`/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}${projectHistory ? "&scope=project" : ""}`)
   const previewHref = `${href}&preview=1`
   const kind = attachmentPreviewKind(attachment.contentType)
   const size =

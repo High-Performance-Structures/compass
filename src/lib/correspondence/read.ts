@@ -132,7 +132,7 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
   const sourceHeadersByMessage = await sourceHeaders(ctx, conversationId, ids)
   const attachments = ids.length ? await ctx.db.select().from(correspondenceAttachments).where(and(eq(correspondenceAttachments.projectId, ctx.projectId), eq(correspondenceAttachments.organizationId, ctx.organizationId), inArray(correspondenceAttachments.messageId, ids))) : []
   const receiptStates = await ctx.db.select().from(correspondenceState).where(eq(correspondenceState.conversationId, conversationId))
-  const draft = projectHistory ? null : await ctx.db.select().from(correspondenceDrafts).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id))).get()
+  const draft = projectHistory || ctx.preview ? null : await ctx.db.select().from(correspondenceDrafts).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id))).get()
   const messages: CorrespondenceMessage[] = visible.map(({ message }) => ({
     emailDeliveryStatus: campaignByMessage.get(message.id)?.status ?? null,
     emailBcc: campaignByMessage.get(message.id)?.senderUserId === ctx.user.id
@@ -164,7 +164,7 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
       const canShare = message.source !== "buildertrend" && (receiptStates.find((state) => state.userId === r.userId)?.shareReadReceipts ?? true)
       return { userId: r.userId, name: r.name, status: canShare ? r.openedAt ? "opened" : "not_opened" : "unavailable", openedAt: canShare ? r.openedAt : null }
     }),
-    canEdit: !projectHistory && message.source === "compass" && message.authorUserId === ctx.user.id && !message.retractedAt,
+    canEdit: !ctx.preview && !projectHistory && message.source === "compass" && message.authorUserId === ctx.user.id && !message.retractedAt,
   }))
   const replyAudience = privacy?.blindUserIds.has(ctx.user.id) ? "private_staff" : privacy && ctx.workspace === "staff" ? "shared_email" : null
   return { replyAudience, conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version, attachments: await draftAttachments(ctx, draft.attachmentIds) } : null }

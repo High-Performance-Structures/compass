@@ -42,11 +42,13 @@ export function ProjectAudienceHeaderControls({
   messageShortcut,
   projectId,
   audience,
+  readOnly = false,
 }: {
   readonly viewer: AudienceViewer
   readonly messageShortcut: ProjectAudienceMessageShortcut | null
   readonly projectId: string
   readonly audience: ProjectAudience
+  readonly readOnly?: boolean
 }): React.ReactElement {
   const { theme, setTheme } = useTheme()
   const canViewHelp = useCanViewHelp()
@@ -59,6 +61,7 @@ export function ProjectAudienceHeaderControls({
     })
   }
 
+  if (readOnly) return <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Read-only preview</span><NotificationsPopover scope={{ projectId, audience }} readOnly /></div>
   return (
     <div className="flex shrink-0 items-center justify-end gap-0.5">
       <QuickAddMenu />

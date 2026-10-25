@@ -1,3 +1,4 @@
+import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { getCloudflareContext } from "@/lib/db"
 import { PAGE_NUMBER_MAX_BYTES, numberPdfPages } from "@/lib/print/page-numbers"
 
@@ -29,6 +30,12 @@ export async function renderPrintPagePdf(input: PrintPdfRequest): Promise<PrintP
   const printUrl = new URL(input.path, new URL(env.WORKOS_REDIRECT_URI).origin)
   for (const [key, value] of Object.entries(input.searchParams ?? {})) {
     printUrl.searchParams.set(key, value)
+  }
+  const previewScope = await getProjectAudienceRequestScope()
+  if (previewScope) {
+    printUrl.searchParams.set("previewProject", previewScope.projectId)
+    printUrl.searchParams.set("previewAudience", previewScope.audience)
+    if (previewScope.targetUserId) printUrl.searchParams.set("previewAs", previewScope.targetUserId)
   }
   const rendered: unknown = await Reflect.apply(quickAction, env.BROWSER, [
     "pdf",

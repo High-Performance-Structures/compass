@@ -1,3 +1,5 @@
+import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
@@ -54,10 +56,12 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await requireAuth()
+    const user = await conversationRequestViewer(await requireAuth())
+    if (!user) return new Response("Not found", { status: 404 })
     const { id: rawProjectId, applicationId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Project not found", { status: 404 })
+    await assertAudienceResourceProject(projectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const project = await assertProjectAccess(db, user, projectId)
@@ -161,7 +165,7 @@ export async function GET(
         "Content-Disposition":
           `${download ? "attachment" : "inline"}; ` +
           `filename="${safeFileName(fileName)}"`,
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": await audienceReadCacheControl(),
         "X-Content-Type-Options": "nosniff",
       },
     })

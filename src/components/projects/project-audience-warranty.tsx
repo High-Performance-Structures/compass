@@ -29,9 +29,8 @@ export async function ProjectAudienceWarranty({
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     notFound()
   }
-  // Staff previewing the owner view get the same assignee choices as the staff
-  // page; owners never see the edit form, only "Assigned: …".
-  const assigneeOptions = preview.viewerIsInternal
+  // The effective viewer, not the staff actor, controls assignment details.
+  const assigneeOptions = workspace.viewerIsInternal
     ? await getProjectTaskAssigneeOptions(projectId)
         .then(warrantyAssigneeOptions)
         .catch(() => [])

@@ -1,12 +1,17 @@
 "use server"
 
+import { assertAudiencePreviewWriteAllowed, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
+
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, gt, desc, sql } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, typingSessions } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { getConversationChannelAccess } from "@/lib/conversations/channel-access"
+
 
 type TypingUser = {
   id: string
@@ -63,7 +68,7 @@ export async function getChannelUpdates(
   lastMessageId?: string
 ): Promise<{ success: true; data: ChannelUpdatesResult } | { success: false; error: string }> {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
@@ -83,7 +88,7 @@ export async function getChannelUpdates(
     const now = new Date().toISOString()
 
     // clean up expired typing sessions
-    await db
+    if (!(await isAudiencePreviewRequest())) await db
       .delete(typingSessions)
       .where(sql`${typingSessions.expiresAt} < ${now}`)
 
@@ -105,7 +110,7 @@ export async function getChannelUpdates(
       const lastMessage = await db
         .select({ createdAt: messages.createdAt })
         .from(messages)
-        .where(eq(messages.id, lastMessageId))
+        .where(and(eq(messages.id, lastMessageId), eq(messages.channelId, channelId)))
         .limit(1)
         .then((rows) => rows[0] ?? null)
 
@@ -171,6 +176,7 @@ export async function setTyping(
   channelId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }

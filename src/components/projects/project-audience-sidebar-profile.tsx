@@ -30,8 +30,10 @@ type AudienceViewer = {
 
 export function ProjectAudienceSidebarProfile({
   viewer,
+  readOnly = false,
 }: {
   readonly viewer: AudienceViewer
+  readonly readOnly?: boolean
 }): React.ReactElement {
   const { theme, setTheme } = useTheme()
   const { activeThemeId, setVisualTheme } = useCompassTheme()
@@ -41,6 +43,9 @@ export function ProjectAudienceSidebarProfile({
     avatar: viewer.avatarUrl,
     sidebarDeskPhoto: viewer.sidebarPhotoUrl,
   }), [viewer.name, viewer.email, viewer.avatarUrl, viewer.sidebarPhotoUrl])
+  // The normal photo widget migrates legacy photos on mount. A preview must
+  // never mount it or persist appearance/preferences under the staff actor.
+  if (readOnly) return <div className="border-t border-sidebar-border p-3"><p className="truncate text-sm font-medium">{viewer.name}</p><p className="truncate text-xs text-sidebar-foreground/60">{viewer.email}</p><p className="mt-1 text-xs text-sidebar-foreground/60">Read-only preview</p></div>
   return (
     <SidebarWorkspaceDrawer
       preferenceKey={`compass-sidebar-drawer-pinned:${viewer.email}`}

@@ -1,3 +1,6 @@
+import { audienceReadCacheControl } from "@/lib/project-audience-request-server"
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
@@ -16,7 +19,7 @@ import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { getExportExtension, getExportMimeType, isGoogleNativeFile } from "@/lib/google/mapper"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
-import { getConversationChannelAccess } from "@/lib/conversations/channel-access"
+
 import { assertProjectAccess } from "@/lib/project-access"
 import { requireOrg } from "@/lib/org-scope"
 
@@ -73,7 +76,7 @@ export async function GET(
   { params }: { readonly params: Promise<{ readonly attachmentId: string }> }
 ): Promise<Response> {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) return new Response("Unauthorized", { status: 401 })
     if (!user.isActive) return new Response("Forbidden", { status: 403 })
 
@@ -203,7 +206,7 @@ export async function GET(
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${encodeURIComponent(safeFileName(fileName))}"`,
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": await audienceReadCacheControl(),
         "X-Content-Type-Options": "nosniff",
       },
     })

@@ -30,10 +30,12 @@ import { contractPackets } from "@/db/schema-contracts"
 import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/schema-participants"
 import { projectDocuments } from "@/db/schema-documents"
 import { channelMembers, channels } from "@/db/schema-conversations"
+import { scopedAudienceHref } from "@/lib/project-audience-request"
+import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
   canUseProjectAudience,
   type ProjectAudience,
@@ -331,6 +333,8 @@ async function loadAudienceProjectOptions(input: {
 export async function getProjectAudienceOptions(
   audience: ProjectAudience
 ): Promise<readonly AudienceProjectOption[]> {
+  const scope = await getProjectAudienceRequestScope()
+  if (scope && (await resolveProjectAudienceViewer(scope.projectId, audience)).isPreview) return []
   const user = await requireAuth()
   requirePermission(user, "project", "read")
   if (isInternalStaffRole(user.role)) return []
@@ -344,61 +348,24 @@ export async function getProjectAudienceOptions(
   })
 }
 
-async function verifyProjectAccess(
-  projectId: string,
-  audience: ProjectAudience
-): Promise<{
+async function verifyProjectAccess(projectId: string, audience: ProjectAudience): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly env: unknown
   readonly organizationId: string
   readonly viewerIsInternal: boolean
-  readonly viewer: {
-    readonly id: string
-    readonly name: string
-    readonly email: string
-    readonly avatarUrl: string | null
-    readonly sidebarPhotoUrl: string | null
-  }
+  readonly previewMode: boolean
+  readonly viewer: ProjectAudiencePreview["viewer"]
 }> {
-  const user = await requireAuth()
-  requirePermission(user, "project", "read")
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const project = await assertProjectAccess(db, user, projectId)
-  if (!project.organizationId) {
-    throw new Error("Project organization is missing")
-  }
-  const viewerIsInternal = isInternalStaffRole(user.role)
-  if (!viewerIsInternal) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-      throw new Error("Project not found")
-    }
-  }
-
+  const context = await resolveProjectAudienceViewer(projectId, audience)
+  const user = context.viewer
   return {
-    db,
-    env,
-    organizationId: project.organizationId,
-    viewerIsInternal,
-    viewer: {
-      id: user.id,
-      name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
-      email: user.email,
-      avatarUrl: user.avatarUrl,
-      sidebarPhotoUrl: user.sidebarDeskPhotoUrl ?? null,
-    },
+    db: context.db, env: context.env, organizationId: context.organizationId,
+    // This flag is solely for read policy inside the loader. Staff preview
+    // never enables internal widening; the separate previewMode controls UI.
+    viewerIsInternal: false,
+    previewMode: context.isPreview,
+    viewer: user ? { id: user.id, name: user.displayName ?? user.email, email: user.email, avatarUrl: user.avatarUrl, sidebarPhotoUrl: user.sidebarDeskPhotoUrl ?? null }
+      : { id: "", name: "Shared published content", email: "", avatarUrl: null, sidebarPhotoUrl: null },
   }
 }
 
@@ -438,7 +405,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
-  const { db, env, organizationId, viewerIsInternal, viewer } =
+  const { db, env, organizationId, viewerIsInternal, viewer, previewMode } =
     await verifyProjectAccess(projectId, audience)
 
   const [project] = await db
@@ -462,7 +429,7 @@ export async function getProjectAudiencePreview(
     throw new Error("Project not found")
   }
 
-  const projectOptions: readonly AudienceProjectOption[] = viewerIsInternal
+  const projectOptions: readonly AudienceProjectOption[] = previewMode
     ? [
         {
           id: project.id,
@@ -799,6 +766,8 @@ export async function getProjectAudiencePreview(
           eq(projectRfis.audience, "public")
         )
 
+  const vendorRfiIds = audience === "sub_vendor" ? await vendorVisibleRfiSourceIds({ db, projectId, organizationId, viewerId: viewer.id, contact: viewerContact }) : []
+
   const rfiRows = await db
     .select({
       id: projectRfis.id,
@@ -816,7 +785,7 @@ export async function getProjectAudiencePreview(
       answeredAt: projectRfis.answeredAt,
     })
     .from(projectRfis)
-    .where(and(eq(projectRfis.projectId, projectId), rfiVisibility))
+    .where(and(eq(projectRfis.projectId, projectId), rfiVisibility, audience === "sub_vendor" ? or(inJsonList(projectRfis.id, vendorRfiIds), inJsonList(projectRfis.sourceRecordId, vendorRfiIds)) : undefined))
     .orderBy(asc(projectRfis.dueDate), desc(projectRfis.submittedAt))
 
   const audienceContactId =
@@ -824,8 +793,8 @@ export async function getProjectAudiencePreview(
       ? null
       : viewerContact?.id ?? null
   if (
-    audience === "owner" ||
-    (!viewerIsInternal && audienceContactId !== null)
+    !previewMode && (audience === "owner" ||
+    (!viewerIsInternal && audienceContactId !== null))
   ) {
     await ensureProjectAudienceConversation({
       db,
@@ -931,7 +900,7 @@ export async function getProjectAudiencePreview(
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm: item.legacyResponseAllowed && item.assignees.length === 0 &&
+    viewerCanConfirm: !previewMode && item.legacyResponseAllowed && item.assignees.length === 0 &&
       canViewerConfirmScheduleTask({
         viewerIsInternal,
         viewerId: viewer.id,
@@ -984,7 +953,7 @@ export async function getProjectAudiencePreview(
           ? assignee.responseMessage
           : null,
         viewerCanRespond:
-          item.confirmationRequired && !viewerIsInternal && viewerOwnsAssignee,
+          item.confirmationRequired && !previewMode && !viewerIsInternal && viewerOwnsAssignee,
       }
     }),
   })
@@ -1153,7 +1122,7 @@ export async function getProjectAudiencePreview(
 
   return {
     audience,
-    viewerIsInternal,
+    viewerIsInternal: previewMode,
     viewer,
     projectOptions,
     project: {
@@ -1184,7 +1153,7 @@ export async function getProjectAudiencePreview(
         id: photo.id,
         fileName: photo.fileName,
         driveFileId: null,
-        thumbnailUrl: projectAudiencePhotoUrl(projectId, photo.id, audience),
+        thumbnailUrl: previewMode ? scopedAudienceHref(projectAudiencePhotoUrl(projectId, photo.id, audience), { projectId, audience, targetUserId: viewer.id || null }) : projectAudiencePhotoUrl(projectId, photo.id, audience),
         caption: photo.caption,
         capturedAt: photo.capturedAt,
         photoDate: resolvedPhotoDate,

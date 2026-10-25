@@ -206,6 +206,11 @@ export function isExternalProjectRole(role: string): boolean {
   ].includes(role)
 }
 
+/** A company whose staff run jobs. A demo company stands in for a real one. */
+export function isStaffOrganizationType(type: string | null | undefined): boolean {
+  return type === "internal" || type === "demo"
+}
+
 export function isInternalStaffRole(role: string): boolean {
   switch (role) {
     case "admin":

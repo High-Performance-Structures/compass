@@ -346,7 +346,7 @@ export async function downloadCorrespondenceAttachment(input: {
   readonly name: string
   readonly contentType: string
 }> {
-  const ctx = await correspondenceContext(input.projectId)
+  const ctx = await correspondenceContext(input.projectId, "read")
   const attachment = await attachmentForProject({
     ctx,
     attachmentId: input.attachmentId,

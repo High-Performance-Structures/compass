@@ -1,3 +1,4 @@
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { NextRequest, NextResponse } from "next/server"
@@ -22,7 +23,7 @@ import {
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
-import { getConversationChannelAccess } from "@/lib/conversations/channel-access"
+
 
 const MAX_ATTACHMENT_COUNT = 10
 const MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
