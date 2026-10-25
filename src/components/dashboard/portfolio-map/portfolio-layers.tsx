@@ -129,19 +129,21 @@ export function PortfolioLayerControl({
   const shown = available ? LAYERS.filter((layer) => available.includes(layer.id)) : LAYERS
   const activeCount = shown.filter((layer) => state[layer.id]).length
   return (
-    <div className="absolute left-4 top-4 flex flex-col items-start gap-1.5">
+    // Spans the map's height so the open menu scrolls instead of running off the bottom;
+    // only the button and menu take clicks, so the map still drags beside them.
+    <div className="pointer-events-none absolute bottom-4 left-4 top-4 z-10 flex flex-col items-start gap-1.5">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 items-center gap-2 border border-border bg-background/85 px-3 font-mono text-xs tracking-[0.12em] text-foreground backdrop-blur transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+        className="pointer-events-auto flex min-h-11 shrink-0 items-center gap-2 border border-border bg-background/85 px-3 font-mono text-xs tracking-[0.12em] text-foreground backdrop-blur transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2"
       >
         <Layers className="size-4" aria-hidden="true" />
         LAYERS{activeCount > 0 ? ` · ${activeCount}` : ""}
       </button>
       {open ? (
-        <ul id={panelId} className="flex w-64 flex-col border border-border bg-popover text-popover-foreground">
+        <ul id={panelId} className="pointer-events-auto flex min-h-0 w-64 flex-col overflow-y-auto overscroll-contain border border-border bg-popover text-popover-foreground">
           {shown.map((layer) => (
             <li key={layer.id}>
               <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-foreground hover:bg-accent">

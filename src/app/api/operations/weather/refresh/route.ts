@@ -6,8 +6,12 @@ import {
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
 import { refreshWeatherCache } from "@/lib/weather/refresh-server"
+import { sweepScheduleWeatherRisks } from "@/lib/weather/schedule-risk-server"
 
-/** Scheduled: refresh the map's weather warnings, wildfires and site forecasts. */
+/**
+ * Scheduled: refresh the map's weather warnings, wildfires and site
+ * forecasts, then check upcoming scheduled work against them.
+ */
 export async function POST(request: Request): Promise<Response> {
   const body = await readBoundedBody(request)
   if (!body.success) {
@@ -23,8 +27,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: verification.error }, { status: 401 })
   }
   try {
-    const summary = await refreshWeatherCache(getDb(env.DB), { budgetMs: 20_000 })
-    return Response.json({ success: true, ...summary })
+    const db = getDb(env.DB)
+    const summary = await refreshWeatherCache(db, { budgetMs: 18_000 })
+    const schedule = await sweepScheduleWeatherRisks(db, { budgetMs: 10_000 })
+    return Response.json({ success: true, ...summary, schedule })
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Weather refresh failed" },
