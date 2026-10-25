@@ -5,7 +5,14 @@ import { requireAuth } from "@/lib/auth"
 import { AUDIENCE_SCOPE_HEADER, parseAudienceScope, type ProjectAudienceRequestScope } from "@/lib/project-audience-request"
 
 export const getProjectAudienceRequestScope = cache(async function getProjectAudienceRequestScope(): Promise<ProjectAudienceRequestScope | null> {
-  const scope = parseAudienceScope((await headers()).get(AUDIENCE_SCOPE_HEADER))
+  // Background work (cron, queues) has no request and so is never a preview.
+  let header: string | null = null
+  try {
+    header = (await headers()).get(AUDIENCE_SCOPE_HEADER)
+  } catch {
+    return null
+  }
+  const scope = parseAudienceScope(header)
   if (!scope) return null
   const projectId = await resolveProjectRouteId(scope.projectId)
   if (!projectId) throw new Error("Project not found.")
