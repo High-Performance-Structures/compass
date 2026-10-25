@@ -31,6 +31,11 @@ export default async function RequestsPage({
         className="mb-0"
         eyebrow="Compass Feedback Desk"
         title={showingAll ? "All requests" : "My requests"}
+        meta={
+          <Link href="/dashboard/help/requesting-help#track-requests" className="underline underline-offset-2">
+            What the statuses mean
+          </Link>
+        }
         actions={
           <>
             <Button variant={!showingAll ? "secondary" : "ghost"} size="sm" asChild>

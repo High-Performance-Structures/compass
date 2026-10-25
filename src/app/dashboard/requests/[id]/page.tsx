@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react"
 
 import { getMyFeedbackRequest } from "@/app/actions/feedback-requests"
+import { RequestMessageText } from "@/app/dashboard/requests/request-message-text"
 import { RequestRefreshControl } from "@/app/dashboard/requests/request-refresh-control"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -115,7 +116,7 @@ export default async function RequestDetailPage({
                       </time>
                     </div>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                      {entry.message}
+                      <RequestMessageText message={entry.message} />
                     </p>
                   </div>
                 </li>
