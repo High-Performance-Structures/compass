@@ -27,6 +27,7 @@ import {
   type ProjectBudgetAudience,
 } from "@/lib/project-budget-audience"
 import {
+  budgetApplicationStatus,
   sanitizeBudgetApplicationForOwner,
   sanitizeBudgetLineForOwner,
   scopeBudgetLinesToApplication,
@@ -162,7 +163,7 @@ function toApplicationItem(
     sourceSystem: row.sourceSystem,
     applicationNumber: row.applicationNumber,
     periodTo: row.periodTo,
-    status: row.status,
+    status: budgetApplicationStatus(row),
     originalContractSum: row.originalContractSum,
     netChanges: row.netChanges,
     contractSumToDate: row.contractSumToDate,
@@ -559,6 +560,7 @@ export async function getProjectBudgetSummary(
               applicationNumber: projectBudgetApplications.applicationNumber,
               periodTo: projectBudgetApplications.periodTo,
               status: projectBudgetApplications.status,
+              syncStatus: projectBudgetApplications.syncStatus,
               originalContractSum:
                 projectBudgetApplications.originalContractSum,
               netChanges: projectBudgetApplications.netChanges,
@@ -594,9 +596,10 @@ export async function getProjectBudgetSummary(
               desc(projectBudgetApplications.periodTo),
               desc(projectBudgetApplications.createdAt)
             )
-        ).map((row) =>
+        ).map(({ syncStatus, ...row }) =>
           sanitizeBudgetApplicationForOwner({
             ...row,
+            status: budgetApplicationStatus({ ...row, syncStatus }),
             documentAvailable: Boolean(row.documentAvailable),
             sourceUrl: null,
             lastSyncedAt: null,

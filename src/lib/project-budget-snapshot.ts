@@ -99,6 +99,66 @@ function currency(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+export function budgetApplicationStatus(
+  application: Pick<BudgetApplicationView,
+    "status" | "sourceSystem" | "currentPaymentDue" | "balanceToFinish" |
+    "previousCertificates" | "totalEarnedLessRetainage"
+  > & { readonly syncStatus: string }
+): string {
+  const acceptedCloseout =
+    application.sourceSystem === "google_drive_g702_g703" &&
+    application.syncStatus === "client_final_closeout_accepted" &&
+    currency(application.currentPaymentDue) === 0 &&
+    currency(application.balanceToFinish) === 0 &&
+    currency(application.previousCertificates) === currency(application.totalEarnedLessRetainage)
+  return acceptedCloseout ? "paid_in_full" : application.status
+}
+
+export function budgetReconciliation(
+  application: BudgetApplicationView | null,
+  totals: {
+    readonly adjustedEstimate: number
+    readonly priorCosts: number
+    readonly currentCosts: number
+    readonly totalCosts: number
+    readonly balanceToFinish: number
+  }
+): {
+  readonly kind: "periodic" | "paid_closeout"
+  readonly contractDifference: number
+  readonly priorDifference: number
+  readonly currentDifference: number
+  readonly reconciliationRequired: boolean
+} {
+  const contractDifference = application ? currency(totals.adjustedEstimate - application.contractSumToDate) : 0
+  const priorDifference = application ? currency(totals.priorCosts - application.previousCertificates) : 0
+  const currentDifference = application ? currency(totals.currentCosts - application.currentPaymentDue) : 0
+  // A paid final certificate rolls receipts into previous certificates; its
+  // continuation sheet still describes the original draw period. Check the
+  // cumulative figures instead, retaining only two cents of printed rounding.
+  const paidCloseout = application !== null &&
+    application.status === "paid_in_full" &&
+    currency(application.currentPaymentDue) === 0 &&
+    currency(application.balanceToFinish) === 0 &&
+    currency(totals.balanceToFinish) === 0 &&
+    currency(application.previousCertificates) === currency(application.totalEarnedLessRetainage) &&
+    currency(application.totalCompletedStoredToDate) === currency(application.totalEarnedLessRetainage) &&
+    currency(totals.totalCosts) === currency(application.totalCompletedStoredToDate) &&
+    Math.abs(contractDifference) <= 0.02
+  return {
+    kind: paidCloseout ? "paid_closeout" : "periodic",
+    contractDifference,
+    priorDifference,
+    currentDifference,
+    reconciliationRequired: !paidCloseout && (
+      application?.status === "paid_in_full" ||
+      Math.abs(contractDifference) >= 0.02 ||
+      Math.abs(priorDifference) >= 0.02 ||
+      Math.abs(currentDifference) >= 0.02
+    ),
+  }
+}
+
 export function budgetPaymentBreakdown(
   application: BudgetPaymentSource
 ): BudgetPaymentBreakdown {
