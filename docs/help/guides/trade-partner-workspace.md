@@ -7,12 +7,12 @@
   "summary": "Review assigned project work, answer RFQs and RFIs, update commitments, and coordinate with the project team.",
   "contextSummary": "Your Trade Partner Workspace shows only information approved for your assigned company. Confirm the project, scope, and current record before responding.",
   "category": "Start Here",
-  "tags": ["subcontractor", "supplier", "vendor", "trade partner", "portal", "commitments", "purchase orders", "RFI", "RFQ", "quote", "warranty"],
+  "tags": ["weather", "wildfire", "subcontractor", "supplier", "vendor", "trade partner", "portal", "commitments", "purchase orders", "RFI", "RFQ", "quote", "warranty"],
   "audiences": ["subcontractor", "supplier"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/sub-vendor", "/preview/projects/[id]/sub-vendor/change-orders", "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]", "/preview/projects/[id]/sub-vendor/commitments", "/preview/projects/[id]/sub-vendor/conversations", "/preview/projects/[id]/sub-vendor/conversations/[channelId]", "/preview/projects/[id]/sub-vendor/documents", "/preview/projects/[id]/sub-vendor/photos", "/preview/projects/[id]/sub-vendor/rfis", "/preview/projects/[id]/sub-vendor/rfqs", "/preview/projects/[id]/sub-vendor/schedule", "/preview/projects/[id]/sub-vendor/selections", "/preview/projects/[id]/sub-vendor/team", "/preview/projects/[id]/sub-vendor/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -24,7 +24,7 @@ Compass shows only records assigned or published to your company and audience. I
 
 ## Use the Dashboard {#dashboard}
 
-**Dashboard** summarizes your assigned work using the same overall layout as the office workspace. **Your jobs** provides a map of projects available to you; select a job for its panel and links. The **Messages** layer highlights your unread items when available. Counts and status labels reflect your permitted project and company audience.
+**Dashboard** summarizes your assigned work using the same overall layout as the office workspace. **Your jobs** provides a map of projects available to you; select a job for its panel and links. The **Messages** layer highlights your unread items when available. Counts and status labels reflect your permitted project and company audience. Under **Layers**, **Weather** shows the National Weather Service forecast from now to 48 hours ahead, with a time bar, and **Fire & smoke** shows active wildfires and Red Flag Warnings. **Weather on your jobs** lists your jobs with heavy snow or rain, strong wind, extreme cold or heat, warnings, or a fire nearby.
 
 Use navigation to move between assigned work. **Print Preview** opens a point-in-time copy of the visible report in a new tab, with **Print / Save PDF**; it does not acknowledge, accept, or update a record. The map does not grant access to another company's work.
 

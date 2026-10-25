@@ -7,7 +7,7 @@
   "summary": "Find jobs on the dashboard map and pipelines, track follow-up, change statuses, and preserve project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "dashboard", "portfolio map", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
+  "tags": ["projects", "navigation", "dashboard", "portfolio map", "weather", "wildfire", "fire", "red flag", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
@@ -116,6 +116,10 @@ Authorized staff can use **MOVE TO** in a job panel to choose a status within th
 In **Settings → Workflows → Portfolio map**, admins choose where each department's jobs appear (with the projects, on the department's own sales pipeline view, on the Internal view, or not at all), the title of each sales pipeline, and which job statuses appear and in which phase.
 
 Turn on **Messages** to see your unread items stacked on jobs and listed in the selected job panel. Opening and reading the linked item clears the corresponding notification. **Zone charges** and **Mountain charge** show travel-charge information; the key below the map explains the layers. A map marker or suggested location should be checked against the actual job address before using it for travel or pricing.
+
+Turn on **Weather** to see the National Weather Service forecast on the map: falling rain and snow, moving streaks where wind is strong, a glow where it will be extremely cold or hot, and outlines for weather warnings. Drag the time bar under the map, or press play, to move from now to 48 hours ahead. Under **Layers**, you can turn off any part (rain, snow, wind, cold and heat, or warnings). **Weather on your jobs** lists the jobs over your company's limits in the 24 hours from the selected time, using each job site's own forecast area, so a mountain job gets the mountain forecast. Select a job in the list to fly to it. The first time the layer is turned on, forecasts take a few minutes to gather; after that they refresh in the background.
+
+Turn on **Fire & smoke** to see active wildfires (a glowing point, the fire's outline when it has been mapped, and the names of the largest fires) and Red Flag Warnings or Fire Weather Watches, outlined in red. **Fire near your jobs** lists each job within your company's distance of an active fire, with the fire's name, size, containment, and how far away it is and in which direction. Fire information comes from the national interagency fire map and can lag what crews see on the ground; follow local officials for evacuations and road closures. The limits for both layers are in **Settings → Workflows → Weather & fire alerts**. Clients and trade partners see both layers on their own maps, for the projects they can open.
 
 ## Track Client Follow-Up {#project-follow-up}
 

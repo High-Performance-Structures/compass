@@ -13,6 +13,7 @@ import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
+import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -46,6 +47,26 @@ export const portfolioMapSettingsSchema = z.object({
 })
 
 export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
+
+/**
+ * Weather & fire alerts: the limits that flag a job on the map's Weather and
+ * Fire & smoke layers. Forecasts are for each job site's own grid cell.
+ */
+export const weatherAlertSettingsSchema = z.object({
+  /** Snow in 24 hours, inches. */
+  snowIn: z.number().min(0.5).max(48),
+  /** Rain in 24 hours, inches. */
+  rainIn: z.number().min(0.1).max(10),
+  gustMph: z.number().int().min(10).max(120),
+  /** Extreme cold: a low at or below this, °F. */
+  coldF: z.number().int().min(-60).max(50),
+  /** Extreme heat: a high at or above this, °F. */
+  heatF: z.number().int().min(60).max(130),
+  /** An active wildfire within this many miles of a job. */
+  fireMiles: z.number().int().min(1).max(200),
+})
+
+export type WeatherAlertSettings = z.infer<typeof weatherAlertSettingsSchema>
 
 /**
  * Estimates: per department, one contract estimate per job or several at
@@ -626,6 +647,7 @@ type FeatureSettingsTypes = {
   readonly "linked-jobs": LinkedJobSettings
   readonly "square-payments": SquarePaymentSettings
   readonly "portfolio-map": PortfolioMapSettings
+  readonly "weather-alerts": WeatherAlertSettings
   readonly estimates: EstimateSettings
 }
 
@@ -854,6 +876,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
     defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {} },
     schema: portfolioMapSettingsSchema,
+  },
+  "weather-alerts": {
+    label: "Weather & fire alerts",
+    description: "When the map's Weather and Fire & smoke layers flag a job: snow, rain, wind, extreme cold or heat at the job site, and wildfires nearby.",
+    defaults: { ...DEFAULT_WEATHER_LIMITS },
+    schema: weatherAlertSettingsSchema,
   },
   "paper-trail": {
     label: "Project paper trail",
