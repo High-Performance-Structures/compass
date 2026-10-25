@@ -66,6 +66,7 @@ function budgetSummary(): ProjectBudgetSummary {
     detailMode: "cost_code",
     applications: [],
     currentApplication: null,
+    reconciliation: { kind: "periodic", reconciliationRequired: false },
     totals: {
       originalEstimate: 7_000,
       totalChanges: 700,

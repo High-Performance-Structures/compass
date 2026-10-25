@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectBrandFor } from "@/lib/project-branding"
-import { budgetPaymentBreakdown, budgetReconciliation } from "@/lib/project-budget-snapshot"
+import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
 import { PageHeader } from "@/components/page-header"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -101,8 +101,8 @@ export default async function OwnerBudgetPage({
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
   })
-  const reconciliation = budgetReconciliation(budget.currentApplication, budget.totals)
-  const { contractDifference, priorDifference, currentDifference, reconciliationRequired } = reconciliation
+  const reconciliation = budget.reconciliation
+  const { reconciliationRequired } = reconciliation
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience: preview.audience,
@@ -276,24 +276,11 @@ export default async function OwnerBudgetPage({
               role="status"
             >
               <p className="text-sm font-semibold">
-                {false
-                  ? "Sage reconciliation required"
-                  : "Current detail is being reconciled"}
+                Current detail is being reconciled
               </p>
               <p className="mt-1 text-xs leading-5">
-                {false
-                  ? "The certified pay-application header and imported G703 lines do not currently reconcile. Review the Sage progress-billing, deposit, retainage, and Schedule of Values data before publishing a regenerated package."
-                  : "The detailed G703 is being checked against the certified pay application. The published application PDFs above remain available."}
+                The detailed G703 is being checked against the certified pay application. The published application PDFs above remain available.
               </p>
-              {false && (
-                <p className="mt-2 text-xs tabular-nums">
-                  Contract difference: {money(contractDifference)}
-                  {" · "}
-                  Prior difference: {money(priorDifference)}
-                  {" · "}
-                  Current difference: {money(currentDifference)}
-                </p>
-              )}
             </div>
           )}
 

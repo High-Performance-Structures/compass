@@ -4,6 +4,7 @@ import {
   budgetApplicationStatus,
   budgetPaymentBreakdown,
   budgetReconciliation,
+  budgetReconciliationSummary,
   sanitizeBudgetApplicationForOwner,
   sanitizeBudgetLineForOwner,
   scopeBudgetLinesToApplication,
@@ -104,6 +105,26 @@ describe("project budget snapshot boundary", () => {
 
   it("keeps ordinary draws subject to the existing reconciliation checks", () => {
     expect(budgetReconciliation({ ...paidFinal, status: "current" }, finalTotals).reconciliationRequired).toBe(true)
+  })
+
+  it("reconciles source lines before a percentage-only view removes amounts", () => {
+    const decision = budgetReconciliationSummary(paidFinal, [finalTotals])
+    expect(decision).toEqual({ kind: "paid_closeout", reconciliationRequired: false })
+    // This is the percentage-only representation, not a financial source.
+    const displayTotals = { adjustedEstimate: 0, priorCosts: 0, currentCosts: 0, totalCosts: 0, balanceToFinish: 0 }
+    expect(budgetReconciliation(paidFinal, displayTotals).reconciliationRequired).toBe(true)
+    expect(decision).not.toHaveProperty("priorDifference")
+    expect(decision).not.toHaveProperty("currentDifference")
+    expect(decision).not.toHaveProperty("contractDifference")
+  })
+
+  it("retains a real source discrepancy without returning its hidden amounts", () => {
+    expect(budgetReconciliationSummary(paidFinal, [{ ...finalTotals, totalCosts: 1_001 }])).toEqual({
+      kind: "periodic", reconciliationRequired: true,
+    })
+    expect(budgetReconciliationSummary({ ...paidFinal, status: "current" }, [finalTotals])).toEqual({
+      kind: "periodic", reconciliationRequired: true,
+    })
   })
 
   it.each([
