@@ -3077,32 +3077,9 @@ export async function getOwnerProjectUpdateDocument(
                   "owner_update_document"
                 ),
                 sql<boolean>`${dailyLogPhotos.id} IN (
-                  SELECT json_extract(value, '$.id')
-                  FROM json_each(
-                    CASE
-                      WHEN json_valid(${ownerProjectUpdates.scheduleSnapshot})
-                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}) = 'object'
-                        AND json_extract(${ownerProjectUpdates.scheduleSnapshot}, '$.version') = 2
-                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.completedScheduleItems') = 'array'
-                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.lookAheadScheduleItems') = 'array'
-                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.todos') = 'array'
-                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.documents') = 'array'
-                      THEN ${ownerProjectUpdates.scheduleSnapshot}
-                      ELSE '{"version":2,"documents":[]}'
-                    END,
-                    '$.documents'
-                  )
-                  WHERE type = 'object'
-                    AND json_type(value, '$.id') = 'text'
-                    AND length(trim(json_extract(value, '$.id'))) > 0
-                    AND json_type(value, '$.fileName') = 'text'
-                    AND length(trim(json_extract(value, '$.fileName'))) > 0
-                    AND json_type(value, '$.mimeType') IN ('text', 'null')
-                    AND json_type(value, '$.driveFileId') IN ('text', 'null')
-                    AND json_type(value, '$.driveUrl') IN ('text', 'null')
-                    AND json_type(value, '$.caption') IN ('text', 'null')
-                    AND json_type(value, '$.capturedAt') IN ('text', 'null')
-                    AND json_type(value, '$.sourceSystem') = 'text'
+                  SELECT resource_id
+                  FROM owner_update_valid_snapshot_documents
+                  WHERE owner_update_id = ${ownerProjectUpdates.id}
                 )`
               )
             )
