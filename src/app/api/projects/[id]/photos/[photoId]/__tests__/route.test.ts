@@ -1,4 +1,3 @@
-vi.mock("next/headers", () => ({ headers: mocks.headers }))
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
@@ -20,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   hasActiveExternalProjectResourceGrant: vi.fn(),
 }))
 
+vi.mock("next/headers", () => ({ headers: mocks.headers }))
 vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer: async (user: unknown) => user }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))

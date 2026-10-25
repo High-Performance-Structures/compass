@@ -20,7 +20,7 @@ type SqliteConstructor = new (file: string) => Sqlite
 const nodeRequire = createRequire(import.meta.url)
 const migrationPath = resolve(
   process.cwd(),
-  "drizzle/0252_owner_update_publish_attachment_atomicity.sql"
+  "drizzle/0253_owner_update_publish_attachment_atomicity.sql"
 )
 
 function isSqliteConstructor(value: unknown): value is SqliteConstructor {
