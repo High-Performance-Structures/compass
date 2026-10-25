@@ -2997,6 +2997,10 @@ export const projectExternalResourceGrants = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     resourceType: text("resource_type").notNull(),
     resourceId: text("resource_id").notNull(),
+    sourceOwnerUpdateId: text("source_owner_update_id").references(
+      () => ownerProjectUpdates.id,
+      { onDelete: "cascade" }
+    ),
     audience: text("audience").notNull(),
     recipientUserId: text("recipient_user_id")
       .notNull()
@@ -3019,7 +3023,26 @@ export const projectExternalResourceGrants = sqliteTable(
         table.audience,
         table.recipientUserId
       )
-      .where(sql`${table.revokedAt} IS NULL`),
+      .where(
+        sql`${table.revokedAt} IS NULL AND ${table.sourceOwnerUpdateId} IS NULL`
+      ),
+    uniqueIndex("project_external_resource_grants_owner_update_active_unique")
+      .on(
+        table.sourceOwnerUpdateId,
+        table.resourceType,
+        table.resourceId,
+        table.audience,
+        table.recipientUserId
+      )
+      .where(
+        sql`${table.revokedAt} IS NULL AND ${table.sourceOwnerUpdateId} IS NOT NULL`
+      ),
+    index("project_external_resource_grants_owner_update_idx").on(
+      table.sourceOwnerUpdateId,
+      table.recipientUserId,
+      table.resourceType,
+      table.resourceId
+    ),
     index("project_external_resource_grants_recipient_idx").on(
       table.recipientUserId,
       table.projectId,

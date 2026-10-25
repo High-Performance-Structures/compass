@@ -19,7 +19,7 @@ import {
   type DailyLogWorkLineView,
 } from "@/lib/daily-logs/cost-code-lines"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
-import { and, asc, desc, eq, gte, inArray, not, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, not, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -28,6 +28,7 @@ import {
   dailyLogTaskLinks,
   ownerProjectUpdates,
   organizations,
+  projectExternalResourceGrants,
   projectExternalLinks,
   projectMembers,
   projectOperations,
@@ -731,30 +732,6 @@ function numberValue(
   return typeof child === "number" && Number.isFinite(child) ? child : null
 }
 
-async function verifyProjectAccess(
-  projectId: string,
-  featureId: string = "daily-logs"
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, featureId, "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  return db
-}
-
 async function verifyProjectDailyLogWorkspaceAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
@@ -1311,6 +1288,49 @@ export async function getProjectFieldSummary(
             capturedAt: dailyLogPhotos.capturedAt,
           })
           .from(dailyLogPhotos)
+          .innerJoin(
+            projectExternalResourceGrants,
+            and(
+              eq(
+                projectExternalResourceGrants.organizationId,
+                viewer.organizationId ?? ""
+              ),
+              eq(projectExternalResourceGrants.projectId, projectId),
+              eq(projectExternalResourceGrants.resourceType, "photo"),
+              eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+              eq(projectExternalResourceGrants.audience, "owner"),
+              eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+              isNull(projectExternalResourceGrants.revokedAt)
+            )
+          )
+          .innerJoin(
+            projects,
+            and(
+              eq(projects.id, dailyLogPhotos.projectId),
+              eq(projects.organizationId, projectExternalResourceGrants.organizationId)
+            )
+          )
+          .innerJoin(
+            organizations,
+            and(
+              eq(organizations.id, projects.organizationId),
+              eq(organizations.id, viewer.organizationId ?? ""),
+              eq(organizations.type, viewer.organizationType ?? ""),
+              eq(organizations.isActive, true)
+            )
+          )
+          .innerJoin(
+            projectMembers,
+            and(
+              eq(projectMembers.projectId, projects.id),
+              eq(projectMembers.userId, viewer.id),
+              inArray(projectMembers.role, ["client", "owner"])
+            )
+          )
+          .innerJoin(
+            users,
+            and(eq(users.id, viewer.id), eq(users.isActive, true))
+          )
           .where(
             and(
               eq(dailyLogPhotos.projectId, projectId),
@@ -1333,6 +1353,7 @@ export async function getProjectFieldSummary(
               )`)
             )
           )
+          .groupBy(dailyLogPhotos.id)
           .orderBy(desc(dailyLogPhotos.createdAt))
       ).map((photo) => ({
         ...photo,
@@ -2359,7 +2380,7 @@ export async function getProjectWeatherSnapshot(
   input?: { readonly logDate?: string }
 ): Promise<ProjectWeatherSnapshotResult> {
   try {
-    const db = await verifyProjectAccess(projectId)
+    const { db } = await verifyProjectDailyLogWorkspaceAccess(projectId)
     const [project] = await db
       .select({
         address: projects.address,
@@ -2816,10 +2837,22 @@ export async function getOwnerProjectUpdateDocument(
         status: ownerProjectUpdates.status,
         channel: ownerProjectUpdates.channel,
         sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
-        selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        selectedPhotoIds: sql<string>`'[]'`,
         periodStart: ownerProjectUpdates.periodStart,
         periodEnd: ownerProjectUpdates.periodEnd,
-        scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
+        // External readers get the published schedule projection but attachment
+        // inventories are selected only through exact recipient grants below.
+        scheduleSnapshot: sql<string | null>`
+          CASE
+            WHEN json_valid(${ownerProjectUpdates.scheduleSnapshot})
+            THEN json_set(
+              ${ownerProjectUpdates.scheduleSnapshot},
+              '$.documents',
+              json('[]')
+            )
+            ELSE NULL
+          END
+        `,
         publishedAt: ownerProjectUpdates.publishedAt,
         sentAt: ownerProjectUpdates.sentAt,
         recalledAt: ownerProjectUpdates.recalledAt,
@@ -2929,34 +2962,28 @@ export async function getOwnerProjectUpdateDocument(
     )
     .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
-  const selectedExternalAttachmentIds = [
-    ...new Set([
-      ...selectedPhotoIds,
-      ...composerSnapshot.documents.map((document) => document.id),
-    ]),
-  ]
-
-  const allPhotoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      dailyLogId: dailyLogPhotos.dailyLogId,
-      sourceSystem: dailyLogPhotos.sourceSystem,
-      fileName: dailyLogPhotos.fileName,
-      driveFileId: dailyLogPhotos.driveFileId,
-      driveUrl: dailyLogPhotos.driveUrl,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      mimeType: dailyLogPhotos.mimeType,
-      caption: dailyLogPhotos.caption,
-      capturedAt: dailyLogPhotos.capturedAt,
-      ownerVisible: dailyLogPhotos.ownerVisible,
-      reviewStatus: dailyLogPhotos.reviewStatus,
-    })
-    .from(dailyLogPhotos)
-    .where(
-      and(
-        eq(dailyLogPhotos.projectId, projectId),
-        internalViewer
-          ? or(
+  const attachmentSelection = {
+    id: dailyLogPhotos.id,
+    dailyLogId: dailyLogPhotos.dailyLogId,
+    sourceSystem: dailyLogPhotos.sourceSystem,
+    fileName: dailyLogPhotos.fileName,
+    driveFileId: dailyLogPhotos.driveFileId,
+    driveUrl: dailyLogPhotos.driveUrl,
+    thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+    mimeType: dailyLogPhotos.mimeType,
+    caption: dailyLogPhotos.caption,
+    capturedAt: dailyLogPhotos.capturedAt,
+    ownerVisible: dailyLogPhotos.ownerVisible,
+    reviewStatus: dailyLogPhotos.reviewStatus,
+  }
+  const allPhotoRows = internalViewer
+    ? await db
+        .select(attachmentSelection)
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            or(
               inArray(dailyLogPhotos.id, selectedPhotoIds),
               // The owner-update picker shares this query with the photo picker.
               // Keep non-image attachments available for document selection; the
@@ -2987,14 +3014,73 @@ export async function getOwnerProjectUpdateDocument(
                 )`),
               ),
             )
-          : and(
-              inArray(dailyLogPhotos.id, selectedExternalAttachmentIds),
-              eq(dailyLogPhotos.reviewStatus, "approved"),
-              eq(dailyLogPhotos.ownerVisible, true)
+          )
+        )
+        .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
+    : await db
+        .select(attachmentSelection)
+        .from(dailyLogPhotos)
+        .innerJoin(
+          projectExternalResourceGrants,
+          and(
+            eq(
+              projectExternalResourceGrants.organizationId,
+              viewer.organizationId ?? ""
             ),
-      ),
-    )
-    .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.sourceOwnerUpdateId, updateId),
+            eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+            eq(projectExternalResourceGrants.audience, "owner"),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt),
+            or(
+              and(
+                eq(projectExternalResourceGrants.resourceType, "photo"),
+                sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`
+              ),
+              and(
+                eq(
+                  projectExternalResourceGrants.resourceType,
+                  "owner_update_document"
+                ),
+                sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
+              )
+            )
+          )
+        )
+        .innerJoin(
+          projects,
+          and(
+            eq(projects.id, dailyLogPhotos.projectId),
+            eq(projects.organizationId, projectExternalResourceGrants.organizationId)
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(users, and(eq(users.id, viewer.id), eq(users.isActive, true)))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            eq(dailyLogPhotos.ownerVisible, true)
+          )
+        )
+        .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
 
   const [photoFolder] = await db
     .select({
@@ -3080,15 +3166,19 @@ export async function getOwnerProjectUpdateDocument(
     : []
 
   const imageRows = allPhotoRows.filter(
-    (row) =>
-      row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+    (row) => row.mimeType?.startsWith("image/") === true
   )
   const documentRows = allPhotoRows.filter(
-    (row) =>
-      row.thumbnailUrl === null && row.mimeType?.startsWith("image/") !== true
+    (row) => row.mimeType?.startsWith("image/") !== true
   )
 
-  const selectedImageRows = selectRowsByIdOrder(imageRows, selectedPhotoIds)
+  const selectedPhotoIdsForViewer = internalViewer
+    ? selectedPhotoIds
+    : imageRows.map((row) => row.id)
+  const selectedImageRows = selectRowsByIdOrder(
+    imageRows,
+    selectedPhotoIdsForViewer
+  )
   const photosForUpdate = selectedImageRows
     .filter(
       (row) =>
@@ -3142,9 +3232,9 @@ export async function getOwnerProjectUpdateDocument(
         }))
     : []
 
-  const selectedDocumentIds = composerSnapshot.documents.map(
-    (document) => document.id
-  )
+  const selectedDocumentIds = internalViewer
+    ? composerSnapshot.documents.map((document) => document.id)
+    : documentRows.map((row) => row.id)
   const selectedScheduleIds = [
     ...new Set([
       ...composerSnapshot.completedScheduleItems.map((item) => item.id),
