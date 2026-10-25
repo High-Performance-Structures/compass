@@ -340,6 +340,7 @@ export async function sweepClientMeetingTranscripts(
           transcriptStatus: "saved",
           transcriptDriveFileId: file.fileId,
           transcriptUrl: file.url,
+          transcriptText: file.text || null,
           transcriptError: null,
           dailyLogId,
         },

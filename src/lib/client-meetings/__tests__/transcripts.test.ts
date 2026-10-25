@@ -56,6 +56,7 @@ function open(): CorrespondenceTestDatabase {
     `CREATE TABLE "${config.name}" (${config.columns.map((c) => `"${c.name}" ${c.getSQLType()}${c.primary ? " PRIMARY KEY" : ""}`).join(",")})`
   )
   opened.sqlite.exec(migration("0249_client_meeting_daily_logs.sql"))
+  opened.sqlite.exec(migration("0251_client_meeting_transcript_text.sql"))
   mocks.token.mockResolvedValue({ success: true, accessToken: "meet-token", sender: "staff-a@example.test" })
   mocks.driveContext.mockResolvedValue({
     client: { exportFile: mocks.exportFile, uploadFile: mocks.uploadFile },
@@ -135,6 +136,7 @@ describe("client meeting transcripts", () => {
       transcript_drive_file_id: "drive-file-1",
       transcript_url: "https://drive.google.com/file/d/drive-file-1/view",
     })
+    expect(String(meetingRow(db).transcript_text)).toContain("Owner A: Sounds good.")
     expect(mocks.activity).toHaveBeenCalledWith(expect.objectContaining({ action: "client_meeting_transcript_saved", projectId: "project-a" }))
 
     const log: unknown = db.sqlite.prepare("SELECT * FROM daily_logs").get()

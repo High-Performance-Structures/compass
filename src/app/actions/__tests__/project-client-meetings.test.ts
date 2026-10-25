@@ -26,6 +26,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import {
   cancelProjectClientMeeting,
+  getClientMeetingTranscript,
   getProjectClientMeetings,
   scheduleProjectClientMeeting,
   type ScheduleProjectClientMeetingInput,
@@ -60,7 +61,7 @@ function open(email = "staff-a@example.test"): CorrespondenceTestDatabase {
       VALUES ('c-owner','project-a','owner','Owner A','client@home.test',NULL);
   `)
   sqlite.exec("CREATE TABLE daily_logs (id TEXT PRIMARY KEY)")
-  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql", "0249_client_meeting_daily_logs.sql"]) {
+  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql", "0249_client_meeting_daily_logs.sql", "0251_client_meeting_transcript_text.sql"]) {
     sqlite.exec(
       readFileSync(resolve(process.cwd(), "drizzle", file), "utf8").replaceAll("--> statement-breakpoint", "")
     )
@@ -171,5 +172,38 @@ describe("project client meetings", () => {
     expect(mocks.deleteEvent).toHaveBeenCalledWith("token", "primary", "google-event-1")
     expect(db.sqlite.prepare("SELECT status, cancelled_by FROM project_client_meetings").get())
       .toEqual({ status: "cancelled", cancelled_by: "staff-a" })
+  })
+
+  it("loads a saved transcript for Print Preview, falling back to its daily log, for staff only", async () => {
+    const db = open()
+    db.sqlite.exec("ALTER TABLE daily_logs ADD COLUMN work_completed TEXT")
+    db.sqlite.exec(`
+      INSERT INTO daily_logs (id, work_completed) VALUES ('log-1', 'Project meeting: Walkthrough' || char(10) || char(10) || 'Transcript' || char(10) || char(10) || 'Owner A: From the log.');
+      INSERT INTO project_client_meetings (id, organization_id, project_id, organizer_user_id, organizer_email, title,
+        starts_at, ends_at, time_zone, guest_emails, staff_emails, status, transcript_status, transcript_url,
+        transcript_text, daily_log_id, created_at, updated_at)
+      VALUES
+        ('m-text','org-a','project-a','staff-a','staff-a@example.test','Walkthrough','2026-10-24T18:00:00.000Z',
+         '2026-10-24T18:30:00.000Z','America/Denver','["client@home.test"]','[]','scheduled','saved',NULL,
+         'Owner A: Kept as written.','log-1','x','x'),
+        ('m-log','org-a','project-a','staff-a','staff-a@example.test','Walkthrough','2026-10-24T18:00:00.000Z',
+         '2026-10-24T18:30:00.000Z','America/Denver','[]','[]','scheduled','saved',NULL,NULL,'log-1','x','x'),
+        ('m-pending','org-a','project-a','staff-a','staff-a@example.test','Walkthrough','2026-10-24T18:00:00.000Z',
+         '2026-10-24T18:30:00.000Z','America/Denver','[]','[]','scheduled','pending',NULL,NULL,NULL,'x','x');
+    `)
+
+    expect(await getClientMeetingTranscript("project-a", "m-text")).toMatchObject({
+      success: true,
+      data: { title: "Walkthrough", hostName: "Staff A", guestEmails: ["client@home.test"], text: "Owner A: Kept as written." },
+    })
+    expect(await getClientMeetingTranscript("project-a", "m-log")).toMatchObject({
+      success: true,
+      data: { text: "Owner A: From the log." },
+    })
+    expect(await getClientMeetingTranscript("project-a", "m-pending")).toMatchObject({ success: false })
+    expect(await getClientMeetingTranscript("project-b", "m-text")).toMatchObject({ success: false })
+
+    mocks.requireAuth.mockResolvedValue({ id: "client-a", email: "client@home.test", role: "client", organizationId: "org-a", isActive: true })
+    expect(await getClientMeetingTranscript("project-a", "m-text")).toEqual({ success: false, error: "Permission denied" })
   })
 })

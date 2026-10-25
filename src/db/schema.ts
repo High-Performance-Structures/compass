@@ -1907,6 +1907,8 @@ export const projectClientMeetings = sqliteTable(
     transcriptStatus: text("transcript_status"),
     transcriptDriveFileId: text("transcript_drive_file_id"),
     transcriptUrl: text("transcript_url"),
+    /** The saved transcript's text, as Google wrote it. */
+    transcriptText: text("transcript_text"),
     transcriptError: text("transcript_error"),
     transcriptCheckedAt: text("transcript_checked_at"),
     /** The internal draft daily log made from the transcript. */
