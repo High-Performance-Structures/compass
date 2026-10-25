@@ -14,7 +14,7 @@ import { useNotificationInbox } from "@/hooks/use-notification-inbox"
 import { groupInbox } from "@/lib/notifications/inbox"
 import { messageStacksFrom } from "@/lib/notifications/message-stacks"
 import { ownerPhaseSteps } from "@/lib/portfolio-map/audience-model"
-import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
+import { phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
 import { cn } from "@/lib/utils"
 
 // three.js loads only when the map is shown.
@@ -102,7 +102,9 @@ export function OwnerSiteRelief({
     })
   }
 
-  const steps = ownerPhaseSteps(job.phase)
+  // A job without a stage (an internal test job) shows its status alone.
+  const staged = phaseForJobStatus(job.jobStatusId, job.statusLabel) !== null
+  const steps = staged ? ownerPhaseSteps(job.phase) : []
   const current = steps.find((step) => step.state === "current")
 
   const stage = (
@@ -111,7 +113,7 @@ export function OwnerSiteRelief({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Stage</p>
         <p className="mt-1 text-lg font-semibold">{current?.label ?? job.statusLabel}</p>
       </div>
-      <ol className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Project stages">
+      <ol className="flex flex-wrap gap-x-3 gap-y-1 empty:hidden" aria-label="Project stages">
         {steps.map((step) => (
           <li
             key={step.id}
