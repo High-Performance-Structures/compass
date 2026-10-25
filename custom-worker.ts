@@ -23,6 +23,7 @@ const DAILY_LOG_REMINDER_TARGET =
 const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
 const MY_COMPASS_CALENDAR_TARGET = "/api/operations/my-compass-calendar/sync"
 const PROJECT_CALENDARS_TARGET = "/api/operations/project-calendars/sync"
+const MORNING_PLAN_TARGET = "/api/operations/morning-plan/sweep"
 const CLIENT_MEETING_TRANSCRIPTS_TARGET =
   "/api/operations/client-meetings/transcripts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
@@ -326,6 +327,11 @@ export default {
         // Every 10 minutes: saves finished client Meet transcripts to Drive.
         runMaintenanceJob("Client meeting transcripts", () =>
           checkBridgeHealth(env, CLIENT_MEETING_TRANSCRIPTS_TARGET)
+        ),
+        // Every 10 minutes: each person's daily plan at their hour, and an
+        // overload warning at most once a week.
+        runMaintenanceJob("Today's plan", () =>
+          checkBridgeHealth(env, MORNING_PLAN_TARGET)
         ),
       ]).then(() => undefined)
     )

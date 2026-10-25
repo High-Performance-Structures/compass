@@ -227,6 +227,25 @@ export const myCompassCalendarSettingsSchema = z.object({
 export type MyCompassCalendarSettings = z.infer<typeof myCompassCalendarSettingsSchema>
 
 /**
+ * Today's plan: each staff member's ordered list for the day on the
+ * dashboard, and a warning when their week holds more assigned work than
+ * the workdays available.
+ */
+export const morningPlanSettingsSchema = z.object({
+  enabled: z.boolean(),
+  /** Warn people (and office staff) when a week is over capacity. */
+  overloadWarnings: z.boolean(),
+  /** Warn above this share of the week's available workdays. */
+  overloadThresholdPercent: z.number().int().min(50).max(300),
+  /** Workdays each open to-do due this week counts for. */
+  todoWorkdays: z.number().min(0).max(2),
+  /** Whether people may turn on a daily email/push of their plan. */
+  allowDailyDigest: z.boolean(),
+})
+
+export type MorningPlanSettings = z.infer<typeof morningPlanSettingsSchema>
+
+/**
  * Project calendars: one Google calendar per job, owned by the company's
  * Compass account and shared only with staff.
  */
@@ -598,6 +617,7 @@ type FeatureSettingsTypes = {
   readonly "paper-trail": PaperTrailSettings
   readonly "my-compass-calendar": MyCompassCalendarSettings
   readonly "project-calendars": ProjectCalendarSettings
+  readonly "morning-plan": MorningPlanSettings
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
@@ -865,6 +885,18 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       daysAhead: 120,
     },
     schema: myCompassCalendarSettingsSchema,
+  },
+  "morning-plan": {
+    label: "Today's plan and workload",
+    description: "Each staff member's ordered plan for the day on the dashboard, and a warning when their week holds more assigned work than the workdays available.",
+    defaults: {
+      enabled: true,
+      overloadWarnings: true,
+      overloadThresholdPercent: 100,
+      todoWorkdays: 0.25,
+      allowDailyDigest: true,
+    },
+    schema: morningPlanSettingsSchema,
   },
   "project-calendars": {
     label: "Project calendars",

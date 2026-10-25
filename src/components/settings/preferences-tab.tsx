@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { DailyLogReminderPreferenceRow } from "@/components/settings/daily-log-reminder-preference"
+import { MorningPlanPreferenceRow } from "@/components/settings/morning-plan-preference"
 import {
   Select,
   SelectContent,
@@ -322,6 +323,7 @@ export function PreferencesTab() {
           </div>
 
           <DailyLogReminderPreferenceRow />
+          <MorningPlanPreferenceRow />
 
           <div className="flex items-center justify-between gap-4">
             <div>

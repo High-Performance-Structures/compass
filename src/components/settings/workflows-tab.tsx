@@ -32,6 +32,7 @@ import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-s
 import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { MyCompassCalendarSettingsSection } from "@/components/settings/my-compass-calendar-settings-section"
+import { MorningPlanSettingsSection } from "@/components/settings/morning-plan-settings-section"
 import { ProjectCalendarSettingsSection } from "@/components/settings/project-calendar-settings-section"
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
@@ -224,6 +225,7 @@ const WORKFLOW_AREAS = [
   { value: "bracing-rentals", label: "Bracing rentals", description: "Rental equipment, owned counts, daily rate and deposit rules." },
   { value: "paper-trail", label: "Project paper trail", description: "Which records are saved as PDFs in project Drive folders." },
   { value: "my-compass-calendar", label: "My Compass calendar", description: "Each staff member's Google calendar of their assigned schedule items and to-dos." },
+  { value: "morning-plan", label: "Today's plan and workload", description: "Each staff member's daily plan on the dashboard, and warnings when a week is over capacity." },
   { value: "project-calendars", label: "Project calendars", description: "A staff-only Google calendar for each job with its schedule, events and client meetings." },
   { value: "shop-tickets", label: "Shop tickets", description: "Ticket numbering and letterhead." },
 ] as const
@@ -293,6 +295,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <MyCompassCalendarSettingsSection />
     case "project-calendars":
       return <ProjectCalendarSettingsSection />
+    case "morning-plan":
+      return <MorningPlanSettingsSection />
     case "shop-tickets":
       return <ShopTicketSettingsSection />
   }

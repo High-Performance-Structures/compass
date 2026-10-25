@@ -3,16 +3,16 @@
   "id": "my.compass.calendar",
   "featureId": "schedule",
   "slug": "my-compass-calendar",
-  "title": "My Compass Calendar in Google Calendar",
+  "title": "My Compass Calendar and Today's Plan",
   "summary": "See the schedule items and to-dos assigned to you on a My Compass calendar in your own Google Calendar, kept up to date by Compass.",
   "contextSummary": "My Compass is a Google calendar Compass creates in each staff member's own Google account and keeps current every few minutes. Compass owns its content; edits made in Google are replaced. Admins choose who gets one and what goes on it in Settings → Workflows.",
   "category": "Field & Project Work",
-  "tags": ["Google Calendar", "My Compass", "calendar", "schedule", "to-dos", "assignments", "milestones", "sync"],
+  "tags": ["Google Calendar", "My Compass", "today's plan", "daily plan", "workload", "overload", "calendar", "schedule", "to-dos", "assignments", "milestones", "sync"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
-  "routes": ["/dashboard/settings", "/dashboard/schedule"],
+  "routes": ["/dashboard", "/dashboard/settings", "/dashboard/schedule"],
   "owner": "Office operations",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -53,3 +53,28 @@ Admins manage My Compass in **Settings → Workflows → My Compass calendar**:
 - **Days back** and **Days ahead**: how much of the past and future is shown
 
 Staff with a company Google Workspace account can use My Compass. Each person can still turn their own calendar off.
+
+## Today's Plan {#todays-plan}
+
+Your dashboard shows **Today's plan**, an ordered list built from the same assignments as My Compass. It shows:
+
+- **Overdue**: schedule items and to-dos assigned to you whose dates have passed, going back 30 days
+- **Today**: what's due today, then what's underway
+- **Meetings**: today's Work Calendar events you're invited to (or created) and your project meetings, by time
+- **Later this week**: schedule items starting, and to-dos due, before Sunday
+
+Select an item to open it. Assignments are matched the same way as My Compass, including any other names you've added.
+
+To get the plan by email and push each morning, open **Settings → Preferences** and turn on **Daily plan email**, then pick a time. It's off unless you turn it on.
+
+## Workload Warnings {#workload}
+
+Compass adds up the workdays assigned to you this week and compares them with the workdays available on the company calendar. The company calendar is the office calendar's weekends, holidays and other workday exceptions.
+
+- A schedule item counts the workdays it covers this week. Two items on the same days count twice.
+- Each open to-do due this week counts a small share of a day. Your company sets how much.
+
+When the total is over your company's threshold (100% by default), Today's plan shows a warning with up to three items that could move: the lowest-priority or latest-due work first. You also get one notification that week. Office managers see everyone who's over capacity on their dashboard.
+
+Admins set the threshold, the workdays per to-do, and whether warnings and the daily email are available in **Settings → Workflows → Today's plan and workload**.
+
