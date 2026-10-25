@@ -1663,6 +1663,86 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
     "readingMinutes": 2
   },
   {
+    "id": "project.calendars",
+    "featureId": "schedule",
+    "slug": "project-calendars",
+    "title": "Project Calendars in Google Calendar",
+    "summary": "Give a job its own Google calendar with its schedule, events and client meetings, shared only with staff and kept up to date by Compass.",
+    "contextSummary": "A project calendar is a Google calendar for one job, owned by the company's Compass Google account and shared view-only with staff (the job's team or all staff). It never goes to clients or vendors. Compass refreshes it every few minutes and replaces edits made in Google. Admins set which jobs get one in Settings → Workflows → Project calendars; office staff turn it on or off per job on the job's Information page.",
+    "category": "Field & Project Work",
+    "tags": [
+      "Google Calendar",
+      "project calendar",
+      "job calendar",
+      "schedule",
+      "milestones",
+      "client meetings",
+      "sharing",
+      "sync"
+    ],
+    "audiences": [
+      "staff"
+    ],
+    "permissions": [
+      "help:read",
+      "schedule:read"
+    ],
+    "routes": [
+      "/dashboard/projects/[id]/information",
+      "/dashboard/settings"
+    ],
+    "owner": "Office operations",
+    "lastReviewed": "2026-10-24",
+    "sourcePath": "docs/help/guides/project-calendars.md",
+    "content": "## What a Project Calendar Is\nA **project calendar** is a Google calendar for one job, named like **Compass – O-152-00 Reiter Residence**. It lets anyone following the job see its dates in Google Calendar on their phone or computer, next to their own meetings.\n\nThe company's Compass Google account owns every project calendar, so nothing depends on one person's account. Compass is in charge of what's on it. When a date changes in Compass, the calendar updates within a few minutes. Changes made in Google are replaced, so make changes in Compass. Each event has an **Open in Compass** link.\n\nProject calendars are **staff only**. They're never shared with the job's clients, owners, subcontractors or suppliers, even when those people are on the project in Compass.\n\n## What's on It\nDepending on your company's settings, a project calendar shows:\n\n- **Milestones** and **other schedule items** from the job's schedule, as all-day items\n- **Work Calendar events** for the job that everyone in the company can see. Private and invite-only events stay off.\n- **Client meetings** booked with **Meet with client**, at their times, with the Google Meet link\n\nEvents show as **free** time and don't send reminders, so the calendar never blocks anyone's availability. Items appear from a couple of weeks back to several months ahead.\n\n## Who Can See It\nCompass shares the calendar **view-only** with either the staff on the job's team or all staff, depending on the company setting. When someone joins or leaves the team, Compass adds or removes their access within a few minutes. People who don't use the company's Google Workspace accounts can't be added.\n\nCompass also adds the calendar to each person's Google Calendar list once, so they don't have to accept an invitation. Anyone can hide it, recolor it, or remove it from their list in Google like any other calendar.\n\n## Turn It On for a Job\nOpen the job's **Information** page and find **Project Google calendar**. Office staff can:\n\n- **Turn on for this job**: makes the calendar now and shares it\n- **Update now**: refreshes it right away instead of waiting a few minutes\n- **Open in Google Calendar**: opens it, once it's shared with you\n- **Turn off for this job**: deletes the calendar from Google for everyone it was shared with. Nothing in Compass changes, and you can turn it back on later.\n\nWhen every open job gets a calendar, closing a job (any status other than open or warranty) deletes its calendar from Google. **Use company setting** undoes a job's on/off choice.\n\n## Company Settings\nAdmins manage project calendars in **Settings → Workflows → Project calendars**:\n\n- **Which jobs get a calendar**: Off, **Jobs staff turn on**, or **Every open and warranty job**\n- **Shared with**: staff on the job's team, or all staff\n- **Add it to each person's Google Calendar**: put the calendar in each person's calendar list automatically\n- **Never share with**: people who never get project calendars, such as system accounts\n- **What goes on each calendar**: milestones, other schedule items, Work Calendar events, and client meetings\n- **Days back** and **Days ahead**: how much of the past and future is shown\n\nProject calendars need the company's Google Workspace connection with permission to create calendars, share them, and add them to staff calendar lists. Your Google Workspace admin grants these once in Google Admin.\n\n## Project Calendars and My Compass\n**My Compass** is each person's own calendar of the work assigned to them across all jobs. A project calendar is one job's full schedule for everyone following it. Many people use both. See [My Compass Calendar in Google Calendar](/dashboard/help/my-compass-calendar).",
+    "searchText": "project calendars in google calendar give a job its own google calendar with its schedule, events and client meetings, shared only with staff and kept up to date by compass. a project calendar is a google calendar for one job, owned by the company's compass google account and shared view only with staff (the job's team or all staff). it never goes to clients or vendors. compass refreshes it every few minutes and replaces edits made in google. admins set which jobs get one in settings → workflows → project calendars; office staff turn it on or off per job on the job's information page. google calendar project calendar job calendar schedule milestones client meetings sharing sync what a project calendar is a project calendar is a google calendar for one job, named like compass – o 152 00 reiter residence . it lets anyone following the job see its dates in google calendar on their phone or computer, next to their own meetings. the company's compass google account owns every project calendar, so nothing depends on one person's account. compass is in charge of what's on it. when a date changes in compass, the calendar updates within a few minutes. changes made in google are replaced, so make changes in compass. each event has an open in compass link. project calendars are staff only . they're never shared with the job's clients, owners, subcontractors or suppliers, even when those people are on the project in compass. what's on it depending on your company's settings, a project calendar shows: milestones and other schedule items from the job's schedule, as all day items work calendar events for the job that everyone in the company can see. private and invite only events stay off. client meetings booked with meet with client , at their times, with the google meet link events show as free time and don't send reminders, so the calendar never blocks anyone's availability. items appear from a couple of weeks back to several months ahead. who can see it compass shares the calendar view only with either the staff on the job's team or all staff, depending on the company setting. when someone joins or leaves the team, compass adds or removes their access within a few minutes. people who don't use the company's google workspace accounts can't be added. compass also adds the calendar to each person's google calendar list once, so they don't have to accept an invitation. anyone can hide it, recolor it, or remove it from their list in google like any other calendar. turn it on for a job open the job's information page and find project google calendar . office staff can: turn on for this job : makes the calendar now and shares it update now : refreshes it right away instead of waiting a few minutes open in google calendar : opens it, once it's shared with you turn off for this job : deletes the calendar from google for everyone it was shared with. nothing in compass changes, and you can turn it back on later. when every open job gets a calendar, closing a job (any status other than open or warranty) deletes its calendar from google. use company setting undoes a job's on/off choice. company settings admins manage project calendars in settings → workflows → project calendars : which jobs get a calendar : off, jobs staff turn on , or every open and warranty job shared with : staff on the job's team, or all staff add it to each person's google calendar : put the calendar in each person's calendar list automatically never share with : people who never get project calendars, such as system accounts what goes on each calendar : milestones, other schedule items, work calendar events, and client meetings days back and days ahead : how much of the past and future is shown project calendars need the company's google workspace connection with permission to create calendars, share them, and add them to staff calendar lists. your google workspace admin grants these once in google admin. project calendars and my compass my compass is each person's own calendar of the work assigned to them across all jobs. a project calendar is one job's full schedule for everyone following it. many people use both. see my compass calendar in google calendar.",
+    "sections": [
+      {
+        "id": "overview",
+        "topicId": "project.calendars.overview",
+        "title": "What a Project Calendar Is",
+        "summary": "A project calendar is a Google calendar for one job, named like Compass – O 152 00 Reiter Residence . It lets anyone following the job see its dates in Google Calendar on their phone or computer, next to their own meetings.",
+        "content": "A **project calendar** is a Google calendar for one job, named like **Compass – O-152-00 Reiter Residence**. It lets anyone following the job see its dates in Google Calendar on their phone or computer, next to their own meetings.\n\nThe company's Compass Google account owns every project calendar, so nothing depends on one person's account. Compass is in charge of what's on it. When a date changes in Compass, the calendar updates within a few minutes. Changes made in Google are replaced, so make changes in Compass. Each event has an **Open in Compass** link.\n\nProject calendars are **staff only**. They're never shared with the job's clients, owners, subcontractors or suppliers, even when those people are on the project in Compass."
+      },
+      {
+        "id": "whats-on-it",
+        "topicId": "project.calendars.whats-on-it",
+        "title": "What's on It",
+        "summary": "Depending on your company's settings, a project calendar shows:",
+        "content": "Depending on your company's settings, a project calendar shows:\n\n- **Milestones** and **other schedule items** from the job's schedule, as all-day items\n- **Work Calendar events** for the job that everyone in the company can see. Private and invite-only events stay off.\n- **Client meetings** booked with **Meet with client**, at their times, with the Google Meet link\n\nEvents show as **free** time and don't send reminders, so the calendar never blocks anyone's availability. Items appear from a couple of weeks back to several months ahead."
+      },
+      {
+        "id": "sharing",
+        "topicId": "project.calendars.sharing",
+        "title": "Who Can See It",
+        "summary": "Compass shares the calendar view only with either the staff on the job's team or all staff, depending on the company setting. When someone joins or leaves the team, Compass adds or removes their access within a few minutes. People who don't use the company's Google Workspace accounts can't be added.",
+        "content": "Compass shares the calendar **view-only** with either the staff on the job's team or all staff, depending on the company setting. When someone joins or leaves the team, Compass adds or removes their access within a few minutes. People who don't use the company's Google Workspace accounts can't be added.\n\nCompass also adds the calendar to each person's Google Calendar list once, so they don't have to accept an invitation. Anyone can hide it, recolor it, or remove it from their list in Google like any other calendar."
+      },
+      {
+        "id": "turn-on",
+        "topicId": "project.calendars.turn-on",
+        "title": "Turn It On for a Job",
+        "summary": "Open the job's Information page and find Project Google calendar . Office staff can:",
+        "content": "Open the job's **Information** page and find **Project Google calendar**. Office staff can:\n\n- **Turn on for this job**: makes the calendar now and shares it\n- **Update now**: refreshes it right away instead of waiting a few minutes\n- **Open in Google Calendar**: opens it, once it's shared with you\n- **Turn off for this job**: deletes the calendar from Google for everyone it was shared with. Nothing in Compass changes, and you can turn it back on later.\n\nWhen every open job gets a calendar, closing a job (any status other than open or warranty) deletes its calendar from Google. **Use company setting** undoes a job's on/off choice."
+      },
+      {
+        "id": "company-settings",
+        "topicId": "project.calendars.company-settings",
+        "title": "Company Settings",
+        "summary": "Admins manage project calendars in Settings → Workflows → Project calendars :",
+        "content": "Admins manage project calendars in **Settings → Workflows → Project calendars**:\n\n- **Which jobs get a calendar**: Off, **Jobs staff turn on**, or **Every open and warranty job**\n- **Shared with**: staff on the job's team, or all staff\n- **Add it to each person's Google Calendar**: put the calendar in each person's calendar list automatically\n- **Never share with**: people who never get project calendars, such as system accounts\n- **What goes on each calendar**: milestones, other schedule items, Work Calendar events, and client meetings\n- **Days back** and **Days ahead**: how much of the past and future is shown\n\nProject calendars need the company's Google Workspace connection with permission to create calendars, share them, and add them to staff calendar lists. Your Google Workspace admin grants these once in Google Admin."
+      },
+      {
+        "id": "my-compass",
+        "topicId": "project.calendars.my-compass",
+        "title": "Project Calendars and My Compass",
+        "summary": "My Compass is each person's own calendar of the work assigned to them across all jobs. A project calendar is one job's full schedule for everyone following it. Many people use both. See My Compass Calendar in Google Calendar.",
+        "content": "**My Compass** is each person's own calendar of the work assigned to them across all jobs. A project calendar is one job's full schedule for everyone following it. Many people use both. See [My Compass Calendar in Google Calendar](/dashboard/help/my-compass-calendar)."
+      }
+    ],
+    "readingMinutes": 4
+  },
+  {
     "id": "project.operations",
     "featureId": "rfis",
     "slug": "project-operations",

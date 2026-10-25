@@ -20,6 +20,7 @@ import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { MyCompassCalendarSettings } from "@/lib/feature-settings/registry"
 import { createGoogleCalendar } from "@/lib/google/calendar/client"
+import { calendarFetch, GoogleCalendarHttpError } from "@/lib/google/calendar/compass-calendar-fetch"
 import {
   addDays,
   assignmentIncludes,
@@ -33,7 +34,6 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Db = ReturnType<typeof getDb>
 
-const CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 /** Lets Compass make calendars and manage only the calendars it made. */
 export const MY_COMPASS_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created"
 export const MY_COMPASS_CALENDAR_NAME = "My Compass"
@@ -52,38 +52,6 @@ export type MyCompassSweepSummary = {
   readonly updated: number
   readonly deleted: number
   readonly failed: number
-}
-
-class GoogleCalendarHttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string
-  ) {
-    super(message)
-  }
-}
-
-async function calendarFetch(
-  accessToken: string,
-  path: string,
-  init: RequestInit = {}
-): Promise<unknown> {
-  const response = await fetch(`${CALENDAR_API}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", ...init.headers },
-  })
-  if (response.status === 204) return null
-  const payload: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
-    const error =
-      typeof payload === "object" && payload !== null ? Reflect.get(payload, "error") : null
-    const message =
-      typeof error === "object" && error !== null && typeof Reflect.get(error, "message") === "string"
-        ? String(Reflect.get(error, "message"))
-        : `Google Calendar request failed (${response.status})`
-    throw new GoogleCalendarHttpError(response.status, message)
-  }
-  return payload
 }
 
 function eventBody(item: MyCompassItem): string {

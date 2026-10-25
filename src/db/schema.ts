@@ -1966,6 +1966,78 @@ export const myCompassCalendarItems = sqliteTable(
   ],
 )
 
+/**
+ * A Google calendar for one project, owned by the company's Compass account
+ * and shared only with staff. Compass keeps its events and sharing current.
+ */
+export const compassProjectCalendars = sqliteTable(
+  "compass_project_calendars",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Staff choice for this project; null follows the company setting. */
+    enabled: integer("enabled", { mode: "boolean" }),
+    ownerEmail: text("owner_email"),
+    googleCalendarId: text("google_calendar_id"),
+    /** The name last given to the Google calendar, to catch job renames. */
+    calendarName: text("calendar_name"),
+    /** pending | active | error */
+    status: text("status").notNull().default("pending"),
+    lastSyncedAt: text("last_synced_at"),
+    lastError: text("last_error"),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("compass_project_calendars_org").on(table.organizationId, table.lastSyncedAt)],
+)
+
+export const compassProjectCalendarEvents = sqliteTable(
+  "compass_project_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** "<source>:<record id>", e.g. "schedule:abc". */
+    itemKey: text("item_key").notNull(),
+    googleEventId: text("google_event_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("compass_project_calendar_events_key").on(table.projectId, table.itemKey),
+  ],
+)
+
+/** Staff the project calendar is shared with. */
+export const compassProjectCalendarMembers = sqliteTable(
+  "compass_project_calendar_members",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    aclRuleId: text("acl_rule_id").notNull(),
+    /** When Compass added it to the person's calendar list; added only once. */
+    listedAt: text("listed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("compass_project_calendar_members_user").on(table.projectId, table.userId),
+  ],
+)
+
 export const workCalendarEventAttendees = sqliteTable(
   "work_calendar_event_attendees",
   {

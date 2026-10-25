@@ -23,9 +23,9 @@ describe("help registry", () => {
   })
 
   it("provides the canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(21)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(21)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(21)
+    expect(HELP_GUIDES).toHaveLength(22)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(22)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(22)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
