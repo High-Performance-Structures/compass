@@ -1757,6 +1757,7 @@ export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
   recalledBy: text("recalled_by").references(() => users.id, {
     onDelete: "set null",
   }),
+  revision: integer("revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
@@ -2986,6 +2987,74 @@ export const projectMembers = sqliteTable("project_members", {
   index("project_members_project_user_idx").on(table.projectId, table.userId),
 ])
 
+export const projectExternalResourceGrants = sqliteTable(
+  "project_external_resource_grants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    sourceOwnerUpdateId: text("source_owner_update_id").references(
+      () => ownerProjectUpdates.id,
+      { onDelete: "cascade" }
+    ),
+    audience: text("audience").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedBy: text("granted_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedAt: text("granted_at").notNull(),
+    revokedBy: text("revoked_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("project_external_resource_grants_active_unique")
+      .on(
+        table.projectId,
+        table.resourceType,
+        table.resourceId,
+        table.audience,
+        table.recipientUserId
+      )
+      .where(
+        sql`${table.revokedAt} IS NULL AND ${table.sourceOwnerUpdateId} IS NULL`
+      ),
+    uniqueIndex("project_external_resource_grants_owner_update_active_unique")
+      .on(
+        table.sourceOwnerUpdateId,
+        table.resourceType,
+        table.resourceId,
+        table.audience,
+        table.recipientUserId
+      )
+      .where(
+        sql`${table.revokedAt} IS NULL AND ${table.sourceOwnerUpdateId} IS NOT NULL`
+      ),
+    index("project_external_resource_grants_owner_update_idx").on(
+      table.sourceOwnerUpdateId,
+      table.recipientUserId,
+      table.resourceType,
+      table.resourceId
+    ),
+    index("project_external_resource_grants_recipient_idx").on(
+      table.recipientUserId,
+      table.projectId,
+      table.resourceType,
+      table.resourceId,
+      table.audience
+    ),
+  ]
+)
+
 export const projectAccessInvitations = sqliteTable(
   "project_access_invitations",
   {
@@ -3692,6 +3761,10 @@ export type GroupMember = typeof groupMembers.$inferSelect
 export type NewGroupMember = typeof groupMembers.$inferInsert
 export type ProjectMember = typeof projectMembers.$inferSelect
 export type NewProjectMember = typeof projectMembers.$inferInsert
+export type ProjectExternalResourceGrant =
+  typeof projectExternalResourceGrants.$inferSelect
+export type NewProjectExternalResourceGrant =
+  typeof projectExternalResourceGrants.$inferInsert
 export type ProjectAccessInvitation =
   typeof projectAccessInvitations.$inferSelect
 export type NewProjectAccessInvitation =

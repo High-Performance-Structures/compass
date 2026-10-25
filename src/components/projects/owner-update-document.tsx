@@ -52,10 +52,12 @@ export function ownerUpdateProjectLabel(document: OwnerProjectUpdateDocument): s
   return document.project.projectNumber ?? document.project.name
 }
 
-function ownerUpdateDocumentHref(input: {
+export function ownerUpdateDocumentHref(input: {
+  readonly compassUrl: string | null
   readonly driveFileId: string | null
   readonly driveUrl: string | null
 }): string | null {
+  if (input.compassUrl) return input.compassUrl
   if (input.driveFileId) return `/api/google/download/${input.driveFileId}`
   return input.driveUrl
 }
@@ -110,6 +112,8 @@ export function OwnerUpdateDocument({
               projectId={document.project.id}
               updateId={document.update.id}
               status={document.update.status}
+              revision={document.update.revision}
+              updatedAt={document.update.updatedAt}
               emailSubject={emailSubject}
               emailPreview={emailPreview}
               updatePath={updateUrl}
@@ -348,7 +352,11 @@ export function OwnerUpdatePrintable({
                         ? null
                         : photo.driveFileId
                     }
-                    driveUrl={photo.driveUrl}
+                    driveUrl={
+                      document.update.status === "published"
+                        ? null
+                        : photo.driveUrl
+                    }
                     thumbnailUrl={
                       document.update.status === "published"
                         ? projectAudiencePhotoUrl(

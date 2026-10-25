@@ -4,7 +4,6 @@ import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
-import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   projectMembers,
@@ -27,7 +26,9 @@ import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
+import { assertOwnerUpdateReadAccess } from "@/lib/owner-updates/access"
 import { assertProjectAccess } from "@/lib/project-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
@@ -35,6 +36,12 @@ const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
 function audienceValue(value: string | null): ProjectAudience | null {
   if (value === "owner" || value === "sub_vendor") return value
   return null
+}
+
+function resourceTypeValue(
+  value: string | null
+): "photo" | "owner_update_document" {
+  return value === "owner_update_document" ? "owner_update_document" : "photo"
 }
 
 function environmentString(
@@ -59,6 +66,20 @@ function safeFileName(value: string): string {
   return value.replace(/["\r\n]/g, "_")
 }
 
+function externalResponseMimeType(value: string | null): string {
+  switch (value) {
+    case "image/jpeg":
+    case "image/png":
+    case "image/gif":
+    case "image/webp":
+    case "application/pdf":
+    case "text/plain":
+      return value
+    default:
+      return "application/octet-stream"
+  }
+}
+
 export async function GET(
   request: NextRequest,
   {
@@ -73,23 +94,38 @@ export async function GET(
   try {
     const user = await conversationRequestViewer(await requireAuth())
     if (!user) return new Response("Not found", { status: 404 })
+    const db = await assertOwnerUpdateReadAccess(user)
     const { id: rawProjectId, photoId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Photo not found", { status: 404 })
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
     await assertAudienceResourceProject(projectId)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const project = await assertProjectAccess(db, user, projectId)
-    if (!project.organizationId) {
-      return new Response("Photo not found", { status: 404 })
-    }
+    const resourceType = resourceTypeValue(
+      request.nextUrl.searchParams.get("resourceType")
+    )
+    const viewerIsInternal =
+      user.organizationType === "internal" && isInternalStaffRole(user.role)
+    let projectOrganizationId = user.organizationId
 
-    const viewerIsInternal = isInternalStaffRole(user.role)
+    if (viewerIsInternal) {
+      const project = await assertProjectAccess(db, user, projectId)
+      projectOrganizationId = project.organizationId
+    }
     if (!viewerIsInternal) {
-      if (audience === null) {
+      if (audience === null || projectOrganizationId === null) {
         return new Response("Photo not found", { status: 404 })
       }
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: projectOrganizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: photoId,
+        resourceType,
+        audience,
+      })
+      if (!granted) return new Response("Photo not found", { status: 404 })
+
       const [membership] = await db
         .select({ role: projectMembers.role })
         .from(projectMembers)
@@ -132,21 +168,23 @@ export async function GET(
               eq(dailyLogPhotos.id, photoId),
               eq(dailyLogPhotos.projectId, projectId),
               eq(dailyLogPhotos.reviewStatus, "approved"),
-              visibility
+              visibility,
             )
       )
       .limit(1)
-    if (
-      !photo?.driveFileId ||
-      !photo.mimeType
-    ) {
+    if (!photo?.driveFileId) {
       return new Response("Photo not found", { status: 404 })
     }
+
+    if (projectOrganizationId === null) {
+      return new Response("Photo not found", { status: 404 })
+    }
+    const { env } = await getCloudflareContext()
 
     const [auth] = await db
       .select()
       .from(googleAuth)
-      .where(eq(googleAuth.organizationId, project.organizationId))
+      .where(eq(googleAuth.organizationId, projectOrganizationId))
       .limit(1)
     if (!auth) {
       return new Response("Photo storage is unavailable", { status: 503 })
@@ -166,10 +204,15 @@ export async function GET(
     const serviceAccountKey = parseServiceAccountKey(keyJson)
     const client = new DriveClient({ serviceAccountKey })
     const googleEmail = downloadUserEmail(env)
-    const exportMimeType = isGoogleNativeFile(photo.mimeType)
+    const exportMimeType =
+      photo.mimeType !== null && isGoogleNativeFile(photo.mimeType)
       ? getExportMimeType(photo.mimeType)
       : null
-    if (isGoogleNativeFile(photo.mimeType) && exportMimeType === null) {
+    if (
+      photo.mimeType !== null &&
+      isGoogleNativeFile(photo.mimeType) &&
+      exportMimeType === null
+    ) {
       return new Response("This Google file type cannot be downloaded", {
         status: 415,
       })
@@ -193,11 +236,17 @@ export async function GET(
       })
     }
 
-    const responseMimeType = exportMimeType ?? photo.mimeType
-    const responseFileName =
-      exportMimeType === null
+    const storedResponseMimeType = exportMimeType ?? photo.mimeType
+    const responseMimeType = viewerIsInternal
+      ? storedResponseMimeType ?? "application/octet-stream"
+      : externalResponseMimeType(storedResponseMimeType)
+    const responseFileName = viewerIsInternal
+      ? exportMimeType === null || photo.mimeType === null
         ? photo.fileName
         : `${photo.fileName.replace(/\.[^.]+$/, "")}${getExportExtension(photo.mimeType)}`
+      : resourceType === "photo"
+        ? "shared-photo"
+        : "project-file"
 
     return new Response(response.body, {
       headers: {

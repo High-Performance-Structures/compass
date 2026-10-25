@@ -19,7 +19,7 @@ import {
   type DailyLogWorkLineView,
 } from "@/lib/daily-logs/cost-code-lines"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
-import { and, asc, desc, eq, gte, inArray, not, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, not, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -27,6 +27,8 @@ import {
   dailyLogs,
   dailyLogTaskLinks,
   ownerProjectUpdates,
+  organizations,
+  projectExternalResourceGrants,
   projectExternalLinks,
   projectMembers,
   projectOperations,
@@ -45,6 +47,7 @@ import {
   type DailyLogFollowUpSetup,
 } from "@/lib/daily-logs/log-followups-server"
 import { getCloudflareContext } from "@/lib/db"
+import { canUseProjectDailyLogWorkspace } from "@/lib/daily-logs/workspace-access"
 import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
 import { resolveTown } from "@/lib/portfolio-map/model"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
@@ -73,14 +76,31 @@ import {
   isLookAheadScheduleCandidate,
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
-import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
+import {
+  isOwnerUpdateVisibleToRole,
+  ownerUpdateVisibleStatuses,
+} from "@/lib/owner-updates/history"
+import {
+  assertOwnerUpdateReadAccess,
+  assertOwnerUpdateRouteAccess,
+} from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
+import { ownerUpdateAttachmentKind } from "@/lib/owner-updates/attachment-taxonomy"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
+import {
+  ownerUpdateExternalDailyLog,
+  ownerUpdateExternalDocument,
+  ownerUpdateExternalListItem,
+  ownerUpdateExternalPhoto,
+  ownerUpdateExternalProject,
+  ownerUpdateExternalSchedule,
+  ownerUpdateExternalUpdate,
+  safeCompassId,
+  selectCurrentOwnerVisibleDocuments,
+} from "@/lib/owner-updates/external-projection"
 import { can } from "@/lib/permissions"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
-import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
@@ -92,6 +112,11 @@ import { generateOrganizationText } from "@/lib/agent/one-shot"
 const OWNER_UPDATE_PROMPT_MAX_CHARACTERS = 24_000
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
+import type { OwnerUpdateDraftWriteInput } from "@/lib/owner-updates/draft-recovery"
+import type {
+  OwnerUpdateMutationResult,
+  OwnerUpdateMutationVersion,
+} from "@/lib/owner-updates/draft-publish"
 
 type LatestDailyLog = {
   readonly id: string
@@ -178,6 +203,30 @@ type OwnerUpdatePhoto = {
 
 type OwnerUpdatePhotoFolder = {
   readonly label: string
+}
+
+type OwnerProjectUpdateReadRow = {
+  readonly id: string
+  readonly projectId: string
+  readonly title: string
+  readonly updateDate: string
+  readonly summary: string
+  readonly status: string
+  readonly channel: string
+  readonly sourceDailyLogIds: string | null
+  readonly selectedPhotoIds: string | null
+  readonly periodStart: string | null
+  readonly periodEnd: string | null
+  readonly scheduleSnapshot: string | null
+  readonly publishedAt: string | null
+  readonly sentAt: string | null
+  readonly recalledAt: string | null
+  readonly revision: number
+  readonly updatedAt: string
+}
+
+type OwnerUpdateDocumentView = OwnerUpdateDocumentSelection & {
+  readonly compassUrl: string | null
 }
 
 type PhotoReviewFolder = {
@@ -321,19 +370,7 @@ type OwnerUpdateDraftInput = {
   readonly dailyLogIds: readonly string[]
 }
 
-export type OwnerUpdateDraftEditInput = {
-  readonly title: string
-  readonly updateDate: string
-  readonly periodStart: string
-  readonly periodEnd: string
-  readonly summary: string
-  readonly sourceDailyLogIds: readonly string[]
-  readonly selectedPhotoIds: readonly string[]
-  readonly selectedDocumentIds: readonly string[]
-  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly todos: readonly OwnerUpdateTodoSelection[]
-}
+export type OwnerUpdateDraftEditInput = OwnerUpdateDraftWriteInput
 
 type DailyLogMutationResult =
   | { readonly success: true }
@@ -374,6 +411,7 @@ export type OwnerProjectUpdateDocument = {
     readonly publishedAt: string | null
     readonly sentAt: string | null
     readonly recalledAt: string | null
+    readonly revision: number
     readonly updatedAt: string
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
@@ -385,7 +423,7 @@ export type OwnerProjectUpdateDocument = {
   readonly availableDailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
   readonly availablePhotos: readonly OwnerUpdatePhoto[]
-  readonly documents: readonly OwnerUpdateDocumentSelection[]
+  readonly documents: readonly OwnerUpdateDocumentView[]
   readonly availableDocuments: readonly OwnerUpdateDocumentSelection[]
   readonly photoFolder: OwnerUpdatePhotoFolder | null
   readonly nextScheduleItem: {
@@ -538,6 +576,54 @@ async function getOwnerUpdateComposerCandidates(
   }
 }
 
+async function getOwnerUpdatePublishedScheduleItems(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  selectedIds: readonly string[],
+  periodStart: string | null,
+  periodEnd: string | null
+): Promise<{
+  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
+}> {
+  if (
+    selectedIds.length === 0 ||
+    periodStart === null ||
+    periodEnd === null
+  ) {
+    return { completedScheduleItems: [], lookAheadScheduleItems: [] }
+  }
+
+  const rows = await db
+    .select({
+      id: scheduleTasks.id,
+      title: scheduleTasks.title,
+      startDate: scheduleTasks.startDate,
+      endDate: scheduleTasks.endDateCalculated,
+      assignedTo: scheduleTasks.assignedTo,
+      status: scheduleTasks.status,
+      percentComplete: scheduleTasks.percentComplete,
+    })
+    .from(scheduleTasks)
+    .where(
+      and(
+        eq(scheduleTasks.projectId, projectId),
+        inArray(scheduleTasks.id, selectedIds)
+      )
+    )
+    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+
+  const selections = rows.map((row) => ({ ...row, notes: "" }))
+  return {
+    completedScheduleItems: selections.filter((item) =>
+      isCompletedScheduleCandidate(item, periodStart, periodEnd)
+    ),
+    lookAheadScheduleItems: selections.filter((item) =>
+      isLookAheadScheduleCandidate(item, periodEnd)
+    ),
+  }
+}
+
 function ownerUpdateDocumentSelection(
   row: {
     readonly id: string
@@ -647,28 +733,29 @@ function numberValue(
   return typeof child === "number" && Number.isFinite(child) ? child : null
 }
 
-async function verifyProjectAccess(
-  projectId: string,
-  featureId: string = "daily-logs"
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, featureId, "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
+async function verifyProjectDailyLogWorkspaceAccess(projectId: string): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly viewer: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const viewer = await requireAuth()
+  if (!canUseProjectDailyLogWorkspace(viewer)) {
     throw new Error("Project not found")
   }
-
-  return db
+  const db = await assertOwnerUpdateRouteAccess(viewer)
+  await requireFeaturePermission(viewer, "daily-logs", "read")
+  const organizationId = requireOrg(viewer)
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+  if (!project) throw new Error("Project not found")
+  return { db, viewer }
 }
 
 async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
@@ -676,26 +763,74 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
 }> {
   const viewer = await requireProjectAudienceReadUser(projectId)
+  const db = await assertOwnerUpdateReadAccess(viewer)
   await requireFeaturePermission(viewer, "owner-updates", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  await assertProjectAccess(db, viewer, projectId)
-  if (!isInternalStaffRole(viewer.role)) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
+
+  const internalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
+
+  if (internalViewer && viewer.organizationId) {
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .innerJoin(
+        organizations,
         and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, viewer.id)
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId),
+          eq(organizations.type, "internal"),
+          eq(organizations.isActive, true)
         )
       )
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, viewer.organizationId)
+        )
+      )
+      .limit(1)
       .get()
-    if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-      throw new Error("Project not found")
-    }
+    if (!project) throw new Error("Project not found")
+  } else {
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .innerJoin(
+        projectMembers,
+        and(
+          eq(projectMembers.projectId, projects.id),
+          eq(projectMembers.userId, viewer.id),
+          inArray(projectMembers.role, ["client", "owner"])
+        )
+      )
+      .innerJoin(
+        organizations,
+        and(
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId ?? ""),
+          eq(organizations.type, viewer.organizationType ?? ""),
+          eq(organizations.isActive, true)
+        )
+      )
+      .where(
+        eq(projects.id, projectId)
+      )
+      .limit(1)
+      .get()
+    if (!project) throw new Error("Project not found")
   }
   return { db, viewer }
+}
+
+export async function getOwnerUpdatePageCapabilities(
+  projectId: string
+): Promise<{ readonly canManage: boolean }> {
+  const { viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  return {
+    canManage:
+      viewer.organizationType === "internal" &&
+      isInternalStaffRole(viewer.role),
+  }
 }
 
 async function verifyProjectMutationAccess(
@@ -742,6 +877,30 @@ function dailyLogFormValues(input: CreateDailyLogInput, workLines: readonly Dail
     visitorLog: input.visitorLog,
     notes: input.notes,
   }
+}
+
+async function verifyOwnerUpdateMutationAccess(
+  projectId: string
+): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly user: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const user = await requireAuth()
+  const db = await assertOwnerUpdateRouteAccess(user)
+
+  await requireFeaturePermission(user, "owner-updates", "update")
+  const orgId = requireOrg(user)
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!existing[0]) {
+    throw new Error("Project not found")
+  }
+
+  return { db, user }
 }
 
 async function verifyDailyLogStaffMutationAccess(
@@ -1042,9 +1201,14 @@ function weatherLabel(row: {
 export async function getProjectFieldSummary(
   projectId: string
 ): Promise<ProjectFieldSummary> {
-  const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId)
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
+  const visibleStatuses = ownerUpdateVisibleStatuses(
+    viewer.role,
+    viewer.organizationType
+  )
+  const isInternalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
 
   const logRows = await db
     .select({
@@ -1062,100 +1226,255 @@ export async function getProjectFieldSummary(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(eq(dailyLogs.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogs.projectId, projectId),
+        isInternalViewer ? undefined : eq(dailyLogs.isClientVisible, true)
+      )
+    )
     .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.createdAt))
 
-  const photoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      sourceSystem: dailyLogPhotos.sourceSystem,
-      fileName: dailyLogPhotos.fileName,
-      mimeType: dailyLogPhotos.mimeType,
-      driveFileId: dailyLogPhotos.driveFileId,
-      driveUrl: dailyLogPhotos.driveUrl,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      caption: dailyLogPhotos.caption,
-      reviewStatus: dailyLogPhotos.reviewStatus,
-      ownerVisible: dailyLogPhotos.ownerVisible,
-      capturedAt: dailyLogPhotos.capturedAt,
-    })
-    .from(dailyLogPhotos)
-    .where(
-      and(
-        eq(dailyLogPhotos.projectId, projectId),
-        dailyLogPhotoCollectionEligibility(),
-        not(sql<boolean>`EXISTS (
-          SELECT 1
-          FROM daily_log_photo_aliases AS alias
-          JOIN daily_log_photos AS canonical
-            ON canonical.id IS alias.canonical_photo_id
-          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-            AND alias.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
-            AND canonical.drive_file_id IS NOT NULL
-            AND (
-              canonical.drive_file_id IS NOT NULL
-              OR canonical.thumbnail_url IS NOT NULL
+  type FieldSummaryPhotoRow = LatestPhoto & {
+    readonly mimeType: string | null
+  }
+
+  const photoRows: readonly FieldSummaryPhotoRow[] = isInternalViewer
+    ? await db
+        .select({
+          id: dailyLogPhotos.id,
+          sourceSystem: dailyLogPhotos.sourceSystem,
+          fileName: dailyLogPhotos.fileName,
+          mimeType: dailyLogPhotos.mimeType,
+          driveFileId: dailyLogPhotos.driveFileId,
+          driveUrl: dailyLogPhotos.driveUrl,
+          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+          caption: dailyLogPhotos.caption,
+          reviewStatus: dailyLogPhotos.reviewStatus,
+          ownerVisible: dailyLogPhotos.ownerVisible,
+          capturedAt: dailyLogPhotos.capturedAt,
+        })
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              JOIN daily_log_photos AS canonical
+                ON canonical.id IS alias.canonical_photo_id
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
+                AND (
+                  canonical.drive_file_id IS NOT NULL
+                  OR canonical.thumbnail_url IS NOT NULL
+                )
+            )`)
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.createdAt))
+    : (
+        await db
+          .select({
+            id: dailyLogPhotos.id,
+            sourceSystem: dailyLogPhotos.sourceSystem,
+            fileName: dailyLogPhotos.fileName,
+            mimeType: dailyLogPhotos.mimeType,
+            caption: dailyLogPhotos.caption,
+            reviewStatus: dailyLogPhotos.reviewStatus,
+            ownerVisible: dailyLogPhotos.ownerVisible,
+            capturedAt: dailyLogPhotos.capturedAt,
+          })
+          .from(dailyLogPhotos)
+          .innerJoin(
+            projectExternalResourceGrants,
+            and(
+              eq(
+                projectExternalResourceGrants.organizationId,
+                viewer.organizationId ?? ""
+              ),
+              eq(projectExternalResourceGrants.projectId, projectId),
+              eq(projectExternalResourceGrants.resourceType, "photo"),
+              eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+              eq(projectExternalResourceGrants.audience, "owner"),
+              eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+              isNull(projectExternalResourceGrants.revokedAt)
             )
-        )`),
-      ),
-    )
-    .orderBy(desc(dailyLogPhotos.createdAt))
+          )
+          .innerJoin(
+            projects,
+            and(
+              eq(projects.id, dailyLogPhotos.projectId),
+              eq(projects.organizationId, projectExternalResourceGrants.organizationId)
+            )
+          )
+          .innerJoin(
+            organizations,
+            and(
+              eq(organizations.id, projects.organizationId),
+              eq(organizations.id, viewer.organizationId ?? ""),
+              eq(organizations.type, viewer.organizationType ?? ""),
+              eq(organizations.isActive, true)
+            )
+          )
+          .innerJoin(
+            projectMembers,
+            and(
+              eq(projectMembers.projectId, projects.id),
+              eq(projectMembers.userId, viewer.id),
+              inArray(projectMembers.role, ["client", "owner"])
+            )
+          )
+          .innerJoin(
+            users,
+            and(eq(users.id, viewer.id), eq(users.isActive, true))
+          )
+          .where(
+            and(
+              eq(dailyLogPhotos.projectId, projectId),
+              eq(dailyLogPhotos.ownerVisible, true),
+              dailyLogPhotoCollectionEligibility(),
+              not(sql<boolean>`EXISTS (
+                SELECT 1
+                FROM daily_log_photo_aliases AS alias
+                JOIN daily_log_photos AS canonical
+                  ON canonical.id IS alias.canonical_photo_id
+                WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                  AND alias.project_id IS ${dailyLogPhotos.projectId}
+                  AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                  AND canonical.mime_type LIKE 'image/%'
+                  AND canonical.drive_file_id IS NOT NULL
+                  AND (
+                    canonical.drive_file_id IS NOT NULL
+                    OR canonical.thumbnail_url IS NOT NULL
+                  )
+              )`)
+            )
+          )
+          .groupBy(dailyLogPhotos.id)
+          .orderBy(desc(dailyLogPhotos.createdAt))
+      ).map((photo) => ({
+        ...photo,
+        driveFileId: null,
+        driveUrl: null,
+        thumbnailUrl: null,
+      }))
 
-  const updateRows = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      summary: ownerProjectUpdates.summary,
-    })
-    .from(ownerProjectUpdates)
-    .where(eq(ownerProjectUpdates.projectId, projectId))
-    .orderBy(
-      desc(ownerProjectUpdates.updateDate),
-      desc(ownerProjectUpdates.createdAt)
-    )
+  const updateRows = isInternalViewer
+    ? await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+        })
+        .from(ownerProjectUpdates)
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            visibleStatuses === null
+              ? undefined
+              : inArray(ownerProjectUpdates.status, visibleStatuses)
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
+    : await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+        })
+        .from(ownerProjectUpdates)
+        .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            inArray(ownerProjectUpdates.status, ["published", "sent"])
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
 
-  const [nextTask] = await db
-    .select({
-      title: scheduleTasks.title,
-      startDate: scheduleTasks.startDate,
-      endDate: scheduleTasks.endDateCalculated,
-      assignedTo: scheduleTasks.assignedTo,
-    })
-    .from(scheduleTasks)
-    .where(
-      and(
-        eq(scheduleTasks.projectId, projectId),
-        gte(scheduleTasks.endDateCalculated, today)
-      )
-    )
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(1)
+  const [nextTask] = isInternalViewer
+    ? await db
+        .select({
+          title: scheduleTasks.title,
+          startDate: scheduleTasks.startDate,
+          endDate: scheduleTasks.endDateCalculated,
+          assignedTo: scheduleTasks.assignedTo,
+        })
+        .from(scheduleTasks)
+        .where(
+          and(
+            eq(scheduleTasks.projectId, projectId),
+            gte(scheduleTasks.endDateCalculated, today)
+          )
+        )
+        .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+        .limit(1)
+    : []
 
-  const [photoReviewFolder] = await db
-    .select({
-      label: projectExternalLinks.label,
-      url: projectExternalLinks.externalUrl,
-      metadata: projectExternalLinks.metadata,
-    })
-    .from(projectExternalLinks)
-    .where(
-      and(
-        eq(projectExternalLinks.projectId, projectId),
-        eq(projectExternalLinks.system, "google_buildertrend_review_photos")
-      )
-    )
-    .limit(1)
+  const [photoReviewFolder] = isInternalViewer
+    ? await db
+        .select({
+          label: projectExternalLinks.label,
+          url: projectExternalLinks.externalUrl,
+          metadata: projectExternalLinks.metadata,
+        })
+        .from(projectExternalLinks)
+        .where(
+          and(
+            eq(projectExternalLinks.projectId, projectId),
+            eq(projectExternalLinks.system, "google_buildertrend_review_photos")
+          )
+        )
+        .limit(1)
+    : []
 
   const latestLog = logRows[0]
-  const visibleUpdateRows = updateRows.filter((update) =>
-    isOwnerUpdateVisibleToRole(update.status, viewer.role)
-  )
+  const visibleUpdateRows = updateRows
   const latestUpdate = visibleUpdateRows[0]
+  const latestAuthorName = latestLog
+    ? dailyLogAuthorName({
+        compassAuthorName: displayName({
+          displayName: latestLog.authorDisplayName,
+          firstName: latestLog.authorFirstName,
+          lastName: latestLog.authorLastName,
+          email: latestLog.authorEmail,
+        }),
+        tags: latestLog.tags,
+      })
+    : null
   const thumbnailPhotoRows = photoRows.filter(
     (photo) => photo.thumbnailUrl !== null
   )
@@ -1173,6 +1492,22 @@ export async function getProjectFieldSummary(
     ...imagePhotoRows,
     ...archivePhotoRows,
   ]
+  const externalLatestLog = latestLog
+    ? ownerUpdateExternalDailyLog({
+        id: latestLog.id,
+        sourceSystem: latestLog.sourceSystem,
+        logDate: latestLog.logDate,
+        workCompleted: latestLog.workCompleted,
+        weather: null,
+        manpower: null,
+        safetyNotes: null,
+        issues: null,
+        nextSteps: null,
+        authorName: latestAuthorName,
+        reviewStatus: latestLog.reviewStatus,
+        isClientVisible: latestLog.isClientVisible,
+      })
+    : null
 
   return {
     dailyLogCount: logRows.length,
@@ -1183,21 +1518,27 @@ export async function getProjectFieldSummary(
       .length,
     latestDailyLog: latestLog
       ? {
-          id: latestLog.id,
-          sourceSystem: latestLog.sourceSystem,
-          logDate: latestLog.logDate,
-          workCompleted: latestLog.workCompleted,
-          reviewStatus: latestLog.reviewStatus,
-          isClientVisible: latestLog.isClientVisible,
-          authorName: dailyLogAuthorName({
-            compassAuthorName: displayName({
-              displayName: latestLog.authorDisplayName,
-              firstName: latestLog.authorFirstName,
-              lastName: latestLog.authorLastName,
-              email: latestLog.authorEmail,
-            }),
-            tags: latestLog.tags,
-          }),
+          id: isInternalViewer
+            ? latestLog.id
+            : safeCompassId(latestLog.id),
+          sourceSystem: isInternalViewer
+            ? latestLog.sourceSystem
+            : externalLatestLog?.sourceSystem ?? "Compass",
+          logDate: isInternalViewer
+            ? latestLog.logDate
+            : externalLatestLog?.logDate ?? "1970-01-01",
+          workCompleted: isInternalViewer
+            ? latestLog.workCompleted
+            : externalLatestLog?.workCompleted ?? "No work details provided.",
+          reviewStatus: isInternalViewer
+            ? latestLog.reviewStatus
+            : externalLatestLog?.reviewStatus ?? "approved",
+          isClientVisible: isInternalViewer
+            ? latestLog.isClientVisible
+            : true,
+          authorName: isInternalViewer
+            ? latestAuthorName
+            : externalLatestLog?.authorName ?? null,
         }
       : null,
     photoCount: photoRows.length,
@@ -1206,18 +1547,22 @@ export async function getProjectFieldSummary(
     ).length,
     ownerVisiblePhotoCount: photoRows.filter((photo) => photo.ownerVisible)
       .length,
-    latestPhotos: latestPhotoRows.slice(0, 4).map((photo) => ({
-      id: photo.id,
-      sourceSystem: photo.sourceSystem,
-      fileName: photo.fileName,
-      driveFileId: photo.driveFileId,
-      driveUrl: photo.driveUrl,
-      thumbnailUrl: photo.thumbnailUrl,
-      caption: photo.caption,
-      reviewStatus: photo.reviewStatus,
-      ownerVisible: photo.ownerVisible,
-      capturedAt: photo.capturedAt,
-    })),
+    latestPhotos: latestPhotoRows.slice(0, 4).map((photo) =>
+      isInternalViewer
+        ? {
+            id: photo.id,
+            sourceSystem: photo.sourceSystem,
+            fileName: photo.fileName,
+            driveFileId: photo.driveFileId,
+            driveUrl: photo.driveUrl,
+            thumbnailUrl: photo.thumbnailUrl,
+            caption: photo.caption,
+            reviewStatus: photo.reviewStatus,
+            ownerVisible: photo.ownerVisible,
+            capturedAt: photo.capturedAt,
+          }
+        : ownerUpdateExternalPhoto(projectId, photo)
+    ),
     photoReviewFolder:
       photoReviewFolder?.url !== null && photoReviewFolder?.url !== undefined
         ? {
@@ -1231,17 +1576,41 @@ export async function getProjectFieldSummary(
       (update) => update.status === "draft"
     ).length,
     latestOwnerUpdate: latestUpdate
-      ? {
-          id: latestUpdate.id,
-          title: latestUpdate.title,
-          updateDate: latestUpdate.updateDate,
-          status: latestUpdate.status,
-          channel: latestUpdate.channel,
-          summary: latestUpdate.summary,
-        }
+      ? isInternalViewer
+        ? {
+            id: latestUpdate.id,
+            title: latestUpdate.title,
+            updateDate: latestUpdate.updateDate,
+            status: latestUpdate.status,
+            channel: latestUpdate.channel,
+            summary: latestUpdate.summary,
+          }
+        : (() => {
+            const safeUpdate = ownerUpdateExternalListItem({
+              id: latestUpdate.id,
+              title: latestUpdate.title,
+              updateDate: latestUpdate.updateDate,
+              status: latestUpdate.status,
+              channel: latestUpdate.channel,
+              summary: latestUpdate.summary,
+              publishedAt: null,
+              sentAt: null,
+              createdAt: "",
+              updatedAt: "",
+            })
+            return {
+              id: safeUpdate.id,
+              title: safeUpdate.title,
+              updateDate: safeUpdate.updateDate,
+              status: safeUpdate.status,
+              channel: safeUpdate.channel,
+              summary: safeUpdate.summary,
+            }
+          })()
       : null,
     nextScheduleItem:
-      isInternalStaffRole(viewer.role) || viewer.role === "developer"
+      viewer.organizationType === "internal" &&
+      (isInternalStaffRole(viewer.role) || viewer.role === "developer")
         ? nextTask ?? null
         : null,
   }
@@ -1251,30 +1620,75 @@ export async function getProjectOwnerUpdates(
   projectId: string
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
+  const internalViewer = visibleStatuses === null
 
-  const updateRows = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      summary: ownerProjectUpdates.summary,
-      publishedAt: ownerProjectUpdates.publishedAt,
-      sentAt: ownerProjectUpdates.sentAt,
-      createdAt: ownerProjectUpdates.createdAt,
-      updatedAt: ownerProjectUpdates.updatedAt,
-    })
-    .from(ownerProjectUpdates)
-    .where(eq(ownerProjectUpdates.projectId, projectId))
-    .orderBy(
-      desc(ownerProjectUpdates.updateDate),
-      desc(ownerProjectUpdates.createdAt)
-    )
+  const updateRows = internalViewer
+    ? await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+          publishedAt: ownerProjectUpdates.publishedAt,
+          sentAt: ownerProjectUpdates.sentAt,
+          createdAt: ownerProjectUpdates.createdAt,
+          updatedAt: ownerProjectUpdates.updatedAt,
+        })
+        .from(ownerProjectUpdates)
+        .where(eq(ownerProjectUpdates.projectId, projectId))
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
+    : await db
+        .select({
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          updateDate: ownerProjectUpdates.updateDate,
+          status: ownerProjectUpdates.status,
+          channel: ownerProjectUpdates.channel,
+          summary: ownerProjectUpdates.summary,
+          publishedAt: ownerProjectUpdates.publishedAt,
+          sentAt: ownerProjectUpdates.sentAt,
+          createdAt: ownerProjectUpdates.createdAt,
+          updatedAt: ownerProjectUpdates.updatedAt,
+        })
+        .from(ownerProjectUpdates)
+        .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(
+          and(
+            eq(ownerProjectUpdates.projectId, projectId),
+            inArray(ownerProjectUpdates.status, ["published", "sent"])
+          )
+        )
+        .orderBy(
+          desc(ownerProjectUpdates.updateDate),
+          desc(ownerProjectUpdates.createdAt)
+        )
 
-  return updateRows.filter((update) =>
-    isOwnerUpdateVisibleToRole(update.status, viewer.role)
-  )
+  return internalViewer
+    ? updateRows
+    : updateRows.map((update) => ownerUpdateExternalListItem(update))
 }
 
 export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
@@ -1282,17 +1696,56 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
   readonly name: string
   readonly projectNumber: string | null
 }> {
-  const { db } = await verifyOwnerUpdateReadAccess(projectId)
-  const project = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1)
-    .get()
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const internalViewer =
+    viewer.organizationType === "internal" && isInternalStaffRole(viewer.role)
+  const project = internalViewer
+    ? await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+        })
+        .from(projects)
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, "internal"),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(eq(projects.id, projectId))
+        .limit(1)
+        .get()
+    : await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+        })
+        .from(projects)
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .where(eq(projects.id, projectId))
+        .limit(1)
+        .get()
   if (!project) throw new Error("Project not found")
   return project
 }
@@ -1300,9 +1753,8 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
 export async function getProjectDailyLogWorkspace(
   projectId: string
 ): Promise<ProjectDailyLogWorkspace> {
-  const viewer = await requireAuth()
-  const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
-  const db = await verifyProjectAccess(projectId)
+  const { db, viewer } = await verifyProjectDailyLogWorkspaceAccess(projectId)
+  const canViewWorkingSchedule = isInternalStaffRole(viewer.role)
 
   const [projectRow] = await db
     .select({
@@ -1929,7 +2381,7 @@ export async function getProjectWeatherSnapshot(
   input?: { readonly logDate?: string }
 ): Promise<ProjectWeatherSnapshotResult> {
   try {
-    const db = await verifyProjectAccess(projectId)
+    const { db } = await verifyProjectDailyLogWorkspaceAccess(projectId)
     const [project] = await db
       .select({
         address: projects.address,
@@ -2047,10 +2499,8 @@ export async function draftOwnerUpdateFromDailyLogs(
 ): Promise<OwnerUpdateDraftResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const dailyLogIds = [...new Set(input.dailyLogIds)].filter(
       (id) => id.trim().length > 0
     )
@@ -2197,10 +2647,8 @@ export async function createManualOwnerProjectUpdateDraft(
 ): Promise<OwnerUpdateDraftResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const normalizedDate = updateDate.trim()
     if (!isValidOwnerUpdatePeriod(normalizedDate, normalizedDate)) {
       return { success: false, error: "Enter a valid update date." }
@@ -2272,21 +2720,18 @@ export async function createManualOwnerProjectUpdateDraft(
 
 export async function deleteOwnerProjectUpdateDraft(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2307,20 +2752,31 @@ export async function deleteOwnerProjectUpdateDraft(
       }
     }
 
-    await db
+    const deletedRows = await db
       .delete(ownerProjectUpdates)
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "draft")
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, version.revision),
+          eq(ownerProjectUpdates.updatedAt, version.updatedAt)
         )
       )
+      .returning({ id: ownerProjectUpdates.id })
+
+    if (!deletedRows[0]) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were deleting. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
 
-    return { success: true }
+    return { success: true, revision: update.revision, updatedAt: update.updatedAt }
   } catch (error) {
     return {
       success: false,
@@ -2337,6 +2793,102 @@ export async function getOwnerProjectUpdateDocument(
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
   const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
+  const visibleStatuses = ownerUpdateVisibleStatuses(viewer.role, viewer.organizationType)
+  const internalViewer = visibleStatuses === null
+
+  let update: OwnerProjectUpdateReadRow | undefined
+  if (internalViewer) {
+    const [internalUpdate] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        projectId: ownerProjectUpdates.projectId,
+        title: ownerProjectUpdates.title,
+        updateDate: ownerProjectUpdates.updateDate,
+        summary: ownerProjectUpdates.summary,
+        status: ownerProjectUpdates.status,
+        channel: ownerProjectUpdates.channel,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+        selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        periodStart: ownerProjectUpdates.periodStart,
+        periodEnd: ownerProjectUpdates.periodEnd,
+        scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
+        publishedAt: ownerProjectUpdates.publishedAt,
+        sentAt: ownerProjectUpdates.sentAt,
+        recalledAt: ownerProjectUpdates.recalledAt,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+      .from(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+    update = internalUpdate
+  } else {
+    const [externalUpdate] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        projectId: ownerProjectUpdates.projectId,
+        title: ownerProjectUpdates.title,
+        updateDate: ownerProjectUpdates.updateDate,
+        summary: ownerProjectUpdates.summary,
+        status: ownerProjectUpdates.status,
+        channel: ownerProjectUpdates.channel,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+        selectedPhotoIds: sql<string>`'[]'`,
+        periodStart: ownerProjectUpdates.periodStart,
+        periodEnd: ownerProjectUpdates.periodEnd,
+        // External readers get the published schedule projection but attachment
+        // inventories are selected only through exact recipient grants below.
+        scheduleSnapshot: sql<string | null>`
+          CASE
+            WHEN json_valid(${ownerProjectUpdates.scheduleSnapshot})
+            THEN json_set(
+              ${ownerProjectUpdates.scheduleSnapshot},
+              '$.documents',
+              json('[]')
+            )
+            ELSE NULL
+          END
+        `,
+        publishedAt: ownerProjectUpdates.publishedAt,
+        sentAt: ownerProjectUpdates.sentAt,
+        recalledAt: ownerProjectUpdates.recalledAt,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+      .from(ownerProjectUpdates)
+      .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
+      .innerJoin(
+        projectMembers,
+        and(
+          eq(projectMembers.projectId, projects.id),
+          eq(projectMembers.userId, viewer.id),
+          inArray(projectMembers.role, ["client", "owner"])
+        )
+      )
+      .innerJoin(
+        organizations,
+        and(
+          eq(organizations.id, projects.organizationId),
+          eq(organizations.id, viewer.organizationId ?? ""),
+          eq(organizations.type, viewer.organizationType ?? ""),
+          eq(organizations.isActive, true)
+        )
+      )
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          inArray(ownerProjectUpdates.status, ["published", "sent"])
+        )
+      )
+      .limit(1)
+    update = externalUpdate
+  }
 
   const [project] = await db
     .select({
@@ -2351,38 +2903,14 @@ export async function getOwnerProjectUpdateDocument(
     .where(eq(projects.id, projectId))
     .limit(1)
 
-  const [update] = await db
-    .select({
-      id: ownerProjectUpdates.id,
-      projectId: ownerProjectUpdates.projectId,
-      title: ownerProjectUpdates.title,
-      updateDate: ownerProjectUpdates.updateDate,
-      summary: ownerProjectUpdates.summary,
-      status: ownerProjectUpdates.status,
-      channel: ownerProjectUpdates.channel,
-      sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
-      selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
-      periodStart: ownerProjectUpdates.periodStart,
-      periodEnd: ownerProjectUpdates.periodEnd,
-      scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
-      publishedAt: ownerProjectUpdates.publishedAt,
-      sentAt: ownerProjectUpdates.sentAt,
-      recalledAt: ownerProjectUpdates.recalledAt,
-      updatedAt: ownerProjectUpdates.updatedAt,
-    })
-    .from(ownerProjectUpdates)
-    .where(
-      and(
-        eq(ownerProjectUpdates.id, updateId),
-        eq(ownerProjectUpdates.projectId, projectId)
-      )
-    )
-    .limit(1)
-
   if (!project || !update) {
     throw new Error("Owner update not found")
   }
-  if (!isOwnerUpdateVisibleToRole(update.status, viewer.role)) {
+  if (!isOwnerUpdateVisibleToRole(
+    update.status,
+    viewer.role,
+    viewer.organizationType
+  )) {
     throw new Error("Owner update not found")
   }
 
@@ -2391,6 +2919,11 @@ export async function getOwnerProjectUpdateDocument(
   const composerSnapshot = parseOwnerUpdateComposerSnapshot(
     update.scheduleSnapshot
   )
+  const composerDocumentIds = composerSnapshot.documents.map(
+    (document) => document.id
+  )
+  const selectedPhotoIdSet = new Set(selectedPhotoIds)
+  const composerDocumentIdSet = new Set(composerDocumentIds)
   const canManage = can(viewer, "project", "update")
 
   const allLogRows = await db
@@ -2415,62 +2948,176 @@ export async function getOwnerProjectUpdateDocument(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(eq(dailyLogs.projectId, projectId))
-    .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
-
-  const allPhotoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      dailyLogId: dailyLogPhotos.dailyLogId,
-      sourceSystem: dailyLogPhotos.sourceSystem,
-      fileName: dailyLogPhotos.fileName,
-      driveFileId: dailyLogPhotos.driveFileId,
-      driveUrl: dailyLogPhotos.driveUrl,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      mimeType: dailyLogPhotos.mimeType,
-      caption: dailyLogPhotos.caption,
-      capturedAt: dailyLogPhotos.capturedAt,
-      ownerVisible: dailyLogPhotos.ownerVisible,
-      reviewStatus: dailyLogPhotos.reviewStatus,
-    })
-    .from(dailyLogPhotos)
     .where(
       and(
-        eq(dailyLogPhotos.projectId, projectId),
-        or(
-          inArray(dailyLogPhotos.id, selectedPhotoIds),
-          // The owner-update picker shares this query with the photo picker.
-          // Keep non-image attachments available for document selection; the
-          // alias read model is only relevant to image collection rows.
-          sql<boolean>`
-            ${dailyLogPhotos.mimeType} IS NULL
-            OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
-          `,
-          and(
-            dailyLogPhotoCollectionEligibility(),
-            not(sql<boolean>`EXISTS (
-              SELECT 1
-              FROM daily_log_photo_aliases AS alias
-              JOIN daily_log_photos AS canonical
-                ON canonical.id IS alias.canonical_photo_id
-              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-                AND alias.project_id IS ${dailyLogPhotos.projectId}
-                AND canonical.project_id IS ${dailyLogPhotos.projectId}
-                AND canonical.mime_type LIKE 'image/%'
-                AND canonical.drive_file_id IS NOT NULL
-                AND (
-                  canonical.drive_file_id IS NOT NULL
-                  OR canonical.thumbnail_url IS NOT NULL
-                )
-                AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
-                AND canonical.review_status IS 'approved'
-                AND canonical.owner_visible IS 1
-            )`),
-          ),
-        ),
-      ),
+        eq(dailyLogs.projectId, projectId),
+        internalViewer
+          ? undefined
+          : and(
+              inArray(dailyLogs.id, selectedDailyLogIds),
+              eq(dailyLogs.reviewStatus, "approved"),
+              eq(dailyLogs.isClientVisible, true),
+              update.periodStart === null
+                ? undefined
+                : gte(dailyLogs.logDate, update.periodStart),
+              update.periodEnd === null
+                ? undefined
+                : sql`${dailyLogs.logDate} <= ${update.periodEnd}`
+            )
+      )
     )
-    .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
+    .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
+
+  const attachmentSelection = {
+    id: dailyLogPhotos.id,
+    dailyLogId: dailyLogPhotos.dailyLogId,
+    sourceSystem: dailyLogPhotos.sourceSystem,
+    fileName: dailyLogPhotos.fileName,
+    driveFileId: dailyLogPhotos.driveFileId,
+    driveUrl: dailyLogPhotos.driveUrl,
+    thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+    mimeType: dailyLogPhotos.mimeType,
+    caption: dailyLogPhotos.caption,
+    capturedAt: dailyLogPhotos.capturedAt,
+    ownerVisible: dailyLogPhotos.ownerVisible,
+    reviewStatus: dailyLogPhotos.reviewStatus,
+  }
+  const internalAttachmentSelection = {
+    ...attachmentSelection,
+    resourceType: sql<"photo" | "owner_update_document" | null>`NULL`,
+  }
+  const externalAttachmentSelection = {
+    ...attachmentSelection,
+    resourceType: projectExternalResourceGrants.resourceType,
+  }
+  const allPhotoRows = internalViewer
+    ? await db
+        .select(internalAttachmentSelection)
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            or(
+              inArray(dailyLogPhotos.id, selectedPhotoIds),
+              // The owner-update picker shares this query with the photo picker.
+              // Keep non-image attachments available for document selection; the
+              // alias read model is only relevant to image collection rows.
+              sql<boolean>`
+                ${dailyLogPhotos.mimeType} IS NULL
+                OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+              `,
+              and(
+                dailyLogPhotoCollectionEligibility(),
+                not(sql<boolean>`EXISTS (
+                  SELECT 1
+                  FROM daily_log_photo_aliases AS alias
+                  JOIN daily_log_photos AS canonical
+                    ON canonical.id IS alias.canonical_photo_id
+                  WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                    AND alias.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.mime_type LIKE 'image/%'
+                    AND canonical.drive_file_id IS NOT NULL
+                    AND (
+                      canonical.drive_file_id IS NOT NULL
+                      OR canonical.thumbnail_url IS NOT NULL
+                    )
+                    AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
+                    AND canonical.review_status IS 'approved'
+                    AND canonical.owner_visible IS 1
+                )`),
+              ),
+            )
+          )
+        )
+        .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
+    : await db
+        .select(externalAttachmentSelection)
+        .from(dailyLogPhotos)
+        .innerJoin(
+          ownerProjectUpdates,
+          and(
+            eq(ownerProjectUpdates.id, updateId),
+            eq(ownerProjectUpdates.projectId, projectId)
+          )
+        )
+        .innerJoin(
+          projectExternalResourceGrants,
+          and(
+            eq(
+              projectExternalResourceGrants.organizationId,
+              viewer.organizationId ?? ""
+            ),
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.sourceOwnerUpdateId, updateId),
+            eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+            eq(projectExternalResourceGrants.audience, "owner"),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt),
+            or(
+              and(
+                eq(projectExternalResourceGrants.resourceType, "photo"),
+                sql<boolean>`${dailyLogPhotos.id} IN (
+                  SELECT value
+                  FROM json_each(
+                    CASE
+                      WHEN json_valid(${ownerProjectUpdates.selectedPhotoIds})
+                        AND json_type(${ownerProjectUpdates.selectedPhotoIds}) = 'array'
+                      THEN ${ownerProjectUpdates.selectedPhotoIds}
+                      ELSE '[]'
+                    END
+                  )
+                  WHERE type = 'text'
+                    AND length(trim(value)) > 0
+                )`
+              ),
+              and(
+                eq(
+                  projectExternalResourceGrants.resourceType,
+                  "owner_update_document"
+                ),
+                sql<boolean>`${dailyLogPhotos.id} IN (
+                  SELECT resource_id
+                  FROM owner_update_valid_snapshot_documents
+                  WHERE owner_update_id = ${ownerProjectUpdates.id}
+                )`
+              )
+            )
+          )
+        )
+        .innerJoin(
+          projects,
+          and(
+            eq(projects.id, dailyLogPhotos.projectId),
+            eq(projects.organizationId, projectExternalResourceGrants.organizationId)
+          )
+        )
+        .innerJoin(
+          organizations,
+          and(
+            eq(organizations.id, projects.organizationId),
+            eq(organizations.id, viewer.organizationId ?? ""),
+            eq(organizations.type, viewer.organizationType ?? ""),
+            eq(organizations.isActive, true)
+          )
+        )
+        .innerJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, viewer.id),
+            inArray(projectMembers.role, ["client", "owner"])
+          )
+        )
+        .innerJoin(users, and(eq(users.id, viewer.id), eq(users.isActive, true)))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            eq(dailyLogPhotos.ownerVisible, true)
+          )
+        )
+        .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
 
   const [photoFolder] = await db
     .select({
@@ -2555,35 +3202,49 @@ export async function getOwnerProjectUpdateDocument(
         .map(mapDailyLog)
     : []
 
-  const imageRows = allPhotoRows.filter(
-    (row) =>
-      row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+  const imageRows = allPhotoRows.filter((row) =>
+    internalViewer
+      ? row.mimeType?.startsWith("image/") === true ||
+        selectedPhotoIdSet.has(row.id)
+      : row.resourceType === "photo"
   )
-  const documentRows = allPhotoRows.filter(
-    (row) =>
-      row.thumbnailUrl === null && row.mimeType?.startsWith("image/") !== true
+  const documentRows = allPhotoRows.filter((row) =>
+    internalViewer
+      ? row.mimeType?.startsWith("image/") !== true ||
+        composerDocumentIdSet.has(row.id)
+      : row.resourceType === "owner_update_document"
   )
 
-  const selectedImageRows = selectRowsByIdOrder(imageRows, selectedPhotoIds)
+  const selectedPhotoIdsForViewer = internalViewer
+    ? selectedPhotoIds
+    : imageRows.map((row) => row.id)
+  const selectedImageRows = selectRowsByIdOrder(
+    imageRows,
+    selectedPhotoIdsForViewer
+  )
   const photosForUpdate = selectedImageRows
     .filter(
       (row) =>
         update.status !== "published" ||
         (row.reviewStatus === "approved" && row.ownerVisible)
     )
-    .map((row) => ({
-      id: row.id,
-      sourceSystem: row.sourceSystem,
-      fileName: row.fileName,
-      mimeType: row.mimeType,
-      driveUrl: row.driveUrl,
-      driveFileId: row.driveFileId,
-      thumbnailUrl: row.thumbnailUrl,
-      caption: row.caption,
-      capturedAt: row.capturedAt,
-      reviewStatus: row.reviewStatus,
-      ownerVisible: row.ownerVisible,
-    }))
+    .map((row) =>
+      internalViewer
+        ? {
+            id: row.id,
+            sourceSystem: row.sourceSystem,
+            fileName: row.fileName,
+            mimeType: row.mimeType,
+            driveUrl: row.driveUrl,
+            driveFileId: row.driveFileId,
+            thumbnailUrl: row.thumbnailUrl,
+            caption: row.caption,
+            capturedAt: row.capturedAt,
+            reviewStatus: row.reviewStatus,
+            ownerVisible: row.ownerVisible,
+          }
+        : ownerUpdateExternalPhoto(projectId, row)
+    )
 
   const selectablePhotoRows = retainSelectedAndScopedRows(
     imageRows,
@@ -2614,9 +3275,15 @@ export async function getOwnerProjectUpdateDocument(
         }))
     : []
 
-  const selectedDocumentIds = composerSnapshot.documents.map(
-    (document) => document.id
-  )
+  const selectedDocumentIds = internalViewer
+    ? composerDocumentIds
+    : documentRows.map((row) => row.id)
+  const selectedScheduleIds = [
+    ...new Set([
+      ...composerSnapshot.completedScheduleItems.map((item) => item.id),
+      ...composerSnapshot.lookAheadScheduleItems.map((item) => item.id),
+    ]),
+  ]
   const selectedDocumentIdSet = new Set(selectedDocumentIds)
   const scopedDocumentRows = documentRows.filter(
     (row) =>
@@ -2652,6 +3319,19 @@ export async function getOwnerProjectUpdateDocument(
           lookAheadScheduleItems: [],
           todos: [],
         }
+  const externalPublishedCandidates =
+    !internalViewer && (update.status === "published" || update.status === "sent")
+      ? await getOwnerUpdatePublishedScheduleItems(
+          db,
+          projectId,
+          selectedScheduleIds,
+          update.periodStart,
+          update.periodEnd
+        )
+      : {
+          completedScheduleItems: [],
+          lookAheadScheduleItems: [],
+        }
   function reconciledScheduleItems(
     selected: readonly OwnerUpdateScheduleSelection[],
     available: readonly OwnerUpdateScheduleSelection[]
@@ -2671,57 +3351,125 @@ export async function getOwnerProjectUpdateDocument(
         : { ...candidate, title: item.title, notes: item.notes }
     })
   }
-  const completedScheduleItems = reconciledScheduleItems(
-    composerSnapshot.completedScheduleItems,
-    currentCandidates.completedScheduleItems
+  const completedScheduleItems = internalViewer
+    ? reconciledScheduleItems(
+        composerSnapshot.completedScheduleItems,
+        currentCandidates.completedScheduleItems
+      )
+    : externalPublishedCandidates.completedScheduleItems
+  const lookAheadScheduleItems = internalViewer
+    ? reconciledScheduleItems(
+        composerSnapshot.lookAheadScheduleItems,
+        currentCandidates.lookAheadScheduleItems
+      )
+    : externalPublishedCandidates.lookAheadScheduleItems
+  const currentPublishedDocuments = selectCurrentOwnerVisibleDocuments(
+    selectedDocumentIds,
+    documentRows
   )
-  const lookAheadScheduleItems = reconciledScheduleItems(
-    composerSnapshot.lookAheadScheduleItems,
-    currentCandidates.lookAheadScheduleItems
+  const selectedDocumentIdsForViewer = internalViewer
+    ? selectedDocumentIds
+    : currentPublishedDocuments.map((document) => document.id)
+  const externalDailyLogs = dailyLogsForUpdate.map((log) =>
+    ownerUpdateExternalDailyLog(log)
   )
+  const externalCompletedScheduleItems = completedScheduleItems.map(
+    (item, index) => ownerUpdateExternalSchedule(item, index, true)
+  )
+  const externalLookAheadScheduleItems = lookAheadScheduleItems.map(
+    (item, index) => ownerUpdateExternalSchedule(item, index, false)
+  )
+  const externalProject = ownerUpdateExternalProject(project)
+  const externalUpdate = ownerUpdateExternalUpdate({
+    id: update.id,
+    title: update.title,
+    updateDate: update.updateDate,
+    status: update.status,
+    channel: update.channel,
+    summary: update.summary,
+    publishedAt: update.publishedAt,
+    sentAt: update.sentAt,
+    createdAt: "",
+    updatedAt: update.updatedAt,
+    recalledAt: update.recalledAt,
+    revision: update.revision,
+    periodStart: update.periodStart,
+    periodEnd: update.periodEnd,
+  })
+  const documentsForViewer: readonly OwnerUpdateDocumentView[] = internalViewer
+    ? composerSnapshot.documents.map((document) => ({
+        ...document,
+        compassUrl: null,
+      }))
+    : currentPublishedDocuments.map((document) =>
+        ownerUpdateExternalDocument(projectId, document)
+      )
 
   return {
-    canManage,
-    viewerId: viewer.id,
-    project,
-    update: {
-      id: update.id,
-      title: update.title,
-      updateDate: update.updateDate,
-      summary: update.summary,
-      status: update.status,
-      channel: update.channel,
-      publishedAt: update.publishedAt,
-      sentAt: update.sentAt,
-      recalledAt: update.recalledAt,
-      updatedAt: update.updatedAt,
-      sourceDailyLogIds: selectedDailyLogIds,
-      selectedPhotoIds,
-      selectedDocumentIds,
-      periodStart: update.periodStart,
-      periodEnd: update.periodEnd,
-    },
-    dailyLogs: dailyLogsForUpdate,
-    availableDailyLogs,
+    canManage: internalViewer && canManage,
+    viewerId: internalViewer ? viewer.id : "",
+    project: internalViewer ? project : externalProject,
+    update: internalViewer
+      ? {
+          id: update.id,
+          title: update.title,
+          updateDate: update.updateDate,
+          summary: update.summary,
+          status: update.status,
+          channel: update.channel,
+          publishedAt: update.publishedAt,
+          sentAt: update.sentAt,
+          recalledAt: update.recalledAt,
+          revision: update.revision,
+          updatedAt: update.updatedAt,
+          sourceDailyLogIds: selectedDailyLogIds,
+          selectedPhotoIds,
+          selectedDocumentIds: selectedDocumentIdsForViewer,
+          periodStart: update.periodStart,
+          periodEnd: update.periodEnd,
+        }
+      : {
+          id: externalUpdate.id,
+          title: externalUpdate.title,
+          updateDate: externalUpdate.updateDate,
+          summary: externalUpdate.summary,
+          status: externalUpdate.status,
+          channel: externalUpdate.channel,
+          publishedAt: externalUpdate.publishedAt,
+          sentAt: null,
+          recalledAt: null,
+          revision: 0,
+          updatedAt: "",
+          sourceDailyLogIds: [],
+          selectedPhotoIds: [],
+          selectedDocumentIds: [],
+          periodStart: externalUpdate.periodStart,
+          periodEnd: externalUpdate.periodEnd,
+        },
+    dailyLogs: internalViewer ? dailyLogsForUpdate : externalDailyLogs,
+    availableDailyLogs: internalViewer ? availableDailyLogs : [],
     photos: photosForUpdate,
-    availablePhotos,
-    documents: composerSnapshot.documents,
-    availableDocuments,
-    photoFolder:
-      photoFolder
-        ? {
-            label: photoFolder.label,
-          }
-        : null,
-    nextScheduleItem: lookAheadScheduleItems[0] ?? null,
-    completedScheduleItems,
-    lookAheadScheduleItems,
-    availableCompletedScheduleItems:
-      currentCandidates.completedScheduleItems,
-    availableLookAheadScheduleItems:
-      currentCandidates.lookAheadScheduleItems,
-    todos: composerSnapshot.todos,
-    availableTodos: currentCandidates.todos,
+    availablePhotos: internalViewer ? availablePhotos : [],
+    documents: documentsForViewer,
+    availableDocuments: internalViewer ? availableDocuments : [],
+    photoFolder: internalViewer && photoFolder ? { label: photoFolder.label } : null,
+    nextScheduleItem: internalViewer
+      ? lookAheadScheduleItems[0] ?? null
+      : externalLookAheadScheduleItems[0] ?? null,
+    completedScheduleItems: internalViewer
+      ? completedScheduleItems
+      : externalCompletedScheduleItems,
+    lookAheadScheduleItems: internalViewer
+      ? lookAheadScheduleItems
+      : externalLookAheadScheduleItems,
+    availableCompletedScheduleItems: internalViewer
+      ? currentCandidates.completedScheduleItems
+      : [],
+    availableLookAheadScheduleItems: internalViewer
+      ? currentCandidates.lookAheadScheduleItems
+      : [],
+    todos: internalViewer ? composerSnapshot.todos : [],
+    availableTodos: internalViewer ? currentCandidates.todos : [],
   }
 }
 
@@ -2729,16 +3477,10 @@ export async function updateOwnerProjectUpdateDraft(
   projectId: string,
   updateId: string,
   input: OwnerUpdateDraftEditInput
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+): Promise<OwnerUpdateMutationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const title = input.title.trim()
     const updateDate = input.updateDate.trim()
     const periodStart = input.periodStart.trim()
@@ -2771,6 +3513,8 @@ export async function updateOwnerProjectUpdateDraft(
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2912,12 +3656,16 @@ export async function updateOwnerProjectUpdateDraft(
       }
 
       const selectedPhotoIdSet = new Set(selectedPhotoIds)
+      const selectedDocumentIdSet = new Set(selectedDocumentIds)
       if (
         selectedAttachments.some((attachment) => {
-          const isImage =
-            attachment.thumbnailUrl !== null ||
-            attachment.mimeType?.startsWith("image/") === true
-          return selectedPhotoIdSet.has(attachment.id) !== isImage
+          return (
+            ownerUpdateAttachmentKind(
+              attachment.id,
+              selectedPhotoIdSet,
+              selectedDocumentIdSet
+            ) === null
+          )
         })
       ) {
         return {
@@ -2988,7 +3736,7 @@ export async function updateOwnerProjectUpdateDraft(
       documents: documentSelections,
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         title,
@@ -3000,9 +3748,31 @@ export async function updateOwnerProjectUpdateDraft(
         selectedPhotoIds: JSON.stringify(selectedPhotoIds),
         scheduleSnapshot:
           serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(ownerProjectUpdates.id, updateId))
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, input.expectedRevision),
+          eq(ownerProjectUpdates.updatedAt, input.expectedUpdatedAt)
+        )
+      )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were saving. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
@@ -3010,7 +3780,7 @@ export async function updateOwnerProjectUpdateDraft(
       `/dashboard/projects/${projectId}/owner-updates/${updateId}`
     )
 
-    return { success: true }
+    return { success: true, ...updated }
   } catch (error) {
     return {
       success: false,
@@ -3026,20 +3796,19 @@ export async function draftOwnerProjectUpdateWithJarvis(
   projectId: string,
   updateId: string
 ): Promise<
-  | { readonly success: true; readonly summary: string }
+  | ({ readonly success: true; readonly summary: string } & OwnerUpdateMutationVersion)
   | { readonly success: false; readonly error: string }
 > {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         title: ownerProjectUpdates.title,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
         periodStart: ownerProjectUpdates.periodStart,
         periodEnd: ownerProjectUpdates.periodEnd,
         sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
@@ -3108,10 +3877,13 @@ export async function draftOwnerProjectUpdateWithJarvis(
     const composerSnapshot = parseOwnerUpdateComposerSnapshot(
       update.scheduleSnapshot
     )
-    const selectedAttachmentIds = [
-      ...parseIdList(update.selectedPhotoIds),
-      ...composerSnapshot.documents.map((document) => document.id),
-    ]
+    const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
+    const selectedDocumentIds = composerSnapshot.documents.map(
+      (document) => document.id
+    )
+    const selectedPhotoIdSet = new Set(selectedPhotoIds)
+    const selectedDocumentIdSet = new Set(selectedDocumentIds)
+    const selectedAttachmentIds = [...selectedPhotoIds, ...selectedDocumentIds]
     const selectedAttachments = (
       await Promise.all(
         ownerUpdateIdBatches(selectedAttachmentIds).map((idBatch) =>
@@ -3142,10 +3914,12 @@ export async function draftOwnerProjectUpdateWithJarvis(
     const orderedAttachments = selectedAttachmentIds.flatMap((id) => {
       const attachment = selectedAttachmentById.get(id)
       if (attachment === undefined) return []
-      const isImage =
-        attachment.thumbnailUrl !== null ||
-        attachment.mimeType?.startsWith("image/") === true
-      const kind: "photo" | "document" = isImage ? "photo" : "document"
+      const kind = ownerUpdateAttachmentKind(
+        attachment.id,
+        selectedPhotoIdSet,
+        selectedDocumentIdSet
+      )
+      if (kind === null) return []
       return [
         {
           fileName: attachment.fileName,
@@ -3190,26 +3964,41 @@ export async function draftOwnerProjectUpdateWithJarvis(
       return { success: false, error: "Jarvis returned an empty draft." }
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         summary,
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "draft")
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, update.revision),
+          eq(ownerProjectUpdates.updatedAt, update.updatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    if (!updatedRows[0]) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while Jarvis was drafting. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
     revalidatePath(
       `/dashboard/projects/${projectId}/owner-updates/${updateId}`
     )
 
-    return { success: true, summary }
+    return { success: true, summary, ...updatedRows[0] }
   } catch (error) {
     return {
       success: false,
@@ -3223,23 +4012,22 @@ export async function draftOwnerProjectUpdateWithJarvis(
 
 export async function publishOwnerProjectUpdate(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "owner-updates", "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
+  const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+  const orgId = user.organizationId
+  if (!orgId) {
+    return { success: false, error: "Active organization is required" }
+  }
 
   const [update] = await db
     .select({
       id: ownerProjectUpdates.id,
       projectId: ownerProjectUpdates.projectId,
       status: ownerProjectUpdates.status,
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
       title: ownerProjectUpdates.title,
       updateDate: ownerProjectUpdates.updateDate,
       summary: ownerProjectUpdates.summary,
@@ -3265,7 +4053,11 @@ export async function publishOwnerProjectUpdate(
   }
 
   if (update.status === "published") {
-    return { success: true }
+    return {
+      success: true,
+      revision: update.revision,
+      updatedAt: update.updatedAt,
+    }
   }
 
   if (
@@ -3412,27 +4204,27 @@ export async function publishOwnerProjectUpdate(
           "Selected files must be tied to a source log or captured during the reporting period.",
       }
     }
-
-    for (const idBatch of ownerUpdateIdBatches(selectedAttachmentIds)) {
-      await db
-        .update(dailyLogPhotos)
-        .set({
-          reviewStatus: "approved",
-          ownerVisible: true,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(
-          and(
-            eq(dailyLogPhotos.projectId, projectId),
-            inArray(dailyLogPhotos.id, idBatch)
-          )
-        )
-    }
   }
 
   const now = new Date().toISOString()
 
-  await db
+  // Keep the final attachment ownership check inside the publish CAS while
+  // binding the selection as one JSON value instead of one value per ID.
+  // D1 rejects statements that exceed its bound-variable limit. The
+  // owner_update_publish_attachment_approval trigger applies the selected
+  // attachment approval from this same CAS statement, so a stale revision
+  // cannot leave attachments approved.
+  const selectedAttachmentsBelongToProject = sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM json_each(${JSON.stringify(selectedAttachmentIds)}) AS selected_attachment
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM daily_log_photos AS publish_photo
+      WHERE publish_photo.project_id = ${projectId}
+        AND publish_photo.id = selected_attachment.value
+    )
+  )`
+  const updatedRows = await db
     .update(ownerProjectUpdates)
     .set({
       status: "published",
@@ -3442,10 +4234,31 @@ export async function publishOwnerProjectUpdate(
       selectedPhotoIds: JSON.stringify(selectedPhotoIds),
       scheduleSnapshot:
         serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+      revision: sql`${ownerProjectUpdates.revision} + 1`,
       publishedAt: now,
       updatedAt: now,
     })
-    .where(eq(ownerProjectUpdates.id, updateId))
+    .where(and(
+      eq(ownerProjectUpdates.id, updateId),
+      eq(ownerProjectUpdates.projectId, projectId),
+      eq(ownerProjectUpdates.status, "draft"),
+      eq(ownerProjectUpdates.revision, version.revision),
+      eq(ownerProjectUpdates.updatedAt, version.updatedAt),
+      selectedAttachmentsBelongToProject
+    ))
+    .returning({
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
+    })
+  const updated = updatedRows[0]
+  if (!updated) {
+    return {
+      success: false,
+      error:
+        "This owner update changed while you were publishing. Refresh and review the latest version.",
+    }
+  }
+
   await announceOwnerUpdatePublished({
     db,
     organizationId: orgId,
@@ -3460,29 +4273,28 @@ export async function publishOwnerProjectUpdate(
     `/dashboard/projects/${projectId}/owner-updates/${updateId}`
   )
 
-  return { success: true }
+  return { success: true, ...updated }
 }
 
 export async function recallOwnerProjectUpdate(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const orgId = user.organizationId
+    if (!orgId) {
+      return { success: false, error: "Active organization is required" }
     }
-    await requireFeaturePermission(user, "owner-updates", "update")
-    const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const [update] = await db
-      .select({ status: ownerProjectUpdates.status })
+      .select({
+        status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
       .from(ownerProjectUpdates)
       .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
       .where(
@@ -3497,8 +4309,22 @@ export async function recallOwnerProjectUpdate(
     if (!update) {
       return { success: false, error: "Owner update not found." }
     }
+    if (
+      update.revision !== version.revision ||
+      update.updatedAt !== version.updatedAt
+    ) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were recalling. Refresh and review the latest version.",
+      }
+    }
     if (update.status === "draft") {
-      return { success: true }
+      return {
+        success: true,
+        revision: update.revision,
+        updatedAt: update.updatedAt,
+      }
     }
     if (update.status !== "published") {
       return {
@@ -3508,22 +4334,39 @@ export async function recallOwnerProjectUpdate(
     }
 
     const now = new Date().toISOString()
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         status: "draft",
         publishedAt: null,
         recalledAt: now,
         recalledBy: user.id,
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: now,
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "published")
+          eq(ownerProjectUpdates.status, "published"),
+          eq(ownerProjectUpdates.revision, version.revision),
+          eq(ownerProjectUpdates.updatedAt, version.updatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were recalling. Refresh and review the latest version.",
+      }
+    }
+
     await recordActivityEvent({
       db,
       organizationId: orgId,
@@ -3543,7 +4386,7 @@ export async function recallOwnerProjectUpdate(
     )
     revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
 
-    return { success: true }
+    return { success: true, ...updated }
   } catch (error) {
     return {
       success: false,
