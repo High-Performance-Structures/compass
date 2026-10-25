@@ -84,6 +84,7 @@ export function PortfolioSection({
   salesPipelines = [],
   internal = [],
   rules = DEFAULT_PORTFOLIO_MAP_RULES,
+  canOpenFiles = false,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
@@ -92,6 +93,8 @@ export function PortfolioSection({
   readonly salesPipelines?: readonly SalesPipeline[]
   readonly internal?: readonly PortfolioInternalJob[]
   readonly rules?: PortfolioMapRules
+  /** Shows a Files link to each job's Plans & Documents; staff only. */
+  readonly canOpenFiles?: boolean
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
   const { jobs, statusMove } = usePortfolioStatusMoves(serverJobs, rules)
@@ -347,6 +350,7 @@ export function PortfolioSection({
               selectedPhase={highlight.selectedPhase}
               onSelectJob={selectJob}
               onSelectPhase={selectPhase}
+              canOpenFiles={canOpenFiles}
             />
           )}
         </div>
@@ -354,7 +358,7 @@ export function PortfolioSection({
           {internalActive ? (
             <InternalMapPanel jobs={internal} selectedId={internalSelected} onSelect={setInternalSelected} />
           ) : activeSales ? (
-            <SalesJobPanel state={sales} title={activeSales.title} />
+            <SalesJobPanel state={sales} title={activeSales.title} canOpenFiles={canOpenFiles} />
           ) : (
             <PortfolioPanel
               jobs={jobs}
@@ -367,6 +371,7 @@ export function PortfolioSection({
               onClear={clear}
               jobMessages={jobMessages}
               statusMove={statusMove}
+              canOpenFiles={canOpenFiles}
             />
           )}
         </aside>

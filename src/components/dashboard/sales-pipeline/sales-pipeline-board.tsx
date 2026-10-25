@@ -175,7 +175,16 @@ export function SalesPipelineColumns({ state }: { readonly state: SalesPipelineS
  * the stage list, a stage's jobs, or the selected job with its links,
  * delivery or pickup, and one-click status moves.
  */
-export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineState; readonly title: string }): React.ReactElement {
+export function SalesJobPanel({
+  state,
+  title,
+  canOpenFiles = false,
+}: {
+  readonly state: SalesPipelineState
+  readonly title: string
+  /** Shows a Files link to the job's Plans & Documents; staff only. */
+  readonly canOpenFiles?: boolean
+}): React.ReactElement {
   const { jobs, selected, select, stage, selectStage, saving, error, moveTo, setDelivery } = state
 
   if (selected) {
@@ -214,7 +223,7 @@ export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineS
             </>
           ) : null}
         </dl>
-        <JobLinks jobId={selected.id} links={[["Information", "information"]]} />
+        <JobLinks jobId={selected.id} links={[["Information", "information"]]} files={canOpenFiles} />
         <fieldset className="flex flex-col gap-2" disabled={saving}>
           <legend className="mb-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">DELIVERY</legend>
           <div role="group" aria-label="Delivery method" className="flex flex-wrap border border-border">

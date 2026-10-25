@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -106,6 +106,8 @@ Stop before saving. Switch to the correct job and confirm its number and client.
 ## Use the Portfolio Map and Pipelines {#portfolio-map}
 
 On **Dashboard**, the portfolio window brings together the project map and pipelines, including **Nu-Tech Sales**. Select a job to open its detail panel, then use **Open job** or the available shortcuts. The construction pipeline runs through **Intake**, **Design**, **Estimating**, **Negotiation**, **Permitting**, **Under construction**, and **Closeout**. The map is a summary of included jobs; use **All Projects** to find work outside that view.
+
+Staff who can open project files also see **Files** in the job panel and a folder icon on each pipeline row. It opens the job's **Plans & Documents** page, where its Google Drive folder, plans and specifications are.
 
 Authorized staff can use **MOVE TO** in a job panel to choose a status within the available phase or sales stage. This saves a real job-status change. To close a job as complete, inactive, or bid refused, use its job page. Any single job can be added with **Add a project to the map** or removed with **Hide from map**; jobs you hid are listed below the map with **Show on map**. Map visibility does not grant project access.
 

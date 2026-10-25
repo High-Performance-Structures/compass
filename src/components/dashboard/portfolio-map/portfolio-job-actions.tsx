@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { X } from "lucide-react"
+import { FolderOpen, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import { cn } from "@/lib/utils"
@@ -75,14 +75,22 @@ export function StatusMovePicker({
   )
 }
 
+/** A job's Plans & Documents page, where its Drive folder, plans and specs are. */
+export function projectFilesHref(jobId: string): string {
+  return `/dashboard/projects/${encodeURIComponent(jobId)}/documents`
+}
+
 /** Links into the job, the same row of buttons in every map panel. */
 export function JobLinks({
   jobId,
   links,
+  files = false,
 }: {
   readonly jobId: string
   /** Secondary pages after "Open job", as [label, path under the job]. */
   readonly links: readonly (readonly [string, string])[]
+  /** Adds a Files button to the job's Plans & Documents; staff only. */
+  readonly files?: boolean
 }): React.ReactElement {
   const base = `/dashboard/projects/${encodeURIComponent(jobId)}`
   return (
@@ -95,6 +103,14 @@ export function JobLinks({
           <Link href={`${base}/${path}`}>{label}</Link>
         </Button>
       ))}
+      {files ? (
+        <Button asChild variant="outline" className="flex-[1_1_6rem]">
+          <Link href={projectFilesHref(jobId)}>
+            <FolderOpen aria-hidden="true" />
+            Files
+          </Link>
+        </Button>
+      ) : null}
     </div>
   )
 }
