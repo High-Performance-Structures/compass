@@ -20,7 +20,7 @@ import {
   type Action,
   type PermissionAccessLevel,
 } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 
 export class FeaturePermissionDeniedError extends Error {
   readonly featureId: string
@@ -86,7 +86,7 @@ export async function getEffectivePermissionAccessLevel(
   // may edit only their explicitly linked person through the self-service
   // Sage proposal path, never browse the full internal directory.
   if (feature.staffAssignable && (
-    user.organizationType !== "internal" || !isInternalStaffRole(user.role)
+    !isStaffOrganizationType(user.organizationType) || !isInternalStaffRole(user.role)
   )) return "none"
 
   if (feature.individualOnly) {

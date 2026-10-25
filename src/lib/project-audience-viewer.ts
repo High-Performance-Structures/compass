@@ -12,7 +12,7 @@ import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audie
 import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 export { getProjectAudienceRequestScope, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { canFeature } from "@/lib/permission-enforcement"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 
 export type ProjectAudiencePreviewPerson = {
@@ -57,7 +57,7 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
     .from(organizationMembers).innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
     .where(and(eq(organizationMembers.userId, actor.id), eq(organizationMembers.organizationId, organizationId))).get()
   if (!membership || !membership.organization.isActive) throw new Error("Project not found.")
-  const isPreview = membership.organization.type === "internal" && isInternalStaffRole(membership.role)
+  const isPreview = isStaffOrganizationType(membership.organization.type) && isInternalStaffRole(membership.role)
   if (!isPreview) {
     if (target !== null) throw new Error("Preview is unavailable.")
     const projectMembership = await db.select({ role: projectMembers.role }).from(projectMembers)

@@ -202,6 +202,29 @@ const upsert = db.transaction(() => {
     ON CONFLICT(id) DO UPDATE SET role = excluded.role
   `).run(now)
 
+  // One assigned owner and one assigned vendor, so staff can preview each
+  // person's workspace.
+  for (const person of [
+    { id: "e2e-owner-001", email: "owner@compass.build", name: "Olive Owner", role: "client", projectRole: "owner" },
+    { id: "e2e-vendor-001", email: "vendor@compass.build", name: "Vance Vendor", role: "subcontractor", projectRole: "subcontractor" },
+  ]) {
+    db.prepare(`
+      INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET role = excluded.role, is_active = 1, updated_at = excluded.updated_at
+    `).run(person.id, person.email, person.name, person.role, now, now)
+    db.prepare(`
+      INSERT INTO organization_members (id, organization_id, user_id, role, joined_at)
+      VALUES (?, 'demo-org-meridian', ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET role = excluded.role
+    `).run(`${person.id}-membership`, person.id, person.role, now)
+    db.prepare(`
+      INSERT INTO project_members (id, project_id, user_id, role, assigned_at)
+      VALUES (?, 'e2e-project-001', ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET role = excluded.role
+    `).run(`${person.id}-project`, person.id, person.projectRole, now)
+  }
+
   db.prepare(`
     DELETE FROM user_schedule_preferences
     WHERE user_id = 'demo-user-001'
