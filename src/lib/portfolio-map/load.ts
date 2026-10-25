@@ -5,6 +5,7 @@ import { applyTravelOverride, type EffectiveTravelCharge } from "@/lib/portfolio
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { canOpenProjectFiles } from "@/lib/project-files-access"
 import { getCloudflareContext } from "@/lib/db"
 import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
@@ -87,6 +88,8 @@ export type PortfolioMapData = {
   readonly internal: readonly PortfolioInternalJob[]
   /** The company's status and department rules, for status moves on the map. */
   readonly rules: PortfolioMapRules
+  /** Staff who can open project Plans & Documents get a Files link per job. */
+  readonly canOpenFiles: boolean
 }
 
 const EMPTY: PortfolioMapData = {
@@ -96,6 +99,7 @@ const EMPTY: PortfolioMapData = {
   hidden: [],
   internal: [],
   rules: DEFAULT_PORTFOLIO_MAP_RULES,
+  canOpenFiles: false,
 }
 
 /**
@@ -330,6 +334,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       hidden,
       internal,
       rules,
+      canOpenFiles: canOpenProjectFiles(user),
     }
   } catch (error) {
     console.error("Portfolio map data failed", error)

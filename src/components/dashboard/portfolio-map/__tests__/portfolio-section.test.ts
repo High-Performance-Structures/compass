@@ -77,6 +77,20 @@ describe("PortfolioSection", () => {
     expect(localStorage.getItem("compass:portfolio-view:v1")).toBe("pipeline")
   })
 
+  it("links staff to each job's files from the pipeline and the job panel", async () => {
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, canOpenFiles: true })))
+    expect(container.querySelector('a[href="/dashboard/projects/p1/documents"][aria-label="Files for Granby Residence"]')).not.toBeNull()
+    await click("Granby Residence")
+    const filesLink = [...container.querySelectorAll('a[href="/dashboard/projects/p1/documents"]')].find((link) => link.textContent?.includes("Files"))
+    expect(filesLink).toBeDefined()
+  })
+
+  it("hides the Files links unless the person can open project files", async () => {
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    await click("Granby Residence")
+    expect(container.querySelector('a[href$="/documents"]')).toBeNull()
+  })
+
   const clickMove = async (status: string): Promise<void> => {
     const button = [...container.querySelectorAll("fieldset button")].find((item) => item.textContent === status)
     if (!(button instanceof HTMLButtonElement)) throw new Error(`Move button not found: ${status}`)
