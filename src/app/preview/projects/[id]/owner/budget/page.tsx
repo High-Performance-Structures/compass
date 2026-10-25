@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectBrandFor } from "@/lib/project-branding"
-import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
+import { budgetPaymentBreakdown, budgetReconciliation } from "@/lib/project-budget-snapshot"
 import { PageHeader } from "@/components/page-header"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -77,10 +77,6 @@ function applicationDownloadHref(
   return download ? `${href}?download=1` : href
 }
 
-function centsDifference(left: number, right: number): number {
-  return Math.round((left - right) * 100) / 100
-}
-
 export default async function OwnerBudgetPage({
   params,
 }: {
@@ -105,28 +101,8 @@ export default async function OwnerBudgetPage({
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
   })
-  const contractDifference = budget.currentApplication
-    ? centsDifference(
-        budget.totals.adjustedEstimate,
-        budget.currentApplication.contractSumToDate
-      )
-    : 0
-  const priorDifference = budget.currentApplication
-    ? centsDifference(
-        budget.totals.priorCosts,
-        budget.currentApplication.previousCertificates
-      )
-    : 0
-  const currentDifference = budget.currentApplication
-    ? centsDifference(
-        budget.totals.currentCosts,
-        budget.currentApplication.currentPaymentDue
-      )
-    : 0
-  const reconciliationRequired =
-    Math.abs(contractDifference) >= 0.02 ||
-    Math.abs(priorDifference) >= 0.02 ||
-    Math.abs(currentDifference) >= 0.02
+  const reconciliation = budgetReconciliation(budget.currentApplication, budget.totals)
+  const { contractDifference, priorDifference, currentDifference, reconciliationRequired } = reconciliation
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience: preview.audience,
@@ -221,7 +197,7 @@ export default async function OwnerBudgetPage({
                           <p className="font-medium">
                             Pay application {application.applicationNumber}
                           </p>
-                          {index === 0 && <Badge>Current</Badge>}
+                          {index === 0 && <Badge>{application.status === "paid_in_full" ? "Final" : "Current"}</Badge>}
                           <Badge variant="outline">
                             {statusLabel(application.status)}
                           </Badge>
@@ -229,11 +205,11 @@ export default async function OwnerBudgetPage({
                         <p className="mt-1 text-xs text-muted-foreground">
                           Through {formatDate(application.periodTo)}
                           {" · "}
-                          {money(payment.applicationTotal)} application total
-                          {" · "}
-                          {payment.depositApplied > 0
-                            ? `${money(payment.currentPaymentDue)} due after ${money(payment.depositApplied)} deposit`
-                            : `${money(payment.currentPaymentDue)} current payment`}
+                          {application.status === "paid_in_full"
+                            ? `${money(application.previousCertificates)} paid to date · ${money(application.currentPaymentDue)} balance`
+                            : <>{money(payment.applicationTotal)} application total{" · "}{payment.depositApplied > 0
+                              ? `${money(payment.currentPaymentDue)} due after ${money(payment.depositApplied)} deposit`
+                              : `${money(payment.currentPaymentDue)} current payment`}</>}
                           {" · "}
                           {money(application.contractSumToDate)} contract to date
                         </p>
@@ -285,6 +261,13 @@ export default async function OwnerBudgetPage({
                 })}
               </div>
             </section>
+          )}
+
+          {reconciliation.kind === "paid_closeout" && (
+            <p className="mt-5 border-l-4 border-l-primary px-4 py-3 text-sm">
+              Paid in full. Final account accepted by payment and project closeout.
+              {" "}The G703 retains the original application period; its current costs are historical work, not an unpaid balance.
+            </p>
           )}
 
           {reconciliationRequired && (
