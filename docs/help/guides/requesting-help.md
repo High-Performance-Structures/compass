@@ -7,12 +7,12 @@
   "summary": "Email or call Compass Help with a clear problem report while protecting project, account, and financial data.",
   "contextSummary": "Stop risky retries, preserve the exact error and context, then contact compasshelp@hps-colorado.com or 719-896-6149 without sharing credentials.",
   "category": "Support",
-  "tags": ["help", "feedback", "bug report", "permissions", "authentication", "support"],
+  "tags": ["help", "feedback", "bug report", "my requests", "feedback desk", "request status", "permissions", "authentication", "support"],
   "audiences": ["staff", "owner", "subcontractor", "supplier", "guest"],
   "permissions": ["help:read"],
-  "routes": ["/dashboard/settings"],
+  "routes": ["/dashboard/settings", "/dashboard/requests"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -43,6 +43,22 @@ Include the project, page, record, approximate time and timezone, device/browser
 When emailing Compass Help, use a subject that identifies the project and issue, such as **Project name — unable to open an RFI**. Screenshots are useful when they do not expose another project's information. Do not send passwords, sign-in links, authentication codes, or other secrets.
 
 For access requests, include the feature and whether you need to view, create, edit, approve, delete, or administer it. Never borrow another person's account.
+
+## Track Your Requests {#track-requests}
+
+Staff can send feedback with **Feedback** in the right-click menu, or by asking **Ask Jarvis** to file it with the Compass Feedback Desk. Every request is listed in **Conversations & Requests → My Requests**. Open a request to see its current status and a **Progress** timeline of every update. Updates also appear under the notification bell.
+
+| Status | What it means |
+|---|---|
+| **New** | Received, not reviewed yet. |
+| **Triaged** | Reviewed and recorded. For a feature idea, it's waiting for a leadership priority decision. |
+| **Information needed** | We need an answer from you before work can continue. |
+| **Planned** / **In progress** | Accepted and scheduled, or being worked on now. |
+| **Ready for testing** | The fix or feature is ready to try. |
+| **Deployed** | The change is live in Compass. |
+| **Closed** | Finished, answered, or not going ahead. The last update explains which. |
+
+When a guide covers the answer or the new feature, the update links to it. Select the link to open that section of Compass Help.
 
 ## Authentication and Sync {#authentication-sync}
 
