@@ -1287,17 +1287,10 @@ export function DashboardLaunchpad({
       />
 
       {mode === "office" ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+        // Today's plan leads the wide column; office priorities sit in a
+        // narrow column beside it. Both stay below the map and pipeline.
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
           <div className="flex min-w-0 flex-col gap-6">
-            <OfficeTaskList
-              overview={overview}
-              officeCalendarEvents={officeCalendarEvents}
-              officeProjectId={officeProjectId}
-            />
-            <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
-          </div>
-          <div className="flex min-w-0 flex-col gap-6">
-            {/* Below the map and pipeline so they keep their place. */}
             {todaysPlan ? (
               <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
             ) : null}
@@ -1307,11 +1300,19 @@ export function DashboardLaunchpad({
               officeCalendarEvents={officeCalendarEvents}
               officeProjectId={officeProjectId}
             />
+          </div>
+          <div className="flex min-w-0 flex-col gap-6">
+            <OfficeTaskList
+              overview={overview}
+              officeCalendarEvents={officeCalendarEvents}
+              officeProjectId={officeProjectId}
+            />
             <OfficePresence
               initialAvailability={initialTeamAvailability}
               user={user}
               status={deskStatus}
             />
+            <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
           </div>
         </div>
       ) : (
