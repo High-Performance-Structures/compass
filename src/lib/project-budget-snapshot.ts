@@ -159,6 +159,26 @@ export function budgetReconciliation(
   }
 }
 
+export function budgetReconciliationSummary(
+  application: BudgetApplicationView | null,
+  lines: readonly Pick<BudgetLineView,
+    "adjustedEstimate" | "priorCosts" | "currentCosts" | "totalCosts" | "balanceToFinish"
+  >[]
+): {
+  readonly kind: "periodic" | "paid_closeout"
+  readonly reconciliationRequired: boolean
+} {
+  const totals = lines.reduce((sum, line) => ({
+    adjustedEstimate: sum.adjustedEstimate + line.adjustedEstimate,
+    priorCosts: sum.priorCosts + line.priorCosts,
+    currentCosts: sum.currentCosts + line.currentCosts,
+    totalCosts: sum.totalCosts + line.totalCosts,
+    balanceToFinish: sum.balanceToFinish + line.balanceToFinish,
+  }), { adjustedEstimate: 0, priorCosts: 0, currentCosts: 0, totalCosts: 0, balanceToFinish: 0 })
+  const { kind, reconciliationRequired } = budgetReconciliation(application, totals)
+  return { kind, reconciliationRequired }
+}
+
 export function budgetPaymentBreakdown(
   application: BudgetPaymentSource
 ): BudgetPaymentBreakdown {

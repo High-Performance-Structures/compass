@@ -28,6 +28,7 @@ import {
 } from "@/lib/project-budget-audience"
 import {
   budgetApplicationStatus,
+  budgetReconciliationSummary,
   sanitizeBudgetApplicationForOwner,
   sanitizeBudgetLineForOwner,
   scopeBudgetLinesToApplication,
@@ -125,6 +126,7 @@ export type ProjectBudgetSummary = {
   readonly detailMode: ProjectBudgetDetailMode
   readonly applications: readonly ProjectBudgetApplicationItem[]
   readonly currentApplication: ProjectBudgetApplicationItem | null
+  readonly reconciliation: ReturnType<typeof budgetReconciliationSummary>
   readonly totals: ProjectBudgetTotals
   readonly divisions: readonly ProjectBudgetDivision[]
   readonly allLines: readonly ProjectBudgetLineItem[]
@@ -750,6 +752,9 @@ export async function getProjectBudgetSummary(
     detailMode,
     applications,
     currentApplication,
+    // Percentage-only display rows omit amounts; reconcile the authorized
+    // source lines and return only the decision, never their monetary totals.
+    reconciliation: budgetReconciliationSummary(currentApplication, sourceLines),
     totals: {
       originalEstimate,
       totalChanges,
