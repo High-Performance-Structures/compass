@@ -689,6 +689,84 @@ function seedExternalOwnerSummary(sqlite: Sqlite): void {
   )
 }
 
+function seedExternalOwnerAttachmentDetailFixtures(sqlite: Sqlite): void {
+  run(
+    sqlite,
+    `UPDATE owner_project_updates
+       SET selected_photo_ids = ?, schedule_snapshot = ?
+     WHERE id = ?`,
+    '["client-photo-pdf"]',
+    '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"client-document-image","fileName":"plan.jpg","mimeType":"image/jpeg","driveFileId":"drive-document-image","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"}]}',
+    "client-published"
+  )
+  for (const attachment of [
+    [
+      "client-photo-pdf",
+      "photo.pdf",
+      "application/pdf",
+      "drive-photo-pdf",
+      "Photo selected by provenance",
+    ],
+    [
+      "client-document-image",
+      "plan.jpg",
+      "image/jpeg",
+      "drive-document-image",
+      "Document selected by provenance",
+    ],
+  ] as const) {
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, daily_log_id, captured_at, source_system, file_name,
+          mime_type, drive_file_id, drive_url, thumbnail_url, caption,
+          review_status, owner_visible, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      attachment[0],
+      "project-client",
+      "client-visible-log",
+      "2026-07-28T12:00:00.000Z",
+      "compass",
+      attachment[1],
+      attachment[2],
+      attachment[3],
+      `https://drive.google.com/${attachment[0]}`,
+      `https://drive.google.com/thumb/${attachment[0]}`,
+      attachment[4],
+      "approved",
+      1,
+      "2026-07-28T12:00:00.000Z",
+      "2026-07-28T12:00:00.000Z"
+    )
+  }
+  for (const grant of [
+    ["grant-client-photo-pdf", "photo", "client-photo-pdf"],
+    [
+      "grant-client-document-image",
+      "owner_update_document",
+      "client-document-image",
+    ],
+  ] as const) {
+    run(
+      sqlite,
+      `INSERT INTO project_external_resource_grants
+         (id, organization_id, project_id, resource_type, resource_id,
+          source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      grant[0],
+      "org-client",
+      "project-client",
+      grant[1],
+      grant[2],
+      "client-published",
+      "owner",
+      "owner-1",
+      "staff-1",
+      "2026-07-28T12:00:00.000Z"
+    )
+  }
+}
+
 function seedLargeAttachmentSelection(sqlite: Sqlite): {
   readonly photoIds: readonly string[]
   readonly documentIds: readonly string[]
@@ -784,6 +862,28 @@ describe("owner update mutation authorization and fencing", () => {
     const updates = await getProjectOwnerUpdates("project-client")
 
     expect(updates.map((update) => update.id)).toEqual(["client-published"])
+  })
+
+  it("uses grant provenance rather than mutable MIME for external attachment detail", async () => {
+    seedExternalOwnerSummary(sqlite)
+    seedExternalOwnerAttachmentDetailFixtures(sqlite)
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const detail = await getOwnerProjectUpdateDocument(
+      "project-client",
+      "client-published"
+    )
+
+    expect(detail.photos.map((photo) => photo.id)).toContain("client-photo-pdf")
+    expect(detail.documents.map((document) => document.id)).toContain(
+      "client-document-image"
+    )
   })
 
   it("does not let a foreign organization membership authorize owner updates", async () => {

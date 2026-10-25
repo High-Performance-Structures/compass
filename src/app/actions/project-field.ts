@@ -2919,6 +2919,11 @@ export async function getOwnerProjectUpdateDocument(
   const composerSnapshot = parseOwnerUpdateComposerSnapshot(
     update.scheduleSnapshot
   )
+  const composerDocumentIds = composerSnapshot.documents.map(
+    (document) => document.id
+  )
+  const selectedPhotoIdSet = new Set(selectedPhotoIds)
+  const composerDocumentIdSet = new Set(composerDocumentIds)
   const canManage = can(viewer, "project", "update")
 
   const allLogRows = await db
@@ -2977,9 +2982,17 @@ export async function getOwnerProjectUpdateDocument(
     ownerVisible: dailyLogPhotos.ownerVisible,
     reviewStatus: dailyLogPhotos.reviewStatus,
   }
+  const internalAttachmentSelection = {
+    ...attachmentSelection,
+    resourceType: sql<"photo" | "owner_update_document" | null>`NULL`,
+  }
+  const externalAttachmentSelection = {
+    ...attachmentSelection,
+    resourceType: projectExternalResourceGrants.resourceType,
+  }
   const allPhotoRows = internalViewer
     ? await db
-        .select(attachmentSelection)
+        .select(internalAttachmentSelection)
         .from(dailyLogPhotos)
         .where(
           and(
@@ -3019,7 +3032,7 @@ export async function getOwnerProjectUpdateDocument(
         )
         .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
     : await db
-        .select(attachmentSelection)
+        .select(externalAttachmentSelection)
         .from(dailyLogPhotos)
         .innerJoin(
           ownerProjectUpdates,
@@ -3049,15 +3062,13 @@ export async function getOwnerProjectUpdateDocument(
                   FROM json_each(
                     CASE
                       WHEN json_valid(${ownerProjectUpdates.selectedPhotoIds})
-                      THEN CASE
-                        WHEN json_type(${ownerProjectUpdates.selectedPhotoIds}) = 'array'
-                        THEN ${ownerProjectUpdates.selectedPhotoIds}
-                        ELSE '[]'
-                      END
+                        AND json_type(${ownerProjectUpdates.selectedPhotoIds}) = 'array'
+                      THEN ${ownerProjectUpdates.selectedPhotoIds}
                       ELSE '[]'
                     END
                   )
                   WHERE type = 'text'
+                    AND length(trim(value)) > 0
                 )`
               ),
               and(
@@ -3066,22 +3077,32 @@ export async function getOwnerProjectUpdateDocument(
                   "owner_update_document"
                 ),
                 sql<boolean>`${dailyLogPhotos.id} IN (
-                  SELECT json_extract(json, fullkey || '.id')
+                  SELECT json_extract(value, '$.id')
                   FROM json_each(
                     CASE
                       WHEN json_valid(${ownerProjectUpdates.scheduleSnapshot})
-                      THEN CASE
-                        WHEN json_type(${ownerProjectUpdates.scheduleSnapshot}) = 'object'
-                          AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.documents') = 'array'
-                        THEN ${ownerProjectUpdates.scheduleSnapshot}
-                        ELSE '{"documents":[]}'
-                      END
-                      ELSE '{"documents":[]}'
+                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}) = 'object'
+                        AND json_extract(${ownerProjectUpdates.scheduleSnapshot}, '$.version') = 2
+                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.completedScheduleItems') = 'array'
+                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.lookAheadScheduleItems') = 'array'
+                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.todos') = 'array'
+                        AND json_type(${ownerProjectUpdates.scheduleSnapshot}, '$.documents') = 'array'
+                      THEN ${ownerProjectUpdates.scheduleSnapshot}
+                      ELSE '{"version":2,"documents":[]}'
                     END,
                     '$.documents'
                   )
                   WHERE type = 'object'
-                    AND json_type(json, fullkey || '.id') = 'text'
+                    AND json_type(value, '$.id') = 'text'
+                    AND length(trim(json_extract(value, '$.id'))) > 0
+                    AND json_type(value, '$.fileName') = 'text'
+                    AND length(trim(json_extract(value, '$.fileName'))) > 0
+                    AND json_type(value, '$.mimeType') IN ('text', 'null')
+                    AND json_type(value, '$.driveFileId') IN ('text', 'null')
+                    AND json_type(value, '$.driveUrl') IN ('text', 'null')
+                    AND json_type(value, '$.caption') IN ('text', 'null')
+                    AND json_type(value, '$.capturedAt') IN ('text', 'null')
+                    AND json_type(value, '$.sourceSystem') = 'text'
                 )`
               )
             )
@@ -3204,11 +3225,17 @@ export async function getOwnerProjectUpdateDocument(
         .map(mapDailyLog)
     : []
 
-  const imageRows = allPhotoRows.filter(
-    (row) => row.mimeType?.startsWith("image/") === true
+  const imageRows = allPhotoRows.filter((row) =>
+    internalViewer
+      ? row.mimeType?.startsWith("image/") === true ||
+        selectedPhotoIdSet.has(row.id)
+      : row.resourceType === "photo"
   )
-  const documentRows = allPhotoRows.filter(
-    (row) => row.mimeType?.startsWith("image/") !== true
+  const documentRows = allPhotoRows.filter((row) =>
+    internalViewer
+      ? row.mimeType?.startsWith("image/") !== true ||
+        composerDocumentIdSet.has(row.id)
+      : row.resourceType === "owner_update_document"
   )
 
   const selectedPhotoIdsForViewer = internalViewer
@@ -3272,7 +3299,7 @@ export async function getOwnerProjectUpdateDocument(
     : []
 
   const selectedDocumentIds = internalViewer
-    ? composerSnapshot.documents.map((document) => document.id)
+    ? composerDocumentIds
     : documentRows.map((row) => row.id)
   const selectedScheduleIds = [
     ...new Set([

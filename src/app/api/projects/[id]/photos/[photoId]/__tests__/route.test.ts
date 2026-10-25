@@ -82,6 +82,12 @@ const document = {
   mimeType: "application/pdf",
 } as const
 
+const documentWithImageMime = {
+  driveFileId: "drive-document-1",
+  fileName: "plans.pdf",
+  mimeType: "image/jpeg",
+} as const
+
 function query(result: unknown) {
   const chain = {
     from() {
@@ -108,7 +114,11 @@ function configureDb({
 }: {
   readonly viewerRole: string
   readonly membershipRole: string | null
-  readonly visiblePhoto: typeof photo | typeof document | null
+  readonly visiblePhoto: {
+    readonly driveFileId: string
+    readonly fileName: string
+    readonly mimeType: string
+  } | null
   readonly projectAccessError?: Error
 }): void {
   mocks.requireAuth.mockResolvedValue({
@@ -243,6 +253,26 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
       "drive@example.com",
       "drive-document-1"
     )
+  })
+
+  it("keeps a document grant authoritative when stored MIME disagrees", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: documentWithImageMime,
+    })
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(200)
+    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceId: "photo-1",
+        resourceType: "owner_update_document",
+        audience: "owner",
+      })
+    )
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg")
   })
 
   it("serves an approved owner-visible photo to a member with the owner role", async () => {

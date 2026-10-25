@@ -9,11 +9,13 @@ function readMigration(name: string): string {
 }
 
 describe("owner-update migrations after current main", () => {
-  it("uses the next three migration slots without renaming historical files", () => {
+  it("uses the next five migration slots without renaming historical files", () => {
     const names = [
       "0251_owner_update_write_fencing.sql",
       "0252_external_resource_grants.sql",
       "0253_owner_update_publish_attachment_atomicity.sql",
+      "0254_owner_update_attachment_grant_lifecycle.sql",
+      "0255_owner_update_attachment_taxonomy_repair.sql",
     ];
 
     expect(names.every((name) => existsSync(resolve(migrationDirectory, name)))).toBe(true);
@@ -27,5 +29,7 @@ describe("owner-update migrations after current main", () => {
     expect(readMigration("0251_owner_update_write_fencing.sql")).toContain("ADD `revision`");
     expect(readMigration("0252_external_resource_grants.sql")).toContain("CREATE TABLE `project_external_resource_grants`");
     expect(readMigration("0253_owner_update_publish_attachment_atomicity.sql")).toContain("owner_update_publish_attachment_approval");
+    expect(readMigration("0254_owner_update_attachment_grant_lifecycle.sql")).toContain("source_owner_update_id");
+    expect(readMigration("0255_owner_update_attachment_taxonomy_repair.sql")).toContain("selected_documents");
   });
 });

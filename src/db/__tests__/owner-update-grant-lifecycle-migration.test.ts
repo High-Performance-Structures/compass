@@ -29,6 +29,10 @@ const lifecycleMigrationPath = resolve(
   process.cwd(),
   "drizzle/0254_owner_update_attachment_grant_lifecycle.sql"
 )
+const taxonomyRepairMigrationPath = resolve(
+  process.cwd(),
+  "drizzle/0255_owner_update_attachment_taxonomy_repair.sql"
+)
 
 function isSqliteConstructor(value: unknown): value is SqliteConstructor {
   return typeof value === "function"
@@ -123,6 +127,9 @@ function seedSchema(sqlite: Sqlite): void {
       ('document-1', 'project-1', 'application/pdf', 'drive-document', 'approved', 1, '2026-07-28T14:00:00.000Z'),
       ('photo-provenance-pdf', 'project-1', 'application/pdf', 'drive-photo-pdf', 'approved', 1, '2026-07-28T14:00:00.000Z'),
       ('document-provenance-image', 'project-1', 'image/jpeg', 'drive-document-image', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('ambiguous', 'project-1', 'image/jpeg', 'drive-ambiguous', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('partial-doc', 'project-1', 'application/pdf', 'drive-partial-doc', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('invalid-top-level', 'project-1', 'application/pdf', 'drive-invalid-top-level', 'approved', 1, '2026-07-28T14:00:00.000Z'),
       ('photo-scalar', 'project-1', 'image/jpeg', 'drive-scalar', 'pending', 0, '2026-07-28T14:00:00.000Z');
     INSERT INTO owner_project_updates
       (id, project_id, created_by, status, selected_photo_ids, schedule_snapshot, updated_at)
@@ -132,9 +139,39 @@ function seedSchema(sqlite: Sqlite): void {
       'staff-1',
       'published',
       '["photo-1","photo-provenance-pdf"]',
-      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1"},{"id":"document-provenance-image"}]}',
+      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"document-1.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"},{"id":"document-provenance-image","fileName":"document-image.jpg","mimeType":"image/jpeg","driveFileId":"drive-document-image","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"}]}',
       '2026-07-28T14:00:00.000Z'
     );
+    INSERT INTO owner_project_updates
+      (id, project_id, created_by, status, selected_photo_ids, schedule_snapshot, updated_at)
+    VALUES
+      (
+        'published-ambiguous',
+        'project-1',
+        'staff-1',
+        'published',
+        '["ambiguous"]',
+        '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"ambiguous","fileName":"ambiguous.pdf","mimeType":"application/pdf","driveFileId":"drive-ambiguous","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"}]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-partial',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"partial-doc"}]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-invalid-top-level',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"documents":[{"id":"invalid-top-level","fileName":"invalid.pdf","mimeType":"application/pdf","driveFileId":"drive-invalid-top-level","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"}]}',
+        '2026-07-28T14:00:00.000Z'
+      );
     INSERT INTO owner_project_updates
       (id, project_id, created_by, status, selected_photo_ids, schedule_snapshot, updated_at)
     VALUES (
@@ -179,6 +216,7 @@ describe("owner-update attachment grant lifecycle migration", () => {
       applyMigration(sqlite, grantsMigrationPath)
       applyMigration(sqlite, publishAtomicityMigrationPath)
       applyMigration(sqlite, lifecycleMigrationPath)
+      applyMigration(sqlite, taxonomyRepairMigrationPath)
 
       expect(
         sqlite
@@ -221,6 +259,16 @@ describe("owner-update attachment grant lifecycle migration", () => {
         },
       ])
 
+      expect(
+        sqlite
+          .prepare(
+            `SELECT resource_type, resource_id
+             FROM project_external_resource_grants
+             WHERE source_owner_update_id IN ('published-ambiguous', 'published-partial', 'published-invalid-top-level')`
+          )
+          .all()
+      ).toEqual([])
+
       sqlite
         .prepare(
           `UPDATE daily_log_photos
@@ -243,7 +291,7 @@ describe("owner-update attachment grant lifecycle migration", () => {
           "project-1",
           "staff-1",
           '["photo-provenance-pdf"]',
-          '{"version":2,"documents":[{"id":"document-provenance-image"}]}',
+          '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-provenance-image","fileName":"document-image.jpg","mimeType":"image/jpeg","driveFileId":"drive-document-image","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"Compass"}]}',
           "2026-07-28T16:00:00.000Z"
         )
       sqlite
