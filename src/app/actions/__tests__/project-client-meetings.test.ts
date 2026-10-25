@@ -127,6 +127,17 @@ describe("project client meetings", () => {
     expect(mocks.activity).toHaveBeenCalledWith(expect.objectContaining({ action: "client_meeting_started" }))
   })
 
+  it("books a staff-only project meeting and refuses one with nobody invited", async () => {
+    open()
+    expect(await scheduleProjectClientMeeting("project-a", input({ guestEmails: [] }))).toMatchObject({ success: true })
+    const [, , event] = mocks.createEvent.mock.calls[0] ?? []
+    expect(event).toMatchObject({ attendeeEmails: ["staff-b@example.test"] })
+    expect(await scheduleProjectClientMeeting("project-a", input({ guestEmails: [], staffEmails: [] }))).toEqual({
+      success: false,
+      error: "Invite at least one person",
+    })
+  })
+
   it("lists the project's owner contacts as recommended guests", async () => {
     open()
     const result = await getProjectClientMeetings("project-a")
@@ -142,9 +153,9 @@ describe("project client meetings", () => {
     expect(mocks.createEvent).not.toHaveBeenCalled()
   })
 
-  it("requires a guest and a start time in the future", async () => {
+  it("requires an invitee and a start time in the future", async () => {
     open()
-    expect(await scheduleProjectClientMeeting("project-a", input({ guestEmails: [] }))).toMatchObject({ success: false })
+    expect(await scheduleProjectClientMeeting("project-a", input({ guestEmails: [], staffEmails: [] }))).toMatchObject({ success: false })
     expect(
       await scheduleProjectClientMeeting("project-a", input({ startsAt: "2020-01-01T00:00:00.000Z" }))
     ).toMatchObject({ success: false })

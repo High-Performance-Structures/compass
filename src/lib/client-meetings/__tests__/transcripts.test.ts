@@ -148,7 +148,7 @@ describe("client meeting transcripts", () => {
       review_status: "draft",
     })
     const text = String(typeof log === "object" && log !== null ? Reflect.get(log, "work_completed") : "")
-    expect(text).toContain("Client meeting: Selections review")
+    expect(text).toContain("Project meeting: Selections review")
     expect(text).toContain("Guests: owner-a@example.test")
     expect(text).toContain("Owner A: Sounds good.")
     expect(meetingRow(db).daily_log_id).toBe("meet-transcript-meeting-1")

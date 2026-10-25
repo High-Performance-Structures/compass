@@ -170,13 +170,13 @@ function ScheduleMeetingDialog({
     >
       <DialogTrigger asChild>
         <Button type="button" size="sm" className="w-full" disabled={!view.canSchedule}>
-          <IconVideoPlus className="size-4" /> Meet with client
+          <IconVideoPlus className="size-4" /> Project Meetings
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Meet with client</DialogTitle>
+            <DialogTitle>New project meeting</DialogTitle>
             <DialogDescription>
               Compass books a Google Meet on your Google Calendar. Google emails
               each guest the link. Guests don&apos;t need a Compass or Google account.
@@ -229,13 +229,12 @@ function ScheduleMeetingDialog({
           </div>
           <EmailRecipientPicker
             id="client-meet-guests"
-            label="Clients and guests"
+            label="Clients, vendors and guests"
             options={view.guestOptions}
             value={guests}
             excludedEmails={staff}
             onChange={setGuests}
-            placeholder="Choose a client or enter an email..."
-            required
+            placeholder="Choose a contact or enter an email..."
           />
           <EmailRecipientPicker
             id="client-meet-staff"
@@ -269,7 +268,7 @@ function ScheduleMeetingDialog({
           </p>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="submit" disabled={pending || guests.length === 0}>
+            <Button type="submit" disabled={pending || guests.length + staff.length === 0}>
               <IconVideo className="size-4" />
               {pending ? "Booking..." : when === "now" ? "Start Google Meet" : "Schedule and send invites"}
             </Button>
@@ -368,7 +367,7 @@ export function ProjectClientMeetingsCard({
   return (
     <section aria-labelledby={`client-meetings-${projectId}`} className="mb-5 space-y-3">
       <h2 id={`client-meetings-${projectId}`} className="text-xs font-medium uppercase text-muted-foreground">
-        Client meetings
+        Project meetings
       </h2>
       <ScheduleMeetingDialog projectId={projectId} view={view} />
       {upcoming.length > 0 && (
