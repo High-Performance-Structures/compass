@@ -107,6 +107,8 @@ export async function desiredProjectItems(input: {
   readonly settings: ProjectCalendarSettings
   readonly baseUrl: string
   readonly now: Date
+  /** The company's time zone, for schedule items with a time. */
+  readonly timeZone?: string
 }): Promise<readonly ProjectCalendarItem[]> {
   const { db, settings, projectId, baseUrl } = input
   const today = input.now.toISOString().slice(0, 10)
@@ -126,13 +128,15 @@ export async function desiredProjectItems(input: {
         isMilestone: scheduleTasks.isMilestone,
         assignedTo: scheduleTasks.assignedTo,
         status: scheduleTasks.status,
+        startTime: scheduleTasks.startTime,
+        endTime: scheduleTasks.endTime,
       })
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, projectId))
     for (const task of tasks) {
       if (task.endDate < windowStart || task.startDate > windowEnd) continue
       if (task.isMilestone ? !settings.milestones : !settings.scheduleItems) continue
-      items.push(scheduleTaskItem({ baseUrl, task }))
+      items.push(scheduleTaskItem({ baseUrl, task, timeZone: input.timeZone }))
     }
   }
 
@@ -453,6 +457,7 @@ export async function syncProjectCalendar(input: {
     settings: input.settings,
     baseUrl: appBaseUrl(input.env),
     now,
+    timeZone: input.timeZone,
   })
   const existing = await db
     .select()

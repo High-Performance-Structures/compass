@@ -3105,6 +3105,9 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   startDate: text("start_date").notNull(),
   workdays: integer("workdays").notNull(),
   endDateCalculated: text("end_date_calculated").notNull(),
+  // Optional "HH:MM" times; both null means an all-day item.
+  startTime: text("start_time"),
+  endTime: text("end_time"),
   phase: text("phase").notNull(),
   displayColor: text("display_color").notNull().default("blue"),
   status: text("status").notNull().default("PENDING"),

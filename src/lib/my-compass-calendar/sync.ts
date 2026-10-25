@@ -58,8 +58,12 @@ function eventBody(item: MyCompassItem): string {
   return JSON.stringify({
     summary: item.summary,
     description: item.description,
-    start: { date: item.startDate },
-    end: { date: item.endDateExclusive },
+    ...(item.timed
+      ? {
+          start: { dateTime: item.timed.startsAt, timeZone: item.timed.timeZone },
+          end: { dateTime: item.timed.endsAt, timeZone: item.timed.timeZone },
+        }
+      : { start: { date: item.startDate }, end: { date: item.endDateExclusive } }),
     // Assignments shouldn't block the person's free/busy time or ping them.
     transparency: "transparent",
     reminders: { useDefault: false, overrides: [] },
@@ -123,6 +127,8 @@ export async function desiredItems(input: {
     readonly lastName: string | null
   }
   readonly otherNames: readonly string[]
+  /** The company's time zone, for schedule items with a time. */
+  readonly timeZone?: string
 }): Promise<readonly MyCompassItem[]> {
   const { db, settings, user } = input
   const today = input.now.toISOString().slice(0, 10)
@@ -166,6 +172,8 @@ export async function desiredItems(input: {
         isMilestone: scheduleTasks.isMilestone,
         assignedTo: scheduleTasks.assignedTo,
         assignedUserId: scheduleTasks.assignedUserId,
+        startTime: scheduleTasks.startTime,
+        endTime: scheduleTasks.endTime,
       })
       .from(scheduleTasks)
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
@@ -185,7 +193,7 @@ export async function desiredItems(input: {
         (task.assignedUserId === user.id || assignmentIncludes(task.assignedTo, aliases))
       const milestone = settings.projectMilestones && task.isMilestone && memberOf.has(task.projectId)
       if (assigned || milestone) {
-        items.push(scheduleItem({ baseUrl: input.baseUrl, task, project }))
+        items.push(scheduleItem({ baseUrl: input.baseUrl, task, project, timeZone: input.timeZone }))
       }
     }
   }
@@ -310,6 +318,7 @@ export async function syncMyCompassCalendar(input: {
     now,
     user,
     otherNames: parseNames(calendar.otherNames),
+    timeZone: input.timeZone,
   })
   const existing = await db
     .select()

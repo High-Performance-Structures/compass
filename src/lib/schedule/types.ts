@@ -37,6 +37,9 @@ export interface ScheduleTaskData {
   startDate: string
   workdays: number
   endDateCalculated: string
+  /** Optional "HH:MM" start; null or absent means all day. */
+  startTime?: string | null
+  endTime?: string | null
   phase: string
   displayColor: string | null
   status: TaskStatus

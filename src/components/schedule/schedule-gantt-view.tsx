@@ -115,6 +115,7 @@ import {
   shouldRestoreGanttScroll,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
+import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
 
 // Stable empty list: a fresh [] per render rebuilt the whole Gantt chart.
 const NO_EXCEPTIONS: readonly WorkdayExceptionData[] = []
@@ -895,12 +896,18 @@ export function ScheduleGanttView({
                     </span>
                   ) : null}
                   {/* Two lines fit the 48px row, which must stay level with its bar. */}
-                  <span className="line-clamp-2 break-words leading-tight" title={task.title}>
+                  <span
+                    className="line-clamp-2 break-words leading-tight"
+                    title={scheduleItemTimeLabel(task) ? `${task.title} · ${scheduleItemTimeLabel(task)}` : task.title}
+                  >
                     {task.title}
                   </span>
                 </span>
               </TableCell>
-              <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
+              <TableCell
+                className="h-[48px] py-0 text-xs text-muted-foreground"
+                title={scheduleItemTimeLabel(task) ?? undefined}
+              >
                 {task.startDate.slice(5)}
               </TableCell>
               <TableCell className="h-[48px] py-0 text-xs">

@@ -76,7 +76,7 @@ function open(): CorrespondenceTestDatabase {
       ('o-done','project-a','todo','Call client','completed','Staff A','2026-10-29'),
       ('o-someone','project-a','todo','Pick colors','incomplete','Someone Else','2026-10-29');
   `)
-  for (const file of ["0248_my_compass_calendars.sql"]) {
+  for (const file of ["0248_my_compass_calendars.sql", "0256_schedule_item_times.sql"]) {
     sqlite.exec(readFileSync(resolve(process.cwd(), "drizzle", file), "utf8").replaceAll("--> statement-breakpoint", ""))
   }
   mocks.settings.mockResolvedValue(SETTINGS)
