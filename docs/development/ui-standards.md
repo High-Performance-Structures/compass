@@ -207,6 +207,22 @@ one at a time.
 - Show a badge or tag only when it distinguishes the item from its neighbors.
   If every row would carry the same tag, use a group heading instead.
 
+### Staff dashboard priorities
+
+The portfolio **map and pipelines** are among Compass's most valuable views,
+and their place on the staff dashboard isn't negotiable. Directly under the
+greeting, the dashboard shows, in this order:
+
+1. CHERISH stories when there is one to watch (`CherishStoryInvitation`),
+2. the summary counts strip,
+3. the portfolio map and pipelines (`PortfolioSection`).
+
+Nothing else goes above or between them: no new cards, banners, plans or
+panels. New dashboard features go below the map and pipelines. Below them,
+Office view uses three columns: Today's plan, the narrower office priorities,
+then the Five-day horizon with who's in today right below it.
+`dashboard-priority.test.ts` checks this order.
+
 ## Scrolling and long content
 
 - Long pages, document editors, growing forms, dialogs, sheets, and overflowed

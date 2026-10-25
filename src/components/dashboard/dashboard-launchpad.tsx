@@ -1275,10 +1275,6 @@ export function DashboardLaunchpad({
 
       <DashboardCountsStrip counts={counts} />
 
-      {todaysPlan ? (
-        <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
-      ) : null}
-
       <PortfolioSection
         jobs={portfolio.jobs}
         unplaced={portfolio.unplaced}
@@ -1291,7 +1287,21 @@ export function DashboardLaunchpad({
       />
 
       {mode === "office" ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+        // Three columns, all below the map and pipeline: Today's plan, the
+        // narrower office priorities, then the Five-day horizon with who's in.
+        <div
+          className={cn(
+            "grid gap-6",
+            todaysPlan
+              ? "xl:grid-cols-[minmax(0,1.5fr)_minmax(15rem,0.85fr)_minmax(18rem,1fr)]"
+              : "xl:grid-cols-[minmax(15rem,0.85fr)_minmax(18rem,1fr)]"
+          )}
+        >
+          {todaysPlan ? (
+            <div className="flex min-w-0 flex-col gap-6">
+              <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
+            </div>
+          ) : null}
           <div className="flex min-w-0 flex-col gap-6">
             <OfficeTaskList
               overview={overview}
@@ -1316,6 +1326,9 @@ export function DashboardLaunchpad({
         </div>
       ) : (
         <div className="flex flex-col gap-6">
+          {todaysPlan ? (
+            <TodaysPlanCard plan={todaysPlan.plan} load={todaysPlan.load} team={teamWorkload} />
+          ) : null}
           <Horizon
             overview={overview}
             mode={mode}
