@@ -17,7 +17,7 @@ import { messageStacksFrom } from "@/lib/notifications/message-stacks"
 import { projectAudienceActiveProjectCookieName } from "@/lib/project-audience-active-project"
 import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
-import { PORTFOLIO_PHASES, type PortfolioMapJob } from "@/lib/portfolio-map/model"
+import { PORTFOLIO_PHASES, phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
 import type { VendorJobScope } from "@/lib/portfolio-map/audience-model"
 import { cn } from "@/lib/utils"
 
@@ -207,7 +207,8 @@ export function VendorJobMap({
                   <h3 className="text-base font-semibold leading-snug">{selected.name}</h3>
                   <p className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: phaseColor(selected.phase) }} />
-                    {PHASE_LABEL.get(selected.phase) ?? selected.statusLabel}
+                    {/* A job without a stage (an internal test job) shows its status. */}
+                    {(phaseForJobStatus(selected.jobStatusId, selected.statusLabel) && PHASE_LABEL.get(selected.phase)) || selected.statusLabel}
                   </p>
                   {selected.id !== currentProjectId ? (
                     <Button size="sm" className="mt-2 self-start" onClick={() => openJob(selected.id)}>

@@ -7,6 +7,10 @@ import {
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
 import { projectDisplayName } from "@/lib/project-display-name"
+import { projectJobStatusBucket } from "@/lib/project-profile"
+
+/** Marker color for a job with no stage; the owner panel shows its status instead. */
+const UNSTAGED_PHASE: PortfolioPhaseId = "intake"
 
 export type AudienceJobRow = {
   readonly id: string
@@ -26,7 +30,11 @@ export type AudienceJobRow = {
  */
 export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly PortfolioMapJob[] {
   const jobs = rows.flatMap((row): PortfolioMapJob[] => {
-    const phase = phaseForJobStatus(row.jobStatusId, row.statusLabel)
+    // Internal jobs have no stage, but staff preview them as their test
+    // owners and vendors; real outside people aren't on internal jobs.
+    const internal =
+      projectJobStatusBucket({ jobStatusId: row.jobStatusId ?? "", jobStatusLabel: row.statusLabel }) === "internal"
+    const phase = phaseForJobStatus(row.jobStatusId, row.statusLabel) ?? (internal ? UNSTAGED_PHASE : null)
     if (!phase) return []
     const town = resolveTown({
       publicLocationCity: row.publicLocationCity,

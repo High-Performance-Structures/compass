@@ -25,9 +25,14 @@ describe("audienceMapJobs", () => {
     expect(job?.nextTaskTitle).toBeNull()
   })
 
-  it("leaves out complete and internal jobs", () => {
+  it("leaves out complete jobs", () => {
     expect(audienceMapJobs([row({ jobStatusId: "complete", statusLabel: "Complete" })])).toEqual([])
-    expect(audienceMapJobs([row({ jobStatusId: "internal", statusLabel: "Internal" })])).toEqual([])
+  })
+
+  it("keeps internal jobs so staff can preview them as test owners and vendors", () => {
+    const [job] = audienceMapJobs([row({ jobStatusId: "internal", statusLabel: "Internal" })])
+    expect(job?.town).toBe("Granby")
+    expect(job?.statusLabel).toBe("Internal")
   })
 
   it("keeps a job with no known town so it can be listed", () => {
