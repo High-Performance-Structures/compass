@@ -388,10 +388,9 @@ function createDatabase(): {
         lower(hex(randomblob(16))),
         projects.organization_id,
         NEW.project_id,
-        CASE
-          WHEN daily_log_photos.mime_type LIKE 'image/%' THEN 'photo'
-          ELSE 'owner_update_document'
-        END,
+        CASE WHEN daily_log_photos.id IN (
+          SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]'))
+        ) THEN 'photo' ELSE 'owner_update_document' END,
         daily_log_photos.id,
         NEW.id,
         'owner',
@@ -413,10 +412,6 @@ function createDatabase(): {
         AND daily_log_photos.drive_file_id IS NOT NULL
         AND daily_log_photos.review_status = 'approved'
         AND daily_log_photos.owner_visible = 1
-        AND (
-          daily_log_photos.mime_type LIKE 'image/%'
-          OR daily_log_photos.mime_type NOT LIKE 'image/%'
-        )
         AND (
           daily_log_photos.id IN (
             SELECT value FROM json_each(COALESCE(NEW.selected_photo_ids, '[]'))
@@ -1158,6 +1153,102 @@ describe("owner update mutation authorization and fencing", () => {
     ])
   })
 
+  it("returns granted null-MIME photos and documents through the same attachment classification policy", async () => {
+    seedExternalOwnerSummary(sqlite)
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, captured_at, source_system, file_name, mime_type,
+          drive_file_id, thumbnail_url, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'approved', 1, ?),
+              (?, ?, ?, ?, ?, NULL, ?, NULL, 'approved', 1, ?)`,
+      "client-null-mime-photo",
+      "project-client",
+      "2026-07-28T12:00:00.000Z",
+      "compass",
+      "photo-with-preview",
+      "drive-null-photo",
+      "https://drive.google.com/photo-thumbnail",
+      "2026-07-28T12:00:00.000Z",
+      "client-null-mime-document",
+      "project-client",
+      "2026-07-28T12:00:00.000Z",
+      "compass",
+      "legacy-document",
+      "drive-null-document",
+      "2026-07-28T12:00:00.000Z"
+    )
+    for (const [id, resourceType, resourceId] of [
+      ["grant-null-photo", "photo", "client-null-mime-photo"],
+      [
+        "grant-null-document",
+        "owner_update_document",
+        "client-null-mime-document",
+      ],
+    ] as const) {
+      run(
+        sqlite,
+        `INSERT INTO project_external_resource_grants
+           (id, organization_id, project_id, resource_type, resource_id,
+            source_owner_update_id, audience, recipient_user_id, granted_by, granted_at)
+         VALUES (?, 'org-client', 'project-client', ?, ?, 'client-published',
+                 'owner', 'owner-1', 'staff-1', '2026-07-28T12:00:00.000Z')`,
+        id,
+        resourceType,
+        resourceId
+      )
+    }
+    run(
+      sqlite,
+      `UPDATE owner_project_updates
+       SET selected_photo_ids = ?, schedule_snapshot = ?
+       WHERE id = ?`,
+      JSON.stringify(["client-null-mime-photo"]),
+      JSON.stringify({
+        version: 2,
+        completedScheduleItems: [],
+        lookAheadScheduleItems: [],
+        todos: [],
+        documents: [
+          {
+            id: "client-null-mime-document",
+            fileName: "legacy-document",
+            mimeType: null,
+            driveFileId: "drive-null-document",
+            driveUrl: null,
+            caption: null,
+            capturedAt: "2026-07-28T12:00:00.000Z",
+            sourceSystem: "compass",
+          },
+        ],
+      }),
+      "client-published"
+    )
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      id: "owner-1",
+      role: "client",
+      organizationId: "org-client",
+      organizationType: "client",
+    })
+
+    const document = await getOwnerProjectUpdateDocument(
+      "project-client",
+      "client-published"
+    )
+
+    expect(document.photos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "client-null-mime-photo" }),
+      ])
+    )
+    expect(document.documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "client-null-mime-document" }),
+      ])
+    )
+  })
+
   it("does not select or serialize ungranted detail attachment metadata", async () => {
     seedExternalOwnerSummary(sqlite)
     run(
@@ -1640,6 +1731,98 @@ describe("owner update mutation authorization and fencing", () => {
         recipient_user_id: "client-1",
         revoked_at: null,
       },
+    ])
+  })
+
+  it("classifies null MIME and thumbnail-backed attachments consistently when saving and publishing", async () => {
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, captured_at, file_name, mime_type, drive_file_id,
+          thumbnail_url, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "null-mime-document",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "unknown-file",
+      null,
+      "drive-null-document",
+      null,
+      "pending",
+      0,
+      version.expectedUpdatedAt,
+      "null-mime-photo",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "photo-with-preview",
+      null,
+      "drive-null-photo",
+      "https://drive.google.com/photo-thumbnail",
+      "pending",
+      0,
+      version.expectedUpdatedAt,
+      "upper-mime-photo",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "upper.jpg",
+      "IMAGE/JPEG",
+      "drive-upper-photo",
+      null,
+      "pending",
+      0,
+      version.expectedUpdatedAt,
+      "pdf-with-thumbnail",
+      "project-1",
+      "2026-07-28T12:00:00.000Z",
+      "plans.pdf",
+      "application/pdf",
+      "drive-pdf",
+      "https://drive.google.com/document-thumbnail",
+      "pending",
+      0,
+      version.expectedUpdatedAt
+    )
+
+    const saved = await updateOwnerProjectUpdateDraft(
+      "project-1",
+      "update-1",
+      {
+        ...draft,
+        selectedPhotoIds: ["null-mime-photo", "upper-mime-photo"],
+        selectedDocumentIds: ["null-mime-document", "pdf-with-thumbnail"],
+      }
+    )
+    expect(saved).toMatchObject({ success: true, revision: 1 })
+    if (!saved.success) throw new Error(saved.error)
+
+    const published = await publishOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      { revision: saved.revision, updatedAt: saved.updatedAt }
+    )
+
+    expect(published).toMatchObject({ success: true, revision: 2 })
+    expect(
+      statement(
+        sqlite,
+        `SELECT resource_type, resource_id
+         FROM project_external_resource_grants
+         ORDER BY resource_type, resource_id`
+      ).all()
+    ).toEqual([
+      {
+        resource_type: "owner_update_document",
+        resource_id: "null-mime-document",
+      },
+      {
+        resource_type: "owner_update_document",
+        resource_id: "pdf-with-thumbnail",
+      },
+      { resource_type: "photo", resource_id: "null-mime-photo" },
+      { resource_type: "photo", resource_id: "upper-mime-photo" },
     ])
   })
 

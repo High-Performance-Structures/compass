@@ -101,10 +101,12 @@ function seedSchema(sqlite: Sqlite): void {
       project_id TEXT NOT NULL REFERENCES projects(id),
       mime_type TEXT,
       drive_file_id TEXT,
+      thumbnail_url TEXT,
       review_status TEXT NOT NULL,
       owner_visible INTEGER NOT NULL,
       sub_vendor_visible INTEGER NOT NULL DEFAULT 0,
       public_shareable INTEGER NOT NULL DEFAULT 0,
+      file_name TEXT NOT NULL DEFAULT 'shared-file',
       updated_at TEXT NOT NULL
     );
     INSERT INTO organizations VALUES ('org-1', 'client', 1);
@@ -117,11 +119,13 @@ function seedSchema(sqlite: Sqlite): void {
       ('org-member-owner', 'org-1', 'owner-1', 'client', '2026-01-01T00:00:00.000Z');
     INSERT INTO project_members VALUES ('member-1', 'project-1', 'owner-1', 'owner');
     INSERT INTO daily_log_photos
-      (id, project_id, mime_type, drive_file_id, review_status, owner_visible, updated_at)
+      (id, project_id, mime_type, drive_file_id, thumbnail_url, review_status, owner_visible, updated_at)
     VALUES
-      ('photo-1', 'project-1', 'image/jpeg', 'drive-photo', 'approved', 1, '2026-07-28T14:00:00.000Z'),
-      ('document-1', 'project-1', 'application/pdf', 'drive-document', 'approved', 1, '2026-07-28T14:00:00.000Z'),
-      ('photo-scalar', 'project-1', 'image/jpeg', 'drive-scalar', 'pending', 0, '2026-07-28T14:00:00.000Z');
+      ('photo-1', 'project-1', 'image/jpeg', 'drive-photo', NULL, 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('document-1', 'project-1', 'application/pdf', 'drive-document', 'https://drive.google.com/document-thumbnail', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('document-null-mime', 'project-1', NULL, 'drive-null-document', NULL, 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('photo-null-mime', 'project-1', NULL, 'drive-null-photo', 'https://drive.google.com/photo-thumbnail', 'approved', 1, '2026-07-28T14:00:00.000Z'),
+      ('photo-scalar', 'project-1', 'image/jpeg', 'drive-scalar', NULL, 'pending', 0, '2026-07-28T14:00:00.000Z');
     INSERT INTO owner_project_updates
       (id, project_id, created_by, status, selected_photo_ids, schedule_snapshot, updated_at)
     VALUES (
@@ -129,8 +133,8 @@ function seedSchema(sqlite: Sqlite): void {
       'project-1',
       'staff-1',
       'published',
-      '["photo-1"]',
-      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1"}]}',
+      '["photo-1","photo-null-mime"]',
+      '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"plans.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"},{"id":"document-null-mime","fileName":"legacy-document","mimeType":null,"driveFileId":"drive-null-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"}]}',
       '2026-07-28T14:00:00.000Z'
     );
     INSERT INTO owner_project_updates
@@ -163,6 +167,24 @@ function seedSchema(sqlite: Sqlite): void {
         'published',
         '"photo-scalar"',
         '{"version":2,"documents":["document-1"]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-invalid-document-shape',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"completedScheduleItems":[],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"plans.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"},{"id":"document-null-mime"}]}',
+        '2026-07-28T14:00:00.000Z'
+      ),
+      (
+        'published-invalid-schedule-shape',
+        'project-1',
+        'staff-1',
+        'published',
+        '[]',
+        '{"version":2,"completedScheduleItems":[{"id":"schedule-1"}],"lookAheadScheduleItems":[],"todos":[],"documents":[{"id":"document-1","fileName":"plans.pdf","mimeType":"application/pdf","driveFileId":"drive-document","driveUrl":null,"caption":null,"capturedAt":null,"sourceSystem":"compass"}]}',
         '2026-07-28T14:00:00.000Z'
       );
   `)
@@ -197,8 +219,22 @@ describe("owner-update attachment grant lifecycle migration", () => {
           revoked_at: null,
         },
         {
+          resource_type: "owner_update_document",
+          resource_id: "document-null-mime",
+          source_owner_update_id: "published-1",
+          recipient_user_id: "owner-1",
+          revoked_at: null,
+        },
+        {
           resource_type: "photo",
           resource_id: "photo-1",
+          source_owner_update_id: "published-1",
+          recipient_user_id: "owner-1",
+          revoked_at: null,
+        },
+        {
+          resource_type: "photo",
+          resource_id: "photo-null-mime",
           source_owner_update_id: "published-1",
           recipient_user_id: "owner-1",
           revoked_at: null,
@@ -222,6 +258,19 @@ describe("owner-update attachment grant lifecycle migration", () => {
              WHERE source_owner_update_id = ?`
           )
           .all("published-scalar-selection")
+      ).toEqual([])
+      expect(
+        sqlite
+          .prepare(
+            `SELECT resource_id
+             FROM project_external_resource_grants
+             WHERE source_owner_update_id IN (?, ?)
+             ORDER BY source_owner_update_id, resource_id`
+          )
+          .all(
+            "published-invalid-document-shape",
+            "published-invalid-schedule-shape"
+          )
       ).toEqual([])
       expect(
         sqlite

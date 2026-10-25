@@ -108,7 +108,11 @@ function configureDb({
 }: {
   readonly viewerRole: string
   readonly membershipRole: string | null
-  readonly visiblePhoto: typeof photo | typeof document | null
+  readonly visiblePhoto: Readonly<{
+    readonly driveFileId: string
+    readonly fileName: string
+    readonly mimeType: string | null
+  }> | null
   readonly projectAccessError?: Error
 }): void {
   mocks.requireAuth.mockResolvedValue({
@@ -242,6 +246,83 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).toHaveBeenCalledWith(
       "drive@example.com",
       "drive-document-1"
+    )
+  })
+
+  it("uses closed response metadata for an external granted document", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: {
+        driveFileId: "drive-document-1",
+        fileName:
+          "https://drive.google.com/file/d/drive-bearer-id-12345678901234567890/view.pdf",
+        mimeType:
+          "application/pdf; provider=https://drive.google.com/file/d/drive-bearer-id-12345678901234567890",
+      },
+    })
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("application/octet-stream")
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="project-file"'
+    )
+    expect([...response.headers]).not.toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([expect.stringContaining("drive.google.com")]),
+      ])
+    )
+  })
+
+  it("serves a granted legacy document with null MIME as generic bytes", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: {
+        driveFileId: "drive-document-1",
+        fileName: "legacy-document",
+        mimeType: null,
+      },
+    })
+
+    const response = await getPhoto("owner", "owner_update_document")
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("application/octet-stream")
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="project-file"'
+    )
+    expect(mocks.downloadFile).toHaveBeenCalledWith(
+      "drive@example.com",
+      "drive-document-1"
+    )
+  })
+
+  it("serves a granted thumbnail-backed photo with null MIME as generic bytes", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: {
+        driveFileId: "drive-photo-1",
+        fileName: "legacy-photo",
+        mimeType: null,
+      },
+    })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe(
+      "application/octet-stream"
+    )
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="shared-photo"'
+    )
+    expect(mocks.downloadFile).toHaveBeenCalledWith(
+      "drive@example.com",
+      "drive-photo-1"
     )
   })
 

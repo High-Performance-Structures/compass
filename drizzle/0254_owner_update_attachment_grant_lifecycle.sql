@@ -22,6 +22,105 @@ BEGIN
   SELECT RAISE(ABORT, 'external resource grant source is immutable');
 END;
 --> statement-breakpoint
+CREATE VIEW `owner_update_valid_snapshot_documents` AS
+SELECT
+  `owner_project_updates`.`id` AS `owner_update_id`,
+  json_extract(`document`.`value`, '$.id') AS `resource_id`
+FROM `owner_project_updates`
+INNER JOIN json_each(
+  CASE
+    WHEN json_valid(`owner_project_updates`.`schedule_snapshot`)
+      AND json_type(`owner_project_updates`.`schedule_snapshot`) = 'object'
+    THEN `owner_project_updates`.`schedule_snapshot`
+    ELSE '{"documents":[]}'
+  END,
+  '$.documents'
+) AS `document`
+WHERE json_valid(`owner_project_updates`.`schedule_snapshot`)
+  AND json_type(`owner_project_updates`.`schedule_snapshot`) = 'object'
+  AND json_type(`owner_project_updates`.`schedule_snapshot`, '$.version') = 'integer'
+  AND json_extract(`owner_project_updates`.`schedule_snapshot`, '$.version') = 2
+  AND json_type(`owner_project_updates`.`schedule_snapshot`, '$.completedScheduleItems') = 'array'
+  AND json_type(`owner_project_updates`.`schedule_snapshot`, '$.lookAheadScheduleItems') = 'array'
+  AND json_type(`owner_project_updates`.`schedule_snapshot`, '$.todos') = 'array'
+  AND json_type(`owner_project_updates`.`schedule_snapshot`, '$.documents') = 'array'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM json_each(`owner_project_updates`.`schedule_snapshot`, '$.completedScheduleItems') AS `item`
+    WHERE json_type(`item`.`value`) IS NOT 'object'
+      OR json_type(`item`.`value`, '$.id') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.id')) = ''
+      OR json_type(`item`.`value`, '$.title') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.title')) = ''
+      OR json_type(`item`.`value`, '$.startDate') IS NOT 'text'
+      OR length(json_extract(`item`.`value`, '$.startDate')) <> 10
+      OR json_extract(`item`.`value`, '$.startDate') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      OR json_type(`item`.`value`, '$.endDate') IS NOT 'text'
+      OR length(json_extract(`item`.`value`, '$.endDate')) <> 10
+      OR json_extract(`item`.`value`, '$.endDate') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      OR COALESCE(json_type(`item`.`value`, '$.assignedTo'), 'missing') NOT IN ('text', 'null')
+      OR json_type(`item`.`value`, '$.status') IS NOT 'text'
+      OR COALESCE(json_type(`item`.`value`, '$.percentComplete'), 'missing') NOT IN ('integer', 'real')
+      OR json_extract(`item`.`value`, '$.percentComplete') < 0
+      OR json_extract(`item`.`value`, '$.percentComplete') > 100
+      OR json_type(`item`.`value`, '$.notes') IS NOT 'text'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM json_each(`owner_project_updates`.`schedule_snapshot`, '$.lookAheadScheduleItems') AS `item`
+    WHERE json_type(`item`.`value`) IS NOT 'object'
+      OR json_type(`item`.`value`, '$.id') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.id')) = ''
+      OR json_type(`item`.`value`, '$.title') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.title')) = ''
+      OR json_type(`item`.`value`, '$.startDate') IS NOT 'text'
+      OR length(json_extract(`item`.`value`, '$.startDate')) <> 10
+      OR json_extract(`item`.`value`, '$.startDate') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      OR json_type(`item`.`value`, '$.endDate') IS NOT 'text'
+      OR length(json_extract(`item`.`value`, '$.endDate')) <> 10
+      OR json_extract(`item`.`value`, '$.endDate') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      OR COALESCE(json_type(`item`.`value`, '$.assignedTo'), 'missing') NOT IN ('text', 'null')
+      OR json_type(`item`.`value`, '$.status') IS NOT 'text'
+      OR COALESCE(json_type(`item`.`value`, '$.percentComplete'), 'missing') NOT IN ('integer', 'real')
+      OR json_extract(`item`.`value`, '$.percentComplete') < 0
+      OR json_extract(`item`.`value`, '$.percentComplete') > 100
+      OR json_type(`item`.`value`, '$.notes') IS NOT 'text'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM json_each(`owner_project_updates`.`schedule_snapshot`, '$.todos') AS `item`
+    WHERE json_type(`item`.`value`) IS NOT 'object'
+      OR json_type(`item`.`value`, '$.id') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.id')) = ''
+      OR json_type(`item`.`value`, '$.title') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.title')) = ''
+      OR json_type(`item`.`value`, '$.description') IS NOT 'text'
+      OR json_type(`item`.`value`, '$.status') IS NOT 'text'
+      OR json_type(`item`.`value`, '$.priority') IS NOT 'text'
+      OR COALESCE(json_type(`item`.`value`, '$.assigneeName'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.companyName'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.dueDate'), 'missing') NOT IN ('text', 'null')
+      OR json_type(`item`.`value`, '$.timing') IS NOT 'text'
+      OR COALESCE(json_extract(`item`.`value`, '$.timing'), 'missing') NOT IN ('reporting_period', 'upcoming')
+      OR json_type(`item`.`value`, '$.notes') IS NOT 'text'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM json_each(`owner_project_updates`.`schedule_snapshot`, '$.documents') AS `item`
+    WHERE json_type(`item`.`value`) IS NOT 'object'
+      OR json_type(`item`.`value`, '$.id') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.id')) = ''
+      OR json_type(`item`.`value`, '$.fileName') IS NOT 'text'
+      OR trim(json_extract(`item`.`value`, '$.fileName')) = ''
+      OR COALESCE(json_type(`item`.`value`, '$.mimeType'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.driveFileId'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.driveUrl'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.caption'), 'missing') NOT IN ('text', 'null')
+      OR COALESCE(json_type(`item`.`value`, '$.capturedAt'), 'missing') NOT IN ('text', 'null')
+      OR json_type(`item`.`value`, '$.sourceSystem') IS NOT 'text'
+  )
+  ;
+--> statement-breakpoint
 DROP TRIGGER `owner_update_publish_attachment_approval`;
 --> statement-breakpoint
 CREATE TRIGGER `owner_update_publish_attachment_approval`
@@ -52,22 +151,9 @@ BEGIN
         WHERE `type` = 'text'
       )
       OR `id` IN (
-        SELECT json_extract(`json`, `fullkey` || '.id')
-        FROM json_each(
-          CASE
-            WHEN json_valid(NEW.`schedule_snapshot`)
-            THEN CASE
-              WHEN json_type(NEW.`schedule_snapshot`) = 'object'
-                AND json_type(NEW.`schedule_snapshot`, '$.documents') = 'array'
-              THEN NEW.`schedule_snapshot`
-              ELSE '{"documents":[]}'
-            END
-            ELSE '{"documents":[]}'
-          END,
-          '$.documents'
-        )
-        WHERE `type` = 'object'
-          AND json_type(`json`, `fullkey` || '.id') = 'text'
+        SELECT `resource_id`
+        FROM `owner_update_valid_snapshot_documents`
+        WHERE `owner_update_id` = NEW.`id`
       )
     );
 
@@ -89,10 +175,18 @@ BEGIN
     lower(hex(randomblob(16))),
     `projects`.`organization_id`,
     NEW.`project_id`,
-    CASE
-      WHEN `daily_log_photos`.`mime_type` LIKE 'image/%' THEN 'photo'
-      ELSE 'owner_update_document'
-    END,
+    CASE WHEN `daily_log_photos`.`id` IN (
+      SELECT `value`
+      FROM json_each(
+        CASE
+          WHEN json_valid(NEW.`selected_photo_ids`)
+            AND json_type(NEW.`selected_photo_ids`) = 'array'
+          THEN NEW.`selected_photo_ids`
+          ELSE '[]'
+        END
+      )
+      WHERE `type` = 'text'
+    ) THEN 'photo' ELSE 'owner_update_document' END,
     `daily_log_photos`.`id`,
     NEW.`id`,
     'owner',
@@ -132,10 +226,6 @@ BEGIN
     AND `daily_log_photos`.`review_status` = 'approved'
     AND `daily_log_photos`.`owner_visible` = 1
     AND (
-      `daily_log_photos`.`mime_type` LIKE 'image/%'
-      OR `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-    )
-    AND (
       `daily_log_photos`.`id` IN (
         SELECT `value`
         FROM json_each(
@@ -152,22 +242,9 @@ BEGIN
         WHERE `type` = 'text'
       )
       OR `daily_log_photos`.`id` IN (
-        SELECT json_extract(`json`, `fullkey` || '.id')
-        FROM json_each(
-          CASE
-            WHEN json_valid(NEW.`schedule_snapshot`)
-            THEN CASE
-              WHEN json_type(NEW.`schedule_snapshot`) = 'object'
-                AND json_type(NEW.`schedule_snapshot`, '$.documents') = 'array'
-              THEN NEW.`schedule_snapshot`
-              ELSE '{"documents":[]}'
-            END
-            ELSE '{"documents":[]}'
-          END,
-          '$.documents'
-        )
-        WHERE `type` = 'object'
-          AND json_type(`json`, `fullkey` || '.id') = 'text'
+        SELECT `resource_id`
+        FROM `owner_update_valid_snapshot_documents`
+        WHERE `owner_update_id` = NEW.`id`
       )
     );
 END;
@@ -206,10 +283,18 @@ SELECT
   lower(hex(randomblob(16))),
   `projects`.`organization_id`,
   `owner_project_updates`.`project_id`,
-  CASE
-    WHEN `daily_log_photos`.`mime_type` LIKE 'image/%' THEN 'photo'
-    ELSE 'owner_update_document'
-  END,
+  CASE WHEN `daily_log_photos`.`id` IN (
+    SELECT `value`
+    FROM json_each(
+      CASE
+        WHEN json_valid(`owner_project_updates`.`selected_photo_ids`)
+          AND json_type(`owner_project_updates`.`selected_photo_ids`) = 'array'
+        THEN `owner_project_updates`.`selected_photo_ids`
+        ELSE '[]'
+      END
+    )
+    WHERE `type` = 'text'
+  ) THEN 'photo' ELSE 'owner_update_document' END,
   `daily_log_photos`.`id`,
   `owner_project_updates`.`id`,
   'owner',
@@ -262,32 +347,12 @@ INNER JOIN `daily_log_photos`
       WHERE `type` = 'text'
     )
     OR `daily_log_photos`.`id` IN (
-      SELECT json_extract(`json`, `fullkey` || '.id')
-      FROM json_each(
-        CASE
-          WHEN json_valid(`owner_project_updates`.`schedule_snapshot`)
-          THEN CASE
-            WHEN json_type(`owner_project_updates`.`schedule_snapshot`) = 'object'
-              AND json_type(
-                `owner_project_updates`.`schedule_snapshot`,
-                '$.documents'
-              ) = 'array'
-            THEN `owner_project_updates`.`schedule_snapshot`
-            ELSE '{"documents":[]}'
-          END
-          ELSE '{"documents":[]}'
-        END,
-        '$.documents'
-      )
-      WHERE `type` = 'object'
-        AND json_type(`json`, `fullkey` || '.id') = 'text'
+      SELECT `resource_id`
+      FROM `owner_update_valid_snapshot_documents`
+      WHERE `owner_update_id` = `owner_project_updates`.`id`
     )
   )
 WHERE `owner_project_updates`.`status` IN ('published', 'sent')
   AND `daily_log_photos`.`drive_file_id` IS NOT NULL
   AND `daily_log_photos`.`review_status` = 'approved'
-  AND `daily_log_photos`.`owner_visible` = 1
-  AND (
-    `daily_log_photos`.`mime_type` LIKE 'image/%'
-    OR `daily_log_photos`.`mime_type` NOT LIKE 'image/%'
-  );
+  AND `daily_log_photos`.`owner_visible` = 1;

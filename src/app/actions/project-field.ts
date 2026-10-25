@@ -647,6 +647,16 @@ function ownerUpdateDocumentSelection(
   }
 }
 
+function isOwnerUpdatePhotoAttachment(value: {
+  readonly mimeType: string | null
+  readonly thumbnailUrl: string | null
+}): boolean {
+  if (value.mimeType !== null) {
+    return value.mimeType.toLowerCase().startsWith("image/")
+  }
+  return value.thumbnailUrl !== null
+}
+
 function isPhotoInOwnerUpdateScope(
   photo: {
     readonly dailyLogId: string | null
@@ -3036,14 +3046,26 @@ export async function getOwnerProjectUpdateDocument(
             or(
               and(
                 eq(projectExternalResourceGrants.resourceType, "photo"),
-                sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`
+                sql<boolean>`(
+                  ${dailyLogPhotos.mimeType} LIKE 'image/%'
+                  OR (
+                    ${dailyLogPhotos.mimeType} IS NULL
+                    AND ${dailyLogPhotos.thumbnailUrl} IS NOT NULL
+                  )
+                )`
               ),
               and(
                 eq(
                   projectExternalResourceGrants.resourceType,
                   "owner_update_document"
                 ),
-                sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
+                sql<boolean>`(
+                  (
+                    ${dailyLogPhotos.mimeType} IS NULL
+                    AND ${dailyLogPhotos.thumbnailUrl} IS NULL
+                  )
+                  OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+                )`
               )
             )
           )
@@ -3165,11 +3187,11 @@ export async function getOwnerProjectUpdateDocument(
         .map(mapDailyLog)
     : []
 
-  const imageRows = allPhotoRows.filter(
-    (row) => row.mimeType?.startsWith("image/") === true
+  const imageRows = allPhotoRows.filter((row) =>
+    isOwnerUpdatePhotoAttachment(row)
   )
   const documentRows = allPhotoRows.filter(
-    (row) => row.mimeType?.startsWith("image/") !== true
+    (row) => !isOwnerUpdatePhotoAttachment(row)
   )
 
   const selectedPhotoIdsForViewer = internalViewer
@@ -3615,9 +3637,7 @@ export async function updateOwnerProjectUpdateDraft(
       const selectedPhotoIdSet = new Set(selectedPhotoIds)
       if (
         selectedAttachments.some((attachment) => {
-          const isImage =
-            attachment.thumbnailUrl !== null ||
-            attachment.mimeType?.startsWith("image/") === true
+          const isImage = isOwnerUpdatePhotoAttachment(attachment)
           return selectedPhotoIdSet.has(attachment.id) !== isImage
         })
       ) {
@@ -3864,9 +3884,7 @@ export async function draftOwnerProjectUpdateWithJarvis(
     const orderedAttachments = selectedAttachmentIds.flatMap((id) => {
       const attachment = selectedAttachmentById.get(id)
       if (attachment === undefined) return []
-      const isImage =
-        attachment.thumbnailUrl !== null ||
-        attachment.mimeType?.startsWith("image/") === true
+      const isImage = isOwnerUpdatePhotoAttachment(attachment)
       const kind: "photo" | "document" = isImage ? "photo" : "document"
       return [
         {

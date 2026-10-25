@@ -66,6 +66,20 @@ function safeFileName(value: string): string {
   return value.replace(/["\r\n]/g, "_")
 }
 
+function externalResponseMimeType(value: string | null): string {
+  switch (value) {
+    case "image/jpeg":
+    case "image/png":
+    case "image/gif":
+    case "image/webp":
+    case "application/pdf":
+    case "text/plain":
+      return value
+    default:
+      return "application/octet-stream"
+  }
+}
+
 export async function GET(
   request: NextRequest,
   {
@@ -156,14 +170,20 @@ export async function GET(
               eq(dailyLogPhotos.reviewStatus, "approved"),
               visibility,
               resourceType === "owner_update_document"
-                ? sql<boolean>`${dailyLogPhotos.mimeType} NOT LIKE 'image/%'`
-                : sql<boolean>`${dailyLogPhotos.mimeType} LIKE 'image/%'`,
+                ? sql<boolean>`(
+                    (${dailyLogPhotos.mimeType} IS NULL AND ${dailyLogPhotos.thumbnailUrl} IS NULL)
+                    OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+                  )`
+                : sql<boolean>`(
+                    ${dailyLogPhotos.mimeType} LIKE 'image/%'
+                    OR (${dailyLogPhotos.mimeType} IS NULL AND ${dailyLogPhotos.thumbnailUrl} IS NOT NULL)
+                  )`,
             )
       )
       .limit(1)
     if (
       !photo?.driveFileId ||
-      !photo.mimeType
+      (photo.mimeType === null && viewerIsInternal)
     ) {
       return new Response("Photo not found", { status: 404 })
     }
@@ -196,10 +216,15 @@ export async function GET(
     const serviceAccountKey = parseServiceAccountKey(keyJson)
     const client = new DriveClient({ serviceAccountKey })
     const googleEmail = downloadUserEmail(env)
-    const exportMimeType = isGoogleNativeFile(photo.mimeType)
+    const exportMimeType =
+      photo.mimeType !== null && isGoogleNativeFile(photo.mimeType)
       ? getExportMimeType(photo.mimeType)
       : null
-    if (isGoogleNativeFile(photo.mimeType) && exportMimeType === null) {
+    if (
+      photo.mimeType !== null &&
+      isGoogleNativeFile(photo.mimeType) &&
+      exportMimeType === null
+    ) {
       return new Response("This Google file type cannot be downloaded", {
         status: 415,
       })
@@ -223,11 +248,17 @@ export async function GET(
       })
     }
 
-    const responseMimeType = exportMimeType ?? photo.mimeType
-    const responseFileName =
-      exportMimeType === null
+    const storedResponseMimeType = exportMimeType ?? photo.mimeType
+    const responseMimeType = viewerIsInternal
+      ? storedResponseMimeType ?? "application/octet-stream"
+      : externalResponseMimeType(storedResponseMimeType)
+    const responseFileName = viewerIsInternal
+      ? exportMimeType === null || photo.mimeType === null
         ? photo.fileName
         : `${photo.fileName.replace(/\.[^.]+$/, "")}${getExportExtension(photo.mimeType)}`
+      : resourceType === "photo"
+        ? "shared-photo"
+        : "project-file"
 
     return new Response(response.body, {
       headers: {
