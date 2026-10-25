@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState, useTransition } from "react"
-import { SearchableCombobox } from "@/components/searchable-combobox"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import {
   IconCloudCheck,
   IconCloudOff,
@@ -18,6 +17,7 @@ import {
 import type { CherishStory } from "@/app/actions/cherish-stories"
 import { useChatPanel } from "@/components/agent/chat-provider"
 import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
+import { CherishValueField } from "@/components/cherish/cherish-value-field"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { HelpDrawer } from "@/components/help/help-drawer"
 import { Button } from "@/components/ui/button"
@@ -36,17 +36,8 @@ import {
   FIELD_OUTBOX_CHANGED_EVENT,
   listFieldOutboxItems,
 } from "@/lib/field/offline-outbox"
+import { suggestCherishValue } from "@/lib/cherish/value-suggestion"
 import { cn } from "@/lib/utils"
-
-const CHERISH_VALUES: readonly CherishValue[] = [
-  "Camaraderie",
-  "Honor",
-  "Excellence",
-  "Reliability",
-  "Integrity",
-  "Servitude",
-  "Humility",
-]
 
 const RESPONSE_TYPES: readonly {
   readonly value: CherishPulseResponseType
@@ -71,14 +62,17 @@ export function FieldDesk({
   const chatPanel = useChatPanel()
   const [online, setOnline] = useState(true)
   const [pendingCount, setPendingCount] = useState(0)
-  const [cherishValue, setCherishValue] =
-    useState<CherishValue>("Reliability")
+  // Nothing is preselected: the value is the person's choice, or else the
+  // one suggested from what they wrote (works offline).
+  const [chosenValue, setChosenValue] = useState<CherishValue | null>(null)
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
   const [message, setMessage] = useState("")
   const [anonymous, setAnonymous] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const suggestedValue = useMemo(() => suggestCherishValue(message), [message])
+  const cherishValue = chosenValue ?? suggestedValue
 
   useEffect(() => {
     function refresh(): void {
@@ -113,12 +107,13 @@ export function FieldDesk({
   function queueCherishResponse(
     trimmedMessage: string,
     submissionId: string,
+    value: CherishValue,
   ): boolean {
     return enqueueFieldOutboxItem(
       offlineScopeKey,
       createCherishPulseOutboxItem({
         id: submissionId,
-        cherishValue,
+        cherishValue: value,
         responseType,
         message: trimmedMessage,
         anonymous,
@@ -128,6 +123,7 @@ export function FieldDesk({
 
   function resetForm(): void {
     setMessage("")
+    setChosenValue(null)
     setAnonymous(false)
     setFeedback(null)
   }
@@ -144,9 +140,15 @@ export function FieldDesk({
       return
     }
 
+    if (!cherishValue) {
+      setFeedback("Choose the CHERISH value that fits best.")
+      return
+    }
+    const value = cherishValue
+
     const submissionId = crypto.randomUUID()
     if (!navigator.onLine) {
-      if (queueCherishResponse(trimmedMessage, submissionId)) {
+      if (queueCherishResponse(trimmedMessage, submissionId, value)) {
         resetForm()
         setFeedback(
           "Saved on this device. The response will sync when service returns.",
@@ -161,7 +163,7 @@ export function FieldDesk({
       setFeedback(null)
       try {
         const result = await submitCherishPulseResponse({
-          cherishValue,
+          cherishValue: value,
           responseType,
           message: trimmedMessage,
           source: "compass_mobile",
@@ -182,7 +184,7 @@ export function FieldDesk({
               : "Saved to the CHERISH review queue.",
         )
       } catch {
-        if (queueCherishResponse(trimmedMessage, submissionId)) {
+        if (queueCherishResponse(trimmedMessage, submissionId, value)) {
           resetForm()
           setFeedback(
             "Connection was interrupted. The response is saved for automatic sync.",
@@ -272,26 +274,6 @@ export function FieldDesk({
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              CHERISH value
-            </label>
-            <SearchableCombobox
-              value={cherishValue}
-              onValueChange={(value) => {
-                const nextValue = CHERISH_VALUES.find(
-                  (candidate) => candidate === value,
-                )
-                if (nextValue) setCherishValue(nextValue)
-              }}
-              options={CHERISH_VALUES.map((value) => ({ value, label: value }))}
-              ariaLabel="CHERISH value"
-              placeholder="Choose a value"
-              searchPlaceholder="Search values..."
-              emptyMessage="No matching values."
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">
               Response type
             </label>
             <Select
@@ -334,6 +316,16 @@ export function FieldDesk({
           className="min-h-28 resize-y"
           maxLength={1_200}
         />
+        <div className="mt-3">
+          <CherishValueField
+            id="field-cherish-value"
+            value={cherishValue}
+            suggested={suggestedValue}
+            chosen={chosenValue !== null}
+            hasMessage={message.trim().length >= 3}
+            onChoose={setChosenValue}
+          />
+        </div>
         <label className="mt-3 flex items-start gap-3 border-y py-3 text-sm">
           <Checkbox
             checked={anonymous}
@@ -369,7 +361,7 @@ export function FieldDesk({
           <Button
             type="button"
             onClick={submitResponse}
-            disabled={isPending || message.trim().length < 3}
+            disabled={isPending || message.trim().length < 3 || !cherishValue}
           >
             {isPending ? "Saving..." : online ? "Submit" : "Save for sync"}
           </Button>
