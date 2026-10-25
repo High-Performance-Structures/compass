@@ -57,6 +57,30 @@ export const HELP_VIDEOS: readonly HelpVideo[] = [
     durationSeconds: 18,
   },
   {
+    id: "schedule-add-item",
+    topicId: "schedule.schedule-item",
+    title: "Add a schedule item and link its predecessor",
+    durationSeconds: 25,
+  },
+  {
+    id: "schedule-publish",
+    topicId: "schedule.publish-schedule",
+    title: "Publish a schedule, then publish a change with a reason",
+    durationSeconds: 33,
+  },
+  {
+    id: "schedule-workday-exception",
+    topicId: "schedule.workday-exceptions",
+    title: "Add a weather day and review the moved dates",
+    durationSeconds: 26,
+  },
+  {
+    id: "schedule-save-template",
+    topicId: "schedule.schedule-templates",
+    title: "Save a schedule as a template and import it into another job",
+    durationSeconds: 31,
+  },
+  {
     id: "jarvis-schedule-confirm",
     topicId: "schedule.jarvis-schedule",
     title: "Change the schedule with Jarvis and Confirm",
