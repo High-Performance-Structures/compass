@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
+import { getProjectArchiveWorkspace } from "@/app/actions/project-archives"
+import { ProjectArchiveWorkspacePanel } from "@/components/projects/project-archive-workspace"
 import { IconFolderOpen, IconFiles } from "@tabler/icons-react"
 
 import { getProjectDocumentWorkspace } from "@/app/actions/project-documents"
@@ -17,7 +19,7 @@ export default async function ProjectDocumentsPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = await requireProjectRouteId(rawProjectId)
-  const workspace = await getProjectDocumentWorkspace(id)
+  const [workspace, archive] = await Promise.all([getProjectDocumentWorkspace(id), getProjectArchiveWorkspace(id)])
   const allProjectFoldersHref = workspace.project.driveFolderId
     ? `/dashboard/files/folder/${workspace.project.driveFolderId}`
     : "/dashboard/files?view=projects"
@@ -44,6 +46,7 @@ export default async function ProjectDocumentsPage({
         }
       />
       <ProjectDocumentsWorkspacePanel workspace={workspace} />
+      <ProjectArchiveWorkspacePanel workspace={archive} />
     </div>
   )
 }
