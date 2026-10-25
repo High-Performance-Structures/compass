@@ -1,10 +1,11 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, getTableColumns } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  dailyLogs,
   organizationMembers,
   projectClientMeetings,
   projects,
@@ -69,7 +70,9 @@ export type TranscriptState =
   | { readonly status: "none" }
   | { readonly status: "error"; readonly message: string }
 
-function transcriptState(meeting: typeof projectClientMeetings.$inferSelect): TranscriptState | null {
+function transcriptState(
+  meeting: Pick<typeof projectClientMeetings.$inferSelect, "transcriptStatus" | "transcriptUrl" | "transcriptError">
+): TranscriptState | null {
   switch (meeting.transcriptStatus) {
     case "pending":
       return { status: "pending" }
@@ -324,6 +327,10 @@ async function enableAutoTranscription(
   if (!response.ok) throw new Error(`Google Meet did not turn on the transcript (${response.status})`)
 }
 
+// The list never needs a transcript's text, which can run long.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const { transcriptText: _transcriptText, ...meetingListColumns } = getTableColumns(projectClientMeetings)
+
 export async function getProjectClientMeetings(
   projectId: string
 ): Promise<ActionResult<ProjectClientMeetingsView>> {
@@ -332,7 +339,7 @@ export async function getProjectClientMeetings(
     const [rows, guestOptions, staff] = await Promise.all([
       access.db
         .select({
-          meeting: projectClientMeetings,
+          meeting: meetingListColumns,
           displayName: users.displayName,
           firstName: users.firstName,
           lastName: users.lastName,
@@ -603,5 +610,78 @@ async function notifyInvitedStaff(
   } catch (error) {
     // The meeting is booked even if a notification provider is unavailable.
     console.error("Failed to notify staff about a project meeting:", error)
+  }
+}
+
+export type ClientMeetingTranscript = {
+  readonly projectNumber: string | null
+  readonly projectName: string
+  readonly title: string
+  readonly startsAt: string
+  readonly endsAt: string
+  readonly timeZone: string
+  readonly hostName: string
+  readonly guestEmails: readonly string[]
+  readonly staffEmails: readonly string[]
+  /** null when Google's text could not be read; the PDF is still in Drive. */
+  readonly text: string | null
+  readonly driveUrl: string | null
+}
+
+// Meetings saved before Compass kept the text: the draft daily log holds it
+// after this heading (lib/client-meetings/transcripts.ts).
+const DAILY_LOG_TRANSCRIPT_HEADING = "\n\nTranscript\n\n"
+
+/** A saved meeting transcript for its Print Preview. Staff only, like the meeting list. */
+export async function getClientMeetingTranscript(
+  projectId: string,
+  meetingId: string
+): Promise<ActionResult<ClientMeetingTranscript>> {
+  try {
+    const access = await meetingAccess(projectId, false)
+    const row = await access.db
+      .select({
+        meeting: projectClientMeetings,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        logText: dailyLogs.workCompleted,
+      })
+      .from(projectClientMeetings)
+      .innerJoin(users, eq(users.id, projectClientMeetings.organizerUserId))
+      .leftJoin(dailyLogs, eq(dailyLogs.id, projectClientMeetings.dailyLogId))
+      .where(
+        and(
+          eq(projectClientMeetings.id, meetingId),
+          eq(projectClientMeetings.projectId, projectId),
+          eq(projectClientMeetings.organizationId, access.organizationId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!row || row.meeting.transcriptStatus !== "saved") throw new Error("Transcript not found")
+    const { meeting, logText, ...host } = row
+    const fromLog = logText?.includes(DAILY_LOG_TRANSCRIPT_HEADING)
+      ? logText.slice(logText.indexOf(DAILY_LOG_TRANSCRIPT_HEADING) + DAILY_LOG_TRANSCRIPT_HEADING.length).trim()
+      : null
+    return {
+      success: true,
+      data: {
+        projectNumber: access.project.projectNumber,
+        projectName: access.project.name,
+        title: meeting.title,
+        startsAt: meeting.startsAt,
+        endsAt: meeting.endsAt,
+        timeZone: meeting.timeZone,
+        hostName: displayName(host),
+        guestEmails: parseEmailList(meeting.guestEmails),
+        staffEmails: parseEmailList(meeting.staffEmails),
+        text: meeting.transcriptText?.trim() || fromLog || null,
+        driveUrl: meeting.transcriptUrl,
+      },
+    }
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to load the transcript") }
   }
 }

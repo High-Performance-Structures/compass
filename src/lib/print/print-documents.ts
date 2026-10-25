@@ -10,6 +10,7 @@ export const PRINT_DOCUMENTS = {
   "change-order": { title: "Change order", render: "pdf", params: ["changeOrderId"], landscape: false },
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
   "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },
+  "meeting-transcript": { title: "Meeting transcript", render: "page", params: ["meetingId"], landscape: false },
   "daily-logs": { title: "Daily logs", render: "pdf", params: ["logIds", "start", "end", "author"], landscape: false },
   "estimate-compare": {
     title: "Estimate version comparison",

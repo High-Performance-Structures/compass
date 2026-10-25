@@ -89,6 +89,9 @@ export default function PortfolioTerrain({
   callbacks.current = { onSelectJob, onHoverJob, onUnavailable }
   // Read once when the scene starts.
   const focusOnLoad = React.useRef(focusSelectedOnLoad)
+  // Bumped to rebuild the scene on a fresh canvas after the browser takes the
+  // GPU context back (another tab such as a video call can cause it).
+  const [generation, setGeneration] = React.useState(0)
 
   React.useEffect(() => {
     const canvas = canvasRef.current
@@ -114,11 +117,34 @@ export default function PortfolioTerrain({
     }
     if (focusOnLoad.current) scene.focusSelectedWhenPlaced()
     sceneRef.current = scene
+    let lost = false
+    const rebuild = (): void => {
+      setReady(false)
+      setLabels([])
+      setGeneration((value) => value + 1)
+    }
+    const handleLost = (event: Event): void => {
+      // Ask the browser to give the context back instead of leaving a blank map.
+      event.preventDefault()
+      lost = true
+    }
+    const handleRestored = (): void => {
+      if (lost) rebuild()
+    }
+    const handleVisible = (): void => {
+      if (lost && document.visibilityState === "visible") rebuild()
+    }
+    canvas.addEventListener("webglcontextlost", handleLost)
+    canvas.addEventListener("webglcontextrestored", handleRestored)
+    document.addEventListener("visibilitychange", handleVisible)
     return () => {
+      canvas.removeEventListener("webglcontextlost", handleLost)
+      canvas.removeEventListener("webglcontextrestored", handleRestored)
+      document.removeEventListener("visibilitychange", handleVisible)
       sceneRef.current = null
       scene.dispose()
     }
-  }, [])
+  }, [generation])
 
   React.useEffect(() => {
     // Theme colors are lifted for contrast against the dark terrain.
@@ -145,11 +171,11 @@ export default function PortfolioTerrain({
       risk: themeColorHex("--warning", 0.35),
       late: themeColorHex("--destructive", 0.3),
     })
-  }, [jobs, markerKey])
+  }, [jobs, markerKey, generation])
 
   React.useEffect(() => {
     sceneRef.current?.setHighlight(highlight)
-  }, [highlight])
+  }, [highlight, generation])
 
   React.useEffect(() => {
     sceneRef.current?.setMessageStacks(messageStacks, {
@@ -159,7 +185,7 @@ export default function PortfolioTerrain({
       schedule: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.schedule, 0.3),
       other: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.other, 0.3),
     })
-  }, [messageStacks, ready])
+  }, [messageStacks, ready, generation])
 
   const layerState = layers?.state
   const layerSettings = layers?.settings
@@ -180,13 +206,14 @@ export default function PortfolioTerrain({
           }
         : null,
     })
-  }, [layerState, layerSettings])
+  }, [layerState, layerSettings, generation])
 
   return (
     <div className="flex h-full min-h-[420px] w-full flex-col">
     {/* The scene sizes itself to this area; the key sits below it, off the terrain. */}
     <div ref={containerRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
       <canvas
+        key={generation}
         ref={canvasRef}
         aria-label="3D terrain map of Colorado with job markers. Use the job list for keyboard access."
         className="absolute inset-0 block size-full cursor-grab touch-none active:cursor-grabbing"

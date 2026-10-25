@@ -45,8 +45,10 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { printPreviewHref } from "@/lib/print/print-documents"
 
 const DURATIONS = [15, 30, 45, 60, 90, 120] as const
+const MAX_UPCOMING_SHOWN = 3
 type When = "now" | "scheduled"
 
 function localDateInput(date: Date): string {
@@ -326,27 +328,80 @@ function CancelMeetingButton({
 }
 
 function TranscriptLabel({
+  projectId,
   meeting,
 }: {
+  readonly projectId: string
   readonly meeting: ProjectClientMeetingItem
 }): React.ReactElement | null {
   const transcript = meeting.transcript
   if (!transcript) return null
   if (transcript.status === "saved") {
-    return transcript.url ? (
+    // Compass's own document preview, with Print / Save PDF.
+    const href = printPreviewHref({
+      projectId,
+      document: "meeting-transcript",
+      params: { meetingId: meeting.id },
+      number: `Transcript ${meeting.startsAt.slice(0, 10)}`,
+    })
+    return (
       <>
         {" · "}
-        <a href={transcript.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+        <a href={href} target="_blank" rel="noopener" className="text-primary hover:underline">
           Transcript
         </a>
       </>
-    ) : (
-      <> · Transcript saved to Meeting Notes</>
     )
   }
   if (transcript.status === "pending") return <> · Transcript pending</>
   if (transcript.status === "none") return <> · No transcript</>
   return <span title={transcript.message}> · Transcript not saved</span>
+}
+
+function MoreMeetingsDialog({
+  projectId,
+  label,
+  meetings,
+}: {
+  readonly projectId: string
+  readonly label: string
+  readonly meetings: readonly ProjectClientMeetingItem[]
+}): React.ReactElement {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button type="button" className="text-xs text-primary hover:underline">
+          {label} ({meetings.length})
+        </button>
+      </DialogTrigger>
+      <DialogContent className="flex max-h-[85dvh] flex-col sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>
+            Transcripts open in Print Preview. Each saved transcript is also a draft daily log.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="min-h-0 flex-1 divide-y overflow-y-auto">
+          {meetings.map((meeting) => (
+            <li key={meeting.id} className="py-2 text-xs text-muted-foreground">
+              <p className="break-words text-sm text-foreground">{meeting.title}</p>
+              <p>
+                {meetingTimeLabel(meeting)} · Host {meeting.organizerName}
+                {meeting.status === "cancelled" ? " · Cancelled" : ""}
+                {meeting.status === "scheduled" && <TranscriptLabel projectId={projectId} meeting={meeting} />}
+                {meeting.dailyLogHref ? (
+                  <>
+                    {" · "}
+                    <a href={meeting.dailyLogHref} className="text-primary hover:underline">Daily log</a>
+                  </>
+                ) : null}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 export function ProjectClientMeetingsCard({
@@ -360,19 +415,18 @@ export function ProjectClientMeetingsCard({
   const upcoming = view.meetings
     .filter((meeting) => meeting.status === "scheduled" && Date.parse(meeting.endsAt) > now)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-  const recent = view.meetings
-    .filter((meeting) => !upcoming.includes(meeting))
-    .slice(0, 3)
+  const past = view.meetings.filter((meeting) => !upcoming.includes(meeting))
+  // Only the next few calls sit under the button; the rest open in a list.
+  const shown = upcoming.slice(0, MAX_UPCOMING_SHOWN)
+  const more = [...upcoming.slice(MAX_UPCOMING_SHOWN), ...past]
 
   return (
-    <section aria-labelledby={`client-meetings-${projectId}`} className="mb-5 space-y-3">
-      <h2 id={`client-meetings-${projectId}`} className="text-xs font-medium uppercase text-muted-foreground">
-        Project meetings
-      </h2>
+    // The button already says Project Meetings, so the section needs no heading.
+    <section aria-label="Project meetings" className="mb-5 space-y-3">
       <ScheduleMeetingDialog projectId={projectId} view={view} />
       {upcoming.length > 0 && (
         <ul className="space-y-2">
-          {upcoming.map((meeting) => (
+          {shown.map((meeting) => (
             <li key={meeting.id} className="rounded-md border p-2">
               <p className="truncate text-sm font-medium">{meeting.title}</p>
               <p className="text-xs text-muted-foreground">{meetingTimeLabel(meeting)}</p>
@@ -393,24 +447,12 @@ export function ProjectClientMeetingsCard({
           ))}
         </ul>
       )}
-      {recent.length > 0 && (
-        <ul className="space-y-1">
-          {recent.map((meeting) => (
-            <li key={meeting.id} className="text-xs text-muted-foreground">
-              <span className="text-foreground">{meeting.title}</span>
-              {" · "}
-              {meetingTimeLabel(meeting)}
-              {meeting.status === "cancelled" ? " · Cancelled" : ""}
-              {meeting.status === "scheduled" && <TranscriptLabel meeting={meeting} />}
-              {meeting.dailyLogHref ? (
-                <>
-                  {" · "}
-                  <a href={meeting.dailyLogHref} className="text-primary hover:underline">Daily log</a>
-                </>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+      {more.length > 0 && (
+        <MoreMeetingsDialog
+          projectId={projectId}
+          label={upcoming.length > shown.length ? "All other meetings" : "Past meetings"}
+          meetings={more}
+        />
       )}
     </section>
   )
