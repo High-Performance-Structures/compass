@@ -22,6 +22,38 @@ import {
   type PortfolioLayerState,
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
 import type { TravelChargeSettings } from "@/lib/portfolio-map/travel-zones"
+import {
+  FIRE_COLOR_TOKEN,
+  WEATHER_COLOR_TOKEN,
+} from "@/components/dashboard/portfolio-map/portfolio-layers"
+import type { WeatherSublayers } from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
+import { WeatherTimeBar } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
+import type { AlertKind } from "@/lib/weather/alerts"
+import { areaGrid, DEFAULT_WEATHER_AREA } from "@/lib/weather/areas"
+import { DEFAULT_WEATHER_LIMITS, type FireLayerData, type WeatherLayerData, type WeatherLimits } from "@/lib/weather/layer"
+
+/** Weather and Fire & smoke layer data, loaded by the dashboard only while a layer is on. */
+export type PortfolioWeatherProps = {
+  readonly weather: WeatherLayerData | null
+  readonly fire: FireLayerData | null
+  readonly limits: WeatherLimits | null
+  readonly parts: WeatherSublayers
+  readonly onParts: (next: WeatherSublayers) => void
+  readonly error: string | null
+  /** The time bar's step (3 hours each, 0 = now). */
+  readonly step: number
+  readonly onStep: (next: number) => void
+}
+
+const ALERT_COLOR_TOKEN: Readonly<Record<AlertKind, string>> = {
+  winter: "--info",
+  wind: WEATHER_COLOR_TOKEN.wind,
+  flood: "--info",
+  storm: "--warning",
+  heat: WEATHER_COLOR_TOKEN.heat,
+  cold: WEATHER_COLOR_TOKEN.cold,
+  fire: FIRE_COLOR_TOKEN.redFlag,
+}
 
 /**
  * A different marker key in place of the phase key (a sales pipeline's
@@ -51,6 +83,7 @@ type PortfolioTerrainProps = {
     readonly settings: TravelChargeSettings
     readonly onChange: (next: PortfolioLayerState) => void
   }
+  readonly weather?: PortfolioWeatherProps
 }
 
 function supportsWebGL2(): boolean {
@@ -79,6 +112,7 @@ export default function PortfolioTerrain({
   markerKey = null,
   layers,
   messageStacks = null,
+  weather,
 }: PortfolioTerrainProps): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -187,6 +221,79 @@ export default function PortfolioTerrain({
     })
   }, [messageStacks, ready, generation])
 
+  const weatherStep = weather?.step ?? 0
+  const weatherOn = Boolean(layers?.state.weather)
+  const fireOn = Boolean(layers?.state.fire)
+  const weatherData = weatherOn ? (weather?.weather ?? null) : null
+  const fireData = fireOn ? (weather?.fire ?? null) : null
+  const limits = weather?.limits ?? DEFAULT_WEATHER_LIMITS
+  const parts = weather?.parts
+  const steps = weatherData?.steps ?? 1
+  const step = Math.min(weatherStep, steps - 1)
+
+  React.useEffect(() => {
+    if (!weatherData || !parts) {
+      sceneRef.current?.setWeather(null)
+      return
+    }
+    const grid = areaGrid(DEFAULT_WEATHER_AREA)
+    sceneRef.current?.setWeather({
+      cells: weatherData.cells.map((cell) => ({
+        lon: cell.lon,
+        lat: cell.lat,
+        precipIn: cell.series.precipIn[step] ?? 0,
+        snowIn: cell.series.snowIn[step] ?? 0,
+        tempMinF: cell.series.tempMinF[step] ?? null,
+        tempMaxF: cell.series.tempMaxF[step] ?? null,
+        gustMph: cell.series.gustMph[step] ?? null,
+        windDir: cell.series.windDir[step] ?? null,
+      })),
+      spacing: { lon: grid.lonStep, lat: grid.latStep },
+      limits: { gustMph: limits.gustMph, coldF: limits.coldF, heatF: limits.heatF },
+      alerts: weatherData.alerts
+        .filter((alert) => {
+          const from = Date.parse(weatherData.start) + step * 3 * 60 * 60 * 1000
+          const onset = alert.onset ? Date.parse(alert.onset) : Number.NEGATIVE_INFINITY
+          const ends = alert.ends ? Date.parse(alert.ends) : Number.POSITIVE_INFINITY
+          return onset <= from + 3 * 60 * 60 * 1000 && ends > from
+        })
+        .map((alert) => ({ rings: alert.rings, solid: alert.level === "warning", color: themeColorHex(ALERT_COLOR_TOKEN[alert.kind], 0.25) })),
+      show: parts,
+      colors: {
+        rain: themeColorHex(WEATHER_COLOR_TOKEN.rain, 0.35),
+        snow: themeColorHex(WEATHER_COLOR_TOKEN.snow, 0.9),
+        wind: themeColorHex(WEATHER_COLOR_TOKEN.wind, 0.4),
+        cold: themeColorHex(WEATHER_COLOR_TOKEN.cold, 0.2),
+        heat: themeColorHex(WEATHER_COLOR_TOKEN.heat, 0.1),
+      },
+    })
+  }, [weatherData, parts, step, limits, ready, generation])
+
+  React.useEffect(() => {
+    if (!fireData) {
+      sceneRef.current?.setFire(null)
+      return
+    }
+    sceneRef.current?.setFire({
+      fires: fireData.fires,
+      alerts: fireData.alerts.map((alert) => ({ rings: alert.rings, solid: alert.level === "warning" })),
+      colors: {
+        fire: themeColorHex(FIRE_COLOR_TOKEN.fire, 0.15),
+        redFlag: themeColorHex(FIRE_COLOR_TOKEN.redFlag, 0.2),
+      },
+    })
+  }, [fireData, ready, generation])
+
+  const weatherStatus = !weatherOn
+    ? null
+    : weather?.error && !weatherData
+      ? weather.error
+      : !weatherData
+        ? "LOADING WEATHER…"
+        : weatherData.warming
+          ? "GATHERING FORECASTS · THE FIRST LOAD TAKES A FEW MINUTES"
+          : null
+
   const layerState = layers?.state
   const layerSettings = layers?.settings
   React.useEffect(() => {
@@ -277,7 +384,29 @@ export default function PortfolioTerrain({
           RESET
         </button>
       </div>
-      {layers ? <PortfolioLayerControl state={layers.state} onChange={layers.onChange} /> : null}
+      {layers ? (
+        <PortfolioLayerControl
+          state={layers.state}
+          onChange={layers.onChange}
+          weatherParts={weather?.parts}
+          onWeatherParts={weather?.onParts}
+        />
+      ) : null}
+      {weatherOn && weather ? (
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-col items-start">
+          {weatherOn ? (
+            <div className="pointer-events-auto w-full max-w-xl">
+              {weatherData && !weatherData.warming ? (
+                <WeatherTimeBar start={weatherData.start} steps={weatherData.steps} step={step} onStep={weather.onStep} />
+              ) : (
+                <p className="border border-border bg-background/85 px-3 py-2 font-mono text-xs tracking-[0.1em] text-muted-foreground backdrop-blur" role="status">
+                  {weatherStatus}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {!ready ? (
         <p className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs tracking-[0.16em] text-muted-foreground">
           LOADING TERRAIN…
@@ -312,6 +441,8 @@ export default function PortfolioTerrain({
       ) : null}
       <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-muted-foreground">
         Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) · Roads © OpenStreetMap contributors
+        {weatherOn ? " · Weather: NOAA National Weather Service" : ""}
+        {fireOn ? " · Fires: NIFC WFIGS" : ""}
       </p>
       </div>
     </div>

@@ -3903,3 +3903,61 @@ export const printSnapshots = sqliteTable(
     index("print_snapshots_expires_idx").on(table.expiresAt),
   ]
 )
+
+// Weather and Fire & smoke map layers: a shared cache of public NWS and
+// wildfire data (no company data), refreshed in the background.
+/** A rounded map point and the NWS forecast grid cell covering it. */
+export const weatherPoints = sqliteTable(
+  "weather_points",
+  {
+    /** Rounded "lat,lon" (2 decimals, about 1 km). */
+    pointKey: text("point_key").primaryKey(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    /** "BOU/26,53" once resolved. */
+    cellKey: text("cell_key"),
+    /** pending | found | outside (no NWS forecast there). */
+    status: text("status").notNull().default("pending"),
+    resolvedAt: text("resolved_at"),
+    requestedAt: text("requested_at").notNull(),
+  },
+  (table) => [index("idx_weather_points_pending").on(table.status, table.requestedAt)],
+)
+
+/** One NWS forecast grid cell and its next days in 3-hour steps (JSON). */
+export const weatherCells = sqliteTable(
+  "weather_cells",
+  {
+    cellKey: text("cell_key").primaryKey(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    elevationM: real("elevation_m"),
+    series: text("series"),
+    fetchedAt: text("fetched_at"),
+    /** Last time a map or schedule check read it; idle cells stop refreshing. */
+    requestedAt: text("requested_at").notNull(),
+    failureCount: integer("failure_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at"),
+  },
+  (table) => [index("idx_weather_cells_refresh").on(table.requestedAt, table.fetchedAt)],
+)
+
+/** Latest warnings or fires for a map area (kind = alerts | fires). */
+export const weatherAreaSnapshots = sqliteTable(
+  "weather_area_snapshots",
+  {
+    areaKey: text("area_key").notNull(),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    fetchedAt: text("fetched_at").notNull(),
+    failureCount: integer("failure_count").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.areaKey, table.kind] })],
+)
+
+/** Simplified outlines of NWS forecast zones, for warnings issued by zone. */
+export const weatherZoneShapes = sqliteTable("weather_zone_shapes", {
+  zoneId: text("zone_id").primaryKey(),
+  rings: text("rings").notNull(),
+  fetchedAt: text("fetched_at").notNull(),
+})
