@@ -137,4 +137,19 @@ test.describe("personal project views", () => {
     await expect(trigger).toHaveAttribute("aria-expanded", "true")
     await expect(page.getByRole("option").filter({ hasText: "Filter Orchard" })).toBeVisible()
   })
+
+  test("workflow-specific pickers keep browsing all accessible projects", async ({ page }) => {
+    await page.goto("/dashboard/projects")
+    const main = page.getByRole("main")
+    await main.locator('[data-department-filter="D"]').click()
+    if (await main.getByRole("button", { name: "Set as default", exact: true }).isVisible()) {
+      await main.getByRole("button", { name: "Set as default", exact: true }).click()
+    }
+    await expect(main.getByRole("button", { name: "Your default", exact: true })).toBeVisible()
+    await page.goto("/dashboard/rfis")
+    await page.getByRole("combobox", { name: "Switch project", exact: true }).filter({ hasText: "Search projects for RFIs" }).click()
+    await expect(page.getByRole("option").filter({ hasText: "Filter Hill" })).toBeVisible()
+    await expect(page.getByRole("option").filter({ hasText: "Filter Orchard" })).toBeVisible()
+    await expect(page.getByRole("option").filter({ hasText: "Filter Secret" })).toHaveCount(0)
+  })
 })

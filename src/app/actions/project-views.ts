@@ -106,12 +106,23 @@ export async function getProjectSavedViews(): Promise<{ readonly views: readonly
     if (!user?.organizationId || !isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(user.organizationId)) return { views: [], error: null }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const rows = await db.select().from(projectSavedViews).where(and(
-      eq(projectSavedViews.organizationId, user.organizationId),
-      or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
-    )).orderBy(asc(projectSavedViews.name))
+    const [rows, customStatuses] = await Promise.all([
+      db.select().from(projectSavedViews).where(and(
+        eq(projectSavedViews.organizationId, user.organizationId),
+        or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
+      )).orderBy(asc(projectSavedViews.name)),
+      db.select({ id: projectJobStatuses.id }).from(projectJobStatuses)
+        .where(and(eq(projectJobStatuses.organizationId, user.organizationId), eq(projectJobStatuses.active, true))),
+    ])
+    const availableStatusIds = new Set([
+      ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id),
+      ...customStatuses.map((status) => status.id),
+    ])
     return { views: rows.flatMap((row) => {
-      const definition = parseProjectViewDefinition(row.definition)
+      const parsed = parseProjectViewDefinition(row.definition)
+      // Deleted custom statuses fall back just like personal default snapshots.
+      const definition = parsed?.status.kind === "job" && !availableStatusIds.has(parsed.status.jobStatusId)
+        ? DEFAULT_PROJECT_VIEW : parsed
       return definition ? [{ id: row.id, name: row.name, visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
     }), error: null }
   } catch (error) {

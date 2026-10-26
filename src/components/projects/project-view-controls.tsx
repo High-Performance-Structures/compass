@@ -15,14 +15,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { projectHubStatusFilterLabel } from "@/lib/project-hub-status-filter"
 import { sameProjectView, type ProjectViewDefinition, type SavedProjectView } from "@/lib/project-views"
 
 const formSchema = z.object({ name: z.string().trim().min(1, "Enter a view name.").max(80), shared: z.boolean(), replaceFilters: z.boolean() })
 type ViewForm = z.infer<typeof formSchema>
 
-export function ProjectViewControls({ definition, views, loadError, onApply }: {
+export function ProjectViewControls({ definition, filterSummary, views, loadError, onApply }: {
   readonly definition: ProjectViewDefinition
+  readonly filterSummary: string
   readonly views: readonly SavedProjectView[]
   readonly loadError: string | null
   readonly onApply: (definition: ProjectViewDefinition) => void
@@ -104,7 +104,7 @@ export function ProjectViewControls({ definition, views, loadError, onApply }: {
               <Input id="project-view-name" maxLength={80} disabled={isPending} {...form.register("name")} aria-invalid={Boolean(form.formState.errors.name)} aria-describedby="project-view-name-error" />
               <p id="project-view-name-error" className="text-xs text-destructive">{form.formState.errors.name?.message}</p>
             </div>
-            <p className="text-xs text-muted-foreground">{editing && !form.watch("replaceFilters") ? "Keeping this view’s saved filters." : `Current filters: ${projectHubStatusFilterLabel(definition.status)} · ${definition.department === "ALL" ? "All departments" : "Selected department"}.`} Search text is never saved.</p>
+            <p className="text-xs text-muted-foreground">{editing && !form.watch("replaceFilters") ? "Keeping this view’s saved filters." : `Current filters: ${filterSummary}.`} Search text is never saved.</p>
             {editing ? <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={form.watch("replaceFilters")} disabled={isPending} onCheckedChange={(value) => form.setValue("replaceFilters", value === true)} />
               Replace saved filters with the current filters

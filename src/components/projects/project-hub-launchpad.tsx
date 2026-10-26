@@ -534,8 +534,11 @@ export function ProjectHubLaunchpad({
   const [status, setStatus] = useState<ProjectHubStatusFilter>(
     defaultView.status,
   )
+  const [pageIndex, setPageIndex] = useState(0)
   const [search, setSearch] = useState("")
   const searching = search.trim().length > 0
+  // Saving/resetting the personal default updates this page and the sidebar together.
+  // Depend on its value so unrelated layout refreshes preserve temporary filters.
   useEffect(() => {
     const view = parseProjectViewDefinition(defaultViewJson)
     if (view) {
@@ -547,7 +550,6 @@ export function ProjectHubLaunchpad({
   const [statusFilterOpen, setStatusFilterOpen] = useState(false)
   const [layout, setLayout] = useState<ProjectLayout>("cards")
   const [pageSize, setPageSize] = useState<ProjectPageSize>(10)
-  const [pageIndex, setPageIndex] = useState(0)
   const [duplicateReviewProjectId, setDuplicateReviewProjectId] = useState<
     string | null
   >(null)
@@ -565,6 +567,9 @@ export function ProjectHubLaunchpad({
     () => projectHubStatusFilterOptions(projects),
     [projects],
   )
+  const selectedDepartmentLabel = department === "ALL" ? "All departments"
+    : isDepartmentCode(department) ? departmentProfiles[department].shortName
+    : department === "INTERNAL" ? internalDepartmentName : "Other"
   const selectedStatusKey = projectHubStatusFilterKey(status)
   const selectedStatusOption = statusOptions.find(
     (option) => option.key === selectedStatusKey,
@@ -691,6 +696,7 @@ export function ProjectHubLaunchpad({
             ))}
             <div className="min-w-[17rem] flex-1 bg-background">
               <ProjectQuickSwitcher
+                applyDefaultView
                 projects={projects}
                 currentProjectId={activeProjectId}
                 placeholder="Jump to project..."
@@ -769,7 +775,7 @@ export function ProjectHubLaunchpad({
                 </Command>
               </PopoverContent>
             </Popover>
-            <ProjectViewControls definition={{ department, status }} views={savedViews.views} loadError={savedViews.error}
+            <ProjectViewControls definition={{ department, status }} filterSummary={`${selectedStatusOption?.label ?? projectHubStatusFilterLabel(status)} · ${selectedDepartmentLabel}`} views={savedViews.views} loadError={savedViews.error}
               onApply={(view) => { setDepartment(view.department); setStatus(view.status); setSearch(""); setPageIndex(0) }} />
           </div>
         </div>

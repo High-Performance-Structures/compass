@@ -7,6 +7,7 @@ import {
   agentMemories,
   notificationPreferences,
   pushTokens,
+  projectSavedViews,
   slabMemories,
   userPermissionOverrides,
   userSchedulePreferences,
@@ -111,6 +112,9 @@ export async function runAccountDeletion(
       .update(users)
       .set(deidentifiedUserValues(userId, now))
       .where(eq(users.id, userId)),
+    // This configuration uses owner_user_id rather than the common user_id key.
+    // Remove shared views too; otherwise a deleted account leaves uneditable views.
+    db.delete(projectSavedViews).where(eq(projectSavedViews.ownerUserId, userId)),
     ...deletes,
     db
       .update(accountDeletionRequests)
