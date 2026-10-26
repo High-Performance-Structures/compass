@@ -73,7 +73,7 @@ export function SearchableCombobox({
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
   const browsing = search.trim().length === 0 && browseValues !== undefined
-  const browseSet = new Set(browseValues)
+  const browseSet = React.useMemo(() => new Set(browseValues), [browseValues])
   const visibleOptions = browsing ? options.filter((option) => browseSet.has(option.value)) : options
   const selectedOption =
     options.find((option) => option.value === value) ?? null

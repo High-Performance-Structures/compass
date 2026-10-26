@@ -24,9 +24,9 @@ beforeEach(() => {
   sqlite = new Database(":memory:")
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT);
     CREATE TABLE organizations (id TEXT PRIMARY KEY);
-    INSERT INTO users VALUES ('alice'), ('bob'), ('carol'), ('demo-user-001');
+    INSERT INTO users VALUES ('alice', 'Alice'), ('bob', 'Bob'), ('carol', 'Carol'), ('demo-user-001', 'Demo');
     INSERT INTO organizations VALUES ('org-a'), ('org-b');
     CREATE TABLE user_view_preferences (user_id TEXT NOT NULL, view_key TEXT NOT NULL, value TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, view_key));
     CREATE TABLE project_job_statuses (id TEXT, organization_id TEXT, active INTEGER);
@@ -70,7 +70,7 @@ describe("project view actions with real SQLite queries", () => {
     user("bob")
     const result = await getProjectSavedViews()
     expect(result.error).toBeNull()
-    expect(result.views).toMatchObject([{ id: shared, name: "Alice shared", isOwner: false }])
+    expect(result.views).toMatchObject([{ id: shared, name: "Alice shared", ownerName: "Alice", isOwner: false }])
     expect(result.views).toHaveLength(1)
     user()
     expect((await getProjectSavedViews()).views.map((view) => view.name)).toEqual(["Alice private", "Alice shared"])
@@ -130,13 +130,20 @@ describe("project view actions with real SQLite queries", () => {
     expect((await getProjectViewPreferences()).defaultDefinition).toEqual(DEFAULT_PROJECT_VIEW)
     const loaded = (await getProjectSavedViews()).views.find((view) => view.id === saved.view.id)
     expect(loaded?.definition).toEqual(DEFAULT_PROJECT_VIEW)
-    expect(await saveProjectView({ id: saved.view.id, name: "Renamed after removal", visibility: "personal", definition: loaded?.definition ?? DEFAULT_PROJECT_VIEW })).toMatchObject({ success: true })
+    expect(await saveProjectView({ id: saved.view.id, name: "Renamed after removal", visibility: "personal", definition: null })).toMatchObject({ success: true, view: { definition: DEFAULT_PROJECT_VIEW } })
+    const stored = sqlite.prepare("SELECT definition FROM project_saved_views WHERE id = ?").get(saved.view.id)
+    expect(stored).toEqual({ definition: JSON.stringify(custom) })
+    expect(await saveProjectView({ id: saved.view.id, name: "Re-shared after removal", visibility: "shared", definition: null })).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT definition FROM project_saved_views WHERE id = ?").get(saved.view.id)).toEqual(stored)
+    expect(await saveProjectView({ id: saved.view.id, name: "Replaced filters", visibility: "shared", definition: DEFAULT_PROJECT_VIEW })).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT definition FROM project_saved_views WHERE id = ?").get(saved.view.id)).toEqual({ definition: JSON.stringify(DEFAULT_PROJECT_VIEW) })
     sqlite.exec("UPDATE user_view_preferences SET value = 'malformed'")
     expect((await getProjectViewPreferences()).defaultDefinition).toEqual(DEFAULT_PROJECT_VIEW)
   })
 
   it("rejects invalid names and blocks external, organization-less, and demo mutations", async () => {
     expect(await saveProjectView({ id: null, name: "   ", visibility: "personal", definition })).toMatchObject({ success: false })
+    expect(await saveProjectView({ id: null, name: "No filters", visibility: "personal", definition: null })).toMatchObject({ success: false })
     for (const identity of [{ id: "alice", org: "org-a", role: "client" }, { id: "alice", org: null, role: "office" }, { id: "demo-user-001", org: "org-a", role: "admin" }]) {
       user(identity.id, identity.org, identity.role)
       expect(await setDefaultProjectView(definition)).toMatchObject({ success: false })

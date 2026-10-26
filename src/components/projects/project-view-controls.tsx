@@ -54,7 +54,7 @@ export function ProjectViewControls({ definition, filterSummary, views, loadErro
       id: editing?.id ?? null,
       name: values.name,
       visibility: values.shared ? "shared" : "personal",
-      definition: editing && !values.replaceFilters ? editing.definition : definition,
+      definition: editing && !values.replaceFilters ? null : definition,
     })
     if (!result.success) { toast.error(result.error); return }
     toast.success(editing ? "View updated." : "View saved.")
@@ -83,7 +83,7 @@ export function ProjectViewControls({ definition, filterSummary, views, loadErro
         ) : null}
         <div className="min-w-0 w-full sm:w-48">
           <SearchableCombobox ariaLabel="Saved project views" placeholder="Saved views" searchPlaceholder="Search saved views..."
-            options={views.map((view) => ({ value: view.id, label: view.name, description: view.isOwner ? view.visibility === "shared" ? "Yours · shared with staff" : "Personal" : "Shared · read-only" }))}
+            options={views.map((view) => ({ value: view.id, label: view.isOwner ? view.name : `${view.name} — ${view.ownerName}`, description: view.isOwner ? view.visibility === "shared" ? "Yours · shared with staff" : "Personal" : "Shared · read-only" }))}
             value={selectedView?.id ?? ""} onValueChange={(id) => {
               const view = views.find((item) => item.id === id)
               if (view) onApply(view.definition)
@@ -122,7 +122,7 @@ export function ProjectViewControls({ definition, filterSummary, views, loadErro
             <p className="text-xs font-medium text-muted-foreground">Available views</p>
             <div className="max-h-52 overflow-y-auto divide-y">
               {views.map((view) => <div key={view.id} className="flex items-center gap-2 py-2">
-                <Button type="button" variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal break-words text-left" disabled={isPending} onClick={() => { onApply(view.definition); setDialogOpen(false) }}>{view.name}</Button>
+                <Button type="button" variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal break-words text-left" disabled={isPending} onClick={() => { onApply(view.definition); setDialogOpen(false) }}>{view.isOwner ? view.name : `${view.name} — ${view.ownerName}`}</Button>
                 <span className="text-xs text-muted-foreground">{view.visibility === "shared" ? "Shared" : "Personal"}</span>
                 {view.isOwner ? <>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Edit ${view.name}`} disabled={isPending} onClick={() => edit(view)}><Pencil className="size-4" /></Button>

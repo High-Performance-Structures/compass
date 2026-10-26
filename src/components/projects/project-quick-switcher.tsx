@@ -1,10 +1,11 @@
 "use client"
 
 import type * as React from "react"
+import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 
 import type { ProjectListItem } from "@/app/actions/projects"
-import { projectBrowseIds } from "@/lib/project-views"
+import { projectBrowseIds, projectMatchesView } from "@/lib/project-views"
 import { useActiveProject, useProjectViewPreferences } from "@/components/project-list-provider"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
 
@@ -35,15 +36,16 @@ export function ProjectQuickSwitcher({
   const router = useRouter()
   const { setActiveProjectId } = useActiveProject()
   const { defaultDefinition } = useProjectViewPreferences()
-  const browseValues = !applyDefaultView || defaultDefinition === null ? undefined : projectBrowseIds(projects, defaultDefinition, currentProjectId)
+  const browseValues = useMemo(() => !applyDefaultView || defaultDefinition === null ? undefined : projectBrowseIds(projects, defaultDefinition, currentProjectId), [applyDefaultView, projects, defaultDefinition, currentProjectId])
+  const matchCount = useMemo(() => defaultDefinition === null ? projects.length : projects.filter((project) => projectMatchesView(project, defaultDefinition)).length, [projects, defaultDefinition])
 
   return (
     <ProjectCombobox
       projects={projects}
       browseValues={browseValues}
-      browseHeading={browseValues === undefined ? undefined : `Showing ${browseValues.length} of ${projects.length} · your default view`}
-      searchHint="Type to search all statuses and departments."
-      emptyMessage="No matching projects. Search includes all statuses and departments."
+      browseHeading={browseValues === undefined ? undefined : `Showing ${matchCount} of ${projects.length} · your default view`}
+      searchHint={browseValues === undefined ? undefined : "Type to search all statuses and departments."}
+      emptyMessage={browseValues === undefined ? undefined : "No matching projects. Search includes all statuses and departments."}
       value={currentProjectId ?? ""}
       onValueChange={(projectId) => {
         setActiveProjectId(projectId)

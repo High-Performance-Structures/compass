@@ -4,7 +4,7 @@ import { and, asc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
-import { projectJobStatuses, projectSavedViews, userViewPreferences } from "@/db/schema"
+import { projectJobStatuses, projectSavedViews, userViewPreferences, users } from "@/db/schema"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -26,13 +26,14 @@ type SaveViewInput = {
   readonly id: string | null
   readonly name: string
   readonly visibility: "personal" | "shared"
-  readonly definition: ProjectViewDefinition
+  readonly definition: ProjectViewDefinition | null
 }
 const saveSchema = z.object({
   id: z.string().min(1).max(200).nullable(),
   name: z.string().trim().min(1, "Enter a view name.").max(80),
   visibility: z.enum(["personal", "shared"]),
-  definition: projectViewDefinitionSchema,
+  // Null on an edit preserves the stored filters, even if a status was removed.
+  definition: projectViewDefinitionSchema.nullable(),
 })
 
 async function viewContext(): Promise<{ readonly db: ReturnType<typeof getDb>; readonly userId: string; readonly organizationId: string }> {
@@ -107,7 +108,8 @@ export async function getProjectSavedViews(): Promise<{ readonly views: readonly
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const [rows, customStatuses] = await Promise.all([
-      db.select().from(projectSavedViews).where(and(
+      db.select({ view: projectSavedViews, ownerName: users.displayName }).from(projectSavedViews)
+        .innerJoin(users, eq(users.id, projectSavedViews.ownerUserId)).where(and(
         eq(projectSavedViews.organizationId, user.organizationId),
         or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
       )).orderBy(asc(projectSavedViews.name)),
@@ -118,12 +120,12 @@ export async function getProjectSavedViews(): Promise<{ readonly views: readonly
       ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id),
       ...customStatuses.map((status) => status.id),
     ])
-    return { views: rows.flatMap((row) => {
+    return { views: rows.flatMap(({ view: row, ownerName }) => {
       const parsed = parseProjectViewDefinition(row.definition)
       // Deleted custom statuses fall back just like personal default snapshots.
       const definition = parsed?.status.kind === "job" && !availableStatusIds.has(parsed.status.jobStatusId)
         ? DEFAULT_PROJECT_VIEW : parsed
-      return definition ? [{ id: row.id, name: row.name, visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
+      return definition ? [{ id: row.id, name: row.name, ownerName: ownerName ?? "Staff member", visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
     }), error: null }
   } catch (error) {
     console.warn("Unable to load saved project views", error)
@@ -137,19 +139,24 @@ export async function saveProjectView(input: SaveViewInput): Promise<{ readonly 
   try {
     const { db, userId, organizationId } = await viewContext()
     const { id, name, visibility, definition } = parsed.data
-    if (!await statusExists(db, organizationId, definition)) return { success: false, error: "That job status is no longer available." }
+    if (definition !== null && !await statusExists(db, organizationId, definition)) return { success: false, error: "That job status is no longer available." }
+    if (id === null && definition === null) return { success: false, error: "Choose filters for the new view." }
     const now = new Date().toISOString()
     const viewId = id ?? crypto.randomUUID()
     if (id !== null) {
-      const updated = await db.update(projectSavedViews).set({ name, visibility, definition: JSON.stringify(definition), updatedAt: now })
+      const updated = await db.update(projectSavedViews).set({ name, visibility, ...(definition === null ? {} : { definition: JSON.stringify(definition) }), updatedAt: now })
         .where(and(eq(projectSavedViews.id, id), eq(projectSavedViews.ownerUserId, userId), eq(projectSavedViews.organizationId, organizationId)))
-        .returning({ id: projectSavedViews.id }).get()
+        .returning().get()
       if (!updated) return { success: false, error: "Only the owner can edit this view." }
+      const stored = parseProjectViewDefinition(updated.definition)
+      const displayDefinition = stored && await statusExists(db, organizationId, stored) ? stored : DEFAULT_PROJECT_VIEW
+      refreshViews()
+      return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: displayDefinition } }
     } else {
       await db.insert(projectSavedViews).values({ id: viewId, name, visibility, definition: JSON.stringify(definition), organizationId, ownerUserId: userId, createdAt: now, updatedAt: now }).run()
     }
     refreshViews()
-    return { success: true, view: { id: viewId, name, visibility, isOwner: true, definition } }
+    return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: definition ?? DEFAULT_PROJECT_VIEW } }
   } catch (error) {
     console.warn("Unable to save project view", error)
     return { success: false, error: "Unable to save this view. Choose a unique name for your views." }

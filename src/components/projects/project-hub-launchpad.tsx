@@ -845,6 +845,7 @@ export function ProjectHubLaunchpad({
             <button
               type="button"
               onClick={() => {
+                setSearch("")
                 setDepartment("ALL")
                 setStatus(ALL_PROJECT_HUB_STATUSES_FILTER)
                 setPageIndex(0)

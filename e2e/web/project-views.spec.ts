@@ -28,10 +28,15 @@ test.describe("personal project views", () => {
     db.close()
   })
 
-  test("defaults persist in page and sidebar; searches cross filters; named views can be edited and deleted", async ({ page, isMobile }, testInfo) => {
+  test("defaults persist in page and sidebar; searches cross filters; named views can be edited and deleted", async ({ page, isMobile, browserName }, testInfo) => {
     test.setTimeout(180000)
     const errors: string[] = []
-    page.on("pageerror", (error) => errors.push(error.message))
+    page.on("pageerror", (error) => {
+      // WebKit reports cancelled local Next RSC prefetches during navigation.
+      // Keep application errors and every other network error visible.
+      if (browserName === "webkit" && /^\/127\.0\.0\.1:\d+\/dashboard(?:\/[^?]*)?\?_rsc=\S+ due to access control checks\.$/.test(error.message)) return
+      errors.push(error.message)
+    })
     await page.goto("/dashboard/projects")
     const main = page.getByRole("main")
     await main.locator('[data-department-filter="H"]').click()
@@ -52,7 +57,12 @@ test.describe("personal project views", () => {
     await expect(main.getByRole("heading", { name: "Search results", exact: true })).toBeVisible()
     await search.fill("Filter Secret")
     await expect(main.getByText("Filter Secret", { exact: true })).toHaveCount(0)
-    await search.fill("")
+    await main.getByRole("button", { name: "Clear filters", exact: true }).click()
+    await expect(search).toHaveValue("")
+    await expect(main.getByText("Filter Orchard", { exact: true })).toBeVisible()
+    await main.locator('[data-department-filter="H"]').click()
+    await main.getByRole("combobox", { name: "Filter projects by status" }).click()
+    await page.getByRole("option").filter({ hasText: "Under Construction" }).click()
     await expect(main.getByText("Filter Hill", { exact: true })).toBeVisible()
     await expect(main.getByText("Filter Orchard", { exact: true })).toHaveCount(0)
 
@@ -136,6 +146,7 @@ test.describe("personal project views", () => {
     await trigger.click()
     await expect(trigger).toHaveAttribute("aria-expanded", "true")
     await expect(page.getByRole("option").filter({ hasText: "Filter Orchard" })).toBeVisible()
+    await expect(page.getByText(/Showing 0 of .*your default view/)).toBeVisible()
   })
 
   test("workflow-specific pickers keep browsing all accessible projects", async ({ page }) => {

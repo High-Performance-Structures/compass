@@ -29,6 +29,7 @@ export const DEFAULT_PROJECT_VIEW: ProjectViewDefinition = {
 export type SavedProjectView = {
   readonly id: string
   readonly name: string
+  readonly ownerName: string
   readonly visibility: "personal" | "shared"
   readonly isOwner: boolean
   readonly definition: ProjectViewDefinition
