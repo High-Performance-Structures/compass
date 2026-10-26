@@ -787,6 +787,7 @@ function SidebarNav({
             Projects: (
               <div className="px-2 py-1">
                 <ProjectQuickSwitcher
+                  applyDefaultView
                   projects={projects}
                   currentProjectId={activeProjectId}
                   targetSection={projectTargetSection}

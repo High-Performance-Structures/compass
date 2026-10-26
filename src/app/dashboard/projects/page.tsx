@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { and, asc, eq, inArray, notExists } from "drizzle-orm"
 
+import { getProjectSavedViews } from "@/app/actions/project-views"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
 import {
   getProjectIntakeAssignees,
@@ -83,18 +84,20 @@ export default async function ProjectsPage({
       params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys, internalDepartment] = await Promise.all([
+    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys, internalDepartment, savedViews] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
       getProjectIntakeAssignees(),
       canCreateOrUpdateProjects ? getProjectDuplicateCandidates() : Promise.resolve([]),
       canCreateOrUpdateProjects ? getApprovedProjectNumberReviewKeys() : Promise.resolve([]),
       currentInternalDepartment(),
+      getProjectSavedViews(),
     ])
 
     return (
       <ProjectHubLaunchpad
         projects={projectList}
+        savedViews={savedViews}
         overview={overview}
         canManageProjects={canCreateProject(currentUser)}
         canReviewProjectNumbers={canCreateOrUpdateProjects}

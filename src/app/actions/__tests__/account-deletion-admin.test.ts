@@ -66,6 +66,13 @@ function open(role = "admin"): CorrespondenceTestDatabase {
     sqlite.exec(`CREATE TABLE ${name} (id TEXT PRIMARY KEY, user_id TEXT NOT NULL)`)
     sqlite.exec(`INSERT INTO ${name} (id, user_id) VALUES ('${name}-a', 'owner-a'), ('${name}-b', 'owner-b')`)
   }
+  sqlite.exec(migration("0260_project_saved_views.sql"))
+  for (const owner of ["owner-a", "owner-b"]) {
+    for (const visibility of ["personal", "shared"]) {
+      sqlite.prepare("INSERT INTO project_saved_views (id, organization_id, owner_user_id, name, visibility, definition, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(`${owner}-${visibility}`, owner === "owner-a" ? "org-a" : "org-b", owner, visibility, visibility, '{"department":"ALL","status":{"kind":"all"}}', NOW, NOW)
+    }
+  }
   sqlite.exec(`
     INSERT INTO account_deletion_requests (id, user_id, email_snapshot, display_name_snapshot, status, requested_at, updated_at) VALUES
       ('req-a', 'owner-a', 'owner-a@example.test', 'Owner A', 'pending', '${NOW}', '${NOW}'),
@@ -136,6 +143,8 @@ describe("account deletion processing", () => {
 
     expect(mocks.deleteUser).toHaveBeenCalledWith("owner-a")
     expect(personalRowsFor(database, "owner-a")).toBe(0)
+    expect(row(database, "SELECT count(*) AS n FROM project_saved_views WHERE owner_user_id = 'owner-a'").n).toBe(0)
+    expect(row(database, "SELECT count(*) AS n FROM project_saved_views WHERE owner_user_id = 'owner-b'").n).toBe(2)
     expect(personalRowsFor(database, "owner-b")).toBe(PERSONAL_TABLE_NAMES.length)
     expect(row(database, "SELECT * FROM users WHERE id = 'owner-a'")).toMatchObject({
       email: "deleted+owner-a@deleted.invalid",
@@ -180,6 +189,7 @@ describe("account deletion processing", () => {
     database.failures.failNextMatching("update \"account_deletion_requests\"")
     expect(await completeAccountDeletion("req-a", "DELETE")).toMatchObject({ success: false })
     expect(personalRowsFor(database, "owner-a")).toBe(PERSONAL_TABLE_NAMES.length)
+    expect(row(database, "SELECT count(*) AS n FROM project_saved_views WHERE owner_user_id = 'owner-a'").n).toBe(2)
     expect(row(database, "SELECT display_name FROM users WHERE id = 'owner-a'").display_name).toBe("Owner A")
     expect(row(database, "SELECT status FROM account_deletion_requests WHERE id = 'req-a'").status).toBe("processing")
   })

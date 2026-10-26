@@ -30,6 +30,10 @@ export type SearchableComboboxOption = {
 
 export type SearchableComboboxProps = {
   readonly options: readonly SearchableComboboxOption[]
+  /** Limits browsing only; typing searches all options and preserves the selected value. */
+  readonly browseValues?: readonly string[]
+  readonly browseHeading?: string
+  readonly searchHint?: string
   readonly value: string
   readonly onValueChange: (value: string) => void
   readonly id?: string
@@ -48,6 +52,9 @@ export type SearchableComboboxProps = {
 }
 export function SearchableCombobox({
   options,
+  browseValues,
+  browseHeading,
+  searchHint,
   value,
   onValueChange,
   id,
@@ -64,6 +71,10 @@ export function SearchableCombobox({
   popoverClassName,
 }: SearchableComboboxProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
+  const [search, setSearch] = React.useState("")
+  const browsing = search.trim().length === 0 && browseValues !== undefined
+  const browseSet = React.useMemo(() => new Set(browseValues), [browseValues])
+  const visibleOptions = browsing ? options.filter((option) => browseSet.has(option.value)) : options
   const selectedOption =
     options.find((option) => option.value === value) ?? null
 
@@ -72,7 +83,10 @@ export function SearchableCombobox({
     if (nextValue !== value) onValueChange(nextValue)
   }, [onValueChange, options, value])
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => {
+      setOpen(nextOpen)
+      setSearch("")
+    }}>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -111,11 +125,12 @@ export function SearchableCombobox({
         )}
       >
         <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+          {searchHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{searchHint}</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup heading={groupHeading}>
-              {options.map((option) => (
+            <CommandGroup heading={browsing ? browseHeading ?? groupHeading : groupHeading}>
+              {visibleOptions.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={`${option.label} ${option.description ?? ""} ${option.keywords ?? ""} ${option.value}`}
