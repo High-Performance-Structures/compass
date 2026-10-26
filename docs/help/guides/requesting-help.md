@@ -10,9 +10,9 @@
   "tags": ["help", "feedback", "bug report", "my requests", "feedback desk", "request status", "permissions", "authentication", "support", "account deletion", "privacy"],
   "audiences": ["staff", "owner", "subcontractor", "supplier", "guest"],
   "permissions": ["help:read"],
-  "routes": ["/dashboard/settings", "/dashboard/requests", "/dashboard/account"],
+  "routes": ["/dashboard/settings", "/dashboard/requests", "/dashboard/requests/[id]", "/dashboard/account"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-26"
 }
 ---
 

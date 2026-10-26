@@ -2,6 +2,7 @@ import type * as React from "react"
 import { IconHeartHandshake, IconLock } from "@tabler/icons-react"
 
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { getCurrentUser } from "@/lib/auth"
 import { canFeature } from "@/lib/permission-enforcement"
 import { PageHeader } from "@/components/page-header"
@@ -21,6 +22,7 @@ export default async function CherishReviewPage(): Promise<React.ReactElement> {
         className="mb-0 border-b pb-5"
         icon={<IconHeartHandshake className="size-5 text-[var(--department-primary)]" />}
         title="CHERISH review"
+        actions={<ContextualHelpBeacon topicId="cherish.review" />}
         meta={
           <span className="flex items-center gap-1.5">
             <IconLock className="size-3.5" /> Restricted to staff granted CHERISH review access

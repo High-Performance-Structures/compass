@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]", "/dashboard/projects/[id]/duty-log"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-12"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -23,6 +23,12 @@ The **Internal** map and list contain company offices and yards, separate from c
 Confirm the workspace name before recording work. When an internal duty supports a client job, link the client project on the duty entry rather than opening the client project's daily log as a substitute.
 
 Administrators can convert a regular project with **Make it an office workspace**, **Make it an owner's office workspace**, or **Make it a field workspace**. Confirm that the record is truly a company location before converting it because the choice changes its Overview and operational queues.
+
+## Create and Configure a Workspace {#create-workspace}
+
+Authorized staff can open the **Internal Project Hub**, choose **New internal workspace**, and select the office, owner's-office, or field workspace type. Choose the correct parent department, add an optional workspace number when the company uses one, and confirm the name before creating it. Use a client project instead when the work belongs to a customer job.
+
+Administrators can use **Settings → Company → Internal department** to change the company-wide Project Hub tab name and description for all internal workspaces. To change one workspace's type or whether it is listed under that department, open the workspace's **Information** page and use **Job or internal workspace**. Update the individual workspace's project details through its authorized project controls. Treat the department relationship and workspace type as operational configuration: review the Overview and Duty Log after a change so queues, duties, and reporting still appear in the intended place.
 
 ## Record a Duty {#duty-log}
 

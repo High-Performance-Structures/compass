@@ -4,6 +4,7 @@ import { IconDatabase } from "@tabler/icons-react"
 
 import { getBuildertrendCutoverCoverage } from "@/app/actions/buildertrend-cutover-coverage"
 import { Badge } from "@/components/ui/badge"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
@@ -31,6 +32,9 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
         back={{ href: "/dashboard", label: "Dashboard" }}
         icon={<IconDatabase className="size-6 text-muted-foreground" />}
         title="Buildertrend cutover coverage"
+        actions={
+          <ContextualHelpBeacon topicId="buildertrend.cutover.interpret-coverage" />
+        }
       />
 
       <section className="grid gap-px border bg-border sm:grid-cols-4">

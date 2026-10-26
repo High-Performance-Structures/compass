@@ -23,16 +23,18 @@ describe("help registry", () => {
   })
 
   it("provides the canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(23)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(23)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(23)
+    expect(HELP_GUIDES).toHaveLength(28)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(28)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(28)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
         "client.meetings",
         "my.compass.calendar",
         "audience.trade",
+        "buildertrend.cutover",
         "change.orders",
+        "cherish",
         "equipment",
         "greeting.cards",
         "jarvis",
@@ -98,6 +100,19 @@ describe("help registry", () => {
     expect(
       getHelpGuidesForRoute("/dashboard/equipment").map((guide) => guide.id)
     ).toContain("equipment")
+    expect(
+      getHelpGuidesForRoute("/dashboard/requests/request-123").map(
+        (guide) => guide.id
+      )
+    ).toContain("support")
+    expect(
+      getHelpGuidesForRoute("/dashboard/cherish").map((guide) => guide.id)
+    ).toContain("cherish")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/office-maintenance/buildertrend-cutover"
+      ).map((guide) => guide.id)
+    ).toContain("buildertrend.cutover")
     expect(
       getHelpGuidesForRoute("/dashboard/projects/project-123/schedule").map(
         (guide) => guide.id
@@ -187,6 +202,15 @@ describe("help registry", () => {
     }
   })
 
+  it("keeps Feedback Desk status help available on request details", () => {
+    expect(getHelpTopic("support.track-requests")?.href).toBe(
+      "/dashboard/help/requesting-help#track-requests"
+    )
+    expect(getHelpGuide("requesting-help")?.content).toContain(
+      "**Ready for testing**"
+    )
+  })
+
   it("teaches users how to recognize and use contextual Help beacons", () => {
     const supportGuide = getHelpGuide("requesting-help")
     const navigationGuide = getHelpGuide("navigating-projects")
@@ -272,6 +296,35 @@ describe("help registry", () => {
     expect(contactsGuide?.content).toContain("**Merge 2 duplicates**")
     expect(contactsGuide?.content).toContain("**Resend invitation**")
     expect(contactsGuide?.content).toContain("does not overwrite the survivor's")
+    expect(contactsGuide?.content).toContain("**Invited, not accepted**")
+  })
+
+  it("documents CHERISH review and Buildertrend cutover coverage", () => {
+    expect(getHelpTopic("cherish.submit")?.href).toBe(
+      "/dashboard/help/cherish-recognition-and-review#submit"
+    )
+    expect(getHelpGuide("cherish-recognition-and-review")?.content).toContain(
+      "Compass suggests the CHERISH value"
+    )
+    expect(getHelpTopic("buildertrend.cutover.interpret-coverage")?.href).toBe(
+      "/dashboard/help/buildertrend-cutover-coverage#interpret-coverage"
+    )
+    expect(getHelpGuide("buildertrend-cutover-coverage")?.content).toContain(
+      "does not import or promote records"
+    )
+    expect(searchHelpGuides("anonymous private concern leadership")[0]?.guide.id)
+      .toBe("cherish")
+  })
+
+  it("documents recent conversation, workspace, and estimate details", () => {
+    const conversationsGuide = getHelpGuide("conversations-and-notifications")
+    const internalGuide = getHelpGuide("internal-workspaces-and-duties")
+    const financialGuide = getHelpGuide("financial-workflows")
+
+    expect(conversationsGuide?.content).toContain("**Connection lost. Reconnecting…**")
+    expect(conversationsGuide?.content).toContain("imported Buildertrend archive")
+    expect(internalGuide?.content).toContain("**New internal workspace**")
+    expect(financialGuide?.content).toContain("**Show cost codes for these assemblies**")
   })
 
   it("documents internal duties, shop tickets, listening rooms, and account deletion", () => {

@@ -4,6 +4,7 @@ import { getCherishStoryArchive } from "@/app/actions/cherish-stories"
 import { getCherishRecipientOptions } from "@/app/actions/cherish-recipients"
 import { CherishFeedbackForm } from "@/components/cherish/cherish-feedback-form"
 import { CherishStoryArchive } from "@/components/cherish/cherish-story-archive"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { getCurrentUser } from "@/lib/auth"
 import { canUseFieldDesk } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
@@ -37,6 +38,7 @@ export default async function CherishPage({
         className="mb-0 border-b pb-5"
         icon={<IconHeartHandshake className="size-6 text-primary" />}
         title="CHERISH"
+        actions={<ContextualHelpBeacon topicId="cherish.submit" />}
       />
 
       <section className="py-5" aria-labelledby="share-cherish-heading">

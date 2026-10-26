@@ -87,6 +87,28 @@ describe("Jarvis canonical help context", () => {
     expect(context?.prompt).toContain("does not by itself prove that Sage accepted")
   })
 
+  it("grounds Feedback Desk status questions on a request detail page", () => {
+    const guide = HELP_GUIDES.find((candidate) => candidate.id === "support")
+    expect(guide).toBeDefined()
+    if (!guide) return
+
+    const context = resolveJarvisHelpContext({
+      currentPage: "/dashboard/requests/request-123",
+      requestedTopicId: "support.track-requests",
+      messages: [{ role: "user", content: "What does this request status mean?" }],
+      allowedGuideIds: [guide.id],
+    })
+
+    expect(context?.references).toEqual([
+      expect.objectContaining({
+        topicId: "support.track-requests",
+        href: "/dashboard/help/requesting-help#track-requests",
+      }),
+    ])
+    expect(context?.prompt).toContain("Ready for testing")
+    expect(context?.prompt).toContain("Progress")
+  })
+
   it("never injects help that the user cannot read", () => {
     const topicId = HELP_GUIDES[0]?.sections[0]?.topicId
     expect(topicId).toBeDefined()

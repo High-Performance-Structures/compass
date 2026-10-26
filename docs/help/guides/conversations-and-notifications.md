@@ -12,7 +12,7 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/conversations/[channelId]/listening-room", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-19"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -45,6 +45,8 @@ Attachments saved with a private draft remain private with that draft. A preview
 ## Message Actions {#message-actions}
 
 Edit your own message to correct a mistake when allowed. Delete only when the removal is permitted and appropriate for the project record. Reactions are quick acknowledgments, not formal approvals. Archive an inactive channel when its history should remain searchable.
+
+An imported Buildertrend archive is read-only at the channel level. To add internal context, open the specific archived message and reply inside its thread. The reply stays inside Compass: it does not email or notify the original external Buildertrend participants. Only Compass teammates you explicitly mention receive a mention notification.
 
 ## Announcements {#announcements}
 
@@ -95,6 +97,8 @@ Authorized internal staff can open **Talk** and check the private setup screen b
 During a call, use the microphone and camera controls, screen sharing, **Background & Settings**, and picture-in-picture when supported by the browser. **Show Notes & Transcript** opens the side panel; hiding it keeps the current tab, draft notes, and capture state. Save notes with the provided control before leaving. Resizing the window keeps call controls accessible.
 
 Read the call's recovery message when a device fails. Check browser and operating-system permission, choose **System default** or another device, then use **Try again** or **Try alternate microphone method** when offered. If the background cannot start, choose Off or join without video. **Leave** exits only your session; **End for Everyone** is available only when your meeting role permits it. Review the exit confirmation before continuing.
+
+If Compass shows **Connection lost. Reconnecting…**, stay in the call while automatic recovery runs. **Reconnected.** confirms that the shared call connection recovered. If Compass instead says Office Talk lost its connection, leave and rejoin the meeting; repeatedly toggling the microphone or camera does not replace rejoining.
 
 ## Use the Notification Inbox {#notification-inbox}
 

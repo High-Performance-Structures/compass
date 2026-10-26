@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/contracts", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -41,6 +41,8 @@ To reorder items in a division or assembly, drag a row's handle, use its **Move 
 Use **Edit assembly** to rename it or change its items. Selecting items from another assembly moves them into the current assembly. **Delete assembly** requires confirmation and retains its estimate items and costs under Other work. Locked estimates require a revision; revisions copy assembly names and item assignments.
 
 In **Work on → Customer report format**, under **Client report presentation**, choose **Assembly totals**, **Assembly cost code detail**, **Division subtotals + grand total**, or **Line items + division totals**, then select **Save report settings**. The existing **Phase subtotals + grand total** choice and custom report phases are also available. Assembly detail shows individual cost code items and an assembly subtotal; assembly totals show each assembly's amount. Report selection is independent of the build view. Client reports continue to exclude internal-only items and include the estimate's existing tax and builder-fee presentation.
+
+With **Assembly totals** selected, use **Show cost codes for these assemblies** when only certain assemblies need detail. Selected assemblies expand to their cost codes—and their breakdown rows when that separate option is enabled—while unselected assemblies remain one total. Save the report settings and preview the customer report to confirm the mixed presentation.
 
 For either assembly report view, optionally select **Show builder-fee subtotal for each assembly** and **Save report settings**. Each assembly then shows its work subtotal, combined overhead/margin/contingency fee, and total including that fee. Other work receives the same treatment. Fees use only eligible items, including their sales tax, and rounding reconciles to the existing estimate fee. The project fee summary is a recap of these fees, not an additional charge. Fees for internal-only work remain in the project summary. This setting defaults to off and carries forward into revisions; division and custom-phase reports keep their existing presentation.
 
