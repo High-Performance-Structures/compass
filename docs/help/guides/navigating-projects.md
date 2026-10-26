@@ -7,7 +7,7 @@
   "summary": "Find jobs on the dashboard map and pipelines, track follow-up, change statuses, and preserve project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "dashboard", "portfolio map", "weather", "wildfire", "fire", "red flag", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
+  "tags": ["projects", "navigation", "dashboard", "portfolio map", "weather", "wildfire", "fire", "red flag", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "Drive folder", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
@@ -26,7 +26,7 @@ Select **Projects**, choose the appropriate department and status view, then sea
 
 ## Find Project Financials {#project-financials}
 
-Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The Compass icon at the bottom opens a compact drawer: hover over it or click/tap it to see your photo, **Help**, **Feedback**, **Settings**, and communication controls. Choose **Pin** to leave the drawer open, or **Unpin** to return to a temporary drawer. The pin preference is remembered in this browser. Select the photo to change or reset it. The photo stays compact with crisp edges when you widen the sidebar, and the menu scrollbar remains available above the drawer.
+Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Shop Tickets, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The Compass icon at the bottom opens a compact drawer: hover over it or click/tap it to see your photo, **Help**, **Feedback**, **Settings**, and communication controls. Choose **Pin** to leave the drawer open, or **Unpin** to return to a temporary drawer. The pin preference is remembered in this browser. Select the photo to change or reset it. The photo stays compact with crisp edges when you widen the sidebar, and the menu scrollbar remains available above the drawer.
 
 ## Arrange Your Role Dashboard {#role-dashboard-order}
 
@@ -102,6 +102,12 @@ If two records truly represent the same project, select the project to keep and 
 ## Wrong Project Active {#wrong-project}
 
 Stop before saving. Switch to the correct job and confirm its number and client. If the record was already saved, notify a project administrator so it can be corrected or removed with an audit trail; do not immediately create a duplicate.
+
+## Create a Missing Drive Folder {#create-drive-folder}
+
+When an authorized staff member opens a project without a linked Google Drive folder, **Create Drive folder** appears in the project header. Choose it once. Compass builds the folder from the department template, or finds and links the existing matching folder, then refreshes the project so Drive-backed uploads and documents become available.
+
+If the operation reports that the folder was created but the link could not be saved, return to the project and choose **Create Drive folder** again; Compass reuses the existing folder rather than making a duplicate. Stop and report any message about a conflicting folder, project family, or permission. Do not create or move a replacement directly in Drive until the mapping has been reviewed.
 
 ## Use the Portfolio Map and Pipelines {#portfolio-map}
 

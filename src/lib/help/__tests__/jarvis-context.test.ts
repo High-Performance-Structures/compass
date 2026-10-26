@@ -43,6 +43,72 @@ describe("Jarvis canonical help context", () => {
     )
   })
 
+  it("grounds the executed change-order workflow in its current canonical section", () => {
+    const guide = HELP_GUIDES.find((candidate) => candidate.id === "change.orders")
+    expect(guide).toBeDefined()
+    if (!guide) return
+
+    const context = resolveJarvisHelpContext({
+      currentPage: "/dashboard/projects/project-123/change-orders/change-456",
+      requestedTopicId: "change.orders.executed-documents",
+      messages: [{ role: "user", content: "What document belongs here?" }],
+      allowedGuideIds: [guide.id],
+    })
+
+    expect(context?.references).toEqual([
+      expect.objectContaining({
+        topicId: "change.orders.executed-documents",
+        href: "/dashboard/help/change-orders-and-executed-documents#executed-documents",
+      }),
+    ])
+    expect(context?.prompt).toContain("complete signed PDF")
+    expect(context?.prompt).toContain("50 MB or smaller")
+  })
+
+  it("grounds machine-log questions in the canonical equipment workflow", () => {
+    const guide = HELP_GUIDES.find((candidate) => candidate.id === "equipment")
+    expect(guide).toBeDefined()
+    if (!guide) return
+
+    const context = resolveJarvisHelpContext({
+      currentPage: "/dashboard/equipment",
+      requestedTopicId: "equipment.machine-log",
+      messages: [{ role: "user", content: "How should I record these machine hours?" }],
+      allowedGuideIds: [guide.id],
+    })
+
+    expect(context?.references).toEqual([
+      expect.objectContaining({
+        topicId: "equipment.machine-log",
+        href: "/dashboard/help/equipment-and-machine-logs#machine-log",
+      }),
+    ])
+    expect(context?.prompt).toContain("running, standby, and idle hours")
+    expect(context?.prompt).toContain("does not by itself prove that Sage accepted")
+  })
+
+  it("grounds Feedback Desk status questions on a request detail page", () => {
+    const guide = HELP_GUIDES.find((candidate) => candidate.id === "support")
+    expect(guide).toBeDefined()
+    if (!guide) return
+
+    const context = resolveJarvisHelpContext({
+      currentPage: "/dashboard/requests/request-123",
+      requestedTopicId: "support.track-requests",
+      messages: [{ role: "user", content: "What does this request status mean?" }],
+      allowedGuideIds: [guide.id],
+    })
+
+    expect(context?.references).toEqual([
+      expect.objectContaining({
+        topicId: "support.track-requests",
+        href: "/dashboard/help/requesting-help#track-requests",
+      }),
+    ])
+    expect(context?.prompt).toContain("Ready for testing")
+    expect(context?.prompt).toContain("Progress")
+  })
+
   it("never injects help that the user cannot read", () => {
     const topicId = HELP_GUIDES[0]?.sections[0]?.topicId
     expect(topicId).toBeDefined()

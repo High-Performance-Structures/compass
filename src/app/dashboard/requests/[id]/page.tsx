@@ -11,6 +11,7 @@ import {
 import { getMyFeedbackRequest } from "@/app/actions/feedback-requests"
 import { RequestMessageText } from "@/app/dashboard/requests/request-message-text"
 import { RequestRefreshControl } from "@/app/dashboard/requests/request-refresh-control"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -59,6 +60,7 @@ export default async function RequestDetailPage({
         title={request.title}
         actions={
           <>
+            <ContextualHelpBeacon topicId="support.track-requests" className="size-7" />
             <Badge variant="secondary">
               {feedbackStatusLabel(request.status)}
             </Badge>

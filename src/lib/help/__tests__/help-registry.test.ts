@@ -23,18 +23,24 @@ describe("help registry", () => {
   })
 
   it("provides the canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(22)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(22)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(22)
+    expect(HELP_GUIDES).toHaveLength(28)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(28)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(28)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
         "client.meetings",
         "my.compass.calendar",
         "audience.trade",
+        "buildertrend.cutover",
+        "change.orders",
+        "cherish",
+        "equipment",
         "greeting.cards",
         "jarvis",
         "nutech.orders",
+        "internal.workspaces",
+        "shop.tickets",
         "social.posts",
         "settings.company",
       ])
@@ -56,6 +62,18 @@ describe("help registry", () => {
     )
     expect(getHelpTopic("contacts.access.add-and-invite")?.section?.title).toBe(
       "Add and Invite a Contact"
+    )
+    expect(getHelpTopic("financials.client-report-phases")?.href).toBe(
+      "/dashboard/help/financial-workflows#client-report-phases"
+    )
+    expect(getHelpTopic("change.orders.executed-documents")?.href).toBe(
+      "/dashboard/help/change-orders-and-executed-documents#executed-documents"
+    )
+    expect(getHelpTopic("contacts.access.compare-clients-with-sage")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#compare-clients-with-sage"
+    )
+    expect(getHelpTopic("contacts.access.merge-duplicates")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#merge-duplicates"
     )
     expect(getHelpTopic("not-a-topic")).toBeNull()
   })
@@ -80,6 +98,22 @@ describe("help registry", () => {
       getHelpGuidesForRoute("/dashboard/cards").map((guide) => guide.id)
     ).toContain("greeting.cards")
     expect(
+      getHelpGuidesForRoute("/dashboard/equipment").map((guide) => guide.id)
+    ).toContain("equipment")
+    expect(
+      getHelpGuidesForRoute("/dashboard/requests/request-123").map(
+        (guide) => guide.id
+      )
+    ).toContain("support")
+    expect(
+      getHelpGuidesForRoute("/dashboard/cherish").map((guide) => guide.id)
+    ).toContain("cherish")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/office-maintenance/buildertrend-cutover"
+      ).map((guide) => guide.id)
+    ).toContain("buildertrend.cutover")
+    expect(
       getHelpGuidesForRoute("/dashboard/projects/project-123/schedule").map(
         (guide) => guide.id
       )
@@ -89,6 +123,31 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/owner-updates/update-456?preview=1"
       ).map((guide) => guide.id)
     ).toContain("owner.updates")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/change-orders/change-456"
+      ).map((guide) => guide.id)
+    ).toContain("change.orders")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/contracts"
+      ).map((guide) => guide.id)
+    ).toContain("financials")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/shop-tickets"
+      ).map((guide) => guide.id)
+    ).toContain("shop.tickets")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/conversations/channel-123/listening-room"
+      ).map((guide) => guide.id)
+    ).toContain("conversations")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/messages"
+      ).map((guide) => guide.id)
+    ).toContain("conversations")
     expect(
       getHelpGuidesForRoute(
         "/preview/projects/project-123/owner/updates/update-456"
@@ -143,6 +202,15 @@ describe("help registry", () => {
     }
   })
 
+  it("keeps Feedback Desk status help available on request details", () => {
+    expect(getHelpTopic("support.track-requests")?.href).toBe(
+      "/dashboard/help/requesting-help#track-requests"
+    )
+    expect(getHelpGuide("requesting-help")?.content).toContain(
+      "**Ready for testing**"
+    )
+  })
+
   it("teaches users how to recognize and use contextual Help beacons", () => {
     const supportGuide = getHelpGuide("requesting-help")
     const navigationGuide = getHelpGuide("navigating-projects")
@@ -182,6 +250,124 @@ describe("help registry", () => {
     expect(getHelpGuide("schedules-and-tasks")?.content).toContain("**Notes**")
     expect(getHelpGuide("project-operations")?.content).toContain("**Pickup copy**")
     expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
+  })
+
+  it("documents custom client report phases without changing accounting data", () => {
+    const financialGuide = getHelpGuide("financial-workflows")
+
+    expect(financialGuide?.content).toContain("**Add report phase**")
+    expect(financialGuide?.content).toContain("**Itemize costs for the client**")
+    expect(financialGuide?.content).toContain("presentation only")
+    expect(financialGuide?.content).toContain("returns its lines to their default CSI grouping")
+    expect(searchHelpGuides("custom report phase client costs")[0]?.guide.id)
+      .toBe("financials")
+  })
+
+  it("documents current publication, Sage comparison, and executed-document workflows", () => {
+    const scheduleGuide = getHelpGuide("schedules-and-tasks")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+    const contractsGuide = getHelpGuide("financial-workflows")
+    const changeOrdersGuide = getHelpGuide("change-orders-and-executed-documents")
+    const ownerGuide = getHelpGuide("owner-workspace")
+
+    expect(scheduleGuide?.content).toContain("**Move to draft**")
+    expect(scheduleGuide?.content).toContain("last published version")
+    expect(contactsGuide?.content).toContain("**Compare with Sage**")
+    expect(contactsGuide?.content).toContain("does not link, merge, or transfer")
+    expect(contractsGuide?.content).toContain("**Replace active contract document**")
+    expect(changeOrdersGuide?.content).toContain("**Replace active executed document**")
+    expect(ownerGuide?.content).toContain("**Open executed change order**")
+    expect(ownerGuide?.content).toContain("**Open contract**")
+    expect(searchHelpGuides("replace executed signed change order")[0]?.guide.id)
+      .toBe("change.orders")
+  })
+
+  it("documents current project email, RFQ response, and contact merge workflows", () => {
+    const conversationsGuide = getHelpGuide("conversations-and-notifications")
+    const operationsGuide = getHelpGuide("project-operations")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+
+    expect(conversationsGuide?.content).toContain("**Drafts**")
+    expect(conversationsGuide?.content).toContain("**Sent**")
+    expect(conversationsGuide?.content).toContain("10 attachments totaling 18 MB")
+    expect(operationsGuide?.content).toContain("**Send email**")
+    expect(operationsGuide?.content).toContain("**Record response**")
+    expect(operationsGuide?.content).toContain("active **Sage division**")
+    expect(contactsGuide?.content).toContain("**Merge 2 duplicates**")
+    expect(contactsGuide?.content).toContain("**Resend invitation**")
+    expect(contactsGuide?.content).toContain("does not overwrite the survivor's")
+    expect(contactsGuide?.content).toContain("**Invited, not accepted**")
+  })
+
+  it("documents CHERISH review and Buildertrend cutover coverage", () => {
+    expect(getHelpTopic("cherish.submit")?.href).toBe(
+      "/dashboard/help/cherish-recognition-and-review#submit"
+    )
+    expect(getHelpGuide("cherish-recognition-and-review")?.content).toContain(
+      "Compass suggests the CHERISH value"
+    )
+    expect(getHelpTopic("buildertrend.cutover.interpret-coverage")?.href).toBe(
+      "/dashboard/help/buildertrend-cutover-coverage#interpret-coverage"
+    )
+    expect(getHelpGuide("buildertrend-cutover-coverage")?.content).toContain(
+      "does not import or promote records"
+    )
+    expect(searchHelpGuides("anonymous private concern leadership")[0]?.guide.id)
+      .toBe("cherish")
+  })
+
+  it("documents recent conversation, workspace, and estimate details", () => {
+    const conversationsGuide = getHelpGuide("conversations-and-notifications")
+    const internalGuide = getHelpGuide("internal-workspaces-and-duties")
+    const financialGuide = getHelpGuide("financial-workflows")
+
+    expect(conversationsGuide?.content).toContain("**Connection lost. Reconnecting…**")
+    expect(conversationsGuide?.content).toContain("imported Buildertrend archive")
+    expect(internalGuide?.content).toContain("**New internal workspace**")
+    expect(financialGuide?.content).toContain("**Show cost codes for these assemblies**")
+  })
+
+  it("documents internal duties, shop tickets, listening rooms, and account deletion", () => {
+    expect(getHelpTopic("internal.workspaces.duty-log")?.href).toBe(
+      "/dashboard/help/internal-workspaces-and-duties#duty-log"
+    )
+    expect(getHelpGuide("internal-workspaces-and-duties")?.content).toContain(
+      "**Undo last**"
+    )
+    expect(getHelpTopic("shop.tickets.sage-labor-hours")?.href).toBe(
+      "/dashboard/help/shop-tickets#sage-labor-hours"
+    )
+    expect(getHelpGuide("shop-tickets")?.content).toContain(
+      "**Get hours from Sage**"
+    )
+    expect(getHelpGuide("conversations-and-notifications")?.content).toContain(
+      "**Close the room for everyone**"
+    )
+    expect(getHelpGuide("requesting-help")?.content).toContain(
+      "**Cancel request**"
+    )
+    expect(searchHelpGuides("bracing rental sign out deposit")[0]?.guide.id)
+      .toBe("nutech.orders")
+  })
+
+  it("documents equipment, cross-job conflicts, and Square receipt follow-through", () => {
+    expect(getHelpTopic("equipment.machine-log")?.href).toBe(
+      "/dashboard/help/equipment-and-machine-logs#machine-log"
+    )
+    expect(getHelpGuide("equipment-and-machine-logs")?.content).toContain(
+      "**Waiting for approval**"
+    )
+    expect(getHelpTopic("schedule.cross-job-workload")?.href).toBe(
+      "/dashboard/help/schedules-and-tasks#cross-job-workload"
+    )
+    expect(getHelpGuide("schedules-and-tasks")?.content).toContain(
+      "**By crew**"
+    )
+    expect(getHelpTopic("financials.square-receipts")?.href).toBe(
+      "/dashboard/help/financial-workflows#square-receipts"
+    )
+    expect(searchHelpGuides("machine maintenance hour meter approval")[0]?.guide.id)
+      .toBe("equipment")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {

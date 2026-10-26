@@ -3,16 +3,16 @@
   "id": "financials",
   "featureId": "financials",
   "slug": "financial-workflows",
-  "title": "Estimates, Budgets, Pay Applications, and Sage",
-  "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
-  "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
+  "title": "Estimates, Contracts, Budgets, Pay Applications, and Sage",
+  "summary": "Understand estimates, client report phases, contract packets, budgets, pay applications, and Sage synchronization.",
+  "contextSummary": "Use custom report phases to control an estimate's client-facing presentation without changing CSI codes or costs. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "contract packets", "executed contracts", "budget", "G703", "pay applications", "Square", "receipts", "Sage", "sync", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
-  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
+  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/contracts", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -42,6 +42,8 @@ Use **Edit assembly** to rename it or change its items. Selecting items from ano
 
 In **Work on → Customer report format**, under **Client report presentation**, choose **Assembly totals**, **Assembly cost code detail**, **Division subtotals + grand total**, or **Line items + division totals**, then select **Save report settings**. The existing **Phase subtotals + grand total** choice and custom report phases are also available. Assembly detail shows individual cost code items and an assembly subtotal; assembly totals show each assembly's amount. Report selection is independent of the build view. Client reports continue to exclude internal-only items and include the estimate's existing tax and builder-fee presentation.
 
+With **Assembly totals** selected, use **Show cost codes for these assemblies** when only certain assemblies need detail. Selected assemblies expand to their cost codes—and their breakdown rows when that separate option is enabled—while unselected assemblies remain one total. Save the report settings and preview the customer report to confirm the mixed presentation.
+
 For either assembly report view, optionally select **Show builder-fee subtotal for each assembly** and **Save report settings**. Each assembly then shows its work subtotal, combined overhead/margin/contingency fee, and total including that fee. Other work receives the same treatment. Fees use only eligible items, including their sales tax, and rounding reconciles to the existing estimate fee. The project fee summary is a recap of these fees, not an additional charge. Fees for internal-only work remain in the project summary. This setting defaults to off and carries forward into revisions; division and custom-phase reports keep their existing presentation.
 
 Division and assembly reports use grey group headings and subtotal bands, with cost codes indented beneath their group and a darker band for the group total. Totals views show the saved assembly scope or **Default CSI group descriptions** beneath the heading. Without a saved description, the report summarizes the customer-visible cost code scopes. Edit assembly descriptions with **Edit assembly**; edit division descriptions in **Work on → Group descriptions & report phases**.
@@ -59,6 +61,16 @@ When you create a change order, choose how it's built:
 - **Replace the contract estimate**: a newer contract-estimate version becomes the baseline before work is bought or billed. Recording the owners' acceptance of a new version on the estimate page creates this change order for you.
 
 Change orders no longer take typed cost lines. Their lines come from the accepted estimate and are shown read-only. Older change orders keep the lines they were recorded with; choosing how one is built clears those lines, and **Build change-order estimate** prices it with an estimate instead. Once its estimate is started, a change order stays priced by that estimate.
+
+## Client Report Phases {#client-report-phases}
+
+In an editable estimate, use **Client report presentation** to control how the client report groups and explains the work. The default report-detail choice still applies to estimate lines that are not assigned to a custom phase.
+
+Select **Add report phase**, choose its source CSI division, enter a customer-facing name and scope description, set its order within that division, and select the estimate lines it includes. Each line can belong to only one custom phase; selecting a line that is already assigned moves it to the new phase. A phase may be saved empty and assigned lines later.
+
+Turn on **Itemize costs for the client** to show the phase's individual lines and assembly breakdown costs. Leave it off to show only the phase name, scope description, and subtotal. Internal-only lines remain hidden in either view. Preview the client report before sending it and confirm the grouping, descriptions, detail level, subtotals, and grand total.
+
+Custom report phases change presentation only. They do not change CSI divisions, cost codes, quantities, costs, or accounting data. Deleting a phase requires confirmation, preserves every estimate line and cost, and returns its lines to their default CSI grouping. If an estimate is locked, create an authorized revision before changing its report phases.
 
 ## Price a Change Order with an Estimate {#change-order-estimates}
 
@@ -93,6 +105,14 @@ Either way, Compass creates an owner-visible change order with your description 
 When you create a contract packet on the **Contracts** page, choose the estimate, then tick the documents to include. The agreement (CA00) and the construction estimate (CA22) are always included, because the packet can't be signed without them. Every other document is optional. After the packet is created you can still **Add document** or **Remove** one while it's being prepared.
 
 Admins can tick **Use this selection as the default for new contract packets** to make the current choice the company default. New packets then start with the same documents ticked.
+
+## Contract Packets and Executed Copies {#contract-packets}
+
+Create a full construction contract packet from the exact estimate revision that will become CA22. Review the packet number and version, contractor entity, dates, project and owner information, deposit and payment terms, signers, and included document versions. Preview the combined PDF before preparing it for Foxit or marking it sent for signatures outside Compass. A sent packet is frozen; duplicate it to revise the terms or document set.
+
+Compass locks the packet as executed only after all required signers finish or an authorized user records a complete manually signed copy. Confirm the executed PDF contains every required owner and company representative signature before attesting. Executed owner contract packets appear in the owner's **Plans & Documents** area.
+
+Use **Replace active contract document** only when the active archival copy is unavailable or needs a corrected presentation copy. The replacement must be the same complete, fully executed agreement. Enter a reason and attest that no signed terms or signature content changed. Compass preserves the prior link and records the replacement in activity history; the execution date, signature references, and contract status remain unchanged.
 
 ## Budget and G703 {#budget-g703}
 
@@ -134,6 +154,14 @@ Every Compass document prints the same way: **Print Preview** opens it in a new 
 **Print Preview** opens the client copy in a new tab at any status, without changing the draw. It prints in landscape: page 1 is the G702 application and certificate for payment, with the contractor certification and a **Reviewed and approved** block for the reviewer's amount certified, signature, printed name and date. The G703 continuation sheet follows, with columns for original contract sum, prior and current changes, adjusted estimate, prior and current costs, completed to date, percent complete and balance. Its first column follows **Client sees**: the percent levels print one combined row per assembly or division, Assembly and Division also list the cost codes under each group, and Cost code lists every cost code. **Print / Save PDF** opens the PDF in a browser tab; **Email report link** starts an email with the preview link.
 
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
+
+## Square Receipts and Sage Follow-Through {#square-receipts}
+
+The **Square receipts** table shows project-linked Square payments matched to an exact Compass project and Sage invoice. Review the project/client, Sage invoice, Square payment identifier and time, amount received, processing fee, and the separate receipt and fee statuses. A matched Square payment does not need another business approval, but it still needs the correct Sage result.
+
+**Awaiting Sage receipt** means the customer receipt still needs to be entered or confirmed in Sage. **Queued** or **Processing** means an automated operation is not finished. **Posted in Sage** or **Already in Sage** is the positive read-back. **Needs review** requires investigation. Do not retry a payment or fee blindly; first confirm the Square identifier, Sage invoice, current status, and whether somebody entered the same receipt directly.
+
+Admins configure staff-only alerts under **Settings → Workflows → Square and Sage payments**. Choose who receives connection alerts, payment problems, and missing-receipt reminders; map each exact Sage login to the responsible Compass staff member; and set the reminder interval, business-hours rule, and time zone. Compass checks Sage and stops missing-receipt reminders after the receipt is found. An unmatched Sage login is routed to the configured payment-alert group.
 
 ## Sage Status {#sage-status}
 

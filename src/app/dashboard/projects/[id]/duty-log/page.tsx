@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { IconClipboardList } from "@tabler/icons-react"
 
 import { getDutyLogWorkspace } from "@/app/actions/internal-duties"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PageHeader } from "@/components/page-header"
 import { DutyLogWorkspaceView } from "@/components/projects/duty-log-workspace"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
@@ -28,6 +29,7 @@ export default async function ProjectDutyLogPage({
           icon={<IconClipboardList className="size-5 text-primary" />}
           eyebrow={workspace.project.label}
           title="Duty Log"
+          actions={<ContextualHelpBeacon topicId="internal.workspaces.duty-log" />}
         />
         <DutyLogWorkspaceView workspace={workspace} />
       </div>
