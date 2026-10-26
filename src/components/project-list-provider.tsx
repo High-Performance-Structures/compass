@@ -5,9 +5,21 @@ import { usePathname } from "next/navigation"
 
 import type { ProjectListItem } from "@/app/actions/projects"
 
+import type { ProjectViewPreferences } from "@/lib/project-views"
+
 const ACTIVE_PROJECT_STORAGE_KEY = "compass.activeProjectId"
 
 const ProjectListContext = React.createContext<ProjectListItem[]>([])
+const ProjectViewPreferencesContext = React.createContext<ProjectViewPreferences>({
+  defaultDefinition: null,
+  canSave: false,
+  error: null,
+})
+
+export function useProjectViewPreferences(): ProjectViewPreferences {
+  return React.useContext(ProjectViewPreferencesContext)
+}
+
 const ActiveProjectContext = React.createContext<{
   readonly activeProjectId: string | null
   readonly activeProject: ProjectListItem | null
@@ -43,8 +55,10 @@ function projectIdFromPathname(pathname: string | null): string | null {
 
 export function ProjectListProvider({
   projects,
+  viewPreferences = { defaultDefinition: null, canSave: false, error: null },
   children,
 }: {
+  readonly viewPreferences?: ProjectViewPreferences
   readonly projects: ProjectListItem[]
   readonly children: React.ReactNode
 }) {
@@ -123,10 +137,12 @@ export function ProjectListProvider({
   )
 
   return (
+    <ProjectViewPreferencesContext.Provider value={viewPreferences}>
     <ProjectListContext.Provider value={projects}>
       <ActiveProjectContext.Provider value={activeValue}>
         {children}
       </ActiveProjectContext.Provider>
     </ProjectListContext.Provider>
+    </ProjectViewPreferencesContext.Provider>
   )
 }

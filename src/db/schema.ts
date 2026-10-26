@@ -1545,6 +1545,24 @@ export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders
   remindedAt: text("reminded_at").notNull(),
 })
 
+export const projectSavedViews = sqliteTable(
+  "project_saved_views",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    visibility: text("visibility", { enum: ["personal", "shared"] }).notNull().default("personal"),
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("project_saved_views_org_idx").on(table.organizationId),
+    uniqueIndex("project_saved_views_owner_org_name_unique").on(table.ownerUserId, table.organizationId, table.name),
+  ],
+)
+
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",
   {

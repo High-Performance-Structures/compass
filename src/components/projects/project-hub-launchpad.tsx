@@ -33,7 +33,7 @@ import type {
   ProjectIntakeAssignee,
   ProjectListItem,
 } from "@/app/actions/projects"
-import { useActiveProject } from "@/components/project-list-provider"
+import { useActiveProject, useProjectViewPreferences } from "@/components/project-list-provider"
 import { InternalWorkspaceCreateButton } from "@/components/projects/internal-workspace-create-button"
 import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer"
 import { ProjectDuplicateManager } from "@/components/projects/project-duplicate-manager"
@@ -71,7 +71,6 @@ import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector
 import { projectNumberReviewDecisionKey, projectNumberReviewIssue } from "@/lib/project-number-review"
 import {
   ALL_PROJECT_HUB_STATUSES_FILTER,
-  DEFAULT_PROJECT_HUB_STATUS_FILTER,
   projectHubStatusFilterKey,
   projectHubStatusFilterLabel,
   projectHubStatusFilterOptions,
@@ -79,9 +78,12 @@ import {
   type ProjectHubStatusFilter,
   type ProjectHubStatusFilterOption,
 } from "@/lib/project-hub-status-filter"
+import { ProjectViewControls } from "@/components/projects/project-view-controls"
+import { Input } from "@/components/ui/input"
+import { DEFAULT_PROJECT_VIEW, filterProjectView, parseProjectViewDefinition, projectDepartment, type ProjectDepartmentFilter, type SavedProjectView } from "@/lib/project-views"
 import { PageHeader } from "@/components/page-header"
 
-type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "INTERNAL" | "OTHER"
+type DepartmentFilter = ProjectDepartmentFilter
 
 function isDepartmentCode(value: DepartmentFilter): value is "O" | "H" | "N" | "D" {
   return value === "O" || value === "H" || value === "N" || value === "D"
@@ -117,14 +119,6 @@ function parseProjectPageSize(value: string): ProjectPageSize {
   return 10
 }
 
-function departmentForProject(project: ProjectListItem): DepartmentFilter {
-  if (project.internalDepartment) return "INTERNAL"
-  const prefix = project.projectNumber?.trim().slice(0, 1).toUpperCase()
-  if (prefix === "O" || prefix === "H" || prefix === "N" || prefix === "D") {
-    return prefix
-  }
-  return "OTHER"
-}
 
 function matchesHubStatus(
   project: ProjectListItem,
@@ -213,7 +207,7 @@ function ProjectCard({
   readonly onReviewDuplicate: (projectId: string) => void
   readonly onReviewProjectNumber: (projectId: string) => void
 }): React.ReactElement {
-  const department = departmentForProject(project)
+  const department = projectDepartment(project)
   const health = overview.projects.find((item) => item.id === project.id)
   const photo = overview.fieldPhotos.find((item) => item.projectId === project.id)
 
@@ -481,6 +475,7 @@ function StatusFilterItem({
 
 export function ProjectHubLaunchpad({
   projects,
+  savedViews,
   overview,
   canManageProjects,
   canReviewProjectNumbers,
@@ -491,6 +486,7 @@ export function ProjectHubLaunchpad({
   internalDepartmentName,
 }: {
   readonly projects: readonly ProjectListItem[]
+  readonly savedViews: { readonly views: readonly SavedProjectView[]; readonly error: string | null }
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
   readonly canReviewProjectNumbers: boolean
@@ -502,6 +498,9 @@ export function ProjectHubLaunchpad({
   readonly internalDepartmentName: string
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
+  const { defaultDefinition } = useProjectViewPreferences()
+  const defaultView = defaultDefinition ?? DEFAULT_PROJECT_VIEW
+  const defaultViewJson = JSON.stringify(defaultView)
   const departmentProfiles = useDepartmentProfiles()
   const [currentDuplicateCandidates, setCurrentDuplicateCandidates] = useState(
     duplicateCandidates,
@@ -531,10 +530,20 @@ export function ProjectHubLaunchpad({
       ),
     [approvedNumberReviewKeys, canReviewProjectNumbers, projects],
   )
-  const [department, setDepartment] = useState<DepartmentFilter>("ALL")
+  const [department, setDepartment] = useState<DepartmentFilter>(defaultView.department)
   const [status, setStatus] = useState<ProjectHubStatusFilter>(
-    DEFAULT_PROJECT_HUB_STATUS_FILTER,
+    defaultView.status,
   )
+  const [search, setSearch] = useState("")
+  const searching = search.trim().length > 0
+  useEffect(() => {
+    const view = parseProjectViewDefinition(defaultViewJson)
+    if (view) {
+      setDepartment(view.department)
+      setStatus(view.status)
+      setPageIndex(0)
+    }
+  }, [defaultViewJson])
   const [statusFilterOpen, setStatusFilterOpen] = useState(false)
   const [layout, setLayout] = useState<ProjectLayout>("cards")
   const [pageSize, setPageSize] = useState<ProjectPageSize>(10)
@@ -574,20 +583,15 @@ export function ProjectHubLaunchpad({
         projects.filter(
           (project) =>
             matchesHubStatus(project, status, item.id) &&
-            (item.id === "ALL" || departmentForProject(project) === item.id),
+            (item.id === "ALL" || projectDepartment(project) === item.id),
         ).length,
       ])
     )
   }, [projects, status])
 
   const visibleProjects = useMemo(
-    () =>
-      projects.filter(
-        (project) =>
-          matchesHubStatus(project, status, department) &&
-          (department === "ALL" || departmentForProject(project) === department)
-      ),
-    [department, projects, status]
+    () => filterProjectView(projects, { department, status }, search),
+    [department, projects, status, search],
   )
 
   const pageCount =
@@ -663,6 +667,8 @@ export function ProjectHubLaunchpad({
               <button
                 key={item.id}
                 type="button"
+                aria-pressed={department === item.id}
+                data-department-filter={item.id}
                 onClick={() => {
                   setDepartment(item.id)
                   setPageIndex(0)
@@ -763,19 +769,22 @@ export function ProjectHubLaunchpad({
                 </Command>
               </PopoverContent>
             </Popover>
-            <p className="text-xs text-muted-foreground">
-              Choose a lifecycle view or an exact job status.
-            </p>
+            <ProjectViewControls definition={{ department, status }} views={savedViews.views} loadError={savedViews.error}
+              onApply={(view) => { setDepartment(view.department); setStatus(view.status); setSearch(""); setPageIndex(0) }} />
           </div>
         </div>
       </section>
 
       <section>
+        <div className="mb-3 space-y-1">
+          <Input type="search" value={search} aria-label="Search all projects" placeholder="Search all projects by number, name, or client…"
+            onChange={(event) => { setSearch(event.target.value); setPageIndex(0) }} className="max-w-lg" />
+          <p className="text-xs text-muted-foreground">{searching ? "Searching all statuses and departments. Clear search to return to your filters." : "Search includes all statuses and departments you can access."}</p>
+        </div>
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">
-              {selectedStatusOption?.label ?? projectHubStatusFilterLabel(status)}{" "}
-              projects
+              {searching ? "Search results" : `${selectedStatusOption?.label ?? projectHubStatusFilterLabel(status)} projects`}
             </h2>
             <p className="text-xs text-muted-foreground">
               {visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} match · use ⌘K for global search
