@@ -51,6 +51,12 @@ test.describe("personal project views", () => {
     await expect(main.getByRole("combobox", { name: "Filter projects by status" })).toContainText("Under Construction")
     await expect(main.getByText("Filter Orchard", { exact: true })).toHaveCount(0)
 
+    // The restored filters are server-rendered; wait for an interactive picker
+    // before typing so a fast WebKit fill cannot be lost during hydration.
+    const statusPicker = main.getByRole("combobox", { name: "Filter projects by status" })
+    await statusPicker.click()
+    await expect(page.getByRole("option").filter({ hasText: "Under Construction" })).toBeVisible()
+    await statusPicker.press("Escape")
     const search = main.getByRole("searchbox", { name: "Search all projects" })
     await search.fill("Filter Orchard")
     await expect(main.getByText("Filter Orchard", { exact: true })).toBeVisible()
