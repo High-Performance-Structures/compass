@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils"
 
 export type SearchableComboboxOption = {
   readonly value: string
+  readonly onBudget?: boolean
+  readonly browseGroup?: string
   readonly label: string
   readonly selectedLabel?: string
   readonly description?: string
@@ -72,8 +74,11 @@ export function SearchableCombobox({
 }: SearchableComboboxProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
-  const browsing = search.trim().length === 0 && browseValues !== undefined
-  const browseSet = React.useMemo(() => new Set(browseValues), [browseValues])
+  const budgetValues = React.useMemo(() => options.filter((option) => option.onBudget).map((option) => option.value), [options])
+  const budgetBrowsing = browseValues === undefined && budgetValues.length > 0
+  const browsing = search.trim().length === 0 && (browseValues !== undefined || budgetBrowsing)
+  const browseSet = React.useMemo(() => new Set(browseValues ?? budgetValues), [browseValues, budgetValues])
+  const effectiveHint = searchHint ?? (budgetBrowsing ? "Type to search the full company cost-code list." : undefined)
   const visibleOptions = browsing ? options.filter((option) => browseSet.has(option.value)) : options
   const selectedOption =
     options.find((option) => option.value === value) ?? null
@@ -126,10 +131,10 @@ export function SearchableCombobox({
       >
         <Command>
           <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
-          {searchHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{searchHint}</p> : null}
+          {effectiveHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{effectiveHint}</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup heading={browsing ? browseHeading ?? groupHeading : groupHeading}>
+            <CommandGroup heading={browsing ? browseHeading ?? (budgetBrowsing ? options.find((option) => option.onBudget)?.browseGroup ?? "On this job’s budget" : groupHeading) : groupHeading}>
               {visibleOptions.map((option) => (
                 <CommandItem
                   key={option.value}

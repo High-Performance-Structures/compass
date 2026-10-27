@@ -132,7 +132,7 @@ export function ProjectTodoEditDialog({
     }
   }, [open, projectId, item.id])
   const costCodeOptions = React.useMemo(
-    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, label: option.label, keywords: `${option.code} ${option.name}` })),
+    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === "On this job's budget" || option.group === "Customized duty codes", label: option.label, keywords: `${option.code} ${option.name}` })),
     [detail?.costCodes],
   )
 

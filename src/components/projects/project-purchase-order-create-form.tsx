@@ -104,6 +104,7 @@ const LINE_INPUT_CLASS =
   "h-8 rounded-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 focus-visible:bg-background"
 
 type PurchaseOrderPickerOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description?: string
@@ -135,8 +136,9 @@ function PurchaseOrderOptionPicker({
   const normalizedQuery = normalizedOptionText(query)
   const selected =
     options.find((option) => option.value === value) ?? null
+  const hasBudgetCodes = options.some((option) => option.onBudget)
   const filteredOptions = options.filter((option) => {
-    if (normalizedQuery.length === 0) return true
+    if (normalizedQuery.length === 0) return !hasBudgetCodes || option.onBudget === true
     return normalizedOptionText(
       `${option.value} ${option.label} ${option.description ?? ""}`
     ).includes(normalizedQuery)
@@ -153,7 +155,7 @@ function PurchaseOrderOptionPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); setQuery("") }}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -174,6 +176,7 @@ function PurchaseOrderOptionPicker({
             onValueChange={setQuery}
             placeholder={`Search ${placeholder.toLowerCase()}...`}
           />
+          {hasBudgetCodes ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">Type to search the full company cost-code list.</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
             <CommandEmpty>No matching options.</CommandEmpty>
             <CommandGroup>

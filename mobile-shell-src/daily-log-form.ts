@@ -154,15 +154,19 @@ function invalidAttrs(errors: ReadonlyMap<string, string>, key: string, escape: 
   return errors.has(key) ? ` aria-invalid="true" aria-describedby="log-${escape(key)}-error"` : ""
 }
 
-function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Escape): string {
+export function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Escape, query = ""): string {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  const preferred = (option: FieldDailyLogForm["costCodes"][number]): boolean => option.group === "On this job's budget" || option.group === "Customized duty codes"
+  const hasPreferred = form.costCodes.some(preferred)
+  const visible = form.costCodes.filter((option) => words.length > 0 ? words.every((word) => option.label.toLocaleLowerCase().includes(word)) : !hasPreferred || preferred(option))
   const groups = new Map<string, string[]>()
-  for (const option of form.costCodes) {
+  for (const option of visible) {
     const items = groups.get(option.group) ?? []
     items.push(`<option value="${escape(option.code)}" ${option.code === selected ? "selected" : ""}>${escape(option.label)}</option>`)
     groups.set(option.group, items)
   }
   // A code saved in the draft that has since left the list stays visible.
-  const known = form.costCodes.some((option) => option.code === selected)
+  const known = visible.some((option) => option.code === selected)
   const kept = selected && !known ? `<option value="${escape(selected)}" selected>${escape(selected)}</option>` : ""
   const body = [...groups.entries()]
     .map(([group, items]) => (group ? `<optgroup label="${escape(group)}">${items.join("")}</optgroup>` : items.join("")))
@@ -184,6 +188,7 @@ function workLinesHtml(draft: LogDraft, form: FieldDailyLogForm | null, required
       const todoTitle = line.todoId ? form.followUps?.openTodos.find((todo) => todo.id === line.todoId)?.title : undefined
       return `<div class="work-line">
         ${todoTitle ? `<p class="field-hint">For the to-do: ${escape(todoTitle)}</p>` : ""}
+        <label class="field">Search cost codes<input type="search" data-cost-code-search="${index}" placeholder="Search full company list" aria-label="Search cost codes for line ${index + 1}" /></label>
         <label class="field">Cost code ${index + 1}<select id="log-line-${index}-costCode" name="${codeKey}"${invalidAttrs(errors, codeKey, escape)}>${costCodeOptions(form, line.costCode, escape)}</select>${errorText(errors, codeKey, escape)}</label>
         <div class="work-line-row">
           <label class="field hours-field">Hours<input id="log-line-${index}-hours" name="${hoursKey}" inputmode="decimal" placeholder="e.g. 2.5" value="${escape(line.hours)}"${invalidAttrs(errors, hoursKey, escape)} />${errorText(errors, hoursKey, escape)}</label>

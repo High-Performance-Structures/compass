@@ -1,7 +1,9 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
+import { and, asc, eq, gte, inArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -17,7 +19,6 @@ import {
   projectOperations,
   projectPurchaseOrderLines,
   projects,
-  sageCostCodes,
   scheduleTasks,
   vendors,
 } from "@/db/schema"
@@ -147,6 +148,7 @@ export type ProjectPurchaseOrderPhaseOption = {
 }
 
 export type ProjectPurchaseOrderCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -168,6 +170,7 @@ export type ProjectRfqScopeLineItem = {
 }
 
 export type ProjectRfqCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -751,18 +754,13 @@ function normalizeRfqScopeLines(
 
 async function validateRfqScopeCostCodes(
   db: ReturnType<typeof getDb>,
+  projectId: string,
   lines: readonly NormalizedRfqScopeLine[],
   existingLines: readonly ProjectRfqScopeLineItem[] = []
 ): Promise<void> {
   if (lines.every((line) => !line.costCode && !line.phaseCode)) return
 
-  const activeRows = await db
-    .select({
-      code: sageCostCodes.code,
-      divisionCode: sageCostCodes.divisionCode,
-    })
-    .from(sageCostCodes)
-    .where(eq(sageCostCodes.active, true))
+  const activeRows = await loadProjectCostCodeChoices(db, projectId)
   const issues = rfqScopeCodingErrors(
     lines,
     new Map(activeRows.map((row) => [row.code, row.divisionCode])),
@@ -1565,48 +1563,13 @@ export async function getProjectPurchaseOrderFormOptions(
   projectId: string
 ): Promise<ProjectPurchaseOrderFormOptions> {
   const db = await verifyProjectAccess(projectId, "purchase-orders")
-  const [projectRows, sageRows, budgetRows] = await Promise.all([
+  const [projectRows, sageRows] = await Promise.all([
     db
       .select({ address: projects.address })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1),
-    db
-      .select({
-        code: sageCostCodes.code,
-        description: sageCostCodes.description,
-        displayLabel: sageCostCodes.displayLabel,
-        divisionCode: sageCostCodes.divisionCode,
-        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
-      })
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
-    db
-      .select({
-        costCode: projectBudgetLines.costCode,
-        description: projectBudgetLines.description,
-        divisionCode: projectBudgetLines.csiDivision,
-        divisionName: projectBudgetLines.csiDivisionName,
-      })
-      .from(projectBudgetLines)
-      .leftJoin(
-        projectBudgetApplications,
-        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
-      )
-      .where(
-        and(
-          eq(projectBudgetLines.projectId, projectId),
-          or(
-            isNull(projectBudgetApplications.status),
-            ne(projectBudgetApplications.status, "building")
-          )
-        )
-      )
-      .orderBy(
-        asc(projectBudgetLines.csiDivision),
-        asc(projectBudgetLines.costCode)
-      ),
+    loadProjectCostCodeChoices(db, projectId),
   ])
 
   const phaseMap = new Map<string, ProjectPurchaseOrderPhaseOption>()
@@ -1619,27 +1582,11 @@ export async function getProjectPurchaseOrderFormOptions(
     })
     costCodeMap.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
     })
-  }
-
-  for (const row of budgetRows) {
-    if (!phaseMap.has(row.divisionCode)) {
-      phaseMap.set(row.divisionCode, {
-        value: row.divisionCode,
-        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
-      })
-    }
-    if (!costCodeMap.has(row.costCode)) {
-      costCodeMap.set(row.costCode, {
-        value: row.costCode,
-        label: `${row.costCode} ${row.description}`,
-        description: row.description,
-        divisionCode: row.divisionCode,
-      })
-    }
   }
 
   return {
@@ -1657,24 +1604,15 @@ export async function getProjectRfqCostCodeOptions(
   projectId: string
 ): Promise<readonly ProjectRfqCostCodeOption[]> {
   const db = await verifyProjectAccess(projectId, "rfqs")
-  const rows = await db
-    .select({
-      code: sageCostCodes.code,
-      displayLabel: sageCostCodes.displayLabel,
-      description: sageCostCodes.description,
-      divisionCode: sageCostCodes.divisionCode,
-      divisionLabel: sageCostCodes.divisionDisplayLabel,
-    })
-    .from(sageCostCodes)
-    .where(eq(sageCostCodes.active, true))
-    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel))
+  const rows = await loadProjectCostCodeChoices(db, projectId)
 
   return rows.map((row) => ({
     value: row.code,
+    onBudget: row.onBudget,
     label: row.displayLabel,
     description: row.description,
     divisionCode: row.divisionCode,
-    divisionLabel: row.divisionLabel,
+    divisionLabel: row.divisionDisplayLabel,
   }))
 }
 
@@ -2182,7 +2120,7 @@ export async function createRfqRequest(
       input.scopeItems,
       description ?? title
     )
-    await validateRfqScopeCostCodes(db, scopeItems)
+    await validateRfqScopeCostCodes(db, projectId, scopeItems)
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const primaryLine = scopeItems[0] ?? null
     const sourceRecordNumber = projectDocumentNumberFor(
@@ -2524,6 +2462,7 @@ export async function updateRfqRequest(
     )
     await validateRfqScopeCostCodes(
       db,
+      projectId,
       scopeItems,
       previousScopeItems
     )

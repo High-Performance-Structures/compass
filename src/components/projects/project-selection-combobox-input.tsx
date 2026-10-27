@@ -23,6 +23,7 @@ import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 export type SelectionComboboxOption = {
   readonly value: string
+  readonly onBudget?: boolean
   readonly label: string
   readonly description?: string
   readonly needsSageReview?: boolean
@@ -59,6 +60,8 @@ export function ProjectSelectionComboboxInput({
   const formValue = selectedOption?.value ?? inputValue
   const manualSearchValue = searchValue.trim()
   const manualInputValue = inputValue.trim()
+  const hasBudgetCodes = options.some((option) => option.onBudget)
+  const visibleOptions = searchValue.trim() || !hasBudgetCodes ? options : options.filter((option) => option.onBudget)
   const canUseSearchValue =
     allowManualInput &&
     manualSearchValue.length > 0 &&
@@ -76,7 +79,7 @@ export function ProjectSelectionComboboxInput({
             setSelectedValue(null)
           }}
         />
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); setSearchValue("") }}>
           <PopoverTrigger asChild>
             <Button
               type="button"
@@ -95,10 +98,11 @@ export function ProjectSelectionComboboxInput({
                 onValueChange={setSearchValue}
                 placeholder="Search..."
               />
+              {hasBudgetCodes ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">Type to search the full company cost-code list.</p> : null}
               <CommandList className="compass-content-scroll max-h-72">
                 <CommandEmpty>{emptyMessage}</CommandEmpty>
                 <CommandGroup>
-                  {options.map((option) => (
+                  {visibleOptions.map((option) => (
                     <CommandItem
                       key={option.value}
                       value={`${option.label} ${option.value} ${option.description ?? ""}`}

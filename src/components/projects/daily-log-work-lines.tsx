@@ -57,6 +57,7 @@ export function DailyLogWorkLines({
     () =>
       costCodes.map((option) => ({
         value: option.code,
+        onBudget: option.group === "On this job’s budget" || option.group === "On this job's budget",
         label: option.label,
         description: option.group || undefined,
         keywords: `${option.code} ${option.name}`,
@@ -106,6 +107,9 @@ export function DailyLogWorkLines({
                   ariaLabel={`Cost code ${index + 1}`}
                   ariaDescribedBy={codeError ? `${idPrefix}-line-${index}-code-error` : undefined}
                   options={options}
+                  browseValues={costCodes.some((option) => option.group === "Customized duty codes") ? costCodes.filter((option) => option.group === "Customized duty codes").map((option) => option.code) : undefined}
+                  browseHeading={costCodes.some((option) => option.group === "Customized duty codes") ? "Customized duty codes" : undefined}
+                  searchHint={costCodes.some((option) => option.group === "Customized duty codes") ? "Type to search the full company cost-code list." : undefined}
                   value={line.costCode}
                   onValueChange={(costCode) => update(index, { costCode })}
                   placeholder="Choose a cost code"

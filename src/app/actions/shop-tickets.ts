@@ -126,7 +126,7 @@ export async function getShopTicketWorkspace(projectId: string): Promise<ShopTic
   const [settings, rates, costCodes, budgetCostCodes, payApplications, tickets, canEdit] = await Promise.all([
     readFeatureSettings(db, orgId, "shop-tickets"),
     loadShopTicketRates(db, orgId),
-    loadCostCodeOptions(db),
+    loadCostCodeOptions(db, projectId),
     loadBudgetCostCodes(db, projectId),
     loadPayApplicationOptions(db, projectId),
     loadProjectShopTickets(db, projectId),

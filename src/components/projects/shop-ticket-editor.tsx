@@ -112,10 +112,11 @@ export function ShopTicketEditor({
     () =>
       workspace.costCodes.map((option) => ({
         value: option.code,
+        onBudget: budget?.has(option.code) ?? false,
         label: `${option.code} ${option.description}`,
         keywords: option.description,
       })),
-    [workspace.costCodes],
+    [workspace.costCodes, budget],
   )
   const descriptionFor = React.useMemo(
     () => new Map(workspace.costCodes.map((option) => [option.code, option.description])),

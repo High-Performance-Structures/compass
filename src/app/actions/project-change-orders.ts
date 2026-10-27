@@ -1,22 +1,21 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
-import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
 import {
-  projectBudgetLines,
-  projectBudgetApplications,
   projectChangeOrderDocuments,
   projectChangeOrderHistory,
   projectChangeOrderLines,
   projectChangeOrders,
   projectContacts,
   projects,
-  sageCostCodes,
 } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
@@ -90,6 +89,7 @@ export type ProjectChangeOrderPhaseOption = {
 }
 
 export type ProjectChangeOrderCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -755,43 +755,8 @@ export async function getProjectChangeOrderFormOptions(
       contractAssemblies: [],
     }
   }
-  const [sageRows, budgetRows, contactRows, estimateRows] = await Promise.all([
-    context.db
-      .select({
-        code: sageCostCodes.code,
-        description: sageCostCodes.description,
-        displayLabel: sageCostCodes.displayLabel,
-        divisionCode: sageCostCodes.divisionCode,
-        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
-      })
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
-    context.db
-      .select({
-        costCode: projectBudgetLines.costCode,
-        description: projectBudgetLines.description,
-        divisionCode: projectBudgetLines.csiDivision,
-        divisionName: projectBudgetLines.csiDivisionName,
-      })
-      .from(projectBudgetLines)
-      .leftJoin(
-        projectBudgetApplications,
-        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
-      )
-      .where(
-        and(
-          eq(projectBudgetLines.projectId, projectId),
-          or(
-            isNull(projectBudgetApplications.status),
-            ne(projectBudgetApplications.status, "building")
-          )
-        )
-      )
-      .orderBy(
-        asc(projectBudgetLines.csiDivision),
-        asc(projectBudgetLines.costCode)
-      ),
+  const [sageRows, contactRows, estimateRows] = await Promise.all([
+    loadProjectCostCodeChoices(context.db, projectId),
     context.db
       .select({
         displayName: projectContacts.displayName,
@@ -824,27 +789,13 @@ export async function getProjectChangeOrderFormOptions(
     })
     costCodeMap.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
     })
   }
-  for (const row of budgetRows) {
-    if (!phaseMap.has(row.divisionCode)) {
-      phaseMap.set(row.divisionCode, {
-        value: row.divisionCode,
-        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
-      })
-    }
-    if (!costCodeMap.has(row.costCode)) {
-      costCodeMap.set(row.costCode, {
-        value: row.costCode,
-        label: `${row.costCode} ${row.description}`,
-        description: row.description,
-        divisionCode: row.divisionCode,
-      })
-    }
-  }
+
   for (const row of contactRows) {
     const value = cleanText(row.companyName) ?? cleanText(row.displayName)
     if (!value || companyMap.has(value.toLowerCase())) continue

@@ -41,7 +41,7 @@ type CostCodeDisplay = {
   readonly divisionCode: string
   readonly divisionLabel: string
   readonly needsSageReview: boolean
-  readonly source: "sage" | "project_budget" | "selection"
+  readonly source: ProjectSelectionOptions["costCodes"][number]["source"]
 }
 
 const ALL = "all"

@@ -50,6 +50,7 @@ import {
   type MachineSaveState,
 } from "./machine-log-form"
 import {
+  costCodeOptions,
   addWorkLine,
   emptyLogDraft,
   errorControlId,
@@ -1342,6 +1343,12 @@ function bindDailyLogForm(): void {
     const total = formElement.querySelector<HTMLElement>("[data-total-hours]")
     if (total) total.textContent = `Total ${totalHoursLabel(logDraft.workLines)}`
   }
+  formElement.querySelectorAll<HTMLInputElement>("[data-cost-code-search]").forEach((input) => input.addEventListener("input", () => {
+    const index = Number(input.dataset.costCodeSearch)
+    const select = formElement.querySelector<HTMLSelectElement>(`#log-line-${index}-costCode`)
+    const form = packet?.dailyLogForm
+    if (select && form) select.innerHTML = costCodeOptions(form, select.value, escapeHtml, input.value)
+  }))
   formElement.addEventListener("input", handleEdit)
   formElement.addEventListener("change", handleEdit)
   formElement.querySelector<HTMLButtonElement>("[data-add-work-line]")?.addEventListener("click", () => {

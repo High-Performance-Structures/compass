@@ -19,13 +19,13 @@ export function rfqScopeCodingErrors(
 
     const row = index + 1
     if (line.phaseCode && !sageDivisions.has(line.phaseCode)) {
-      return [`Scope row ${row}: choose an active Sage division.`]
+      return [`Scope row ${row}: choose a company division.`]
     }
     if (!line.costCode) return []
 
     const division = sageCodeDivisions.get(line.costCode)
     if (!division) {
-      return [`Scope row ${row}: choose an active Sage cost code.`]
+      return [`Scope row ${row}: choose a company cost code.`]
     }
     if (line.phaseCode !== division) {
       return [`Scope row ${row}: division must match cost code ${line.costCode}.`]

@@ -1,6 +1,7 @@
+import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices, loadProjectBudgetCostCodes } from "@/lib/cost-codes/catalog-server"
 import { and, asc, desc, eq, inArray, max } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { projectBudgetApplications, projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
+import { projectBudgetApplications, projects } from "@/db/schema"
 import { rateBookEntries } from "@/db/schema-rate-book"
 import { shopTicketLines, shopTickets, type ShopTicket, type ShopTicketLine } from "@/db/schema-shop-tickets"
 import type { ShopTicketRates } from "@/lib/shop-tickets/model"
@@ -67,22 +68,14 @@ export async function loadShopTicketRates(db: Db, organizationId: string): Promi
   )
 }
 
-export async function loadCostCodeOptions(db: Db): Promise<readonly ShopTicketCostCodeOption[]> {
-  const rows = await db
-    .select({ code: sageCostCodes.code, description: sageCostCodes.description })
-    .from(sageCostCodes)
-    .where(eq(sageCostCodes.active, true))
-    .orderBy(asc(sageCostCodes.code))
+export async function loadCostCodeOptions(db: Db, projectId?: string): Promise<readonly ShopTicketCostCodeOption[]> {
+  const rows = await (projectId ? loadProjectCostCodeChoices(db, projectId) : loadProjectCostCodeCatalog(db))
   return rows
 }
 
 /** Cost codes on the project's budget; empty when the project has no budget. */
 export async function loadBudgetCostCodes(db: Db, projectId: string): Promise<readonly string[]> {
-  const rows = await db
-    .selectDistinct({ code: projectBudgetLines.costCode })
-    .from(projectBudgetLines)
-    .where(eq(projectBudgetLines.projectId, projectId))
-  return rows.map((row) => row.code)
+  return (await loadProjectBudgetCostCodes(db, projectId)).map((row) => row.costCode)
 }
 
 export async function loadPayApplicationOptions(db: Db, projectId: string): Promise<readonly ShopTicketPayApplicationOption[]> {
