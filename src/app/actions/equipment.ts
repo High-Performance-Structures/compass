@@ -20,7 +20,7 @@ import {
   type MachineLogKind,
   type ServiceDue,
 } from "@/lib/equipment/model"
-import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
@@ -87,6 +87,26 @@ export type MachineLogEntryView = {
   readonly canChange: boolean
 }
 
+export type MachineCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly onBudget?: boolean
+}
+
+/** Load after choosing a job so machine logs follow the same budget/search rules. */
+export async function getMachineCostCodeOptions(projectId: string): Promise<Result<readonly MachineCostCodeOption[]>> {
+  try {
+    const { db, orgId } = await context()
+    const project = await db.select({ id: projects.id }).from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId))).get()
+    if (!project) return { success: false, error: "Project not found." }
+    const codes = await loadProjectCostCodeChoices(db, project.id)
+    return { success: true, data: codes.map((code) => ({ value: code.code, label: code.displayLabel, onBudget: code.onBudget })) }
+  } catch (error) {
+    return failure(error, "Couldn't load project cost codes.")
+  }
+}
+
 export type EquipmentWorkspace = {
   readonly today: string
   readonly month: string
@@ -102,7 +122,7 @@ export type EquipmentWorkspace = {
   readonly hoursByJob: readonly { readonly label: string; readonly runningHours: number; readonly otherHours: number; readonly chargeCents: number }[]
   readonly rateBookMachines: readonly { readonly value: string; readonly label: string }[]
   readonly jobs: readonly { readonly value: string; readonly label: string }[]
-  readonly costCodes: readonly { readonly value: string; readonly label: string }[]
+  readonly costCodes: readonly MachineCostCodeOption[]
   readonly canManage: boolean
 }
 
@@ -136,7 +156,7 @@ export async function getEquipmentWorkspace(): Promise<EquipmentWorkspace> {
   const since = `${month}-01`
   const recentSince = new Date(Date.parse(`${today}T12:00:00Z`) - 60 * 86_400_000).toISOString().slice(0, 10)
 
-  const [machineRows, serviceRows, entryRows, pendingRows, rateRows, jobRows, dailyLogSettings, canManage] = await Promise.all([
+  const [machineRows, serviceRows, entryRows, pendingRows, rateRows, jobRows, costCodeCatalog, canManage] = await Promise.all([
     db
       .select({ machine: equipmentMachines, rateName: rateBookEntries.name, rateCents: rateBookEntries.unitCostCents, locationName: projects.name, locationNumber: projects.projectNumber })
       .from(equipmentMachines)
@@ -157,7 +177,7 @@ export async function getEquipmentWorkspace(): Promise<EquipmentWorkspace> {
       .from(projects)
       .where(and(eq(projects.organizationId, orgId), eq(projects.status, "OPEN")))
       .orderBy(asc(projects.projectNumber)),
-    readFeatureSettings(db, orgId, "daily-logs"),
+    loadProjectCostCodeCatalog(db),
     canFeature(user, FEATURE, "approve"),
   ])
 
@@ -222,7 +242,7 @@ export async function getEquipmentWorkspace(): Promise<EquipmentWorkspace> {
     hoursByJob: [...byJob.values()].sort((a, b) => b.runningHours - a.runningHours),
     rateBookMachines: rateRows.map((row) => ({ value: row.id, label: `${row.name} · ${(row.cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}/${row.unit}` })),
     jobs: jobRows.map((row) => ({ value: row.id, label: projectNumberAndName(row) })),
-    costCodes: dailyLogSettings.laborCostCodes.filter((code) => code.active).map((code) => ({ value: code.code, label: `${code.code} ${code.name}` })),
+    costCodes: costCodeCatalog.map((code) => ({ value: code.code, label: code.displayLabel })),
     canManage,
   }
 }

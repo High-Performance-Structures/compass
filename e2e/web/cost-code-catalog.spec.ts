@@ -62,6 +62,26 @@ test.describe("company cost-code catalog", () => {
     await expect(page.getByRole("combobox", { name: "Cost code 1", exact: true })).toContainText("48 14 00")
   })
 
+  test("machine logs use the full catalog and follow the selected job budget", async ({ page }) => {
+    await page.goto("/dashboard/equipment")
+    await page.getByRole("button", { name: "Log machine entry", exact: true }).click()
+    const code = page.getByRole("combobox", { name: "Cost code", exact: true })
+    await code.click()
+    await expect.poll(() => page.getByRole("option").count()).toBeGreaterThanOrEqual(1169)
+    await page.getByPlaceholder("Search cost codes...", { exact: true }).fill("48 14 00")
+    await page.getByRole("option").filter({ hasText: "48 14 00" }).click()
+    await page.locator("#machine-log-projectId").click()
+    await page.getByPlaceholder("Search jobs...", { exact: true }).fill("O-BUDGET-TEST")
+    await page.getByRole("option").filter({ hasText: "O-BUDGET-TEST" }).click()
+    await expect(code).toBeEnabled()
+    await code.click()
+    await expect(page.getByRole("option")).toHaveCount(2)
+    await expect(page.getByRole("option").filter({ hasText: "01 71 13" })).toBeVisible()
+    await page.getByPlaceholder("Search cost codes...", { exact: true }).fill("48 14 00")
+    await page.getByRole("option").filter({ hasText: "48 14 00" }).click()
+    await expect(code).toContainText("48 14 00")
+  })
+
   test("selection forms use budget browsing without silently excluding company divisions", async ({ page }) => {
     await page.goto("/dashboard/projects/e2e-cost-code-budget/selections")
     await page.getByRole("button", { name: "New Selection", exact: true }).first().click()
