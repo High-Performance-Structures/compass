@@ -9,7 +9,7 @@ test.describe("company cost-code catalog", () => {
   test.beforeAll(() => {
     const db = new Database(resolve(process.env.LOCAL_DB_PATH ?? ".e2e/compass.db"))
     const now = new Date().toISOString()
-    db.prepare("INSERT OR IGNORE INTO projects (id,project_number,name,department,organization_id,created_at,updated_at) VALUES (?,'O-31-2067-4-TEST','Full catalog regression','O','hps-org-001',?,?)").run(projectId, now, now)
+    db.prepare("INSERT OR IGNORE INTO projects (id,project_number,name,department,organization_id,created_at,updated_at) VALUES (?,'O-E2E-CATALOG-001','Full catalog regression','O','hps-org-001',?,?)").run(projectId, now, now)
     for (const [id, number, workspace] of [["e2e-cost-code-budget", "O-BUDGET-TEST", null], ["e2e-cost-code-internal", "O-INTERNAL-TEST", "office"]]) {
       db.prepare("INSERT OR IGNORE INTO projects (id,project_number,name,department,workspace_kind,organization_id,created_at,updated_at) VALUES (?,?,?,'O',?,'hps-org-001',?,?)").run(id, number, id, workspace, now, now)
     }
