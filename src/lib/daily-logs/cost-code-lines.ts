@@ -13,6 +13,7 @@ import {
 } from "@/lib/daily-logs/daily-log-form"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { dutiesFor, dutyDisplay, dutyOnPhones } from "@/lib/internal-duties/model"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 
@@ -35,8 +36,10 @@ export type DailyLogCostCodeSource = "labor" | "duties" | "company"
 
 /**
  * A project's cost codes, and the part of them Field Mode downloads. Phones
- * in enabled departments get the same full job catalog as the browser. Internal
- * workspaces browse phone-enabled duties and can search company codes too.
+ * in enabled departments get the configured active crew labor codes and the
+ * existing H/O/D preconstruction supplements.
+ * Internal workspaces download only phone-enabled duties. The full company
+ * catalog remains available in Full Compass, outside these offline packets.
  */
 export type DailyLogCostCodeList = {
   readonly source: DailyLogCostCodeSource
@@ -84,11 +87,21 @@ export async function dailyLogCostCodeList(
     return {
       source: "duties",
       options: [...duties, ...companyOptions],
-      phoneOptions: inLaborDepartment ? [...duties.filter((option) => phoneCodes.has(option.code)), ...companyOptions] : [],
+      phoneOptions: inLaborDepartment ? duties.filter((option) => phoneCodes.has(option.code)) : [],
     }
   }
 
   const laborCodes = inLaborDepartment ? dailyLogSettings.laborCostCodes.filter((code) => code.active) : []
+  const phoneCodes = new Map(laborCodes.map(({ code, name }) => [code, name]))
+  if (phoneCodes.size > 0 && (department === "D" || department === "H" || department === "O")) {
+    // Preserve the pre-existing 00/01 supplements without downloading other
+    // budget or company codes into Field Mode.
+    for (const row of projectEstimateCostCodeCatalog([], [])) {
+      if ((row.divisionCode === "00" || row.divisionCode === "01") && !phoneCodes.has(row.code)) {
+        phoneCodes.set(row.code, row.description)
+      }
+    }
+  }
   const companyCodes = await loadProjectCostCodeChoices(db, projectId)
   const companyLabels = new Map(companyCodes.map((row) => [row.code, row.description]))
   // Keep company-added labor choices available without restricting the catalog.
@@ -108,7 +121,12 @@ export async function dailyLogCostCodeList(
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ALL_CODES_GROUP })),
   ]
-  return { source: "company", options, phoneOptions: inLaborDepartment ? options : [] }
+  return {
+    source: "company",
+    options,
+    // A broader browser catalog must not expand the curated Field Mode list.
+    phoneOptions: [...phoneCodes].map(([code, name]) => ({ code, name, label: `${code} ${name}`, group: "" })),
+  }
 }
 
 export async function dailyLogRequirements(db: Db, organizationId: string): Promise<DailyLogRequirements> {
