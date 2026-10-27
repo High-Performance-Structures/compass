@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { notFound } from "next/navigation"
 
+import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import {
@@ -44,6 +46,7 @@ export default async function ProjectInformationPage({
         internalDepartment={information.project.internalDepartment}
         internalDepartmentName={internalDepartment.name}
       />
+      {currentUser && isInternalStaffRole(currentUser.role) ? <FieldCostCodeEditor scope="project" projectId={id} /> : null}
       {zoneCharges ? <ProjectZoneCharges projectId={id} view={zoneCharges} /> : null}
     </div>
   )

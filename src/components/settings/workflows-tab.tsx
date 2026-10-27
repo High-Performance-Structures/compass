@@ -23,6 +23,7 @@ import { EstimateSettingsSection } from "@/components/settings/estimate-settings
 import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { PayApplicationSettingsSection } from "@/components/settings/pay-application-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
+import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
 import { DailyLogFollowUpSettingsSection } from "@/components/settings/daily-log-followup-settings-section"
 import { ProjectTimelineSettingsSection } from "@/components/settings/project-timeline-settings-section"
@@ -206,6 +207,7 @@ function NuTechCatalogLink(): React.ReactElement {
 
 const WORKFLOW_AREAS = [
   { value: "job-workflows", label: "Job workflows", description: "Steps and checklists on each department's job overview." },
+  { value: "field-cost-codes", label: "Field Mode cost codes", description: "Default codes for crews, with explicit project additions." },
   { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, to-dos and client contact on logs, and missing log reminders." },
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "schedule-conflicts", label: "Schedule conflicts", description: "Crews or companies never flagged as double-booked, and other spellings of the same name." },
@@ -273,6 +275,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ScheduleConflictSettingsSection />
     case "project-timeline":
       return <ProjectTimelineSettingsSection />
+    case "field-cost-codes":
+      return <FieldCostCodeEditor scope="company" />
     case "daily-logs":
       return (
         <>

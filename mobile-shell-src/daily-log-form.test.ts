@@ -24,14 +24,15 @@ const form = {
 }
 
 describe("Field Mode daily log draft", () => {
-  it("browses budget or customized codes and searches the full company list", () => {
-    for (const group of ["On this job's budget", "Customized duty codes"]) {
+  it("browses all approved packet codes, including additions, and searches only that list", () => {
+    for (const group of ["", "Customized duty codes"]) {
       const setup = { ...form, costCodes: [
         { code: "01 71 13", name: "Mobilization", label: "01 71 13 Mobilization", group },
-        { code: "48 14 00", name: "Solar", label: "48 14 00 Solar", group: "All cost codes" },
+        { code: "48 14 00", name: "Solar", label: "48 14 00 Solar", group: "Project additions" },
       ] }
       expect(costCodeOptions(setup, "", escape)).toContain("01 71 13")
-      expect(costCodeOptions(setup, "", escape)).not.toContain("48 14 00")
+      expect(costCodeOptions(setup, "", escape)).toContain("48 14 00")
+      expect(costCodeOptions(setup, "", escape, "unapproved")).not.toContain("48 14 00")
       expect(costCodeOptions(setup, "", escape, "solar")).toContain("48 14 00")
       expect(costCodeOptions(setup, "48 14 00", escape)).toContain('value="48 14 00" selected')
     }

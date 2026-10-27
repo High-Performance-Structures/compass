@@ -72,6 +72,7 @@ export async function getFeatureSettingsForEditor(key: string): Promise<Result<F
 /** Saves a feature's settings for the company (admins only). */
 export async function saveFeatureSettings(key: string, value: unknown): Promise<Result<null>> {
   try {
+    if (key === "field-cost-codes") return { success: false, error: "Use the Field Mode cost-code editor to save this list." }
     if (!isFeatureSettingsKey(key)) return { success: false, error: "Unknown settings." }
     const ctx = await context(key)
     if (!ctx.ok) return { success: false, error: ctx.error }
@@ -103,6 +104,7 @@ export async function saveFeatureSettings(key: string, value: unknown): Promise<
 /** Removes the company's custom values so the feature uses its defaults again. */
 export async function resetFeatureSettings(key: string): Promise<Result<null>> {
   try {
+    if (key === "field-cost-codes") return { success: false, error: "Use the Field Mode cost-code editor to reset this list." }
     if (!isFeatureSettingsKey(key)) return { success: false, error: "Unknown settings." }
     const ctx = await context(key)
     if (!ctx.ok) return { success: false, error: ctx.error }

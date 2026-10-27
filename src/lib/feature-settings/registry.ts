@@ -1,3 +1,4 @@
+import { fieldCostCodeSettingsSchema, type FieldCostCodeSettings } from "@/lib/field/cost-code-settings"
 import { z } from "zod/v4"
 import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
@@ -644,6 +645,7 @@ type FeatureSettingsTypes = {
   readonly "contract-packets": ContractPacketSettings
   readonly "pay-applications": PayApplicationSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
+  readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
   readonly "project-timeline": ProjectTimelineSettings
@@ -690,6 +692,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Flags a crew or company booked on two jobs over the same days. List names to never flag, and other spellings of the same name.",
     defaults: { ignoredParties: [], aliases: [] },
     schema: scheduleConflictSettingsSchema,
+  },
+  "field-cost-codes": {
+    label: "Field Mode cost codes",
+    description: "The default cost codes crews can see in Field Mode. Projects can add specific codes without changing other jobs.",
+    defaults: { defaultCodes: null },
+    schema: fieldCostCodeSettingsSchema,
   },
   "daily-logs": {
     label: "Daily logs",

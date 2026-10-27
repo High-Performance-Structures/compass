@@ -6,7 +6,6 @@
  * points to what needs attention.
  */
 import { z } from "zod/v4"
-import { ON_BUDGET_GROUP, INTERNAL_CODES_GROUP } from "../src/lib/daily-logs/cost-code-groups"
 
 import {
   DAILY_LOG_FIELD_LABELS,
@@ -159,9 +158,8 @@ function invalidAttrs(errors: ReadonlyMap<string, string>, key: string, escape: 
 
 export function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Escape, query = ""): string {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-  const preferred = (option: FieldDailyLogForm["costCodes"][number]): boolean => option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP
-  const hasPreferred = form.costCodes.some(preferred)
-  const visible = form.costCodes.filter((option) => words.length > 0 ? words.every((word) => option.label.toLocaleLowerCase().includes(word)) : !hasPreferred || preferred(option))
+  // Packets already contain only approved Field codes; show project additions beside defaults.
+  const visible = form.costCodes.filter((option) => words.every((word) => option.label.toLocaleLowerCase().includes(word)))
   const groups = new Map<string, string[]>()
   for (const option of visible) {
     const items = groups.get(option.group) ?? []
@@ -191,7 +189,7 @@ function workLinesHtml(draft: LogDraft, form: FieldDailyLogForm | null, required
       const todoTitle = line.todoId ? form.followUps?.openTodos.find((todo) => todo.id === line.todoId)?.title : undefined
       return `<div class="work-line">
         ${todoTitle ? `<p class="field-hint">For the to-do: ${escape(todoTitle)}</p>` : ""}
-        <label class="field">Search cost codes<input type="search" name="workLines.${index}.costCodeSearch" value="${escape(line.costCodeSearch ?? "")}" data-cost-code-search="${index}" placeholder="Search full company list" aria-label="Search cost codes for line ${index + 1}" /></label>
+        <label class="field">Search cost codes<input type="search" name="workLines.${index}.costCodeSearch" value="${escape(line.costCodeSearch ?? "")}" data-cost-code-search="${index}" placeholder="Search available codes" aria-label="Search cost codes for line ${index + 1}" /></label>
         <label class="field">Cost code ${index + 1}<select id="log-line-${index}-costCode" name="${codeKey}"${invalidAttrs(errors, codeKey, escape)}>${costCodeOptions(form, line.costCode, escape, line.costCodeSearch)}</select>${errorText(errors, codeKey, escape)}</label>
         <div class="work-line-row">
           <label class="field hours-field">Hours<input id="log-line-${index}-hours" name="${hoursKey}" inputmode="decimal" placeholder="e.g. 2.5" value="${escape(line.hours)}"${invalidAttrs(errors, hoursKey, escape)} />${errorText(errors, hoursKey, escape)}</label>
