@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test"
 
+import { enterDemo, usingSmokeLogin } from "./smoke-session"
+
+// Production smoke rejects anonymous /dashboard visits; local CI's dev auth
+// fallback signs the tests in implicitly, so only production needs the login.
+test.beforeEach(async ({ page }) => {
+  if (usingSmokeLogin) await enterDemo(page)
+})
+
 for (const platform of ["ios", "android"]) {
   test(`${platform} can return to Field Mode through tablet resizing and navigation`, async ({ page }) => {
     await page.setViewportSize({ width: 1194, height: 834 })
