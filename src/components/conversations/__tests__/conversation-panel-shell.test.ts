@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { getConversationPanelData } from "@/app/actions/conversation-panel"
+import { listChannels } from "@/app/actions/conversations"
 import { ConversationPanelProvider, useConversationPanel } from "../conversation-panel-provider"
 import { ConversationPanelShell } from "../conversation-panel-shell"
 
@@ -53,6 +54,11 @@ function PanelControls() {
     null,
     createElement(
       "button",
+      { type: "button", "data-testid": "open-list", onClick: () => open(null) },
+      "Open conversations",
+    ),
+    createElement(
+      "button",
       { type: "button", "data-testid": "open-alpha", onClick: () => open("channel-alpha") },
       "Open Alpha",
     ),
@@ -92,7 +98,8 @@ vi.mock("@/components/conversations/message-composer", () => ({
 }))
 
 vi.mock("@/components/conversations/direct-message-dialog", () => ({
-  DirectMessagePicker: () => null,
+  DirectMessagePicker: ({ onStarted }: { readonly onStarted: (channelId: string) => void }) =>
+    createElement("button", { type: "button", onClick: () => onStarted("channel-new") }, "Start conversation"),
 }))
 
 describe("ConversationPanelShell", () => {
@@ -100,9 +107,34 @@ describe("ConversationPanelShell", () => {
   let root: Root
 
   beforeEach(() => {
+    vi.clearAllMocks()
     host = document.createElement("div")
     document.body.appendChild(host)
     root = createRoot(host)
+  })
+
+  it("starts a new conversation from an empty drawer and refreshes its list", async () => {
+    vi.mocked(getConversationPanelData).mockResolvedValue({ success: true, data: panelData("channel-new", "New conversation") })
+
+    await act(async () => {
+      root.render(createElement(ConversationPanelProvider, null,
+        createElement(PanelControls), createElement(ConversationPanelShell)))
+    })
+    await act(async () => document.querySelector<HTMLButtonElement>("[data-testid='open-list']")?.click())
+    expect(host.textContent).toContain("No conversations are available.")
+    const newConversation = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("New conversation"))
+    expect(newConversation).toBeDefined()
+
+    await act(async () => newConversation?.click())
+    expect(host.querySelector("h2")?.textContent).toBe("New direct message")
+    const startConversation = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Start conversation")
+    await act(async () => startConversation?.click())
+
+    expect(host.querySelector("h2")?.textContent).toBe("# New conversation")
+    expect(getConversationPanelData).toHaveBeenCalledWith("channel-new")
+    expect(listChannels).toHaveBeenCalledTimes(2)
+    // Starting another conversation remains available while one is open.
+    expect(Array.from(host.querySelectorAll("button")).some((button) => button.textContent?.includes("New conversation"))).toBe(true)
   })
 
   afterEach(async () => {

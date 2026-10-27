@@ -333,7 +333,7 @@ export async function getFieldProjectPacket(
         email: contact.email,
         role: userRoleLabel(contact.role),
       })),
-    // Only short lists (H/O labor codes, internal duties) go to phones.
+    // Download only the curated phone codes; the full catalog stays in Full Compass.
     dailyLogForm: {
       ...phoneDailyLogForm(dailyLogWorkspace.form),
       followUps: dailyLogWorkspace.followUps

@@ -42,6 +42,12 @@ Do not repeatedly resubmit the same work. Record the project, item, time, waitin
 
 Field Mode has roomier tabs, readable message content, and date controls that work in mobile browsers. Use the project and tab controls to confirm where you are before entering a log or reply. Browser layout improvements do not make uncached records or Drive files available offline; check the connection and queue indicators before assuming delivery.
 
+## Log Out or Switch Accounts {#logout}
+
+Available in Android 1.0.7 and iOS 1.0.1 or later. Open **Field settings** using the sliders icon, then choose **Account → Log out**. Compass blocks logout while saved work is waiting to sync or a transfer is running. Reconnect and keep the app open until the waiting count reaches zero. Android also needs a connection to finish stopping notifications for the signed-out account.
+
+Confirming logout clears the device's sign-in, downloaded projects and files, and unfinished drafts. Work already synced remains in Compass. You can then sign in with another Compass account. Signing out of the app does not sign out of Safari or Chrome.
+
 ## Quick Check {#quick-check}
 
 - [ ] Needed projects and files were opened while online.

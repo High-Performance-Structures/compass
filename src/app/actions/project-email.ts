@@ -111,7 +111,7 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
   } catch {
     delivery = { status: "unknown", provider: "unknown", providerMessageId: null, error: "Email provider outcome is unknown." }
   }
-  const status = delivery.status === "sent" ? "sent" : delivery.status === "failed" || delivery.status === "pending_provider" ? "failed" : "unknown"
+  const status = delivery.status === "sent" ? "sent" : delivery.status === "failed" || delivery.status === "pending_provider" || delivery.status === "rate_limited" ? "failed" : "unknown"
   await ctx.db.update(projectEmailCampaigns).set({ status, provider: delivery.provider, providerMessageId: delivery.providerMessageId, error: delivery.error, updatedAt: new Date().toISOString() }).where(eq(projectEmailCampaigns.id, campaign.id))
   revalidatePath(`/dashboard/projects/${ctx.projectId}/messages`)
   return { success: true, conversationId, status, error: status === "sent" ? null : status === "failed" ? "Email delivery failed. Review the message before retrying." : "Delivery outcome needs review; do not resend this message." }

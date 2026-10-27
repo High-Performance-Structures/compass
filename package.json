@@ -67,7 +67,6 @@
 		"@capacitor/splash-screen": "^8.0.1",
 		"@capacitor/status-bar": "^8.0.2",
 		"@capgo/capacitor-native-biometric": "^8.4.5",
-		"@capgo/capacitor-uploader": "^8.2.1",
 		"@cloudflare/realtimekit": "^2.0.4",
 		"@cloudflare/realtimekit-react": "^2.0.4",
 		"@cloudflare/realtimekit-react-ui": "^2.0.3",

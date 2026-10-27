@@ -1,5 +1,7 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -14,7 +16,6 @@ import {
   projectContactSourceLinks,
   projectMembers,
   projects,
-  sageCostCodes,
   users,
   vendorContacts,
   vendors,
@@ -88,6 +89,7 @@ export type ProjectContactItem = {
   readonly active: boolean
   readonly syncStatus: string
   readonly lastSyncedAt: string | null
+  readonly welcomeEmail: { readonly status: string; readonly nextAttemptAt: string | null } | null
   readonly accessStatus: ProjectContactAccessStatus
   readonly compassAccountStatus: ProjectContactCompassAccountStatus
   readonly identityManagedByActiveUser: boolean
@@ -235,6 +237,7 @@ export type ProjectContactDivisionOption = {
 }
 
 export type ProjectContactCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -382,7 +385,8 @@ function toContactItem(
   row: typeof projectContacts.$inferSelect,
   accessStatus: ProjectContactAccessStatus = "not_invited",
   directoryIdentityManaged = false,
-  compassAccountStatus: ProjectContactCompassAccountStatus = "not_registered"
+  compassAccountStatus: ProjectContactCompassAccountStatus = "not_registered",
+  welcomeEmail: ProjectContactItem["welcomeEmail"] = null
 ): ProjectContactItem {
   return {
     id: row.id,
@@ -416,6 +420,7 @@ function toContactItem(
     syncStatus: row.syncStatus,
     lastSyncedAt: row.lastSyncedAt,
     accessStatus,
+    welcomeEmail,
     compassAccountStatus,
     identityManagedByActiveUser:
       accessStatus === "active" ||
@@ -910,6 +915,8 @@ export async function getProjectContactsSummary(
       email: projectAccessInvitations.email,
       status: projectAccessInvitations.status,
       workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+      emailStatus: projectAccessInvitations.emailStatus,
+      emailNextAttemptAt: projectAccessInvitations.emailNextAttemptAt,
       acceptedUserActive: users.isActive,
       invitedAt: projectAccessInvitations.invitedAt,
     })
@@ -978,17 +985,18 @@ export async function getProjectContactsSummary(
   }
   const latestInvitationByContactId = new Map<
     string,
-    ProjectContactInvitationSnapshot
+    ProjectContactInvitationSnapshot & Pick<ProjectContactItem, "welcomeEmail">
   >()
   const latestInvitationByEmail = new Map<
     string,
-    ProjectContactInvitationSnapshot
+    ProjectContactInvitationSnapshot & Pick<ProjectContactItem, "welcomeEmail">
   >()
   for (const invitation of invitationRows) {
-    const snapshot: ProjectContactInvitationSnapshot = {
+    const snapshot: ProjectContactInvitationSnapshot & Pick<ProjectContactItem, "welcomeEmail"> = {
       status: invitation.status,
       workosExpiresAt: invitation.workosExpiresAt,
       acceptedUserActive: invitation.acceptedUserActive,
+      welcomeEmail: { status: invitation.emailStatus, nextAttemptAt: invitation.emailNextAttemptAt },
     }
     if (
       invitation.projectContactId &&
@@ -1040,7 +1048,8 @@ export async function getProjectContactsSummary(
           directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)) ||
         (row.customerContactId !== null &&
           directoryIdentityKeys.has(`customer_contact:${row.customerContactId}`)),
-      compassAccountStatus
+      compassAccountStatus,
+      latestInvitation?.welcomeEmail ?? null
     )
   }
   const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)
@@ -1329,16 +1338,7 @@ export async function getProjectContactSageOptions(
   const user = await requireAuth()
   await requireFeaturePermission(user, "project-contacts", "update")
   const db = await verifyProjectAccess(projectId, "update")
-  const rows = await db
-    .select({
-      code: sageCostCodes.code,
-      description: sageCostCodes.description,
-      divisionCode: sageCostCodes.divisionCode,
-      divisionDescription: sageCostCodes.divisionDescription,
-    })
-    .from(sageCostCodes)
-    .where(eq(sageCostCodes.active, true))
-    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.code))
+  const rows = await loadProjectCostCodeChoices(db, projectId)
 
   const divisions = new Map<string, ProjectContactDivisionOption>()
   const costCodes = new Map<string, ProjectContactCostCodeOption>()
@@ -1354,6 +1354,7 @@ export async function getProjectContactSageOptions(
     })
     costCodes.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: `${row.code} - ${description}`,
       description,
       divisionCode: row.divisionCode,
@@ -1922,7 +1923,7 @@ export async function saveProjectContact(
           if (pendingInvitations.length > 0) {
             await db
               .update(projectAccessInvitations)
-              .set({ status: "revoked", updatedAt: now })
+              .set({ status: "revoked", emailStatus: "cancelled", emailNextAttemptAt: null, emailClaimToken: null, emailClaimedAt: null, updatedAt: now })
               .where(
                 and(
                   eq(projectAccessInvitations.projectId, input.projectId),
@@ -2217,7 +2218,7 @@ export async function removeProjectContact(
       )
     await db
       .update(projectAccessInvitations)
-      .set({ status: "revoked", updatedAt: now })
+      .set({ status: "revoked", emailStatus: "cancelled", emailNextAttemptAt: null, emailClaimToken: null, emailClaimedAt: null, updatedAt: now })
       .where(
         and(
           eq(projectAccessInvitations.projectId, projectId),

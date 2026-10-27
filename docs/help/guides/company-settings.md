@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-25"
 }
 ---
 
@@ -31,6 +31,8 @@ Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. D
 ## Review Travel Charges and Rates {#travel}
 
 **Settings → Zone charges** controls travel-charge assumptions shown on the portfolio map. Authorized staff can also make per-job adjustments to zone and mountain charges. Review the location, rate, and job adjustment before using a suggested charge in pricing. **Settings → Rate book** manages accepted estimating rates; see [Financial workflows](/dashboard/help/financial-workflows#rate-book). Neither map layers nor a settings edit independently adds an approved accounting charge.
+
+**Settings → Workflows → Weather & fire alerts** sets when the dashboard map's Weather and Fire & smoke layers flag a job: heavy snow or rain in 24 hours, wind gusts, extreme cold or heat, and how close an active wildfire must be. Each company sets its own limits. The same page holds the rules for scheduled work: which item titles each rule matches, what it checks (a low or high temperature, gusts, rain or snow), the limit, and how many days after the item to keep checking, plus whether at-risk items notify the assignee and the job's staff. See [Schedules and tasks](/dashboard/help/schedules-and-tasks#weather).
 
 ## Enable the Project Paper Trail {#paper-trail}
 

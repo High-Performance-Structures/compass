@@ -2,9 +2,16 @@ package com.hpscolorado.compass;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(CompassSessionPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
 
     private boolean isFieldReturnIntent(Intent intent) {
         Uri url = intent == null ? null : intent.getData();

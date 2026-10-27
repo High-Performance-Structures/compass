@@ -1530,10 +1530,16 @@ export const organizationFeatureSettings = sqliteTable(
   (table) => [primaryKey({ columns: [table.organizationId, table.featureKey] })]
 )
 
-/**
- * When a job's follow-up owner was last reminded that it went overdue, so
- * each overdue stretch sends one reminder (see lib/project-follow-up-reminders).
- */
+/** Explicit additions to the Field Mode cost codes offered on one project. */
+export const projectFieldCostCodes = sqliteTable("project_field_cost_codes", {
+  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  codesJson: text("codes_json").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [index("project_field_cost_codes_org_idx").on(table.organizationId)])
+
+/** When a job's follow-up owner was last reminded of an overdue stretch. */
 export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders", {
   projectId: text("project_id")
     .primaryKey()
@@ -1544,6 +1550,24 @@ export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders
   recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
   remindedAt: text("reminded_at").notNull(),
 })
+
+export const projectSavedViews = sqliteTable(
+  "project_saved_views",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    visibility: text("visibility", { enum: ["personal", "shared"] }).notNull().default("personal"),
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("project_saved_views_org_idx").on(table.organizationId),
+    uniqueIndex("project_saved_views_owner_org_name_unique").on(table.ownerUserId, table.organizationId, table.name),
+  ],
+)
 
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",
@@ -3101,6 +3125,14 @@ export const projectAccessInvitations = sqliteTable(
     emailProvider: text("email_provider"),
     emailProviderMessageId: text("email_provider_message_id"),
     emailError: text("email_error"),
+    emailStatus: text("email_status").notNull().default("unknown"),
+    emailSubject: text("email_subject"),
+    emailMessage: text("email_message"),
+    emailAttempts: integer("email_attempts").notNull().default(0),
+    emailNextAttemptAt: text("email_next_attempt_at"),
+    emailClaimToken: text("email_claim_token"),
+    emailClaimedAt: text("email_claimed_at"),
+    emailSentAt: text("email_sent_at"),
     invitedBy: text("invited_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -3116,8 +3148,19 @@ export const projectAccessInvitations = sqliteTable(
     index("idx_project_access_invites_project").on(table.projectId),
     index("idx_project_access_invites_email").on(table.email),
     index("idx_project_access_invites_status").on(table.status),
+    index("idx_project_access_invites_email_dispatch").on(table.emailStatus, table.emailNextAttemptAt),
+    uniqueIndex("idx_project_access_invites_one_queued_welcome").on(table.projectId, table.projectContactId)
+      .where(sql`${table.emailStatus} IN ('queued', 'retrying', 'sending') AND ${table.projectContactId} IS NOT NULL`),
   ]
 )
+
+// Shared across Worker instances; never keep mailbox cooldowns in process memory.
+export const emailMailboxState = sqliteTable("email_mailbox_state", {
+  mailbox: text("mailbox").primaryKey(),
+  nextAllowedAt: text("next_allowed_at").notNull(),
+  leaseToken: text("lease_token"),
+  leaseExpiresAt: text("lease_expires_at").notNull(),
+})
 
 export const scheduleTasks = sqliteTable("schedule_tasks", {
   id: text("id").primaryKey(),
@@ -3902,4 +3945,87 @@ export const printSnapshots = sqliteTable(
     index("print_snapshots_user_idx").on(table.userId, table.createdAt),
     index("print_snapshots_expires_idx").on(table.expiresAt),
   ]
+)
+
+// Weather and Fire & smoke map layers: a shared cache of public NWS and
+// wildfire data (no company data), refreshed in the background.
+/** A rounded map point and the NWS forecast grid cell covering it. */
+export const weatherPoints = sqliteTable(
+  "weather_points",
+  {
+    /** Rounded "lat,lon" (2 decimals, about 1 km). */
+    pointKey: text("point_key").primaryKey(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    /** "BOU/26,53" once resolved. */
+    cellKey: text("cell_key"),
+    /** pending | found | outside (no NWS forecast there). */
+    status: text("status").notNull().default("pending"),
+    resolvedAt: text("resolved_at"),
+    requestedAt: text("requested_at").notNull(),
+  },
+  (table) => [index("idx_weather_points_pending").on(table.status, table.requestedAt)],
+)
+
+/** One NWS forecast grid cell and its next days in 3-hour steps (JSON). */
+export const weatherCells = sqliteTable(
+  "weather_cells",
+  {
+    cellKey: text("cell_key").primaryKey(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    elevationM: real("elevation_m"),
+    series: text("series"),
+    fetchedAt: text("fetched_at"),
+    /** Last time a map or schedule check read it; idle cells stop refreshing. */
+    requestedAt: text("requested_at").notNull(),
+    failureCount: integer("failure_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at"),
+  },
+  (table) => [index("idx_weather_cells_refresh").on(table.requestedAt, table.fetchedAt)],
+)
+
+/** Latest warnings or fires for a map area (kind = alerts | fires). */
+export const weatherAreaSnapshots = sqliteTable(
+  "weather_area_snapshots",
+  {
+    areaKey: text("area_key").notNull(),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    fetchedAt: text("fetched_at").notNull(),
+    failureCount: integer("failure_count").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.areaKey, table.kind] })],
+)
+
+/** Simplified outlines of NWS forecast zones, for warnings issued by zone. */
+export const weatherZoneShapes = sqliteTable("weather_zone_shapes", {
+  zoneId: text("zone_id").primaryKey(),
+  rings: text("rings").notNull(),
+  fetchedAt: text("fetched_at").notNull(),
+})
+
+/** Schedule warnings from the weather layer; each item + rule + day notifies once. */
+export const weatherScheduleRisks = sqliteTable(
+  "weather_schedule_risks",
+  {
+    scheduleTaskId: text("schedule_task_id")
+      .notNull()
+      .references(() => scheduleTasks.id, { onDelete: "cascade" }),
+    ruleId: text("rule_id").notNull(),
+    riskDate: text("risk_date").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    detail: text("detail").notNull(),
+    firstSeenAt: text("first_seen_at").notNull(),
+    notifiedAt: text("notified_at"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scheduleTaskId, table.ruleId, table.riskDate] }),
+    index("idx_weather_schedule_risks_project").on(table.projectId, table.riskDate),
+  ],
 )

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, or, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
@@ -22,9 +22,9 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { sendCompassEmail } from "@/lib/email/compass-email"
+import { cancelObsoleteInvitationEmails, deliverInvitationEmail } from "@/lib/email/invitation-delivery"
+import { invitationEmailNotice } from "@/lib/email/delivery-recovery"
 import { sendOrResendProjectWorkOSInvitation } from "@/lib/workos-invitations"
-import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import {
@@ -40,6 +40,7 @@ import {
   isInternalStaffRole,
 } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
 const invitationSchema = z.object({
@@ -47,9 +48,10 @@ const invitationSchema = z.object({
   contactId: z.string().trim().min(1),
   subject: z.string().trim().min(1).max(180),
   message: z.string().trim().min(1).max(8000),
+  intent: z.enum(["invite", "resend_welcome"]).default("invite"),
 })
 
-export type SendProjectAccessInvitationInput = z.infer<
+export type SendProjectAccessInvitationInput = z.input<
   typeof invitationSchema
 >
 
@@ -67,16 +69,6 @@ function projectRoleForContactType(contactType: string): string | null {
   if (contactType === "supplier") return "supplier"
   if (contactType === "internal") return "office"
   return null
-}
-
-function appBaseUrl(env: unknown): string {
-  if (typeof env === "object" && env !== null) {
-    const value = Reflect.get(env, "COMPASS_APP_URL")
-    if (typeof value === "string" && value.trim()) {
-      return value.trim().replace(/\/$/, "")
-    }
-  }
-  return "https://compass.openrangeconstruction.ltd"
 }
 
 function environmentString(env: unknown, key: string): string | null {
@@ -428,8 +420,13 @@ export async function sendProjectAccessInvitation(
           "This Compass account is deactivated. Reactivate it in People before assigning project access.",
       }
     }
+    const welcomeOnly = parsed.data.intent === "resend_welcome"
+    if (welcomeOnly && !activeExistingUser) {
+      return { success: false, error: "Welcome-only recovery requires an active account with existing project access. Review access before inviting." }
+    }
     const now = new Date().toISOString()
-    await db
+    // Welcome recovery must read the original contact binding before any identity write.
+    if (!welcomeOnly) await db
       .update(projectContacts)
       .set({ ...identity, updatedAt: now })
       .where(eq(projectContacts.id, row.contact.id))
@@ -498,7 +495,19 @@ export async function sendProjectAccessInvitation(
         : null
     const verifiedOrganizationMembership =
       preservedOrganizationRole !== null
-    const membershipRole = preservedOrganizationRole ?? requestedRole
+    const existingProjectMembership = welcomeOnly && activeExistingUser
+      ? await db.select({ role: projectMembers.role }).from(projectMembers).where(and(
+          eq(projectMembers.projectId, parsed.data.projectId), eq(projectMembers.userId, activeExistingUser.id))).get()
+      : null
+    if (welcomeOnly && (!activeExistingUser || !existingProjectMembership || !internalMembership)) {
+      return { success: false, error: "Welcome-only recovery requires an active account with existing project access. Review access before inviting." }
+    }
+    const existingViewerContact = welcomeOnly && activeExistingUser
+      ? await getProjectAudienceViewerContact(db, parsed.data.projectId, activeExistingUser) : null
+    if (welcomeOnly && existingViewerContact?.id !== row.contact.id) {
+      return { success: false, error: "Resend the welcome from this account's current project contact. Review the contact-account link before changing access." }
+    }
+    const membershipRole = existingProjectMembership?.role ?? preservedOrganizationRole ?? requestedRole
     if (
       row.contact.contactType === "internal" &&
       !verifiedOrganizationMembership
@@ -509,23 +518,23 @@ export async function sendProjectAccessInvitation(
           "Add internal staff through People before assigning project access.",
       }
     }
+    await cancelObsoleteInvitationEmails(db, { projectId: parsed.data.projectId,
+      contactId: row.contact.id, email: inviteEmail, role: membershipRole, now })
+    const queuedWelcome = await db.select({ status: projectAccessInvitations.emailStatus,
+      nextAttemptAt: projectAccessInvitations.emailNextAttemptAt }).from(projectAccessInvitations)
+      .where(and(eq(projectAccessInvitations.projectId, parsed.data.projectId),
+        eq(projectAccessInvitations.projectContactId, row.contact.id),
+        inArray(projectAccessInvitations.emailStatus, ["queued", "retrying", "sending"]))).get()
+    if (queuedWelcome) return { success: true, accessStatus: activeExistingUser ? "access_granted" : "invited",
+      warning: invitationEmailNotice(queuedWelcome.status, queuedWelcome.nextAttemptAt) }
     let workosInvitationId: string | null = null
     let workosExpiresAt: string | null = null
-    const destinationPath =
-      requestedRole === "owner"
-        ? `/preview/projects/${parsed.data.projectId}/owner`
-        : requestedRole === "subcontractor" || requestedRole === "supplier"
-          ? `/preview/projects/${parsed.data.projectId}/sub-vendor`
-          : `/dashboard/projects/${parsed.data.projectId}`
-    let actionUrl = `${appBaseUrl(env)}/login?from=${encodeURIComponent(
-      destinationPath
-    )}`
     let accessStatus: "invited" | "access_granted" = "invited"
 
     if (activeExistingUser) {
       if (
-        (!activeExistingUser.phone && identity.phone) ||
-        (!activeExistingUser.address && identity.address)
+        !welcomeOnly && ((!activeExistingUser.phone && identity.phone) ||
+        (!activeExistingUser.address && identity.address))
       ) {
         await db
           .update(users)
@@ -537,7 +546,7 @@ export async function sendProjectAccessInvitation(
           .where(eq(users.id, activeExistingUser.id))
           .run()
       }
-      if (!verifiedOrganizationMembership) {
+      if (!welcomeOnly && !verifiedOrganizationMembership) {
         await ensureExternalOrganizationMembership({
           db,
           organizationId: row.organizationId,
@@ -546,7 +555,7 @@ export async function sendProjectAccessInvitation(
           now,
         })
       }
-      await ensureProjectMembership({
+      if (!welcomeOnly) await ensureProjectMembership({
         db,
         userId: activeExistingUser.id,
         projectId: parsed.data.projectId,
@@ -565,7 +574,6 @@ export async function sendProjectAccessInvitation(
       })
       workosInvitationId = invitation.id
       workosExpiresAt = invitation.expiresAt
-      actionUrl = invitation.acceptInvitationUrl
     } else if (pendingPlaceholder) {
       workosExpiresAt = new Date(
         Date.now() + 14 * 24 * 60 * 60 * 1000
@@ -578,7 +586,7 @@ export async function sendProjectAccessInvitation(
         : row.contact.contactType === "internal"
           ? { internalVisible: true, updatedAt: now }
           : { subVendorPortalVisible: true, updatedAt: now }
-    await db
+    if (!welcomeOnly) await db
       .update(projectContacts)
       .set(visibility)
       .where(eq(projectContacts.id, row.contact.id))
@@ -590,7 +598,7 @@ export async function sendProjectAccessInvitation(
         : requestedRole === "subcontractor" || requestedRole === "supplier"
           ? "sub_vendor"
           : null
-    if (audience) {
+    if (audience && !welcomeOnly) {
       await ensureProjectAudienceConversation({
         db,
         projectId: parsed.data.projectId,
@@ -606,42 +614,11 @@ export async function sendProjectAccessInvitation(
     const projectLabel = row.projectNumber
       ? projectNumberAndName({ projectNumber: row.projectNumber, name: row.projectName }, " - ")
       : row.projectName
-    let emailResult: Awaited<ReturnType<typeof sendCompassEmail>>
-    try {
-      emailResult = await sendCompassEmail({
-        env,
-        db,
-        organizationId: row.organizationId,
-        to: [inviteEmail],
-        replyTo: "compass@hps-colorado.com",
-        subject: parsed.data.subject,
-        text: `${parsed.data.message}\n\nOpen Compass: ${actionUrl}`,
-        html: buildProjectAccessWelcomeHtml({
-          message: parsed.data.message,
-          actionUrl,
-          actionLabel:
-            accessStatus === "access_granted"
-              ? "Open Compass"
-              : "Set Up Compass Access",
-          projectLabel,
-        }),
-      })
-    } catch (error) {
-      emailResult = {
-        status: "failed",
-        provider: "gmail",
-        providerMessageId: null,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Welcome email provider failed.",
-      }
-    }
-
-    await db
+    const invitationId = crypto.randomUUID()
+    const inserted = await db
       .insert(projectAccessInvitations)
       .values({
-        id: crypto.randomUUID(),
+        id: invitationId,
         organizationId: row.organizationId,
         projectId: parsed.data.projectId,
         projectContactId: row.contact.id,
@@ -650,9 +627,10 @@ export async function sendProjectAccessInvitation(
         status: accessStatus === "access_granted" ? "accepted" : "sent",
         workosInvitationId,
         workosExpiresAt,
-        emailProvider: emailResult.provider,
-        emailProviderMessageId: emailResult.providerMessageId,
-        emailError: emailResult.error,
+        emailStatus: "queued",
+        emailSubject: parsed.data.subject,
+        emailMessage: parsed.data.message,
+        emailNextAttemptAt: now,
         invitedBy: currentUser.id,
         invitedAt: now,
         acceptedBy: activeExistingUser?.id ?? null,
@@ -660,7 +638,12 @@ export async function sendProjectAccessInvitation(
         createdAt: now,
         updatedAt: now,
       })
-      .run()
+      .onConflictDoNothing()
+      .returning({ id: projectAccessInvitations.id })
+    if (inserted.length === 0) return { success: true, accessStatus,
+      warning: invitationEmailNotice("queued", null) }
+
+    const emailDelivery = await deliverInvitationEmail({ db, env, invitationId })
 
     await recordActivityEvent({
       db,
@@ -669,15 +652,15 @@ export async function sendProjectAccessInvitation(
       actor: currentUser,
       category: "access",
       action:
-        accessStatus === "access_granted"
+        welcomeOnly ? "project.welcome_email_requested" : accessStatus === "access_granted"
           ? "project.access_granted"
-          : "project.invitation_sent",
+          : "project.invitation_prepared",
       entityType: "project_access_invitation",
       entityId: row.contact.id,
       summary:
-        accessStatus === "access_granted"
+        welcomeOnly ? `Requested a replacement Compass welcome email for ${row.contact.displayName}.` : accessStatus === "access_granted"
           ? `Granted ${row.contact.displayName} access to ${projectLabel}.`
-          : `Invited ${row.contact.displayName} to ${projectLabel}.`,
+          : `Prepared a Compass invitation for ${row.contact.displayName} for ${projectLabel}.`,
     })
 
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
@@ -685,10 +668,7 @@ export async function sendProjectAccessInvitation(
     return {
       success: true,
       accessStatus,
-      warning:
-        emailResult.status === "sent"
-          ? null
-          : `Project access was prepared, but the welcome email could not be sent: ${emailResult.error ?? "email provider unavailable"}`,
+      warning: invitationEmailNotice(emailDelivery.status, emailDelivery.nextAttemptAt),
     }
   } catch (error) {
     console.error("Project access invitation failed", error)

@@ -48,6 +48,7 @@ function contact(
     accessStatus: "not_invited",
     compassAccountStatus: "not_registered",
     identityManagedByActiveUser: false,
+    welcomeEmail: null,
   }
 }
 

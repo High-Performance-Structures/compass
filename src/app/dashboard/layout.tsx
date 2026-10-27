@@ -21,6 +21,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { getProjects } from "@/app/actions/projects"
+import { getProjectViewPreferences } from "@/app/actions/project-views"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { isLocalDevelopment } from "@/lib/auth-config"
@@ -66,11 +67,12 @@ export default async function DashboardLayout({
 }: {
   readonly children: React.ReactNode
 }) {
-  const [projectList, authUser, cookieStore] =
+  const [projectList, authUser, cookieStore, projectViewPreferences] =
     await Promise.all([
       getProjects(),
       getCurrentUser(),
       cookies(),
+      getProjectViewPreferences(),
     ])
   const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false"
   const user = authUser ? toSidebarUser(authUser) : null
@@ -129,7 +131,7 @@ export default async function DashboardLayout({
     <VoiceProvider>
     <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
     <SettingsProvider>
-    <ProjectListProvider projects={projectList}>
+    <ProjectListProvider projects={projectList} viewPreferences={projectViewPreferences}>
     <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
     <CommandMenuProvider
@@ -172,6 +174,7 @@ export default async function DashboardLayout({
           <SiteHeader
             user={user}
             canUseAskCompass={canUseCompassAgent}
+            canUseFieldDesk={canUseCompassFieldDesk}
             showQuickAddInDevelopment={isDevelopment}
           />
           <NavigationProgress />

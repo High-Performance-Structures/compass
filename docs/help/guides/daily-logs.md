@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/daily-logs"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-15"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -21,6 +21,16 @@
 Open the project's **Daily Logs**, confirm the project and log date, and create a new log. Use **Fill weather** when available, then review the retrieved conditions. Record work completed, crews, materials, deliveries, inspections, delays, safety information, visitors, and specific next steps as applicable.
 
 Write facts another team member can understand later. Avoid unexplained abbreviations, personal commentary, and unapproved promises.
+
+## Choose Cost Codes {#cost-codes}
+
+Job daily logs use the full company cost-code catalog also used by Estimates, RFQs, purchase orders, change orders, financial forms, project contacts, and shop tickets. When a job has a budget, its current budget codes are shown by default. With no budget, the full company list is shown. Type a code or description to search the full company list, including codes outside the job’s budget. A job's department or the shorter labor list does not restrict its browser choices.
+
+Departments enabled for cost codes in Field Mode download the active crew labor codes configured in company settings, including the existing Division 00/01 preconstruction supplements for H/O/D jobs. Other company and budget codes stay in Full Compass. Refresh Field Mode's downloaded data after code changes. Internal workspaces show their customized duty codes by default and also allow searching the full company catalog in Full Compass. In Field Mode, only duties marked **On phones** are included.
+
+Company admins manage the crew list in **Settings → Workflows → Field Mode cost codes**. If enabled departments currently use different crew lists, the editor explains that saving combines them into one company default list. Existing crew defaults remain in use until an admin saves an explicit list; an empty saved list intentionally offers no company defaults. **Reset to crew defaults** restores the existing configured crew list. Defaults apply to job departments enabled under Daily logs; internal workspaces keep duties marked **On phones**.
+
+On a project's **Information** page, **Additional Field Mode cost codes** lets authorized project managers or admins add specific codes for that project, including a project whose department has no default Field list. These additions supplement the defaults or duties; they do not replace them or affect other projects. Remove a code and save, or use **Remove project additions** to return to inherited choices. Changes are confirmed and recorded. Refresh downloaded project data in Field Mode to receive saved changes. Existing logs keep their recorded codes.
 
 ## To-dos and Client Contact on a Log {#todos-client-contact}
 

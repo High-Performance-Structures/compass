@@ -87,6 +87,7 @@ export function ProjectRfqCostCodePicker({
     { value: NO_COST_CODE, label: "No cost code" },
     ...availableOptions.map((option) => ({
       value: option.value,
+      onBudget: option.onBudget,
       label: option.label,
       description: option.description,
       keywords: `${option.divisionCode} ${option.divisionLabel}`,
@@ -96,9 +97,9 @@ export function ProjectRfqCostCodePicker({
     ? [
         {
           value,
-          label: `${value} · not active in Sage`,
+          label: `${value} · not in the company catalog`,
           selectedLabel: value,
-          description: "Choose an active Sage cost code to replace this one.",
+          description: "Choose a company cost code to replace this one.",
         },
         ...choices,
       ]
@@ -118,15 +119,15 @@ export function ProjectRfqCostCodePicker({
         onValueChange={(nextValue) =>
           onValueChange(nextValue === NO_COST_CODE ? "" : nextValue)
         }
-        ariaLabel={`Choose Sage cost code for RFQ scope row ${rowNumber}`}
+        ariaLabel={`Choose cost code for RFQ scope row ${rowNumber}`}
         placeholder="Choose cost code"
-        searchPlaceholder="Search Sage cost codes..."
-        emptyMessage="No matching Sage cost codes."
+        searchPlaceholder="Search cost codes..."
+        emptyMessage="No matching cost codes."
         className="h-8 rounded-none border-0 bg-transparent px-1 text-xs shadow-none hover:bg-background"
       />
       {unmatchedCode && (
         <p className="px-1 pt-1 text-xs text-destructive">
-          This code is not active in Sage. Choose a current code for new scope.
+          This code is not in the company catalog. Choose a current code for new scope.
         </p>
       )}
       {mismatchedDivision && selectedCode && (

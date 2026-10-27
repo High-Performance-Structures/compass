@@ -18,11 +18,18 @@ import {
   internalSummary,
 } from "@/components/dashboard/portfolio-map/internal-map-view"
 import {
+  ALL_WEATHER_SUBLAYERS,
   NO_LAYERS,
   readStoredLayers,
+  readStoredWeatherSublayers,
   storeLayers,
+  storeWeatherSublayers,
   type PortfolioLayerState,
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
+import type { WeatherSublayers } from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
+import { usePortfolioFires, usePortfolioWeather } from "@/components/dashboard/portfolio-map/use-portfolio-weather"
+import { jobWeatherRows, type PortfolioWeatherPanelData } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
+import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
 import type { PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
 import { useNotificationInbox } from "@/hooks/use-notification-inbox"
 import { groupInbox } from "@/lib/notifications/inbox"
@@ -104,6 +111,8 @@ export function PortfolioSection({
   const [selection, setSelection] = React.useState<PortfolioSelection>({ kind: "none" })
   const [hoveredJobId, setHoveredJobId] = React.useState<string | null>(null)
   const [layerState, setLayerState] = React.useState<PortfolioLayerState>(NO_LAYERS)
+  const [weatherParts, setWeatherParts] = React.useState<WeatherSublayers>(ALL_WEATHER_SUBLAYERS)
+  const [weatherStep, setWeatherStep] = React.useState(0)
   const [scope, setScope] = React.useState<string | null>(null)
   const activeSales = salesPipelines.find((pipeline) => pipeline.department === scope) ?? null
   const sales = useSalesPipeline(activeSales)
@@ -115,6 +124,7 @@ export function PortfolioSection({
   React.useEffect(() => {
     setView(readStoredView() ?? defaultView())
     setLayerState(readStoredLayers())
+    setWeatherParts(readStoredWeatherSublayers())
     setScope(readStoredScope(firstSalesPipelines.current, firstInternal.current.length > 0))
   }, [])
 
@@ -253,6 +263,49 @@ export function PortfolioSection({
     [activeSales, internal, internalActive, salesJobs],
   )
 
+  // Weather and Fire & smoke: fetched only while the layer is on and the map is in view.
+  const layerMapVisible = view === "map" && !mapUnavailable && nearViewport && layers !== undefined
+  const mapJobIds = React.useMemo(() => mapJobs.map((job) => job.id), [mapJobs])
+  const weatherLayer = usePortfolioWeather(layerState.weather && layerMapVisible, mapJobIds)
+  const fireLayer = usePortfolioFires(layerState.fire && layerMapVisible)
+  const changeWeatherParts = React.useCallback((next: WeatherSublayers): void => {
+    setWeatherParts(next)
+    storeWeatherSublayers(next)
+  }, [])
+  const weatherProps = React.useMemo(
+    () => ({
+      weather: weatherLayer.data,
+      fire: fireLayer.data,
+      limits: weatherLayer.limits ?? fireLayer.limits,
+      parts: weatherParts,
+      onParts: changeWeatherParts,
+      error: weatherLayer.error,
+      step: weatherStep,
+      onStep: setWeatherStep,
+    }),
+    [changeWeatherParts, fireLayer.data, fireLayer.limits, weatherLayer.data, weatherLayer.error, weatherLayer.limits, weatherParts, weatherStep],
+  )
+  const weatherOn = layerState.weather && layerMapVisible
+  const fireOn = layerState.fire && layerMapVisible
+  const weatherPanel = React.useMemo<PortfolioWeatherPanelData | null>(() => {
+    if (!weatherOn && !fireOn) return null
+    const weatherData = weatherOn ? weatherLayer.data : null
+    const fireData = fireOn ? fireLayer.data : null
+    const limits = weatherLayer.limits ?? fireLayer.limits ?? DEFAULT_WEATHER_LIMITS
+    const step = Math.min(weatherStep, (weatherData?.steps ?? 1) - 1)
+    return {
+      title: weatherOn ? "WEATHER ON YOUR JOBS" : "FIRE NEAR YOUR JOBS",
+      emptyText: weatherOn
+        ? weatherData
+          ? "No job is over your company's limits in the 24 hours from this time."
+          : "Loading weather…"
+        : fireData
+          ? "No active fire is near a job."
+          : "Loading fires…",
+      rows: weatherData || fireData ? jobWeatherRows(jobs, weatherData, fireData, limits, step, Date.now()) : [],
+    }
+  }, [fireLayer.data, fireLayer.limits, fireOn, jobs, weatherLayer.data, weatherLayer.limits, weatherOn, weatherStep])
+
   if (jobs.length === 0 && unplaced.length === 0 && hidden.length === 0 && salesPipelines.length === 0 && internal.length === 0) return null
 
   const scopes: readonly { readonly scope: string | null; readonly label: string }[] = [
@@ -326,6 +379,7 @@ export function PortfolioSection({
           {showMap ? (
             nearViewport ? (
               <PortfolioTerrain
+                weather={weatherProps}
                 jobs={mapJobs}
                 highlight={highlight}
                 onSelectJob={internalActive ? setInternalSelected : activeSales ? sales.select : selectJob}
@@ -372,6 +426,7 @@ export function PortfolioSection({
               jobMessages={jobMessages}
               statusMove={statusMove}
               canOpenFiles={canOpenFiles}
+              weather={weatherPanel}
             />
           )}
         </aside>

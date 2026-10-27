@@ -1,5 +1,7 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 
@@ -12,7 +14,6 @@ import {
   projectBudgetLines,
   projectOperations,
   projects,
-  sageCostCodes,
 } from "@/db/schema"
 import {
   projectContractBudgetLines,
@@ -114,6 +115,7 @@ export type ProjectFinancialPhaseOption = {
 }
 
 export type ProjectFinancialCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -1138,44 +1140,7 @@ export async function getProjectFinancialCodingOptions(
   projectId: string
 ): Promise<ProjectFinancialCodingOptions> {
   const { db } = await verifyProjectReadAccess(projectId)
-  const [sageRows, budgetRows] = await Promise.all([
-    db
-      .select({
-        code: sageCostCodes.code,
-        description: sageCostCodes.description,
-        displayLabel: sageCostCodes.displayLabel,
-        divisionCode: sageCostCodes.divisionCode,
-        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
-      })
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
-    db
-      .select({
-        costCode: projectBudgetLines.costCode,
-        description: projectBudgetLines.description,
-        divisionCode: projectBudgetLines.csiDivision,
-        divisionName: projectBudgetLines.csiDivisionName,
-      })
-      .from(projectBudgetLines)
-      .leftJoin(
-        projectBudgetApplications,
-        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
-      )
-      .where(
-        and(
-          eq(projectBudgetLines.projectId, projectId),
-          or(
-            isNull(projectBudgetApplications.status),
-            ne(projectBudgetApplications.status, "building")
-          )
-        )
-      )
-      .orderBy(
-        asc(projectBudgetLines.csiDivision),
-        asc(projectBudgetLines.costCode)
-      ),
-  ])
+  const sageRows = await loadProjectCostCodeChoices(db, projectId)
   const phases = new Map<string, ProjectFinancialPhaseOption>()
   const costCodes = new Map<string, ProjectFinancialCostCodeOption>()
 
@@ -1186,27 +1151,11 @@ export async function getProjectFinancialCodingOptions(
     })
     costCodes.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
     })
-  }
-
-  for (const row of budgetRows) {
-    if (!phases.has(row.divisionCode)) {
-      phases.set(row.divisionCode, {
-        value: row.divisionCode,
-        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
-      })
-    }
-    if (!costCodes.has(row.costCode)) {
-      costCodes.set(row.costCode, {
-        value: row.costCode,
-        label: `${row.costCode} ${row.description}`,
-        description: row.description,
-        divisionCode: row.divisionCode,
-      })
-    }
   }
 
   return {

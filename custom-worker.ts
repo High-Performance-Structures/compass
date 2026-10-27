@@ -9,6 +9,7 @@ import { ListeningRoomCoordinator } from "./src/cloudflare/listening-room-coordi
 export { ListeningRoomCoordinator }
 
 const RECONCILE_TARGET = "/api/operations/feedback/reconcile"
+const INVITATION_RETRY_TARGET = "/api/operations/email/retry-invitations"
 const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
 const GOTO_MESSAGE_RECOVERY_TARGET =
   "/api/operations/goto/recover-message-bodies"
@@ -21,6 +22,7 @@ const PROJECT_OVERDUE_REMINDER_TARGET =
 const DAILY_LOG_REMINDER_TARGET =
   "/api/operations/daily-logs/missing-reminders"
 const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
+const WEATHER_REFRESH_TARGET = "/api/operations/weather/refresh"
 const MY_COMPASS_CALENDAR_TARGET = "/api/operations/my-compass-calendar/sync"
 const PROJECT_CALENDARS_TARGET = "/api/operations/project-calendars/sync"
 const MORNING_PLAN_TARGET = "/api/operations/morning-plan/sweep"
@@ -287,6 +289,7 @@ export default {
     if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
       ctx.waitUntil(
         Promise.all([
+          runMaintenanceJob("invitation email recovery", () => checkBridgeHealth(env, INVITATION_RETRY_TARGET)),
           // Import tracked replies every minute so project conversations stay current.
           runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
           runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),
@@ -332,6 +335,11 @@ export default {
         // overload warning at most once a week.
         runMaintenanceJob("Today's plan", () =>
           checkBridgeHealth(env, MORNING_PLAN_TARGET)
+        ),
+        // Every 10 minutes: map weather warnings, wildfires and the site
+        // forecasts someone has looked at recently, a few per run.
+        runMaintenanceJob("Weather and fire", () =>
+          checkBridgeHealth(env, WEATHER_REFRESH_TARGET)
         ),
       ]).then(() => undefined)
     )

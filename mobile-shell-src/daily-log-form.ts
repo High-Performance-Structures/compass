@@ -36,7 +36,7 @@ export const LOG_DRAFT_KEY_PREFIX = "compass_field_log_draft_v1"
 export const logDraftSchema = z.object({
   logDate: z.string(),
   workCompleted: z.string(),
-  workLines: z.array(z.object({ costCode: z.string(), hours: z.string(), description: z.string(), todoId: z.string().optional() })).min(1),
+  workLines: z.array(z.object({ costCode: z.string(), hours: z.string(), description: z.string(), todoId: z.string().optional(), costCodeSearch: z.string().optional() })).min(1),
   crewPresent: z.string(),
   materialsUsed: z.string(),
   issues: z.string(),
@@ -80,11 +80,11 @@ export function logRequirements(form: FieldDailyLogForm | null): DailyLogRequire
 
 /** Sets one field from a form control's name: "workCompleted" or "workLines.2.hours". */
 export function updateLogDraft(draft: LogDraft, name: string, value: string): LogDraft {
-  const line = /^workLines\.(\d+)\.(costCode|hours|description)$/.exec(name)
+  const line = /^workLines\.(\d+)\.(costCode|hours|description|costCodeSearch)$/.exec(name)
   if (line) {
     const index = Number(line[1])
     const part = line[2]
-    if (part !== "costCode" && part !== "hours" && part !== "description") return draft
+    if (part !== "costCode" && part !== "hours" && part !== "description" && part !== "costCodeSearch") return draft
     return {
       ...draft,
       workLines: draft.workLines.map((item, itemIndex) => (itemIndex === index ? { ...item, [part]: value } : item)),
@@ -108,8 +108,10 @@ export function removeWorkLine(draft: LogDraft, index: number): LogDraft {
 }
 
 /** Lines with anything in them, for the queued log. */
-export function filledWorkLines(lines: readonly DailyLogWorkLineDraft[]): DailyLogWorkLineDraft[] {
+export function filledWorkLines(lines: LogDraft["workLines"]): DailyLogWorkLineDraft[] {
+  // Search text belongs to the local form draft, never to the submitted work record.
   return lines.filter((line) => line.costCode.trim() || line.hours.trim() || line.description.trim())
+    .map((line) => ({ costCode: line.costCode, hours: line.hours, description: line.description, ...(line.todoId ? { todoId: line.todoId } : {}) }))
 }
 
 export function totalHoursLabel(lines: readonly DailyLogWorkLineDraft[]): string {
@@ -154,15 +156,18 @@ function invalidAttrs(errors: ReadonlyMap<string, string>, key: string, escape: 
   return errors.has(key) ? ` aria-invalid="true" aria-describedby="log-${escape(key)}-error"` : ""
 }
 
-function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Escape): string {
+export function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Escape, query = ""): string {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  // Packets already contain only approved Field codes; show project additions beside defaults.
+  const visible = form.costCodes.filter((option) => words.every((word) => option.label.toLocaleLowerCase().includes(word)))
   const groups = new Map<string, string[]>()
-  for (const option of form.costCodes) {
+  for (const option of visible) {
     const items = groups.get(option.group) ?? []
     items.push(`<option value="${escape(option.code)}" ${option.code === selected ? "selected" : ""}>${escape(option.label)}</option>`)
     groups.set(option.group, items)
   }
   // A code saved in the draft that has since left the list stays visible.
-  const known = form.costCodes.some((option) => option.code === selected)
+  const known = visible.some((option) => option.code === selected)
   const kept = selected && !known ? `<option value="${escape(selected)}" selected>${escape(selected)}</option>` : ""
   const body = [...groups.entries()]
     .map(([group, items]) => (group ? `<optgroup label="${escape(group)}">${items.join("")}</optgroup>` : items.join("")))
@@ -184,7 +189,8 @@ function workLinesHtml(draft: LogDraft, form: FieldDailyLogForm | null, required
       const todoTitle = line.todoId ? form.followUps?.openTodos.find((todo) => todo.id === line.todoId)?.title : undefined
       return `<div class="work-line">
         ${todoTitle ? `<p class="field-hint">For the to-do: ${escape(todoTitle)}</p>` : ""}
-        <label class="field">Cost code ${index + 1}<select id="log-line-${index}-costCode" name="${codeKey}"${invalidAttrs(errors, codeKey, escape)}>${costCodeOptions(form, line.costCode, escape)}</select>${errorText(errors, codeKey, escape)}</label>
+        <label class="field">Search cost codes<input type="search" name="workLines.${index}.costCodeSearch" value="${escape(line.costCodeSearch ?? "")}" data-cost-code-search="${index}" placeholder="Search available codes" aria-label="Search cost codes for line ${index + 1}" /></label>
+        <label class="field">Cost code ${index + 1}<select id="log-line-${index}-costCode" name="${codeKey}"${invalidAttrs(errors, codeKey, escape)}>${costCodeOptions(form, line.costCode, escape, line.costCodeSearch)}</select>${errorText(errors, codeKey, escape)}</label>
         <div class="work-line-row">
           <label class="field hours-field">Hours<input id="log-line-${index}-hours" name="${hoursKey}" inputmode="decimal" placeholder="e.g. 2.5" value="${escape(line.hours)}"${invalidAttrs(errors, hoursKey, escape)} />${errorText(errors, hoursKey, escape)}</label>
           <label class="field">What was done<input name="workLines.${index}.description" maxlength="500" placeholder="Brief description" value="${escape(line.description)}" /></label>

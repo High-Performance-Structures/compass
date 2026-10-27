@@ -54,6 +54,7 @@ const webhookPaths = [
 // Keep the allowlist exact: none of the route prefixes are public.
 const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
+  "/api/operations/email/retry-invitations",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
   "/api/operations/paper-trail/run",
@@ -67,6 +68,7 @@ const scheduledMaintenancePaths = [
   "/api/operations/daily-logs/missing-reminders",
   "/api/operations/my-compass-calendar/sync",
   "/api/operations/morning-plan/sweep",
+  "/api/operations/weather/refresh",
   "/api/operations/project-calendars/sync",
   "/api/operations/client-meetings/transcripts",
 ]

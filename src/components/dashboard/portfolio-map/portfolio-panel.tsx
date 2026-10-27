@@ -34,6 +34,11 @@ import type {
 } from "@/lib/portfolio-map/load"
 import { formatRateCents, rateLabel } from "@/lib/portfolio-map/travel-zones"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import {
+  JobWeatherFlags,
+  WeatherJobsList,
+  type PortfolioWeatherPanelData,
+} from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
 
 /** Moving the selected job to another status from the panel. */
 export type PortfolioStatusMove = {
@@ -73,6 +78,8 @@ type PortfolioPanelProps = {
   readonly statusMove?: PortfolioStatusMove | null
   /** Shows a Files link to the job's Plans & Documents; staff only. */
   readonly canOpenFiles?: boolean
+  /** Weather or Fire & smoke layer on: flagged jobs at the time bar's time. */
+  readonly weather?: PortfolioWeatherPanelData | null
 }
 
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
@@ -177,6 +184,7 @@ function JobDetail({
   messages,
   statusMove,
   canOpenFiles,
+  weather,
 }: {
   readonly job: PortfolioMapJob
   readonly travel: PortfolioJobTravel | null
@@ -185,6 +193,7 @@ function JobDetail({
   readonly messages: PortfolioJobMessages | null
   readonly statusMove: PortfolioStatusMove | null
   readonly canOpenFiles: boolean
+  readonly weather: PortfolioWeatherPanelData | null
 }): React.ReactElement {
   const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
@@ -215,6 +224,7 @@ function JobDetail({
       {job.followUp ? <FollowUpSection projectId={job.id} signal={job.followUp} compact /> : null}
       {/* With the Messages layer on, the job's unread items come first. */}
       {messages ? <PortfolioJobMessageList messages={messages} /> : null}
+      {weather ? <JobWeatherFlags data={weather} jobId={job.id} /> : null}
       <div className="flex flex-col gap-2">
         <span className={LABEL}>PIPELINE</span>
         <ol className="grid grid-cols-6 gap-1" aria-label={`Phase: ${phaseLabel}`}>
@@ -420,6 +430,7 @@ export function PortfolioPanel({
   jobMessages = null,
   statusMove = null,
   canOpenFiles = false,
+  weather = null,
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
@@ -433,6 +444,7 @@ export function PortfolioPanel({
           messages={jobMessages}
           statusMove={statusMove}
           canOpenFiles={canOpenFiles}
+          weather={weather}
         />
       )
     }
@@ -484,6 +496,7 @@ export function PortfolioPanel({
         <span className={LABEL}>PIPELINE</span>
         <span className="text-sm text-muted-foreground">Select a job on the map, or a phase below.</span>
       </div>
+      {weather ? <WeatherJobsList data={weather} onSelectJob={onSelectJob} /> : null}
       <ul>
         {PORTFOLIO_PHASES.map((phase) => (
           <li key={phase.id}>

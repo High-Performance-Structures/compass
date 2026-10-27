@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { useMapWeatherLayers } from "@/components/dashboard/portfolio-map/use-map-weather-layers"
+import { JobWeatherFlags } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
 import dynamic from "next/dynamic"
 import { MessagesSquare } from "lucide-react"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
@@ -69,6 +71,7 @@ export function OwnerSiteRelief({
   }, [job.lat, job.lon])
   const hideMap = React.useCallback((): void => setShowMap(false), [])
   const jobs = React.useMemo(() => [job], [job])
+  const mapWeather = useMapWeatherLayers(jobs, showMap)
   const highlight = React.useMemo<SceneHighlight>(
     () => ({ selectedJobId: job.id, hoveredJobId: null, selectedPhase: null }),
     [job.id],
@@ -214,6 +217,8 @@ export function OwnerSiteRelief({
               focusSelectedOnLoad
               showPhaseKey={false}
               messageStacks={messageStacks}
+              layers={mapWeather.layers}
+              weather={mapWeather.weather}
             />
           </div>
         ) : null}
@@ -221,6 +226,15 @@ export function OwnerSiteRelief({
           aria-label="Your project details"
           className={cn("min-w-0 flex-[1_1_20rem] overflow-y-auto bg-card", showMap ? "h-[30rem] border-l border-border" : "")}
         >
+          {mapWeather.panel ? (
+            <div className="border-b border-border p-4">
+              {mapWeather.panel.rows.length > 0 ? (
+                <JobWeatherFlags data={mapWeather.panel} jobId={job.id} />
+              ) : (
+                <p className="text-sm text-muted-foreground">{mapWeather.panel.emptyText}</p>
+              )}
+            </div>
+          ) : null}
           {panel}
           {showMap ? (
             <p className="px-5 pb-4 text-xs text-muted-foreground">The map shows the general area, not the exact site.</p>

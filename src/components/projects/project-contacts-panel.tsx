@@ -94,7 +94,7 @@ function accessStatusLabel(contact: ProjectContactItem): string {
     case "active":
       return "Active"
     case "pending":
-      return "Invited"
+      return "Awaiting acceptance"
     case "expired":
       return "Expired"
     case "inactive":
@@ -165,6 +165,17 @@ function ContactCard({
               <Badge variant="outline">{csiLabel(contact)}</Badge>
             )}
           </div>
+          {contact.welcomeEmail && contact.welcomeEmail.status !== "sent" && (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              {contact.welcomeEmail.status === "queued" || contact.welcomeEmail.status === "retrying" || contact.welcomeEmail.status === "sending"
+                ? "Welcome email queued. Compass will retry automatically."
+                : contact.welcomeEmail.status === "unknown"
+                  ? "Welcome email delivery unconfirmed. Check the sending mailbox before resending."
+                  : contact.welcomeEmail.status === "cancelled"
+                    ? "Welcome email cancelled. Review project access before inviting again."
+                    : "Welcome email failed. Review the email address and retry the invitation."}
+            </p>
+          )}
           {contactSubtitle(contact) && (
             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
               {contactSubtitle(contact)}
@@ -241,7 +252,9 @@ function ContactCard({
         contact.email &&
         !projectContactNeedsPersonForInvitation(contact) &&
         contact.compassAccountStatus !== "inactive" &&
-        projectContactCanInvite(contact.accessStatus) && (
+        (projectContactCanInvite(contact.accessStatus) ||
+          (contact.accessStatus === "active" && contact.welcomeEmail !== null &&
+            ["failed", "unknown"].includes(contact.welcomeEmail.status))) && (
           <div className="mt-3 flex justify-end">
             <ProjectContactInviteButton
               projectId={projectId}
@@ -252,6 +265,7 @@ function ContactCard({
               contactType={contact.contactType}
               compassAccountStatus={contact.compassAccountStatus}
               accessStatus={contact.accessStatus}
+              resendWelcome={contact.accessStatus === "active"}
             />
           </div>
         )}

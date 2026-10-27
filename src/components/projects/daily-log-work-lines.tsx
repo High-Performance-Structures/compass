@@ -1,5 +1,7 @@
 "use client"
 
+import { ON_BUDGET_GROUP, INTERNAL_CODES_GROUP } from "@/lib/daily-logs/cost-code-groups"
+
 import * as React from "react"
 import { IconPlus, IconX } from "@tabler/icons-react"
 
@@ -57,6 +59,7 @@ export function DailyLogWorkLines({
     () =>
       costCodes.map((option) => ({
         value: option.code,
+        onBudget: option.group === ON_BUDGET_GROUP,
         label: option.label,
         description: option.group || undefined,
         keywords: `${option.code} ${option.name}`,
@@ -106,6 +109,9 @@ export function DailyLogWorkLines({
                   ariaLabel={`Cost code ${index + 1}`}
                   ariaDescribedBy={codeError ? `${idPrefix}-line-${index}-code-error` : undefined}
                   options={options}
+                  browseValues={costCodes.some((option) => option.group === INTERNAL_CODES_GROUP) ? costCodes.filter((option) => option.group === INTERNAL_CODES_GROUP).map((option) => option.code) : undefined}
+                  browseHeading={costCodes.some((option) => option.group === INTERNAL_CODES_GROUP) ? INTERNAL_CODES_GROUP : undefined}
+                  searchHint={costCodes.some((option) => option.group === INTERNAL_CODES_GROUP) ? "Type to search the full company cost-code list." : undefined}
                   value={line.costCode}
                   onValueChange={(costCode) => update(index, { costCode })}
                   placeholder="Choose a cost code"

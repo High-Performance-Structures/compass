@@ -42,6 +42,26 @@ on the server with `readFeatureSettings`, and give them a section in
 everyone else sees the current values. Offer **Reset to defaults**. Ship
 sensible defaults so a new company works without touching anything.
 
+### Preserve the Field Mode audience
+
+Field Mode is a deliberately curated crew workspace. Do not change what field
+users can see, search, select, or download unless a specific user directive
+requests that change. A Full Compass improvement does not authorize expanding
+Field Mode, even when the two surfaces share components, queries, or settings.
+
+- Keep Field Mode's data scope explicit and separate from Full Compass's
+  catalogs, budgets, and search results. Budget imports, catalog updates, and
+  browser search changes must not automatically expose more choices to crews.
+- Administrators choose the company's default Field Mode cost codes in
+  Settings. A project's authorized settings can add specific codes for that
+  project; additions do not replace or alter the company defaults or other jobs.
+- Preserve existing curated defaults when adding or migrating settings. Add and
+  remove Field-specific selections through deliberate, permission-appropriate
+  controls, and explain when downloaded project data must be refreshed.
+- Verify both audiences when changing shared data paths: Full Compass retains
+  its intended search scope, while Field Mode receives only its configured
+  defaults, phone-enabled duties, and explicit project additions.
+
 ### Company identity and templates
 
 - **Identity lives in Settings.** Each department's (or company's) display

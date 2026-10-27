@@ -16,12 +16,14 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map-settings-section"
+import { WeatherAlertSettingsSection } from "@/components/settings/weather-alert-settings-section"
 import { LinkedJobSettingsSection } from "@/components/settings/linked-job-settings-section"
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
 import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { PayApplicationSettingsSection } from "@/components/settings/pay-application-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
+import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
 import { DailyLogFollowUpSettingsSection } from "@/components/settings/daily-log-followup-settings-section"
 import { ProjectTimelineSettingsSection } from "@/components/settings/project-timeline-settings-section"
@@ -206,6 +208,7 @@ function NuTechCatalogLink(): React.ReactElement {
 
 const WORKFLOW_AREAS = [
   { value: "job-workflows", label: "Job workflows", description: "Steps and checklists on each department's job overview." },
+  { value: "field-cost-codes", label: "Field Mode cost codes", description: "Default codes for crews, with explicit project additions." },
   { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, to-dos and client contact on logs, and missing log reminders." },
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "schedule-conflicts", label: "Schedule conflicts", description: "Crews or companies never flagged as double-booked, and other spellings of the same name." },
@@ -218,6 +221,7 @@ const WORKFLOW_AREAS = [
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "portfolio-map", label: "Portfolio map", description: "Which job statuses and departments appear on the dashboard map, and in which phase." },
+  { value: "weather-alerts", label: "Weather & fire alerts", description: "Snow, rain, wind, cold, heat and wildfire distance that flag a job on the map's Weather and Fire & smoke layers." },
   { value: "client-interactions", label: "Client interactions", description: "How client contact is logged." },
   { value: "project-duplicates", label: "Duplicate project check", description: "Departments whose customers place repeat orders." },
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },
@@ -257,6 +261,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ProjectAgingSettingsSection />
     case "portfolio-map":
       return <PortfolioMapSettingsSection />
+    case "weather-alerts":
+      return <WeatherAlertSettingsSection />
     case "linked-jobs":
       return <LinkedJobSettingsSection />
     case "square-payments":
@@ -271,6 +277,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ScheduleConflictSettingsSection />
     case "project-timeline":
       return <ProjectTimelineSettingsSection />
+    case "field-cost-codes":
+      return <FieldCostCodeEditor scope="company" />
     case "daily-logs":
       return (
         <>

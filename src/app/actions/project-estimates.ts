@@ -1,5 +1,7 @@
 "use server"
 
+import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
+
 import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@/lib/change-orders/estimate-execution"
 import type { BuildertrendEstimateLine, BuildertrendEstimatePhase } from "@/lib/estimates/buildertrend-estimate-import"
 import {
@@ -25,10 +27,8 @@ import { verifyRecordCopyToken } from "@/lib/paper-trail/print-token"
 import { nextEstimateNumber, type EstimateMode } from "@/lib/estimates/estimate-modes"
 import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
 import {
-  projectBudgetLines,
   projectContacts,
   projects,
-  sageCostCodes,
   projectChangeOrders,
 } from "@/db/schema"
 import {
@@ -82,10 +82,6 @@ import {
   type EstimateTextTemplateOption,
   type EstimateTextTemplateType,
 } from "@/lib/estimates/client-report"
-import {
-  projectEstimateCostCodeCatalog,
-  type ProjectEstimateCostCodeCatalogItem,
-} from "@/lib/estimates/project-cost-code-catalog"
 import {
   compareEstimateVersions,
   type EstimateVersionComparison,
@@ -946,41 +942,6 @@ async function refreshEstimateTotals(
     .run()
 }
 
-async function loadProjectEstimateCostCodes(
-  db: CompassDb
-): Promise<readonly ProjectEstimateCostCodeCatalogItem[]> {
-  const [sageRows, namedSageRows] = await Promise.all([
-    db
-      .select()
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(
-        asc(sageCostCodes.divisionCode),
-        asc(sageCostCodes.displayLabel)
-      ),
-    db
-      .select({
-        sourceSystem: projectBudgetLines.sourceSystem,
-        costCode: projectBudgetLines.costCode,
-        description: projectBudgetLines.description,
-        divisionName: projectBudgetLines.csiDivisionName,
-      })
-      .from(projectBudgetLines)
-      .where(
-        eq(projectBudgetLines.sourceSystem, "sage_read_snapshot")
-      )
-      .groupBy(
-        projectBudgetLines.sourceSystem,
-        projectBudgetLines.costCode,
-        projectBudgetLines.description,
-        projectBudgetLines.csiDivisionName
-      )
-      .orderBy(asc(projectBudgetLines.description)),
-  ])
-
-  return projectEstimateCostCodeCatalog(sageRows, namedSageRows)
-}
-
 async function loadEstimateTextTemplate(input: {
   readonly db: CompassDb
   readonly organizationId: string | null
@@ -1140,7 +1101,7 @@ async function loadProjectEstimateWorkspace(
             .where(eq(projectEstimateBasisDocuments.estimateId, selected.id))
             .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
         : Promise.resolve([]),
-      loadProjectEstimateCostCodes(access.db),
+      loadProjectCostCodeCatalog(access.db),
       access.db
         .select()
         .from(sageTaxEntities)
@@ -2647,7 +2608,7 @@ export async function importProjectEstimateFromGoogleSheet(
     if (!parsed.success) throw new Error(parsed.error)
 
     const sourceCostCodes = parsed.lines.map((line) => line.costCode)
-    const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
+    const costCodeCatalog = await loadProjectCostCodeCatalog(access.db)
     const activeCostCodes = new Set(
       costCodeCatalog.filter((row) => row.sageMapped).map((row) => row.code)
     )
@@ -2828,7 +2789,7 @@ export async function importPlanSwiftEstimateLines(
     })
 
     const sourceCostCodes = [...new Set(normalizedLines.map((line) => line.costCode))]
-    const costRows = await loadProjectEstimateCostCodes(access.db)
+    const costRows = await loadProjectCostCodeCatalog(access.db)
     const costCodeMap = new Map(
       costRows.map((row) => [row.code, row])
     )
@@ -2994,7 +2955,7 @@ export async function importBuildertrendEstimateExport(
       if (!phaseNames.has(line.phaseName)) throw new Error(`Buildertrend row ${line.rowNumber} has an unknown scope package.`)
     }
 
-    const costRows = await loadProjectEstimateCostCodes(access.db)
+    const costRows = await loadProjectCostCodeCatalog(access.db)
     const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
     const unknown = [...new Set(input.lines.map((line) => line.costCode))].filter((code) => !costCodeMap.has(code))
     if (unknown.length > 0) {
@@ -3146,7 +3107,7 @@ export async function saveProjectEstimateLine(
       if (!assembly[0]) throw new Error("Choose an assembly from this estimate.")
     }
     const costCode = requiredText(input.costCode, "Cost code")
-    const costRows = await loadProjectEstimateCostCodes(access.db)
+    const costRows = await loadProjectCostCodeCatalog(access.db)
     const cost = costRows.find((row) => row.code === costCode)
     if (!cost) {
       throw new Error("Choose a verified CSI/Sage catalog cost code.")
@@ -3443,7 +3404,7 @@ export async function saveProjectEstimateLineCostItem(
     if (!line) throw new Error("Estimate line not found.")
 
     const costCode = requiredText(input.costCode, "Cost code")
-    const catalog = await loadProjectEstimateCostCodes(access.db)
+    const catalog = await loadProjectCostCodeCatalog(access.db)
     const catalogItem = catalog.find((item) => item.code === costCode)
     if (!catalogItem) {
       throw new Error("Choose a verified CSI/Sage catalog cost code.")
@@ -4205,7 +4166,7 @@ export async function prepareProjectEstimateForClientSignature(
           .map((line) => line.costCode)
       ),
     ]
-    const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
+    const costCodeCatalog = await loadProjectCostCodeCatalog(access.db)
     const activeCostCodes = new Set(
       costCodeCatalog.filter((row) => row.sageMapped).map((row) => row.code)
     )

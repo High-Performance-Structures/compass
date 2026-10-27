@@ -53,7 +53,7 @@ function download(id: string, projectId = "project-a"): Promise<Response> { retu
 
 beforeEach(async () => {
   database = openCorrespondenceTestDatabase()
-  database.sqlite.exec(readFileSync("drizzle/0258_project_archive_delivery.sql", "utf8"))
+  database.sqlite.exec(readFileSync("drizzle/0263_project_archive_delivery.sql", "utf8"))
   for (const [id, role, projectRole] of [["owner-c", "client", "owner"], ["vendor-x", "subcontractor", "subcontractor"], ["vendor-y", "subcontractor", "subcontractor"]]) {
     database.sqlite.prepare("INSERT INTO users(id,email,display_name,role,is_active,created_at,updated_at) VALUES(?,?,?, ?,1,'now','now')").run(id, `${id}@example.test`, "Same company label", role)
     database.sqlite.prepare("INSERT INTO organization_members(id,organization_id,user_id,role,joined_at) VALUES(?,'org-a',?,?,'now')").run(`om-${id}`, id, role)

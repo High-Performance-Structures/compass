@@ -1,20 +1,19 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 
-import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
-  projectBudgetApplications,
-  projectBudgetLines,
   projectContacts,
   projectFinishSelectionRooms,
   projectFinishSelections,
   projectOperations,
   projects,
-  sageCostCodes
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import {
@@ -115,12 +114,13 @@ export type ProjectSelectionOption = {
 }
 
 export type ProjectSelectionCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
   readonly divisionCode: string
   readonly divisionLabel: string
-  readonly source: "sage" | "project_budget" | "selection"
+  readonly source: "sage" | "company" | "project_budget" | "selection"
   readonly needsSageReview: boolean
 }
 
@@ -256,8 +256,6 @@ const MANUFACTURER_OPTIONS: readonly string[] = [
   "James Hardie",
   "Custom (see notes)"
 ]
-
-const EXCLUDED_SELECTION_COST_DIVISIONS = new Set(["00", "01", "02"])
 
 async function verifyProjectAccess(
   projectId: string,
@@ -1076,40 +1074,8 @@ export async function getProjectSelectionOptions(
 ): Promise<ProjectSelectionOptions> {
   const db = await verifyProjectAccess(projectId, "read")
 
-  const [sageRows, budgetRows, contactRows, selectionRows] = await Promise.all([
-    db
-      .select({
-        code: sageCostCodes.code,
-        description: sageCostCodes.description,
-        displayLabel: sageCostCodes.displayLabel,
-        divisionCode: sageCostCodes.divisionCode,
-        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel
-      })
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
-    db
-      .select({
-        costCode: projectBudgetLines.costCode,
-        description: projectBudgetLines.description,
-        csiDivision: projectBudgetLines.csiDivision,
-        csiDivisionName: projectBudgetLines.csiDivisionName
-      })
-      .from(projectBudgetLines)
-      .leftJoin(
-        projectBudgetApplications,
-        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
-      )
-      .where(
-        and(
-          eq(projectBudgetLines.projectId, projectId),
-          or(
-            isNull(projectBudgetApplications.status),
-            ne(projectBudgetApplications.status, "building")
-          )
-        )
-      )
-      .orderBy(asc(projectBudgetLines.csiDivision), asc(projectBudgetLines.costCode)),
+  const [sageRows, contactRows, selectionRows] = await Promise.all([
+    loadProjectCostCodeChoices(db, projectId),
     db
       .select({
         companyName: projectContacts.companyName,
@@ -1137,8 +1103,6 @@ export async function getProjectSelectionOptions(
   const costCodeMap = new Map<string, ProjectSelectionCostCodeOption>()
 
   for (const row of sageRows) {
-    if (EXCLUDED_SELECTION_COST_DIVISIONS.has(row.divisionCode)) continue
-
     if (row.divisionCode && row.divisionDisplayLabel) {
       divisionMap.set(row.divisionCode, {
         value: row.divisionCode,
@@ -1148,42 +1112,17 @@ export async function getProjectSelectionOptions(
 
     costCodeMap.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
       divisionLabel: row.divisionDisplayLabel,
-      source: "sage",
-      needsSageReview: false
+      source: row.onBudget && !row.sageMapped ? "project_budget" : row.sageMapped ? "sage" : "company",
+      needsSageReview: !row.sageMapped
     })
   }
 
-  for (const row of budgetRows) {
-    if (EXCLUDED_SELECTION_COST_DIVISIONS.has(row.csiDivision)) continue
-
-    if (row.csiDivision && row.csiDivisionName) {
-      divisionMap.set(row.csiDivision, {
-        value: row.csiDivision,
-        label: divisionLabel(row.csiDivision, row.csiDivisionName)
-      })
-    }
-    if (!costCodeMap.has(row.costCode)) {
-      costCodeMap.set(row.costCode, {
-        value: row.costCode,
-        label: costCodeLabel(row.costCode, row.description),
-        description: row.description,
-        divisionCode: row.csiDivision,
-        divisionLabel: divisionLabel(row.csiDivision, row.csiDivisionName),
-        source: "project_budget",
-        needsSageReview: true
-      })
-    }
-  }
-
   for (const row of contactRows) {
-    if (row.csiDivision && EXCLUDED_SELECTION_COST_DIVISIONS.has(row.csiDivision)) {
-      continue
-    }
-
     if (row.csiDivision && row.csiDivisionName) {
       divisionMap.set(row.csiDivision, {
         value: row.csiDivision,
@@ -1195,7 +1134,6 @@ export async function getProjectSelectionOptions(
   for (const row of selectionRows) {
     if (!row.costCode) continue
     const divisionCode = divisionCodeFromCostCode(row.costCode)
-    if (EXCLUDED_SELECTION_COST_DIVISIONS.has(divisionCode)) continue
     const existingDivisionLabel =
       divisionMap.get(divisionCode)?.label ?? fallbackDivisionLabel(row.costCode)
 

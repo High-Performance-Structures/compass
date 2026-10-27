@@ -336,8 +336,8 @@ export function DailyLogSettingsSection(): React.ReactElement {
       </section>
 
       <section aria-labelledby="daily-log-departments" className="grid gap-2">
-        <h3 id="daily-log-departments" className="text-sm font-semibold">Jobs that use the labor list</h3>
-        <p className="text-sm text-muted-foreground">Other departments&apos; jobs offer every company cost code, with the job&apos;s budget codes first, in the browser only. Phones download just the labor list and, for yards in these departments, the field duties.</p>
+        <h3 id="daily-log-departments" className="text-sm font-semibold">Jobs with cost codes in Field Mode</h3>
+        <p className="text-sm text-muted-foreground">Every job offers the full company cost-code catalog in the browser, with budget codes shown by default and the full catalog searchable. In Field Mode, these departments use the active crew labor codes below and their existing preconstruction codes. Internal workspaces offer only duties marked On phones.</p>
         <div className="flex flex-wrap gap-4">
           {DEPARTMENT_CODES.map((code) => (
             <label key={code} className="flex items-center gap-2 text-sm">
@@ -362,7 +362,7 @@ export function DailyLogSettingsSection(): React.ReactElement {
       <CodeListEditor
         id="daily-log-labor-codes"
         title="Labor cost codes"
-        help="Offered on daily logs for the jobs above. Matches the Sage Time & Attendance list."
+        help="Active codes are offered to crews in Field Mode for the departments above. Full Compass also includes the searchable company catalog. Sage payroll IDs match the Time & Attendance list."
         rows={laborRows(settings)}
         extraLabel="Sage payroll ID"
         example={{ code: "01 71 13", name: "Mobilization", extra: "1711300" }}

@@ -1,5 +1,8 @@
 import "server-only"
 
+import { emailRetryAt, isEmailRateLimit } from "./delivery-recovery"
+import { deferMailbox, mailboxCooldown } from "./mailbox-state"
+
 import { eq } from "drizzle-orm"
 import { Buffer } from "node:buffer"
 import { buildCompassMimeMessage, type CompassEmailAttachment } from "./mime-message"
@@ -94,6 +97,10 @@ export function getCompassSystemSender(env: unknown): { readonly address: string
   return { address: extractEmailAddress(envString(env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM), name: null }
 }
 
+export function getCompassGmailSender(env: unknown): string {
+  return envString(env, "COMPASS_GMAIL_SENDER") ?? getCompassSystemSender(env).address
+}
+
 function fromHeader(input: CompassEmailInput): string {
   const configured = envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const address = input.sender?.address ?? extractEmailAddress(configured)
@@ -182,6 +189,10 @@ export async function getCompassGmailAccessToken(input: {
 }
 
 async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDeliveryResult> {
+  const mailbox = input.sender?.address ?? getCompassGmailSender(input.env)
+  const cooldown = await mailboxCooldown(input.db, mailbox, new Date().toISOString())
+  if (cooldown) return { status: "rate_limited", provider: "gmail", providerMessageId: null,
+    error: `Mailbox temporarily rate limited. Retry after ${cooldown}` }
   const access = await getCompassGmailAccessToken({
     env: input.env,
     db: input.db,
@@ -220,6 +231,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
   const response = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
     {
+      signal: AbortSignal.timeout(30_000),
       method: "POST",
       headers: {
         Authorization: `Bearer ${access.accessToken}`,
@@ -227,8 +239,19 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
       },
       body: JSON.stringify({ raw }),
     }
-  )
+  ).catch(() => null)
+  // A lost response may follow an accepted send. Never fail over or auto-retry it.
+  if (!response) return { status: "unknown", provider: "gmail", providerMessageId: null,
+    error: "Email delivery could not be confirmed. Check the sending mailbox before resending." }
   const responseText = await response.text()
+  if (isEmailRateLimit(response.status, responseText)) {
+    const retryAt = emailRetryAt({ error: responseText, retryAfter: response.headers.get("Retry-After"), now: new Date(), attempt: 0 })
+    await deferMailbox(input.db, mailbox, retryAt)
+    return { status: "rate_limited", provider: "gmail", providerMessageId: null,
+      error: `Google temporarily rate limited this mailbox. Retry after ${retryAt}` }
+  }
+  if (response.status >= 500) return { status: "unknown", provider: "gmail", providerMessageId: null,
+    error: "Google returned a server error; delivery is uncertain. Check the sending mailbox before resending." }
   let id: string | null = null
   try {
     id = providerMessageId(JSON.parse(responseText))
@@ -237,7 +260,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
   }
 
   return {
-    status: response.ok ? "sent" : "failed",
+    status: response.ok ? id ? "sent" : "unknown" : "failed",
     provider: "gmail",
     providerMessageId: id,
     error: response.ok ? null : responseText.slice(0, 500),
@@ -278,14 +301,21 @@ async function sendResend(
   }
 
   const response = await fetch("https://api.resend.com/emails", {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
-  })
+  }).catch(() => null)
+  if (!response) return { status: "unknown", provider: "resend", providerMessageId: null,
+    error: "Email delivery could not be confirmed. Check provider history before resending." }
   const responseText = await response.text()
+  if (isEmailRateLimit(response.status, responseText)) return { status: "rate_limited", provider: "resend", providerMessageId: null,
+    error: `Email provider temporarily rate limited. Retry after ${emailRetryAt({ error: responseText, retryAfter: response.headers.get("Retry-After"), now: new Date(), attempt: 0 })}` }
+  if (response.status >= 500) return { status: "unknown", provider: "resend", providerMessageId: null,
+    error: "Email provider returned a server error; delivery is uncertain. Check provider history before resending." }
   let id: string | null = null
   try {
     id = providerMessageId(JSON.parse(responseText))
@@ -294,7 +324,7 @@ async function sendResend(
   }
 
   return {
-    status: response.ok ? "sent" : "failed",
+    status: response.ok ? id ? "sent" : "unknown" : "failed",
     provider: "resend",
     providerMessageId: id,
     error: response.ok ? null : responseText.slice(0, 500),
@@ -313,10 +343,10 @@ export async function sendCompassEmail(
   }
 
   const gmailDelivery = await sendGmail(input)
-  if (gmailDelivery.status === "sent") return gmailDelivery
+  if (gmailDelivery.status === "sent" || gmailDelivery.status === "unknown") return gmailDelivery
 
   const resendDelivery = await sendResend(input)
-  if (resendDelivery.status === "sent") return resendDelivery
+  if (["sent", "unknown", "rate_limited"].includes(resendDelivery.status)) return resendDelivery
   if (gmailDelivery.status !== "pending_provider") return gmailDelivery
 
   return {

@@ -13,6 +13,7 @@ export type ProjectComboboxOption = {
   readonly name: string
   readonly projectNumber?: string | null
   readonly clientName?: string | null
+  readonly jobStatusLabel?: string
 }
 
 export type ProjectComboboxSpecialOption = {
@@ -24,6 +25,9 @@ export type ProjectComboboxSpecialOption = {
 
 type ProjectComboboxProps = {
   readonly projects: readonly ProjectComboboxOption[]
+  readonly browseValues?: readonly string[]
+  readonly browseHeading?: string
+  readonly searchHint?: string
   readonly value: string
   readonly onValueChange: (value: string) => void
   readonly id?: string
@@ -48,6 +52,9 @@ function projectDescription(project: ProjectComboboxOption): string | null {
 
 export function ProjectCombobox({
   projects,
+  browseValues,
+  browseHeading,
+  searchHint,
   value,
   onValueChange,
   id,
@@ -77,7 +84,7 @@ export function ProjectCombobox({
         ? projectNumberAndName(project, " - ")
         : project.name,
       description: projectDescription(project) ?? undefined,
-      keywords: project.clientName ?? undefined,
+      keywords: [project.clientName, project.jobStatusLabel].filter(Boolean).join(" "),
     })
   )
 
@@ -86,6 +93,9 @@ export function ProjectCombobox({
       id={id}
       ariaLabel={ariaLabel}
       options={[...specialChoices, ...projectChoices]}
+      browseValues={browseValues}
+      browseHeading={browseHeading}
+      searchHint={searchHint}
       value={value}
       onValueChange={onValueChange}
       placeholder={placeholder}

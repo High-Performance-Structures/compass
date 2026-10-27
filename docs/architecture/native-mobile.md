@@ -29,7 +29,7 @@ The native layer follows one principle: **the web app must never break because o
 ├─────────────────────────────────────────────────┤
 │              Feature Hooks                        │
 │  use-native-push.ts    use-biometric-auth.ts      │
-│  use-native-camera.ts  use-photo-queue.ts         │
+│  use-native-camera.ts  daily-log-outbox.ts        │
 ├─────────────────────────────────────────────────┤
 │           Native UI Components                    │
 │  BiometricGuard  OfflineBanner  NativeShell       │
@@ -323,41 +323,19 @@ Users opt in to biometric auth. On first login in the native app, `BiometricGuar
 The "Use password" fallback redirects to `/login`, which goes through the normal WorkOS auth flow. This is important -- if biometric fails repeatedly (e.g., the sensor is dirty, the user changed their fingerprint), there must be a way back in.
 
 
-## Camera and offline photo queue
+## Offline daily logs and attachments
 
-### Why an offline queue
+Field Mode keeps daily logs and their attachments in its durable outbox using
+Capacitor Preferences and Filesystem. The shell in `mobile-shell-src/app.ts`
+drains that outbox through `src/lib/field/daily-log-outbox.ts`, using the
+authenticated Field Mode endpoints. Attachment retries preserve the saved log
+and completed uploads so reconnecting does not create duplicate records.
 
-Construction crews take photos on job sites. Job sites frequently have poor or no cell service. A photo taken with no signal needs to persist on the device, survive the app being killed, and upload automatically when connectivity returns -- potentially hours later.
-
-The system uses three Capacitor plugins to make this work:
-
-- `@capacitor/camera` captures the photo
-- `@capacitor/filesystem` saves it to the device's persistent data directory (survives app restarts)
-- `@capacitor/preferences` stores the queue metadata (project ID, GPS coordinates, timestamp, upload status)
-- `@capgo/capacitor-uploader` handles background uploads using `NSURLSession` on iOS and `WorkManager` on Android -- both continue uploading even if the app is backgrounded or killed
-- `@capacitor/network` watches for connectivity changes to trigger upload processing
-
-### Flow
-
-1. User taps "Take Photo" on a project
-2. `useNativeCamera` opens the rear camera at 2048px max width
-3. Photo is captured with GPS EXIF data extracted
-4. `savePhotoToDevice` copies the photo to `compass-photos/` in the app's data directory
-5. Queue metadata is written to Preferences
-6. When network becomes available, `processQueue` iterates pending items and uploads each one
-7. On success, the local file is cleaned up and the queue entry removed
-8. On failure, the retry count increments (max 3 before marking as permanently failed)
-
-The `UploadQueueIndicator` component shows queue status: "3 photos pending" when offline, "Uploading 3..." during transfer, or "2 failed - tap to retry" if uploads failed.
-
-### Adding the photo upload endpoint
-
-The photo queue uploads to a URL you configure when calling `usePhotoQueue(uploadUrl)`. You'll need to create a server endpoint or configure an R2 bucket to receive these uploads. The uploader sends the file as a POST with metadata in headers:
-
-- `X-Project-Id` -- which project the photo belongs to
-- `X-Photo-Id` -- unique ID for deduplication
-- `X-Captured-At` -- ISO timestamp
-- `X-GPS-Lat` / `X-GPS-Lng` -- GPS coordinates (if available)
+Keep Compass open after connectivity returns until the waiting count reaches
+zero. Uploads do not continue after the operating system terminates the app.
+The unused native uploader and its unconnected photo-queue hook have been
+removed; Android releases do not request a foreground data-sync service for
+that dormant implementation.
 
 
 ## Development workflow
@@ -444,12 +422,11 @@ Google's review is generally less strict about WebView apps than Apple's, but th
 | `capacitor.config.ts` | Server URL, plugin configuration, platform settings |
 | `src/lib/native/platform.ts` | `isNative()`, `isIOS()`, `isAndroid()`, `getPlatform()` |
 | `src/lib/native/detect-server.ts` | Server-side User-Agent check for CapacitorApp |
-| `src/lib/native/photo-queue.ts` | Offline photo queue (Filesystem + Preferences + Uploader) |
+| `src/lib/field/daily-log-outbox.ts` | Offline daily-log and attachment synchronization |
 | `src/hooks/use-native.ts` | React hook via `useSyncExternalStore` |
 | `src/hooks/use-native-push.ts` | Push token registration, notification tap handling |
 | `src/hooks/use-native-camera.ts` | Camera with GPS EXIF extraction |
 | `src/hooks/use-biometric-auth.ts` | Biometric availability, authentication, preference storage |
-| `src/hooks/use-photo-queue.ts` | Photo queue React hook (capture, queue, auto-upload) |
 | `src/components/native/biometric-guard.tsx` | Lock screen overlay, opt-in prompt |
 | `src/components/native/offline-banner.tsx` | "You're offline" banner |
 | `src/components/native/native-shell.tsx` | Status bar style sync with theme |

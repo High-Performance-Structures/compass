@@ -1,3 +1,4 @@
+import { fieldCostCodeSettingsSchema, type FieldCostCodeSettings } from "@/lib/field/cost-code-settings"
 import { z } from "zod/v4"
 import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
@@ -13,6 +14,8 @@ import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
+import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
+import { DEFAULT_WEATHER_WORK_RULES, WEATHER_RULE_CHECKS } from "@/lib/weather/schedule-risk"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -46,6 +49,46 @@ export const portfolioMapSettingsSchema = z.object({
 })
 
 export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
+
+/**
+ * Weather & fire alerts: the limits that flag a job on the map's Weather and
+ * Fire & smoke layers. Forecasts are for each job site's own grid cell.
+ */
+/**
+ * A weather rule for scheduled work: items whose title contains one of the
+ * keywords are checked against one forecast limit over their days (plus
+ * `daysAfter`, e.g. concrete curing).
+ */
+export const weatherWorkRuleSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().trim().min(1).max(80),
+  keywords: z.array(z.string().trim().min(2).max(40)).min(1).max(20),
+  check: z.enum(WEATHER_RULE_CHECKS),
+  value: z.number().min(-60).max(130),
+  daysAfter: z.number().int().min(0).max(7),
+})
+
+export type WeatherWorkRule = z.infer<typeof weatherWorkRuleSchema>
+
+export const weatherAlertSettingsSchema = z.object({
+  /** Snow in 24 hours, inches. */
+  snowIn: z.number().min(0.5).max(48),
+  /** Rain in 24 hours, inches. */
+  rainIn: z.number().min(0.1).max(10),
+  gustMph: z.number().int().min(10).max(120),
+  /** Extreme cold: a low at or below this, °F. */
+  coldF: z.number().int().min(-60).max(50),
+  /** Extreme heat: a high at or above this, °F. */
+  heatF: z.number().int().min(60).max(130),
+  /** An active wildfire within this many miles of a job. */
+  fireMiles: z.number().int().min(1).max(200),
+  /** Rules for scheduled work; every item is also checked for warnings, heavy snow and extreme cold or heat. */
+  workRules: z.array(weatherWorkRuleSchema).max(20),
+  /** Notify the item's assignee and the job's project administrators when a scheduled item is at risk. */
+  notifyScheduleRisks: z.boolean(),
+})
+
+export type WeatherAlertSettings = z.infer<typeof weatherAlertSettingsSchema>
 
 /**
  * Estimates: per department, one contract estimate per job or several at
@@ -610,6 +653,7 @@ type FeatureSettingsTypes = {
   readonly "contract-packets": ContractPacketSettings
   readonly "pay-applications": PayApplicationSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
+  readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
   readonly "project-timeline": ProjectTimelineSettings
@@ -634,6 +678,7 @@ type FeatureSettingsTypes = {
   readonly "linked-jobs": LinkedJobSettings
   readonly "square-payments": SquarePaymentSettings
   readonly "portfolio-map": PortfolioMapSettings
+  readonly "weather-alerts": WeatherAlertSettings
   readonly estimates: EstimateSettings
 }
 
@@ -662,6 +707,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Flags a crew or company booked on two jobs over the same days. List names to never flag, and other spellings of the same name.",
     defaults: { ignoredParties: [], aliases: [] },
     schema: scheduleConflictSettingsSchema,
+  },
+  "field-cost-codes": {
+    label: "Field Mode cost codes",
+    description: "The default cost codes crews can see in Field Mode. Projects can add specific codes without changing other jobs.",
+    defaults: { defaultCodes: null },
+    schema: fieldCostCodeSettingsSchema,
   },
   "daily-logs": {
     label: "Daily logs",
@@ -869,6 +920,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
     defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {} },
     schema: portfolioMapSettingsSchema,
+  },
+  "weather-alerts": {
+    label: "Weather & fire alerts",
+    description: "When the map's Weather and Fire & smoke layers flag a job, and which scheduled work is checked against the job site's forecast: snow, rain, wind, extreme cold or heat, and wildfires nearby.",
+    defaults: { ...DEFAULT_WEATHER_LIMITS, workRules: DEFAULT_WEATHER_WORK_RULES.map((rule) => ({ ...rule, keywords: [...rule.keywords] })), notifyScheduleRisks: true },
+    schema: weatherAlertSettingsSchema,
   },
   "paper-trail": {
     label: "Project paper trail",

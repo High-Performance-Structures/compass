@@ -30,6 +30,8 @@ import {
   stripHtml,
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
+import { emailRetryAt, isEmailRateLimit } from "./delivery-recovery"
+import { claimMailbox, deferMailbox, mailboxCooldown, releaseMailbox } from "./mailbox-state"
 import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
@@ -580,16 +582,26 @@ async function importCandidate(input: {
   return "posted"
 }
 
+class GmailRateLimitError extends Error {
+  constructor(readonly retryAt: string) {
+    super(`Gmail is temporarily rate limited. Retry after ${retryAt}`)
+  }
+}
+
 async function fetchJson(input: {
   readonly url: string
   readonly accessToken: string
 }): Promise<unknown> {
   const response = await fetch(input.url, {
+    signal: AbortSignal.timeout(20_000),
     headers: {
       Authorization: `Bearer ${input.accessToken}`,
     },
   })
   const text = await response.text()
+  if (isEmailRateLimit(response.status, text)) {
+    throw new GmailRateLimitError(emailRetryAt({ error: text, retryAfter: response.headers.get("Retry-After"), now: new Date(), attempt: 0 }))
+  }
   if (!response.ok) {
     throw new Error(`Gmail request failed (${response.status}): ${text}`)
   }
@@ -626,11 +638,11 @@ async function hydrateCandidateAttachments(input: {
   return { ...input.candidate, attachments }
 }
 
-export async function syncGmailInboundReplies(input: {
+async function syncGmailInboundRepliesWithLease(input: {
   readonly env: unknown
   readonly db: Db
   readonly organizationId: string
-}): Promise<GmailInboundSyncSummary> {
+}, deadline: number): Promise<GmailInboundSyncSummary> {
   const access = await getCompassGmailAccessToken({
     env: input.env,
     db: input.db,
@@ -675,7 +687,7 @@ export async function syncGmailInboundReplies(input: {
   try {
     const messageIds = new Set<string>()
     let pageToken: string | null = null
-    for (let page = 0; page < maxPages; page += 1) {
+    for (let page = 0; page < maxPages && Date.now() < deadline; page += 1) {
       const listUrl = new URL(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages"
       )
@@ -699,7 +711,14 @@ export async function syncGmailInboundReplies(input: {
     scanned = messageIds.size
 
     for (const id of messageIds) {
+      if (Date.now() >= deadline) break
       try {
+        const cached = await input.db.select({ status: inboundEmails.matchedStatus }).from(inboundEmails)
+          .where(eq(inboundEmails.gmailMessageId, id)).get()
+        if (cached && cached.status !== "ignored_outbound") {
+          skippedDuplicates += 1
+          continue
+        }
         const messageUrl = new URL(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`
         )
@@ -754,10 +773,16 @@ export async function syncGmailInboundReplies(input: {
           if (result === "needs_review") needsReview += 1
         }
       } catch (error) {
+        if (error instanceof GmailRateLimitError) {
+          await deferMailbox(input.db, replyMailboxEmail(input.env), error.retryAt)
+          errors.push(error.message)
+          break
+        }
         errors.push(error instanceof Error ? error.message : `Failed ${id}`)
       }
     }
   } catch (error) {
+    if (error instanceof GmailRateLimitError) await deferMailbox(input.db, replyMailboxEmail(input.env), error.retryAt)
     errors.push(error instanceof Error ? error.message : "Gmail sync failed")
   }
 
@@ -770,6 +795,25 @@ export async function syncGmailInboundReplies(input: {
     skippedOtherOrganization,
     needsReview,
     errors,
+  }
+}
+
+export async function syncGmailInboundReplies(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+}): Promise<GmailInboundSyncSummary> {
+  const empty: GmailInboundSyncSummary = { scanned: 0, imported: 0, ignoredOutbound: 0, posted: 0,
+    skippedDuplicates: 0, skippedOtherOrganization: 0, needsReview: 0, errors: [] }
+  const mailbox = replyMailboxEmail(input.env)
+  const now = new Date().toISOString()
+  if (await mailboxCooldown(input.db, mailbox, now)) return empty
+  const lease = crypto.randomUUID()
+  if (!await claimMailbox(input.db, mailbox, now, lease)) return empty
+  try {
+    return await syncGmailInboundRepliesWithLease(input, Date.now() + 45_000)
+  } finally {
+    await releaseMailbox(input.db, mailbox, lease, new Date().toISOString(), 0)
   }
 }
 

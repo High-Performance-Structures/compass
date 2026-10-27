@@ -42,6 +42,11 @@ import {
   WALL_FRAGMENT,
   WALL_VERTEX,
 } from "@/components/dashboard/portfolio-map/portfolio-shaders"
+import {
+  WeatherOverlay,
+  type FireSceneView,
+  type WeatherSceneView,
+} from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
 
 export const TERRAIN_URL = "/maps/colorado-terrain-v1.json"
 
@@ -236,8 +241,18 @@ export class PortfolioScene {
   private animation: { from: View; to: View; start: number } | null = null
   private drag: { x: number; y: number; az: number; el: number; moved: boolean } | null = null
   private labelSignature = ""
+  // Weather and Fire & smoke layers, created the first time either is shown.
+  private weatherOverlay: WeatherOverlay | null = null
+  private pendingWeather: WeatherSceneView | null = null
+  private pendingFire: FireSceneView | null = null
+  private labelView = ""
+  // Set by anything that may change labels; animation-only frames leave it clear.
+  private labelsDirty = true
   private disposed = false
   private readonly resizeObserver: ResizeObserver
+  // Weather animation pauses while the map is scrolled out of view.
+  private readonly visibilityObserver: IntersectionObserver | null
+  private onScreen = true
   private readonly reduceMotion: boolean
 
   constructor(
@@ -265,6 +280,16 @@ export class PortfolioScene {
     canvas.addEventListener("wheel", this.handleWheel, { passive: false })
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(container)
+    this.visibilityObserver =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver((entries) => {
+            const visible = entries.some((entry) => entry.isIntersecting)
+            if (visible === this.onScreen) return
+            this.onScreen = visible
+            if (visible) this.requestRender()
+          })
+    this.visibilityObserver?.observe(container)
     this.resize()
     void this.loadTerrain()
   }
@@ -280,6 +305,8 @@ export class PortfolioScene {
       this.buildTerrain(data)
       if (this.pendingJobs) this.setJobs(this.pendingJobs.jobs, this.pendingJobs.colors)
       this.applyLayers()
+      if (this.pendingWeather) this.setWeather(this.pendingWeather)
+      if (this.pendingFire) this.setFire(this.pendingFire)
       this.callbacks.onReady()
       this.requestRender()
     } catch (error) {
@@ -555,6 +582,44 @@ export class PortfolioScene {
     this.focusSelectedPending = true
   }
 
+  private overlay(): WeatherOverlay | null {
+    const g = this.grid
+    if (!g) return null
+    if (!this.weatherOverlay) {
+      this.weatherOverlay = new WeatherOverlay({
+        scene: this.scene,
+        ground: (lon, lat, lift) => {
+          const [x, z] = this.worldXZ(lon, lat)
+          return new Vector3(x, this.heightAt(lon, lat) + lift, z)
+        },
+        unitsPerDegree: { lon: W / (g.east - g.west), lat: D / (g.north - g.south) },
+        inBounds: (lon, lat) => lon >= g.west && lon <= g.east && lat >= g.south && lat <= g.north,
+        reduceMotion: this.reduceMotion,
+      })
+    }
+    return this.weatherOverlay
+  }
+
+  /** Show (or with null, hide) the Weather layer at the time bar's step. */
+  setWeather(view: WeatherSceneView | null): void {
+    this.pendingWeather = view
+    const overlay = view || this.weatherOverlay ? this.overlay() : null
+    if (!overlay) return
+    overlay.setWeather(view)
+    this.labelSignature = ""
+    this.requestRender()
+  }
+
+  /** Show (or with null, hide) the Fire & smoke layer. */
+  setFire(view: FireSceneView | null): void {
+    this.pendingFire = view
+    const overlay = view || this.weatherOverlay ? this.overlay() : null
+    if (!overlay) return
+    overlay.setFire(view)
+    this.labelSignature = ""
+    this.requestRender()
+  }
+
   setLayers(layers: SceneLayers): void {
     this.layers = layers
     this.applyLayers()
@@ -729,6 +794,11 @@ export class PortfolioScene {
   }
 
   private requestRender(): void {
+    this.labelsDirty = true
+    this.requestFrame()
+  }
+
+  private requestFrame(): void {
     if (this.frame !== null || this.disposed) return
     this.frame = requestAnimationFrame(() => {
       this.frame = null
@@ -761,9 +831,21 @@ export class PortfolioScene {
     )
     this.camera.lookAt(v.tx, v.ty, v.tz)
     this.camera.updateProjectionMatrix()
+    const overlay = this.weatherOverlay
+    if (overlay) {
+      // Screen pixels (device) per world unit, for glows sized in world units.
+      overlay.update(performance.now() / 1000, (this.size.h / (2 * half)) * this.renderer.getPixelRatio())
+    }
     this.renderer.render(this.scene, this.camera)
-    this.emitLabels()
+    // Labels move only with the camera; skip the work on animation-only frames.
+    const labelView = `${v.tx},${v.ty},${v.tz},${v.az},${v.el},${v.zoom},${this.size.w},${this.size.h}`
+    if (this.labelsDirty || labelView !== this.labelView) {
+      this.labelsDirty = false
+      this.labelView = labelView
+      this.emitLabels()
+    }
     if (this.animation) this.requestRender()
+    else if (overlay?.animating && this.onScreen) this.requestFrame()
   }
 
   private project(point: Vector3): { readonly x: number; readonly y: number; readonly onScreen: boolean } {
@@ -802,6 +884,12 @@ export class PortfolioScene {
         labels.push({ key: label.key, x: screen.x, y: screen.y, title: label.title, sub: label.sub, tone: "landmark" })
       }
     }
+    for (const label of this.weatherOverlay?.labels ?? []) {
+      const screen = this.project(label.point)
+      if (screen.onScreen) {
+        labels.push({ key: label.key, x: screen.x, y: screen.y, title: label.title, sub: label.sub, tone: "landmark" })
+      }
+    }
     for (const landmark of this.landmarks) {
       const screen = this.project(landmark.point)
       if (screen.onScreen) {
@@ -819,12 +907,14 @@ export class PortfolioScene {
     this.disposed = true
     if (this.frame !== null) cancelAnimationFrame(this.frame)
     this.resizeObserver.disconnect()
+    this.visibilityObserver?.disconnect()
     this.canvas.removeEventListener("pointerdown", this.handleDown)
     this.canvas.removeEventListener("pointermove", this.handleMove)
     this.canvas.removeEventListener("pointerup", this.handleUp)
     this.canvas.removeEventListener("pointerleave", this.handleLeave)
     this.canvas.removeEventListener("wheel", this.handleWheel)
     this.builtStacks?.dispose()
+    this.weatherOverlay?.dispose()
     for (const marker of this.markers) {
       marker.mesh.geometry.dispose()
       marker.material.dispose()

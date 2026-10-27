@@ -1,5 +1,7 @@
 "use client"
 
+import { ON_BUDGET_GROUP, INTERNAL_CODES_GROUP } from "@/lib/daily-logs/cost-code-groups"
+
 import * as React from "react"
 import { IconBan, IconCheck, IconInfoCircle, IconPlus, IconUserCheck } from "@tabler/icons-react"
 
@@ -181,7 +183,7 @@ export function DailyLogLineTodos({
 }): React.ReactElement | null {
   const lines = followUpLines(text)
   const codeOptions = React.useMemo(
-    () => costCodes.map((option) => ({ value: option.code, label: option.label, keywords: `${option.code} ${option.name}` })),
+    () => costCodes.map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}` })),
     [costCodes],
   )
   if (rules.todoMode === "off" || rules.todoTypes.length === 0 || lines.length === 0) return null
