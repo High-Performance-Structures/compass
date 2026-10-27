@@ -3,7 +3,7 @@
 import * as React from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ExternalLink, MessageCircle, PanelRightClose, RefreshCw } from "lucide-react"
+import { ArrowLeft, ExternalLink, MessageCircle, MessageCirclePlus, PanelRightClose, RefreshCw } from "lucide-react"
 import { getConversationPanelData } from "@/app/actions/conversation-panel"
 import { listChannels } from "@/app/actions/conversations"
 import { DirectMessagePicker } from "@/components/conversations/direct-message-dialog"
@@ -50,7 +50,7 @@ function channelLabel(channel: TextChannel): string {
 
 function ConversationPanelContent() {
   const router = useRouter()
-  const { isOpen, channelId, view, open, close } = useConversationPanel()
+  const { isOpen, channelId, view, open, openDirectMessages, close } = useConversationPanel()
   React.useEffect(
     () => prefetchWhenIdle(() => Promise.all([loadMessageComposer(), loadMessageList()])),
     []
@@ -256,8 +256,20 @@ function ConversationPanelContent() {
           </Button>
         </header>
 
+        {!showDirectMessagePicker ? (
+          <div className="shrink-0 border-b p-3">
+            <Button type="button" size="sm" className="w-full" onClick={openDirectMessages}>
+              <MessageCirclePlus className="size-4" />
+              New conversation
+            </Button>
+          </div>
+        ) : null}
+
         {showDirectMessagePicker ? (
-          <DirectMessagePicker onStarted={(channelId) => open(channelId)} />
+          <DirectMessagePicker onStarted={(channelId) => {
+            open(channelId)
+            void loadChannels()
+          }} />
         ) : showChannelList ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <p className="mb-3 text-xs text-muted-foreground">

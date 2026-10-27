@@ -441,18 +441,18 @@ function Horizon({
                 index === 0 && "bg-primary/[0.06]"
               )}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div>
+              <div>
+                <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold tracking-wide text-muted-foreground">
                     {formatDay(day)}
                   </p>
-                  <p className="text-sm font-semibold">{formatMonthDay(day)}</p>
+                  {index === 0 ? (
+                    <span className="size-1.5 shrink-0 rounded-full bg-destructive" title="Today">
+                      <span className="sr-only">Today</span>
+                    </span>
+                  ) : null}
                 </div>
-                {index === 0 ? (
-                  <span className="text-xs font-semibold uppercase text-primary">
-                    Today
-                  </span>
-                ) : null}
+                <p className="text-sm font-semibold">{formatMonthDay(day)}</p>
               </div>
 
               <div className="mt-2.5 space-y-2">

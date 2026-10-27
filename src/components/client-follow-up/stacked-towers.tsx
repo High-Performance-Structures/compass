@@ -73,7 +73,8 @@ export function StackedTowers({
                 dimmed && "opacity-45",
               )}
             >
-              <span className="h-4 text-xs font-medium text-primary">{tower.badge ?? ""}</span>
+              {/* Reserve two lines for streaks; longer labels can grow above the count. */}
+              <span className="min-h-8 w-full break-words text-center text-xs leading-4 font-medium text-primary">{tower.badge ?? ""}</span>
               <span className={cn("text-lg font-semibold tabular-nums leading-none", tower.highlight && "text-primary")}>{total}</span>
               <span aria-hidden className="relative block" style={{ width: WIDTH + DEPTH, height: MAX_HEIGHT + DEPTH }}>
                 {tower.segments.map((segment) => {

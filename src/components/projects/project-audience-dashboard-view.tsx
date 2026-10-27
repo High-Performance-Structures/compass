@@ -232,13 +232,15 @@ export function ProjectAudienceDashboardView({
                     )}
                   >
                     <div>
-                      <p className="text-xs uppercase">
+                      <p className="flex items-center gap-2 text-xs uppercase">
                         {new Intl.DateTimeFormat("en-US", {
                           weekday: "short",
                           timeZone: "UTC",
                         }).format(new Date(`${day.date}T12:00:00Z`))}
                         {index === 0 && (
-                          <span className="ml-1 text-primary">Today</span>
+                          <span className="size-1.5 shrink-0 rounded-full bg-destructive" title="Today">
+                            <span className="sr-only">Today</span>
+                          </span>
                         )}
                       </p>
                       <p className="mt-1 text-xs font-medium">
