@@ -44,7 +44,7 @@ Field Mode has roomier tabs, readable message content, and date controls that wo
 
 ## Log Out or Switch Accounts {#logout}
 
-Open **Field settings** using the sliders icon, then choose **Account → Log out**. Compass blocks logout while saved work is waiting to sync or a transfer is running. Reconnect and keep the app open until the waiting count reaches zero. Android also needs a connection to finish stopping notifications for the signed-out account.
+Available in Android 1.0.7 and iOS 1.0.1 or later. Open **Field settings** using the sliders icon, then choose **Account → Log out**. Compass blocks logout while saved work is waiting to sync or a transfer is running. Reconnect and keep the app open until the waiting count reaches zero. Android also needs a connection to finish stopping notifications for the signed-out account.
 
 Confirming logout clears the device's sign-in, downloaded projects and files, and unfinished drafts. Work already synced remains in Compass. You can then sign in with another Compass account. Signing out of the app does not sign out of Safari or Chrome.
 
