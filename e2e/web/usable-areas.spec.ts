@@ -58,9 +58,11 @@ async function signInWithSmokeAccount(
     smokeSessionCookies = null
   }
   await page.goto("/login")
-  await page.getByLabel("Email").fill(email)
-  await page.getByLabel("Password").fill(password)
-  await page.getByRole("button", { name: "Sign in" }).click()
+  // The password tab panel and the "Show password" toggle also carry a
+  // "Password" accessible name, so scope the labels to the actual inputs.
+  await page.getByLabel("Email", { exact: true }).and(page.locator("input")).fill(email)
+  await page.getByLabel("Password", { exact: true }).and(page.locator("input")).fill(password)
+  await page.getByRole("button", { name: "Sign in", exact: true }).click()
   await page.waitForURL(/\/dashboard/)
   smokeSessionCookies = await page.context().cookies()
 }
