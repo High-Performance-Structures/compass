@@ -81,6 +81,13 @@ db.transaction(() => {
   }
   db.prepare(`DELETE FROM project_estimates WHERE project_id = 'compass-developer'`).run()
 
+  // Deposits requested or recorded by earlier recordings.
+  db.prepare(`DELETE FROM project_contract_deposits WHERE project_id = 'compass-developer'`).run()
+
+  // To-dos made from earlier recordings' log lines.
+  db.prepare(`DELETE FROM project_todo_events WHERE project_id = 'compass-developer'`).run()
+  db.prepare(`DELETE FROM project_operations WHERE project_id = 'compass-developer'`).run()
+
   // Each run starts with only these earlier, fictional daily logs, which give
   // Jarvis records to find and summarize.
   db.prepare(`DELETE FROM daily_logs WHERE project_id = 'compass-developer'`).run()

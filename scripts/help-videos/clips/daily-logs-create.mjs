@@ -9,6 +9,7 @@ export const clip = {
 
 export async function record({ page, open, caption, click, type, pause }) {
   await open(`${PROJECT_URL}/daily-logs`)
+  await page.getByRole("button", { name: "Collapse sidebar" }).click()
   await caption("Open the project's Daily Logs and choose New daily log.")
   await click(page.getByRole("button", { name: "New daily log" }))
 
@@ -21,18 +22,26 @@ export async function record({ page, open, caption, click, type, pause }) {
     page.getByRole("textbox", { name: "Work completed" }),
     "Set forms for the north footing. Inspector approved rebar placement at 10:30."
   )
-  await type(page.getByRole("textbox", { name: "Crew present" }), "Framing crew (4), concrete sub (3)")
-  await type(page.getByRole("textbox", { name: "Hours worked" }), "56")
+  await caption("Add each cost code worked on, with its hours.", 800)
+  await click(page.getByRole("combobox", { name: "Cost code 1" }))
+  await page.keyboard.type("03-3000", { delay: 50 })
+  await pause(500)
+  await page.keyboard.press("Enter")
+  await pause(400)
+  await type(page.getByRole("textbox", { name: "Hours for cost code 1" }), "8")
+  await type(page.getByRole("textbox", { name: "What was done on cost code 1" }), "North footing forms")
+  await type(page.getByRole("textbox", { name: "Who was on site" }), "Framing crew (4), concrete sub (3)")
 
-  await caption("Add issues, safety notes, and specific next steps.", 1200)
+  await caption("Add issues, safety notes, and next steps, one item per line.", 1200)
   await type(page.getByRole("textbox", { name: "Safety" }), "No incidents.")
   await type(
-    page.getByRole("textbox", { name: "Notes / Next" }),
+    page.getByRole("textbox", { name: "Notes / next steps" }),
     "Pour north footing Tuesday; confirm pump truck by Monday noon."
   )
 
   await caption("Save the log. It goes to review before anyone shares it with the owner.")
   await click(page.getByRole("button", { name: "Save daily log" }))
+  await page.getByRole("heading", { name: "New Daily Log" }).waitFor({ state: "hidden", timeout: 30000 })
   await page.getByText("Set forms for the north footing").first().waitFor({ timeout: 30000 })
   await page.mouse.wheel(0, -2000)
   await pause(1200)

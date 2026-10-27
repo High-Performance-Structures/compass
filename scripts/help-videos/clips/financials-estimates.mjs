@@ -9,9 +9,10 @@ export const clip = {
 
 export async function record({ page, open, caption, click, type, moveTo, pause }) {
   await open(`${PROJECT_URL}/estimate`)
+  await page.getByRole("button", { name: "Collapse sidebar" }).click()
   await caption("Open the project's Estimate. Start from a template or a blank estimate.", 1200)
   await click(page.getByRole("button", { name: "Create blank estimate" }))
-  await page.getByText("Estimate draft created.").waitFor({ timeout: 30000 })
+  await page.getByText("Estimate draft created.").first().waitFor({ timeout: 30000 })
   await pause(800)
 
   await caption("Add a line using an approved division and cost code.", 1000)
@@ -44,6 +45,6 @@ export async function record({ page, open, caption, click, type, moveTo, pause }
   await click(page.getByRole("combobox").filter({ hasText: "Builder fee & markup" }).first())
   await click(page.getByRole("option", { name: "Estimate costs" }))
   await pause(800)
-  await moveTo(page.getByText("Client report preview").first())
-  await caption("Client report preview shows what the customer will see.", 2600)
+  await moveTo(page.getByText("Print Preview", { exact: true }).first())
+  await caption("Print Preview shows the estimate the way the customer will see it.", 2600)
 }
