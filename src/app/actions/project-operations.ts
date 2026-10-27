@@ -3,7 +3,7 @@
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { and, asc, eq, gte, inArray, or } from "drizzle-orm"
+import { and, asc, eq, gte, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"

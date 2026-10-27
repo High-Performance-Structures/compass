@@ -62,4 +62,16 @@ test.describe("company cost-code catalog", () => {
     await expect(page.getByRole("combobox", { name: "Cost code 1", exact: true })).toContainText("48 14 00")
   })
 
+  test("selection forms use budget browsing without silently excluding company divisions", async ({ page }) => {
+    await page.goto("/dashboard/projects/e2e-cost-code-budget/selections")
+    await page.getByRole("button", { name: "New Selection", exact: true }).first().click()
+    const dialog = page.getByRole("dialog", { name: "Add Finish Selection" })
+    const field = dialog.locator("#selection-cost-code").locator("..").locator("..").getByRole("button", { name: "Open options" })
+    await field.click()
+    await expect(page.getByRole("option")).toHaveCount(1)
+    await expect(page.getByRole("option")).toContainText("01 71 13")
+    await page.getByPlaceholder("Search...", { exact: true }).fill("48 14 00")
+    await expect(page.getByRole("option").filter({ hasText: "48 14 00" })).toBeVisible()
+  })
+
 })

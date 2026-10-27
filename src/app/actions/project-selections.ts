@@ -4,7 +4,7 @@ import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 
 import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 
-import { and, asc, eq, inArray, or } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -256,8 +256,6 @@ const MANUFACTURER_OPTIONS: readonly string[] = [
   "James Hardie",
   "Custom (see notes)"
 ]
-
-const EXCLUDED_SELECTION_COST_DIVISIONS = new Set(["00", "01", "02"])
 
 async function verifyProjectAccess(
   projectId: string,
@@ -1105,8 +1103,6 @@ export async function getProjectSelectionOptions(
   const costCodeMap = new Map<string, ProjectSelectionCostCodeOption>()
 
   for (const row of sageRows) {
-    if (EXCLUDED_SELECTION_COST_DIVISIONS.has(row.divisionCode)) continue
-
     if (row.divisionCode && row.divisionDisplayLabel) {
       divisionMap.set(row.divisionCode, {
         value: row.divisionCode,
@@ -1126,13 +1122,7 @@ export async function getProjectSelectionOptions(
     })
   }
 
-
-
   for (const row of contactRows) {
-    if (row.csiDivision && EXCLUDED_SELECTION_COST_DIVISIONS.has(row.csiDivision)) {
-      continue
-    }
-
     if (row.csiDivision && row.csiDivisionName) {
       divisionMap.set(row.csiDivision, {
         value: row.csiDivision,
@@ -1144,7 +1134,6 @@ export async function getProjectSelectionOptions(
   for (const row of selectionRows) {
     if (!row.costCode) continue
     const divisionCode = divisionCodeFromCostCode(row.costCode)
-    if (EXCLUDED_SELECTION_COST_DIVISIONS.has(divisionCode)) continue
     const existingDivisionLabel =
       divisionMap.get(divisionCode)?.label ?? fallbackDivisionLabel(row.costCode)
 
