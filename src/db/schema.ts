@@ -1530,10 +1530,16 @@ export const organizationFeatureSettings = sqliteTable(
   (table) => [primaryKey({ columns: [table.organizationId, table.featureKey] })]
 )
 
-/**
- * When a job's follow-up owner was last reminded that it went overdue, so
- * each overdue stretch sends one reminder (see lib/project-follow-up-reminders).
- */
+/** Explicit additions to the Field Mode cost codes offered on one project. */
+export const projectFieldCostCodes = sqliteTable("project_field_cost_codes", {
+  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  codesJson: text("codes_json").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [index("project_field_cost_codes_org_idx").on(table.organizationId)])
+
+/** When a job's follow-up owner was last reminded of an overdue stretch. */
 export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders", {
   projectId: text("project_id")
     .primaryKey()
