@@ -75,16 +75,23 @@ type FormOptionsState =
  * snooze the follow-up (which does not count as contact). Shared by the map
  * panels, job pages and the project's follow-up tracker.
  */
-export function FollowUpSection({
-  projectId,
-  signal,
-  compact = false,
-}: {
+type FollowUpSectionProps = {
   readonly projectId: string
   readonly signal: ProjectFollowUpSignal
   /** Map panel layout: thresholds in one line, history link instead of the form's extras. */
   readonly compact?: boolean
-}): React.ReactElement {
+}
+
+export function FollowUpSection(props: FollowUpSectionProps): React.ReactElement {
+  // Keep cached contacts, drafts and pending loads owned by one project.
+  return <ProjectFollowUpSection key={props.projectId} {...props} />
+}
+
+function ProjectFollowUpSection({
+  projectId,
+  signal,
+  compact = false,
+}: FollowUpSectionProps): React.ReactElement {
   const router = useRouter()
   const [mode, setMode] = React.useState<"none" | "snooze">("none")
   const [logOpen, setLogOpen] = React.useState(false)
