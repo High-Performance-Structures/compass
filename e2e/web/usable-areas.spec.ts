@@ -1,7 +1,16 @@
 import { expect, test, type Page, type Response } from "@playwright/test"
 
-const applicationErrorText =
-  /Application error|Internal Server Error|This page could not be found/i
+import { applicationErrorText, enterDemo, usingSmokeLogin } from "./smoke-session"
+
+// The anonymous demo workspace seeds fixtures (project e2e-project-001,
+// conversations, calendar items) that production's real smoke account cannot
+// reach; PR CI exercises those journeys against a local server instead.
+function skipWithoutDemoFixtures(): void {
+  test.skip(
+    usingSmokeLogin,
+    "Needs demo workspace fixtures; covered by PR CI, not the production smoke account"
+  )
+}
 
 const coreAreas = [
   { name: "dashboard", path: "/dashboard" },
@@ -34,48 +43,6 @@ const projectAreas = [
   { name: "selections", suffix: "/selections" },
   { name: "owner updates", suffix: "/owner-updates" },
 ]
-
-const smokeEmail = process.env.PLAYWRIGHT_SMOKE_EMAIL
-const smokePassword = process.env.PLAYWRIGHT_SMOKE_PASSWORD
-
-// Production refuses the anonymous /demo session (see src/app/demo/route.ts),
-// so remote smoke runs sign in with a dedicated read-only account instead.
-// The signed-in cookies are reused across tests to avoid a login per test.
-let smokeSessionCookies: Awaited<
-  ReturnType<ReturnType<Page["context"]>["cookies"]>
-> | null = null
-
-async function signInWithSmokeAccount(
-  page: Page,
-  email: string,
-  password: string,
-): Promise<void> {
-  if (smokeSessionCookies) {
-    await page.context().addCookies(smokeSessionCookies)
-    await page.goto("/dashboard")
-    if (page.url().includes("/dashboard")) return
-    // The cached session expired mid-run; fall through to a fresh login.
-    smokeSessionCookies = null
-  }
-  await page.goto("/login")
-  // The password tab panel and the "Show password" toggle also carry a
-  // "Password" accessible name, so scope the labels to the actual inputs.
-  await page.getByLabel("Email", { exact: true }).and(page.locator("input")).fill(email)
-  await page.getByLabel("Password", { exact: true }).and(page.locator("input")).fill(password)
-  await page.getByRole("button", { name: "Sign in", exact: true }).click()
-  await page.waitForURL(/\/dashboard/)
-  smokeSessionCookies = await page.context().cookies()
-}
-
-async function enterDemo(page: Page): Promise<void> {
-  if (smokeEmail && smokePassword) {
-    await signInWithSmokeAccount(page, smokeEmail, smokePassword)
-  } else {
-    await page.goto("/demo")
-    await page.waitForURL(/\/dashboard/)
-  }
-  await expect(page.locator("body")).not.toContainText(applicationErrorText)
-}
 
 async function expectHealthyNavigation(
   page: Page,
@@ -236,6 +203,7 @@ test.describe("usable Compass areas", () => {
   test("SMS opt-in and permission controls remain available", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path = "/dashboard/settings"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
@@ -260,6 +228,7 @@ test.describe("usable Compass areas", () => {
   test("schedule switches between calendar, list, and Gantt", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const schedulePath = "/dashboard/projects/e2e-project-001/schedule"
     const response = await page.goto(schedulePath)
     await expectHealthyNavigation(page, response, schedulePath)
@@ -281,6 +250,7 @@ test.describe("usable Compass areas", () => {
   test("project schedules expose single and multiple selection modes", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path = "/dashboard/schedule?mode=projects&scope=all&view=list"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
@@ -488,6 +458,7 @@ test.describe("usable Compass areas", () => {
   test("Schedule puts view choices and Gantt controls in compact menus", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     await page.setViewportSize({ width: 640, height: 700 })
     const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(path)
@@ -533,6 +504,7 @@ test.describe("usable Compass areas", () => {
   test("Gantt persists a seeded viewport before an immediate refresh", async ({
     page,
   }, testInfo) => {
+    skipWithoutDemoFixtures()
     await page.setViewportSize({ width: 1366, height: 768 })
     const schedulePath =
       "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
@@ -571,6 +543,7 @@ test.describe("usable Compass areas", () => {
   test("Global Gantt restores its viewport after an immediate refresh", async ({
     page,
   }, testInfo) => {
+    skipWithoutDemoFixtures()
     await page.setViewportSize({ width: 1366, height: 768 })
     const schedulePath =
       "/dashboard/schedule?mode=projects&scope=all&view=gantt&order=chronological"
@@ -607,6 +580,7 @@ test.describe("usable Compass areas", () => {
   test("Gantt restores its viewport on mobile after an immediate refresh", async ({
     page,
   }, testInfo) => {
+    skipWithoutDemoFixtures()
     test.skip(!testInfo.project.name.startsWith("mobile-"), "mobile project only")
     const schedulePath =
       "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
@@ -643,6 +617,7 @@ test.describe("usable Compass areas", () => {
   test("Gantt keeps rows synchronized and reserves horizontal scrolling for Shift", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     await page.setViewportSize({ width: 1366, height: 768 })
     const response = await page.goto(
       "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
@@ -729,6 +704,7 @@ test.describe("usable Compass areas", () => {
   test("Gantt releases edge wheel input to the surrounding Schedule workspace", async ({
     page,
   }, testInfo) => {
+    skipWithoutDemoFixtures()
     test.skip(
       testInfo.project.name === "mobile-safari",
       "mobile WebKit does not expose page.mouse.wheel"
@@ -823,6 +799,7 @@ test.describe("usable Compass areas", () => {
   test("project conversation replies enable the explicit send action", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path = "/dashboard/conversations/e2e-channel-001"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
@@ -858,6 +835,7 @@ test.describe("usable Compass areas", () => {
   test("project conversation threads recover from a stale deployment", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path = "/dashboard/conversations/e2e-channel-001"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
@@ -904,6 +882,7 @@ test.describe("usable Compass areas", () => {
   test("project conversation history aligns messages and preserves navigation", async ({
     page,
   }, testInfo) => {
+    skipWithoutDemoFixtures()
     await page.setViewportSize(testInfo.project.name.startsWith("mobile") ? { width: 390, height: 844 } : { width: 1366, height: 768 })
     const path = "/dashboard/conversations/e2e-channel-001"
     const response = await page.goto(path)
@@ -1010,6 +989,7 @@ test.describe("usable Compass areas", () => {
   })
 
   test("project Messages opens newest, aligns quiet rows and preserves older history", async ({ page }, testInfo) => {
+    skipWithoutDemoFixtures()
     await page.context().clearCookies()
     await page.setViewportSize(testInfo.project.name.startsWith("mobile") ? { width: 390, height: 844 } : { width: 1366, height: 768 })
     const path = "/dashboard/projects/e2e-correspondence-project-001/messages?conversationId=e2e-quiet-correspondence-001"
@@ -1035,6 +1015,7 @@ test.describe("usable Compass areas", () => {
   })
 
   test("schedule list exposes edit and selection actions", async ({ page }) => {
+    skipWithoutDemoFixtures()
     const path =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(path)
@@ -1078,6 +1059,7 @@ test.describe("usable Compass areas", () => {
   test("schedule assignee choices respect shared-directory access", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(path)
@@ -1103,6 +1085,7 @@ test.describe("usable Compass areas", () => {
   test("schedule items expose related records in the existing to-do workspace", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const schedulePath =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(schedulePath)
@@ -1150,6 +1133,7 @@ test.describe("usable Compass areas", () => {
   test("published audience schedules stay isolated from drafts and internal links", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const internalPath =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(internalPath)
@@ -1249,6 +1233,7 @@ test.describe("usable Compass areas", () => {
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const response = await page.goto("/dashboard/schedule?view=list")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
@@ -1270,6 +1255,7 @@ test.describe("usable Compass areas", () => {
   test("project selectors use the searchable project standard", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
     const response = await page.goto(path)
     await expectHealthyNavigation(
@@ -1349,6 +1335,7 @@ test.describe("usable Compass areas", () => {
   test("work calendar reveals every item hidden behind the overflow count", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const response = await page.goto("/dashboard/schedule?view=month")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
@@ -1374,6 +1361,7 @@ test.describe("usable Compass areas", () => {
   test("work calendar to-dos open and focus the exact project record", async ({
     page,
   }) => {
+    skipWithoutDemoFixtures()
     const response = await page.goto("/dashboard/schedule?view=list")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
