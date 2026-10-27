@@ -32,6 +32,7 @@ import { ClientInteractionSettingsSection } from "@/components/settings/client-i
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
+import { ArchiveDeliverySettingsSection } from "@/components/settings/archive-delivery-settings"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { MyCompassCalendarSettingsSection } from "@/components/settings/my-compass-calendar-settings-section"
 import { MorningPlanSettingsSection } from "@/components/settings/morning-plan-settings-section"
@@ -227,6 +228,7 @@ const WORKFLOW_AREAS = [
   { value: "nutech-catalog", label: "Nu-Tech product catalog", description: "Price sheets and cost code mapping." },
   { value: "nutech-emails", label: "Nu-Tech emails", description: "Order and quote email templates." },
   { value: "bracing-rentals", label: "Bracing rentals", description: "Rental equipment, owned counts, daily rate and deposit rules." },
+  { value: "archive-delivery", label: "Buildertrend Archive delivery", description: "Private archive delivery and excluded internal master folders." },
   { value: "paper-trail", label: "Project paper trail", description: "Which records are saved as PDFs in project Drive folders." },
   { value: "my-compass-calendar", label: "My Compass calendar", description: "Each staff member's Google calendar of their assigned schedule items and to-dos." },
   { value: "morning-plan", label: "Today's plan and workload", description: "Each staff member's daily plan on the dashboard, and warnings when a week is over capacity." },
@@ -297,6 +299,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <NuTechEmailSettingsSection />
     case "bracing-rentals":
       return <BracingRentalSettingsSection />
+    case "archive-delivery":
+      return <ArchiveDeliverySettingsSection />
     case "paper-trail":
       return <PaperTrailSettingsSection />
     case "my-compass-calendar":

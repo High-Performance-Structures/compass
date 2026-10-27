@@ -1,4 +1,6 @@
 import type * as React from "react"
+import { Suspense } from "react"
+import { ProjectAudienceArchiveSection } from "@/components/projects/project-audience-archive"
 import { getCorrespondenceInbox } from "@/app/actions/project-correspondence"
 import { ProjectAudienceCorrespondencePreview } from "@/components/projects/project-audience-correspondence-preview"
 import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
@@ -664,11 +666,12 @@ function OwnerProjectPreview({
         )}
 
         {section === "documents" && (
-          <ProjectAudienceDocumentLibrary
-            projectId={data.project.id}
-            contractDocuments={data.contractDocuments}
-            documents={data.documents}
-          />
+          <>
+            <ProjectAudienceDocumentLibrary projectId={data.project.id} contractDocuments={data.contractDocuments} documents={data.documents} />
+            <Suspense fallback={<p className="text-sm text-muted-foreground">Loading archive…</p>}>
+              <ProjectAudienceArchiveSection projectId={data.project.id} audience={data.audience} />
+            </Suspense>
+          </>
         )}
       </div>
     </main>
@@ -905,11 +908,12 @@ export function ProjectAudiencePreview({
         )}
 
         {section === "documents" && (
-          <ProjectAudienceDocumentLibrary
-            projectId={data.project.id}
-            contractDocuments={data.contractDocuments}
-            documents={data.documents}
-          />
+          <>
+            <ProjectAudienceDocumentLibrary projectId={data.project.id} contractDocuments={data.contractDocuments} documents={data.documents} />
+            <Suspense fallback={<p className="text-sm text-muted-foreground">Loading archive…</p>}>
+              <ProjectAudienceArchiveSection projectId={data.project.id} audience={data.audience} />
+            </Suspense>
+          </>
         )}
         </div>
       </main>

@@ -22,6 +22,7 @@ import * as contractSchema from "./schema-contracts"
 import * as participantSchema from "./schema-participants"
 import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
+import * as archiveSchema from "./schema-project-archives"
 import * as rfqSchema from "./schema-rfqs"
 import * as projectFamilySchema from "./schema-project-families"
 import * as jobWorkflowSchema from "./schema-job-workflows"
@@ -68,6 +69,7 @@ const allSchemas = {
   ...participantSchema,
   ...socialSchema,
   ...documentSchema,
+  ...archiveSchema,
   ...rfqSchema,
   ...projectFamilySchema,
   ...jobWorkflowSchema,

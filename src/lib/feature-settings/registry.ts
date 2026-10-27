@@ -640,7 +640,15 @@ export const payApplicationSettingsSchema = z.object({
 
 export type PayApplicationSettings = z.infer<typeof payApplicationSettingsSchema>
 
+export const archiveDeliverySettingsSchema = z.object({
+  deliveryRootIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)).max(10),
+  excludedMasterRootIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)).max(20),
+}).refine((v) => v.deliveryRootIds.length === 0 || v.excludedMasterRootIds.length > 0, { message: "Configure the internal master folders before enabling delivery." }).refine((v) => !v.deliveryRootIds.some((id) => v.excludedMasterRootIds.includes(id)), { message: "Delivery and master folders must be separate." })
+
+export type ArchiveDeliverySettings = z.infer<typeof archiveDeliverySettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "archive-delivery": ArchiveDeliverySettings
   readonly "contract-deposits": ContractDepositSettings
   readonly "contract-packets": ContractPacketSettings
   readonly "pay-applications": PayApplicationSettings
@@ -687,6 +695,13 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "archive-delivery": {
+    label: "Buildertrend Archive delivery",
+    description: "Private delivery folders and excluded internal master folders for historical reading editions.",
+    defaults: { deliveryRootIds: [], excludedMasterRootIds: [] },
+    schema: archiveDeliverySettingsSchema,
+    editorRoles: new Set(["admin"]),
+  },
   "schedule-conflicts": {
     label: "Schedule conflicts",
     description: "Flags a crew or company booked on two jobs over the same days. List names to never flag, and other spellings of the same name.",
