@@ -52,6 +52,11 @@ const desktopProjects = [
 
 export default defineConfig({
   timeout: 60000,
+  // Remote smoke runs hit the live production Worker, where an individual
+  // request can transiently fail (deploy rollouts, Cloudflare 1102 resource
+  // errors). Retry those so one-off infra blips don't fail the nightly, while
+  // persistent breakage still does. Local runs stay strict and deterministic.
+  retries: externalBaseUrl ? 2 : 0,
   expect: {
     timeout: 30000,
   },
