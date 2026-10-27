@@ -46,6 +46,10 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: https://compass.openrangeconstruction.ltd
           PLAYWRIGHT_REQUIRE_PROJECT: "false"
+          # Production closed the anonymous /demo entry (#950); the smoke
+          # suite signs in with a dedicated read-only account instead.
+          PLAYWRIGHT_SMOKE_EMAIL: ${{ secrets.PLAYWRIGHT_SMOKE_EMAIL }}
+          PLAYWRIGHT_SMOKE_PASSWORD: ${{ secrets.PLAYWRIGHT_SMOKE_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -76,6 +80,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build mobile shell
+        run: bun run mobile:build
+
       - name: Synchronize Capacitor project
         run: bunx cap sync android
 
@@ -105,6 +112,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Build mobile shell
+        run: bun run mobile:build
 
       - name: Synchronize Capacitor project
         run: bunx cap sync ios

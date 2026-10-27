@@ -35,9 +35,43 @@ const projectAreas = [
   { name: "owner updates", suffix: "/owner-updates" },
 ]
 
-async function enterDemo(page: Page): Promise<void> {
-  await page.goto("/demo")
+const smokeEmail = process.env.PLAYWRIGHT_SMOKE_EMAIL
+const smokePassword = process.env.PLAYWRIGHT_SMOKE_PASSWORD
+
+// Production refuses the anonymous /demo session (see src/app/demo/route.ts),
+// so remote smoke runs sign in with a dedicated read-only account instead.
+// The signed-in cookies are reused across tests to avoid a login per test.
+let smokeSessionCookies: Awaited<
+  ReturnType<ReturnType<Page["context"]>["cookies"]>
+> | null = null
+
+async function signInWithSmokeAccount(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  if (smokeSessionCookies) {
+    await page.context().addCookies(smokeSessionCookies)
+    await page.goto("/dashboard")
+    if (page.url().includes("/dashboard")) return
+    // The cached session expired mid-run; fall through to a fresh login.
+    smokeSessionCookies = null
+  }
+  await page.goto("/login")
+  await page.getByLabel("Email").fill(email)
+  await page.getByLabel("Password").fill(password)
+  await page.getByRole("button", { name: "Sign in" }).click()
   await page.waitForURL(/\/dashboard/)
+  smokeSessionCookies = await page.context().cookies()
+}
+
+async function enterDemo(page: Page): Promise<void> {
+  if (smokeEmail && smokePassword) {
+    await signInWithSmokeAccount(page, smokeEmail, smokePassword)
+  } else {
+    await page.goto("/demo")
+    await page.waitForURL(/\/dashboard/)
+  }
   await expect(page.locator("body")).not.toContainText(applicationErrorText)
 }
 
