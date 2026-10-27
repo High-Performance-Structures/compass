@@ -34,7 +34,7 @@ const UNTRACKED_SENDERS: Readonly<Record<string, string>> = {
   "src/lib/email/tracked-send.ts": "the tracked sender itself",
   "src/lib/notifications/create-event.ts": "notification emails to staff",
   "src/app/actions/project-email.ts": "project email keeps its own conversation reply thread",
-  "src/app/actions/project-access-invitations.ts": "account invitations",
+  "src/lib/email/invitation-delivery.ts": "durable account invitation welcome delivery",
   "src/app/actions/greeting-cards.ts": "greeting cards",
   "src/app/actions/owner-document-notices.ts": "notification copies to owner portal users",
 }

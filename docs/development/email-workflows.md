@@ -94,3 +94,11 @@ the underlying action fail.
 - Disable Send until there is a recipient. Show a success toast that says
   what happened, then refresh.
 - Update the help guide for the workflow in the same PR.
+
+## Invitation delivery recovery
+
+Project welcome emails are saved on `project_access_invitations` before provider I/O. The minute maintenance job calls the signed `/api/operations/email/retry-invitations` route, dispatching one due welcome at a time. Shared D1 mailbox state serializes invitation sends and honors provider cooldowns across Worker instances. Gmail sends and inbound reply sync both honor that mailbox cooldown. Inbound sync avoids downloading already imported message bodies and stops immediately on rate limiting.
+
+Only explicit rate-limit rejections are retried automatically, using the latest provider retry time and increasing delays. Transport failures, server errors, and interrupted sends have uncertain outcomes and require staff review. The queue checks current invitation state, contact activity, inviter permissions, and superseding invitations before delivery. It retrieves the existing WorkOS invitation URL at dispatch rather than persisting an acceptance token or creating a fresh account invitation. Terminal failures and uncertain outcomes notify the inviter in-app and appear on the project contact.
+
+Apply `0261_invitation_email_recovery.sql` before deploying the matching code. Historical email failures are surfaced as failed but are not automatically replayed because their exact welcome messages were not saved. Staff deliberately review and resend those invitations. The migration does not grant access or send mail.
