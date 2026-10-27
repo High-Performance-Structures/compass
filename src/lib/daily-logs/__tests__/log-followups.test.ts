@@ -119,6 +119,19 @@ describe("to-dos from saved logs", () => {
     expect(madeTodoTitles([{ title: "Order more Simpson ties" }]).has(todoTitleKey("order more simpson  ties"))).toBe(true)
   })
 
+  it("counts a line as made when its to-do was reworded", () => {
+    const made = madeTodoTitles([
+      {
+        title: "Confirm the 10:30 rebar inspection with the inspector",
+        description:
+          "From the Oct 26, 2026 daily log (issues): Inspector moved the rebar inspection from 9:00 to 10:30.\n\nCreated from Daily log Oct 26, 2026.",
+      },
+    ])
+    expect(made.has(todoTitleKey("Inspector moved the rebar inspection from 9:00 to 10:30."))).toBe(true)
+    expect(made.has(todoTitleKey("Confirm the 10:30 rebar inspection with the inspector"))).toBe(true)
+    expect(made.has(todoTitleKey("Pump truck booked"))).toBe(false)
+  })
+
   it("never makes to-dos automatically when a saved log is edited", () => {
     expect(savedLogTodoRules({ ...rules, todoMode: "auto" }).todoMode).toBe("ask")
     expect(savedLogTodoRules({ ...rules, todoMode: "off" }).todoMode).toBe("off")

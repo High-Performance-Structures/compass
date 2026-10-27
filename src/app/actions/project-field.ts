@@ -262,6 +262,8 @@ export type ProjectDailyLogScheduleItem = {
 export type ProjectDailyLogTodo = {
   readonly id: string
   readonly title: string
+  /** Notes, which name the log line the to-do was made from. */
+  readonly description: string | null
   readonly status: string
   readonly priority: string
   readonly assigneeName: string | null
@@ -1896,6 +1898,7 @@ export async function getProjectDailyLogWorkspace(
             sourceRecordId: projectOperations.sourceRecordId,
             id: projectOperations.id,
             title: projectOperations.title,
+            description: projectOperations.description,
             status: projectOperations.status,
             priority: projectOperations.priority,
             assigneeName: projectOperations.assigneeName,
@@ -1979,6 +1982,7 @@ export async function getProjectDailyLogWorkspace(
       {
         id: row.id,
         title: row.title,
+        description: row.description,
         status: row.status,
         priority: row.priority,
         assigneeName: row.assigneeName,
