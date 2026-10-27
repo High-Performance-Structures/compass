@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/daily-logs"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-15"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -21,6 +21,12 @@
 Open the project's **Daily Logs**, confirm the project and log date, and create a new log. Use **Fill weather** when available, then review the retrieved conditions. Record work completed, crews, materials, deliveries, inspections, delays, safety information, visitors, and specific next steps as applicable.
 
 Write facts another team member can understand later. Avoid unexplained abbreviations, personal commentary, and unapproved promises.
+
+## Choose Cost Codes {#cost-codes}
+
+Job daily logs use the full company cost-code catalog also used by Estimates, RFQs, purchase orders, change orders, financial forms, project contacts, and shop tickets. When a job has a budget, its current budget codes are shown by default. With no budget, the full company list is shown. Type a code or description to search the full company list, including codes outside the job’s budget. A job's department or the shorter labor list does not restrict its browser choices.
+
+Departments enabled for cost codes in Field Mode download that same full job catalog. Refresh Field Mode's downloaded data after catalog changes. Internal workspaces show their customized duty codes by default and also allow searching the full company catalog. In Field Mode, only duties marked **On phones** are included alongside the company catalog.
 
 ## To-dos and Client Contact on a Log {#todos-client-contact}
 

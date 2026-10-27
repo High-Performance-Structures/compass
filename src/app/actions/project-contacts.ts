@@ -1,5 +1,7 @@
 "use server"
 
+import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -14,7 +16,6 @@ import {
   projectContactSourceLinks,
   projectMembers,
   projects,
-  sageCostCodes,
   users,
   vendorContacts,
   vendors,
@@ -236,6 +237,7 @@ export type ProjectContactDivisionOption = {
 }
 
 export type ProjectContactCostCodeOption = {
+  readonly onBudget?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -1336,16 +1338,7 @@ export async function getProjectContactSageOptions(
   const user = await requireAuth()
   await requireFeaturePermission(user, "project-contacts", "update")
   const db = await verifyProjectAccess(projectId, "update")
-  const rows = await db
-    .select({
-      code: sageCostCodes.code,
-      description: sageCostCodes.description,
-      divisionCode: sageCostCodes.divisionCode,
-      divisionDescription: sageCostCodes.divisionDescription,
-    })
-    .from(sageCostCodes)
-    .where(eq(sageCostCodes.active, true))
-    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.code))
+  const rows = await loadProjectCostCodeChoices(db, projectId)
 
   const divisions = new Map<string, ProjectContactDivisionOption>()
   const costCodes = new Map<string, ProjectContactCostCodeOption>()
@@ -1361,6 +1354,7 @@ export async function getProjectContactSageOptions(
     })
     costCodes.set(row.code, {
       value: row.code,
+      onBudget: row.onBudget,
       label: `${row.code} - ${description}`,
       description,
       divisionCode: row.divisionCode,

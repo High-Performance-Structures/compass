@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { saveMachineLogEntry, type EquipmentWorkspace, type MachineLogEntryView } from "@/app/actions/equipment"
+import { getMachineCostCodeOptions, saveMachineLogEntry, type EquipmentWorkspace, type MachineLogEntryView, type MachineCostCodeOption } from "@/app/actions/equipment"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -77,6 +77,29 @@ export function MachineLogEntryDialog({
   )
   const [errors, setErrors] = React.useState<ReadonlyMap<string, string>>(new Map())
   const [pending, startTransition] = React.useTransition()
+
+  const [projectCodes, setProjectCodes] = React.useState<{ readonly projectId: string; readonly options: readonly MachineCostCodeOption[] } | null>(null)
+  React.useEffect(() => {
+    if (!draft.projectId) return
+    let cancelled = false
+    const projectId = draft.projectId
+    void getMachineCostCodeOptions(projectId).then((result) => {
+      if (cancelled) return
+      if (!result.success) toast.error(result.error)
+      setProjectCodes({ projectId, options: result.success ? result.data : workspace.costCodes })
+    }, () => {
+      if (cancelled) return
+      toast.error("Couldn't load project cost codes.")
+      setProjectCodes({ projectId, options: workspace.costCodes })
+    })
+    return () => { cancelled = true }
+  }, [draft.projectId, workspace.costCodes])
+  const costCodes = projectCodes?.projectId === draft.projectId ? projectCodes.options : workspace.costCodes
+  // Keep an older job-only selection while its project catalog is loading.
+  const selectedCode = draft.costCode && !costCodes.some((code) => code.value === draft.costCode)
+    ? [{ value: draft.costCode, label: draft.costCode }]
+    : []
+  const loadingCodes = Boolean(draft.projectId && projectCodes?.projectId !== draft.projectId)
 
   const machines = workspace.machines.filter((machine) => machine.active || machine.id === draft.machineId)
   const machine = workspace.machines.find((item) => item.id === draft.machineId)
@@ -222,7 +245,8 @@ export function MachineLogEntryDialog({
                   <SearchableCombobox
                     id="machine-log-costCode"
                     ariaLabel="Cost code"
-                    options={[{ value: "", label: "None" }, ...workspace.costCodes]}
+                    options={[{ value: "", label: "None", onBudget: costCodes.some((code) => code.onBudget) }, ...costCodes, ...selectedCode]}
+                    disabled={loadingCodes}
                     value={draft.costCode}
                     onValueChange={(value) => set("costCode", value)}
                     placeholder="Choose a cost code"

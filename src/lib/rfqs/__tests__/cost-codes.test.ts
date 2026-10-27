@@ -28,8 +28,8 @@ describe("RFQ Sage scope coding", () => {
       sageCodes,
       divisions
     )).toEqual([
-      "Scope row 1: choose an active Sage cost code.",
-      "Scope row 2: choose an active Sage division.",
+      "Scope row 1: choose a company cost code.",
+      "Scope row 2: choose a company division.",
       "Scope row 3: division must match cost code 03 30 00.",
     ])
   })
@@ -43,6 +43,6 @@ describe("RFQ Sage scope coding", () => {
       sageCodes,
       divisions,
       [{ phaseCode: "OLD", costCode: "LEGACY" }]
-    )).toEqual(["Scope row 2: choose an active Sage division."])
+    )).toEqual(["Scope row 2: choose a company division."])
   })
 })

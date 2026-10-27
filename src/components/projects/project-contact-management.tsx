@@ -279,10 +279,13 @@ function CostCodePicker({
   readonly onSelect: (option: ProjectContactCostCodeOption | null) => void
 }): React.ReactElement {
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const hasBudgetCodes = options.some((option) => option.onBudget)
+  const visibleOptions = search.trim() || !hasBudgetCodes ? options : options.filter((option) => option.onBudget)
   const selected = options.find((option) => option.value === value) ?? null
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); setSearch("") }}>
       <PopoverTrigger asChild>
         <Button
           id="project-contact-cost-code"
@@ -304,7 +307,8 @@ function CostCodePicker({
         align="start"
       >
         <Command>
-          <CommandInput placeholder="Search cost codes..." />
+          <CommandInput placeholder="Search cost codes..." value={search} onValueChange={setSearch} />
+          {hasBudgetCodes ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">Type to search the full company cost-code list.</p> : null}
           <CommandList className="max-h-72">
             <CommandEmpty>No matching cost code.</CommandEmpty>
             <CommandGroup>
@@ -319,7 +323,7 @@ function CostCodePicker({
                   Clear cost code
                 </CommandItem>
               )}
-              {options.map((option) => (
+              {visibleOptions.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={`${option.label} ${option.description}`}
