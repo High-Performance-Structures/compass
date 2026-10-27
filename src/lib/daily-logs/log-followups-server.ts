@@ -258,7 +258,7 @@ export async function withoutTodosAlreadyMade(
 ): Promise<readonly DailyLogNewTodoDraft[]> {
   if (newTodos.length === 0) return newTodos
   const existing = await db
-    .select({ title: projectOperations.title })
+    .select({ title: projectOperations.title, description: projectOperations.description })
     .from(projectOperations)
     .where(and(eq(projectOperations.sourceRecordId, dailyLogId), inArray(projectOperations.sourceRecordType, [...PROJECT_TODO_RECORD_TYPES])))
   const made = new Set(madeTodoTitles(existing))

@@ -154,9 +154,23 @@ export function todoTitleKey(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase()
 }
 
-/** Title keys of the to-dos already made from a log. */
-export function madeTodoTitles(todos: readonly { readonly title: string }[]): ReadonlySet<string> {
-  return new Set(todos.map((todo) => todoTitleKey(todo.title)))
+const SOURCE_LINE = /daily log \((?:issues|next steps)\): ([^\n]+)/
+
+/**
+ * Keys of the lines already made into to-dos on a log: each to-do's title,
+ * plus the line its notes say it came from, so rewording the title doesn't
+ * free the line to be made into a second to-do.
+ */
+export function madeTodoTitles(
+  todos: readonly { readonly title: string; readonly description?: string | null }[]
+): ReadonlySet<string> {
+  const keys = new Set<string>()
+  for (const todo of todos) {
+    keys.add(todoTitleKey(todo.title))
+    const line = todo.description?.match(SOURCE_LINE)?.[1]
+    if (line) keys.add(todoTitleKey(line))
+  }
+  return keys
 }
 
 /**
