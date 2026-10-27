@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
+  IconBriefcase,
   IconAutomation,
   IconCode,
   IconExternalLink,
@@ -39,7 +40,8 @@ import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import { useNative } from "@/hooks/use-native"
+import { useNative, useNativePlatform } from "@/hooks/use-native"
+import { fieldModeUrl } from "@/lib/native/field-mode-url"
 import { browserHandoffUrl } from "@/lib/native/browser-handoff"
 import { QuickAddMenu } from "@/components/quick-add-menu"
 
@@ -80,10 +82,12 @@ export function openOfficeTalkWindow(): void {
 export function SiteHeader({
   user,
   canUseAskCompass,
+  canUseFieldDesk = false,
   showQuickAddInDevelopment,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
+  readonly canUseFieldDesk?: boolean
   readonly showQuickAddInDevelopment: boolean
 }) {
   const { theme, setTheme } = useTheme()
@@ -96,6 +100,7 @@ export function SiteHeader({
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
   const native = useNative()
+  const nativePlatform = useNativePlatform()
   const {
     canUseDeveloperMode,
     developerModeEnabled,
@@ -230,6 +235,20 @@ export function SiteHeader({
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
         <div className="flex items-center gap-1">
           <SidebarTrigger className="-ml-1" />
+          {/* Tablet widths hide the bottom navigation; keep the app return visible. */}
+          {canUseFieldDesk && nativePlatform !== "web" && (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 px-2 text-xs print:hidden"
+            >
+              <a href={fieldModeUrl(nativePlatform)} aria-label="Return to Field Mode">
+                <IconBriefcase className="size-4" />
+                Field Mode
+              </a>
+            </Button>
+          )}
           {canUseDeveloperMode && (
             <Button
               variant={developerModeEnabled ? "secondary" : "ghost"}

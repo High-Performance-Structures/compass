@@ -174,6 +174,7 @@ export default async function DashboardLayout({
           <SiteHeader
             user={user}
             canUseAskCompass={canUseCompassAgent}
+            canUseFieldDesk={canUseCompassFieldDesk}
             showQuickAddInDevelopment={isDevelopment}
           />
           <NavigationProgress />
