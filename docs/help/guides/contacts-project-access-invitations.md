@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-26"
 }
 ---
 
@@ -72,6 +72,16 @@ Authorized directory managers can select duplicate company records or use **Merg
 ## Resend a Pending Invitation {#resend-invitation}
 
 If an invited person has not joined, use the pending invitation's resend action rather than creating another person or assignment. Verify the email, project, and role first. Pending invitee links can exist before a Compass account ID is available. After acceptance, verify the actual workspace and feature access.
+
+## Welcome Email Delivery {#welcome-email-delivery}
+
+Project access and email delivery have separate statuses. **Awaiting acceptance** means the account invitation is pending; it does not prove that the welcome email arrived.
+
+If the email provider temporarily limits sending, Compass saves your welcome message and retries automatically after the provider's cooldown. The contact shows **Welcome email queued**. You do not need to resend while it is queued. Retries use the existing account invitation and do not send repeated account setup emails.
+
+If delivery fails permanently or retries are exhausted, the contact shows **Welcome email failed**, and the staff member who invited them receives an in-app notification. Check the recipient and email setup before retrying. If the person already has active project access, use **Resend welcome email**; this sends only the welcome and preserves their existing access. If delivery is **unconfirmed**, check the sending mailbox or provider history before resending; Compass holds uncertain sends for review to avoid duplicates. Revoked, expired, removed, or superseded invitations are not automatically sent.
+
+The welcome message normally has the subject **Welcome to Compass for [project]**. Its secure button opens account setup or sign-in. A separate account setup email may also come from the authentication provider.
 
 ## Quick Check {#quick-check}
 

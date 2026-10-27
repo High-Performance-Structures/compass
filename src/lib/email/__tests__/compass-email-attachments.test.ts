@@ -12,6 +12,7 @@ let database: CorrespondenceTestDatabase | undefined
 afterEach(() => { database?.close(); vi.unstubAllGlobals(); vi.resetAllMocks() })
 function setup(): CorrespondenceTestDatabase {
   const db = openCorrespondenceTestDatabase(); database = db
+  db.sqlite.exec("CREATE TABLE email_mailbox_state (mailbox TEXT PRIMARY KEY, next_allowed_at TEXT NOT NULL, lease_token TEXT, lease_expires_at TEXT NOT NULL)")
   db.sqlite.exec("CREATE TABLE google_auth (id TEXT,organization_id TEXT,service_account_key_encrypted TEXT,workspace_domain TEXT,shared_drive_id TEXT,shared_drive_name TEXT,connected_by TEXT,created_at TEXT,updated_at TEXT); INSERT INTO google_auth VALUES ('auth','org-a','encrypted','example.test',NULL,NULL,'staff-a','now','now')")
   vi.stubGlobal("fetch", mocks.fetch)
   mocks.fetch.mockImplementation(async () => new Response(JSON.stringify({ id: "sent-1" })))
@@ -79,5 +80,41 @@ describe("email provider attachment delivery", () => {
     expect(result.status).toBe("sent")
     expect(mocks.fetch.mock.calls[0]?.[0]).toBe("https://api.resend.com/emails")
     expect(JSON.parse(mocks.fetch.mock.calls[0]?.[1].body)).toMatchObject({ attachments: [{ filename: "Plan.pdf", content_type: "application/pdf", content: "AP8BAg==" }] })
+  })
+})
+
+describe("provider rate limits and uncertain sends", () => {
+  it("persists Google's retry time and skips further Gmail calls during cooldown", async () => {
+    const db = setup()
+    const retryAt = new Date(Date.now() + 900_000).toISOString()
+    mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ error: { message: `User-rate limit exceeded. Retry after ${retryAt}` } }), { status: 429 }))
+    const input = { env: {}, db: db.db, organizationId: "org-a", to: ["owner@example.test"], subject: "Welcome", text: "Welcome" }
+    expect(await sendCompassEmail(input)).toMatchObject({ status: "rate_limited", error: expect.stringContaining(new Date(Date.parse(retryAt) + 5_000).toISOString()) })
+    expect(await sendCompassEmail(input)).toMatchObject({ status: "rate_limited" })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    expect(mocks.token).toHaveBeenCalledTimes(1)
+  })
+  it.each([500, 502, 503])("does not fail over after an uncertain Gmail %s response", async (status) => {
+    const db = setup()
+    mocks.fetch.mockResolvedValue(new Response("Server unavailable", { status }))
+    expect(await sendCompassEmail({ env: { RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", to: ["owner@example.test"], subject: "Welcome", text: "Welcome" })).toMatchObject({ status: "unknown", provider: "gmail" })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+  it("does not fail over after losing Gmail's response", async () => {
+    const db = setup()
+    mocks.fetch.mockRejectedValue(new Error("Lost response"))
+    expect(await sendCompassEmail({ env: { RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", to: ["owner@example.test"], subject: "Welcome", text: "Welcome" })).toMatchObject({ status: "unknown", provider: "gmail" })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+  it("holds a successful response without a provider ID for review", async () => {
+    const db = setup()
+    mocks.fetch.mockResolvedValue(new Response("{}"))
+    expect(await sendCompassEmail({ env: {}, db: db.db, organizationId: "org-a", to: ["owner@example.test"], subject: "Welcome", text: "Welcome" })).toMatchObject({ status: "unknown" })
+  })
+  it("uses the existing configured fallback after a definite Gmail rejection", async () => {
+    const db = setup()
+    mocks.fetch.mockResolvedValueOnce(new Response("Rate limited", { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "fallback-message" })))
+    expect(await sendCompassEmail({ env: { RESEND_API_KEY: "test" }, db: db.db, organizationId: "org-a", to: ["owner@example.test"], subject: "Welcome", text: "Welcome" })).toMatchObject({ status: "sent", provider: "resend", providerMessageId: "fallback-message" })
   })
 })

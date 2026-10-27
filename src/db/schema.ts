@@ -3119,6 +3119,14 @@ export const projectAccessInvitations = sqliteTable(
     emailProvider: text("email_provider"),
     emailProviderMessageId: text("email_provider_message_id"),
     emailError: text("email_error"),
+    emailStatus: text("email_status").notNull().default("unknown"),
+    emailSubject: text("email_subject"),
+    emailMessage: text("email_message"),
+    emailAttempts: integer("email_attempts").notNull().default(0),
+    emailNextAttemptAt: text("email_next_attempt_at"),
+    emailClaimToken: text("email_claim_token"),
+    emailClaimedAt: text("email_claimed_at"),
+    emailSentAt: text("email_sent_at"),
     invitedBy: text("invited_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -3134,8 +3142,19 @@ export const projectAccessInvitations = sqliteTable(
     index("idx_project_access_invites_project").on(table.projectId),
     index("idx_project_access_invites_email").on(table.email),
     index("idx_project_access_invites_status").on(table.status),
+    index("idx_project_access_invites_email_dispatch").on(table.emailStatus, table.emailNextAttemptAt),
+    uniqueIndex("idx_project_access_invites_one_queued_welcome").on(table.projectId, table.projectContactId)
+      .where(sql`${table.emailStatus} IN ('queued', 'retrying', 'sending') AND ${table.projectContactId} IS NOT NULL`),
   ]
 )
+
+// Shared across Worker instances; never keep mailbox cooldowns in process memory.
+export const emailMailboxState = sqliteTable("email_mailbox_state", {
+  mailbox: text("mailbox").primaryKey(),
+  nextAllowedAt: text("next_allowed_at").notNull(),
+  leaseToken: text("lease_token"),
+  leaseExpiresAt: text("lease_expires_at").notNull(),
+})
 
 export const scheduleTasks = sqliteTable("schedule_tasks", {
   id: text("id").primaryKey(),

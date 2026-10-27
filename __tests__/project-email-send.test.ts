@@ -164,12 +164,12 @@ describe("project email send", () => {
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM project_correspondence").get()).toEqual({ count: 0 })
   })
 
-  it("saves attachments atomically, sends their bytes, and retries the same files", async () => {
+  it.each(["failed", "rate_limited"])("saves attachments atomically and retries the same files after a %s rejection", async (rejection) => {
     const db = setup()
     const now = new Date().toISOString()
     db.sqlite.prepare("INSERT INTO correspondence_attachments (id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('file-1','org-a','project-a','staff-a','Plan.pdf','application/pdf',4,'drive-1',?)").run(now)
     mocks.download.mockImplementation(async () => ({ body: new Response(new Uint8Array([0, 255, 1, 2])), name: "Plan.pdf", contentType: "application/pdf" }))
-    mocks.sendEmail.mockResolvedValueOnce({ status: "failed", provider: "gmail", providerMessageId: null, error: "rejected" }).mockResolvedValueOnce({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
+    mocks.sendEmail.mockResolvedValueOnce({ status: rejection, provider: "gmail", providerMessageId: null, error: "rejected" }).mockResolvedValueOnce({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
     const result = await sendProjectEmail({ ...email, attachmentIds: ["file-1"] })
     if (!result.success) throw new Error("Expected saved campaign")
     expect(result.status).toBe("failed")

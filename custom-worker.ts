@@ -9,6 +9,7 @@ import { ListeningRoomCoordinator } from "./src/cloudflare/listening-room-coordi
 export { ListeningRoomCoordinator }
 
 const RECONCILE_TARGET = "/api/operations/feedback/reconcile"
+const INVITATION_RETRY_TARGET = "/api/operations/email/retry-invitations"
 const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
 const GOTO_MESSAGE_RECOVERY_TARGET =
   "/api/operations/goto/recover-message-bodies"
@@ -288,6 +289,7 @@ export default {
     if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
       ctx.waitUntil(
         Promise.all([
+          runMaintenanceJob("invitation email recovery", () => checkBridgeHealth(env, INVITATION_RETRY_TARGET)),
           // Import tracked replies every minute so project conversations stay current.
           runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
           runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),

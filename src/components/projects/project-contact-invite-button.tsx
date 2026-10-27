@@ -39,6 +39,7 @@ export function ProjectContactInviteButton({
   contactType,
   compassAccountStatus,
   accessStatus,
+  resendWelcome = false,
 }: {
   readonly projectId: string
   readonly projectLabel: string
@@ -48,6 +49,7 @@ export function ProjectContactInviteButton({
   readonly contactType: InvitableContactType
   readonly compassAccountStatus: ProjectContactCompassAccountStatus
   readonly accessStatus: ProjectContactAccessStatus
+  readonly resendWelcome?: boolean
 }): React.ReactElement {
   const router = useRouter()
   const template = projectAccessWelcomeTemplate({
@@ -60,7 +62,7 @@ export function ProjectContactInviteButton({
   const [sending, setSending] = React.useState(false)
   const grantsExistingAccount = compassAccountStatus === "active"
   const resendsPendingInvitation = accessStatus === "pending" && !grantsExistingAccount
-  const actionLabel = grantsExistingAccount
+  const actionLabel = resendWelcome ? "Resend welcome email" : grantsExistingAccount
     ? "Grant project access"
     : resendsPendingInvitation
       ? "Resend invitation"
@@ -86,6 +88,7 @@ export function ProjectContactInviteButton({
         contactId,
         subject,
         message,
+        intent: resendWelcome ? "resend_welcome" : "invite",
       })
       if (!result.success) {
         toast.error(result.error)
@@ -93,6 +96,7 @@ export function ProjectContactInviteButton({
       }
 
       if (result.warning) toast.warning(result.warning)
+      else if (resendWelcome) toast.success("Welcome email sent")
       else if (result.accessStatus === "access_granted") {
         toast.success("Project access granted and welcome email sent")
       } else {
@@ -129,7 +133,9 @@ export function ProjectContactInviteButton({
               {actionLabel}
             </SheetTitle>
             <SheetDescription>
-              {grantsExistingAccount
+              {resendWelcome
+                ? "Send a replacement welcome email using this person's existing project access."
+                : grantsExistingAccount
                 ? "Assign this existing Compass account to this project and send an editable welcome email."
                 : resendsPendingInvitation
                   ? "Send the current account invitation again with an editable project welcome email."
@@ -185,7 +191,9 @@ export function ProjectContactInviteButton({
             </div>
 
             <p className="border-t pt-4 text-xs text-muted-foreground">
-              {grantsExistingAccount
+              {resendWelcome
+                ? "This person already has project access. Resending the welcome email does not change their access."
+                : grantsExistingAccount
                 ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
                 : resendsPendingInvitation
                   ? "The current account invitation will be resent. No other project access is added."
@@ -209,7 +217,9 @@ export function ProjectContactInviteButton({
             >
               {sending
                 ? "Sending..."
-                : grantsExistingAccount
+                : resendWelcome
+                  ? "Resend Welcome"
+                  : grantsExistingAccount
                   ? "Send Welcome and Grant Access"
                   : resendsPendingInvitation
                     ? "Resend Invitation and Welcome"
