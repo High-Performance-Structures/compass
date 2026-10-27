@@ -1584,7 +1584,7 @@ export async function getProjectPurchaseOrderFormOptions(
       value: row.code,
       onBudget: row.onBudget,
       label: row.displayLabel,
-      description: row.description,
+      description: row.sageMapped ? row.description : `${row.description} · Needs Sage mapping review`,
       divisionCode: row.divisionCode,
     })
   }
@@ -1610,7 +1610,7 @@ export async function getProjectRfqCostCodeOptions(
     value: row.code,
     onBudget: row.onBudget,
     label: row.displayLabel,
-    description: row.description,
+    description: row.sageMapped ? row.description : `${row.description} · Needs Sage mapping review`,
     divisionCode: row.divisionCode,
     divisionLabel: row.divisionDisplayLabel,
   }))

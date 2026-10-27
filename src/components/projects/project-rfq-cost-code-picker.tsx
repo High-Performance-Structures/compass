@@ -97,9 +97,9 @@ export function ProjectRfqCostCodePicker({
     ? [
         {
           value,
-          label: `${value} · not active in Sage`,
+          label: `${value} · not in the company catalog`,
           selectedLabel: value,
-          description: "Choose an company cost code to replace this one.",
+          description: "Choose a company cost code to replace this one.",
         },
         ...choices,
       ]

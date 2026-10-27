@@ -1,3 +1,4 @@
+import { ON_BUDGET_GROUP, ALL_CODES_GROUP, INTERNAL_CODES_GROUP } from "./cost-code-groups"
 import { and, eq, inArray } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
@@ -11,7 +12,7 @@ import {
   type DailyLogWorkLine,
 } from "@/lib/daily-logs/daily-log-form"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices, loadProjectBudgetCostCodes } from "@/lib/cost-codes/catalog-server"
+import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { dutiesFor, dutyDisplay, dutyOnPhones } from "@/lib/internal-duties/model"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 
@@ -27,9 +28,7 @@ export type DailyLogWorkLineView = {
   readonly todoId: string | null
 }
 
-export const ON_BUDGET_GROUP = "On this job's budget"
-export const ALL_CODES_GROUP = "All cost codes"
-export const INTERNAL_CODES_GROUP = "Customized duty codes"
+export { ON_BUDGET_GROUP, ALL_CODES_GROUP, INTERNAL_CODES_GROUP } from "./cost-code-groups"
 
 /** All job logs use the company catalog; internal workspaces use duties. */
 export type DailyLogCostCodeSource = "labor" | "duties" | "company"
@@ -37,7 +36,7 @@ export type DailyLogCostCodeSource = "labor" | "duties" | "company"
 /**
  * A project's cost codes, and the part of them Field Mode downloads. Phones
  * in enabled departments get the same full job catalog as the browser. Internal
- * workspaces still download only duties marked "On phones".
+ * workspaces browse phone-enabled duties and can search company codes too.
  */
 export type DailyLogCostCodeList = {
   readonly source: DailyLogCostCodeSource
@@ -90,19 +89,15 @@ export async function dailyLogCostCodeList(
   }
 
   const laborCodes = inLaborDepartment ? dailyLogSettings.laborCostCodes.filter((code) => code.active) : []
-  const [companyCodes, budgetRows] = await Promise.all([
-    loadProjectCostCodeChoices(db, projectId),
-    loadProjectBudgetCostCodes(db, projectId),
-  ])
+  const companyCodes = await loadProjectCostCodeChoices(db, projectId)
   const companyLabels = new Map(companyCodes.map((row) => [row.code, row.description]))
   // Keep company-added labor choices available without restricting the catalog.
   for (const row of laborCodes) {
     if (!companyLabels.has(row.code)) companyLabels.set(row.code, row.name)
   }
   const budget = new Map<string, string>()
-  for (const row of budgetRows) {
-    const code = row.costCode.trim()
-    if (code && !budget.has(code)) budget.set(code, companyLabels.get(code) ?? row.description)
+  for (const row of companyCodes) {
+    if (row.onBudget) budget.set(row.code, row.description)
   }
   const options = [
     ...[...budget.entries()]

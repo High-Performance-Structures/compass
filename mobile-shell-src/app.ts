@@ -1345,9 +1345,9 @@ function bindDailyLogForm(): void {
   }
   formElement.querySelectorAll<HTMLInputElement>("[data-cost-code-search]").forEach((input) => input.addEventListener("input", () => {
     const index = Number(input.dataset.costCodeSearch)
-    const select = formElement.querySelector<HTMLSelectElement>(`#log-line-${index}-costCode`)
+    const select = document.getElementById(`log-line-${index}-costCode`)
     const form = packet?.dailyLogForm
-    if (select && form) select.innerHTML = costCodeOptions(form, select.value, escapeHtml, input.value)
+    if (select instanceof HTMLSelectElement && form) select.innerHTML = costCodeOptions(form, select.value, escapeHtml, input.value)
   }))
   formElement.addEventListener("input", handleEdit)
   formElement.addEventListener("change", handleEdit)

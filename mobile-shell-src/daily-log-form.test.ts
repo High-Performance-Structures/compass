@@ -37,6 +37,18 @@ describe("Field Mode daily log draft", () => {
     }
   })
 
+  it("retains per-line company search through draft reloads and form redraws", () => {
+    let draft = updateLogDraft(emptyLogDraft("2026-10-26"), "workLines.0.costCodeSearch", "solar")
+    draft = updateLogDraft(draft, "workLines.0.costCode", "48 14 00")
+    draft = addWorkLine(draft)
+    draft = updateLogDraft(draft, "workLines.1.costCodeSearch", "mobilization")
+    draft = logDraftSchema.parse(JSON.parse(JSON.stringify(removeWorkLine(draft, 0))))
+    expect(draft.workLines[0]?.costCodeSearch).toBe("mobilization")
+    expect(logFieldsHtml({ draft, form, errors: new Map(), escape })).toContain('value="mobilization" data-cost-code-search="0"')
+    draft = updateLogDraft(draft, "workLines.0.hours", "1")
+    expect(filledWorkLines(draft.workLines)[0]).not.toHaveProperty("costCodeSearch")
+  })
+
   it("keeps typed values by control name, including line parts", () => {
     let draft = emptyLogDraft("2026-10-13")
     draft = updateLogDraft(draft, "workCompleted", "Poured footing")

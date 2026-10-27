@@ -333,7 +333,7 @@ export async function getFieldProjectPacket(
         email: contact.email,
         role: userRoleLabel(contact.role),
       })),
-    // Only short lists (H/O labor codes, internal duties) go to phones.
+    // Download the enabled project catalog so company-code search also works offline.
     dailyLogForm: {
       ...phoneDailyLogForm(dailyLogWorkspace.form),
       followUps: dailyLogWorkspace.followUps

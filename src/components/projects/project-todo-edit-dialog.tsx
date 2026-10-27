@@ -1,5 +1,7 @@
 "use client"
 
+import { ON_BUDGET_GROUP, INTERNAL_CODES_GROUP } from "@/lib/daily-logs/cost-code-groups"
+
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -132,7 +134,7 @@ export function ProjectTodoEditDialog({
     }
   }, [open, projectId, item.id])
   const costCodeOptions = React.useMemo(
-    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === "On this job's budget" || option.group === "Customized duty codes", label: option.label, keywords: `${option.code} ${option.name}` })),
+    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}` })),
     [detail?.costCodes],
   )
 
