@@ -1,7 +1,7 @@
 import { App } from "@capacitor/app"
 import { AppLauncher } from "@capacitor/app-launcher"
 import { Browser } from "@capacitor/browser"
-import { Capacitor, CapacitorHttp, type HttpOptions, type HttpResponse } from "@capacitor/core"
+import { Capacitor, CapacitorCookies, CapacitorHttp, registerPlugin, type HttpOptions, type HttpResponse } from "@capacitor/core"
 import { FileViewer } from "@capacitor/file-viewer"
 import { Directory, Filesystem } from "@capacitor/filesystem"
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
@@ -104,6 +104,8 @@ import {
   type ProjectCompanyFilter,
 } from "./project-picker"
 
+import { completeFieldLogout, LOGOUT_PENDING_KEY, logoutBlockedReason } from "./logout"
+
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
 const ACTIVE_PROJECT_KEY = "compass_field_active_project_v1"
@@ -191,6 +193,8 @@ let activeTab: Tab = "today"
 let online = false
 let authError = ""
 let signingIn = false
+let signingOut = false
+let logoutError = ""
 let authMode: AuthMode = "choice"
 let authEmail = ""
 let draftAttachments: FieldQueuedAttachment[] = []
@@ -789,7 +793,9 @@ function settingsView(): string {
   const pushButton = pushStatus === "enabled" || pushStatus === "checking"
     ? ""
     : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Appearance")}<div class="theme-choice" role="group" aria-label="Appearance"><button type="button" data-field-theme="light" aria-pressed="${fieldTheme === "light"}">Light</button><button type="button" data-field-theme="dark" aria-pressed="${fieldTheme === "dark"}">Dark</button></div></div><div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  const logoutReason = logoutBlockedReason(outbox.length, logoutBusy(), Capacitor.getPlatform() === "android" && !online)
+  const accountControls = profile ? `<div class="block">${sectionHead("Account")}<div class="guide-copy"><p>Log out to switch accounts on this device.</p><p>Downloaded projects, files, and unfinished drafts will be removed. Work already synced stays in Compass.</p>${logoutReason ? `<p role="status">${escapeHtml(logoutReason)}</p>` : ""}${logoutError ? `<p class="auth-error" role="alert">${escapeHtml(logoutError)}</p>` : ""}<button id="field-logout" class="secondary" type="button" ${logoutReason ? "disabled" : ""}>Log out</button></div></div>` : ""
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}${accountControls}<div class="block">${sectionHead("Appearance")}<div class="theme-choice" role="group" aria-label="Appearance"><button type="button" data-field-theme="light" aria-pressed="${fieldTheme === "light"}">Light</button><button type="button" data-field-theme="dark" aria-pressed="${fieldTheme === "dark"}">Dark</button></div></div><div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
 }
 
 function applyFieldTheme(theme: FieldTheme): void {
@@ -823,6 +829,7 @@ function view(): string {
 }
 
 function render(): void {
+  if (signingOut) { renderLogoutProgress(); return }
   if (!app) return
   if (biometricLocked) {
     app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">${compassMarkSvg()}</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
@@ -947,6 +954,7 @@ function bindEvents(): void {
     activeTab = "settings"
     render()
   })
+  document.querySelector<HTMLButtonElement>("#field-logout")?.addEventListener("click", () => void beginLogout())
   document.querySelector<HTMLButtonElement>("#enable-push")?.addEventListener("click", () => {
     void setupPushNotifications()
   })
@@ -1815,6 +1823,7 @@ function responseData(value: unknown): unknown {
 }
 
 async function persistPushToken(token: string): Promise<void> {
+  if (!profile || signingOut) return
   if (!online) {
     pushStatus = "error"
     if (activeTab === "settings") render()
@@ -2202,8 +2211,13 @@ class SessionExpiredError extends Error {
 const fieldRequestQueue = createSerialQueue()
 
 async function sendFieldRequest(run: () => Promise<HttpResponse>): Promise<HttpResponse> {
+  if (signingOut) throw new Error("Logging out")
   if (sessionExpired) throw new SessionExpiredError()
-  const response = await fieldRequestQueue(run)
+  const response = await fieldRequestQueue(() => {
+    if (signingOut) throw new Error("Logging out")
+    return run()
+  })
+  if (signingOut) throw new Error("Logging out")
   if (nativeResponseRequiresAuthentication(response)) {
     await markSessionExpired()
     throw new SessionExpiredError()
@@ -2237,7 +2251,7 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (sessionExpired || syncing || syncingDailyLogs || syncingMachines || composing || !online || outbox.length === 0) return
+  if (signingOut || sessionExpired || syncing || syncingDailyLogs || syncingMachines || composing || !online || outbox.length === 0) return
   await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
@@ -2361,6 +2375,7 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   activeTab = packet ? "today" : "projects"
   render()
   if (pushToken) void persistPushToken(pushToken)
+  else void setupPushNotifications()
   void refreshCherishRecognition(true)
   return true
 }
@@ -2590,7 +2605,83 @@ async function handleAppUrl(appUrl: string): Promise<void> {
   await handleAuthCallback(url)
 }
 
+function logoutBusy(): boolean {
+  return signingIn || signingOut || syncing || syncingDailyLogs || syncingMachines
+    || syncingCherish || refreshingProject || startingConversation
+    || loadingCherishRecognitions || Boolean(downloadingDocumentId || loadingDocumentFolderId)
+}
+
+function renderLogoutProgress(error = ""): void {
+  if (!app) return
+  app.innerHTML = `<main class="content">${sectionHead("Logging out")}${error ? `<p class="auth-error" role="alert">${escapeHtml(error)}</p><button id="retry-logout" class="secondary" type="button">Retry logout</button>` : `<p role="status">Clearing this account from your device…</p>`}</main>`
+  document.querySelector<HTMLButtonElement>("#retry-logout")?.addEventListener("click", () => void finishLogout())
+}
+
+async function beginLogout(): Promise<void> {
+  if (!profile || signingOut) return
+  // The full web workspace shares this outbox. Re-read it before switching accounts.
+  const stored = await Preferences.get({ key: OUTBOX_KEY })
+  let queuedItems = outbox.length
+  if (stored.value) {
+    try {
+      const parsed: unknown = JSON.parse(stored.value)
+      if (!Array.isArray(parsed)) throw new Error("Invalid outbox")
+      queuedItems = Math.max(queuedItems, parsed.length)
+    } catch {
+      logoutError = "Compass could not verify waiting work. Restart the app and try again."
+      render()
+      return
+    }
+  }
+  const reason = logoutBlockedReason(queuedItems, logoutBusy(), Capacitor.getPlatform() === "android" && !online)
+  if (reason) { logoutError = reason; render(); return }
+  if (!window.confirm("Log out of Compass on this device? Downloaded projects, files, and unfinished drafts will be removed. Work already synced stays in Compass.")) return
+  signingOut = true
+  render()
+  try {
+    // Drain native requests before restarting. A fresh JS context prevents late
+    // refreshes or draft timers from putting old account data back after cleanup.
+    await fieldRequestQueue(() => Promise.resolve())
+    await Preferences.set({ key: LOGOUT_PENDING_KEY, value: "true" })
+    window.location.reload()
+  } catch {
+    signingOut = false
+    logoutError = "Compass could not start logging out. Please try again."
+    render()
+  }
+}
+
+async function finishLogout(): Promise<void> {
+  renderLogoutProgress()
+  const result = await completeFieldLogout({
+    stopNotifications: async () => {
+      if (!Capacitor.isNativePlatform()) return
+      // The stock plugins do not await Android token deletion, and iOS
+      // notification removal requires registration in the current process.
+      const session = registerPlugin<{ clearNotificationsForLogout(): Promise<void> }>("CompassSession")
+      await session.clearNotificationsForLogout()
+    },
+    clearCookies: () => CapacitorCookies.clearCookies({ url: LIVE_URL }),
+    clearFiles: async () => {
+      const { files } = await Filesystem.readdir({ path: "", directory: Directory.Data })
+      for (const path of [FIELD_ATTACHMENT_DIRECTORY, "compass-field-documents"]) {
+        if (files.some((file) => file.name === path)) {
+          await Filesystem.rmdir({ path, directory: Directory.Data, recursive: true })
+        }
+      }
+    },
+    keys: () => Preferences.keys(),
+    remove: (options) => Preferences.remove(options),
+  })
+  if (result.success) window.location.reload()
+  else renderLogoutProgress(result.error)
+}
+
 async function initialize(): Promise<void> {
+  if ((await Preferences.get({ key: LOGOUT_PENDING_KEY })).value === "true") {
+    await finishLogout()
+    return
+  }
   applyFieldTheme((await Preferences.get({ key: THEME_KEY })).value === "dark" ? "dark" : "light")
   if (isIos) {
     document.body.classList.add("platform-ios")
@@ -2640,7 +2731,6 @@ async function initialize(): Promise<void> {
   })
   await App.addListener("appUrlOpen", ({ url }) => void handleAppUrl(url))
   await Browser.addListener("browserFinished", resetAbandonedSignIn)
-  void setupPushNotifications()
   await App.addListener("appStateChange", ({ isActive }) => {
     if (!isActive) {
       backgroundedAt = Date.now()
@@ -2690,6 +2780,7 @@ async function initialize(): Promise<void> {
     ? fieldProjectPacketSchema.safeParse(await readJson(packetKey(selectedId)))
     : null
   packet = packetResult?.success ? packetResult.data : null
+  if (profile && !sessionExpired) void setupPushNotifications()
   render()
   if (biometricLocked) await unlockCompass()
   if (launchUrl?.url && !launchUrlQueued && !biometricLocked) {

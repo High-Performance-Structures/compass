@@ -4,7 +4,7 @@ import { getDb } from "@/db"
 import { pushTokens } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { nanoid } from "nanoid"
-import { eq, and } from "drizzle-orm"
+import { eq, and, or } from "drizzle-orm"
 
 export async function POST(request: Request) {
   const user = await getCurrentUser()
@@ -48,13 +48,13 @@ export async function POST(request: Request) {
   const db = getDb(env.DB)
   const now = new Date().toISOString()
 
-  // upsert: delete existing token for this user+platform, then insert
+  // A device token must follow its current account after logout/account switching.
   await db
     .delete(pushTokens)
     .where(
-      and(
-        eq(pushTokens.userId, user.id),
-        eq(pushTokens.platform, platform),
+      or(
+        eq(pushTokens.token, token),
+        and(eq(pushTokens.userId, user.id), eq(pushTokens.platform, platform)),
       ),
     )
 
