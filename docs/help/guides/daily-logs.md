@@ -26,7 +26,7 @@ Write facts another team member can understand later. Avoid unexplained abbrevia
 
 Job daily logs use the full company cost-code catalog also used by Estimates, RFQs, purchase orders, change orders, financial forms, project contacts, and shop tickets. When a job has a budget, its current budget codes are shown by default. With no budget, the full company list is shown. Type a code or description to search the full company list, including codes outside the job’s budget. A job's department or the shorter labor list does not restrict its browser choices.
 
-Departments enabled for cost codes in Field Mode download that same full job catalog. Refresh Field Mode's downloaded data after catalog changes. Internal workspaces show their customized duty codes by default and also allow searching the full company catalog. In Field Mode, only duties marked **On phones** are included alongside the company catalog.
+Departments enabled for cost codes in Field Mode download the active crew labor codes configured in company settings, including the existing Division 00/01 preconstruction supplements for H/O/D jobs. Other company and budget codes stay in Full Compass. Refresh Field Mode's downloaded data after code changes. Internal workspaces show their customized duty codes by default and also allow searching the full company catalog in Full Compass. In Field Mode, only duties marked **On phones** are included.
 
 ## To-dos and Client Contact on a Log {#todos-client-contact}
 

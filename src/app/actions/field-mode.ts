@@ -333,7 +333,7 @@ export async function getFieldProjectPacket(
         email: contact.email,
         role: userRoleLabel(contact.role),
       })),
-    // Download the enabled project catalog so company-code search also works offline.
+    // Download only the curated phone codes; the full catalog stays in Full Compass.
     dailyLogForm: {
       ...phoneDailyLogForm(dailyLogWorkspace.form),
       followUps: dailyLogWorkspace.followUps
