@@ -21,6 +21,13 @@ export const projectDocuments = sqliteTable(
     revision: text("revision"),
     status: text("status").notNull().default("current"),
     audience: text("audience").notNull().default("project_team"),
+    // Independent per-audience visibility; internal staff always have access.
+    visibleToOwner: integer("visible_to_owner", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    visibleToSubVendor: integer("visible_to_sub_vendor", { mode: "boolean" })
+      .notNull()
+      .default(true),
     downloadable: integer("downloadable", { mode: "boolean" })
       .notNull()
       .default(true),

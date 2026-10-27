@@ -15,6 +15,7 @@ function job(id: string, name: string, town: string | null): PortfolioMapJob {
     pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null,
     health: "ok", visibility: "default",
     followUp: null,
+    planSetDocumentId: null,
   }
 }
 

@@ -136,6 +136,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           siteLocationStatus: projects.siteLocationStatus,
           siteLocatedAt: projects.siteLocatedAt,
           siteLocationNote: projects.siteLocationNote,
+          planSetDocumentId: projects.planSetDocumentId,
         })
         .from(projects)
         .where(eq(projects.organizationId, orgId)),
@@ -267,6 +268,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         health: portfolioHealth(pastDueCount, stalledCount),
         visibility,
         followUp: followUps.get(project.id) ?? null,
+        planSetDocumentId: location?.planSetDocumentId ?? null,
       }
     })
     // Fan out same-town jobs, then put jobs with a located site on the site itself.

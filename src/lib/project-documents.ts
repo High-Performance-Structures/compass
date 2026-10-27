@@ -54,6 +54,10 @@ export function isProjectDocumentCategory(
   return PROJECT_DOCUMENT_CATEGORIES.some((option) => option.value === value)
 }
 
+// Document visibility (owner / sub-vendor flags) lives in
+// "@/lib/project-document-audience" so it can be shared without pulling in the
+// rest of this module.
+
 function optionalMetadataText(value: string | null): string | null {
   const cleaned = value?.trim() ?? ""
   return cleaned.length > 0 ? cleaned : null

@@ -19,6 +19,13 @@ import {
   isProjectDocumentCategory,
   projectDocumentTitleFromFileName,
 } from "@/lib/project-documents"
+import {
+  coarseProjectDocumentAudience,
+  DEFAULT_PROJECT_DOCUMENT_VISIBILITY,
+  normalizeProjectDocumentVisibility,
+  projectDocumentVisibilityLabel,
+  type ProjectDocumentVisibility,
+} from "@/lib/project-document-audience"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
@@ -67,6 +74,8 @@ export async function publishProjectDocumentFolder(
     readonly description: string | null
     readonly documentDate: string | null
     readonly revision: string | null
+    readonly visibleToOwner: boolean | null
+    readonly visibleToSubVendor: boolean | null
   }
 ): Promise<ProjectDocumentFolderPublishResult> {
   try {
@@ -99,6 +108,14 @@ export async function publishProjectDocumentFolder(
     if (!isProjectDocumentCategory(category)) {
       throw new Error("Choose a supported construction-document category.")
     }
+    const visibility: ProjectDocumentVisibility =
+      input.visibleToOwner === null && input.visibleToSubVendor === null
+        ? DEFAULT_PROJECT_DOCUMENT_VISIBILITY
+        : normalizeProjectDocumentVisibility({
+            owner: input.visibleToOwner,
+            subVendor: input.visibleToSubVendor,
+          })
+    const coarseAudience = coarseProjectDocumentAudience(visibility)
     const drive = await getProjectDocumentDriveContext({ db, env })
     if (sourceDriveFolderId !== project.driveFolderId) {
       const withinProject = await isDriveItemWithinProjectFolder({
@@ -176,7 +193,9 @@ export async function publishProjectDocumentFolder(
         documentDate,
         revision,
         status: "current",
-        audience: "project_team",
+        audience: coarseAudience,
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
         downloadable: true,
         sourceDriveFileId: file.id,
         sourceFileName: file.name,
@@ -212,9 +231,11 @@ export async function publishProjectDocumentFolder(
         action: "project_document.folder_published",
         entityType: "project_document_folder",
         entityId: sourceDriveFolderId,
-        summary: `Published ${rows.length} documents from ${sourceFolder.name} to the entire project team.`,
+        summary: `Published ${rows.length} documents from ${sourceFolder.name} — visible to ${projectDocumentVisibilityLabel(visibility)}.`,
         metadata: {
           category,
+          visibleToOwner: visibility.owner,
+          visibleToSubVendor: visibility.subVendor,
           folderName: sourceFolder.name,
           publishedCount: rows.length,
           skippedCount: duplicateIds.size + collected.unsupportedCount,

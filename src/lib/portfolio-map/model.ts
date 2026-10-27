@@ -39,6 +39,8 @@ export type PortfolioMapJob = {
   readonly visibility: PortfolioMapVisibility
   /** Client follow-up aging; null when the status isn't followed up or the viewer isn't office staff. */
   readonly followUp: ProjectFollowUpSignal | null
+  /** The pinned working plan-set document, or null when none is set; drives the pipeline plan-set shortcut. */
+  readonly planSetDocumentId: string | null
 }
 
 /**

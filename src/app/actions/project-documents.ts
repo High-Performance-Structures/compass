@@ -25,6 +25,13 @@ import {
   isProjectDocumentStatus,
   normalizeProjectDocumentMetadata,
 } from "@/lib/project-documents"
+import {
+  coarseProjectDocumentAudience,
+  DEFAULT_PROJECT_DOCUMENT_VISIBILITY,
+  normalizeProjectDocumentVisibility,
+  projectDocumentVisibilityLabel,
+  type ProjectDocumentVisibility,
+} from "@/lib/project-document-audience"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
@@ -60,6 +67,8 @@ export type ProjectDocumentItem = {
   readonly revision: string | null
   readonly status: string
   readonly audience: string
+  readonly visibleToOwner: boolean
+  readonly visibleToSubVendor: boolean
   readonly downloadable: boolean
   readonly sourceDriveFileId: string
   readonly sourceFileName: string
@@ -76,6 +85,7 @@ export type ProjectDocumentWorkspace = {
     readonly name: string
     readonly projectNumber: string | null
     readonly driveFolderId: string | null
+    readonly planSetDocumentId: string | null
   }
   readonly canManage: boolean
   readonly documents: readonly ProjectDocumentItem[]
@@ -101,6 +111,7 @@ type InternalDocumentAccess = {
     readonly name: string
     readonly projectNumber: string | null
     readonly driveFolderId: string | null
+    readonly planSetDocumentId: string | null
   }
 }
 
@@ -145,6 +156,7 @@ async function internalDocumentAccess(
       name: projects.name,
       projectNumber: projects.projectNumber,
       driveFolderId: projects.googleDriveFolderId,
+      planSetDocumentId: projects.planSetDocumentId,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -284,6 +296,8 @@ async function documentItems(
     revision: row.revision,
     status: row.status,
     audience: row.audience,
+    visibleToOwner: row.visibleToOwner,
+    visibleToSubVendor: row.visibleToSubVendor,
     downloadable: row.downloadable,
     sourceDriveFileId: row.sourceDriveFileId,
     sourceFileName: row.sourceFileName,
@@ -388,6 +402,8 @@ export async function publishProjectDocument(
     readonly documentDate: string | null
     readonly revision: string | null
     readonly supersedesDocumentId: string | null
+    readonly visibleToOwner: boolean | null
+    readonly visibleToSubVendor: boolean | null
   }
 ): Promise<ProjectDocumentActionResult> {
   try {
@@ -401,6 +417,13 @@ export async function publishProjectDocument(
     if (!isProjectDocumentCategory(category)) {
       throw new Error("Choose a supported construction-document category.")
     }
+    const visibility: ProjectDocumentVisibility =
+      input.visibleToOwner === null && input.visibleToSubVendor === null
+        ? DEFAULT_PROJECT_DOCUMENT_VISIBILITY
+        : normalizeProjectDocumentVisibility({
+            owner: input.visibleToOwner,
+            subVendor: input.visibleToSubVendor,
+          })
 
     const duplicate = await access.db
       .select({ id: projectDocuments.id })
@@ -459,7 +482,9 @@ export async function publishProjectDocument(
         documentDate: cleanDate(input.documentDate),
         revision: cleanText(input.revision),
         status: "current",
-        audience: "project_team",
+        audience: coarseProjectDocumentAudience(visibility),
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
         downloadable: true,
         sourceDriveFileId,
         sourceFileName: source.name,
@@ -499,8 +524,13 @@ export async function publishProjectDocument(
       action: "project_document.published",
       entityType: "project_document",
       entityId: id,
-      summary: `Published ${title} to the entire project team.`,
-      metadata: { category, revision: cleanText(input.revision) },
+      summary: `Published ${title} — visible to ${projectDocumentVisibilityLabel(visibility)}.`,
+      metadata: {
+        category,
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
+        revision: cleanText(input.revision),
+      },
     })
     refreshDocumentPaths(projectId)
     return { success: true, id }
@@ -535,15 +565,26 @@ export async function updateProjectDocumentStatus(
       .then((rows) => rows[0] ?? null)
     if (!existing) throw new Error("Project document not found.")
     const now = new Date().toISOString()
-    await access.db
-      .update(projectDocuments)
-      .set({
-        status,
-        archivedAt: status === "archived" ? now : null,
-        updatedAt: now,
-      })
-      .where(eq(projectDocuments.id, documentId))
-      .run()
+    // A plan set must stay current; leaving "current" clears the pin.
+    await access.db.batch([
+      access.db
+        .update(projectDocuments)
+        .set({
+          status,
+          archivedAt: status === "archived" ? now : null,
+          updatedAt: now,
+        })
+        .where(eq(projectDocuments.id, documentId)),
+      access.db
+        .update(projects)
+        .set({ planSetDocumentId: null, updatedAt: now })
+        .where(
+          and(
+            eq(projects.id, projectId),
+            eq(projects.planSetDocumentId, documentId)
+          )
+        ),
+    ])
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -630,6 +671,129 @@ export async function updateProjectDocument(
   }
 }
 
+/** Toggle who a published document is visible to. Internal staff always keep access. */
+export async function setProjectDocumentVisibility(
+  projectId: string,
+  documentId: string,
+  input: { readonly visibleToOwner: boolean; readonly visibleToSubVendor: boolean }
+): Promise<ProjectDocumentActionResult> {
+  try {
+    const access = await internalDocumentAccess(projectId, true)
+    const existing = await access.db
+      .select({ id: projectDocuments.id, title: projectDocuments.title })
+      .from(projectDocuments)
+      .where(
+        and(
+          eq(projectDocuments.id, documentId),
+          eq(projectDocuments.projectId, projectId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!existing) throw new Error("Project document not found.")
+    const visibility = normalizeProjectDocumentVisibility({
+      owner: input.visibleToOwner,
+      subVendor: input.visibleToSubVendor,
+    })
+    const now = new Date().toISOString()
+    await access.db
+      .update(projectDocuments)
+      .set({
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
+        audience: coarseProjectDocumentAudience(visibility),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectDocuments.id, documentId),
+          eq(projectDocuments.projectId, projectId)
+        )
+      )
+      .run()
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId,
+      actor: access.user,
+      category: "file",
+      action: "project_document.visibility_changed",
+      entityType: "project_document",
+      entityId: documentId,
+      summary: `Changed ${existing.title} visibility to ${projectDocumentVisibilityLabel(visibility)}.`,
+      metadata: {
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
+      },
+    })
+    refreshDocumentPaths(projectId)
+    return { success: true, id: documentId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to update visibility.",
+    }
+  }
+}
+
+/** Pin (or clear, when documentId is null) the project's working plan set. */
+export async function setProjectPlanSetDocument(
+  projectId: string,
+  documentId: string | null
+): Promise<ProjectDocumentActionResult> {
+  try {
+    const access = await internalDocumentAccess(projectId, true)
+    const now = new Date().toISOString()
+    if (documentId) {
+      const document = await access.db
+        .select({ id: projectDocuments.id, title: projectDocuments.title, status: projectDocuments.status })
+        .from(projectDocuments)
+        .where(
+          and(
+            eq(projectDocuments.id, documentId),
+            eq(projectDocuments.projectId, projectId)
+          )
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (!document) throw new Error("Project document not found.")
+      if (document.status !== "current") {
+        throw new Error("Only a current document can be the working plan set.")
+      }
+      await access.db
+        .update(projects)
+        .set({ planSetDocumentId: documentId, updatedAt: now })
+        .where(eq(projects.id, projectId))
+        .run()
+      await recordActivityEvent({
+        db: access.db,
+        organizationId: access.organizationId,
+        projectId,
+        actor: access.user,
+        category: "file",
+        action: "project_document.plan_set_pinned",
+        entityType: "project_document",
+        entityId: documentId,
+        summary: `Set ${document.title} as the working plan set.`,
+      })
+    } else {
+      await access.db
+        .update(projects)
+        .set({ planSetDocumentId: null, updatedAt: now })
+        .where(eq(projects.id, projectId))
+        .run()
+    }
+    refreshDocumentPaths(projectId)
+    revalidatePath("/dashboard")
+    return { success: true, id: documentId ?? projectId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to update the plan set.",
+    }
+  }
+}
+
 export async function removeProjectDocument(
   projectId: string,
   documentId: string
@@ -680,6 +844,15 @@ export async function removeProjectDocument(
           and(
             eq(projectDocuments.id, documentId),
             eq(projectDocuments.projectId, projectId)
+          )
+        ),
+      access.db
+        .update(projects)
+        .set({ planSetDocumentId: null, updatedAt: now })
+        .where(
+          and(
+            eq(projects.id, projectId),
+            eq(projects.planSetDocumentId, documentId)
           )
         ),
     ])

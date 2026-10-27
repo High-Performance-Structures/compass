@@ -2,7 +2,7 @@
 
 import type * as React from "react"
 import Link from "next/link"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Scroll } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { projectFilesHref } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import { HEALTH_LABEL, healthColor, phaseColor } from "@/components/dashboard/portfolio-map/portfolio-style"
@@ -96,14 +96,36 @@ export function PortfolioPipeline({
                         </span>
                       </button>
                       {canOpenFiles ? (
-                        <Link
-                          href={projectFilesHref(job.id)}
-                          aria-label={`Files for ${job.name}`}
-                          title="Files"
-                          className="flex w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        >
-                          <FolderOpen className="size-4" aria-hidden="true" />
-                        </Link>
+                        <div className="flex w-9 shrink-0 flex-col border-l border-border">
+                          <Link
+                            href={projectFilesHref(job.id)}
+                            aria-label={`All files for ${job.name}`}
+                            title="All files"
+                            className="flex flex-1 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <FolderOpen className="size-4" aria-hidden="true" />
+                          </Link>
+                          {job.planSetDocumentId ? (
+                            <a
+                              href={`/api/projects/${job.id}/documents/${job.planSetDocumentId}/download`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Open plan set for ${job.name}`}
+                              title="Open plan set"
+                              className="flex flex-1 items-center justify-center border-t border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            >
+                              <Scroll className="size-4" aria-hidden="true" />
+                            </a>
+                          ) : (
+                            <span
+                              title="No plan set pinned"
+                              aria-hidden="true"
+                              className="flex flex-1 items-center justify-center border-t border-border text-muted-foreground/30"
+                            >
+                              <Scroll className="size-4" />
+                            </span>
+                          )}
+                        </div>
                       ) : null}
                     </li>
                   )
