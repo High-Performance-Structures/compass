@@ -3,6 +3,7 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm"
 
 import { createRfqRequest } from "@/app/actions/project-operations"
+import { sendProjectRfqEmail } from "@/app/actions/project-rfq-email"
 import { projectOperations } from "@/db/schema"
 import { projectEstimateBasisDocuments, projectEstimateLines } from "@/db/schema-estimates"
 import { projectRfqManualResponseEvents } from "@/db/schema-rfqs"
@@ -10,6 +11,8 @@ import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/l
 import { buildPricingBoard, packageSelectionProblem, type PricingBoard } from "@/lib/estimates/pricing-board"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { projectNumberAndName } from "@/lib/project-display-name"
+import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -196,5 +199,70 @@ export async function createEstimatePricingPackage(
     return { success: true, data: { rfqIds } }
   } catch (error) {
     return { success: false, error: message(error, "Could not make the RFQs.") }
+  }
+}
+
+export type SendPricingPackageResult = {
+  readonly sent: readonly string[]
+  readonly failed: readonly { readonly vendor: string; readonly error: string }[]
+}
+
+/**
+ * Emails every draft RFQ in a pricing package, one email per vendor with
+ * their own price link. Each send is the normal tracked RFQ email, so
+ * replies, Activity and delivery history work as on the RFQs page.
+ */
+export async function sendEstimatePricingPackage(
+  projectId: string,
+  input: { readonly rfqIds: readonly string[]; readonly cc: readonly string[]; readonly message: string },
+): Promise<Result<SendPricingPackageResult>> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const rfqIds = [...new Set(input.rfqIds)]
+    if (rfqIds.length === 0) return { success: false, error: "There are no draft RFQs to send." }
+    if (rfqIds.length > MAX_RECIPIENTS) return { success: false, error: `Send at most ${MAX_RECIPIENTS} RFQs at a time.` }
+    const body = input.message.trim()
+    if (!body) return { success: false, error: "Write a message for the vendors." }
+    const rfqs = await access.db
+      .select({
+        id: projectOperations.id,
+        number: projectOperations.sourceRecordNumber,
+        title: projectOperations.title,
+        status: projectOperations.status,
+        companyName: projectOperations.companyName,
+        updatedAt: projectOperations.updatedAt,
+        payloadJson: projectOperations.sagePayloadJson,
+      })
+      .from(projectOperations)
+      .where(and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordType, "rfq"), inArray(projectOperations.id, rfqIds)))
+    if (rfqs.length !== rfqIds.length) return { success: false, error: "An RFQ in this package is no longer on this job. Reload and try again." }
+    const projectLabel = access.projectNumber ? projectNumberAndName({ name: access.projectName, projectNumber: access.projectNumber }, " - ") : access.projectName
+    const sent: string[] = []
+    const failed: { vendor: string; error: string }[] = []
+    for (const rfq of rfqs) {
+      const vendor = rfq.companyName?.trim() || rfq.number || "Vendor"
+      const to = parsePortalRfqPayload(rfq.payloadJson).recipientEmail
+      if (rfq.status !== "draft") {
+        failed.push({ vendor, error: "Already sent." })
+        continue
+      }
+      if (!to) {
+        failed.push({ vendor, error: "No email on this RFQ." })
+        continue
+      }
+      const result = await sendProjectRfqEmail(projectId, rfq.id, {
+        expectedUpdatedAt: rfq.updatedAt,
+        to,
+        cc: input.cc.filter((email) => email.trim().toLowerCase() !== to.toLowerCase()),
+        subject: `${rfq.number ?? "RFQ"} - ${rfq.title} - ${projectLabel}`.slice(0, 300),
+        message: body,
+      })
+      if (result.success) sent.push(vendor)
+      else failed.push({ vendor, error: result.error })
+    }
+    revalidateEstimate(projectId)
+    return { success: true, data: { sent, failed } }
+  } catch (error) {
+    return { success: false, error: message(error, "Could not send the package.") }
   }
 }
