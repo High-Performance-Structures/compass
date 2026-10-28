@@ -60,7 +60,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "permissions", "agent", "rate-book",
+  "appearance", "permissions", "agent", "rate-book", "workflows",
 ])
 
 function IntegrationsSection() {
