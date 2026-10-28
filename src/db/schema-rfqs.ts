@@ -148,3 +148,29 @@ export const projectEstimateRfqBidImportLines = sqliteTable(
 export type ProjectRfqBidApproval = typeof projectRfqBidApprovals.$inferSelect
 export type ProjectEstimateRfqBidImport =
   typeof projectEstimateRfqBidImports.$inferSelect
+
+/**
+ * A secure no-login price link sent in an RFQ email. Only the token's SHA-256
+ * hash is stored; links expire and staff can turn them off.
+ */
+export const projectRfqQuoteLinks = sqliteTable(
+  "project_rfq_quote_links",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    rfqOperationId: text("rfq_operation_id").notNull().references(() => projectOperations.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    recipientEmail: text("recipient_email").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+    revokedBy: text("revoked_by").references(() => users.id, { onDelete: "set null" }),
+    lastOpenedAt: text("last_opened_at"),
+    submittedAt: text("submitted_at"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_rfq_quote_links_token_uq").on(table.tokenHash),
+    index("project_rfq_quote_links_rfq_idx").on(table.rfqOperationId, table.createdAt),
+  ]
+)

@@ -82,6 +82,8 @@ export function isPublicPath(pathname: string): boolean {
     scheduledMaintenancePaths.includes(pathname) ||
     pathname.startsWith("/.well-known/") ||
     pathname.startsWith("/ecard/") ||
+    // RFQ price links: the page and its action check the hashed token themselves.
+    pathname.startsWith("/quote/") ||
     pathname.startsWith("/api/auth/") ||
     // Signed, short-lived URLs let Meta fetch only approved public photos.
     // The route performs its own HMAC and current-visibility checks.

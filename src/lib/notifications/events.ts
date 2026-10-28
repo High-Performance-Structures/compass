@@ -666,6 +666,49 @@ export async function notifyRfqResponseReceived(
   })
 }
 
+/**
+ * A vendor answered an RFQ through its no-login price link. Nobody is signed
+ * in, so this is a system notification to the job's staff and the sender.
+ */
+export async function notifyRfqResponseReceivedByLink(input: {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly rfqId: string
+  readonly rfqNumber: string | null
+  readonly title: string
+  readonly decision: "quote" | "decline"
+  readonly amount: number | null
+  readonly responderLabel: string
+}): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const recipients = await withRecordSenders(
+    db,
+    input.organizationId,
+    await projectInternalRecipients(db, input.organizationId, input.projectId, ""),
+    { sourceType: "rfq", sourceId: input.rfqId, excludedUserId: "" }
+  )
+  if (recipients.length === 0) return
+  const answer =
+    input.decision === "decline"
+      ? "declined the request"
+      : `submitted a quote${input.amount === null ? "" : ` for ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(input.amount)}`}`
+  await createSystemNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "rfq.response_received",
+    sourceType: "rfq",
+    sourceId: input.rfqId,
+    title: `${input.rfqNumber ?? "RFQ"}: ${input.title}`,
+    body: `${input.responderLabel} ${answer} through the price link.`,
+    href: `/dashboard/projects/${input.projectId}/rfqs?status=response_received#rfq-${encodeURIComponent(input.rfqId)}`,
+    priority: "normal",
+    audience: "project_team",
+    recipients,
+    delivery: { inApp: true, email: true, push: true },
+  })
+}
+
 export async function notifyPurchaseOrderVendorUpdate(
   input: PurchaseOrderVendorUpdateInput
 ): Promise<void> {

@@ -1,5 +1,6 @@
 "use server"
 
+import { checkRfqVendorAnswer } from "@/lib/rfqs/vendor-response"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
@@ -543,10 +544,6 @@ export async function submitSubVendorRfqResponse(
     if (input.decision !== "quote" && input.decision !== "decline") {
       return { success: false, error: "Choose quote or decline." }
     }
-    let amount =
-      input.amount === null || !Number.isFinite(input.amount)
-        ? null
-        : Math.round(input.amount * 100) / 100
 
     const rfq = await context.db
       .select()
@@ -588,48 +585,9 @@ export async function submitSubVendorRfqResponse(
       return { success: false, error: "This RFQ was assigned to another vendor." }
     }
 
-    const responseLines = input.decision === "quote"
-      ? input.lines.map((line) => ({
-          lineNumber: line.lineNumber,
-          amount:
-            line.amount === null || !Number.isFinite(line.amount)
-              ? null
-              : Math.round(line.amount * 100) / 100,
-          notes: cleanText(line.notes, 2_000),
-        }))
-      : []
-    if (input.decision === "quote" && payload.scopeItems.length > 0) {
-      const expectedNumbers = new Set(
-        payload.scopeItems.map((line) => line.lineNumber)
-      )
-      const submittedNumbers = new Set(
-        responseLines.map((line) => line.lineNumber)
-      )
-      const complete =
-        expectedNumbers.size === responseLines.length &&
-        expectedNumbers.size === submittedNumbers.size &&
-        [...expectedNumbers].every((lineNumber) =>
-          submittedNumbers.has(lineNumber)
-        )
-      if (
-        !complete ||
-        responseLines.some(
-          (line) => line.amount === null || line.amount < 0
-        )
-      ) {
-        return {
-          success: false,
-          error: "Enter a valid price for every RFQ scope line.",
-        }
-      }
-      amount = responseLines.reduce(
-        (total, line) => total + (line.amount ?? 0),
-        0
-      )
-    }
-    if (input.decision === "quote" && (amount === null || amount < 0)) {
-      return { success: false, error: "Enter a valid quote amount." }
-    }
+    const answer = checkRfqVendorAnswer(payload, input)
+    if (!answer.ok) return { success: false, error: answer.error }
+    const amount = answer.amount
 
     const now = new Date().toISOString()
     const responseStatus =
@@ -640,19 +598,7 @@ export async function submitSubVendorRfqResponse(
         status: responseStatus,
         amount: input.decision === "quote" ? amount : null,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
-          decision: input.decision,
-          amount: input.decision === "quote" ? amount : null,
-          lines:
-            input.decision === "quote"
-              ? responseLines.flatMap((line) =>
-                  line.amount === null
-                    ? []
-                    : [{ ...line, amount: line.amount }]
-                )
-              : [],
-          leadTime: cleanText(input.leadTime, 240),
-          validUntil: validDate(input.validUntil),
-          notes: cleanText(input.notes, 10_000),
+          ...answer.response,
           responderUserId: context.user.id,
           responderName: context.user.displayName ?? context.user.email,
           responderCompany: context.viewerContact.companyName,

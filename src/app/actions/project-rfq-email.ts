@@ -1,12 +1,15 @@
 "use server"
 
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, gt, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
-import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
+import { projectRfqEmailDeliveries, projectRfqQuoteLinks } from "@/db/schema-rfqs"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { notificationLink } from "@/lib/notifications/create-event"
+import { hashQuoteLinkToken, newQuoteLinkToken, QUOTE_LINK_PATH, quoteLinkExpiresAt, quoteLinkIsLive } from "@/lib/rfqs/quote-links"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -218,6 +221,31 @@ export async function sendProjectRfqEmail(
       sentAt: null,
     })
 
+    // A private price link for this recipient; only its hash is stored.
+    const pricing = await readFeatureSettings(access.db, access.organizationId, "estimate-pricing")
+    const quoteToken = newQuoteLinkToken()
+    const quoteLinkId = crypto.randomUUID()
+    await access.db.insert(projectRfqQuoteLinks).values({
+      id: quoteLinkId,
+      projectId,
+      rfqOperationId: rfqId,
+      tokenHash: await hashQuoteLinkToken(quoteToken),
+      recipientEmail: to,
+      expiresAt: quoteLinkExpiresAt({
+        now: new Date(now),
+        dueDate: rfq.dueDate,
+        graceDays: pricing.quoteLinkGraceDays,
+        daysWithoutDueDate: pricing.quoteLinkDaysWithoutDueDate,
+      }),
+      revokedAt: null,
+      revokedBy: null,
+      lastOpenedAt: null,
+      submittedAt: null,
+      createdBy: access.user.id,
+      createdAt: now,
+    })
+    const quoteUrl = notificationLink(access.env, `${QUOTE_LINK_PATH}/${quoteToken}`)
+
     let deliveryStatus = "failed"
     let provider: string | null = null
     let providerMessageId: string | null = null
@@ -243,6 +271,7 @@ export async function sendProjectRfqEmail(
         senderName: actorName,
         lines: payload.scopeItems,
         documents,
+        quoteUrl,
       }
       // The vendor's reply comes back onto this RFQ and still reaches the
       // estimator who sent it.
@@ -280,6 +309,8 @@ export async function sendProjectRfqEmail(
       sentAt,
     }).where(eq(projectRfqEmailDeliveries.id, deliveryId))
     if (deliveryStatus !== "sent") {
+      // The email never went out, so its link shouldn't work either.
+      await access.db.update(projectRfqQuoteLinks).set({ revokedAt: new Date().toISOString() }).where(eq(projectRfqQuoteLinks.id, quoteLinkId))
       return { success: false, error: deliveryError ?? "RFQ email was not sent. Check the email provider and Drive sharing settings." }
     }
     await access.db.update(projectOperations).set({
@@ -310,3 +341,72 @@ export async function sendProjectRfqEmail(
     return { success: false, error: error instanceof Error ? error.message : "Unable to send RFQ email." }
   }
 }
+
+export type RfqQuoteLinkItem = {
+  readonly id: string
+  readonly rfqOperationId: string
+  readonly recipientEmail: string
+  readonly createdAt: string
+  readonly expiresAt: string
+  readonly live: boolean
+  readonly lastOpenedAt: string | null
+  readonly submittedAt: string | null
+}
+
+/** Price links sent for this job's RFQs, newest first. */
+export async function getProjectRfqQuoteLinks(projectId: string): Promise<readonly RfqQuoteLinkItem[]> {
+  const access = await projectRfqEmailAccess(projectId, false)
+  const rows = await access.db.select().from(projectRfqQuoteLinks)
+    .where(eq(projectRfqQuoteLinks.projectId, projectId))
+    .orderBy(desc(projectRfqQuoteLinks.createdAt))
+  const now = new Date()
+  return rows.map((row) => ({
+    id: row.id,
+    rfqOperationId: row.rfqOperationId,
+    recipientEmail: row.recipientEmail,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+    live: quoteLinkIsLive(row, now),
+    lastOpenedAt: row.lastOpenedAt,
+    submittedAt: row.submittedAt,
+  }))
+}
+
+/** Turns off every price link for an RFQ. Vendors can still reply by email. */
+export async function turnOffRfqQuoteLinks(
+  projectId: string,
+  rfqId: string
+): Promise<{ readonly success: true; readonly count: number } | { readonly success: false; readonly error: string }> {
+  try {
+    const access = await projectRfqEmailAccess(projectId, true)
+    const now = new Date().toISOString()
+    const live = await access.db.select({ id: projectRfqQuoteLinks.id }).from(projectRfqQuoteLinks).where(and(
+      eq(projectRfqQuoteLinks.projectId, projectId),
+      eq(projectRfqQuoteLinks.rfqOperationId, rfqId),
+      isNull(projectRfqQuoteLinks.revokedAt),
+      gt(projectRfqQuoteLinks.expiresAt, now)
+    ))
+    if (live.length === 0) return { success: true, count: 0 }
+    await access.db.update(projectRfqQuoteLinks).set({ revokedAt: now, revokedBy: access.user.id }).where(and(
+      eq(projectRfqQuoteLinks.projectId, projectId),
+      eq(projectRfqQuoteLinks.rfqOperationId, rfqId),
+      isNull(projectRfqQuoteLinks.revokedAt)
+    ))
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId,
+      actor: access.user,
+      category: "email",
+      action: "rfq_quote_link_turned_off",
+      entityType: "project_operation",
+      entityId: rfqId,
+      summary: `Turned off ${live.length} price link${live.length === 1 ? "" : "s"} on an RFQ.`,
+    })
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    return { success: true, count: live.length }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to turn off the price link." }
+  }
+}
+
