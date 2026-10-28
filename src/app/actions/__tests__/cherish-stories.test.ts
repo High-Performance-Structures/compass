@@ -377,6 +377,36 @@ describe("CHERISH stories", () => {
     expect(mocks.sendMessage).not.toHaveBeenCalled()
   })
 
+  it("does not open a direct message with the author of an anonymous story", async () => {
+    const accessQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    accessQuery.from.mockReturnValue(accessQuery)
+    accessQuery.where.mockReturnValue(accessQuery)
+    accessQuery.get.mockResolvedValue({
+      id: "story-1",
+      recipientId: "author-1",
+      recipientEmail: "author@example.com",
+      isAnonymous: true,
+    })
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(accessQuery),
+      insert,
+    })
+
+    const result = await sendCherishStoryReply({
+      id: "story-1",
+      message: "Thank you!",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Private replies are not available for this CHERISH.",
+    })
+    expect(mocks.createDirectMessage).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+
   it("redacts the delivered notification before removing a reply", async () => {
     const replyQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
     replyQuery.from.mockReturnValue(replyQuery)

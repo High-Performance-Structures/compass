@@ -450,33 +450,36 @@ export function CherishStoryInvitation({
               </Button>
 
               <footer className="absolute inset-x-0 bottom-0 border-t border-primary-foreground/20 bg-primary px-4 py-3">
-                <form
-                  className="mb-2 flex items-center gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault()
-                    sendReply()
-                  }}
-                >
-                  <Input
-                    value={replyDraft}
-                    onChange={(event) => setReplyDraft(event.target.value)}
-                    onFocus={() => setReplyFocused(true)}
-                    onBlur={() => setReplyFocused(false)}
-                    maxLength={300}
-                    placeholder="Reply privately…"
-                    aria-label="Reply privately to this CHERISH story"
-                    className="border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground placeholder:text-primary-foreground/60"
-                  />
-                  <Button
-                    type="submit"
-                    size="icon"
-                    variant="secondary"
-                    disabled={isReplying || replyDraft.trim().length === 0}
-                    aria-label="Send private reply"
+                {/* Replies open a direct message with the author, which would unmask an anonymous story. */}
+                {currentStory.isAnonymous ? null : (
+                  <form
+                    className="mb-2 flex items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      sendReply()
+                    }}
                   >
-                    <IconSend aria-hidden="true" />
-                  </Button>
-                </form>
+                    <Input
+                      value={replyDraft}
+                      onChange={(event) => setReplyDraft(event.target.value)}
+                      onFocus={() => setReplyFocused(true)}
+                      onBlur={() => setReplyFocused(false)}
+                      maxLength={300}
+                      placeholder="Reply privately…"
+                      aria-label="Reply privately to this CHERISH story"
+                      className="border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground placeholder:text-primary-foreground/60"
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      variant="secondary"
+                      disabled={isReplying || replyDraft.trim().length === 0}
+                      aria-label="Send private reply"
+                    >
+                      <IconSend aria-hidden="true" />
+                    </Button>
+                  </form>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-1">
                     <Button
