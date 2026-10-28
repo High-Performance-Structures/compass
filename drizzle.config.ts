@@ -23,6 +23,7 @@ export default defineConfig({
     "./src/db/schema-templates.ts",
     "./src/db/schema-social.ts",
     "./src/db/schema-rfqs.ts",
+    "./src/db/schema-trade-docs.ts",
     "./src/db/schema-project-families.ts",
     "./src/db/schema-paper-trail.ts",
     "./src/db/schema-job-workflows.ts",

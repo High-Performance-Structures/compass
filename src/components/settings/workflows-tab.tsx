@@ -21,6 +21,7 @@ import { LinkedJobSettingsSection } from "@/components/settings/linked-job-setti
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
 import { EstimatePricingSettingsSection } from "@/components/settings/estimate-pricing-settings-section"
+import { TradeDocSettingsSection } from "@/components/settings/trade-doc-settings-section"
 import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { PayApplicationSettingsSection } from "@/components/settings/pay-application-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
@@ -214,6 +215,7 @@ const WORKFLOW_AREAS = [
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "schedule-conflicts", label: "Schedule conflicts", description: "Crews or companies never flagged as double-booked, and other spellings of the same name." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
+  { value: "trade-docs", label: "Trade docs", description: "What each kind of vendor must have on file, when documents expire, the certificate check, and bills while documents are missing." },
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
@@ -275,6 +277,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
           <EstimatePricingSettingsSection />
         </>
       )
+    case "trade-docs":
+      return <TradeDocSettingsSection />
     case "contract-deposits":
       return <ContractDepositSettingsSection />
     case "pay-applications":
