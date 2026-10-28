@@ -1144,6 +1144,18 @@ export function ProjectEstimateWorkspacePanel({
             )}
               {pricing.view && (
                 <EstimateLinePricedBy
+                  bids={line.id && estimate ? {
+                    projectId,
+                    estimateId: estimate.id,
+                    lineId: line.id,
+                    // The accepted price is saved on the server; close the
+                    // editor so its now-stale values aren't saved over it.
+                    onAccepted: () => {
+                      closeLineEditor()
+                      pricing.reload()
+                      router.refresh()
+                    },
+                  } : null}
                   sources={pricing.view.sources}
                   estimators={pricing.view.estimators}
                   value={line.pricingSource}

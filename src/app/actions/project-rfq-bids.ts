@@ -339,7 +339,9 @@ export async function approveProjectRfqBid(
 export async function importApprovedProjectRfqBid(
   projectId: string,
   approvalId: string,
-  estimateId: string
+  estimateId: string,
+  /** Only these RFQ scope lines (a split award); all lines when omitted. */
+  onlyLineNumbers: readonly number[] | null = null
 ): Promise<RfqBidActionResult> {
   try {
     const access = await rfqBidAccess(projectId, "approve")
@@ -425,7 +427,7 @@ export async function importApprovedProjectRfqBid(
         error: "The approved bid is missing prices for one or more RFQ scope lines.",
       }
     }
-    const pricedLines =
+    const allPricedLines =
       response.lines.length > 0
         ? response.lines
         : [
@@ -435,6 +437,12 @@ export async function importApprovedProjectRfqBid(
               notes: response.notes,
             },
           ]
+    const pricedLines = onlyLineNumbers
+      ? allPricedLines.filter((line) => onlyLineNumbers.includes(line.lineNumber))
+      : allPricedLines
+    if (pricedLines.length === 0) {
+      return { success: false, error: "Choose at least one cost code from this bid." }
+    }
     const priorSortOrder = existingEstimateLines.reduce(
       (highest, line) => Math.max(highest, line.sortOrder),
       0
@@ -560,7 +568,10 @@ export async function importApprovedProjectRfqBid(
     const importedAmountCents =
       lineValues.reduce((total, line) => total + line.estimateLine.lineTotalCents, 0) +
       lineFills.reduce((total, fill) => total + fill.amountCents, 0)
-    if (importedAmountCents !== approval.amountCents) {
+    const expectedAmountCents = onlyLineNumbers
+      ? pricedLines.reduce((total, line) => total + line.amountCents, 0)
+      : approval.amountCents
+    if (importedAmountCents !== expectedAmountCents) {
       return {
         success: false,
         error: "Approved bid line prices no longer match the approved total.",
