@@ -5,6 +5,11 @@ export const ESTIMATE_WORK_SECTIONS = [
     description: "Enter quantities and costs by division or assembly.",
   },
   {
+    value: "pricing",
+    label: "Pricing requests",
+    description: "Send cost codes out for quotes and see who's pricing what.",
+  },
+  {
     value: "fees",
     label: "Builder fee & markup",
     description: "Set overhead, margin, contingency, and line markup.",
