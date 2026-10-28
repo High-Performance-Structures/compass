@@ -62,6 +62,7 @@ import {
 import { activePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { resolveProjectPhotoDate } from "@/lib/photos/date"
 import { selectAudienceScheduleSourceRows } from "@/lib/schedule/audience-publication"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
@@ -85,7 +86,7 @@ export type AudiencePhoto = {
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
-  readonly photoDate: string
+  readonly photoDate: string | null
   readonly schedulePhase: string
   readonly schedulePhaseConfidence: number
   readonly schedulePhaseReason: string
@@ -392,16 +393,6 @@ function isImage(value: {
   readonly thumbnailUrl: string | null
 }): boolean {
   return value.thumbnailUrl !== null || value.mimeType?.startsWith("image/") === true
-}
-
-function photoDate(value: {
-  readonly capturedAt: string | null
-  readonly logDate: string | null
-  readonly createdAt: string
-}): string {
-  if (value.capturedAt) return value.capturedAt.slice(0, 10)
-  if (value.logDate) return value.logDate
-  return value.createdAt.slice(0, 10)
 }
 
 export async function getProjectAudiencePreview(
@@ -1157,10 +1148,9 @@ export async function getProjectAudiencePreview(
     upcomingMeetings,
     ownerUpdates: ownerUpdateRows,
     photos: photoRows.filter(isImage).map((photo) => {
-      const resolvedPhotoDate = photoDate({
+      const resolvedPhotoDate = resolveProjectPhotoDate({
         capturedAt: photo.capturedAt,
         logDate: photo.logDate,
-        createdAt: photo.createdAt,
       })
       const schedulePhase = photo.schedulePhaseOverride?.trim() ?? ""
 

@@ -20,6 +20,7 @@ import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { comparePhotoDates } from "@/lib/photos/date"
 import {
   audienceDashboardDateLabel,
   audienceDashboardHorizon,
@@ -65,8 +66,9 @@ function PriorityRow({
   )
 }
 
-/** A photo's date for the photo viewer, e.g. "Oct 9, 2026"; blank if unknown. */
-function photoDateLabel(photoDate: string): string {
+/** A known photo date for the viewer, with an explicit label when undated. */
+function photoDateLabel(photoDate: string | null): string {
+  if (photoDate === null) return "Capture date unknown"
   if (!/^\d{4}-\d{2}-\d{2}$/.test(photoDate)) return photoDate
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -108,7 +110,7 @@ export function ProjectAudienceDashboardView({
   // Newest first. The greeting photo cycles the latest few; its larger
   // viewer steps through all of them.
   const photos = data.photos
-    .toSorted((a, b) => b.photoDate.localeCompare(a.photoDate))
+    .toSorted((a, b) => comparePhotoDates(a.photoDate, b.photoDate, "desc"))
     .flatMap((photo) => {
       const source = resolvePhotoImageSource(photo).src
       return source

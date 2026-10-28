@@ -33,6 +33,7 @@ import {
   photoImageSourceForRetry,
 } from "@/lib/photos/image-retry"
 import { adjacentPhoto } from "@/lib/photos/carousel"
+import { comparePhotoDates } from "@/lib/photos/date"
 
 type AudiencePhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 const NO_PHASE_VALUE = "unassigned"
@@ -42,7 +43,7 @@ function phaseLabel(value: string): string {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "Unscheduled"
+  if (!value) return "Capture date unknown"
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -66,9 +67,9 @@ function compareByDate(
   right: AudiencePhoto,
   direction: "asc" | "desc"
 ): number {
-  const result = left.photoDate.localeCompare(right.photoDate)
+  const result = comparePhotoDates(left.photoDate, right.photoDate, direction)
   if (result === 0) return left.fileName.localeCompare(right.fileName)
-  return direction === "asc" ? result : -result
+  return result
 }
 
 function compareByPhase(
@@ -103,6 +104,7 @@ function latestPhotoDate(photos: readonly AudiencePhoto[]): string {
   return (
     photos
       .map((photo) => photo.photoDate)
+      .filter((date): date is string => date !== null)
       .sort((left, right) => right.localeCompare(left))[0] ?? ""
   )
 }
@@ -360,7 +362,7 @@ export function ProjectAudiencePhotoGallery({
                         </div>
                       )}
                       <span className="absolute left-2 top-2 rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                        {photo.photoDate}
+                        {photo.photoDate ?? "Capture date unknown"}
                       </span>
                       <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
                         {phaseLabel(photo.schedulePhase)}

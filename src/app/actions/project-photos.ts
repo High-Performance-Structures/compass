@@ -11,6 +11,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { resolveProjectPhotoDate } from "@/lib/photos/date"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -26,7 +27,7 @@ export type ProjectPhotoLibraryItem = {
   readonly caption: string | null
   readonly capturedAt: string | null
   readonly logDate: string | null
-  readonly photoDate: string
+  readonly photoDate: string | null
   readonly reviewStatus: string
   readonly ownerVisible: boolean
   readonly subVendorVisible: boolean
@@ -116,16 +117,6 @@ function normalizedPhotoKind(value: string): string {
     default:
       return "progress"
   }
-}
-
-function photoDate(value: {
-  readonly capturedAt: string | null
-  readonly logDate: string | null
-  readonly createdAt: string
-}): string {
-  if (value.capturedAt) return value.capturedAt.slice(0, 10)
-  if (value.logDate) return value.logDate
-  return value.createdAt.slice(0, 10)
 }
 
 function isImage(value: {
@@ -235,10 +226,9 @@ export async function getProjectPhotoLibrary(
   const phaseNames = [...new Set(tasks.map((task) => task.phase))]
 
   const photos = rows.filter(isImage).map((row) => {
-    const resolvedPhotoDate = photoDate({
+    const resolvedPhotoDate = resolveProjectPhotoDate({
       capturedAt: row.capturedAt,
       logDate: row.logDate,
-      createdAt: row.createdAt,
     })
     const schedulePhase = row.schedulePhaseOverride?.trim() ?? ""
 
