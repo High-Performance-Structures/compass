@@ -1,10 +1,13 @@
 "use client"
 
+import { ProjectDriveFilePicker } from "@/components/projects/project-drive-file-picker"
+import { withPickedFiles } from "@/lib/files/picked-files"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
   IconChevronDown,
+  IconFolderOpen,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -464,6 +467,8 @@ export function ProjectRfqEditForm({
     ))
   }
 
+  const [filePickerOpen, setFilePickerOpen] = React.useState(false)
+
   function addDocumentLink(): void {
     setDocumentLinks((current) => [...current, newDocumentLink()])
   }
@@ -889,15 +894,33 @@ export function ProjectRfqEditForm({
               <h3 className="text-xs font-semibold uppercase text-muted-foreground">
                 Plans & specs package
               </h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addDocumentLink}
-              >
-                <IconPlus className="size-4" />
-                Add link
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addDocumentLink}
+                >
+                  <IconPlus className="size-4" />
+                  Add link
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilePickerOpen(true)}
+                >
+                  <IconFolderOpen className="size-4" />
+                  Browse project files
+                </Button>
+                <ProjectDriveFilePicker
+                  projectId={projectId}
+                  open={filePickerOpen}
+                  onOpenChange={setFilePickerOpen}
+                  alreadyPickedUrls={documentLinks.map((link) => link.url.trim())}
+                  onPick={(files) => setDocumentLinks((current) => withPickedFiles(current, files, newDocumentLink))}
+                />
+              </div>
             </div>
             <div className="space-y-3 py-3">
               {documentLinks.map((link, index) => (
