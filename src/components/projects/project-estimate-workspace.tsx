@@ -262,6 +262,8 @@ export function ProjectEstimateWorkspacePanel({
     null
   )
   const lineEditorRef = useRef<HTMLFormElement>(null)
+  // Group whose "Add item" opened the editor, so it opens at that group's end.
+  const [addToGroupKey, setAddToGroupKey] = useState<string | null>(null)
   const [startTemplateId, setStartTemplateId] = useState("")
   const [basisProjectDocumentId, setBasisProjectDocumentId] = useState("")
   const [startTaxEntityId, setStartTaxEntityId] = useState("")
@@ -529,8 +531,7 @@ export function ProjectEstimateWorkspacePanel({
           : `Estimate line saved, but the takeoff to-do wasn't made: ${todo.error}`
       }
       if (result.success) {
-        setLine(EMPTY_LINE)
-        setInsertAfterLineId(null)
+        closeLineEditor()
         pricing.reload()
       }
       finish(saved)
@@ -590,21 +591,26 @@ export function ProjectEstimateWorkspacePanel({
 
   function openLineEditor(
     nextLine: LineDraft,
-    insertionPoint: string | null = null
+    insertionPoint: string | null = null,
+    groupKey: string | null = null
   ): void {
     setLine(nextLine)
     setInsertAfterLineId(insertionPoint)
+    setAddToGroupKey(groupKey)
     window.requestAnimationFrame(() => {
       const description = lineEditorRef.current
         ?.querySelector<HTMLInputElement>("#estimateDescription")
-      // On narrow screens the form is taller than the viewport; reveal the
-      // focused field rather than leaving it below the visible form heading.
-      ;(description ?? lineEditorRef.current)?.scrollIntoView({
-        behavior: "smooth",
-        block: description ? "center" : "start",
-      })
+      // The editor opens right under the line, so only nudge it into view
+      // when part of it is off screen; the person keeps their place.
+      lineEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
       description?.focus({ preventScroll: true })
     })
+  }
+
+  function closeLineEditor(): void {
+    setLine(EMPTY_LINE)
+    setInsertAfterLineId(null)
+    setAddToGroupKey(null)
   }
 
   function importSourceCsi(): void {
@@ -894,6 +900,333 @@ export function ProjectEstimateWorkspacePanel({
           </div>
         )}
       </section>
+    )
+  }
+
+  // The line editor opens where the person is working: under the line being
+  // edited or inserted after, at the end of the assembly it's added to, or at
+  // the bottom for a new line. Only one copy renders at a time (field ids).
+  // Falls back to the bottom when the anchor isn't on screen (e.g. the view
+  // switched between division and assembly, or the line was removed).
+  const editorIsInline = line.id
+    ? groupedLines.some((group) => group.items.some((item) => item.id === line.id))
+    : insertAfterLineId
+      ? groupedLines.some((group) => group.items.some((item) => item.id === insertAfterLineId))
+      : addToGroupKey !== null && groupedLines.some((group) => group.key === addToGroupKey)
+
+  function renderLineEditor(placement: "inline" | "bottom"): React.ReactElement {
+    return (
+            <form
+            ref={lineEditorRef}
+            className={placement === "inline" ? "max-w-5xl scroll-mt-24 border-y bg-muted/30 px-3 py-4" : "mt-5 max-w-5xl scroll-mt-6 border-t pt-4"}
+            onSubmit={saveLine}
+          >
+              <h3 className="mb-3 text-sm font-semibold">
+              {line.id
+                ? "Edit estimate line"
+                : insertAfterLineId
+                  ? "Insert estimate line"
+                  : "Add estimate line"}
+            </h3>
+              <div className="mb-3 max-w-sm space-y-1.5">
+                <Label htmlFor="estimate-line-assembly">Assembly</Label>
+                <SearchableCombobox
+                  id="estimate-line-assembly"
+                  ariaLabel="Assembly"
+                  placeholder="Choose assembly"
+                  value={line.assemblyId ?? "none"}
+                  options={[
+                    { value: "none", label: "Other work (no assembly)" },
+                    ...workspace.assemblies.map((assembly) => ({
+                      value: assembly.id,
+                      label: assembly.name,
+                      description: assembly.description ?? undefined,
+                    })),
+                  ]}
+                  onValueChange={(value) =>
+                    setLine({
+                      ...line,
+                      assemblyId: value === "none" ? null : value,
+                    })
+                  }
+                />
+              </div>
+              {!lineUsesCostBreakdown ? (
+                <RateBookFillPicker
+                  key={line.id ?? "new"}
+                  id="estimate-line-rate-book"
+                  projectId={projectId}
+                  className="mb-3 max-w-sm space-y-1.5"
+                  onPick={(option) => {
+                    // The cost code depends on the work: a rate's default code
+                    // only fills a line that has none yet.
+                    const code = option.costCode && !line.costCode
+                      ? workspace.costCodes.find((candidate) => candidate.value === option.costCode)
+                      : undefined
+                    setLine({
+                      ...line,
+                      divisionCode: code?.divisionCode ?? line.divisionCode,
+                      costCode: code?.value ?? line.costCode,
+                      description: line.description || option.description,
+                      unit: option.unit,
+                      unitCost: String(option.unitCostCents / 100),
+                      markupPercent: String(option.markupBasisPoints / 100),
+                    })
+                  }}
+                />
+              ) : null}
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="estimate-line-division">CSI division</Label>
+                  <SearchableCombobox
+                    id="estimate-line-division"
+                    value={line.divisionCode}
+                    onValueChange={(value) =>
+                      setLine({
+                        ...line,
+                        divisionCode: value,
+                        costCode: "",
+                        reportPhaseId: "",
+                      })
+                    }
+                    options={divisions.map(([value, label]) => ({
+                      value,
+                      label,
+                      keywords: value,
+                    }))}
+                    ariaLabel="CSI division"
+                    placeholder="Choose division first"
+                    searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                    emptyMessage="No matching divisions."
+                  />
+                </div>
+                <div className="space-y-1.5 xl:col-span-2">
+                <Label>Cost code</Label>
+                <SearchableCombobox
+                  ariaLabel="Estimate cost code"
+                  options={availableCostCodes}
+                  value={line.costCode}
+                  onValueChange={(value) => setLine({ ...line, costCode: value })}
+                  disabled={!line.divisionCode}
+                  placeholder="Choose cost code"
+                  searchPlaceholder="Search Sage cost codes..."
+                  emptyMessage="No matching Sage cost codes."
+                />
+              </div>
+                <div className="space-y-1.5">
+                <Label htmlFor="estimateUnit">Unit type</Label>
+                <EstimateUnitInput
+                  id="estimateUnit"
+                  name="unit"
+                  value={line.unit}
+                  disabled={lineUsesCostBreakdown}
+                  onValueChange={(value) => setLine({ ...line, unit: value })}
+                />
+              </div>
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                  <Label htmlFor="estimate-report-phase">
+                    Customer-facing report phase
+                  </Label>
+                  <SearchableCombobox
+                    id="estimate-report-phase"
+                    value={line.reportPhaseId || "__csi__"}
+                    onValueChange={(value) =>
+                      setLine({
+                        ...line,
+                        reportPhaseId:
+                          value === "__csi__" || value === "" ? "" : value,
+                      })
+                    }
+                    options={[
+                      { value: "__csi__", label: "Default CSI grouping" },
+                      ...workspace.reportPhases
+                        .filter(
+                          (phase) => phase.divisionCode === line.divisionCode
+                        )
+                        .map((phase) => ({ value: phase.id, label: phase.name })),
+                    ]}
+                    ariaLabel="Customer-facing report phase"
+                    placeholder="Default CSI grouping"
+                    searchPlaceholder="Search report phases..."
+                    emptyMessage="No matching report phases."
+                    className="sm:max-w-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
+                </div>
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                <Label htmlFor="estimateDescription">Description</Label>
+                <Input id="estimateDescription" name="description" value={line.description} onChange={(event) => setLine({ ...line, description: event.target.value })} required />
+              </div>
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                <Label htmlFor="estimateSpecifications">Specifications / scope notes</Label>
+                <Textarea id="estimateSpecifications" name="specifications" value={line.specifications} onChange={(event) => setLine({ ...line, specifications: event.target.value })} rows={3} />
+              </div>
+                <div className="space-y-1.5">
+                <Label htmlFor="estimateQuantity">Quantity</Label>
+                <Input id="estimateQuantity" name="quantity" inputMode="decimal" value={line.quantity} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, quantity: event.target.value })} />
+              </div>
+                <div className="space-y-1.5">
+                <Label htmlFor="estimateUnitCost">Unit cost</Label>
+                <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
+              </div>
+                <div className="space-y-1.5">
+                <Label htmlFor="estimateMarkup">Line markup %</Label>
+                <Input id="estimateMarkup" name="markupPercent" inputMode="decimal" value={line.markupPercent} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, markupPercent: event.target.value })} />
+              </div>
+                <div className="space-y-1.5">
+                <Label>Tax entity</Label>
+                <SearchableCombobox
+                  value={line.taxEntityId}
+                  onValueChange={(value) =>
+                    setLine({ ...line, taxEntityId: value })
+                  }
+                  disabled={!line.taxable || lineUsesCostBreakdown}
+                  options={[
+                    {
+                      value: "",
+                      label: "Use project tax entity",
+                      keywords: "default inherit clear",
+                    },
+                    ...taxEntityOptions,
+                  ]}
+                  ariaLabel="Estimate line tax entity"
+                  placeholder="Use project tax entity"
+                  searchPlaceholder="Search Sage tax entities..."
+                  emptyMessage="No matching Sage tax entities."
+                  groupHeading="Active Sage tax entities"
+                />
+              </div>
+                {lineUsesCostBreakdown && (
+                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
+                  Quantity, unit, unit cost, markup, and tax are calculated from
+                  this line&apos;s expanded cost-code breakdown. Edit those pricing
+                  values inside the breakdown above.
+                </p>
+              )}
+              </div>
+              {!lineUsesCostBreakdown && (
+              <div
+                className="mt-3 grid gap-2 border-y py-3 text-sm sm:grid-cols-4"
+                aria-live="polite"
+              >
+                <div>
+                  <p className="text-xs text-muted-foreground">Direct cost</p>
+                  <p className="font-medium">
+                    {money(linePreview.directCostCents)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Markup</p>
+                  <p className="font-medium">{money(linePreview.markupCents)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Sales tax
+                    {line.taxable && effectiveLineTaxEntity
+                      ? ` · ${percent(effectiveLineTaxEntity.rateBasisPoints)}`
+                      : ""}
+                  </p>
+                  <p className="font-medium">{money(linePreview.taxCents)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Line total</p>
+                  <p className="font-semibold">
+                    {money(linePreview.lineTotalCents)}
+                  </p>
+                </div>
+                {line.taxable && !effectiveLineTaxEntity && (
+                  <p className="text-xs text-destructive sm:col-span-4">
+                    Choose a tax entity before saving this taxable line.
+                  </p>
+                )}
+              </div>
+            )}
+              {pricing.view && (
+                <EstimateLinePricedBy
+                  sources={pricing.view.sources}
+                  estimators={pricing.view.estimators}
+                  value={line.pricingSource}
+                  estimatorId={line.takeoffEstimatorId}
+                  state={line.id ? pricing.view.lines[line.id] : undefined}
+                  disabled={isPending}
+                  onSourceChange={(source) =>
+                    setLine({
+                      ...line,
+                      pricingSource: source?.id ?? "",
+                      // Owner scope is the owner's number: no builder fee, no sales tax.
+                      ...(source?.ownerScope ? { includeInBuilderFee: false, taxable: false, taxEntityId: "" } : {}),
+                    })
+                  }
+                  onEstimatorChange={(takeoffEstimatorId) => setLine({ ...line, takeoffEstimatorId })}
+                />
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-5">
+                <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={line.taxable}
+                  disabled={lineUsesCostBreakdown}
+                  onCheckedChange={(checked) => {
+                    const taxable = checked === true
+                    setLine({
+                      ...line,
+                      taxable,
+                      taxEntityId:
+                        taxable && !line.taxEntityId
+                          ? defaultTaxEntityId
+                          : line.taxEntityId,
+                    })
+                  }}
+                />
+                Taxable line
+              </label>
+                <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={line.ownerVisible} onCheckedChange={(checked) => setLine({ ...line, ownerVisible: checked === true })} />
+                Owner-visible
+              </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={line.includeInBuilderFee}
+                    onCheckedChange={(checked) =>
+                      setLine({
+                        ...line,
+                        includeInBuilderFee: checked === true,
+                      })
+                    }
+                  />
+                  Include cost in builder-fee calculation
+                </label>
+                <div className="ml-auto flex gap-2">
+                  {(line.id || insertAfterLineId || addToGroupKey !== null) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        closeLineEditor()
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                  type="submit"
+                  disabled={
+                    isPending ||
+                    !line.costCode ||
+                    (!lineUsesCostBreakdown &&
+                      line.taxable &&
+                      !effectiveLineTaxEntity)
+                  }
+                >
+                    <IconPlus className="size-4" />{" "}
+                    {line.id
+                      ? "Save line"
+                      : insertAfterLineId
+                        ? "Insert line"
+                        : "Add line"}
+                  </Button>
+                </div>
+              </div>
+            </form>
     )
   }
 
@@ -1688,10 +2021,14 @@ export function ProjectEstimateWorkspacePanel({
                               size="sm"
                               variant="outline"
                               onClick={() =>
-                                openLineEditor({
-                                  ...EMPTY_LINE,
-                                  assemblyId: group.assemblyId,
-                                })
+                                openLineEditor(
+                                  {
+                                    ...EMPTY_LINE,
+                                    assemblyId: group.assemblyId,
+                                  },
+                                  null,
+                                  group.key
+                                )
                               }
                             >
                               Add item
@@ -1801,9 +2138,15 @@ export function ProjectEstimateWorkspacePanel({
                           defaultTaxEntityId={defaultTaxEntityId}
                           editable={editable}
                         />
+                          {editable && (line.id === item.id || (!line.id && insertAfterLineId === item.id)) && (
+                            <div className="mt-3">{renderLineEditor("inline")}</div>
+                          )}
                         </div>
                       )}
                     />
+                    {editable && !line.id && !insertAfterLineId && addToGroupKey === group.key && (
+                      <div className="px-3 py-3">{renderLineEditor("inline")}</div>
+                    )}
                   </div>
                 )
               })}
@@ -1824,320 +2167,7 @@ export function ProjectEstimateWorkspacePanel({
             </div>
           )}
 
-          {editable && (
-            <form
-            ref={lineEditorRef}
-            className="mt-5 max-w-5xl scroll-mt-6 border-t pt-4"
-            onSubmit={saveLine}
-          >
-              <h3 className="mb-3 text-sm font-semibold">
-              {line.id
-                ? "Edit estimate line"
-                : insertAfterLineId
-                  ? "Insert estimate line"
-                  : "Add estimate line"}
-            </h3>
-              <div className="mb-3 max-w-sm space-y-1.5">
-                <Label htmlFor="estimate-line-assembly">Assembly</Label>
-                <SearchableCombobox
-                  id="estimate-line-assembly"
-                  ariaLabel="Assembly"
-                  placeholder="Choose assembly"
-                  value={line.assemblyId ?? "none"}
-                  options={[
-                    { value: "none", label: "Other work (no assembly)" },
-                    ...workspace.assemblies.map((assembly) => ({
-                      value: assembly.id,
-                      label: assembly.name,
-                      description: assembly.description ?? undefined,
-                    })),
-                  ]}
-                  onValueChange={(value) =>
-                    setLine({
-                      ...line,
-                      assemblyId: value === "none" ? null : value,
-                    })
-                  }
-                />
-              </div>
-              {!lineUsesCostBreakdown ? (
-                <RateBookFillPicker
-                  key={line.id ?? "new"}
-                  id="estimate-line-rate-book"
-                  projectId={projectId}
-                  className="mb-3 max-w-sm space-y-1.5"
-                  onPick={(option) => {
-                    // The cost code depends on the work: a rate's default code
-                    // only fills a line that has none yet.
-                    const code = option.costCode && !line.costCode
-                      ? workspace.costCodes.find((candidate) => candidate.value === option.costCode)
-                      : undefined
-                    setLine({
-                      ...line,
-                      divisionCode: code?.divisionCode ?? line.divisionCode,
-                      costCode: code?.value ?? line.costCode,
-                      description: line.description || option.description,
-                      unit: option.unit,
-                      unitCost: String(option.unitCostCents / 100),
-                      markupPercent: String(option.markupBasisPoints / 100),
-                    })
-                  }}
-                />
-              ) : null}
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="estimate-line-division">CSI division</Label>
-                  <SearchableCombobox
-                    id="estimate-line-division"
-                    value={line.divisionCode}
-                    onValueChange={(value) =>
-                      setLine({
-                        ...line,
-                        divisionCode: value,
-                        costCode: "",
-                        reportPhaseId: "",
-                      })
-                    }
-                    options={divisions.map(([value, label]) => ({
-                      value,
-                      label,
-                      keywords: value,
-                    }))}
-                    ariaLabel="CSI division"
-                    placeholder="Choose division first"
-                    searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
-                    emptyMessage="No matching divisions."
-                  />
-                </div>
-                <div className="space-y-1.5 xl:col-span-2">
-                <Label>Cost code</Label>
-                <SearchableCombobox
-                  ariaLabel="Estimate cost code"
-                  options={availableCostCodes}
-                  value={line.costCode}
-                  onValueChange={(value) => setLine({ ...line, costCode: value })}
-                  disabled={!line.divisionCode}
-                  placeholder="Choose cost code"
-                  searchPlaceholder="Search Sage cost codes..."
-                  emptyMessage="No matching Sage cost codes."
-                />
-              </div>
-                <div className="space-y-1.5">
-                <Label htmlFor="estimateUnit">Unit type</Label>
-                <EstimateUnitInput
-                  id="estimateUnit"
-                  name="unit"
-                  value={line.unit}
-                  disabled={lineUsesCostBreakdown}
-                  onValueChange={(value) => setLine({ ...line, unit: value })}
-                />
-              </div>
-                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-                  <Label htmlFor="estimate-report-phase">
-                    Customer-facing report phase
-                  </Label>
-                  <SearchableCombobox
-                    id="estimate-report-phase"
-                    value={line.reportPhaseId || "__csi__"}
-                    onValueChange={(value) =>
-                      setLine({
-                        ...line,
-                        reportPhaseId:
-                          value === "__csi__" || value === "" ? "" : value,
-                      })
-                    }
-                    options={[
-                      { value: "__csi__", label: "Default CSI grouping" },
-                      ...workspace.reportPhases
-                        .filter(
-                          (phase) => phase.divisionCode === line.divisionCode
-                        )
-                        .map((phase) => ({ value: phase.id, label: phase.name })),
-                    ]}
-                    ariaLabel="Customer-facing report phase"
-                    placeholder="Default CSI grouping"
-                    searchPlaceholder="Search report phases..."
-                    emptyMessage="No matching report phases."
-                    className="sm:max-w-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
-                </div>
-                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-                <Label htmlFor="estimateDescription">Description</Label>
-                <Input id="estimateDescription" name="description" value={line.description} onChange={(event) => setLine({ ...line, description: event.target.value })} required />
-              </div>
-                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-                <Label htmlFor="estimateSpecifications">Specifications / scope notes</Label>
-                <Textarea id="estimateSpecifications" name="specifications" value={line.specifications} onChange={(event) => setLine({ ...line, specifications: event.target.value })} rows={3} />
-              </div>
-                <div className="space-y-1.5">
-                <Label htmlFor="estimateQuantity">Quantity</Label>
-                <Input id="estimateQuantity" name="quantity" inputMode="decimal" value={line.quantity} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, quantity: event.target.value })} />
-              </div>
-                <div className="space-y-1.5">
-                <Label htmlFor="estimateUnitCost">Unit cost</Label>
-                <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
-              </div>
-                <div className="space-y-1.5">
-                <Label htmlFor="estimateMarkup">Line markup %</Label>
-                <Input id="estimateMarkup" name="markupPercent" inputMode="decimal" value={line.markupPercent} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, markupPercent: event.target.value })} />
-              </div>
-                <div className="space-y-1.5">
-                <Label>Tax entity</Label>
-                <SearchableCombobox
-                  value={line.taxEntityId}
-                  onValueChange={(value) =>
-                    setLine({ ...line, taxEntityId: value })
-                  }
-                  disabled={!line.taxable || lineUsesCostBreakdown}
-                  options={[
-                    {
-                      value: "",
-                      label: "Use project tax entity",
-                      keywords: "default inherit clear",
-                    },
-                    ...taxEntityOptions,
-                  ]}
-                  ariaLabel="Estimate line tax entity"
-                  placeholder="Use project tax entity"
-                  searchPlaceholder="Search Sage tax entities..."
-                  emptyMessage="No matching Sage tax entities."
-                  groupHeading="Active Sage tax entities"
-                />
-              </div>
-                {lineUsesCostBreakdown && (
-                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
-                  Quantity, unit, unit cost, markup, and tax are calculated from
-                  this line&apos;s expanded cost-code breakdown. Edit those pricing
-                  values inside the breakdown above.
-                </p>
-              )}
-              </div>
-              {!lineUsesCostBreakdown && (
-              <div
-                className="mt-3 grid gap-2 border-y py-3 text-sm sm:grid-cols-4"
-                aria-live="polite"
-              >
-                <div>
-                  <p className="text-xs text-muted-foreground">Direct cost</p>
-                  <p className="font-medium">
-                    {money(linePreview.directCostCents)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Markup</p>
-                  <p className="font-medium">{money(linePreview.markupCents)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">
-                    Sales tax
-                    {line.taxable && effectiveLineTaxEntity
-                      ? ` · ${percent(effectiveLineTaxEntity.rateBasisPoints)}`
-                      : ""}
-                  </p>
-                  <p className="font-medium">{money(linePreview.taxCents)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Line total</p>
-                  <p className="font-semibold">
-                    {money(linePreview.lineTotalCents)}
-                  </p>
-                </div>
-                {line.taxable && !effectiveLineTaxEntity && (
-                  <p className="text-xs text-destructive sm:col-span-4">
-                    Choose a tax entity before saving this taxable line.
-                  </p>
-                )}
-              </div>
-            )}
-              {pricing.view && (
-                <EstimateLinePricedBy
-                  sources={pricing.view.sources}
-                  estimators={pricing.view.estimators}
-                  value={line.pricingSource}
-                  estimatorId={line.takeoffEstimatorId}
-                  state={line.id ? pricing.view.lines[line.id] : undefined}
-                  disabled={isPending}
-                  onSourceChange={(source) =>
-                    setLine({
-                      ...line,
-                      pricingSource: source?.id ?? "",
-                      // Owner scope is the owner's number: no builder fee, no sales tax.
-                      ...(source?.ownerScope ? { includeInBuilderFee: false, taxable: false, taxEntityId: "" } : {}),
-                    })
-                  }
-                  onEstimatorChange={(takeoffEstimatorId) => setLine({ ...line, takeoffEstimatorId })}
-                />
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-5">
-                <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={line.taxable}
-                  disabled={lineUsesCostBreakdown}
-                  onCheckedChange={(checked) => {
-                    const taxable = checked === true
-                    setLine({
-                      ...line,
-                      taxable,
-                      taxEntityId:
-                        taxable && !line.taxEntityId
-                          ? defaultTaxEntityId
-                          : line.taxEntityId,
-                    })
-                  }}
-                />
-                Taxable line
-              </label>
-                <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={line.ownerVisible} onCheckedChange={(checked) => setLine({ ...line, ownerVisible: checked === true })} />
-                Owner-visible
-              </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={line.includeInBuilderFee}
-                    onCheckedChange={(checked) =>
-                      setLine({
-                        ...line,
-                        includeInBuilderFee: checked === true,
-                      })
-                    }
-                  />
-                  Include cost in builder-fee calculation
-                </label>
-                <div className="ml-auto flex gap-2">
-                  {(line.id || insertAfterLineId) && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setLine(EMPTY_LINE)
-                        setInsertAfterLineId(null)
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                  <Button
-                  type="submit"
-                  disabled={
-                    isPending ||
-                    !line.costCode ||
-                    (!lineUsesCostBreakdown &&
-                      line.taxable &&
-                      !effectiveLineTaxEntity)
-                  }
-                >
-                    <IconPlus className="size-4" />{" "}
-                    {line.id
-                      ? "Save line"
-                      : insertAfterLineId
-                        ? "Insert line"
-                        : "Add line"}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          )}
+          {editable && !editorIsInline && renderLineEditor("bottom")}
         </div>
       </section>
 
