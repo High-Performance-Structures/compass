@@ -7,12 +7,12 @@
   "summary": "Create and review RFIs, RFQs, purchase orders, and vendor bill submissions.",
   "contextSummary": "Questions, pricing requests, commitments, and vendor invoices are different controlled records. Confirm project, recipients, files, totals, approval, and Sage status.",
   "category": "Project Operations",
-  "tags": ["RFI", "RFQ", "purchase orders", "vendor bills", "Sage", "bids"],
+  "tags": ["RFI", "RFQ", "price link", "quotes", "purchase orders", "vendor bills", "Sage", "bids"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-10-24"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -33,6 +33,16 @@ Use **Email** on an RFI to send it from Compass. Choose **To** and **Cc**, check
 Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Use the Sage division and cost-code pickers to code scope rows instead of typing an unrelated code. Verify each recipient and Drive link before sending; an RFQ does not grant general portal access.
 
 Staff can email external bidders and record a response received outside Compass using the manual-response workflow. Preserve the original quote and identify whose response it is. Compare pricing, scope, exclusions, and lead time before accepting or importing it into an estimate. Use duplication to prepare a related RFQ only after checking the new project, recipients, dates, and scope.
+
+To attach plans and specifications, choose **Browse project files** next to **Add link** in the RFQ form. It opens the job's Drive folder: open subfolders, search the current folder, tick files or a whole folder, and choose **Add N files**. Files already listed show as **Added**. You can still paste a link by hand. To send several cost codes to several vendors at once from an estimate, use the estimate's [pricing board](/dashboard/help/financial-workflows#estimate-pricing).
+
+### Price links
+
+Every RFQ email includes a private **Enter your prices** button. The vendor, or an owner asked for owner-scope numbers, opens it without a Compass account, enters a price for each scope line or declines, and can add lead time, a price-good-until date, and what's included and excluded. They can come back to update their prices until the link expires, while the RFQ is open and no bid has been approved. Replying by email still works.
+
+A price sent through the link arrives on the RFQ as that vendor's quote, and staff get a notification and an Activity entry. The RFQ's **Price links** section shows how long each link works and when it was opened and answered. **Turn off price link** stops a link after you confirm. How long links work is set in **Settings → Workflows → Estimates → Vendor price links**.
+
+When you bring an approved bid into the estimate, a line for the same cost code still waiting at $0 is filled with the bid price; if there isn't one, a new line is added. Lines that already have a price are never overwritten.
 
 ## Replies to RFQ, P.O., and RFI Emails {#email-replies}
 

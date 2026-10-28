@@ -7,22 +7,28 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour"],
+  "tags": ["schedule", "tasks", "Gantt", "conflicts", "workload", "double-booked", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
 ## Open a Schedule {#open-schedule}
 
-Use **Schedules & Calendar** for a cross-project entry point or open a project's **Schedule** for its detailed timeline. The project switcher can move between jobs while keeping schedule context. Available views and editing controls depend on role and screen size.
+Use **Tasks & Schedule → Project Schedule** for every job at once, **Work Calendar** for a calendar view, or a project's **Schedule** for its detailed timeline. The project switcher can move between jobs while keeping schedule context. Available views and editing controls depend on role and screen size.
 
 ## Gantt View {#gantt}
 
 The task list and timeline scroll together. The Gantt opens around **Today**; use **Today**, zoom, search, grouping, and color modes to focus the view. Selecting a row selects the schedule item without rebuilding the whole view or repeatedly jumping the timeline. Grouping by phase keeps list rows aligned with their bars. Colors are viewing aids; confirm actual phase, status, and completion data.
+
+## See Every Job Together {#all-jobs}
+
+The all-jobs schedule (**Tasks & Schedule → Project Schedule**) starts with **No grouping**, so items from different jobs interleave by date in the Gantt and the list, each with its job tag and color. Use the grouping menu to choose **By phase**, **By project**, **By crew** (one group per crew or company, from the first **Assigned to** name), or **By status**.
+
+When more than one job is shown, **Workload across jobs, next 6 weeks** draws one bar per day for how many items are scheduled, with the part in conflict in red and a count of days with a double-booked crew. An item whose crew or company is booked on another job over the same days gets a dashed red outline on its Gantt bar and a warning icon on its row; hover to see the other job, item, and days. Choose **Conflicts (n)** to show only those items. Finished items and items on the same job never conflict.
 
 ## Critical Path {#critical-path}
 

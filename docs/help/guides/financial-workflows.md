@@ -7,12 +7,12 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -30,7 +30,11 @@ Before synchronizing an approved estimate workbook, verify the project, source t
 
 ### Work on one estimate area at a time
 
-Use **Work on** to choose **Estimate costs**, **Builder fee & markup**, **Customer report format**, **Group descriptions & report phases**, **Introduction & closing**, **Contract terms & acknowledgements**, **Contract signers**, **Approval and accounting handoff**, **Estimate details & versions**, or **Plans, specifications, and estimate basis**. Only the selected area is shown. The estimate totals and **Print Preview** remain available. Switching areas keeps unfinished entries in place; select the area's save action to persist changes. **Save draft details** saves the estimate details, text, terms, and signer fields together.
+Use **Work on** to choose **Estimate costs**, **Pricing requests**, **Builder fee & markup**, **Customer report format**, **Group descriptions & report phases**, **Introduction & closing**, **Contract terms & acknowledgements**, **Contract signers**, **Approval and accounting handoff**, **Estimate details & versions**, or **Plans, specifications, and estimate basis**. Only the selected area is shown. The estimate totals and **Print Preview** remain available. Switching areas keeps unfinished entries in place; select the area's save action to persist changes. **Save draft details** saves the estimate details, text, terms, and signer fields together.
+
+The version picker, **Compare versions**, and **Duplicate estimate** stay in the header in every area. Each version is listed with its estimate number, version, status, and date (for example, `25-104-00 · v1 · Accepted · 2026-08-20`), so check the status before you delete a draft. Once an estimate is accepted, the page opens that estimate, or a newer version of it that is still in progress, rather than an unrelated draft.
+
+**Edit** and **Insert below** open the line editor right under that line, and **Add item** on an assembly opens it at the end of the assembly, so you keep your place. **Add line** for a new line still opens the editor at the bottom of the page.
 
 ### Build and report by assembly
 
@@ -49,6 +53,44 @@ Division and assembly reports use grey group headings and subtotal bands, with c
 **Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report settings** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
 
 **Save report settings** saves everything you changed on the customer report at once: the report view and its options, the assemblies that show cost codes, CSI group descriptions, and appended acknowledgements. **Unsaved changes** shows until you save. If one part can't be saved, the message names it and the rest are still saved. **Save department template** stays separate because it adds a template for future estimates rather than changing this one.
+
+## Price Estimate Lines {#estimate-pricing}
+
+In the line editor, **Priced by** records who gives you the number for that cost code. The built-in choices are **Supplier**, **Subcontractor**, **Internal labor**, **Internal material** (material you supply yourselves), **Equipment**, and **Owner**. Each choice sets the Sage cost type.
+
+- **Supplier and Subcontractor** lines wait for a quote.
+- **Internal labor, Internal material, and Equipment** lines show **Takeoff to-do for**. Choose an estimator and save: Compass creates a takeoff to-do for that person and links it to the line, and the editor shows its status. A line keeps one open takeoff to-do.
+- **Owner** lines are owner scope: the owner provides the number, and the line stays out of the builder fee and sales tax.
+
+A line with a **Priced by** choice can be saved at $0 before its price is in. It shows **Needs price** until it is priced. You can't prepare the estimate for signature, or mark it sent outside Compass, while any line still needs a price.
+
+### Request quotes from the pricing board
+
+Open **Work on → Pricing requests**. It lists every line with a **Priced by** choice, its status and amount, how many RFQs and quotes are in for supplier and subcontractor lines, and the takeoff to-do for internal lines.
+
+1. Tick the cost codes to send out. A package holds lines with the same **Priced by** choice; takeoff lines are priced by your own staff and can't be sent.
+2. Choose **Request quotes**. Enter the **Package name**, **Quotes due** date, and **Scope notes for vendors**.
+3. Pick vendors from the job and the directory, or type one in.
+4. Under **Plans and specs to include**, choose the estimate's linked plans, or use **Browse project files** to pick files or whole folders from the job's Drive folder.
+5. Choose **Make N draft RFQs**. Compass makes one draft RFQ per vendor with those cost codes as its scope lines, grouped as one package.
+
+**Packages on this job** shows each package with a chip per vendor for its RFQ number and status (**Draft**, **Sent**, **Quote in**, **Declined**); select a chip to open the RFQ. To send every draft in a package at once, choose **Send to N vendors**, check **To** (vendors without an email are named and skipped), add any **Cc** for every email, edit the shared **Message**, and choose **Send N emails**. Each email is the same tracked RFQ email as sending one from RFQs, with its own private price link. Results are listed by vendor.
+
+For owner-scope lines, tick them and choose **Ask the owner**. Pick one of the job's owner contacts, or type someone in, then send it the same way. The owner enters a number for each cost code through a private link with no login. The line's status moves from **Owner hasn't been asked yet** to **Asked the owner** to **Owner's number is in**. Owner lines and vendor lines can't be mixed in one package.
+
+RFQs are matched to lines by cost code across the job, so an RFQ made by hand on the RFQs page, or a newer estimate version, still lines up.
+
+### Compare bids and accept one
+
+Choose **Bids** on a line in the board, or beside **Priced by** in the line editor. The window lists every answer on this job's RFQs that covers that cost code: vendor, the price for this code, the package total, lead time, the date the price is good until, notes, and the other codes they priced. Quotes are sorted cheapest first, with **Lowest** marked and declines last.
+
+Choose a bid, untick any codes you're giving to someone else, and choose **Accept** with the vendor's name. Compass approves the bid if needed and brings in the ticked codes. A line for the same cost code still waiting at $0 is filled with the bid price and keeps its own markup, tax, and builder-fee settings; otherwise a new line is added. A line that already has a price, or is built from a cost breakdown, is never overwritten. A bid already brought into an estimate can't be brought in again for its remaining codes.
+
+**Selected trades** on the pricing board lists each vendor you accepted, with its cost codes, amounts, total, and who accepted it and when. Owner-scope rows are marked and left out of the trades total.
+
+### Pricing settings
+
+Admins set the **Priced by** choices in **Settings → Workflows → Estimates**: each choice's name, **What Compass does** (request a quote, owner provides the number, or takeoff to-do for an estimator), Sage cost type, owner scope, and whether it is offered. Turn a choice off instead of deleting it so existing lines keep their value. **Vendor price links** sets how many days a price link works after the quote due date, and after sending when there is no due date.
 
 ## Choose How a Change Order Is Built {#change-order-kinds}
 
@@ -178,5 +220,6 @@ With several at once, the Estimate page lists **Estimates on this job**. Each es
 - [ ] Project, company, period, and identifiers are correct.
 - [ ] Totals reconcile to source records.
 - [ ] Cost codes, changes, retainage, and prior payments were reviewed.
+- [ ] No estimate line still shows **Needs price** before it goes out for signature.
 - [ ] I know whether Sage actually accepted the operation.
 - [ ] I checked for duplicates before queueing or retrying.

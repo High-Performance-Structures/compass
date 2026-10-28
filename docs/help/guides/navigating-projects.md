@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-26"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -119,7 +119,7 @@ Stop before saving. Switch to the correct job and confirm its number and client.
 
 On **Dashboard**, the portfolio window brings together the project map and pipelines, including **Nu-Tech Sales**. Select a job to open its detail panel, then use **Open job** or the available shortcuts. The construction pipeline runs through **Intake**, **Design**, **Estimating**, **Negotiation**, **Permitting**, **Under construction**, and **Closeout**. The map is a summary of included jobs; use **All Projects** to find work outside that view.
 
-Staff who can open project files also see **Files** in the job panel and a folder icon on each pipeline row. It opens the job's **Plans & Documents** page, where its Google Drive folder, plans and specifications are.
+Staff who can open project files also see **Files** in the job panel and a folder icon on each pipeline row. It opens the job's **Plans & Documents** page, where its Google Drive folder, plans and specifications are. Beside the folder icon, a rolled-plans icon (**Open plan set**) opens the job's working plan set in a new tab; it is greyed out until one is chosen.
 
 Authorized staff can use **MOVE TO** in a job panel to choose a status within the available phase or sales stage. This saves a real job-status change. To close a job as complete, inactive, or bid refused, use its job page. Any single job can be added with **Add a project to the map** or removed with **Hide from map**; jobs you hid are listed below the map with **Show on map**. Map visibility does not grant project access.
 
@@ -132,6 +132,16 @@ Turn on **Messages** to see your unread items stacked on jobs and listed in the 
 Turn on **Weather** to see the National Weather Service forecast on the map: falling rain and snow, moving streaks where wind is strong, a glow where it will be extremely cold or hot, and outlines for weather warnings. Drag the time bar under the map, or press play, to move from now to 48 hours ahead. Under **Layers**, you can turn off any part (rain, snow, wind, cold and heat, or warnings). **Weather on your jobs** lists the jobs over your company's limits in the 24 hours from the selected time, using each job site's own forecast area, so a mountain job gets the mountain forecast. Select a job in the list to fly to it. The first time the layer is turned on, forecasts take a few minutes to gather; after that they refresh in the background.
 
 Turn on **Fire & smoke** to see active wildfires (a glowing point, the fire's outline when it has been mapped, and the names of the largest fires) and Red Flag Warnings or Fire Weather Watches, outlined in red. **Fire near your jobs** lists each job within your company's distance of an active fire, with the fire's name, size, containment, and how far away it is and in which direction. Fire information comes from the national interagency fire map and can lag what crews see on the ground; follow local officials for evacuations and road closures. The limits for both layers are in **Settings → Workflows → Weather & fire alerts**. Clients and trade partners see both layers on their own maps, for the projects they can open.
+
+## Share Plans and Documents {#plans-documents}
+
+A job's **Plans & Documents** page lists its **Published documents** and lets staff publish more under **Publish from this project's folder**. Choose a file, or open a folder and choose **Publish this folder**, then set the category, title, revision, and date. Use **Replaces a current document** when the file is a new revision; the old one is marked superseded.
+
+Under **Visible to**, tick **Owners**, **Vendors**, both, or neither. Internal staff always see every document, so leaving both unticked keeps a file internal. You can change the ticks on any published document later; owners and vendors see only the files ticked for them, including in staff previews.
+
+Choose **Set as plan set** on a current document to make it the job's working plan set. It shows **Plan set**, and the pipeline's plan-set icon opens it. Select it again to clear it. Superseding, archiving, or removing that document also clears it.
+
+On each document, **Supersede** marks it replaced, **Archive** hides it from owner and vendor workspaces after you confirm, and **Remove from Compass** takes it off the list without changing the file in Drive.
 
 ## Track Client Follow-Up {#project-follow-up}
 
