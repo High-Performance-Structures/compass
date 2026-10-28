@@ -173,6 +173,7 @@ export async function sendCherishStoryReply(
     const context = await storyMutationContext(input.id)
     if (!context.success) return context
     if (
+      context.isAnonymous ||
       context.recipientId === null ||
       context.recipientEmail === null ||
       context.recipientId === context.user.id
@@ -519,6 +520,9 @@ async function storyMutationContext(
       readonly responseId: string
       readonly recipientId: string | null
       readonly recipientEmail: string | null
+      // A reply opens a direct message with the author, so anonymous
+      // stories can't be replied to without revealing who wrote them.
+      readonly isAnonymous: boolean
       readonly user: AuthUser
     }
   | { readonly success: false; readonly error: string }
@@ -552,6 +556,7 @@ async function storyMutationContext(
       id: cherishPulseResponses.id,
       recipientId: cherishPulseResponses.submittedBy,
       recipientEmail: cherishPulseResponses.submittedByEmail,
+      isAnonymous: cherishPulseResponses.isAnonymous,
     })
     .from(cherishPulseResponses)
     .where(
@@ -586,6 +591,7 @@ async function storyMutationContext(
     responseId,
     recipientId: response.recipientId,
     recipientEmail: response.recipientEmail,
+    isAnonymous: response.isAnonymous,
     user,
   }
 }
