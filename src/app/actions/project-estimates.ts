@@ -112,6 +112,8 @@ import {
 } from "@/lib/estimates/signature-pdf"
 import { contractEstimateConditions, estimateFamilyKey } from "@/lib/estimates/estimate-family"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { findPricingSource, unpricedLinesMessage, type PricingSource } from "@/lib/estimates/pricing-sources"
 import {
   contractVersionBaseline,
   contractVersionDifference,
@@ -441,6 +443,11 @@ export type ProjectEstimateLineInput = {
   readonly ownerVisible: boolean
   readonly includeInBuilderFee: boolean
   readonly insertAfterLineId: string | null
+  /**
+   * "Priced by" choice id. Omitted keeps the line's current choice; null clears
+   * it. A line with a choice may be saved before its price is known.
+   */
+  readonly pricingSource?: string | null
 }
 
 export type ProjectEstimateLineCostItemInput = {
@@ -1982,6 +1989,7 @@ export async function duplicateProjectEstimate(
              markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
              tax_code, tax_name, tax_rate_basis_points, tax_cents,
              line_total_cents, owner_visible, include_in_builder_fee,
+             pricing_source, pricing_todo_id,
              sort_order, created_at, updated_at
            )
            SELECT lower(hex(randomblob(16))), ?, ?, ${changingPhase ? "NULL" : "template_line_id"},
@@ -1991,6 +1999,7 @@ export async function duplicateProjectEstimate(
              direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
              tax_entity_id, tax_code, tax_name, tax_rate_basis_points, tax_cents,
              line_total_cents, owner_visible, include_in_builder_fee,
+             pricing_source, ${destinationProjectId === projectId ? "pricing_todo_id" : "NULL"},
              sort_order, ?, ?
            FROM project_estimate_lines
            WHERE estimate_id = ? AND project_id = ?`
@@ -2857,6 +2866,8 @@ export async function importPlanSwiftEstimateLines(
         ownerVisible: true,
         includeInBuilderFee: true,
         sortOrder: priorSortOrder + index + 1,
+        pricingSource: null,
+        pricingTodoId: null,
         createdAt: now,
         updatedAt: now,
       }
@@ -3038,6 +3049,8 @@ export async function importBuildertrendEstimateExport(
         lineTotalCents: line.lineTotalCents,
         ownerVisible: true,
         includeInBuilderFee: true,
+        pricingSource: null,
+        pricingTodoId: null,
         sortOrder: index + 1,
         createdAt: now,
         updatedAt: now,
@@ -3196,8 +3209,15 @@ export async function saveProjectEstimateLine(
         taxable: input.taxable,
         taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
       })
-    if (calculation.lineTotalCents <= 0) {
-      throw new Error("Enter a quantity and unit cost greater than zero.")
+    const pricing = await resolveLinePricingSource(access.db, access.organizationId, input.pricingSource)
+    // A line waiting on a quote, the owner or a takeoff can be saved at $0.
+    const awaitingPrice = pricing.kind === "set" && calculation.lineTotalCents === 0
+    if (calculation.lineTotalCents <= 0 && !awaitingPrice) {
+      throw new Error("Enter a quantity and unit cost greater than zero, or choose who prices this line.")
+    }
+    const ownerScope = pricing.kind === "set" && pricing.source.ownerScope
+    if (ownerScope && usesCostBreakdown && breakdownRollup?.taxable) {
+      throw new Error("Owner-scope lines aren't taxed. Turn off tax on this line's cost items first.")
     }
     const now = new Date().toISOString()
     const id = lineId ?? crypto.randomUUID()
@@ -3232,7 +3252,12 @@ export async function saveProjectEstimateLine(
       taxRateBasisPoints:
         breakdownRollup?.taxRateBasisPoints ?? tax?.rateBasisPoints ?? 0,
       ownerVisible: input.ownerVisible,
-      includeInBuilderFee: input.includeInBuilderFee,
+      // Owner scope is the owner's number: no builder fee and no sales tax.
+      includeInBuilderFee: ownerScope ? false : input.includeInBuilderFee,
+      ...(ownerScope && !usesCostBreakdown
+        ? { taxable: false, taxEntityId: null, taxCode: null, taxName: null, taxRateBasisPoints: 0, ...calculateEstimateLine({ quantity, unitCostCents, markupRateBasisPoints, taxable: false, taxRateBasisPoints: 0 }) }
+        : {}),
+      ...(pricing.kind === "keep" ? {} : { pricingSource: pricing.kind === "set" ? pricing.source.id : null }),
       updatedAt: now,
     }
     if (lineId) {
@@ -3285,6 +3310,25 @@ export async function saveProjectEstimateLine(
         error instanceof Error ? error.message : "Unable to save estimate line.",
     }
   }
+}
+
+type LinePricingChoice =
+  | { readonly kind: "keep" }
+  | { readonly kind: "clear" }
+  | { readonly kind: "set"; readonly source: PricingSource }
+
+async function resolveLinePricingSource(
+  db: CompassDb,
+  organizationId: string | null,
+  id: string | null | undefined
+): Promise<LinePricingChoice> {
+  if (id === undefined) return { kind: "keep" }
+  if (id === null || id === "") return { kind: "clear" }
+  if (!organizationId) throw new Error("The project organization is required to choose who prices a line.")
+  const settings = await readFeatureSettings(db, organizationId, "estimate-pricing")
+  const source = findPricingSource(settings.sources, id)
+  if (!source) throw new Error("That \"Priced by\" choice is no longer available. Choose another one.")
+  return { kind: "set", source }
 }
 
 async function refreshEstimateLineFromCostItems(
@@ -4138,6 +4182,8 @@ export async function prepareProjectEstimateForClientSignature(
           .orderBy(asc(projectEstimateAssemblies.sortOrder)),
       ])
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    const unpriced = unpricedLinesMessage(lines)
+    if (unpriced) throw new Error(unpriced)
     if (!cleanText(estimate.estimateDate)) {
       throw new Error("Add the estimate date before signature.")
     }
@@ -4390,6 +4436,8 @@ export async function markProjectEstimateSentOutsideCompass(
       .where(eq(projectEstimateLines.estimateId, estimateId))
       .orderBy(asc(projectEstimateLines.sortOrder))
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    const unpriced = unpricedLinesMessage(lines)
+    if (unpriced) throw new Error(unpriced)
     if (!cleanText(estimate.estimateDate)) {
       throw new Error("Add the estimate date before signature.")
     }

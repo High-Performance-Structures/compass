@@ -20,6 +20,7 @@ import { WeatherAlertSettingsSection } from "@/components/settings/weather-alert
 import { LinkedJobSettingsSection } from "@/components/settings/linked-job-settings-section"
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
+import { EstimatePricingSettingsSection } from "@/components/settings/estimate-pricing-settings-section"
 import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { PayApplicationSettingsSection } from "@/components/settings/pay-application-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
@@ -268,7 +269,12 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
     case "square-payments":
       return <SquareAlertSettingsSection />
     case "estimates":
-      return <EstimateSettingsSection />
+      return (
+        <>
+          <EstimateSettingsSection />
+          <EstimatePricingSettingsSection />
+        </>
+      )
     case "contract-deposits":
       return <ContractDepositSettingsSection />
     case "pay-applications":

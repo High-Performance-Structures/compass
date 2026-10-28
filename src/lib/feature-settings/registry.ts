@@ -13,6 +13,7 @@ import {
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
+import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
 import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
 import { DEFAULT_WEATHER_WORK_RULES, WEATHER_RULE_CHECKS } from "@/lib/weather/schedule-risk"
@@ -680,6 +681,7 @@ type FeatureSettingsTypes = {
   readonly "portfolio-map": PortfolioMapSettings
   readonly "weather-alerts": WeatherAlertSettings
   readonly estimates: EstimateSettings
+  readonly "estimate-pricing": EstimatePricingSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -888,6 +890,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own; and the markup for items copied in from another job's estimate.",
     defaults: { modes: {} },
     schema: estimateSettingsSchema,
+  },
+  "estimate-pricing": {
+    label: "Estimate pricing",
+    description: "The \"Priced by\" choices on estimate lines: who gives us each cost code's number, the Sage cost type it lands in, and whether Compass requests a quote, asks the owner, or makes a takeoff to-do.",
+    defaults: { sources: [...DEFAULT_PRICING_SOURCES] },
+    schema: estimatePricingSettingsSchema,
   },
   "square-payments": {
     label: "Square and Sage payments",
