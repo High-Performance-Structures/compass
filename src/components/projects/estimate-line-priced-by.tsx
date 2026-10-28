@@ -7,6 +7,7 @@ import {
   type EstimateLinePricingState,
   type EstimatePricingView,
 } from "@/app/actions/estimate-line-pricing"
+import { EstimateLineBidsDialog } from "@/components/projects/estimate-line-bids-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,7 @@ export function needsTakeoffTodo(
 
 /** The "Priced by" row in the estimate line editor. */
 export function EstimateLinePricedBy({
+  bids,
   sources,
   estimators,
   value,
@@ -61,6 +63,8 @@ export function EstimateLinePricedBy({
   onSourceChange,
   onEstimatorChange,
 }: {
+  /** Set for a saved line, so its Bids window can open. */
+  readonly bids: { readonly projectId: string; readonly estimateId: string; readonly lineId: string; readonly onAccepted: () => void } | null
   readonly sources: readonly PricingSource[]
   readonly estimators: readonly { readonly value: string; readonly label: string }[]
   readonly value: string
@@ -70,6 +74,7 @@ export function EstimateLinePricedBy({
   readonly onSourceChange: (source: PricingSource | null) => void
   readonly onEstimatorChange: (userId: string) => void
 }): React.ReactElement | null {
+  const [bidsOpen, setBidsOpen] = React.useState(false)
   const choices = pricingSourceChoices(sources, value || null)
   if (choices.length === 0) return null
   const selected = findPricingSource(choices, value)
@@ -93,9 +98,26 @@ export function EstimateLinePricedBy({
         ))}
       </div>
       {selected ? (
-        <p className="text-xs text-muted-foreground" aria-live="polite">
-          {pricingSourceOutcome(selected)}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {pricingSourceOutcome(selected)}
+          </p>
+          {bids && selected.action !== "takeoff" && (
+            <>
+              <Button type="button" size="sm" variant="outline" onClick={() => setBidsOpen(true)}>
+                Bids
+              </Button>
+              <EstimateLineBidsDialog
+                projectId={bids.projectId}
+                estimateId={bids.estimateId}
+                lineId={bids.lineId}
+                open={bidsOpen}
+                onOpenChange={setBidsOpen}
+                onAccepted={bids.onAccepted}
+              />
+            </>
+          )}
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">Choose who gives us this number. Lines with a choice can be saved before the price is in.</p>
       )}
