@@ -20,7 +20,9 @@ import type { EmailRecipientOption } from "@/lib/email/recipient-options"
 function defaultMessage(rfq: ProjectRfqItem, projectLabel: string): string {
   return [
     `Please review the RFQ scope and linked plans and specifications for ${projectLabel}.`,
-    rfq.dueDate ? `Please reply with your quote by ${rfq.dueDate}.` : "Please reply with your quote.",
+    rfq.dueDate
+      ? `Please enter your prices with the link below, or reply with your quote, by ${rfq.dueDate}.`
+      : "Please enter your prices with the link below, or reply with your quote.",
   ].join("\n")
 }
 

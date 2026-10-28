@@ -24,6 +24,8 @@ export type RfqEmailInput = {
     readonly notes: string | null
   }[]
   readonly documents: readonly RfqEmailDocument[]
+  /** Private no-login page where the vendor types their prices. */
+  readonly quoteUrl: string | null
 }
 
 function escapeHtml(value: string): string {
@@ -45,6 +47,9 @@ export function rfqEmailText(input: RfqEmailInput): string {
     input.dueDate ? `Response needed by: ${input.dueDate}` : null,
     input.scope ? `Scope: ${input.scope}` : null,
     "",
+    ...(input.quoteUrl
+      ? ["Enter your prices online (no account needed):", input.quoteUrl, "Or reply to this email with your quote.", ""]
+      : []),
     "Requested scope",
     ...input.lines.map((line) =>
       [
@@ -96,7 +101,10 @@ export function rfqEmailHtml(input: RfqEmailInput): string {
       </table>
       <h3>Plans and specifications · viewer links</h3>
       <ul>${documentRows}</ul>
-      <p>Please reply to this email with your quote. A Compass account is not required.</p>
+      ${input.quoteUrl
+        ? `<p><a href="${escapeHtml(input.quoteUrl)}" style="display:inline-block;padding:10px 16px;background:#2f7044;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">Enter your prices</a></p>
+      <p>No account needed. This link is private to you. You can also reply to this email with your quote.</p>`
+        : "<p>Please reply to this email with your quote. A Compass account is not required.</p>"}
       <p><strong>${escapeHtml(input.brand.companyName)}</strong><br>${
         input.brand.contactLines.map(escapeHtml).join("<br>")
       }</p>

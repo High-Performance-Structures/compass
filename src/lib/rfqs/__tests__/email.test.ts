@@ -26,6 +26,7 @@ const input: RfqEmailInput = {
   senderName: "Project manager",
   lines: [{ lineNumber: 1, description: "Exterior walls", phaseCode: "10", costCode: "101", notes: null }],
   documents: [{ label: "Plan set", url: "https://drive.google.com/file/d/abcdefghijk/view", notes: "Rev C" }],
+  quoteUrl: null,
 }
 
 describe("RFQ email", () => {
@@ -43,5 +44,12 @@ describe("RFQ email", () => {
     expect(html).toContain("Framing &lt;scope&gt;")
     expect(html).toContain("Plan set")
     expect(html).toContain("href=\"https://drive.google.com/file/d/abcdefghijk/view\"")
+  })
+
+  it("offers the private price link when there is one", () => {
+    const withLink = { ...input, quoteUrl: "https://compass.example/quote/abc" }
+    expect(rfqEmailText(withLink)).toContain("Enter your prices online (no account needed):\nhttps://compass.example/quote/abc")
+    expect(rfqEmailHtml(withLink)).toContain('href="https://compass.example/quote/abc"')
+    expect(rfqEmailHtml(input)).toContain("Please reply to this email with your quote.")
   })
 })

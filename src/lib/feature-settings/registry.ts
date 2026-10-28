@@ -893,8 +893,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "estimate-pricing": {
     label: "Estimate pricing",
-    description: "The \"Priced by\" choices on estimate lines: who gives us each cost code's number, the Sage cost type it lands in, and whether Compass requests a quote, asks the owner, or makes a takeoff to-do.",
-    defaults: { sources: [...DEFAULT_PRICING_SOURCES] },
+    description: "The \"Priced by\" choices on estimate lines: who gives us each cost code's number, the Sage cost type it lands in, and whether Compass requests a quote, asks the owner, or makes a takeoff to-do; and how long vendors' price links keep working.",
+    defaults: { sources: [...DEFAULT_PRICING_SOURCES], quoteLinkGraceDays: 14, quoteLinkDaysWithoutDueDate: 45 },
     schema: estimatePricingSettingsSchema,
   },
   "square-payments": {

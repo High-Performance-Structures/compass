@@ -7,6 +7,7 @@ import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -46,6 +47,8 @@ export function EstimatePricingSettingsSection(): React.ReactElement {
   const [sources, setSources] = React.useState<readonly PricingSource[]>([])
   // Ids saved before this edit can't be renamed; lines store them.
   const [savedIds, setSavedIds] = React.useState<ReadonlySet<string>>(new Set())
+  const [graceDays, setGraceDays] = React.useState("14")
+  const [noDueDays, setNoDueDays] = React.useState("45")
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
@@ -57,6 +60,10 @@ export function EstimatePricingSettingsSection(): React.ReactElement {
     const parsed = estimatePricingSettingsSchema.safeParse(result.data.settings)
     const next = parsed.success ? parsed.data.sources : []
     setSources(next)
+    if (parsed.success) {
+      setGraceDays(String(parsed.data.quoteLinkGraceDays))
+      setNoDueDays(String(parsed.data.quoteLinkDaysWithoutDueDate))
+    }
     setSavedIds(new Set(next.map((source) => source.id)))
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -88,7 +95,11 @@ export function EstimatePricingSettingsSection(): React.ReactElement {
       taken.add(id)
       return { ...source, id }
     })
-    const parsed = estimatePricingSettingsSchema.safeParse({ sources: prepared })
+    const parsed = estimatePricingSettingsSchema.safeParse({
+      sources: prepared,
+      quoteLinkGraceDays: Number(graceDays),
+      quoteLinkDaysWithoutDueDate: Number(noDueDays),
+    })
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the choices and try again.")
       return
@@ -205,6 +216,23 @@ export function EstimatePricingSettingsSection(): React.ReactElement {
           <Button type="button" variant="outline" size="sm" onClick={addChoice} disabled={sources.length >= 20}>
             Add choice
           </Button>
+        </div>
+      </fieldset>
+      <fieldset className="grid gap-3 sm:max-w-xl" disabled={!canEdit || pending}>
+        <legend className="text-sm font-semibold">Vendor price links</legend>
+        <p className="text-sm text-muted-foreground">
+          RFQ emails include a private link where the vendor types their prices; no account needed. Links stop working
+          after these many days, and staff can turn one off on the RFQ.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="quoteLinkGraceDays">Days after the quote due date</Label>
+            <Input id="quoteLinkGraceDays" type="number" min={1} max={90} inputMode="numeric" className="h-9 w-24" value={graceDays} onChange={(event) => setGraceDays(event.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="quoteLinkNoDueDays">Days after sending, when there&apos;s no due date</Label>
+            <Input id="quoteLinkNoDueDays" type="number" min={1} max={180} inputMode="numeric" className="h-9 w-24" value={noDueDays} onChange={(event) => setNoDueDays(event.target.value)} />
+          </div>
         </div>
       </fieldset>
       {canEdit ? (

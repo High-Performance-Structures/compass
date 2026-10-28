@@ -26,6 +26,8 @@ import {
 } from "@/app/actions/project-rfq-bids"
 import {
   getProjectRfqEmailDeliveries,
+  getProjectRfqQuoteLinks,
+  type RfqQuoteLinkItem,
   type RfqEmailDeliveryItem,
 } from "@/app/actions/project-rfq-email"
 import {
@@ -48,6 +50,7 @@ import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete
 import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-duplicate-dialog"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
+import { ProjectRfqQuoteLinks } from "@/components/projects/project-rfq-quote-links"
 import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
 import { RecordEmailReplies } from "@/components/projects/record-email-replies"
 import { buildProjectEmailRecipientOptions, type ProjectEmailContact } from "@/lib/email/recipient-options"
@@ -188,6 +191,7 @@ function RfqCard({
   emailReplies,
   emailContacts,
   manualResponseEvents,
+  quoteLinks,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
@@ -210,6 +214,7 @@ function RfqCard({
   readonly emailReplies: readonly RecordEmailReplyItem[]
   readonly emailContacts: readonly ProjectEmailContact[]
   readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
+  readonly quoteLinks: readonly RfqQuoteLinkItem[]
 }): React.ReactElement {
   return (
     <article
@@ -409,6 +414,7 @@ function RfqCard({
       </div>
 
       <ProjectRfqEmailHistory deliveries={emailDeliveries} />
+      <ProjectRfqQuoteLinks projectId={projectId} rfqId={rfq.id} links={quoteLinks} />
       <RecordEmailReplies replies={emailReplies} />
 
       {rfq.scopeItems.length > 0 && (
@@ -513,6 +519,7 @@ export default async function ProjectRfqsPage({
     showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
     getProjectRfqEmailDeliveries(id),
     getProjectRfqManualResponseEvents(id),
+    getProjectRfqQuoteLinks(id).catch(() => []),
     showInternalHistory ? getProjectRecordEmailReplies(id, "rfq") : Promise.resolve([]),
     // Contacts only fill the email pickers; never block the RFQ page on them.
     getProjectContactsSummary(id, "internal").then((summary) => summary.allContacts, () => []),
@@ -536,6 +543,7 @@ export default async function ProjectRfqsPage({
     historicalWorkspace,
     emailDeliveries,
     manualResponseEvents,
+    quoteLinks,
     emailReplies,
     emailContacts,
   ] = loaded.data
@@ -656,6 +664,7 @@ export default async function ProjectRfqsPage({
               emailReplies={emailReplies.filter((reply) => reply.recordId === rfq.id)}
               emailContacts={emailContacts}
               manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
+              quoteLinks={quoteLinks.filter((link) => link.rfqOperationId === rfq.id)}
             />
           ))
         ) : (

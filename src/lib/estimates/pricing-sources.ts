@@ -48,6 +48,10 @@ export const estimatePricingSettingsSchema = z.object({
     .min(1)
     .max(20)
     .refine((sources) => new Set(sources.map((source) => source.id)).size === sources.length, "Each choice needs its own id."),
+  /** Days a vendor's price link keeps working after the quote due date. */
+  quoteLinkGraceDays: z.number().int().min(1).max(90),
+  /** Days a price link works when the RFQ has no due date. */
+  quoteLinkDaysWithoutDueDate: z.number().int().min(1).max(180),
 })
 export type EstimatePricingSettings = z.infer<typeof estimatePricingSettingsSchema>
 
