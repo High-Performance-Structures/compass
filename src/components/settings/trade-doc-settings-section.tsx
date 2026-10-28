@@ -13,7 +13,9 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
+import type { DrivePickerDestination } from "@/lib/google/drive-picker"
 import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { TradeDocImportDialog } from "@/components/settings/trade-doc-import-dialog"
 import { TradeDocInfoSheetSettings } from "@/components/settings/trade-doc-info-sheet-settings"
 import {
@@ -124,6 +126,12 @@ export function TradeDocSettingsSection(): React.ReactElement {
     ])
   }
 
+  // Blank forms uploaded from the computer go in the trade docs folder when there is one.
+  const savedFolderId = driveFolderIdFromInput(folder)
+  const formUploadFolder: DrivePickerDestination | undefined = savedFolderId
+    ? { kind: "folder", id: savedFolderId, name: "the trade docs folder" }
+    : undefined
+
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const taken = new Set(savedIds)
@@ -135,14 +143,14 @@ export function TradeDocSettingsSection(): React.ReactElement {
     })
     const folderId = driveFolderIdFromInput(folder)
     if (folder.trim() && !folderId) {
-      toast.error("Paste the Drive folder's link or id.")
+      toast.error("Choose the Drive folder with Browse.")
       return
     }
     const badForm = prepared.find(
       (type) => (type.formLink?.trim() && !driveFileIdFromInput(type.formLink)) || (type.waiverFormLink?.trim() && !driveFileIdFromInput(type.waiverFormLink)),
     )
     if (badForm) {
-      toast.error(`Paste the Drive file's link for the ${badForm.label} blank form.`)
+      toast.error(`Choose the ${badForm.label} blank form with Browse.`)
       return
     }
     const parsed = tradeDocSettingsSchema.safeParse({
@@ -259,23 +267,26 @@ export function TradeDocSettingsSection(): React.ReactElement {
                     />
                   </td>
                   <td className="grid gap-1 py-2 pr-4">
-                    <Input
-                      aria-label={`Link to the blank ${type.label} form`}
-                      className="h-8 w-56"
-                      placeholder="Form link (optional)"
-                      maxLength={300}
-                      value={type.formLink ?? ""}
-                      onChange={(event) => update(index, { formLink: event.target.value || null })}
-                    />
-                    {type.waiverLabel && (
-                      <Input
-                        aria-label={`Link to the blank forms for the ${type.label} alternative`}
-                        className="h-8 w-56"
-                        placeholder="Alternative forms link"
-                        maxLength={300}
-                        value={type.waiverFormLink ?? ""}
-                        onChange={(event) => update(index, { waiverFormLink: event.target.value || null })}
+                    <div className="w-56">
+                      <DriveItemField
+                        ariaLabel={`blank ${type.label} form`}
+                        browseTitle={`Blank ${type.label} form`}
+                        uploadDestination={formUploadFolder}
+                        value={type.formLink ?? ""}
+                        onChange={(next) => update(index, { formLink: next || null })}
                       />
+                    </div>
+                    {type.waiverLabel && (
+                      <div className="w-56 border-t pt-2">
+                        <p className="text-xs text-muted-foreground">{type.waiverLabel}</p>
+                        <DriveItemField
+                          ariaLabel={`blank forms for the ${type.label} alternative`}
+                          browseTitle={`Blank forms: ${type.waiverLabel}`}
+                          uploadDestination={formUploadFolder}
+                          value={type.waiverFormLink ?? ""}
+                          onChange={(next) => update(index, { waiverFormLink: next || null })}
+                        />
+                      </div>
                     )}
                   </td>
                   <td className="py-2">
@@ -302,7 +313,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="trade-doc-folder">Drive folder for trade docs</Label>
-          <Input id="trade-doc-folder" placeholder="Paste the folder's link" value={folder} onChange={(event) => setFolder(event.target.value)} />
+          <DriveItemField id="trade-doc-folder" choose="folder" valueAs="id" ariaLabel="trade docs Drive folder" browseTitle="Drive folder for trade docs" value={folder} onChange={(next) => setFolder(next)} />
           <p className="text-xs text-muted-foreground">
             Compass keeps one folder per vendor inside it, reusing a folder that already has the vendor&apos;s name. Blank uses the
             company&apos;s Drive.

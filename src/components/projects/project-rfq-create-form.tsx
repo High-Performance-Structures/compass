@@ -1152,7 +1152,7 @@ export function ProjectRfqCreateForm({
                   onClick={() => setFilePickerOpen(true)}
                 >
                   <IconFolderOpen className="size-4" />
-                  Browse project files
+                  Add files
                 </Button>
                 <ProjectDriveFilePicker
                   projectId={projectId}
@@ -1184,7 +1184,7 @@ export function ProjectRfqCreateForm({
                       onChange={(event) =>
                         updateDocumentLink(link.id, "url", event.target.value)
                       }
-                      placeholder="https://drive.google.com/..."
+                      placeholder="Link (or use Add files)"
                       className={`${DOCUMENT_INPUT_CLASS} pr-8`}
                       aria-label={`RFQ document ${index + 1} URL`}
                     />

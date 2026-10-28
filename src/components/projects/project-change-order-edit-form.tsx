@@ -20,6 +20,7 @@ import { ProjectChangeOrderKindChoice } from "@/components/projects/project-chan
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -448,12 +449,14 @@ export function ProjectChangeOrderEditForm({
                 <Label htmlFor="change-order-executed-url">
                   Or secure saved-document link
                 </Label>
-                <Input
+                <DriveItemField
                   id="change-order-executed-url"
-                  type="url"
                   value={executedDocumentUrl}
-                  onChange={(event) => setExecutedDocumentUrl(event.target.value)}
-                  placeholder="https://drive.google.com/..."
+                  onChange={(next) => setExecutedDocumentUrl(next)}
+                  projectId={item.projectId}
+                  ariaLabel="Saved document"
+                  browseTitle="Choose the signed change order"
+                  allowOtherLinks
                 />
               </div>
               <div className="space-y-2 lg:col-span-2">

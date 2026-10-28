@@ -79,6 +79,7 @@ import { ProjectEstimateBuildertrendImport } from "@/components/projects/project
 import { ProjectEstimateVersionControls } from "@/components/projects/project-estimate-version-controls"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -2283,7 +2284,7 @@ export function ProjectEstimateWorkspacePanel({
             <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="documentTitle">Legacy/manual title</Label><Input id="documentTitle" name="documentTitle" required={!basisProjectDocumentId} disabled={Boolean(basisProjectDocumentId)} /></div>
             <div className="space-y-1.5"><Label htmlFor="basisDate">Document date</Label><Input id="basisDate" name="documentDate" type="date" /></div>
             <div className="space-y-1.5"><Label htmlFor="basisRevision">Revision</Label><Input id="basisRevision" name="revision" /></div>
-            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="basisDriveUrl">Legacy/manual Google Drive link</Label><Input id="basisDriveUrl" name="driveUrl" type="url" disabled={Boolean(basisProjectDocumentId)} /></div>
+            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="basisDriveUrl">Basis document in Drive</Label><DriveItemField id="basisDriveUrl" name="driveUrl" projectId={projectId} disabled={Boolean(basisProjectDocumentId)} browseTitle="Choose the basis document" /></div>
             <div className="flex items-end"><Button type="submit" disabled={isPending}><IconPlus className="size-4" />Add basis</Button></div>
           </form>
         )}
@@ -2398,7 +2399,7 @@ export function ProjectEstimateWorkspacePanel({
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <Label htmlFor="acceptanceEvidenceUrl">Or link an existing signed document</Label>
-                      <Input id="acceptanceEvidenceUrl" name="acceptanceEvidenceUrl" type="url" placeholder="https://drive.google.com/..." />
+                      <DriveItemField id="acceptanceEvidenceUrl" name="acceptanceEvidenceUrl" projectId={projectId} allowOtherLinks browseTitle="Choose the signed document" />
                       {estimate.foxitStatus === "completed" && (
                         <p className="text-xs text-muted-foreground">Leave blank to use the Foxit-signed copy.</p>
                       )}

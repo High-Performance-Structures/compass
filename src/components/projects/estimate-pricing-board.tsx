@@ -442,7 +442,7 @@ function PackageComposer({
         ))}
         <div>
           <Button type="button" size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
-            Browse project files
+            Add files
           </Button>
         </div>
         <ProjectDriveFilePicker

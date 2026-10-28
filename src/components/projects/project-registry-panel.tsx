@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -42,6 +43,8 @@ type RegistryField = {
   readonly name: string
   readonly label: string
   readonly placeholder: string
+  /** A Drive folder or file id, chosen with Browse instead of typed. */
+  readonly drive?: "file" | "folder"
 }
 
 const ID_FIELDS: readonly RegistryField[] = [
@@ -72,19 +75,22 @@ const ID_FIELDS: readonly RegistryField[] = [
   {
     key: "googleDriveFolderId",
     name: "googleDriveFolderId",
-    label: "Drive folder ID",
+    label: "Drive folder",
+    drive: "folder",
     placeholder: "Google Drive folder ID",
   },
   {
     key: "googleScheduleSheetId",
     name: "googleScheduleSheetId",
-    label: "Schedule sheet ID",
+    label: "Schedule sheet",
+    drive: "file",
     placeholder: "Google Sheet ID",
   },
   {
     key: "googleDailyLogSheetId",
     name: "googleDailyLogSheetId",
-    label: "Daily log sheet ID",
+    label: "Daily log sheet",
+    drive: "file",
     placeholder: "Google Sheet ID",
   },
   {
@@ -329,13 +335,25 @@ export function ProjectRegistryPanel({
               <Label htmlFor={`${projectId}-${field.name}`}>
                 {field.label}
               </Label>
-              <Input
-                id={`${projectId}-${field.name}`}
-                name={field.name}
-                defaultValue={externalValue(registry, field.key)}
-                placeholder={field.placeholder}
-                className="h-8 text-sm"
-              />
+              {field.drive ? (
+                <DriveItemField
+                  id={`${projectId}-${field.name}`}
+                  name={field.name}
+                  defaultValue={externalValue(registry, field.key)}
+                  valueAs="id"
+                  choose={field.drive}
+                  ariaLabel={field.label}
+                  browseTitle={field.label}
+                />
+              ) : (
+                <Input
+                  id={`${projectId}-${field.name}`}
+                  name={field.name}
+                  defaultValue={externalValue(registry, field.key)}
+                  placeholder={field.placeholder}
+                  className="h-8 text-sm"
+                />
+              )}
             </div>
           ))}
         </div>

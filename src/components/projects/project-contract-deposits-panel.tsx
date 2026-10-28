@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -193,7 +194,7 @@ function DepositDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="evidenceUrl">Receipt or request link (optional)</Label>
-              <Input id="evidenceUrl" name="evidenceUrl" type="url" placeholder="https://drive.google.com/..." defaultValue={deposit?.evidenceUrl ?? ""} />
+              <DriveItemField id="evidenceUrl" name="evidenceUrl" defaultValue={deposit?.evidenceUrl ?? ""} projectId={projectId} ariaLabel="Receipt or request" browseTitle="Choose the receipt or request" allowOtherLinks />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="evidenceLabel">Link label</Label>

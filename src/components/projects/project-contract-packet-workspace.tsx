@@ -45,6 +45,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { saveFeatureSettings } from "@/app/actions/feature-settings"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -859,7 +860,18 @@ export function ProjectContractPacketWorkspacePanel({
               </div>
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="packet-evidence-url">Saved signed packet link *</Label>
-                <Input id="packet-evidence-url" type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="https://drive.google.com/..." required />
+                <DriveItemField
+                  id="packet-evidence-url"
+                  value={evidenceUrl}
+                  onChange={(url, item) => {
+                    setEvidenceUrl(url)
+                    if (item && !evidenceLabel.trim()) setEvidenceLabel(item.name)
+                  }}
+                  projectId={projectId}
+                  allowOtherLinks
+                  required
+                  browseTitle="Choose the signed packet"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="packet-evidence-label">Document label *</Label>
@@ -911,13 +923,17 @@ export function ProjectContractPacketWorkspacePanel({
               </div>
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="packet-replacement-url">Or link the saved replacement *</Label>
-                <Input
+                <DriveItemField
                   id="packet-replacement-url"
-                  type="url"
                   value={replacementUrl}
-                  onChange={(event) => setReplacementUrl(event.target.value)}
-                  placeholder="https://drive.google.com/..."
+                  onChange={(url, item) => {
+                    setReplacementUrl(url)
+                    if (item && !replacementLabel.trim()) setReplacementLabel(item.name)
+                  }}
+                  projectId={projectId}
+                  allowOtherLinks
                   required
+                  browseTitle="Choose the replacement copy"
                 />
               </div>
               <div className="space-y-1.5 md:col-span-2">
