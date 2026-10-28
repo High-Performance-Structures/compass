@@ -36,6 +36,8 @@ import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
 import { announceTrackedRecordReply } from "@/lib/email/tracked-record-replies"
+import { isTrackedRecordKind, isVendorLevelKind } from "@/lib/email/tracked-record-email"
+import { postTradeDocReply } from "@/lib/trade-docs/email-replies"
 import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
 
@@ -419,6 +421,27 @@ async function importCandidate(input: {
       importedAt: now,
     })
     return "ignored_outbound"
+  }
+
+  // Vendor-level emails (trade docs requests) have no job channel to post to.
+  if (replyThread && isTrackedRecordKind(replyThread.sourceType) && isVendorLevelKind(replyThread.sourceType)) {
+    const status = await postTradeDocReply({
+      env: input.env,
+      db: input.db,
+      replyThread,
+      candidate: input.candidate,
+    })
+    await insertInboundAudit({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: null,
+      replyThreadId: replyThread.id,
+      candidate: input.candidate,
+      matchedStatus: status,
+      postedMessageId: null,
+      importedAt: now,
+    })
+    return status
   }
 
   if (

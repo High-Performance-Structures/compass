@@ -11,13 +11,20 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
+import { DEPARTMENT_CODES } from "@/lib/department-profiles"
+import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 import { TradeDocImportDialog } from "@/components/settings/trade-doc-import-dialog"
+import { TradeDocInfoSheetSettings } from "@/components/settings/trade-doc-info-sheet-settings"
 import {
+  DEFAULT_INFO_SHEET,
   TRADE_DOC_BILL_MODES,
   TRADE_DOC_BILL_MODE_LABELS,
+  driveFileIdFromInput,
   driveFolderIdFromInput,
   isTradeDocBillMode,
   tradeDocSettingsSchema,
+  type InfoSheetSettings,
   type TradeDocBillMode,
   type TradeDocType,
 } from "@/lib/trade-docs/settings"
@@ -46,6 +53,12 @@ export function TradeDocSettingsSection(): React.ReactElement {
   const [checks, setChecks] = React.useState("")
   const [folder, setFolder] = React.useState("")
   const [billMode, setBillMode] = React.useState<TradeDocBillMode>("flag")
+  const [brandDepartment, setBrandDepartment] = React.useState<ProjectDepartment>("H")
+  const profiles = useDepartmentProfiles()
+  const [linkDays, setLinkDays] = React.useState(30)
+  const [requestNote, setRequestNote] = React.useState("")
+  const [certificateHolder, setCertificateHolder] = React.useState("")
+  const [infoSheet, setInfoSheet] = React.useState<InfoSheetSettings>(DEFAULT_INFO_SHEET)
   const [importOpen, setImportOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
@@ -62,6 +75,11 @@ export function TradeDocSettingsSection(): React.ReactElement {
       setChecks(parsed.data.certificateChecks.join("\n"))
       setFolder(parsed.data.driveFolderId ?? "")
       setBillMode(parsed.data.billModeDefault)
+      setBrandDepartment(parsed.data.brandDepartment)
+      setLinkDays(parsed.data.linkDays)
+      setRequestNote(parsed.data.requestNote)
+      setCertificateHolder(parsed.data.certificateHolder)
+      setInfoSheet(parsed.data.infoSheet)
     }
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -100,6 +118,8 @@ export function TradeDocSettingsSection(): React.ReactElement {
         waiverLabel: null,
         certificateChecks: false,
         active: true,
+        formLink: null,
+        waiverFormLink: null,
       },
     ])
   }
@@ -118,11 +138,23 @@ export function TradeDocSettingsSection(): React.ReactElement {
       toast.error("Paste the Drive folder's link or id.")
       return
     }
+    const badForm = prepared.find(
+      (type) => (type.formLink?.trim() && !driveFileIdFromInput(type.formLink)) || (type.waiverFormLink?.trim() && !driveFileIdFromInput(type.waiverFormLink)),
+    )
+    if (badForm) {
+      toast.error(`Paste the Drive file's link for the ${badForm.label} blank form.`)
+      return
+    }
     const parsed = tradeDocSettingsSchema.safeParse({
-      docTypes: prepared,
+      docTypes: prepared.map((type) => ({ ...type, formLink: type.formLink?.trim() || null, waiverFormLink: type.waiverFormLink?.trim() || null })),
       certificateChecks: checks.split("\n").map((line) => line.trim()).filter(Boolean),
       driveFolderId: folderId,
       billModeDefault: billMode,
+      brandDepartment,
+      linkDays,
+      requestNote,
+      certificateHolder,
+      infoSheet,
     })
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the documents and try again.")
@@ -167,7 +199,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       <fieldset className="grid gap-2" disabled={!canEdit || pending}>
         <legend className="sr-only">Required documents</legend>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[1280px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Document</th>
@@ -178,6 +210,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
                 <th className="py-2 pr-4 font-medium">Warn days before</th>
                 <th className="py-2 pr-4 font-medium">Certificate check</th>
                 <th className="py-2 pr-4 font-medium">Accepted alternative</th>
+                <th className="py-2 pr-4 font-medium">Blank forms in Drive</th>
                 <th className="py-2 font-medium">On</th>
               </tr>
             </thead>
@@ -225,6 +258,26 @@ export function TradeDocSettingsSection(): React.ReactElement {
                       onChange={(event) => update(index, { waiverLabel: event.target.value.trim() ? event.target.value : null })}
                     />
                   </td>
+                  <td className="grid gap-1 py-2 pr-4">
+                    <Input
+                      aria-label={`Link to the blank ${type.label} form`}
+                      className="h-8 w-56"
+                      placeholder="Form link (optional)"
+                      maxLength={300}
+                      value={type.formLink ?? ""}
+                      onChange={(event) => update(index, { formLink: event.target.value || null })}
+                    />
+                    {type.waiverLabel && (
+                      <Input
+                        aria-label={`Link to the blank forms for the ${type.label} alternative`}
+                        className="h-8 w-56"
+                        placeholder="Alternative forms link"
+                        maxLength={300}
+                        value={type.waiverFormLink ?? ""}
+                        onChange={(event) => update(index, { waiverFormLink: event.target.value || null })}
+                      />
+                    )}
+                  </td>
                   <td className="py-2">
                     <Switch aria-label={`Require ${type.label}`} checked={type.active} onCheckedChange={(active) => update(index, { active })} />
                   </td>
@@ -270,6 +323,68 @@ export function TradeDocSettingsSection(): React.ReactElement {
           <p className="text-xs text-muted-foreground">The default for every vendor. Change it for one vendor in its trade docs.</p>
         </div>
       </fieldset>
+
+      <fieldset className="grid gap-4 border-t pt-4 sm:max-w-2xl" disabled={!canEdit || pending}>
+        <legend className="sr-only">Vendor docs link</legend>
+        <div className="grid gap-1">
+          <h3 className="text-sm font-semibold">Requesting documents</h3>
+          <p className="text-sm text-muted-foreground">
+            Staff email a vendor a secure link. Without signing in, the vendor uploads what&apos;s owed, downloads your blank
+            forms, fills in the info sheet and can send your certificate holder details to their insurance agent.
+          </p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="trade-doc-brand">Company vendors see</Label>
+          <Select value={brandDepartment} onValueChange={(value) => { if (isProjectDepartment(value)) setBrandDepartment(value) }}>
+            <SelectTrigger id="trade-doc-brand" className="w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DEPARTMENT_CODES.map((code) => (
+                <SelectItem key={code} value={code}>{profiles[code].companyName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Its name, logo and contact lines go on the request email and the vendor&apos;s page.</p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="trade-doc-link-days">Link works for (days)</Label>
+          <Input
+            id="trade-doc-link-days"
+            type="number"
+            min={1}
+            max={180}
+            inputMode="numeric"
+            className="w-24"
+            value={String(linkDays)}
+            onChange={(event) => setLinkDays(Math.max(1, Math.min(180, Number(event.target.value) || 1)))}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="trade-doc-request-note">Note to the vendor</Label>
+          <Textarea id="trade-doc-request-note" rows={4} maxLength={1500} value={requestNote} onChange={(event) => setRequestNote(event.target.value)} />
+          <p className="text-xs text-muted-foreground">Shown at the top of the email and the vendor&apos;s page, e.g. when payments are mailed.</p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="trade-doc-certificate-holder">Certificate holder</Label>
+          <Textarea
+            id="trade-doc-certificate-holder"
+            rows={5}
+            maxLength={800}
+            placeholder="Company name, mailing address, and where agents email certificates"
+            value={certificateHolder}
+            onChange={(event) => setCertificateHolder(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">What insurance certificates must name. Blank uses your company name and contact lines.</p>
+        </div>
+      </fieldset>
+
+      <TradeDocInfoSheetSettings
+        value={infoSheet}
+        onChange={setInfoSheet}
+        docTypes={types}
+        disabled={!canEdit || pending}
+      />
 
       <div className="grid gap-2 border-t pt-4 sm:max-w-2xl">
         <h3 className="text-sm font-semibold">Documents you already have</h3>

@@ -36,7 +36,8 @@ export async function ensureVendorTradeDocsFolder(input: {
   readonly db: ReturnType<typeof getDb>
   readonly environment: unknown
   readonly organizationId: string
-  readonly user: AuthUser
+  /** The staff member Drive acts as; for a vendor's docs link, whoever sent it. */
+  readonly user: Pick<AuthUser, "email" | "googleEmail">
   readonly vendor: { readonly id: string; readonly name: string; readonly tradeDocsFolderId: string | null }
   readonly rootFolderId: string | null
 }): Promise<TradeDocsDrive> {

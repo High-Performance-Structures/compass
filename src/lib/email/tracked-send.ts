@@ -19,7 +19,8 @@ export async function sendTrackedEmail(input: {
   readonly env: unknown
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
-  readonly projectId: string
+  /** Null for vendor-level emails, which belong to the vendor rather than a job. */
+  readonly projectId: string | null
   readonly kind: TrackedRecordKind
   /** The record (or, for job-level emails, the project) replies belong to. */
   readonly recordId: string

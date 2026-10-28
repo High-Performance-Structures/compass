@@ -10,6 +10,7 @@ import {
   type VendorTradeDocsView,
 } from "@/app/actions/vendor-trade-docs"
 import { TradeDocRecordForm, type TradeDocFormMode } from "@/components/financials/trade-doc-record-form"
+import { TradeDocRequestPanel } from "@/components/financials/trade-doc-request-panel"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -148,7 +149,7 @@ export function VendorTradeDocsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Trade docs · {vendorName}</DialogTitle>
+          <DialogTitle>Trade docs · {view?.vendor.name ?? vendorName}</DialogTitle>
           <DialogDescription>
             {view
               ? `${view.vendor.category}${summary ? ` · ${tradeDocCountLabel(summary)}` : ""}. Files are kept in the vendor's Drive folder.`
@@ -269,6 +270,10 @@ export function VendorTradeDocsDialog({
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <TradeDocRequestPanel vendorId={vendorId} canEdit={view.canEdit} onSent={() => void load()} />
             </div>
 
             {showHistory && (

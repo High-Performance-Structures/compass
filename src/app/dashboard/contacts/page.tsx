@@ -329,6 +329,12 @@ function ContactsContent() {
   // Staff only: null when trade docs aren't available to this user.
   const [tradeDocStatuses, setTradeDocStatuses] = React.useState<Readonly<Record<string, VendorTradeDocStatus>> | null>(null)
   const [tradeDocsVendor, setTradeDocsVendor] = React.useState<{ readonly id: string; readonly name: string } | null>(null)
+  // Notifications link here with ?tradeDocs=<vendor id> to open that vendor's trade docs.
+  const tradeDocsParam = searchParams.get("tradeDocs")
+  React.useEffect(() => {
+    if (!tradeDocsParam || !tradeDocStatuses) return
+    setTradeDocsVendor((current) => current ?? { id: tradeDocsParam, name: "" })
+  }, [tradeDocsParam, tradeDocStatuses])
   const loadTradeDocStatuses = React.useCallback(async () => {
     const result = await getVendorTradeDocStatuses()
     setTradeDocStatuses(result.success ? result.data : null)

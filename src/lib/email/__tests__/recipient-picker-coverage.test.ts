@@ -48,3 +48,15 @@ describe("business email recipient picker coverage", () => {
     expect(action).toContain('kind: "rfi"')
   })
 })
+
+describe("trade docs request recipient picker", () => {
+  it("uses the shared To and Cc picker and sends a vendor-level tracked email", () => {
+    const component = source("src/components/financials/trade-doc-request-panel.tsx")
+    expect(component.match(/<EmailRecipientPicker/g)).toHaveLength(2)
+    expect(component).toContain('label="To"')
+    expect(component).toContain('label="Cc"')
+    const delivery = source("src/lib/trade-docs/link-delivery.ts")
+    expect(delivery).toContain("sendTrackedEmail({")
+    expect(delivery).toContain('kind: "trade_docs"')
+  })
+})

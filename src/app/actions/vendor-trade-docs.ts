@@ -10,6 +10,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
 import { tradeDocAccess, type TradeDocAccess } from "@/lib/trade-docs/access"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
+import { toTradeDocOnFile } from "@/lib/trade-docs/records"
 import { isTradeDocBillMode, type TradeDocBillMode } from "@/lib/trade-docs/settings"
 import { summarizeTradeDocs, type TradeDocOnFile, type TradeDocSummary } from "@/lib/trade-docs/status"
 
@@ -65,33 +66,6 @@ function cleanDate(value: string | null): string | null {
   return DATE.test(trimmed) ? trimmed : null
 }
 
-function parseChecks(json: string | null): readonly string[] {
-  if (!json) return []
-  try {
-    const parsed: unknown = JSON.parse(json)
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []
-  } catch {
-    return []
-  }
-}
-
-function toOnFile(row: typeof vendorTradeDocuments.$inferSelect): TradeDocOnFile {
-  return {
-    id: row.id,
-    docType: row.docType,
-    kind: row.kind === "waiver" ? "waiver" : "document",
-    fileName: row.fileName,
-    webUrl: row.webUrl,
-    effectiveOn: row.effectiveOn,
-    expiresOn: row.expiresOn,
-    checks: parseChecks(row.checksJson),
-    notes: row.notes,
-    source: row.source,
-    createdAt: row.createdAt,
-    createdByName: row.createdByName,
-  }
-}
-
 function actorName(user: AuthUser): string {
   return (user.displayName ?? user.email).slice(0, 200)
 }
@@ -137,8 +111,8 @@ export async function getVendorTradeDocs(vendorId: string): Promise<Result<Vendo
       .from(vendorTradeDocuments)
       .where(eq(vendorTradeDocuments.vendorId, vendor.id))
       .orderBy(desc(vendorTradeDocuments.createdAt))
-    const current = rows.filter((row) => row.supersededAt === null).map(toOnFile)
-    const history = rows.filter((row) => row.supersededAt !== null).map(toOnFile)
+    const current = rows.filter((row) => row.supersededAt === null).map(toTradeDocOnFile)
+    const history = rows.filter((row) => row.supersededAt !== null).map(toTradeDocOnFile)
     return {
       success: true,
       data: {
@@ -178,7 +152,7 @@ export async function getVendorTradeDocStatuses(): Promise<Result<Readonly<Recor
     const docsByVendor = new Map<string, TradeDocOnFile[]>()
     for (const row of docRows) {
       const list = docsByVendor.get(row.vendorId) ?? []
-      list.push(toOnFile(row))
+      list.push(toTradeDocOnFile(row))
       docsByVendor.set(row.vendorId, list)
     }
     const date = today()

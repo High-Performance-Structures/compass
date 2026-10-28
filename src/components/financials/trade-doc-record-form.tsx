@@ -8,27 +8,22 @@ import {
   startVendorTradeDocUpload,
   updateVendorTradeDoc,
 } from "@/app/actions/vendor-trade-docs"
+import { listUnrecordedVendorFolderFiles, type VendorFolderFile } from "@/app/actions/vendor-trade-doc-requests"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { TradeDocType } from "@/lib/trade-docs/settings"
 import type { TradeDocOnFile } from "@/lib/trade-docs/status"
+import { uploadedDriveFileId } from "@/lib/trade-docs/vendor-link"
+
+const NEW_UPLOAD = "new-upload"
 
 export type TradeDocFormMode =
   | { readonly kind: "new"; readonly type: TradeDocType; readonly waiver: boolean }
   | { readonly kind: "edit"; readonly type: TradeDocType; readonly doc: TradeDocOnFile }
-
-function uploadedFileId(text: string): string | null {
-  try {
-    const parsed: unknown = JSON.parse(text)
-    if (typeof parsed === "object" && parsed !== null && "id" in parsed && typeof parsed.id === "string") return parsed.id
-  } catch {
-    return null
-  }
-  return null
-}
 
 /**
  * Records a new document (uploaded to the vendor's Drive folder), the type's
@@ -50,6 +45,9 @@ export function TradeDocRecordForm({
   const existing = mode.kind === "edit" ? mode.doc : null
   const waiver = mode.kind === "new" ? mode.waiver : existing?.kind === "waiver"
   const [file, setFile] = React.useState<File | null>(null)
+  // Files already in the vendor's Drive folder (e.g. saved from an email reply) that aren't recorded yet.
+  const [folderFiles, setFolderFiles] = React.useState<readonly VendorFolderFile[]>([])
+  const [folderFileId, setFolderFileId] = React.useState<string>(NEW_UPLOAD)
   const [effectiveOn, setEffectiveOn] = React.useState(existing?.effectiveOn ?? "")
   const [expiresOn, setExpiresOn] = React.useState(existing?.expiresOn ?? "")
   const [checks, setChecks] = React.useState<ReadonlySet<string>>(new Set(existing?.checks ?? []))
@@ -57,6 +55,19 @@ export function TradeDocRecordForm({
   const [pending, startTransition] = React.useTransition()
   const showChecks = mode.type.certificateChecks && !waiver && certificateChecks.length > 0
   const idBase = `trade-doc-${mode.type.id}`
+
+  React.useEffect(() => {
+    if (mode.kind !== "new") return
+    let cancelled = false
+    void listUnrecordedVendorFolderFiles(vendorId).then((result) => {
+      if (!cancelled && result.success) setFolderFiles(result.data)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [vendorId, mode.kind])
+
+  const usingFolderFile = folderFileId !== NEW_UPLOAD
 
   function toggleCheck(check: string, on: boolean): void {
     setChecks((current) => {
@@ -85,12 +96,12 @@ export function TradeDocRecordForm({
         onDone()
         return
       }
-      if (!file && !waiver) {
+      if (!file && !waiver && !usingFolderFile) {
         toast.error("Choose the file to upload.")
         return
       }
-      let driveFileId: string | null = null
-      if (file) {
+      let driveFileId: string | null = usingFolderFile ? folderFileId : null
+      if (file && !usingFolderFile) {
         const session = await startVendorTradeDocUpload(vendorId, file.name, file.type)
         if (!session.success) {
           toast.error(session.error)
@@ -101,7 +112,7 @@ export function TradeDocRecordForm({
           headers: { "Content-Type": file.type || "application/octet-stream" },
           body: file,
         })
-        driveFileId = response.ok ? uploadedFileId(await response.text()) : null
+        driveFileId = response.ok ? uploadedDriveFileId(await response.text()) : null
         if (!driveFileId) {
           toast.error(`Upload failed for ${file.name}.`)
           return
@@ -127,9 +138,26 @@ export function TradeDocRecordForm({
       <p className="text-sm font-medium">
         {mode.kind === "edit" ? `Edit ${mode.type.label}` : waiver ? `${mode.type.label}: ${mode.type.waiverLabel}` : `New ${mode.type.label}`}
       </p>
-      {mode.kind === "new" && (
+      {mode.kind === "new" && folderFiles.length > 0 && (
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idBase}-file`}>{waiver ? "Signed forms (optional)" : "File"}</Label>
+          <Label htmlFor={`${idBase}-folder-file`}>File</Label>
+          <Select value={folderFileId} onValueChange={setFolderFileId}>
+            <SelectTrigger id={`${idBase}-folder-file`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NEW_UPLOAD}>Upload a new file</SelectItem>
+              {folderFiles.map((folderFile) => (
+                <SelectItem key={folderFile.id} value={folderFile.id}>{folderFile.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Or use one already in the vendor&apos;s Drive folder, such as an attachment saved from an email reply.</p>
+        </div>
+      )}
+      {mode.kind === "new" && !usingFolderFile && (
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idBase}-file`}>{waiver ? "Signed forms (optional)" : folderFiles.length > 0 ? "New file" : "File"}</Label>
           <Input
             id={`${idBase}-file`}
             type="file"
@@ -168,7 +196,7 @@ export function TradeDocRecordForm({
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" disabled={pending} onClick={save}>
-          {pending ? "Saving…" : mode.kind === "edit" ? "Save" : file ? "Upload and save" : "Save"}
+          {pending ? "Saving…" : mode.kind === "edit" ? "Save" : file && !usingFolderFile ? "Upload and save" : "Save"}
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
           Cancel

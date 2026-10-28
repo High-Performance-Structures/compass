@@ -2354,5 +2354,71 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       }
     ],
     "readingMinutes": 7
+  },
+  {
+    "id": "vendor.tradedocs",
+    "featureId": "help-resources",
+    "slug": "vendor-trade-docs",
+    "title": "Vendor Trade Docs",
+    "summary": "Track W-9s, insurance certificates, licenses, agreements and info sheets for each vendor, and request missing ones with a secure link.",
+    "contextSummary": "Trade docs live in each vendor's Google Drive folder; Compass records what was received, when it expires, and who checked it. A docs request emails the vendor a no-login link; replies and uploads come back to the vendor's trade docs.",
+    "category": "Company Workflows",
+    "tags": [
+      "trade docs",
+      "W-9",
+      "certificate of insurance",
+      "COI",
+      "workers comp",
+      "business license",
+      "trade agreement",
+      "info sheet",
+      "vendor",
+      "subcontractor"
+    ],
+    "audiences": [
+      "staff"
+    ],
+    "permissions": [
+      "help:read"
+    ],
+    "routes": [
+      "/dashboard/contacts"
+    ],
+    "owner": "Company operations",
+    "lastReviewed": "2026-10-28",
+    "sourcePath": "docs/help/guides/vendor-trade-docs.md",
+    "content": "## What Each Vendor Needs\nOpen **Contacts > Vendors**. The **Trade docs** column shows how many required documents each vendor has on file. Select it, or choose **Trade docs** from the vendor's menu, to see each document, when it expires and who recorded it.\n\nWhat each kind of vendor must have is set in **Settings > Workflows > Trade docs**. A vendor's kind is its category in the directory, such as Subcontractor or Supplier.\n\nFiles stay in the vendor's folder in Google Drive. Compass keeps a link to each file, not a copy. Removing a document from Compass leaves the file in Drive.\n\n## Request Missing Documents\nIn the vendor's trade docs, select **Request docs**. Choose who to send it to, check which documents to ask for (anything owed is checked for you) and add a note. Then select **Send request**.\n\nThe email lists the documents and who certificates must name. It includes a secure link that works without an account until the date shown. From the link, the vendor can:\n\n- upload each document, with its expiration date\n- download your blank forms, when a form link is set in Settings\n- send an accepted alternative instead, such as the no-employees forms in place of a workers' comp certificate\n- fill in and sign the info sheet online, which is saved as a PDF in their Drive folder\n- have Compass email your certificate holder details to their insurance agent, with a link of the agent's own for uploading certificates\n\nEach upload becomes the vendor's current document of that type, and the older one moves to the history. You get a notification for each one. Check certificates before you rely on them, then use **Edit** to tick the certificate check.\n\n## Replies and Links\nReplies to the request come back to the vendor's trade docs under **Requests and replies**, and to you. Compass saves attachments from a reply into the vendor's Drive folder. To record one, select **Upload** on its line and choose the saved file.\n\nThe same list shows every link you've sent, when it was opened and when files came in. Select **Turn off** to stop a link right away. Documents already received stay.\n\n## Settings\n**Settings > Workflows > Trade docs** controls:\n\n- the documents, who needs them, when they expire and how early to warn\n- the certificate check and the links to your blank forms\n- the Drive folder for vendor folders, and what happens to bills while documents are missing\n- which company vendors see, how long links work, the note to vendors and the certificate holder text\n- the online info sheet's questions. Mark which questions hold the agent's name and email, so the vendor can send the request on to their agent.\n\nThe info sheet's answers, including tax IDs, are kept only in the PDF in the vendor's Drive folder, not in Compass.",
+    "searchText": "vendor trade docs track w 9s, insurance certificates, licenses, agreements and info sheets for each vendor, and request missing ones with a secure link. trade docs live in each vendor's google drive folder; compass records what was received, when it expires, and who checked it. a docs request emails the vendor a no login link; replies and uploads come back to the vendor's trade docs. trade docs w 9 certificate of insurance coi workers comp business license trade agreement info sheet vendor subcontractor what each vendor needs open contacts vendors . the trade docs column shows how many required documents each vendor has on file. select it, or choose trade docs from the vendor's menu, to see each document, when it expires and who recorded it. what each kind of vendor must have is set in settings workflows trade docs . a vendor's kind is its category in the directory, such as subcontractor or supplier. files stay in the vendor's folder in google drive. compass keeps a link to each file, not a copy. removing a document from compass leaves the file in drive. request missing documents in the vendor's trade docs, select request docs . choose who to send it to, check which documents to ask for (anything owed is checked for you) and add a note. then select send request . the email lists the documents and who certificates must name. it includes a secure link that works without an account until the date shown. from the link, the vendor can: upload each document, with its expiration date download your blank forms, when a form link is set in settings send an accepted alternative instead, such as the no employees forms in place of a workers' comp certificate fill in and sign the info sheet online, which is saved as a pdf in their drive folder have compass email your certificate holder details to their insurance agent, with a link of the agent's own for uploading certificates each upload becomes the vendor's current document of that type, and the older one moves to the history. you get a notification for each one. check certificates before you rely on them, then use edit to tick the certificate check. replies and links replies to the request come back to the vendor's trade docs under requests and replies , and to you. compass saves attachments from a reply into the vendor's drive folder. to record one, select upload on its line and choose the saved file. the same list shows every link you've sent, when it was opened and when files came in. select turn off to stop a link right away. documents already received stay. settings settings workflows trade docs controls: the documents, who needs them, when they expire and how early to warn the certificate check and the links to your blank forms the drive folder for vendor folders, and what happens to bills while documents are missing which company vendors see, how long links work, the note to vendors and the certificate holder text the online info sheet's questions. mark which questions hold the agent's name and email, so the vendor can send the request on to their agent. the info sheet's answers, including tax ids, are kept only in the pdf in the vendor's drive folder, not in compass.",
+    "sections": [
+      {
+        "id": "requirements",
+        "topicId": "vendor.tradedocs.requirements",
+        "title": "What Each Vendor Needs",
+        "summary": "Open Contacts Vendors . The Trade docs column shows how many required documents each vendor has on file. Select it, or choose Trade docs from the vendor's menu, to see each document, when it expires and who recorded it.",
+        "content": "Open **Contacts > Vendors**. The **Trade docs** column shows how many required documents each vendor has on file. Select it, or choose **Trade docs** from the vendor's menu, to see each document, when it expires and who recorded it.\n\nWhat each kind of vendor must have is set in **Settings > Workflows > Trade docs**. A vendor's kind is its category in the directory, such as Subcontractor or Supplier.\n\nFiles stay in the vendor's folder in Google Drive. Compass keeps a link to each file, not a copy. Removing a document from Compass leaves the file in Drive."
+      },
+      {
+        "id": "request",
+        "topicId": "vendor.tradedocs.request",
+        "title": "Request Missing Documents",
+        "summary": "In the vendor's trade docs, select Request docs . Choose who to send it to, check which documents to ask for (anything owed is checked for you) and add a note. Then select Send request .",
+        "content": "In the vendor's trade docs, select **Request docs**. Choose who to send it to, check which documents to ask for (anything owed is checked for you) and add a note. Then select **Send request**.\n\nThe email lists the documents and who certificates must name. It includes a secure link that works without an account until the date shown. From the link, the vendor can:\n\n- upload each document, with its expiration date\n- download your blank forms, when a form link is set in Settings\n- send an accepted alternative instead, such as the no-employees forms in place of a workers' comp certificate\n- fill in and sign the info sheet online, which is saved as a PDF in their Drive folder\n- have Compass email your certificate holder details to their insurance agent, with a link of the agent's own for uploading certificates\n\nEach upload becomes the vendor's current document of that type, and the older one moves to the history. You get a notification for each one. Check certificates before you rely on them, then use **Edit** to tick the certificate check."
+      },
+      {
+        "id": "replies",
+        "topicId": "vendor.tradedocs.replies",
+        "title": "Replies and Links",
+        "summary": "Replies to the request come back to the vendor's trade docs under Requests and replies , and to you. Compass saves attachments from a reply into the vendor's Drive folder. To record one, select Upload on its line and choose the saved file.",
+        "content": "Replies to the request come back to the vendor's trade docs under **Requests and replies**, and to you. Compass saves attachments from a reply into the vendor's Drive folder. To record one, select **Upload** on its line and choose the saved file.\n\nThe same list shows every link you've sent, when it was opened and when files came in. Select **Turn off** to stop a link right away. Documents already received stay."
+      },
+      {
+        "id": "settings",
+        "topicId": "vendor.tradedocs.settings",
+        "title": "Settings",
+        "summary": "Settings Workflows Trade docs controls:",
+        "content": "**Settings > Workflows > Trade docs** controls:\n\n- the documents, who needs them, when they expire and how early to warn\n- the certificate check and the links to your blank forms\n- the Drive folder for vendor folders, and what happens to bills while documents are missing\n- which company vendors see, how long links work, the note to vendors and the certificate holder text\n- the online info sheet's questions. Mark which questions hold the agent's name and email, so the vendor can send the request on to their agent.\n\nThe info sheet's answers, including tax IDs, are kept only in the PDF in the vendor's Drive folder, not in Compass."
+      }
+    ],
+    "readingMinutes": 3
   }
 ]
