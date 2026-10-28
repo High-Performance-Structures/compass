@@ -28,6 +28,8 @@ export type EstimatePricingPackageInput = {
   readonly notes: string | null
   readonly recipients: readonly { readonly name: string; readonly email: string }[]
   readonly documentIds: readonly string[]
+  /** Project files picked in the file browser, as Drive links. */
+  readonly extraDocuments: readonly { readonly label: string; readonly url: string }[]
 }
 
 const MAX_RECIPIENTS = 12
@@ -152,7 +154,11 @@ export async function createEstimatePricingPackage(
     if (chosen.length !== lineIds.length) return { success: false, error: "A chosen line is no longer on this estimate or has no \"Priced by\" choice." }
     const problem = packageSelectionProblem(chosen)
     if (problem) return { success: false, error: problem }
-    const chosenDocuments = documents.filter((document) => input.documentIds.includes(document.id))
+    if (input.extraDocuments.length > 40) return { success: false, error: "Include at most 40 files." }
+    const chosenDocuments = [
+      ...documents.filter((document) => input.documentIds.includes(document.id)),
+      ...input.extraDocuments.map((document, index) => ({ id: `picked-${index}`, label: document.label.trim().slice(0, 200) || "Project file", url: document.url.trim() })),
+    ]
     const source = chosen[0]?.source
     if (!source) return { success: false, error: "Choose at least one cost code." }
 

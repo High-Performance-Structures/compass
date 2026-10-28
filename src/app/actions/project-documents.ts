@@ -392,6 +392,49 @@ export async function listProjectDocumentSourceFolder(
   }
 }
 
+export type ProjectFilePickerFolder =
+  | {
+      readonly success: true
+      readonly rootFolderId: string
+      readonly folderId: string
+      readonly files: readonly ProjectDocumentSourceFile[]
+    }
+  | { readonly success: false; readonly error: string }
+
+/**
+ * One folder of the project's Drive folder for a file picker (RFQ plans and
+ * specs, and the like). No folder id opens the project's top folder; any other
+ * folder must sit inside the project.
+ */
+export async function listProjectFilesForPicker(
+  projectId: string,
+  folderId: string | null
+): Promise<ProjectFilePickerFolder> {
+  try {
+    const access = await internalDocumentAccess(projectId, false)
+    const rootFolderId = access.project.driveFolderId
+    if (!rootFolderId) throw new Error("Connect this project to its Google Drive folder first.")
+    const target = folderId?.trim() || rootFolderId
+    if (target !== rootFolderId) {
+      const drive = await projectDriveClient(access)
+      const withinProject = await isDriveItemWithinProjectFolder({
+        client: drive.client,
+        googleEmail: drive.googleEmail,
+        itemId: target,
+        projectFolderId: rootFolderId,
+      })
+      if (!withinProject) throw new Error("That folder is outside this project.")
+    }
+    const files = await listProjectSourceFolder(access, target, "")
+    return { success: true, rootFolderId, folderId: target, files }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to load the project files.",
+    }
+  }
+}
+
 export async function publishProjectDocument(
   projectId: string,
   input: {

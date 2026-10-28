@@ -11,6 +11,7 @@ import {
   getEstimatePricingBoard,
   type EstimatePricingBoardView,
 } from "@/app/actions/estimate-pricing-board"
+import { ProjectDriveFilePicker, type PickedProjectFile } from "@/components/projects/project-drive-file-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -262,6 +263,8 @@ function PackageComposer({
   const [otherName, setOtherName] = React.useState("")
   const [otherEmail, setOtherEmail] = React.useState("")
   const [documentIds, setDocumentIds] = React.useState<ReadonlySet<string>>(() => new Set(documents.map((document) => document.id)))
+  const [pickedFiles, setPickedFiles] = React.useState<readonly PickedProjectFile[]>([])
+  const [pickerOpen, setPickerOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
   const needle = query.trim().toLowerCase()
@@ -290,6 +293,7 @@ function PackageComposer({
         notes: notes || null,
         recipients: picked.map(({ name, email }) => ({ name, email })),
         documentIds: [...documentIds],
+        extraDocuments: pickedFiles.map((file) => ({ label: file.name, url: file.url })),
       })
       if (!result.success) {
         toast.error(result.error)
@@ -358,10 +362,9 @@ function PackageComposer({
 
       <fieldset className="grid gap-2">
         <legend className="text-sm font-medium">Plans and specs to include</legend>
-        {documents.length === 0 ? (
+        {documents.length === 0 && pickedFiles.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            This estimate has no linked plans or specs. Add them under Plans, specifications, and estimate basis, or add
-            links on each RFQ before sending.
+            This estimate has no linked plans or specs. Browse the project files to add some.
           </p>
         ) : (
           documents.map((document) => (
@@ -381,6 +384,26 @@ function PackageComposer({
             </label>
           ))
         )}
+        {pickedFiles.map((file) => (
+          <div key={file.id} className="flex items-center justify-between gap-2 text-sm">
+            <span className="truncate">{file.name}</span>
+            <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${file.name}`} onClick={() => setPickedFiles(pickedFiles.filter((item) => item.id !== file.id))}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        <div>
+          <Button type="button" size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
+            Browse project files
+          </Button>
+        </div>
+        <ProjectDriveFilePicker
+          projectId={projectId}
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          alreadyPickedUrls={[...documents.map((document) => document.url), ...pickedFiles.map((file) => file.url)]}
+          onPick={(files) => setPickedFiles([...pickedFiles, ...files.filter((file) => !pickedFiles.some((item) => item.id === file.id))])}
+        />
       </fieldset>
 
       <div className="flex flex-wrap gap-2">
