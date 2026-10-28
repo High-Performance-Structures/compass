@@ -48,6 +48,7 @@ import {
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
 import { createEstimateLineTakeoffTodo } from "@/app/actions/estimate-line-pricing"
+import { EstimatePricingBoard } from "@/components/projects/estimate-pricing-board"
 import { EstimateLinePricedBy, EstimateLinePricingBadge, needsTakeoffTodo, useEstimatePricingView } from "@/components/projects/estimate-line-priced-by"
 import {
   ESTIMATE_WORK_SECTIONS,
@@ -2169,6 +2170,13 @@ export function ProjectEstimateWorkspacePanel({
 
           {editable && !editorIsInline && renderLineEditor("bottom")}
         </div>
+      </section>
+
+      <section
+        className="clarity-panel-strong p-4"
+        hidden={workSection !== "pricing"}
+      >
+        <EstimatePricingBoard projectId={projectId} estimateId={estimate.id} editable={editable} active={workSection === "pricing"} />
       </section>
 
       <section

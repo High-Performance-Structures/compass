@@ -322,6 +322,8 @@ export type CreateRfqRequestInput = {
   readonly scope: string | null
   readonly scopeItems: readonly CreateRfqScopeLineInput[]
   readonly documentLinks: readonly CreateRfqDocumentLinkInput[]
+  /** Set by the estimate pricing board so RFQs sent together stay grouped. */
+  readonly estimatePackage?: { readonly id: string; readonly title: string; readonly estimateId: string } | null
 }
 
 export type UpdateRfqRequestInput = CreateRfqRequestInput
@@ -2147,6 +2149,9 @@ export async function createRfqRequest(
       scope: description,
       scopeItems,
       documentLinks,
+      // RFQs from one estimate pricing package share a bid package, the same
+      // grouping "Duplicate for another vendor" uses.
+      ...(input.estimatePackage ? { estimatePackage: input.estimatePackage, bidPackageId: input.estimatePackage.id } : {}),
       sageRfp: {
         targetRecordType: "sage_rfp",
         linkStrategy: "external_document_links",
@@ -2513,6 +2518,9 @@ export async function updateRfqRequest(
       scopeItems,
       documentLinks,
       vendorResponse: existingVendorResponse,
+      // Editing keeps the RFQ in its bid package.
+      bidPackageId: existingPayload?.bidPackageId ?? null,
+      estimatePackage: existingPayload?.estimatePackage ?? null,
       templateReview:
         templateReview &&
         (templateReview.unresolvedPlaceholders.length > 0 ||
