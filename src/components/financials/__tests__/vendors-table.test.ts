@@ -42,6 +42,8 @@ function vendor(index: number): VendorDirectoryCompany {
     sourceMetadata: null,
     directoryStatus: "active",
     mergedIntoVendorId: null,
+    tradeDocsFolderId: null,
+    tradeDocsBillMode: null,
     syncStatus: "manual",
     lastSyncedAt: null,
     organizationId: "org-1",

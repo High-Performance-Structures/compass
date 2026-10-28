@@ -3446,6 +3446,10 @@ export const vendors = sqliteTable("vendors", {
   sourceMetadata: text("source_metadata"),
   directoryStatus: text("directory_status").notNull().default("active"),
   mergedIntoVendorId: text("merged_into_vendor_id"),
+  /** Google Drive folder holding this vendor's trade docs. */
+  tradeDocsFolderId: text("trade_docs_folder_id"),
+  /** "flag" or "hold" bills while trade docs are missing; null uses the company default. */
+  tradeDocsBillMode: text("trade_docs_bill_mode"),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   organizationId: text("organization_id").references(() => organizations.id),

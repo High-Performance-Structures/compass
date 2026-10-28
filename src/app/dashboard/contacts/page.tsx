@@ -65,6 +65,8 @@ import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
+import { VendorTradeDocsDialog } from "@/components/financials/vendor-trade-docs-dialog"
+import { getVendorTradeDocStatuses, type VendorTradeDocStatus } from "@/app/actions/vendor-trade-docs"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { CustomerPeopleDialog } from "@/components/contacts/customer-people-dialog"
 import { DirectoryAccountLinkDialog, type DirectoryAccountLinkTarget } from "@/components/contacts/directory-account-link-dialog"
@@ -324,6 +326,13 @@ function ContactsContent() {
 
   const [vendorDialogOpen, setVendorDialogOpen] = React.useState(false)
   const [vendorReadOnly, setVendorReadOnly] = React.useState(false)
+  // Staff only: null when trade docs aren't available to this user.
+  const [tradeDocStatuses, setTradeDocStatuses] = React.useState<Readonly<Record<string, VendorTradeDocStatus>> | null>(null)
+  const [tradeDocsVendor, setTradeDocsVendor] = React.useState<{ readonly id: string; readonly name: string } | null>(null)
+  const loadTradeDocStatuses = React.useCallback(async () => {
+    const result = await getVendorTradeDocStatuses()
+    setTradeDocStatuses(result.success ? result.data : null)
+  }, [])
   const [editingVendor, setEditingVendor] =
     React.useState<VendorDirectoryCompany | null>(null)
 
@@ -360,6 +369,7 @@ function ContactsContent() {
       })
       setCustomersList(customers)
       setVendorsList(vendors)
+      if (access.vendors.read) void loadTradeDocStatuses()
       setInternalContactsList(internalContacts)
       setMyContacts(myRecords)
       setMyProposalStatuses(myStatuses)
@@ -369,7 +379,7 @@ function ContactsContent() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadTradeDocStatuses])
 
   React.useEffect(() => {
     void loadAll()
@@ -759,9 +769,20 @@ function ContactsContent() {
                 setVendorDialogOpen(true)
               } : undefined}
               onDelete={directoryAccess?.vendors.delete ? handleDeleteVendor : undefined}
+              tradeDocStatuses={tradeDocStatuses ?? undefined}
+              onTradeDocs={tradeDocStatuses ? (vendor) => setTradeDocsVendor({ id: vendor.id, name: vendor.name }) : undefined}
               selectedIds={selectedVendors}
               onSelectionChange={associationProjects.length > 0 || (directoryAccess?.vendors.edit && directoryAccess.vendors.delete) ? setSelectedVendors : undefined}
             />
+            {tradeDocsVendor && (
+              <VendorTradeDocsDialog
+                vendorId={tradeDocsVendor.id}
+                vendorName={tradeDocsVendor.name}
+                open
+                onOpenChange={(next) => !next && setTradeDocsVendor(null)}
+                onChanged={() => void loadTradeDocStatuses()}
+              />
+            )}
           </TabsContent>
 
           <TabsContent

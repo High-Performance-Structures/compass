@@ -11,6 +11,7 @@ import {
   type ClientFollowUpSettings,
 } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
+import { DEFAULT_TRADE_DOC_SETTINGS, tradeDocSettingsSchema, type TradeDocSettings } from "@/lib/trade-docs/settings"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
@@ -682,6 +683,7 @@ type FeatureSettingsTypes = {
   readonly "weather-alerts": WeatherAlertSettings
   readonly estimates: EstimateSettings
   readonly "estimate-pricing": EstimatePricingSettings
+  readonly "trade-docs": TradeDocSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -896,6 +898,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "The \"Priced by\" choices on estimate lines: who gives us each cost code's number, the Sage cost type it lands in, and whether Compass requests a quote, asks the owner, or makes a takeoff to-do; and how long vendors' price links keep working.",
     defaults: { sources: [...DEFAULT_PRICING_SOURCES], quoteLinkGraceDays: 14, quoteLinkDaysWithoutDueDate: 45 },
     schema: estimatePricingSettingsSchema,
+  },
+  "trade-docs": {
+    label: "Trade docs",
+    description: "What each kind of vendor must have on file (W-9, insurance certificates, license, signed agreement), when each expires and how early to warn, what staff check on a certificate, where the files are kept in Drive, and what happens to bills while documents are missing.",
+    defaults: DEFAULT_TRADE_DOC_SETTINGS,
+    schema: tradeDocSettingsSchema,
   },
   "square-payments": {
     label: "Square and Sage payments",

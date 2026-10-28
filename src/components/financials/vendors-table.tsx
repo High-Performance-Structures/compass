@@ -52,6 +52,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { TradeDocStatusBadge } from "@/components/financials/trade-doc-status-badge"
+import type { VendorTradeDocStatus } from "@/app/actions/vendor-trade-docs"
 
 interface VendorsTableProps {
   vendors: readonly VendorDirectoryCompany[]
@@ -59,6 +61,10 @@ interface VendorsTableProps {
   onEdit?: (vendor: VendorDirectoryCompany) => void
   onDelete?: (id: string) => void
   onView?: (vendor: VendorDirectoryCompany) => void
+  /** Opens the vendor's trade docs (W-9, certificates, agreement). */
+  onTradeDocs?: (vendor: VendorDirectoryCompany) => void
+  /** Trade doc standing by vendor id; vendors that need nothing are absent. */
+  tradeDocStatuses?: Readonly<Record<string, VendorTradeDocStatus>>
   selectedIds?: readonly string[]
   onSelectionChange?: (ids: readonly string[]) => void
 }
@@ -83,6 +89,8 @@ export function VendorsTable({
   onEdit,
   onDelete,
   onView,
+  onTradeDocs,
+  tradeDocStatuses,
   selectedIds = EMPTY_SELECTION,
   onSelectionChange,
 }: VendorsTableProps) {
@@ -211,6 +219,28 @@ export function VendorsTable({
       },
     },
     {
+      id: "tradeDocs",
+      header: "Trade docs",
+      cell: ({ row }) => {
+        const status = tradeDocStatuses?.[row.original.id]
+        if (!status) return <span className="text-muted-foreground/40">—</span>
+        const label = <TradeDocStatusBadge status={status} />
+        if (!onTradeDocs) return label
+        return (
+          <button
+            type="button"
+            className="rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={(event) => {
+              event.stopPropagation()
+              onTradeDocs(row.original)
+            }}
+          >
+            {label}
+          </button>
+        )
+      },
+    },
+    {
       id: "email",
       accessorFn: (vendor) => vendor.primaryEmail || vendor.email,
       header: "Contact email",
@@ -276,7 +306,7 @@ export function VendorsTable({
     {
       id: "actions",
       cell: ({ row }) => {
-        if (!onEdit && !onDelete && !onView) return null
+        if (!onEdit && !onDelete && !onView && !onTradeDocs) return null
         const vendor = row.original
         return (
           <DropdownMenu>
@@ -288,6 +318,7 @@ export function VendorsTable({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
+              {onTradeDocs && <DropdownMenuItem onClick={() => onTradeDocs(vendor)}>Trade docs</DropdownMenuItem>}
               {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
               {onEdit && onDelete && <DropdownMenuSeparator />}
               {onDelete && <DropdownMenuItem
@@ -301,7 +332,7 @@ export function VendorsTable({
         )
       },
     },
-  ], [onEdit, onDelete, onView])
+  ], [onEdit, onDelete, onView, onTradeDocs, tradeDocStatuses])
   const visibleColumns = React.useMemo(() => columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
     (onSelectionChange !== undefined || column.id !== "select") &&
@@ -443,13 +474,16 @@ export function VendorsTable({
                         ? `${v.contacts.length} ${v.contacts.length === 1 ? "person" : "people"}`
                         : "No contact people"}
                     </p>
+                    {tradeDocStatuses?.[v.id] && (
+                      <div className="mt-1"><TradeDocStatusBadge status={tradeDocStatuses[v.id]} /></div>
+                    )}
                     {developerModeEnabled && (
                       <p className="mt-1 text-xs text-muted-foreground">
                         {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
                       </p>
                     )}
                   </div>
-                  {(onEdit || onDelete || onView) && <DropdownMenu>
+                  {(onEdit || onDelete || onView || onTradeDocs) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -461,6 +495,7 @@ export function VendorsTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {onView && <DropdownMenuItem onClick={() => onView(v)}>View people</DropdownMenuItem>}
+                      {onTradeDocs && <DropdownMenuItem onClick={() => onTradeDocs(v)}>Trade docs</DropdownMenuItem>}
                       {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
                       {onEdit && onDelete && <DropdownMenuSeparator />}
                       {onDelete && <DropdownMenuItem
