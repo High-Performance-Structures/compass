@@ -4,20 +4,14 @@ import { and, desc, eq, isNull, isNotNull } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
-import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { canFeature } from "@/lib/permission-enforcement"
-import { requireOrg } from "@/lib/org-scope"
+import type { AuthUser } from "@/lib/auth"
+import { tradeDocAccess, type TradeDocAccess } from "@/lib/trade-docs/access"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
-import { isTradeDocBillMode, type TradeDocBillMode, type TradeDocSettings } from "@/lib/trade-docs/settings"
+import { isTradeDocBillMode, type TradeDocBillMode } from "@/lib/trade-docs/settings"
 import { summarizeTradeDocs, type TradeDocOnFile, type TradeDocSummary } from "@/lib/trade-docs/status"
-import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -111,22 +105,7 @@ async function requestOrigin(): Promise<string | undefined> {
   return `${requestHeaders.get("x-forwarded-proto") ?? "https"}://${host}`
 }
 
-/** Office staff who can read vendors; `write` also needs vendor update rights. */
-async function tradeDocAccess(write: boolean) {
-  const user = await requireAuth()
-  if (!isInternalStaffRole(user.role)) throw new Error("Trade docs are for office staff.")
-  const canRead = await canFeature(user, "vendors", "read")
-  if (!canRead) throw new Error("You don't have access to vendors.")
-  const canEdit = !isDemoUser(user.id) && (await canFeature(user, "vendors", "update"))
-  if (write && !canEdit) throw new Error("You don't have permission to change vendor records.")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const settings: TradeDocSettings = await readFeatureSettings(db, organizationId, "trade-docs")
-  return { user, organizationId, env, db, settings, canEdit }
-}
-
-type Access = Awaited<ReturnType<typeof tradeDocAccess>>
+type Access = TradeDocAccess
 
 async function loadVendor(access: Access, vendorId: string) {
   const vendor = await access.db

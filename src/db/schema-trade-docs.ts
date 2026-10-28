@@ -38,7 +38,7 @@ export const vendorTradeDocuments = sqliteTable(
     index("vendor_trade_documents_vendor_idx").on(table.vendorId, table.docType, table.supersededAt),
     index("vendor_trade_documents_org_expiry_idx").on(table.organizationId, table.expiresOn),
     uniqueIndex("vendor_trade_documents_drive_file_uq")
-      .on(table.vendorId, table.driveFileId)
+      .on(table.vendorId, table.docType, table.driveFileId)
       .where(sql`${table.driveFileId} IS NOT NULL`),
   ]
 )
