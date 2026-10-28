@@ -26,7 +26,13 @@ const HEARTBEAT_INTERVAL_MS = 30_000 // 30 seconds
 const ACTIVITY_SYNC_INTERVAL_MS = 60_000
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000
 
-export function PresenceProvider({ children }: { children: React.ReactNode }) {
+export function PresenceProvider({
+  children,
+  enabled = true,
+}: {
+  readonly children: React.ReactNode
+  readonly enabled?: boolean
+}) {
   const [status, setStatus] = useState<PresenceStatus>("online")
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [lastActivity, setLastActivity] = useState<Date | null>(() => new Date())
@@ -50,6 +56,8 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
 
   const updateStatus = useCallback(
     async (newStatus: PresenceStatus, message?: string) => {
+      if (!enabled) return
+
       const effectiveMessage = message ?? statusMessageRef.current
 
       setStatus(newStatus)
@@ -73,7 +81,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         // silently fail - presence updates are non-critical
       }
     },
-    []
+    [enabled]
   )
 
   const clearIdleTimer = useCallback((): void => {
@@ -88,6 +96,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     const elapsed = Date.now() - lastActivityAtRef.current
     const remaining = Math.max(0, IDLE_TIMEOUT_MS - elapsed)
     idleTimerRef.current = setTimeout(() => {
+      if (!enabled) return
       if (!document.hidden && statusRef.current !== "dnd") {
         setIsIdle(true)
         setStatus("idle")
@@ -97,10 +106,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         )
       }
     }, remaining)
-  }, [clearIdleTimer])
+  }, [clearIdleTimer, enabled])
 
   // heartbeat function
   const sendHeartbeat = useCallback(async () => {
+    if (!enabled) return
+
     // Heartbeats prove the connection is alive but must not reset inactivity.
     if (document.hidden) return
     if (statusRef.current === "offline" || statusRef.current === "dnd") return
@@ -110,10 +121,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // silently fail - presence updates are non-critical
     }
-  }, [])
+  }, [enabled])
 
   // set up heartbeat interval
   useEffect(() => {
+    if (!enabled) return
+
     const heartbeatTimer = window.setInterval(
       sendHeartbeat,
       HEARTBEAT_INTERVAL_MS
@@ -122,9 +135,11 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.clearInterval(heartbeatTimer)
     }
-  }, [sendHeartbeat])
+  }, [enabled, sendHeartbeat])
 
   const handleActivity = useCallback((): void => {
+    if (!enabled) return
+
     const now = Date.now()
     if (
       statusRef.current !== "idle" &&
@@ -152,10 +167,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         true
       ).catch(() => {})
     }
-  }, [scheduleIdleTimer])
+  }, [enabled, scheduleIdleTimer])
 
   // track user activity
   useEffect(() => {
+    if (!enabled) return
+
     const activityEvents = ["mousemove", "keydown", "touchstart", "scroll"]
 
     for (const event of activityEvents) {
@@ -170,10 +187,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       }
       clearIdleTimer()
     }
-  }, [clearIdleTimer, handleActivity, scheduleIdleTimer])
+  }, [clearIdleTimer, enabled, handleActivity, scheduleIdleTimer])
 
   // handle page visibility changes
   useEffect(() => {
+    if (!enabled) return
+
     const handleVisibilityChange = () => {
       const nowVisible = !document.hidden
 
@@ -199,13 +218,15 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [clearIdleTimer, scheduleIdleTimer, sendHeartbeat])
+  }, [clearIdleTimer, enabled, scheduleIdleTimer, sendHeartbeat])
 
   // send initial presence on mount
   useEffect(() => {
+    if (!enabled) return
+
     lastActivitySyncRef.current = Date.now()
     updatePresence("online", undefined, true).catch(() => {})
-  }, [])
+  }, [enabled])
 
   const value: PresenceContextValue = {
     status,
