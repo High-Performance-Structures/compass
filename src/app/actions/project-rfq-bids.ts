@@ -1,14 +1,17 @@
 "use server"
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import {
+  projectEstimateLineCostItems,
   projectEstimateLines,
   projectEstimates,
 } from "@/db/schema-estimates"
+import { planBidFill } from "@/lib/estimates/bid-fill"
+import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
@@ -438,7 +441,67 @@ export async function importApprovedProjectRfqBid(
     )
     const now = new Date().toISOString()
     const importId = crypto.randomUUID()
-    const lineValues = pricedLines.map((pricedLine, index) => {
+    // Fill lines already on the estimate that are waiting at $0 for these
+    // cost codes; only codes with no waiting line get a new line.
+    const waitingIds = existingEstimateLines.filter((line) => line.lineTotalCents === 0).map((line) => line.id)
+    const linesWithItems = waitingIds.length
+      ? new Set(
+          (
+            await access.db
+              .selectDistinct({ lineId: projectEstimateLineCostItems.estimateLineId })
+              .from(projectEstimateLineCostItems)
+              .where(and(inArray(projectEstimateLineCostItems.estimateLineId, waitingIds), isNull(projectEstimateLineCostItems.deletedAt)))
+          ).map((row) => row.lineId)
+        )
+      : new Set<string>()
+    const fillPlan = planBidFill(
+      pricedLines.map((pricedLine) => ({
+        pricedLine,
+        costCode: rfqPayload.scopeItems.find((line) => line.lineNumber === pricedLine.lineNumber)?.costCode ?? null,
+      })),
+      existingEstimateLines.map((line) => ({
+        id: line.id,
+        costCode: line.costCode,
+        lineTotalCents: line.lineTotalCents,
+        pricingSource: line.pricingSource,
+        sortOrder: line.sortOrder,
+        hasCostItems: linesWithItems.has(line.id),
+      }))
+    )
+    const sourceNote = `Approved RFQ ${rfq.sourceRecordNumber ?? rfq.title} · ${response.responderCompany ?? response.responderName}`
+    const lineFills = fillPlan.flatMap((item) => {
+      if (item.kind !== "fill") return []
+      const target = existingEstimateLines.find((line) => line.id === item.targetLineId)
+      if (!target) return []
+      const { pricedLine } = item.bidLine
+      const scope = rfqPayload.scopeItems.find((line) => line.lineNumber === pricedLine.lineNumber)
+      const calculation = calculateEstimateLine({
+        quantity: 1,
+        unitCostCents: pricedLine.amountCents,
+        markupRateBasisPoints: target.markupRateBasisPoints,
+        taxable: target.taxable,
+        taxRateBasisPoints: target.taxRateBasisPoints,
+      })
+      return [{
+        target,
+        calculation,
+        amountCents: pricedLine.amountCents,
+        specifications: [target.specifications, pricedLine.notes, response.notes, sourceNote].filter((value) => Boolean(value)).join("\n").slice(0, 10_000),
+        provenance: {
+          id: crypto.randomUUID(),
+          importId,
+          estimateLineId: target.id,
+          rfqLineNumber: pricedLine.lineNumber,
+          descriptionSnapshot: scope?.description ?? target.description,
+          costCodeSnapshot: scope?.costCode ?? null,
+          amountCents: pricedLine.amountCents,
+          createdAt: now,
+        },
+      }]
+    })
+    const filledNumbers = new Set(lineFills.map((fill) => fill.provenance.rfqLineNumber))
+    const linesToAdd = pricedLines.filter((pricedLine) => !filledNumbers.has(pricedLine.lineNumber))
+    const lineValues = linesToAdd.map((pricedLine, index) => {
       const scope = rfqPayload.scopeItems.find(
         (line) => line.lineNumber === pricedLine.lineNumber
       )
@@ -448,7 +511,6 @@ export async function importApprovedProjectRfqBid(
         scope?.phaseCode ?? (costCode.slice(0, 2).trim() || "00")
       const description = scope?.description ?? rfq.title
       const estimateLineId = crypto.randomUUID()
-      const sourceNote = `Approved RFQ ${rfq.sourceRecordNumber ?? rfq.title} · ${response.responderCompany ?? response.responderName}`
       return {
         estimateLine: {
           id: estimateLineId,
@@ -495,10 +557,9 @@ export async function importApprovedProjectRfqBid(
         },
       }
     })
-    const importedAmountCents = lineValues.reduce(
-      (total, line) => total + line.estimateLine.lineTotalCents,
-      0
-    )
+    const importedAmountCents =
+      lineValues.reduce((total, line) => total + line.estimateLine.lineTotalCents, 0) +
+      lineFills.reduce((total, fill) => total + fill.amountCents, 0)
     if (importedAmountCents !== approval.amountCents) {
       return {
         success: false,
@@ -541,7 +602,25 @@ export async function importApprovedProjectRfqBid(
         )`
       )
     )
-    const provenanceInserts = lineValues.map((line) =>
+    const importGuard = sql`EXISTS (
+      SELECT 1 FROM ${projectEstimateRfqBidImports}
+      WHERE ${projectEstimateRfqBidImports.id} = ${importId}
+    )`
+    // Only a line still at $0 is filled, so a price typed in meanwhile wins.
+    const lineFillUpdates = lineFills.map((fill) =>
+      access.db
+        .update(projectEstimateLines)
+        .set({
+          quantity: 1,
+          unit: "LS",
+          unitCostCents: fill.amountCents,
+          ...fill.calculation,
+          specifications: fill.specifications || null,
+          updatedAt: now,
+        })
+        .where(and(eq(projectEstimateLines.id, fill.target.id), eq(projectEstimateLines.lineTotalCents, 0), importGuard))
+    )
+    const provenanceInserts = [...lineValues, ...lineFills].map((line) =>
       access.db.insert(projectEstimateRfqBidImportLines).select(
         sql`SELECT
           ${line.provenance.id}, ${importId}, ${line.provenance.estimateLineId},
@@ -597,6 +676,7 @@ export async function importApprovedProjectRfqBid(
     await access.db.batch([
       importInsert,
       ...estimateLineInserts,
+      ...lineFillUpdates,
       ...provenanceInserts,
       access.db
         .update(projectEstimates)
@@ -639,7 +719,7 @@ export async function importApprovedProjectRfqBid(
     revalidatePath(`/dashboard/projects/${projectId}/estimate`)
     revalidatePath(`/dashboard/projects/${projectId}/estimate/compare`)
     revalidatePath(`/print/projects/${projectId}/estimate`)
-    return { success: true, id: importId, lineCount: lineValues.length }
+    return { success: true, id: importId, lineCount: lineValues.length + lineFills.length }
   } catch (error) {
     return {
       success: false,
