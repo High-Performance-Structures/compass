@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { TradeDocImportDialog } from "@/components/settings/trade-doc-import-dialog"
 import {
   TRADE_DOC_BILL_MODES,
   TRADE_DOC_BILL_MODE_LABELS,
@@ -45,6 +46,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
   const [checks, setChecks] = React.useState("")
   const [folder, setFolder] = React.useState("")
   const [billMode, setBillMode] = React.useState<TradeDocBillMode>("flag")
+  const [importOpen, setImportOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
@@ -268,6 +270,18 @@ export function TradeDocSettingsSection(): React.ReactElement {
           <p className="text-xs text-muted-foreground">The default for every vendor. Change it for one vendor in its trade docs.</p>
         </div>
       </fieldset>
+
+      <div className="grid gap-2 border-t pt-4 sm:max-w-2xl">
+        <h3 className="text-sm font-semibold">Documents you already have</h3>
+        <p className="text-sm text-muted-foreground">
+          Bring in W-9s, certificates, licenses and signed agreements already kept in Drive. Compass suggests the vendor and
+          expiry date from each file&apos;s folder or name, and you check the list first.
+        </p>
+        <div>
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>Bring in from Drive</Button>
+        </div>
+        <TradeDocImportDialog open={importOpen} onOpenChange={setImportOpen} docTypes={types.filter((type) => savedIds.has(type.id))} />
+      </div>
 
       {canEdit ? (
         <div className="flex flex-wrap gap-2">
