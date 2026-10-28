@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 
 function textField(formData: FormData, name: string): string | null {
@@ -167,6 +168,8 @@ export function ProjectFinancialWorkspace({
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [vendorBillFormVersion, setVendorBillFormVersion] = useState(0)
+  // form.reset() can't clear the Drive field's own state, so remount it.
+  const [payApplicationFormVersion, setPayApplicationFormVersion] = useState(0)
   const projectDriveUrl = projectDriveFolderId
     ? `https://drive.google.com/drive/folders/${encodeURIComponent(projectDriveFolderId)}`
     : null
@@ -212,7 +215,10 @@ export function ProjectFinancialWorkspace({
       setMessage(
         result.success ? "Owner pay application staged." : result.error
       )
-      if (result.success) form.reset()
+      if (result.success) {
+        form.reset()
+        setPayApplicationFormVersion((version) => version + 1)
+      }
       router.refresh()
     })
   }
@@ -313,11 +319,14 @@ export function ProjectFinancialWorkspace({
               label="Supporting package link"
               htmlFor="supportingPackageUrl"
             >
-              <Input
+              <DriveItemField
+                key={`supporting-package-${payApplicationFormVersion}`}
                 id="supportingPackageUrl"
                 name="supportingPackageUrl"
-                type="url"
-                placeholder="https://drive.google.com/..."
+                projectId={projectId}
+                ariaLabel="Supporting package"
+                browseTitle="Choose the supporting package"
+                allowOtherLinks
               />
               {projectDriveUrl && (
                 <Button asChild size="sm" variant="outline">

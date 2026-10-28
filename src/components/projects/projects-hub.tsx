@@ -30,6 +30,7 @@ import {
 } from "@/app/actions/projects"
 import { updateProjectRegistry } from "@/app/actions/project-registry"
 import { Button } from "@/components/ui/button"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -422,12 +423,23 @@ function RegistryTextField({
   name,
   value,
   placeholder,
+  drive,
 }: {
   readonly label: string
   readonly name: string
   readonly value: string | null
   readonly placeholder?: string
+  /** A Drive folder or file id: chosen with Browse instead of typed. */
+  readonly drive?: "file" | "folder"
 }): React.ReactElement {
+  if (drive) {
+    return (
+      <div className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        {label}
+        <DriveItemField key={value ?? ""} name={name} defaultValue={value ?? ""} valueAs="id" choose={drive} ariaLabel={label} browseTitle={label} />
+      </div>
+    )
+  }
   return (
     <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
       {label}
@@ -1507,7 +1519,8 @@ export function ProjectsHub({
                         value={selectedRegistryProject.sageJobId}
                       />
                       <RegistryTextField
-                        label="Google Drive folder ID"
+                        label="Google Drive folder"
+                        drive="folder"
                         name="googleDriveFolderId"
                         value={selectedRegistryProject.googleDriveFolderId}
                       />
@@ -1517,12 +1530,14 @@ export function ProjectsHub({
                         value={selectedRegistryProject.buildertrendProjectId}
                       />
                       <RegistryTextField
-                        label="Schedule sheet ID"
+                        label="Schedule sheet"
+                        drive="file"
                         name="googleScheduleSheetId"
                         value={selectedRegistryProject.googleScheduleSheetId}
                       />
                       <RegistryTextField
-                        label="Daily log sheet ID"
+                        label="Daily log sheet"
+                        drive="file"
                         name="googleDailyLogSheetId"
                         value={selectedRegistryProject.googleDailyLogSheetId}
                       />

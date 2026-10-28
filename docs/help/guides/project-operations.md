@@ -34,7 +34,7 @@ Describe the scope, select recipients, category, response date, priority, select
 
 Staff can email external bidders and record a response received outside Compass using the manual-response workflow. Preserve the original quote and identify whose response it is. Compare pricing, scope, exclusions, and lead time before accepting or importing it into an estimate. Use duplication to prepare a related RFQ only after checking the new project, recipients, dates, and scope.
 
-To attach plans and specifications, choose **Browse project files** next to **Add link** in the RFQ form. It opens the job's Drive folder: open subfolders, search the current folder, tick files or a whole folder, and choose **Add N files**. Files already listed show as **Added**. You can still paste a link by hand. To send several cost codes to several vendors at once from an estimate, use the estimate's [pricing board](/dashboard/help/financial-workflows#estimate-pricing).
+To attach plans and specifications, choose **Add files** next to **Add link** in the RFQ form. It opens on the job's Drive folder: open subfolders, search, tick files or a whole folder, and choose **Use N files**. The **Google Drive** tab reaches anything else in Drive, and **This computer** uploads a file into the job's folder first. Files already listed show as **Added**. To send several cost codes to several vendors at once from an estimate, use the estimate's [pricing board](/dashboard/help/financial-workflows#estimate-pricing).
 
 ### Price links
 

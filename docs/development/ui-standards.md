@@ -312,6 +312,22 @@ then the Five-day horizon with who's in today right below it.
 - Keep live selector options sourced from current server results or component
   props and recompute dependent selectors when their parent changes.
 
+## Files from Google Drive
+
+- Never make people paste a Drive link or id. Any field that stores a Drive
+  file or folder uses `DriveItemField` (one item) or `DriveBrowseDialog`
+  (several), both in `src/components/google/`.
+- The dialog offers three sources: **Google Drive** (My Drive, Shared with
+  me, search by name), **Compass projects** (a job's Drive folder), and
+  **This computer** (uploads into Drive, then links). Pass `projectId` so it
+  opens on the job and uploads land in the job's folder, or
+  `uploadDestination` for a settings folder.
+- Compass stores the link or id only; files stay in Drive. Before uploading,
+  the dialog checks Drive for a file with the same name and size and offers to
+  use it, so nothing is stored twice.
+- Pasting stays available as a fallback inside the field, never as the only way.
+  `drive-browse-standard.test.ts` rejects paste-only Drive boxes.
+
 ## Email, notifications, and Activity
 
 Any workflow that emails people outside the company, or reacts to their reply,

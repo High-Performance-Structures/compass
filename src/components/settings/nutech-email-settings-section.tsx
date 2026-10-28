@@ -8,6 +8,7 @@ import {
   saveFeatureSettings,
 } from "@/app/actions/feature-settings"
 import { Button } from "@/components/ui/button"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Input } from "@/components/ui/input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { getNuTechTaxDistricts, type NuTechTaxDistrict } from "@/app/actions/nutech-orders"
@@ -32,7 +33,7 @@ const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string;
   { key: "manufacturerCcEmail", label: "Manufacturer rep (cc)", placeholder: "rep@manufacturer.com", type: "email" },
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },
   { key: "nextPurchaseOrderNumber", label: "Next manufacturer PO number", placeholder: "e.g. 1860 (follows the project number)" },
-  { key: "orderFormFile", label: "Manufacturer order form (Drive link)", placeholder: "Link to a blank order form (Sheet or .xlsx)" },
+  { key: "orderFormFile", label: "Manufacturer order form", placeholder: "Blank order form (Sheet or .xlsx)" },
   { key: "fobDelivery", label: "FOB on deliveries", placeholder: "e.g. the manufacturer's plant city" },
   { key: "fobPickup", label: "FOB on customer pickups", placeholder: "e.g. the warehouse dock" },
   { key: "warehouseName", label: "Pickup warehouse", placeholder: "Warehouse name" },
@@ -144,14 +145,25 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
             {DETAIL_FIELDS.map((field) => (
               <div key={field.key} className="space-y-1.5">
                 <Label htmlFor={`nutech-setting-${field.key}`}>{field.label}</Label>
-                <Input
-                  id={`nutech-setting-${field.key}`}
-                  type={field.type ?? "text"}
-                  value={details[field.key]}
-                  placeholder={field.placeholder}
-                  disabled={disabled}
-                  onChange={(event) => setDetails((current) => ({ ...current, [field.key]: event.target.value }))}
-                />
+                {field.key === "orderFormFile" ? (
+                  <DriveItemField
+                    id={`nutech-setting-${field.key}`}
+                    ariaLabel="blank manufacturer order form"
+                    browseTitle="Blank manufacturer order form"
+                    value={details[field.key]}
+                    disabled={disabled}
+                    onChange={(next) => setDetails((current) => ({ ...current, [field.key]: next }))}
+                  />
+                ) : (
+                  <Input
+                    id={`nutech-setting-${field.key}`}
+                    type={field.type ?? "text"}
+                    value={details[field.key]}
+                    placeholder={field.placeholder}
+                    disabled={disabled}
+                    onChange={(event) => setDetails((current) => ({ ...current, [field.key]: event.target.value }))}
+                  />
+                )}
               </div>
             ))}
           </div>

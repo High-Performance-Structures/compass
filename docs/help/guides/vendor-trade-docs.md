@@ -62,7 +62,7 @@ The info sheet's answers, including tax IDs, are kept only in the PDF in the ven
 
 If your company already keeps W-9s, certificates, licenses, and signed agreements in Google Drive, choose **Bring in from Drive** under **Documents you already have** in **Settings > Workflows > Trade docs**.
 
-1. Paste the Drive folder's link.
+1. Choose **Browse…** and open the Drive folder, then choose **Use this folder**.
 2. Say how it's organized: **Vendor names are in the file names**, or **One folder per vendor**. For one folder per vendor, choose which document the folders hold, or **Tell from the file names**.
 3. Choose **Look through folder**. Compass suggests a vendor, document, and expiration date for each file, reading certificate dates from names such as `GL6-28-2026 WC10-01-2026`.
 4. Check every row, and change the vendor, document, or date where needed. Files with no clear vendor match start unticked with a note; the **Needs a look** filter shows the rows that need checking.

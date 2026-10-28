@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { importTradeDocs, scanTradeDocImport, type TradeDocImportScan } from "@/app/actions/vendor-trade-doc-import"
 import { SearchableCombobox, type SearchableComboboxOption } from "@/components/searchable-combobox"
+import { DriveItemField } from "@/components/google/drive-item-field"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -110,7 +111,7 @@ export function TradeDocImportDialog({
         <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr] md:items-end">
           <div className="grid gap-1.5">
             <Label htmlFor="trade-doc-import-folder">Drive folder</Label>
-            <Input id="trade-doc-import-folder" placeholder="Paste the folder's link" value={folder} onChange={(event) => setFolder(event.target.value)} />
+            <DriveItemField id="trade-doc-import-folder" choose="folder" ariaLabel="folder to bring in" browseTitle="Folder of existing trade docs" value={folder} onChange={(next) => setFolder(next)} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="trade-doc-import-type">Documents in it</Label>
