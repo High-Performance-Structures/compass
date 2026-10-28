@@ -12,13 +12,15 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
 ## Choose a Conversation {#choose-conversation}
 
 Use a project channel for communication the project team should find with the job record, a direct message for private coordination, a staff channel for ongoing company discussion, and an announcement for important audience-wide information. Do not leave a project decision only in a private message when the project team needs its record.
+
+The **Conversations** side panel opens team and project conversations without leaving the page you're on. To start a private conversation from it, choose **New conversation**, pick one or more teammates, and choose **Start conversation**. It opens in the panel and is added to your list.
 
 ## Send a Message {#send-message}
 
@@ -30,7 +32,7 @@ Mentions may trigger in-app, email, push, or text notifications according to the
 
 In a project's **Messages** workspace, staff can choose **New email** to send a project update to people who do not have Compass accounts. Add recipients from active project contacts, search the owner/vendor/internal directory, or enter an email address directly. Use **To**, **Cc**, and **Bcc** according to who should see the address list, then review the recipient counts before sending.
 
-The email is saved in the project's message history. Replies to its tracked address appear in that project conversation and notify the internal team. Recipients do not gain Compass access. A reply written inside Compass does not send another external email; review its audience notice and use **New email** for another external update. If delivery fails, the original sender can retry the saved email. When delivery is uncertain, check its status before sending again.
+The email is saved in the project's message history. Replies to its tracked address appear in that project conversation and notify the internal team. Recipients do not gain Compass access. A reply written inside Compass does not send another external email; review its audience notice and use **New email** for another external update. Staff email goes out from your own company mailbox when your Compass account uses your company's Google Workspace address, or from a department's mailbox when the workflow uses one. Otherwise it goes out from your company's shared sender. Replies still come back to the record either way. If delivery fails, the original sender can retry the saved email. When delivery is uncertain, check its status before sending again.
 
 ## Attachments {#attachments}
 

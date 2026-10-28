@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/sub-vendor", "/preview/projects/[id]/sub-vendor/change-orders", "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]", "/preview/projects/[id]/sub-vendor/commitments", "/preview/projects/[id]/sub-vendor/conversations", "/preview/projects/[id]/sub-vendor/conversations/[channelId]", "/preview/projects/[id]/sub-vendor/documents", "/preview/projects/[id]/sub-vendor/photos", "/preview/projects/[id]/sub-vendor/rfis", "/preview/projects/[id]/sub-vendor/rfqs", "/preview/projects/[id]/sub-vendor/schedule", "/preview/projects/[id]/sub-vendor/selections", "/preview/projects/[id]/sub-vendor/team", "/preview/projects/[id]/sub-vendor/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -52,6 +52,8 @@ Return to the same RFI for its answer and status. Use a project message for ordi
 
 Choose **Submit a quote** or **Decline to quote**. For a quote, enter the requested line pricing, total, lead time, validity date, and notes needed to understand inclusions or exclusions. Check that the total and individual lines agree before submitting. If **Revise response** is available, update the existing response instead of submitting a second quote outside the record. A submitted quote is a response for project-team review; it is not a purchase order or notice to proceed.
 
+An RFQ email also has an **Enter your prices** button. It opens a private page, with no sign-in, where you can enter a price for each item, add lead time, a price-good-until date, and what's included and excluded, then choose **Send prices**. You can return to the same link to send updated prices until it expires or a bid is approved. Prices sent either way reach the same RFQ.
+
 ## Request and Track Changes {#change-orders}
 
 **Change Orders** lists trade-partner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.
@@ -72,7 +74,7 @@ For an open claim, set the visit or work date, choose **Visit scheduled**, **In 
 
 ## View Photos and Documents {#files}
 
-**Photos** contains images approved for trade partners. Use date, phase, and sorting controls to find relevant progress photos. **Plans & Documents** contains files published to the project workspace; open or download the displayed revision as needed.
+**Photos** contains images approved for trade partners. Use date, phase, and sorting controls to find relevant progress photos. **Plans & Documents** contains the files the team has shared with trade partners; open or download the displayed revision as needed.
 
 These areas do not expose the team's entire photo library or Drive folder. Before pricing, fabrication, procurement, or installation, return to Compass and verify that you have the current published document instead of relying on an older saved copy.
 

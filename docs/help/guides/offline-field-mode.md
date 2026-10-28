@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/field"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -40,7 +40,7 @@ Do not repeatedly resubmit the same work. Record the project, item, time, waitin
 
 ## Read Messages and Use Field Controls {#field-navigation}
 
-Field Mode has roomier tabs, readable message content, and date controls that work in mobile browsers. Use the project and tab controls to confirm where you are before entering a log or reply. Browser layout improvements do not make uncached records or Drive files available offline; check the connection and queue indicators before assuming delivery.
+Field Mode has roomier tabs, readable message content, and date controls that work in mobile browsers. Use the project and tab controls to confirm where you are before entering a log or reply. When you open full Compass from the app on a phone or tablet, the **Field Mode** button beside the sidebar control (or **Field** in the bottom bar on a phone) returns you to Field Mode. Browser layout improvements do not make uncached records or Drive files available offline; check the connection and queue indicators before assuming delivery.
 
 ## Log Out or Switch Accounts {#logout}
 

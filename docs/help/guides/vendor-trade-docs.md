@@ -22,7 +22,9 @@ Open **Contacts > Vendors**. The **Trade docs** column shows how many required d
 
 What each kind of vendor must have is set in **Settings > Workflows > Trade docs**. A vendor's kind is its category in the directory, such as Subcontractor or Supplier.
 
-Files stay in the vendor's folder in Google Drive. Compass keeps a link to each file, not a copy. Removing a document from Compass leaves the file in Drive.
+Files stay in the vendor's folder in Google Drive. Compass keeps a link to each file, not a copy. Removing a document from Compass leaves the file in Drive. **Open Drive folder** opens it, and **Show older documents** lists replaced copies.
+
+**Bills while required docs are missing** in a vendor's trade docs overrides the company default for that one vendor.
 
 ## Request Missing Documents {#request}
 
@@ -55,3 +57,15 @@ The same list shows every link you've sent, when it was opened and when files ca
 - the online info sheet's questions. Mark which questions hold the agent's name and email, so the vendor can send the request on to their agent.
 
 The info sheet's answers, including tax IDs, are kept only in the PDF in the vendor's Drive folder, not in Compass.
+
+## Bring In Documents You Already Have {#bring-in}
+
+If your company already keeps W-9s, certificates, licenses, and signed agreements in Google Drive, choose **Bring in from Drive** under **Documents you already have** in **Settings > Workflows > Trade docs**.
+
+1. Paste the Drive folder's link.
+2. Say how it's organized: **Vendor names are in the file names**, or **One folder per vendor**. For one folder per vendor, choose which document the folders hold, or **Tell from the file names**.
+3. Choose **Look through folder**. Compass suggests a vendor, document, and expiration date for each file, reading certificate dates from names such as `GL6-28-2026 WC10-01-2026`.
+4. Check every row, and change the vendor, document, or date where needed. Files with no clear vendor match start unticked with a note; the **Needs a look** filter shows the rows that need checking.
+5. Choose **Bring in N documents**.
+
+Files stay where they are in Drive. When a vendor has several copies of the same document, the newest becomes current and the others go into its history. The import is listed in Activity.

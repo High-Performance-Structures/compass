@@ -12,7 +12,7 @@
   "permissions": ["help:read", "agent:read"],
   "routes": ["/dashboard"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -40,6 +40,10 @@ Jarvis can read a full project schedule with tasks, dependencies, workday except
 
 Examples: “Show this project's critical path”; “Add a three-workday framing task starting October 19”; “Move this inspection to October 22”; “Make drywall start after insulation finishes.” Jarvis first reads the schedule to resolve task names. Review the proposed change and press **Confirm** before it runs. Deleting a task also removes its dependencies. Inspect downstream dates afterward. These tools do not publish a schedule, create a baseline, or change workday exceptions; use [Schedules and tasks](/dashboard/help/schedules-and-tasks) for those workflows.
 
+## Report a Problem or Request a Change {#file-feedback}
+
+Tell Jarvis about a problem or a change you'd like, such as "The schedule won't save my end date." Jarvis offers to file it with the Feedback Desk and shows the request with **Confirm** and **Cancel**. Once you confirm, it is filed under your own name, you get the usual receipt, and it appears in **Conversations & Requests → My Requests**. See [Requesting help](/dashboard/help/requesting-help).
+
 ## Build and Manage Custom Dashboards {#dashboards}
 
 Jarvis can turn retrieved data into a structured display such as tables, charts, statistics, or a dashboard. Ask it to fetch the relevant data first, then specify what to show. It can save the currently rendered display as a named custom dashboard, list your saved dashboards, load one for editing, save an update, and delete one after confirmation.
@@ -64,12 +68,12 @@ Attach up to two screenshots with the image button in the chat box and ask your 
 
 ## Review Confirmations and Verify Results {#confirm}
 
-Built-in task creation, task updates, task deletion, dependency creation/removal, and custom-dashboard deletion show an action summary with **Confirm** and **Cancel** in chat. Until you press **Confirm**, nothing in that pending action has changed. Check the exact target and proposed values. **Cancel** leaves it unchanged. Confirmations expire after about ten minutes; if one expires, ask Jarvis to prepare it again after checking current state.
+Built-in task creation, task updates, task deletion, dependency creation/removal, Feedback Desk requests, and custom-dashboard deletion show an action summary with **Confirm** and **Cancel** in chat. Until you press **Confirm**, nothing in that pending action has changed. Check the exact target and proposed values. **Cancel** leaves it unchanged. Confirmations expire after about ten minutes; if one expires, ask Jarvis to prepare it again after checking current state.
 
 Wait for **Done.** or an explicit successful tool result, then open the actual record. If the action fails, preserve the message and check current state before retrying. Each confirmation can be used once; to repeat a change, ask Jarvis again.
 
 ## Know When to Use the Dedicated Workflow {#limits}
 
-Jarvis can draft wording, explain Help, and analyze the data returned to it. Its current built-in record queries are read-only except for the schedule, dashboard, theme, and memory actions listed above. They do not create daily logs, publish owner updates or social posts, send project email, approve contracts, post accounting entries, or record payments. Use the corresponding workspace for those actions, or a separately available authorized integration.
+Jarvis can draft wording, explain Help, and analyze the data returned to it. Its current built-in record queries are read-only except for the schedule, feedback, dashboard, theme, and memory actions listed above. They do not create daily logs, publish owner updates or social posts, send project email, approve contracts, post accounting entries, or record payments. Use the corresponding workspace for those actions, or a separately available authorized integration.
 
 Owner Update editors have their own Jarvis drafting control; see [Owner updates](/dashboard/help/owner-updates#draft-with-jarvis). Drafting there does not publish. If a tool or provider is unavailable, use Help and the dedicated Compass page, keep unfinished work, and [report the exact error](/dashboard/help/requesting-help).

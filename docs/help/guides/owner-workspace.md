@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-10-28"
 }
 ---
 
@@ -60,7 +60,7 @@ When **Request change** is available, describe the requested scope and reason cl
 
 ## View Photos and Documents {#files}
 
-**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains files the team has published to the project workspace; open or download the displayed revision as needed.
+**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains the files the team has shared with owners; open or download the displayed revision as needed.
 
 These areas do not expose the team's entire photo library or Drive folder. A downloaded copy can become outdated, so return to Compass for the current published version before construction, purchasing, or approval decisions.
 
