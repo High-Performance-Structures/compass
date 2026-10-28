@@ -12,34 +12,44 @@ import { useRouter } from "next/navigation"
 import {
   IconArchive,
   IconChevronLeft,
+  IconCircleCheck,
   IconExternalLink,
   IconFileDescription,
   IconFolder,
   IconFolderPlus,
   IconHistory,
+  IconLock,
   IconPlus,
-  IconUsersGroup,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
   listProjectDocumentSourceFolder,
   publishProjectDocument,
+  setProjectDocumentVisibility,
+  setProjectPlanSetDocument,
   updateProjectDocumentStatus,
   type ProjectDocumentWorkspace,
 } from "@/app/actions/project-documents"
 import { publishProjectDocumentFolder } from "@/app/actions/project-document-folders"
 import { ProjectDocumentManagementActions } from "@/components/projects/project-document-management-actions"
+import { ProjectDocumentVisibilityToggles } from "@/components/projects/project-document-visibility-toggles"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 import {
   PROJECT_DOCUMENT_CATEGORIES,
   projectDocumentCategoryLabel,
 } from "@/lib/project-documents"
+import {
+  DEFAULT_PROJECT_DOCUMENT_VISIBILITY,
+  projectDocumentVisibilityLabel,
+  type ProjectDocumentVisibility,
+} from "@/lib/project-document-audience"
 
 function statusLabel(value: string): string {
   return value.replaceAll("_", " ")
@@ -80,8 +90,16 @@ export function ProjectDocumentsWorkspacePanel({
       : []
   )
   const [category, setCategory] = useState("architectural_plans")
+  const [visibility, setVisibility] = useState<ProjectDocumentVisibility>(
+    DEFAULT_PROJECT_DOCUMENT_VISIBILITY
+  )
   const [title, setTitle] = useState("")
   const [supersedesDocumentId, setSupersedesDocumentId] = useState("")
+  const [planSetId, setPlanSetId] = useState(workspace.project.planSetDocumentId)
+  // Optimistic per-document visibility while an inline toggle saves.
+  const [visibilityById, setVisibilityById] = useState<
+    Record<string, ProjectDocumentVisibility>
+  >({})
 
   const sourceOptions = useMemo(
     () =>
@@ -164,12 +182,16 @@ export function ProjectDocumentsWorkspacePanel({
         documentDate: String(data.get("documentDate") ?? ""),
         revision: String(data.get("revision") ?? ""),
         supersedesDocumentId,
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
       })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success("Document published to owners, subcontractors, and internal staff.")
+      toast.success(
+        `Document published — visible to ${projectDocumentVisibilityLabel(visibility)}.`
+      )
       setSourceFileId("")
       setTitle("")
       setSupersedesDocumentId("")
@@ -183,9 +205,10 @@ export function ProjectDocumentsWorkspacePanel({
     const folder = folderTrail[folderTrail.length - 1]
     if (!form || !folder) return
     const categoryLabel = projectDocumentCategoryLabel(category)
+    const audienceLabel = projectDocumentVisibilityLabel(visibility).toLowerCase()
     if (
       !window.confirm(
-        `Publish all downloadable files in “${folder.name}” and its subfolders as ${categoryLabel}? Already-published files will be skipped.`
+        `Publish all downloadable files in “${folder.name}” and its subfolders as ${categoryLabel}, visible to ${audienceLabel}? Already-published files will be skipped.`
       )
     ) return
     const data = new FormData(form)
@@ -196,6 +219,8 @@ export function ProjectDocumentsWorkspacePanel({
         description: String(data.get("description") ?? ""),
         documentDate: String(data.get("documentDate") ?? ""),
         revision: String(data.get("revision") ?? ""),
+        visibleToOwner: visibility.owner,
+        visibleToSubVendor: visibility.subVendor,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -208,9 +233,58 @@ export function ProjectDocumentsWorkspacePanel({
           ? ` ${result.skippedCount} duplicate or unsupported files were skipped.`
           : ""
         toast.success(
-          `${result.publishedCount} folder documents published to the entire project team.${skipped}`
+          `${result.publishedCount} folder documents published — visible to ${audienceLabel}.${skipped}`
         )
       }
+      router.refresh()
+    })
+  }
+
+  function togglePlanSet(documentId: string): void {
+    const next = planSetId === documentId ? null : documentId
+    setPlanSetId(next)
+    startTransition(async () => {
+      const result = await setProjectPlanSetDocument(workspace.project.id, next)
+      if (!result.success) {
+        setPlanSetId(workspace.project.planSetDocumentId)
+        toast.error(result.error)
+        return
+      }
+      toast.success(next ? "Set as the working plan set." : "Plan set cleared.")
+      router.refresh()
+    })
+  }
+
+  function visibilityFor(document: {
+    readonly id: string
+    readonly visibleToOwner: boolean
+    readonly visibleToSubVendor: boolean
+  }): ProjectDocumentVisibility {
+    return (
+      visibilityById[document.id] ?? {
+        owner: document.visibleToOwner,
+        subVendor: document.visibleToSubVendor,
+      }
+    )
+  }
+
+  function changeVisibility(
+    documentId: string,
+    previous: ProjectDocumentVisibility,
+    next: ProjectDocumentVisibility
+  ): void {
+    setVisibilityById((current) => ({ ...current, [documentId]: next }))
+    startTransition(async () => {
+      const result = await setProjectDocumentVisibility(workspace.project.id, documentId, {
+        visibleToOwner: next.owner,
+        visibleToSubVendor: next.subVendor,
+      })
+      if (!result.success) {
+        setVisibilityById((current) => ({ ...current, [documentId]: previous }))
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Now visible to ${projectDocumentVisibilityLabel(next)}.`)
       router.refresh()
     })
   }
@@ -238,29 +312,18 @@ export function ProjectDocumentsWorkspacePanel({
   return (
     <div className="space-y-5">
       <section className="border bg-background p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <IconUsersGroup className="size-5 text-primary" />
-              <h2 className="font-semibold">Entire project team</h2>
-            </div>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Every published plan and specification is automatically available to
-              owners, assigned subcontractors, and authorized internal staff. Audience
-              selection is intentionally not configurable for construction documents.
-            </p>
-          </div>
-          <Badge variant="outline">Project-wide access</Badge>
-        </div>
-      </section>
-
-      <section className="border bg-background p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Published construction documents</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Current revisions appear first. Superseded revisions remain available for
-              coordination and historical estimate or contract support.
+            <div className="flex items-center gap-2">
+              <IconFileDescription className="size-5 text-primary" />
+              <h2 className="font-semibold">Published documents</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Current revisions appear first. Toggle <strong className="font-medium text-foreground">Owners</strong> and{" "}
+              <strong className="font-medium text-foreground">Vendors</strong> on any file to change who sees it —
+              internal staff always have access. Check the <IconCircleCheck className="inline size-3.5 align-text-bottom" aria-hidden="true" /> on a
+              current document to make it this project’s working plan set — the set that
+              opens straight from the pipeline.
             </p>
           </div>
           <Badge variant="secondary">{workspace.documents.length} documents</Badge>
@@ -268,7 +331,11 @@ export function ProjectDocumentsWorkspacePanel({
 
         {workspace.documents.length > 0 ? (
           <div className="mt-4 divide-y border-y">
-            {workspace.documents.map((document) => (
+            {workspace.documents.map((document) => {
+              const docVisibility = visibilityFor(document)
+              const isInternalOnly =
+                !docVisibility.owner && !docVisibility.subVendor
+              return (
               <article key={document.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -287,10 +354,21 @@ export function ProjectDocumentsWorkspacePanel({
                   {document.description && (
                     <p className="mt-2 text-sm text-muted-foreground">{document.description}</p>
                   )}
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>Owners</span><span aria-hidden="true">·</span>
-                    <span>All assigned subs</span><span aria-hidden="true">·</span>
-                    <span>Internal staff</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    {isInternalOnly ? (
+                      <Badge variant="outline" className="gap-1">
+                        <IconLock className="size-3" aria-hidden="true" />Internal staff only
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {projectDocumentVisibilityLabel(docVisibility)}
+                      </span>
+                    )}
+                    {planSetId === document.id ? (
+                      <Badge className="gap-1">
+                        <IconCircleCheck className="size-3" aria-hidden="true" />Working plan set
+                      </Badge>
+                    ) : null}
                   </div>
                   {document.references.length > 0 && (
                     <div className="mt-3 border-l-2 border-primary/30 pl-3 text-xs">
@@ -319,12 +397,26 @@ export function ProjectDocumentsWorkspacePanel({
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                <div className="flex flex-col gap-3 lg:items-end">
+                  <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
                       <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
+                  {document.status === "current" && (
+                    <Button
+                      size="sm"
+                      variant={planSetId === document.id ? "default" : "ghost"}
+                      disabled={isPending}
+                      aria-pressed={planSetId === document.id}
+                      title={planSetId === document.id ? "This is the working plan set" : "Make this the working plan set"}
+                      onClick={() => togglePlanSet(document.id)}
+                    >
+                      <IconCircleCheck className={cn("size-4", planSetId === document.id && "fill-current")} />
+                      {planSetId === document.id ? "Plan set" : "Set as plan set"}
+                    </Button>
+                  )}
                   <ProjectDocumentManagementActions
                     projectId={workspace.project.id}
                     document={document}
@@ -349,9 +441,19 @@ export function ProjectDocumentsWorkspacePanel({
                       <IconArchive className="size-4" />Archive
                     </Button>
                   )}
+                  </div>
+                  <ProjectDocumentVisibilityToggles
+                    value={docVisibility}
+                    disabled={isPending}
+                    idPrefix={`doc-${document.id}`}
+                    onChange={(next) =>
+                      changeVisibility(document.id, docVisibility, next)
+                    }
+                  />
                 </div>
               </article>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <p className="mt-4 border-y py-8 text-center text-sm text-muted-foreground">
@@ -434,6 +536,21 @@ export function ProjectDocumentsWorkspacePanel({
               />
             </div>
             <div className="space-y-1.5">
+              <Label>Visible to</Label>
+              <div className="pt-1">
+                <ProjectDocumentVisibilityToggles
+                  value={visibility}
+                  disabled={isPending || isFolderPending}
+                  idPrefix="publish"
+                  onChange={setVisibility}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Internal staff always have access. Uncheck both to keep a file
+                internal-only — you can change this per file later.
+              </p>
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="project-document-title">Display title (single file)</Label>
               <Input
                 id="project-document-title"
@@ -475,7 +592,9 @@ export function ProjectDocumentsWorkspacePanel({
             <div className="md:col-span-2">
               <Button type="submit" disabled={isPending || !sourceFileId || !title.trim()}>
                 <IconPlus className="size-4" />
-                {isPending ? "Publishing..." : "Publish to entire project team"}
+                {isPending
+                  ? "Publishing..."
+                  : `Publish — visible to ${projectDocumentVisibilityLabel(visibility).toLowerCase()}`}
               </Button>
             </div>
           </form>

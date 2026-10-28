@@ -1,6 +1,6 @@
 import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
-import { and, eq, isNotNull } from "drizzle-orm"
+import { and, eq, isNotNull, or, type SQL } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
@@ -42,15 +42,25 @@ export async function GET(
     await assertProjectAccess(db, user, projectId)
 
     const viewerIsInternal = isInternalStaffRole(user.role)
+    // Internal staff see every document; external viewers reach a file only
+    // through a visibility flag for an audience they actually belong to.
+    let audienceFilter: SQL<unknown> | undefined
     if (!viewerIsInternal) {
-      const membership = { role: await projectMemberRole(db, user.id, projectId) }
-      const role = membership?.role ?? null
-      if (
-        !canUseProjectAudience(role, "owner") &&
-        !canUseProjectAudience(role, "sub_vendor")
-      ) {
+      const role = await projectMemberRole(db, user.id, projectId)
+      const canOwner = canUseProjectAudience(role, "owner")
+      const canSubVendor = canUseProjectAudience(role, "sub_vendor")
+      if (!canOwner && !canSubVendor) {
         return new Response("Document not found", { status: 404 })
       }
+      audienceFilter =
+        canOwner && canSubVendor
+          ? or(
+              eq(projectDocuments.visibleToOwner, true),
+              eq(projectDocuments.visibleToSubVendor, true)
+            )
+          : canOwner
+            ? eq(projectDocuments.visibleToOwner, true)
+            : eq(projectDocuments.visibleToSubVendor, true)
     }
 
     const document = await db
@@ -65,7 +75,7 @@ export async function GET(
         and(
           eq(projectDocuments.id, documentId),
           eq(projectDocuments.projectId, projectId),
-          eq(projectDocuments.audience, "project_team"),
+          audienceFilter,
           eq(projectDocuments.downloadable, true),
           isNotNull(projectDocuments.publishedAt)
         )

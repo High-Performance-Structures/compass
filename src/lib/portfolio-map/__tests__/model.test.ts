@@ -29,6 +29,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
     health: "ok",
     visibility: "default",
     followUp: null,
+    planSetDocumentId: null,
     ...overrides,
   }
 }
@@ -84,6 +85,7 @@ describe("portfolioPhaseFor", () => {
     jobStatusLabel: "Under Construction",
     visibility: "default",
     followUp: null,
+    planSetDocumentId: null,
   } as const
 
   it("follows status and department by default", () => {

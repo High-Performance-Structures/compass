@@ -17,6 +17,7 @@ function setup(): CorrespondenceTestDatabase {
   const db = openCorrespondenceTestDatabase(); database = db
   db.sqlite.exec("ALTER TABLE projects ADD COLUMN google_drive_folder_id TEXT; UPDATE projects SET google_drive_folder_id='root-a' WHERE id='project-a'")
   db.sqlite.exec(readFileSync("drizzle/0145_project_documents.sql", "utf8").split("ALTER TABLE")[0].replaceAll("--> statement-breakpoint", ""))
+  db.sqlite.exec("ALTER TABLE project_documents ADD COLUMN visible_to_owner INTEGER NOT NULL DEFAULT 1; ALTER TABLE project_documents ADD COLUMN visible_to_sub_vendor INTEGER NOT NULL DEFAULT 1")
   const client = { getFile: mocks.getFile, listFiles: mocks.listFiles, downloadFile: mocks.download, exportFile: mocks.export }
   mocks.context.mockResolvedValue(context(db, "staff-a", "project-a"))
   mocks.drive.mockResolvedValue({ client, userEmail: "staff-a@example.test" })

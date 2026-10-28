@@ -768,6 +768,8 @@ export const projects = sqliteTable("projects", {
   sageJobTypeName: text("sage_job_type_name"),
   sageJobTypeNumber: integer("sage_job_type_number"),
   googleDriveFolderId: text("google_drive_folder_id"),
+  /** The published document shown as this project's working plan set; null when none is pinned. */
+  planSetDocumentId: text("plan_set_document_id"),
   googleScheduleSheetId: text("google_schedule_sheet_id"),
   googleDailyLogSheetId: text("google_daily_log_sheet_id"),
   googleCalendarId: text("google_calendar_id"),

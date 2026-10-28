@@ -59,6 +59,8 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       health: "ok",
       visibility: "default",
       followUp: null,
+      // Plan-set shortcut is a staff-only pipeline affordance; owners/vendors never carry it.
+      planSetDocumentId: null,
     }]
   })
   return spreadSharedTowns(jobs)

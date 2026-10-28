@@ -27,8 +27,8 @@ vi.mock("next/link", () => ({
 import { PortfolioSection } from "../portfolio-section"
 
 const jobs: readonly PortfolioMapJob[] = [
-  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", jobStatusId: "under_construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default", followUp: null },
-  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default", followUp: null },
+  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", jobStatusId: "under_construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default", followUp: null, planSetDocumentId: null },
+  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default", followUp: null, planSetDocumentId: null },
 ]
 
 describe("PortfolioSection", () => {
@@ -79,10 +79,23 @@ describe("PortfolioSection", () => {
 
   it("links staff to each job's files from the pipeline and the job panel", async () => {
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, canOpenFiles: true })))
-    expect(container.querySelector('a[href="/dashboard/projects/p1/documents"][aria-label="Files for Granby Residence"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/dashboard/projects/p1/documents"][aria-label="All files for Granby Residence"]')).not.toBeNull()
     await click("Granby Residence")
     const filesLink = [...container.querySelectorAll('a[href="/dashboard/projects/p1/documents"]')].find((link) => link.textContent?.includes("Files"))
     expect(filesLink).toBeDefined()
+  })
+
+  it("opens the pinned plan set from the pipeline, and greys it out when none is set", async () => {
+    const withPlan: readonly PortfolioMapJob[] = [
+      { ...jobs[0], planSetDocumentId: "doc-plan-1" },
+      jobs[1],
+    ]
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs: withPlan, unplaced: [], hidden: [], travel: null, canOpenFiles: true })))
+    const planLink = container.querySelector('a[href="/api/projects/p1/documents/doc-plan-1/download"]')
+    expect(planLink).not.toBeNull()
+    expect(planLink?.getAttribute("target")).toBe("_blank")
+    // p2 has no plan set, so it shows a disabled marker rather than a download link.
+    expect(container.querySelector('a[href^="/api/projects/p2/documents/"]')).toBeNull()
   })
 
   it("hides the Files links unless the person can open project files", async () => {

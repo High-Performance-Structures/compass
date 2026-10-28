@@ -1080,8 +1080,8 @@ export async function getProjectAudiencePreview(
       }
     })
 
-  // Published construction documents use one whole-project audience. Owners,
-  // assigned subcontractors, and internal previews receive the same set.
+  // Published construction documents carry independent owner/sub-vendor
+  // visibility flags; each audience preview sees only the files flagged for it.
   const [documentRows, contractDocumentRows] = await Promise.all([
     db
       .select({
@@ -1100,7 +1100,9 @@ export async function getProjectAudiencePreview(
       .where(
         and(
           eq(projectDocuments.projectId, projectId),
-          eq(projectDocuments.audience, "project_team"),
+          audience === "owner"
+            ? eq(projectDocuments.visibleToOwner, true)
+            : eq(projectDocuments.visibleToSubVendor, true),
           inArray(projectDocuments.status, ["current", "superseded"]),
           isNotNull(projectDocuments.publishedAt)
         )
