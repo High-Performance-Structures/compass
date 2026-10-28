@@ -32,6 +32,7 @@ export type PricingBoardRfq = {
   readonly id: string
   readonly number: string | null
   readonly vendor: string
+  readonly recipientEmail: string | null
   readonly status: PricingBoardRfqStatus
   readonly costCodes: readonly string[]
 }
@@ -109,6 +110,7 @@ export function buildPricingBoard(input: {
       id: rfq.id,
       number: rfq.number,
       vendor: rfq.companyName?.trim() || "Vendor not chosen",
+      recipientEmail: parsePortalRfqPayload(rfq.payloadJson).recipientEmail,
       status: pricingBoardRfqStatus(rfq),
       costCodes: rfqCostCodes(rfq.payloadJson),
     },

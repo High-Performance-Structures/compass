@@ -6,12 +6,15 @@ import { toast } from "sonner"
 
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import {
   createEstimatePricingPackage,
   getEstimatePricingBoard,
+  sendEstimatePricingPackage,
   type EstimatePricingBoardView,
 } from "@/app/actions/estimate-pricing-board"
 import { ProjectDriveFilePicker, type PickedProjectFile } from "@/components/projects/project-drive-file-picker"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,8 +25,10 @@ import {
   defaultPackageTitle,
   packageSelectionProblem,
   type PricingBoardLine,
+  type PricingBoardRfq,
   type PricingBoardRfqStatus,
 } from "@/lib/estimates/pricing-board"
+import { buildProjectEmailRecipientOptions, type EmailRecipientOption } from "@/lib/email/recipient-options"
 
 const RFQ_STATUS_LABEL: Readonly<Record<PricingBoardRfqStatus, string>> = {
   draft: "Draft",
@@ -217,6 +222,7 @@ export function EstimatePricingBoard({
                   <p className="font-medium">{pkg.title}</p>
                   <p className="text-xs text-muted-foreground">{pkg.costCodes.join(" · ")}</p>
                 </div>
+                {editable && <PackageSender projectId={projectId} drafts={pkg.rfqs.filter((rfq) => rfq.status === "draft")} onSent={() => setVersion((current) => current + 1)} />}
                 <div className="flex flex-wrap gap-2">
                   {pkg.rfqs.map((rfq) => (
                     <Link
@@ -417,3 +423,97 @@ function PackageComposer({
     </form>
   )
 }
+
+const DEFAULT_PACKAGE_MESSAGE = [
+  "Please review the scope and the linked plans and specifications.",
+  "Use the Enter your prices button to price each item, or reply to this email with your quote.",
+].join("\n")
+
+/** Emails every draft RFQ in a package at once, one email per vendor. */
+function PackageSender({
+  projectId,
+  drafts,
+  onSent,
+}: {
+  readonly projectId: string
+  readonly drafts: readonly PricingBoardRfq[]
+  readonly onSent: () => void
+}): React.ReactElement | null {
+  const [open, setOpen] = React.useState(false)
+  const [cc, setCc] = React.useState<readonly string[]>([])
+  const [message, setMessage] = React.useState(DEFAULT_PACKAGE_MESSAGE)
+  const [options, setOptions] = React.useState<readonly EmailRecipientOption[]>([])
+  const [pending, startTransition] = React.useTransition()
+
+  React.useEffect(() => {
+    if (!open || options.length > 0) return
+    void getProjectContactsSummary(projectId, "internal").then(
+      (summary) => setOptions(buildProjectEmailRecipientOptions(summary.allContacts)),
+      () => setOptions([]),
+    )
+  }, [open, options.length, projectId])
+
+  if (drafts.length === 0) return null
+  const missingEmail = drafts.filter((rfq) => !rfq.recipientEmail)
+
+  function send(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    startTransition(async () => {
+      const result = await sendEstimatePricingPackage(projectId, { rfqIds: drafts.map((rfq) => rfq.id), cc, message })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      const { sent, failed } = result.data
+      if (sent.length > 0) toast.success(`Sent to ${sent.join(", ")}.`)
+      for (const item of failed) toast.error(`${item.vendor}: ${item.error}`)
+      if (failed.length === 0) setOpen(false)
+      onSent()
+    })
+  }
+
+  if (!open) {
+    return (
+      <div>
+        <Button type="button" size="sm" onClick={() => setOpen(true)}>
+          Send to {drafts.length} vendor{drafts.length === 1 ? "" : "s"}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={send} className="grid gap-3 border-y bg-muted/30 px-3 py-3">
+      <p className="text-sm">
+        Each vendor gets their own email with the scope, the plans and specs, and a private link to enter their prices.
+      </p>
+      <p className="text-xs text-muted-foreground">To: {drafts.map((rfq) => `${rfq.vendor}${rfq.recipientEmail ? ` (${rfq.recipientEmail})` : ""}`).join(" · ")}</p>
+      {missingEmail.length > 0 && (
+        <p className="text-xs text-destructive">
+          No email for {missingEmail.map((rfq) => rfq.vendor).join(", ")}. Add one on the RFQ, or they&apos;ll be skipped.
+        </p>
+      )}
+      <EmailRecipientPicker
+        id="pricing-package-cc"
+        label="Cc (every email)"
+        options={options}
+        value={cc}
+        onChange={setCc}
+        placeholder="Choose an optional contact..."
+      />
+      <div className="grid gap-1.5">
+        <Label htmlFor="pricingPackageMessage">Message</Label>
+        <Textarea id="pricingPackageMessage" value={message} maxLength={10000} onChange={(event) => setMessage(event.target.value)} className="min-h-24" required />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={pending || !message.trim()}>
+          {pending ? "Sending…" : `Send ${drafts.length} email${drafts.length === 1 ? "" : "s"}`}
+        </Button>
+        <Button type="button" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
