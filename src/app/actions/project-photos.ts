@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { dailyLogPhotos, dailyLogs, projects, scheduleTasks } from "@/db/schema"
+import { dailyLogPhotos, dailyLogs, projectPhotoSourceDates, projects, scheduleTasks } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -176,6 +176,7 @@ export async function getProjectPhotoLibrary(
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       caption: dailyLogPhotos.caption,
       capturedAt: dailyLogPhotos.capturedAt,
+      sourceDate: projectPhotoSourceDates.sourceDate,
       reviewStatus: dailyLogPhotos.reviewStatus,
       ownerVisible: dailyLogPhotos.ownerVisible,
       subVendorVisible: dailyLogPhotos.subVendorVisible,
@@ -190,6 +191,11 @@ export async function getProjectPhotoLibrary(
     })
     .from(dailyLogPhotos)
     .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+    .leftJoin(projectPhotoSourceDates, and(
+      eq(projectPhotoSourceDates.projectId, dailyLogPhotos.projectId),
+      eq(projectPhotoSourceDates.sourceSystem, dailyLogPhotos.sourceSystem),
+      eq(projectPhotoSourceDates.sourceExternalId, dailyLogPhotos.sourceExternalId),
+    ))
     .where(
       and(
         eq(dailyLogPhotos.projectId, projectId),
@@ -228,6 +234,7 @@ export async function getProjectPhotoLibrary(
   const photos = rows.filter(isImage).map((row) => {
     const resolvedPhotoDate = resolveProjectPhotoDate({
       capturedAt: row.capturedAt,
+      sourceDate: row.sourceDate,
       logDate: row.logDate,
     })
     const schedulePhase = row.schedulePhaseOverride?.trim() ?? ""

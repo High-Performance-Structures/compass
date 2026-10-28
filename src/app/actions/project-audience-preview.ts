@@ -16,6 +16,7 @@ import {
 import { getDb } from "@/db"
 import {
   dailyLogPhotos,
+  projectPhotoSourceDates,
   dailyLogs,
   ownerProjectUpdates,
   projectContacts,
@@ -492,6 +493,7 @@ export async function getProjectAudiencePreview(
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
       capturedAt: dailyLogPhotos.capturedAt,
+      sourceDate: projectPhotoSourceDates.sourceDate,
       createdAt: dailyLogPhotos.createdAt,
       logDate: dailyLogs.logDate,
       logWorkCompleted: dailyLogs.workCompleted,
@@ -502,6 +504,11 @@ export async function getProjectAudiencePreview(
     })
     .from(dailyLogPhotos)
     .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+    .leftJoin(projectPhotoSourceDates, and(
+      eq(projectPhotoSourceDates.projectId, dailyLogPhotos.projectId),
+      eq(projectPhotoSourceDates.sourceSystem, dailyLogPhotos.sourceSystem),
+      eq(projectPhotoSourceDates.sourceExternalId, dailyLogPhotos.sourceExternalId),
+    ))
     .where(
       and(
         eq(dailyLogPhotos.projectId, projectId),
@@ -1150,6 +1157,7 @@ export async function getProjectAudiencePreview(
     photos: photoRows.filter(isImage).map((photo) => {
       const resolvedPhotoDate = resolveProjectPhotoDate({
         capturedAt: photo.capturedAt,
+        sourceDate: photo.sourceDate,
         logDate: photo.logDate,
       })
       const schedulePhase = photo.schedulePhaseOverride?.trim() ?? ""

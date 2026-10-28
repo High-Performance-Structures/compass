@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest"
 import { comparePhotoDates, resolveProjectPhotoDate } from "@/lib/photos/date"
 
 describe("project photo dates", () => {
+  it("uses the original Buildertrend date ahead of capture and log dates", () => {
+    expect(resolveProjectPhotoDate({
+      sourceDate: "2025-12-09",
+      capturedAt: "2025-12-07T23:24:00Z",
+      logDate: "2025-12-08",
+    })).toBe("2025-12-09")
+  })
+
+  it("preserves a source calendar date without applying a timezone conversion", () => {
+    expect(resolveProjectPhotoDate({
+      sourceDate: "2025-12-09", capturedAt: null, logDate: null,
+    })).toBe("2025-12-09")
+  })
+
   it("preserves the capture date ahead of an associated daily-log date", () => {
     expect(resolveProjectPhotoDate({
       capturedAt: "2025-11-21T18:03:16.000Z",

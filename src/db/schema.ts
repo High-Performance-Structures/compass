@@ -1718,6 +1718,24 @@ export const dailyLogPhotos = sqliteTable("daily_log_photos", {
   updatedAt: text("updated_at").notNull(),
 })
 
+// Source chronology survives before/after an import and never overwrites capture
+// metadata or the Compass audit timestamps. Exact source IDs preserve alias dates.
+export const projectPhotoSourceDates = sqliteTable(
+  "project_photo_source_dates",
+  {
+    projectId: text("project_id").notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sourceSystem: text("source_system").notNull(),
+    sourceExternalId: text("source_external_id").notNull(),
+    sourceDate: text("source_date").notNull(),
+    sourceDateKind: text("source_date_kind").notNull(),
+    sourceDateDisplay: text("source_date_display").notNull(),
+    evidenceJson: text("evidence_json").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.projectId, table.sourceSystem, table.sourceExternalId] })]
+)
+
 export const dailyLogPhotoAliases = sqliteTable(
   "daily_log_photo_aliases",
   {
