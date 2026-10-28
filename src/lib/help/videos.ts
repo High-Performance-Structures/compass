@@ -72,7 +72,7 @@ export const HELP_VIDEOS: readonly HelpVideo[] = [
     id: "jarvis-find-records",
     topicId: "jarvis.find-records",
     title: "Ask Jarvis to find and summarize records",
-    durationSeconds: 18,
+    durationSeconds: 20,
   },
   {
     id: "schedule-add-item",
@@ -102,13 +102,13 @@ export const HELP_VIDEOS: readonly HelpVideo[] = [
     id: "jarvis-schedule-confirm",
     topicId: "schedule.jarvis-schedule",
     title: "Change the schedule with Jarvis and Confirm",
-    durationSeconds: 26,
+    durationSeconds: 35,
   },
   {
     id: "owner-updates-draft-with-jarvis",
     topicId: "owner.updates.draft-with-jarvis",
     title: "Draft an owner update with Jarvis",
-    durationSeconds: 20,
+    durationSeconds: 24,
   },
 ]
 
