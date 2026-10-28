@@ -22,7 +22,8 @@ export async function getOrganizationDriveContext(input: {
   readonly db: ReturnType<typeof getDb>
   readonly environment: unknown
   readonly organizationId: string
-  readonly user: AuthUser
+  /** Drive acts as this person: their Google email, or their login email. */
+  readonly user: Pick<AuthUser, "email" | "googleEmail">
 }): Promise<OrganizationDriveContext> {
   const auth = await input.db
     .select({

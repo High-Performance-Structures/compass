@@ -1,4 +1,4 @@
-import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
 import { organizations, users, vendors } from "./schema"
@@ -44,3 +44,40 @@ export const vendorTradeDocuments = sqliteTable(
 )
 
 export type VendorTradeDocument = typeof vendorTradeDocuments.$inferSelect
+
+/**
+ * A no-login link for sending trade docs. "vendor" links are emailed by
+ * staff; an "agent" link is sent on by the vendor to their insurance agent
+ * and only asks for certificates. Only the token's SHA-256 hash is stored.
+ */
+export const vendorTradeDocLinks = sqliteTable(
+  "vendor_trade_doc_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    /** "vendor" or "agent". */
+    audience: text("audience").notNull().default("vendor"),
+    recipientEmail: text("recipient_email").notNull(),
+    /** string[] of document type ids asked for. */
+    requestedJson: text("requested_json").notNull(),
+    parentLinkId: text("parent_link_id").references((): AnySQLiteColumn => vendorTradeDocLinks.id, { onDelete: "set null" }),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+    revokedBy: text("revoked_by").references(() => users.id, { onDelete: "set null" }),
+    lastOpenedAt: text("last_opened_at"),
+    lastSubmittedAt: text("last_submitted_at"),
+    uploadCount: integer("upload_count").notNull().default(0),
+    /** Files sent through the link go to Drive as this staff member. */
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdByName: text("created_by_name").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("vendor_trade_doc_links_token_uq").on(table.tokenHash),
+    index("vendor_trade_doc_links_vendor_idx").on(table.vendorId, table.createdAt),
+  ]
+)
+
+export type VendorTradeDocLink = typeof vendorTradeDocLinks.$inferSelect

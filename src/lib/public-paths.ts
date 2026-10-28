@@ -84,6 +84,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/ecard/") ||
     // RFQ price links: the page and its action check the hashed token themselves.
     pathname.startsWith("/quote/") ||
+    // Trade docs links: the page, its actions and form downloads check the hashed token themselves.
+    pathname.startsWith("/vendor-docs/") ||
     pathname.startsWith("/api/auth/") ||
     // Signed, short-lived URLs let Meta fetch only approved public photos.
     // The route performs its own HMAC and current-visibility checks.
