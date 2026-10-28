@@ -167,7 +167,7 @@ export function defaultPackageTitle(lines: readonly { readonly costCode: string;
 /** Why these lines can't go out together as one RFQ package, or null when they can. */
 export function packageSelectionProblem(lines: readonly PricingBoardLine[]): string | null {
   if (lines.length === 0) return "Choose at least one cost code."
-  if (lines.some((line) => line.source.action !== "rfq")) return "Only lines priced by a supplier or subcontractor go out for quotes."
+  if (lines.some((line) => line.source.action === "takeoff")) return "Lines our own staff price get a takeoff to-do, not a quote request."
   if (new Set(lines.map((line) => line.source.id)).size > 1) return "Combine lines with the same \"Priced by\" choice."
   return null
 }
