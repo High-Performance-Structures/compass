@@ -47,6 +47,8 @@ import {
   type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import { createEstimateLineTakeoffTodo } from "@/app/actions/estimate-line-pricing"
+import { EstimateLinePricedBy, EstimateLinePricingBadge, needsTakeoffTodo, useEstimatePricingView } from "@/components/projects/estimate-line-priced-by"
 import {
   ESTIMATE_WORK_SECTIONS,
   isEstimateWorkSection,
@@ -170,6 +172,10 @@ type LineDraft = {
   readonly taxEntityId: string
   readonly ownerVisible: boolean
   readonly includeInBuilderFee: boolean
+  /** "Priced by" choice id; "" when not chosen. */
+  readonly pricingSource: string
+  /** Estimator for a new takeoff to-do; "" makes none. */
+  readonly takeoffEstimatorId: string
 }
 
 const EMPTY_LINE: LineDraft = {
@@ -188,6 +194,8 @@ const EMPTY_LINE: LineDraft = {
   taxEntityId: "",
   ownerVisible: true,
   includeInBuilderFee: true,
+  pricingSource: "",
+  takeoffEstimatorId: "",
 }
 
 function lineDraft(line: ProjectEstimateLineItem): LineDraft {
@@ -207,6 +215,8 @@ function lineDraft(line: ProjectEstimateLineItem): LineDraft {
     taxEntityId: line.taxEntityId ?? "",
     ownerVisible: line.ownerVisible,
     includeInBuilderFee: line.includeInBuilderFee,
+    pricingSource: "",
+    takeoffEstimatorId: "",
   }
 }
 
@@ -247,6 +257,7 @@ export function ProjectEstimateWorkspacePanel({
     "division"
   )
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
+  const pricing = useEstimatePricingView(projectId, estimate?.id ?? null)
   const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(
     null
   )
@@ -507,13 +518,22 @@ export function ProjectEstimateWorkspacePanel({
           includeInBuilderFee: line.includeInBuilderFee,
           assemblyId: line.assemblyId,
           insertAfterLineId,
+          pricingSource: line.pricingSource || null,
         }
       )
+      let saved = result.success ? "Estimate line saved." : result.error
+      if (result.success && pricing.view && needsTakeoffTodo(pricing.view.sources, line.pricingSource, line.takeoffEstimatorId, pricing.view.lines[result.id])) {
+        const todo = await createEstimateLineTakeoffTodo(projectId, estimate.id, result.id, line.takeoffEstimatorId)
+        saved = todo.success
+          ? `Estimate line saved. Takeoff to-do made for ${todo.data.assigneeName ?? "the estimator"}.`
+          : `Estimate line saved, but the takeoff to-do wasn't made: ${todo.error}`
+      }
       if (result.success) {
         setLine(EMPTY_LINE)
         setInsertAfterLineId(null)
+        pricing.reload()
       }
-      finish(result.success ? "Estimate line saved." : result.error)
+      finish(saved)
     })
   }
 
@@ -1719,6 +1739,7 @@ export function ProjectEstimateWorkspacePanel({
                                 Builder fee excluded
                               </Badge>
                             )}
+                              <EstimateLinePricingBadge sources={pricing.view?.sources ?? []} state={pricing.view?.lines[item.id]} lineTotalCents={item.lineTotalCents} />
                               <p className="text-xs text-muted-foreground">
                               {item.costItems.length > 0
                                 ? `${item.costItems.length} cost-code breakdown · direct ${money(item.directCostCents)} · markup ${money(item.markupCents)} · tax ${money(item.taxCents)}`
@@ -1733,7 +1754,7 @@ export function ProjectEstimateWorkspacePanel({
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => openLineEditor(lineDraft(item))}
+                                  onClick={() => openLineEditor({ ...lineDraft(item), pricingSource: pricing.view?.lines[item.id]?.pricingSource ?? "" })}
                                 >
                                   Edit
                                 </Button>
@@ -2029,6 +2050,25 @@ export function ProjectEstimateWorkspacePanel({
                 )}
               </div>
             )}
+              {pricing.view && (
+                <EstimateLinePricedBy
+                  sources={pricing.view.sources}
+                  estimators={pricing.view.estimators}
+                  value={line.pricingSource}
+                  estimatorId={line.takeoffEstimatorId}
+                  state={line.id ? pricing.view.lines[line.id] : undefined}
+                  disabled={isPending}
+                  onSourceChange={(source) =>
+                    setLine({
+                      ...line,
+                      pricingSource: source?.id ?? "",
+                      // Owner scope is the owner's number: no builder fee, no sales tax.
+                      ...(source?.ownerScope ? { includeInBuilderFee: false, taxable: false, taxEntityId: "" } : {}),
+                    })
+                  }
+                  onEstimatorChange={(takeoffEstimatorId) => setLine({ ...line, takeoffEstimatorId })}
+                />
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-5">
                 <label className="flex items-center gap-2 text-sm">
                 <Checkbox

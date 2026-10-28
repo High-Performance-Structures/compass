@@ -534,7 +534,7 @@ export async function importApprovedProjectRfqBid(
           ${line.estimateLine.markupRateBasisPoints}, ${line.estimateLine.markupCents},
           0, NULL, NULL, NULL, ${line.estimateLine.taxRateBasisPoints},
           ${line.estimateLine.taxCents}, ${line.estimateLine.lineTotalCents},
-          0, 0, ${line.estimateLine.sortOrder}, ${now}, ${now}
+          0, 0, NULL, NULL, ${line.estimateLine.sortOrder}, ${now}, ${now}
         WHERE EXISTS (
           SELECT 1 FROM ${projectEstimateRfqBidImports}
           WHERE ${projectEstimateRfqBidImports.id} = ${importId}

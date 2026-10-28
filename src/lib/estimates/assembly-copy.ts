@@ -104,6 +104,9 @@ export function copyEstimateLines(input: {
       taxRateBasisPoints: line.taxRateBasisPoints,
       ownerVisible: line.ownerVisible,
       includeInBuilderFee: true,
+      // Who prices it carries over; the takeoff to-do belongs to the source job.
+      pricingSource: line.pricingSource,
+      pricingTodoId: null,
       sortOrder: line.sortOrder + input.sortOffset,
     }
     if (items.length > 0) {

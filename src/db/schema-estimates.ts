@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
-import { organizations, projectContacts, projects, users } from "./schema"
+import { organizations, projectContacts, projectOperations, projects, users } from "./schema"
 import {
   estimateTemplateLines,
   projectTemplateApplications,
@@ -434,6 +434,10 @@ export const projectEstimateLines = sqliteTable(
     })
       .notNull()
       .default(true),
+    /** "Priced by": a pricing-source id from Settings → Estimate pricing. */
+    pricingSource: text("pricing_source"),
+    /** Takeoff to-do made for this line when an estimator prices it. */
+    pricingTodoId: text("pricing_todo_id").references(() => projectOperations.id, { onDelete: "set null" }),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
