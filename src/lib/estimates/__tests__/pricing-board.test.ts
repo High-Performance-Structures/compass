@@ -70,7 +70,14 @@ describe("pricing board", () => {
     expect(packageSelectionProblem([])).toBe("Choose at least one cost code.")
     expect(sub && packageSelectionProblem([sub])).toBeNull()
     expect(sub && supplier && packageSelectionProblem([sub, supplier])).toContain("same")
-    expect(labor && packageSelectionProblem([labor])).toContain("supplier or subcontractor")
+    expect(labor && packageSelectionProblem([labor])).toContain("takeoff to-do")
+  })
+
+  it("lets owner-scope lines go to the owner as their own package", () => {
+    const board = buildPricingBoard({ sources: DEFAULT_PRICING_SOURCES, lines: [line("o", "11.300", "owner"), line("s", "16.100", "subcontractor")], rfqs: [] })
+    const [owner, sub] = board.lines
+    expect(owner && packageSelectionProblem([owner])).toBeNull()
+    expect(owner && sub && packageSelectionProblem([owner, sub])).toContain("same")
   })
 
   it("names a package from its cost codes", () => {

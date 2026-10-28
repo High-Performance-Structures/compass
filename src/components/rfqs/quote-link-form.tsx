@@ -198,7 +198,7 @@ export function QuoteLinkForm({ token, view }: { readonly token: string; readonl
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={pending}>{pending ? "Sending…" : previous ? "Send updated prices" : "Send prices"}</Button>
             <Button type="button" variant="outline" disabled={pending} onClick={() => submit("decline")}>
-              We won&apos;t be quoting
+              We won&apos;t be providing prices
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">

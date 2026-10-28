@@ -52,14 +52,17 @@ function lineStatus(line: PricingBoardLine): string {
     case "takeoff":
       return line.todo ? `Takeoff to-do · ${line.todo.assigneeName ?? "staff"} · ${line.todo.status.replace("_", " ")}` : "No takeoff to-do"
     case "owner_pricing":
-      return "Owner provides this number"
+      if (line.rfqCount === 0) return "Owner hasn't been asked yet"
+      return line.quoteCount > 0 ? "Owner's number is in" : "Asked the owner"
   }
 }
 
-function vendorOptions(options: readonly ProjectTaskAssigneeOption[]): readonly Recipient[] {
+/** Who can be asked: owners for owner-scope lines, otherwise subs and suppliers. */
+function vendorOptions(options: readonly ProjectTaskAssigneeOption[], forOwner: boolean): readonly Recipient[] {
   const seen = new Set<string>()
   return options.flatMap((option) => {
-    if (option.contactType !== "subcontractor" && option.contactType !== "supplier") return []
+    const allowed = forOwner ? option.contactType === "owner" : option.contactType === "subcontractor" || option.contactType === "supplier"
+    if (!allowed) return []
     const email = option.email?.trim().toLowerCase()
     if (!email || seen.has(email)) return []
     seen.add(email)
@@ -88,7 +91,7 @@ export function EstimatePricingBoard({
   const [error, setError] = React.useState<string | null>(null)
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set())
   const [composing, setComposing] = React.useState(false)
-  const [vendors, setVendors] = React.useState<readonly Recipient[]>([])
+  const [contacts, setContacts] = React.useState<readonly ProjectTaskAssigneeOption[] | null>(null)
   const [version, setVersion] = React.useState(0)
 
   React.useEffect(() => {
@@ -107,11 +110,9 @@ export function EstimatePricingBoard({
   }, [projectId, estimateId, active, version])
 
   React.useEffect(() => {
-    if (!composing || vendors.length > 0) return
-    void getProjectTaskAssigneeOptions(projectId).then((options) =>
-      setVendors(vendorOptions([...options.projectContacts, ...options.directoryContacts])),
-    )
-  }, [composing, projectId, vendors.length])
+    if (!composing || contacts !== null) return
+    void getProjectTaskAssigneeOptions(projectId).then((options) => setContacts([...options.projectContacts, ...options.directoryContacts]))
+  }, [composing, projectId, contacts])
 
   if (!active) return null
   if (error) return <p className="text-sm text-destructive">{error}</p>
@@ -120,6 +121,8 @@ export function EstimatePricingBoard({
   const { board } = view
   const chosen = board.lines.filter((line) => selected.has(line.id))
   const problem = packageSelectionProblem(chosen)
+  const forOwner = chosen.length > 0 && chosen.every((line) => line.source.action === "owner_pricing")
+  const vendors = vendorOptions(contacts ?? [], forOwner)
 
   function toggle(lineId: string, on: boolean): void {
     setSelected((current) => {
@@ -136,7 +139,8 @@ export function EstimatePricingBoard({
         <h2 className="font-semibold">Pricing requests</h2>
         <p className="max-w-prose text-sm text-muted-foreground">
           Lines with a &quot;Priced by&quot; choice. Tick cost codes the same supplier or sub would price together, then
-          request quotes. Each vendor gets their own RFQ in one package.
+          request quotes; each vendor gets their own RFQ in one package. Tick Owner lines to ask the owner for their
+          numbers the same way.
         </p>
       </div>
 
@@ -160,7 +164,7 @@ export function EstimatePricingBoard({
               {board.lines.map((line) => (
                 <tr key={line.id} className="border-b align-top">
                   <td className="py-2 pr-2">
-                    {editable && line.source.action === "rfq" && (
+                    {editable && line.source.action !== "takeoff" && (
                       <Checkbox
                         aria-label={`Choose ${line.costCode} ${line.costCodeName}`}
                         checked={selected.has(line.id)}
@@ -186,10 +190,10 @@ export function EstimatePricingBoard({
         </div>
       )}
 
-      {editable && board.lines.some((line) => line.source.action === "rfq") && !composing && (
+      {editable && board.lines.some((line) => line.source.action !== "takeoff") && !composing && (
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" disabled={problem !== null} onClick={() => setComposing(true)}>
-            Request quotes{chosen.length > 0 ? ` for ${chosen.length} cost code${chosen.length === 1 ? "" : "s"}` : ""}
+            {forOwner ? "Ask the owner" : "Request quotes"}{chosen.length > 0 ? ` for ${chosen.length} cost code${chosen.length === 1 ? "" : "s"}` : ""}
           </Button>
           <span className="text-xs text-muted-foreground">{chosen.length === 0 ? "Tick the cost codes to send out." : problem}</span>
         </div>
@@ -201,6 +205,7 @@ export function EstimatePricingBoard({
           estimateId={estimateId}
           lines={chosen}
           vendors={vendors}
+          forOwner={forOwner}
           documents={view.documents}
           onCancel={() => setComposing(false)}
           onCreated={(count) => {
@@ -249,6 +254,7 @@ function PackageComposer({
   estimateId,
   lines,
   vendors,
+  forOwner,
   documents,
   onCancel,
   onCreated,
@@ -257,6 +263,7 @@ function PackageComposer({
   readonly estimateId: string
   readonly lines: readonly PricingBoardLine[]
   readonly vendors: readonly Recipient[]
+  readonly forOwner: boolean
   readonly documents: EstimatePricingBoardView["documents"]
   readonly onCancel: () => void
   readonly onCreated: (count: number) => void
@@ -312,7 +319,7 @@ function PackageComposer({
   return (
     <form onSubmit={submit} className="grid gap-4 border-y bg-muted/30 px-3 py-4">
       <div>
-        <h3 className="text-sm font-semibold">Request quotes</h3>
+        <h3 className="text-sm font-semibold">{forOwner ? "Ask the owner for their numbers" : "Request quotes"}</h3>
         <p className="text-xs text-muted-foreground">{lines.map((line) => line.costCode).join(" · ")}</p>
       </div>
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
@@ -331,7 +338,7 @@ function PackageComposer({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="pricingPackageVendorSearch">Vendors</Label>
+        <Label htmlFor="pricingPackageVendorSearch">{forOwner ? "Owner" : "Vendors"}</Label>
         {picked.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {picked.map((vendor) => (
@@ -341,7 +348,7 @@ function PackageComposer({
             ))}
           </div>
         )}
-        <Input id="pricingPackageVendorSearch" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subcontractors and suppliers" />
+        <Input id="pricingPackageVendorSearch" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={forOwner ? "Search the job's owners" : "Search subcontractors and suppliers"} />
         {matches.length > 0 && (
           <div className="grid divide-y border">
             {matches.map((vendor) => (
@@ -353,7 +360,7 @@ function PackageComposer({
         )}
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <div className="grid gap-1.5">
-            <Label htmlFor="pricingPackageOtherName">Someone else: company</Label>
+            <Label htmlFor="pricingPackageOtherName">{forOwner ? "Someone else: name" : "Someone else: company"}</Label>
             <Input id="pricingPackageOtherName" value={otherName} onChange={(event) => setOtherName(event.target.value)} />
           </div>
           <div className="grid gap-1.5">
