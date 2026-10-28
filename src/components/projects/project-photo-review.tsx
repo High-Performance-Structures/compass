@@ -61,6 +61,7 @@ import {
   photoImageSourceForRetry,
 } from "@/lib/photos/image-retry"
 import { adjacentPhoto } from "@/lib/photos/carousel"
+import { comparePhotoDates } from "@/lib/photos/date"
 import { PageHeader } from "@/components/page-header"
 
 type VisibilityFilter =
@@ -206,9 +207,9 @@ function compareByDate(
   right: ProjectPhotoLibraryItem,
   direction: "asc" | "desc"
 ): number {
-  const result = left.photoDate.localeCompare(right.photoDate)
+  const result = comparePhotoDates(left.photoDate, right.photoDate, direction)
   if (result === 0) return left.fileName.localeCompare(right.fileName)
-  return direction === "asc" ? result : -result
+  return result
 }
 
 function compareByPhase(
@@ -970,7 +971,7 @@ export function ProjectPhotoReview({
                       </div>
                     )}
                     <span className="absolute left-2 top-2 rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                      {photo.photoDate}
+                      {photo.photoDate ?? "Capture date unknown"}
                     </span>
                     <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
                       {phaseLabel(photo.schedulePhase)}
@@ -1109,7 +1110,7 @@ export function ProjectPhotoReview({
                         {previewPhoto.caption ?? previewPhoto.fileName}
                       </DialogTitle>
                       <DialogDescription>
-                        {previewPhoto.photoDate} · {phaseLabel(previewPhoto.schedulePhase)} ·{" "}
+                        {previewPhoto.photoDate ?? "Capture date unknown"} · {phaseLabel(previewPhoto.schedulePhase)} ·{" "}
                         {statusLabel(previewPhoto.reviewStatus)}
                       </DialogDescription>
                     </DialogHeader>
