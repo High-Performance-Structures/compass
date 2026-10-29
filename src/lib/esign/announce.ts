@@ -25,6 +25,7 @@ export async function announceEsignOutcome(input: {
   readonly number: string
   readonly title: string
   readonly changeOrderId: string | null
+  readonly estimateId?: string | null
   /** Whoever prepared and sent the request. */
   readonly sentBy: string | null
 }): Promise<void> {
@@ -51,6 +52,7 @@ export async function announceEsignOutcome(input: {
       number: changeOrder?.number ?? input.number,
       title: input.title,
       changeOrderId: changeOrder?.id ?? null,
+      estimateId: input.estimateId ?? null,
     })
 
     await recordActivityEvent({
@@ -67,7 +69,7 @@ export async function announceEsignOutcome(input: {
       },
       category: "financial",
       action: text.action,
-      entityType: input.kind === "contract" ? "contract_packet" : "project_estimate",
+      entityType: input.kind === "contract" ? "contract_packet" : input.kind === "trade_letter" ? "trade_letter" : "project_estimate",
       entityId: input.recordId,
       summary: text.summary,
     })
@@ -75,7 +77,7 @@ export async function announceEsignOutcome(input: {
       organizationId,
       projectId: input.projectId,
       eventType: text.eventType,
-      sourceType: input.kind === "contract" ? "contract_packet" : "estimate",
+      sourceType: input.kind === "contract" ? "contract_packet" : input.kind === "trade_letter" ? "trade_letter" : "estimate",
       sourceId: input.recordId,
       title: text.title,
       body: text.summary,

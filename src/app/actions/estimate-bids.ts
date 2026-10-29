@@ -8,6 +8,7 @@ import { projectEstimateLines } from "@/db/schema-estimates"
 import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports, projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { estimateAccess, revalidateEstimate } from "@/lib/estimates/access"
 import { bidsForCostCode, type LineBid } from "@/lib/estimates/line-bids"
+import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { findPricingSource } from "@/lib/estimates/pricing-sources"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { canFeature } from "@/lib/permission-enforcement"
@@ -28,6 +29,11 @@ export type SelectedTrade = {
   readonly rfqNumber: string | null
   readonly vendor: string
   readonly ownerScope: boolean
+  /** Sage cost types of the lines this bid filled ("subcontract", "material", ...). */
+  readonly sageCostTypes: readonly string[]
+  readonly recipientEmail: string | null
+  readonly responderName: string
+  readonly quoteSubmittedAt: string | null
   readonly codes: readonly { readonly costCode: string | null; readonly description: string; readonly amountCents: number }[]
   readonly totalCents: number
   readonly acceptedAt: string
@@ -150,7 +156,12 @@ export async function getEstimateSelectedTrades(projectId: string, estimateId: s
     if (imports.length === 0) return { success: true, data: [] }
     const [approvals, lines, settings] = await Promise.all([
       access.db
-        .select({ id: projectRfqBidApprovals.id, responderCompany: projectRfqBidApprovals.responderCompany, responderName: projectRfqBidApprovals.responderName })
+        .select({
+          id: projectRfqBidApprovals.id,
+          responderCompany: projectRfqBidApprovals.responderCompany,
+          responderName: projectRfqBidApprovals.responderName,
+          responseSubmittedAt: projectRfqBidApprovals.responseSubmittedAt,
+        })
         .from(projectRfqBidApprovals)
         .where(inArray(projectRfqBidApprovals.id, [...new Set(imports.map((row) => row.approvalId))])),
       access.db
@@ -164,11 +175,16 @@ export async function getEstimateSelectedTrades(projectId: string, estimateId: s
       const rows = imports.filter((row) => row.approvalId === approval.id)
       const rfqId = rfqByApproval.get(approval.id) ?? ""
       const rfq = rfqs.find((item) => item.id === rfqId)
+      const sources = rows.map((row) => findPricingSource(settings.sources, row.estimateLineId ? sourceByLine.get(row.estimateLineId) : null))
       return {
         rfqId,
         rfqNumber: rfq?.number ?? null,
         vendor: approval.responderCompany?.trim() || rfq?.companyName?.trim() || approval.responderName,
-        ownerScope: rows.some((row) => findPricingSource(settings.sources, row.estimateLineId ? sourceByLine.get(row.estimateLineId) : null)?.ownerScope === true),
+        ownerScope: sources.some((source) => source?.ownerScope === true),
+        sageCostTypes: [...new Set(sources.flatMap((source) => (source ? [source.sageCostType] : [])))],
+        recipientEmail: rfq ? parsePortalRfqPayload(rfq.payloadJson).recipientEmail : null,
+        responderName: approval.responderName,
+        quoteSubmittedAt: approval.responseSubmittedAt || null,
         codes: rows.map((row) => ({ costCode: row.costCode, description: row.description, amountCents: row.amountCents })),
         totalCents: rows.reduce((total, row) => total + row.amountCents, 0),
         acceptedAt: rows[0]?.importedAt ?? "",

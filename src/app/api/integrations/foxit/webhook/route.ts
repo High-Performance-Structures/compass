@@ -14,6 +14,8 @@ import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
 import { contractVersionBaseline } from "@/lib/change-orders/contract-version-acceptance"
 import { announceEsignOutcome } from "@/lib/esign/announce"
+import { findTradeLetterByEnvelope } from "@/lib/trade-letters/server"
+import { handleTradeLetterEvent } from "@/lib/trade-letters/webhook"
 
 function objectValue(value: unknown): object | null {
   return value && typeof value === "object" ? value : null
@@ -63,6 +65,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ success: true, ignored: true })
   }
   const db = getDb(env.DB)
+  const letter = await findTradeLetterByEnvelope(db, envelopeId)
+  if (letter) return handleTradeLetterEvent({ db, env, letter, event })
   const packetRows = await db
     .select()
     .from(contractPackets)

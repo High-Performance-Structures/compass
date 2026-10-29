@@ -73,6 +73,37 @@ export const infoSheetSettingsSchema = z.object({
 })
 export type InfoSheetSettings = z.infer<typeof infoSheetSettingsSchema>
 
+/**
+ * Letters to selected trades. The texts take {company}, {vendor}, {project},
+ * {quote}, {agreement} and {owed}; the scope table and signatures are added
+ * by Compass.
+ */
+export const tradeLetterSettingsSchema = z.object({
+  /** The document type that is the master agreement a trade signs once. */
+  agreementDocTypeId: z.string().max(40).nullable(),
+  intentText: z.string().trim().min(1).max(3000),
+  awardText: z.string().trim().min(1).max(3000),
+  /** Added when documents are still owed. */
+  owedText: z.string().trim().max(1500),
+  closingText: z.string().trim().max(3000),
+  /** The title printed under the company signer's name. */
+  companySignerTitle: z.string().trim().max(80),
+})
+export type TradeLetterSettings = z.infer<typeof tradeLetterSettingsSchema>
+
+export const DEFAULT_TRADE_LETTER_SETTINGS: TradeLetterSettings = {
+  agreementDocTypeId: "trade-agreement",
+  intentText:
+    "{company} intends to award {vendor} the work below on {project}, based on your quote {quote}. This letter holds your place on the job while the owner's contract is completed. It is not an award: the award letter follows once the owner signs, and no work should start before then.",
+  awardText:
+    "{company} accepts in writing your quote {quote} for the work below on {project}. The work is governed by our Trade Contractor Agreement, {agreement}.",
+  owedText:
+    "Documents still needed: {owed}. Per Article 2.2 of the Trade Contractor Agreement, no payment can be made until these are received.",
+  closingText:
+    "Your work will be scheduled per the project schedule. Any change to this scope needs a written change order before the work is done.",
+  companySignerTitle: "",
+}
+
 export const tradeDocSettingsSchema = z.object({
   docTypes: z.array(tradeDocTypeSchema).min(1).max(30),
   /** What staff confirm on an insurance certificate before accepting it. */
@@ -90,6 +121,7 @@ export const tradeDocSettingsSchema = z.object({
   /** Who certificates should name and where agents send them; blank uses the company's name and contact lines. */
   certificateHolder: z.string().trim().max(800).default(""),
   infoSheet: infoSheetSettingsSchema.default(() => DEFAULT_INFO_SHEET),
+  letters: tradeLetterSettingsSchema.default(() => DEFAULT_TRADE_LETTER_SETTINGS),
 })
 export type TradeDocSettings = z.infer<typeof tradeDocSettingsSchema>
 
@@ -157,6 +189,7 @@ export const DEFAULT_TRADE_DOC_SETTINGS: TradeDocSettings = {
   requestNote: "",
   certificateHolder: "",
   infoSheet: DEFAULT_INFO_SHEET,
+  letters: DEFAULT_TRADE_LETTER_SETTINGS,
 }
 
 /** Accepts a Drive folder link or a bare id; returns the id or null. */

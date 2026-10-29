@@ -68,7 +68,10 @@ export async function createFoxitPreparedEnvelope(input: {
   readonly errorUrl: string
   readonly estimateId: string
   readonly contractPacketId?: string
+  readonly tradeLetterId?: string
   readonly sourceHash: string
+  /** Signers sign one after another, in `sequence` order. */
+  readonly signInSequence?: boolean
 }): Promise<FoxitPreparedEnvelope> {
   const response = await fetch(`${FOXIT_ESIGN_BASE_URL}/folders/createfolder`, {
     method: "POST",
@@ -97,7 +100,7 @@ export async function createFoxitPreparedEnvelope(input: {
         }
       }),
       fields: input.fields,
-      signInSequence: false,
+      signInSequence: input.signInSequence ?? false,
       sendNow: false,
       createEmbeddedSigningSession: false,
       createEmbeddedSendingSession: true,
@@ -112,6 +115,7 @@ export async function createFoxitPreparedEnvelope(input: {
         ...(input.contractPacketId
           ? { compassContractPacketId: input.contractPacketId }
           : {}),
+        ...(input.tradeLetterId ? { compassTradeLetterId: input.tradeLetterId } : {}),
         compassSourceHash: input.sourceHash,
       },
     }),

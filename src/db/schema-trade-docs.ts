@@ -1,7 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
-import { organizations, users, vendors } from "./schema"
+import { organizations, projects, users, vendors } from "./schema"
 
 /**
  * A trade document received from a vendor. The file itself lives in Google
@@ -81,3 +81,60 @@ export const vendorTradeDocLinks = sqliteTable(
 )
 
 export type VendorTradeDocLink = typeof vendorTradeDocLinks.$inferSelect
+
+/**
+ * A letter of intent or award letter sent to a selected trade for one
+ * estimate's accepted bid. The award letter is the written acceptance of the
+ * quote under the trade's master agreement; when the trade has no signed
+ * agreement yet it can ride along in the same envelope. Signed through Foxit.
+ */
+export const tradeLetters = sqliteTable(
+  "trade_letters",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id").notNull(),
+    /** The RFQ whose accepted bid this letter awards. */
+    rfqOperationId: text("rfq_operation_id").notNull(),
+    vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+    vendorName: text("vendor_name").notNull(),
+    /** "intent" or "award". */
+    kind: text("kind").notNull(),
+    letterNumber: text("letter_number").notNull(),
+    /** "draft", "preparing", "sent", "signed", "declined" or "cancelled". */
+    status: text("status").notNull().default("draft"),
+    /** { costCode, description, amountCents }[] awarded by this letter. */
+    scopeJson: text("scope_json").notNull(),
+    totalCents: integer("total_cents").notNull(),
+    /** How the letter names the quote, e.g. "RFQ-0028, dated October 22, 2026". */
+    quoteLabel: text("quote_label").notNull(),
+    /** Document labels still owed when the letter was written. */
+    owedJson: text("owed_json").notNull().default("[]"),
+    note: text("note"),
+    includesAgreement: integer("includes_agreement", { mode: "boolean" }).notNull().default(false),
+    agreementDriveFileId: text("agreement_drive_file_id"),
+    signerName: text("signer_name").notNull(),
+    signerEmail: text("signer_email").notNull(),
+    companySignerName: text("company_signer_name").notNull(),
+    companySignerEmail: text("company_signer_email").notNull(),
+    companySignerTitle: text("company_signer_title"),
+    foxitEnvelopeId: text("foxit_envelope_id"),
+    foxitEmbeddedSessionUrl: text("foxit_embedded_session_url"),
+    sentAt: text("sent_at"),
+    signedAt: text("signed_at"),
+    /** The signed copy saved to the vendor's Drive folder. */
+    signedDriveFileId: text("signed_drive_file_id"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdByName: text("created_by_name").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("trade_letters_estimate_idx").on(table.projectId, table.estimateId, table.rfqOperationId),
+    uniqueIndex("trade_letters_envelope_uq").on(table.foxitEnvelopeId).where(sql`${table.foxitEnvelopeId} IS NOT NULL`),
+    uniqueIndex("trade_letters_number_uq").on(table.organizationId, table.letterNumber),
+  ]
+)
+
+export type TradeLetter = typeof tradeLetters.$inferSelect
