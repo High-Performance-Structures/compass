@@ -16,8 +16,8 @@ import {
 } from "@/app/actions/estimate-pricing-board"
 import { ProjectDriveFilePicker, type PickedProjectFile } from "@/components/projects/project-drive-file-picker"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
-import { getEstimateSelectedTrades, type SelectedTrade } from "@/app/actions/estimate-bids"
 import { EstimateLineBidsDialog } from "@/components/projects/estimate-line-bids-dialog"
+import { TradeLettersSection } from "@/components/projects/trade-letters-section"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -98,14 +98,10 @@ export function EstimatePricingBoard({
   const [version, setVersion] = React.useState(0)
   const router = useRouter()
   const [bidsLineId, setBidsLineId] = React.useState<string | null>(null)
-  const [trades, setTrades] = React.useState<readonly SelectedTrade[]>([])
 
   React.useEffect(() => {
     if (!active) return
     let cancelled = false
-    void getEstimateSelectedTrades(projectId, estimateId).then((result) => {
-      if (!cancelled && result.success) setTrades(result.data)
-    })
     void getEstimatePricingBoard(projectId, estimateId).then((result) => {
       if (cancelled) return
       if (result.success) {
@@ -250,7 +246,7 @@ export function EstimatePricingBoard({
         />
       )}
 
-      <SelectedTrades trades={trades} />
+      <TradeLettersSection projectId={projectId} estimateId={estimateId} refreshKey={version} />
 
       {board.packages.length > 0 && (
         <div className="grid gap-3">
@@ -558,52 +554,3 @@ function PackageSender({
     </form>
   )
 }
-
-/** Who has been selected for this estimate: one row per accepted bid. */
-function SelectedTrades({ trades }: { readonly trades: readonly SelectedTrade[] }): React.ReactElement | null {
-  if (trades.length === 0) return null
-  const total = trades.filter((trade) => !trade.ownerScope).reduce((sum, trade) => sum + trade.totalCents, 0)
-  return (
-    <div className="grid gap-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">Selected trades</h3>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {trades.filter((trade) => !trade.ownerScope).length} selected · {money(total)}
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="py-2 pr-4 font-medium">Trade</th>
-              <th className="py-2 pr-4 font-medium">Cost codes</th>
-              <th className="py-2 pr-4 text-right font-medium">Amount</th>
-              <th className="py-2 font-medium">Accepted</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((trade) => (
-              <tr key={trade.rfqId} className="border-b align-top">
-                <td className="py-2 pr-4">
-                  <span className="font-medium">{trade.vendor}</span>
-                  {trade.ownerScope && <Badge variant="outline" className="ml-2">Owner scope</Badge>}
-                  <p className="text-xs text-muted-foreground">{trade.rfqNumber}</p>
-                </td>
-                <td className="py-2 pr-4 text-xs">
-                  {trade.codes.map((code) => `${code.costCode ?? code.description} ${money(code.amountCents)}`).join(" · ")}
-                </td>
-                <td className="py-2 pr-4 text-right tabular-nums">{money(trade.totalCents)}</td>
-                <td className="py-2 text-xs text-muted-foreground">
-                  {trade.acceptedAt ? new Date(trade.acceptedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
-                  {trade.acceptedByName ? ` · ${trade.acceptedByName}` : ""}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-muted-foreground">Award letters and trade docs for these trades come next.</p>
-    </div>
-  )
-}
-

@@ -88,6 +88,20 @@ Choose a bid, untick any codes you're giving to someone else, and choose **Accep
 
 **Selected trades** on the pricing board lists each vendor you accepted, with its cost codes, amounts, total, and who accepted it and when. Owner-scope rows are marked and left out of the trades total.
 
+### Letters of intent and award letters {#trade-letters}
+
+Each subcontractor in **Selected trades** shows its trade docs (how many are on file and what's owed) and the letters sent to it. Choose **Trade docs and request** to see their documents or email them the secure docs link.
+
+- **Award letter** accepts the trade's quote in writing. It stays locked until the owner signs the estimate or contract.
+- **Letter of intent** holds a trade's place before the owner signs. Once the owner signs, send the award letter as the follow-up.
+- Suppliers get purchase orders instead of letters, and owner scope is covered by the owner contract.
+
+In the letter window, check the vendor, who signs for them and their email, and untick any cost codes you're not awarding. Missing documents don't block the letter: it lists what's still owed and says no payment is made until they're in. If the trade has no signed Trade Contractor Agreement, tick the box to include it, and signing the letter signs the agreement too. Then choose **Save and preview** to check the PDF, or **Send for e-signature**. Foxit opens; check the letter and press **Send**. The trade signs first, then you.
+
+When both have signed, the letter shows **Signed**. The signed copy is saved in the vendor's trade docs folder in Drive, and an included agreement is recorded in their trade docs. You're notified when a letter is signed, declined or cancelled. Drafts can be edited until they're sent. **Delete** removes a letter from Compass only: cancel one that's out for signature in Foxit too.
+
+Admins set the wording in **Settings → Workflows → Trade docs → Letters to trades**: the letter of intent, award letter, still-owed and closing texts, which document is the master agreement, and the signer's title.
+
 ### Pricing settings
 
 Admins set the **Priced by** choices in **Settings → Workflows → Estimates**: each choice's name, **What Compass does** (request a quote, owner provides the number, or takeoff to-do for an estimator), Sage cost type, owner scope, and whether it is offered. Turn a choice off instead of deleting it so existing lines keep their value. **Vendor price links** sets how many days a price link works after the quote due date, and after sending when there is no due date.

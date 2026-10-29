@@ -18,8 +18,10 @@ import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-brand
 import { DriveItemField } from "@/components/google/drive-item-field"
 import { TradeDocImportDialog } from "@/components/settings/trade-doc-import-dialog"
 import { TradeDocInfoSheetSettings } from "@/components/settings/trade-doc-info-sheet-settings"
+import { TradeLetterSettingsFields } from "@/components/settings/trade-letter-settings"
 import {
   DEFAULT_INFO_SHEET,
+  DEFAULT_TRADE_LETTER_SETTINGS,
   TRADE_DOC_BILL_MODES,
   TRADE_DOC_BILL_MODE_LABELS,
   driveFileIdFromInput,
@@ -29,6 +31,7 @@ import {
   type InfoSheetSettings,
   type TradeDocBillMode,
   type TradeDocType,
+  type TradeLetterSettings,
 } from "@/lib/trade-docs/settings"
 
 /** Vendor categories offered as columns; any others already in use are added. */
@@ -61,6 +64,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
   const [requestNote, setRequestNote] = React.useState("")
   const [certificateHolder, setCertificateHolder] = React.useState("")
   const [infoSheet, setInfoSheet] = React.useState<InfoSheetSettings>(DEFAULT_INFO_SHEET)
+  const [letters, setLetters] = React.useState<TradeLetterSettings>(DEFAULT_TRADE_LETTER_SETTINGS)
   const [importOpen, setImportOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
@@ -82,6 +86,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       setRequestNote(parsed.data.requestNote)
       setCertificateHolder(parsed.data.certificateHolder)
       setInfoSheet(parsed.data.infoSheet)
+      setLetters(parsed.data.letters)
     }
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -163,6 +168,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       requestNote,
       certificateHolder,
       infoSheet,
+      letters,
     })
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the documents and try again.")
@@ -394,6 +400,13 @@ export function TradeDocSettingsSection(): React.ReactElement {
         value={infoSheet}
         onChange={setInfoSheet}
         docTypes={types}
+        disabled={!canEdit || pending}
+      />
+
+      <TradeLetterSettingsFields
+        value={letters}
+        onChange={setLetters}
+        docTypes={types.filter((type) => savedIds.has(type.id))}
         disabled={!canEdit || pending}
       />
 

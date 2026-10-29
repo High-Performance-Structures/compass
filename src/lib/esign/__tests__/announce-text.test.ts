@@ -37,4 +37,20 @@ describe("esignAnnouncementText", () => {
     expect(text.summary).toBe("The client declined to sign estimate H-430-EST-1.")
     expect(text.href).toBe("/dashboard/projects/p1/estimate?estimateId=est1")
   })
+
+  it("links a signed trade letter to its estimate and names the trade", () => {
+    const text = esignAnnouncementText({
+      kind: "trade_letter",
+      outcome: "declined",
+      projectId: "p1",
+      recordId: "letter-1",
+      number: "AW-0001",
+      title: "Best Drywall",
+      changeOrderId: null,
+      estimateId: "e1",
+    })
+    expect(text.href).toBe("/dashboard/projects/p1/estimate?estimateId=e1")
+    expect(text.summary).toBe("The trade declined to sign letter AW-0001 Best Drywall.")
+    expect(text.action).toBe("trade_letter_signature_declined")
+  })
 })
