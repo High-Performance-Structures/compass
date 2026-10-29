@@ -16,6 +16,7 @@ import { DEFAULT_DEPARTMENT_PROFILES, DEPARTMENT_CODES } from "@/lib/department-
 import { departmentProfilesSchema, portfolioMapSettingsSchema, type PortfolioMapSettings } from "@/lib/feature-settings/registry"
 import { DEFAULT_PORTFOLIO_MAP_RULES, PORTFOLIO_PHASES, phaseForJobStatus, type PortfolioPhaseId } from "@/lib/portfolio-map/model"
 import { DEFAULT_DEPARTMENT_VIEWS, type PortfolioDepartmentView } from "@/lib/portfolio-map/phases"
+import { DEFAULT_MAP_STATE, MAP_STATES, isMapStateCode, type MapStateCode } from "@/lib/portfolio-map/states"
 import { SALES_PIPELINE_DEPARTMENTS } from "@/lib/sales-pipeline/stages"
 import type { ProjectDepartment } from "@/lib/project-branding"
 
@@ -57,6 +58,7 @@ export function PortfolioMapSettingsSection(): React.ReactElement {
   const [choices, setChoices] = React.useState<Readonly<Record<string, Choice>>>({})
   const [views, setViews] = React.useState<Readonly<Record<string, PortfolioDepartmentView>>>({})
   const [salesTitles, setSalesTitles] = React.useState<Readonly<Record<string, string>>>({})
+  const [mapState, setMapState] = React.useState<MapStateCode>(DEFAULT_MAP_STATE)
   const [departmentNames, setDepartmentNames] = React.useState<Readonly<Record<string, string>>>(
     Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, DEFAULT_DEPARTMENT_PROFILES[code].displayName])),
   )
@@ -83,11 +85,12 @@ export function PortfolioMapSettingsSection(): React.ReactElement {
       return
     }
     const parsed = portfolioMapSettingsSchema.safeParse(result.data.settings)
-    const settings: PortfolioMapSettings = parsed.success ? parsed.data : { statusPhases: {}, departmentViews: {}, salesTitles: {} }
+    const settings: PortfolioMapSettings = parsed.success ? parsed.data : DEFAULT_PORTFOLIO_MAP_RULES
     setStatuses(statusResult.rows)
     setChoices(Object.fromEntries(statusResult.rows.map((status) => [status.id, settings.statusPhases[status.id] ?? builtInChoice(status)])))
     setViews(Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, settings.departmentViews[code] ?? builtInView(code)])))
     setSalesTitles(settings.salesTitles)
+    setMapState(settings.mapState)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -114,7 +117,7 @@ export function PortfolioMapSettingsSection(): React.ReactElement {
       if (title && title !== builtInSalesTitle(code, departmentNames[code] ?? code)) titles[code] = title
     }
     startTransition(async () => {
-      const result = await saveFeatureSettings("portfolio-map", { statusPhases, departmentViews, salesTitles: titles })
+      const result = await saveFeatureSettings("portfolio-map", { statusPhases, departmentViews, salesTitles: titles, mapState })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -145,6 +148,31 @@ export function PortfolioMapSettingsSection(): React.ReactElement {
         Which jobs appear on the dashboard map and pipelines by default, and the phase each job status falls in. Any job can
         still be shown or hidden from the map itself. Offices and yards appear on the map&apos;s Internal view instead.
       </p>
+
+      <fieldset className="grid gap-2" disabled={!canEdit || pending}>
+        <legend className="text-sm font-medium">Map state</legend>
+        <p className="max-w-prose text-xs text-muted-foreground">
+          The state shown on the dashboard map and on client and trade partner maps, with its terrain, major roads,
+          weather and wildfires.
+        </p>
+        <Select
+          value={mapState}
+          onValueChange={(value) => {
+            if (isMapStateCode(value)) setMapState(value)
+          }}
+        >
+          <SelectTrigger aria-label="Map state" className="h-8 w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MAP_STATES.map((state) => (
+              <SelectItem key={state.code} value={state.code}>
+                {state.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </fieldset>
 
       <fieldset className="grid gap-2" disabled={!canEdit || pending}>
         <legend className="text-sm font-medium">Where each department&apos;s jobs appear</legend>

@@ -4,7 +4,9 @@
  * (Open-Meteo's 90 m elevation as fallback). Server-side only.
  */
 
-import { resolveTown, townAt } from "@/lib/portfolio-map/model"
+import { COLORADO_PLACES, resolveTown, townAt, type PlaceIndex } from "@/lib/portfolio-map/model"
+import { STATE_BOUNDS } from "@/lib/portfolio-map/state-bounds.generated"
+import { DEFAULT_MAP_STATE, isMapStateCode, type MapStateCode } from "@/lib/portfolio-map/states"
 import { findNearbyAddress, parseStreetAddress, sameStreet, type StreetAddress } from "@/lib/geo/nearby-address"
 
 export type CoordinatePair = {
@@ -124,20 +126,27 @@ type GeocodePlan = {
   readonly bounds: GeoBounds | null
 }
 
+/** A state's box with a small margin for border jobs (Colorado's is set by hand). */
+export function stateGeoBounds(state: string): GeoBounds | null {
+  if (state === "CO") return COLORADO_BOUNDS
+  const box = isMapStateCode(state) ? STATE_BOUNDS[state] : undefined
+  return box ? { west: box.west - 0.3, east: box.east + 0.3, south: box.south - 0.3, north: box.north + 0.3 } : null
+}
+
 /**
- * Towns are assumed to be in Colorado unless the address names another
- * state: "Alma" is looked up as "Alma, CO", and only Colorado matches count.
+ * Towns are assumed to be in the company's map state (Colorado unless set)
+ * unless the address names another state: "Alma" is looked up as "Alma, CO",
+ * and only matches in that state count.
  */
-export function geocodePlan(address: string): GeocodePlan {
+export function geocodePlan(address: string, homeState: MapStateCode = DEFAULT_MAP_STATE): GeocodePlan {
   const trimmed = address.trim()
   if (trimmed.length === 0) return { queries: [], bounds: null }
   const state = addressState(trimmed)
-  if (state === "CO") return { queries: [trimmed], bounds: COLORADO_BOUNDS }
-  if (state) return { queries: [trimmed], bounds: null }
+  if (state) return { queries: [trimmed], bounds: stateGeoBounds(state) }
   const withState = TRAILING_ZIP.test(trimmed)
-    ? trimmed.replace(TRAILING_ZIP, (zip) => `, CO ${zip.replace(/^[\s,]+/, "")}`)
-    : `${trimmed}, CO`
-  return { queries: [withState, trimmed], bounds: COLORADO_BOUNDS }
+    ? trimmed.replace(TRAILING_ZIP, (zip) => `, ${homeState} ${zip.replace(/^[\s,]+/, "")}`)
+    : `${trimmed}, ${homeState}`
+  return { queries: [withState, trimmed], bounds: stateGeoBounds(homeState) }
 }
 
 /** A geocoder's answer, with the street it actually matched (for checking). */
@@ -235,14 +244,18 @@ export type GeocodeResult =
 
 /**
  * Census first (rooftop/street matches), then Nominatim for rural and partial
- * addresses. Colorado is assumed unless the address names another state; a
+ * addresses. The company's map state is assumed unless the address names another state; a
  * match outside the expected state (a same-named street elsewhere) is ignored
- * and the next query or service is tried. For a Colorado address neither
+ * and the next query or service is tried. For an address neither
  * knows (often a new build), the closest recorded number on the same street
  * near the town stands in, then the street itself.
  */
-export async function geocodeProjectAddress(address: string): Promise<GeocodeResult> {
-  const plan = geocodePlan(address)
+export async function geocodeProjectAddress(
+  address: string,
+  homeState: MapStateCode = DEFAULT_MAP_STATE,
+  places: PlaceIndex = COLORADO_PLACES,
+): Promise<GeocodeResult> {
+  const plan = geocodePlan(address, homeState)
   const target = parseStreetAddress(address)
   const accept = (candidate: Candidate | null): CoordinatePair | null =>
     candidate && confirmsAddress(target, candidate) ? within(candidate.coordinates, plan.bounds) : null
@@ -255,14 +268,14 @@ export async function geocodeProjectAddress(address: string): Promise<GeocodeRes
     if (coordinates) return { status: "found", coordinates }
   }
   if (!plan.bounds) return { status: "not_found" }
-  const town = resolveTown({ publicLocationCity: null, address, name: "" })
+  const town = resolveTown({ publicLocationCity: null, address, name: "" }, places)
   if (!town) return { status: "not_found" }
   const nearby = await findNearbyAddress(
     address,
     {
       center: { latitude: town.lat, longitude: town.lon },
       accept: (latitude, longitude) => {
-        const other = townAt(latitude, longitude)
+        const other = townAt(latitude, longitude, places)
         return other === null || other === town.town
       },
     },

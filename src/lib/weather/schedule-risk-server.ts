@@ -5,7 +5,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WeatherAlertSettings } from "@/lib/feature-settings/registry"
 import { notifyProjectStaffOfOutsideEvent } from "@/lib/notifications/events"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
-import { DEFAULT_WEATHER_AREA } from "@/lib/weather/areas"
+import { organizationWeatherArea } from "@/lib/weather/areas-server"
 import { alertActiveBetween, alertCovers, fireFlags, type WeatherFlag } from "@/lib/weather/layer"
 import { readAreaHazards, readSiteForecasts, type WeatherJobSite } from "@/lib/weather/read-server"
 import { addDays, scheduleWeatherRisks, type ScheduleRisk } from "@/lib/weather/schedule-risk"
@@ -122,7 +122,7 @@ export async function projectSiteWeather(db: Db, organizationId: string, project
   const site: WeatherJobSite = { projectId, lat: project.lat, lon: project.lon }
   const [forecasts, hazards, limits, timeZone] = await Promise.all([
     readSiteForecasts(db, [site], nowMs, SERIES_STEPS),
-    readAreaHazards(db, DEFAULT_WEATHER_AREA),
+    organizationWeatherArea(db, organizationId).then((area) => readAreaHazards(db, area)),
     readFeatureSettings(db, organizationId, "weather-alerts"),
     organizationTimeZone(db, organizationId),
   ])
@@ -202,10 +202,12 @@ export async function sweepScheduleWeatherRisks(db: Db, options: { readonly budg
   if (active.length === 0) return { projects: 0, newRisks: 0, notified: 0 }
 
   const sites = active.flatMap((project): WeatherJobSite[] => (project.lat === null || project.lon === null ? [] : [{ projectId: project.id, lat: project.lat, lon: project.lon }]))
-  const [forecasts, hazards] = await Promise.all([readSiteForecasts(db, sites, nowMs, SERIES_STEPS), readAreaHazards(db, DEFAULT_WEATHER_AREA)])
+  const forecasts = await readSiteForecasts(db, sites, nowMs, SERIES_STEPS)
   await forecasts.markInUse()
 
-  const orgCache = new Map<string, { limits: WeatherAlertSettings; timeZone: string }>()
+  // Warnings come from each company's map state.
+  const orgCache = new Map<string, { limits: WeatherAlertSettings; timeZone: string; hazards: Awaited<ReturnType<typeof readAreaHazards>> }>()
+  const hazardsByArea = new Map<string, Awaited<ReturnType<typeof readAreaHazards>>>()
   let newRisks = 0
   let notified = 0
   for (const project of active) {
@@ -215,9 +217,13 @@ export async function sweepScheduleWeatherRisks(db: Db, options: { readonly budg
     if (!organizationId || !forecast || project.lat === null || project.lon === null) continue
     let org = orgCache.get(organizationId)
     if (!org) {
+      const area = await organizationWeatherArea(db, organizationId)
+      const hazards = hazardsByArea.get(area.key) ?? (await readAreaHazards(db, area))
+      hazardsByArea.set(area.key, hazards)
       org = {
         limits: await readFeatureSettings(db, organizationId, "weather-alerts"),
         timeZone: await organizationTimeZone(db, organizationId),
+        hazards,
       }
       orgCache.set(organizationId, org)
     }
@@ -227,7 +233,7 @@ export async function sweepScheduleWeatherRisks(db: Db, options: { readonly budg
     const projectItems = (itemsByProject.get(project.id) ?? []).filter((item) => item.endDate >= today && item.startDate <= addDays(today, RISK_HORIZON_DAYS))
     const lon = project.lon
     const lat = project.lat
-    const siteAlerts = hazards.weatherAlerts.filter((alert) => alertCovers(alert, lon, lat))
+    const siteAlerts = org.hazards.weatherAlerts.filter((alert) => alertCovers(alert, lon, lat))
     const risks = scheduleWeatherRisks({ items: projectItems, series: forecast.series, alerts: siteAlerts, limits: org.limits, rules: org.limits.workRules, localDate, nowMs })
     const label = project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
     for (const risk of risks) {

@@ -1,8 +1,10 @@
 import {
   PORTFOLIO_PHASES,
   phaseForJobStatus,
+  COLORADO_PLACES,
   resolveTown,
   spreadSharedTowns,
+  type PlaceIndex,
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
@@ -28,7 +30,10 @@ export type AudienceJobRow = {
  * matters, not the office department filter), and no office-only signals are
  * carried: no progress, health, past-due counts, or next office task.
  */
-export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly PortfolioMapJob[] {
+export function audienceMapJobs<R extends AudienceJobRow>(
+  rows: readonly R[],
+  placesFor: (row: R) => PlaceIndex = () => COLORADO_PLACES,
+): readonly PortfolioMapJob[] {
   const jobs = rows.flatMap((row): PortfolioMapJob[] => {
     // Internal jobs have no stage, but staff preview them as their test
     // owners and vendors; real outside people aren't on internal jobs.
@@ -36,11 +41,14 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       projectJobStatusBucket({ jobStatusId: row.jobStatusId ?? "", jobStatusLabel: row.statusLabel }) === "internal"
     const phase = phaseForJobStatus(row.jobStatusId, row.statusLabel) ?? (internal ? UNSTAGED_PHASE : null)
     if (!phase) return []
-    const town = resolveTown({
-      publicLocationCity: row.publicLocationCity,
-      address: row.address,
-      name: row.name,
-    })
+    const town = resolveTown(
+      {
+        publicLocationCity: row.publicLocationCity,
+        address: row.address,
+        name: row.name,
+      },
+      placesFor(row),
+    )
     return [{
       id: row.id,
       name: projectDisplayName(row),

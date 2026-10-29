@@ -7,7 +7,7 @@
   "summary": "Find jobs on the dashboard map and pipelines, track follow-up, change statuses, and preserve project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "dashboard", "portfolio map", "weather", "wildfire", "fire", "red flag", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "saved views", "default filters", "shared filters", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
+  "tags": ["projects", "navigation", "dashboard", "portfolio map", "map state", "other states", "weather", "wildfire", "fire", "red flag", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "saved views", "default filters", "shared filters", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
@@ -125,7 +125,7 @@ Authorized staff can use **MOVE TO** in a job panel to choose a status within th
 
 **INTERNAL** shows the company's own offices and yards (the internal workspaces) on their own map and list, apart from client projects. Select one to open its overview or duty log, or to add its address so it is placed on the map.
 
-In **Settings → Workflows → Portfolio map**, admins choose where each department's jobs appear (with the projects, on the department's own sales pipeline view, on the Internal view, or not at all), the title of each sales pipeline, and which job statuses appear and in which phase.
+In **Settings → Workflows → Portfolio map**, admins choose the **Map state**: any of the 50 states, with its own terrain, outline, major highways and landmarks. Weather and Fire & smoke cover the chosen state, and client and trade partner maps use it too. Job addresses that don't name a state are looked up in the chosen state. Jobs in a different state stay in the job list and pipelines but aren't placed on the map. Admins also choose where each department's jobs appear (with the projects, on the department's own sales pipeline view, on the Internal view, or not at all), the title of each sales pipeline, and which job statuses appear and in which phase.
 
 Turn on **Messages** to see your unread items stacked on jobs and listed in the selected job panel. Opening and reading the linked item clears the corresponding notification. **Zone charges** and **Mountain charge** show travel-charge information; the key below the map explains the layers. A map marker or suggested location should be checked against the actual job address before using it for travel or pricing.
 

@@ -27,6 +27,8 @@ import { DEFAULT_PORTFOLIO_MAP_RULES, departmentView } from "@/lib/portfolio-map
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import { locateSites, siteLocationWriter, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
+import { placeIndexResolver } from "@/lib/portfolio-map/places-server"
+import { geocodeProjectAddress } from "@/lib/geo/site-lookup"
 import {
   DEFAULT_TRAVEL_CHARGE_SETTINGS,
   jobTravelCharge,
@@ -196,6 +198,8 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const overrideById = new Map(overrideRows.map((row) => [row.projectId, row]))
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
+    // Towns and ZIP codes for the company's map state and any other state an address names.
+    const placesFor = await placeIndexResolver(locations.map((row) => row.address), rules.mapState)
     const internalIds = new Set<string>()
     const hidden: PortfolioHiddenJob[] = []
     const phased = visible.flatMap((project) => {
@@ -235,11 +239,14 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const unplaced: PortfolioUnplacedJob[] = []
     const jobs: PortfolioMapJob[] = phased.map(({ project, phase, visibility }) => {
       const location = locationById.get(project.id)
-      const town = resolveTown({
-        publicLocationCity: location?.publicLocationCity ?? null,
-        address: location?.address ?? null,
-        name: project.name,
-      })
+      const town = resolveTown(
+        {
+          publicLocationCity: location?.publicLocationCity ?? null,
+          address: location?.address ?? null,
+          name: project.name,
+        },
+        placesFor(location?.address ?? null),
+      )
       if (!town && !internalIds.has(project.id)) {
         unplaced.push({ id: project.id, name: projectDisplayName(project), projectNumber: project.projectNumber })
       }
@@ -323,7 +330,11 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         return location && needsSiteLookup(location, now) ? [location] : []
       })
       .slice(0, SITE_LOOKUPS_PER_LOAD)
-    if (toLocate.length > 0) ctx.waitUntil(locateSites(siteLocationWriter(db, orgId), toLocate))
+    if (toLocate.length > 0) ctx.waitUntil(
+        locateSites(siteLocationWriter(db, orgId), toLocate, Date.now, (address) =>
+          geocodeProjectAddress(address, rules.mapState, placesFor(address)),
+        ),
+      )
     const internal = placedJobs.flatMap((job): PortfolioInternalJob[] => {
       if (!internalIds.has(job.id)) return []
       const location = locationById.get(job.id)

@@ -22,6 +22,7 @@ import { projectAudienceSectionHref } from "@/lib/project-audience-preview-route
 import { PORTFOLIO_PHASES, phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
 import type { VendorJobScope } from "@/lib/portfolio-map/audience-model"
 import { cn } from "@/lib/utils"
+import { DEFAULT_MAP_STATE, type MapStateCode } from "@/lib/portfolio-map/states"
 
 // three.js loads only when the map is shown.
 const PortfolioTerrain = dynamic(
@@ -62,9 +63,12 @@ function readMessagesOn(): boolean {
 export function VendorJobMap({
   jobs,
   currentProjectId,
+  mapState = DEFAULT_MAP_STATE,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
   readonly currentProjectId: string
+  /** The contractor's map state. */
+  readonly mapState?: MapStateCode
 }): React.ReactElement | null {
   const router = useRouter()
   const [showMap, setShowMap] = React.useState(false)
@@ -184,6 +188,7 @@ export function VendorJobMap({
         {showMap && placed.length > 0 ? (
           <div className="h-[30rem] min-w-0 flex-[999_1_32rem]">
             <PortfolioTerrain
+              mapState={mapState}
               jobs={placed}
               highlight={highlight}
               onSelectJob={selectJob}

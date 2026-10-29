@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { alertKind, parseAlerts, withZoneShapes, zonesNeedingShapes } from "@/lib/weather/alerts"
-import { areaGrid, areaSamplePoints, DEFAULT_WEATHER_AREA, weatherPointKey } from "@/lib/weather/areas"
+import { areaGrid, areaSamplePoints, DEFAULT_WEATHER_AREA, WEATHER_AREAS, weatherAreaForState, weatherPointKey } from "@/lib/weather/areas"
 import { fireName, parseFires } from "@/lib/weather/fires"
 import { milesToRing, pointInRing, simplifyRing } from "@/lib/weather/geometry"
 import { DEFAULT_WEATHER_LIMITS, fireFlags, forecastFlags, windowTotals } from "@/lib/weather/layer"
@@ -181,5 +181,16 @@ describe("map areas", () => {
     expect(points.length).toBeGreaterThan(40)
     expect(points.length).toBeLessThan(80)
     expect(weatherPointKey(39.4812, -106.0423)).toBe("39.48,-106.04")
+  })
+
+  it("keeps Colorado's grid and spaces out samples in bigger states", () => {
+    expect(areaGrid(DEFAULT_WEATHER_AREA)).toMatchObject({ cols: 10, rows: 7 })
+    for (const area of WEATHER_AREAS) {
+      const count = areaSamplePoints(area).length
+      expect(count, area.key).toBeGreaterThan(3)
+      expect(count, area.key).toBeLessThanOrEqual(90)
+    }
+    expect(WEATHER_AREAS.length).toBe(50)
+    expect(weatherAreaForState("TX").key).toBe("TX")
   })
 })

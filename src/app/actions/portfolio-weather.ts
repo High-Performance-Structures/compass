@@ -9,6 +9,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { DEFAULT_WEATHER_AREA } from "@/lib/weather/areas"
+import { organizationWeatherArea } from "@/lib/weather/areas-server"
 import { DEFAULT_WEATHER_LIMITS, type FireLayerData, type WeatherLayerData, type WeatherLimits } from "@/lib/weather/layer"
 import { readFireLayer, readWeatherLayer, type WeatherJobSite } from "@/lib/weather/read-server"
 import { refreshWeatherCache } from "@/lib/weather/refresh-server"
@@ -74,8 +75,9 @@ export async function getPortfolioWeather(projectIds: readonly string[]): Promis
       ),
     )
     const sites = siteRows.flat().flatMap((row): WeatherJobSite[] => (row.lat === null || row.lon === null ? [] : [{ projectId: row.id, lat: row.lat, lon: row.lon }]))
+    const area = organizationId ? await organizationWeatherArea(db, organizationId) : DEFAULT_WEATHER_AREA
     const [layer, limits] = await Promise.all([
-      readWeatherLayer(db, DEFAULT_WEATHER_AREA, sites, Date.now()),
+      readWeatherLayer(db, area, sites, Date.now()),
       organizationId ? readFeatureSettings(db, organizationId, "weather-alerts") : Promise.resolve(DEFAULT_WEATHER_LIMITS),
     ])
     ctx.waitUntil(
@@ -92,14 +94,15 @@ export async function getPortfolioWeather(projectIds: readonly string[]): Promis
   }
 }
 
-/** Fire & smoke layer: active wildfires and fire weather warnings for the map area. */
+/** Fire & smoke layer: active wildfires and fire weather warnings for the company's map state. */
 export async function getPortfolioFires(projectIds: readonly string[] = []): Promise<LayerResult<FireLayerData>> {
   try {
     const context = await viewerContext(projectIds)
     if (!context) return { success: false, error: "Sign in to see fire information." }
     const { db, ctx, organizationId } = context
+    const area = organizationId ? await organizationWeatherArea(db, organizationId) : DEFAULT_WEATHER_AREA
     const [data, limits] = await Promise.all([
-      readFireLayer(db, DEFAULT_WEATHER_AREA),
+      readFireLayer(db, area),
       organizationId ? readFeatureSettings(db, organizationId, "weather-alerts") : Promise.resolve(DEFAULT_WEATHER_LIMITS),
     ])
     if (data.updatedAt === null) ctx.waitUntil(refreshWeatherCache(db, { budgetMs: 20_000 }).catch(() => undefined))

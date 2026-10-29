@@ -2,8 +2,10 @@ import {
   AmbientLight,
   BoxGeometry,
   BufferGeometry,
+  CanvasTexture,
   Color,
   ColorManagement,
+  DataTexture,
   DirectionalLight,
   DoubleSide,
   EdgesGeometry,
@@ -21,6 +23,9 @@ import {
   Raycaster,
   Scene,
   ShaderMaterial,
+  Shape,
+  ShapeGeometry,
+  type Texture,
   Vector2,
   Vector3,
   Vector4,
@@ -49,6 +54,11 @@ import {
 } from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
 
 export const TERRAIN_URL = "/maps/colorado-terrain-v1.json"
+
+/** The terrain file for a state's map (Colorado keeps its original file). */
+export function terrainUrlForState(state: string): string {
+  return state === "CO" ? TERRAIN_URL : `/maps/states/${state.toLowerCase()}-terrain-v1.json`
+}
 
 export type SceneLabel = {
   readonly key: string
@@ -102,12 +112,27 @@ type TerrainGrid = {
   readonly east: number
   readonly north: number
   readonly south: number
+  readonly min: number
+  readonly max: number
   readonly meters: Uint16Array
 }
+
+type TerrainLabel = { readonly title: string; readonly sub: string; readonly lon: number; readonly lat: number }
 
 type TerrainData = {
   readonly grid: TerrainGrid
   readonly roads: readonly (readonly number[])[]
+  /** State outline rings as flat lon,lat pairs; absent for a rectangular state like Colorado. */
+  readonly outline: readonly (readonly number[])[] | null
+  readonly labels: readonly TerrainLabel[] | null
+}
+
+/** World-space size and height mapping for the loaded state. */
+type TerrainFrame = {
+  readonly w: number
+  readonly d: number
+  readonly baseMeters: number
+  readonly unitsPerMeter: number
 }
 
 type Marker = {
@@ -122,9 +147,14 @@ type Marker = {
 
 type View = { tx: number; ty: number; tz: number; az: number; el: number; zoom: number }
 
-const W = 13.6
-const D = 10
+// The block fits inside this footprint (Colorado fills it exactly).
+const MAX_W = 13.6
+const MAX_D = 10
 const VERTICAL_SCALE = 1.7
+// Flat states get their relief stretched to at least this height so the terrain still reads.
+const MIN_RELIEF = 0.4
+// Outline wall segments averaged on each side of a corner for its lighting.
+const WALL_SMOOTHING = 6
 const BASE = -0.7
 const CAMERA_DISTANCE = 40
 const DEFAULT_VIEW: Readonly<View> = { tx: 0, ty: 0.05, tz: 0, az: 0.55, el: 0.48, zoom: 1 }
@@ -171,7 +201,22 @@ export function parseTerrainData(value: unknown): TerrainData {
     (road): road is number[] =>
       Array.isArray(road) && road.length >= 5 && road.every((item) => typeof item === "number"),
   )
+  const outline = Array.isArray(value.outline)
+    ? value.outline.filter(
+        (ring): ring is number[] =>
+          Array.isArray(ring) && ring.length >= 6 && ring.every((item) => typeof item === "number"),
+      )
+    : []
+  const labels = Array.isArray(value.labels)
+    ? value.labels.flatMap((label): TerrainLabel[] => {
+        if (!isRecord(label) || typeof label.title !== "string" || typeof label.sub !== "string") return []
+        if (typeof label.lon !== "number" || typeof label.lat !== "number") return []
+        return [{ title: label.title, sub: label.sub, lon: label.lon, lat: label.lat }]
+      })
+    : null
   return {
+    outline: outline.length > 0 ? outline : null,
+    labels,
     grid: {
       w,
       h,
@@ -179,14 +224,48 @@ export function parseTerrainData(value: unknown): TerrainData {
       east: numberField(grid, "east"),
       north: numberField(grid, "north"),
       south: numberField(grid, "south"),
+      min: numberField(grid, "min"),
+      max: numberField(grid, "max"),
       meters,
     },
     roads,
   }
 }
 
-function toY(meters: number): number {
-  return ((meters - 1000) / 3400) * VERTICAL_SCALE
+/**
+ * Fit the state into the footprint at its true east-west to north-south proportion, and map
+ * meters to height at Colorado's scale (stretched for flat states).
+ */
+export function terrainFrame(grid: {
+  readonly west: number
+  readonly east: number
+  readonly north: number
+  readonly south: number
+  readonly min: number
+  readonly max: number
+}): TerrainFrame {
+  const midLat = ((grid.north + grid.south) / 2) * (Math.PI / 180)
+  const aspect = ((grid.east - grid.west) * Math.cos(midLat)) / (grid.north - grid.south)
+  const w = aspect >= MAX_W / MAX_D ? MAX_W : MAX_D * aspect
+  const d = aspect >= MAX_W / MAX_D ? MAX_W / aspect : MAX_D
+  const baseMeters = Math.min(1000, grid.min)
+  const unitsPerMeter = Math.max(VERTICAL_SCALE / 3400, MIN_RELIEF / Math.max(grid.max - baseMeters, 1))
+  return { w, d, baseMeters, unitsPerMeter }
+}
+
+/** Point-in-polygon test against flat lon,lat rings. */
+function insideOutline(outline: readonly (readonly number[])[], lon: number, lat: number): boolean {
+  let inside = false
+  for (const ring of outline) {
+    for (let k = 0, j = ring.length - 2; k < ring.length; j = k, k += 2) {
+      const xi = ring[k] ?? 0
+      const yi = ring[k + 1] ?? 0
+      const xj = ring[j] ?? 0
+      const yj = ring[j + 1] ?? 0
+      if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside
+    }
+  }
+  return inside
 }
 
 /**
@@ -228,6 +307,8 @@ export class PortfolioScene {
   private builtStacks: BuiltMessageStacks | null = null
   private readonly view: View = { ...DEFAULT_VIEW }
   private grid: TerrainGrid | null = null
+  private terrain: TerrainFrame = { w: MAX_W, d: MAX_D, baseMeters: 1000, unitsPerMeter: VERTICAL_SCALE / 3400 }
+  private outline: readonly (readonly number[])[] | null = null
   private topMaterial: ShaderMaterial | null = null
   private layers: SceneLayers = { zones: null, elevation: null }
   private layerLabels: { readonly key: string; readonly title: string; readonly sub: string; readonly point: Vector3 }[] = []
@@ -259,6 +340,7 @@ export class PortfolioScene {
     private readonly canvas: HTMLCanvasElement,
     private readonly container: HTMLElement,
     private readonly callbacks: SceneCallbacks,
+    private readonly terrainUrl: string = TERRAIN_URL,
   ) {
     // The scene's palette is authored in display (sRGB) values; skip linear conversion.
     ColorManagement.enabled = false
@@ -297,11 +379,13 @@ export class PortfolioScene {
   private async loadTerrain(): Promise<void> {
     try {
       // A versioned static file with an immutable cache header: fetched once per release.
-      const response = await fetch(TERRAIN_URL)
+      const response = await fetch(this.terrainUrl)
       if (!response.ok) throw new Error(`terrain ${response.status}`)
       const data = parseTerrainData(await response.json())
       if (this.disposed) return
       this.grid = data.grid
+      this.terrain = terrainFrame(data.grid)
+      this.outline = data.outline
       this.buildTerrain(data)
       if (this.pendingJobs) this.setJobs(this.pendingJobs.jobs, this.pendingJobs.colors)
       this.applyLayers()
@@ -327,15 +411,26 @@ export class PortfolioScene {
     const at = (x: number, y: number): number => g.meters[y * g.w + x] ?? 0
     const top = at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx
     const bottom = at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx
-    return toY(top * (1 - ty) + bottom * ty)
+    return this.toY(top * (1 - ty) + bottom * ty)
+  }
+
+  /** Inside the loaded state: its outline, or the grid's rectangle for Colorado. */
+  private inState(lon: number, lat: number): boolean {
+    const g = this.grid
+    if (!g || lon < g.west || lon > g.east || lat < g.south || lat > g.north) return false
+    return !this.outline || insideOutline(this.outline, lon, lat)
+  }
+
+  private toY(meters: number): number {
+    return (meters - this.terrain.baseMeters) * this.terrain.unitsPerMeter
   }
 
   private worldXZ(lon: number, lat: number): readonly [number, number] {
     const g = this.grid
     if (!g) return [0, 0]
     return [
-      ((lon - g.west) / (g.east - g.west) - 0.5) * W,
-      ((g.north - lat) / (g.north - g.south) - 0.5) * D,
+      ((lon - g.west) / (g.east - g.west) - 0.5) * this.terrain.w,
+      ((g.north - lat) / (g.north - g.south) - 0.5) * this.terrain.d,
     ]
   }
 
@@ -344,19 +439,88 @@ export class PortfolioScene {
     return item
   }
 
+  /**
+   * The carved block's top edge loops: the grid's rectangle, or each outline ring sampled
+   * finely enough to follow the terrain.
+   */
+  private carvedEdges(data: TerrainData): (readonly [number, number, number])[][] {
+    const g = data.grid
+    if (!data.outline) {
+      const { w: W, d: D } = this.terrain
+      const gx = (i: number): number => (i / (g.w - 1) - 0.5) * W
+      const gz = (j: number): number => (j / (g.h - 1) - 0.5) * D
+      const hy = (i: number, j: number): number => this.toY(g.meters[j * g.w + i] ?? 0)
+      const edge: [number, number, number][] = []
+      for (let i = 0; i < g.w; i += 1) edge.push([gx(i), hy(i, 0), gz(0)])
+      for (let j = 1; j < g.h; j += 1) edge.push([gx(g.w - 1), hy(g.w - 1, j), gz(j)])
+      for (let i = g.w - 2; i >= 0; i -= 1) edge.push([gx(i), hy(i, g.h - 1), gz(g.h - 1)])
+      for (let j = g.h - 2; j >= 0; j -= 1) edge.push([gx(0), hy(0, j), gz(j)])
+      return [edge]
+    }
+    const stepDeg = (g.east - g.west) / (g.w - 1)
+    return data.outline.map((ring) => {
+      const edge: [number, number, number][] = []
+      for (let k = 0; k < ring.length; k += 2) {
+        const lon0 = ring[k] ?? 0
+        const lat0 = ring[k + 1] ?? 0
+        const lon1 = ring[(k + 2) % ring.length] ?? lon0
+        const lat1 = ring[(k + 3) % ring.length] ?? lat0
+        const steps = Math.max(1, Math.ceil(Math.hypot(lon1 - lon0, lat1 - lat0) / stepDeg))
+        for (let s = 0; s < steps; s += 1) {
+          const lon = lon0 + ((lon1 - lon0) * s) / steps
+          const lat = lat0 + ((lat1 - lat0) * s) / steps
+          const [x, z] = this.worldXZ(lon, lat)
+          edge.push([x, this.heightAt(lon, lat), z])
+        }
+      }
+      return edge
+    })
+  }
+
+  /** Inside-the-state mask for the top surface (white everywhere for a rectangular state). */
+  private outlineMask(data: TerrainData): Texture {
+    if (!data.outline) return new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+    const g = data.grid
+    const scale = 1024 / Math.max(this.terrain.w, this.terrain.d)
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.round(this.terrain.w * scale)
+    canvas.height = Math.round(this.terrain.d * scale)
+    const context = canvas.getContext("2d")
+    if (context) {
+      context.fillStyle = "#fff"
+      context.beginPath()
+      for (const ring of data.outline) {
+        for (let k = 0; k < ring.length; k += 2) {
+          const x = (((ring[k] ?? 0) - g.west) / (g.east - g.west)) * canvas.width
+          const y = ((g.north - (ring[k + 1] ?? 0)) / (g.north - g.south)) * canvas.height
+          if (k === 0) context.moveTo(x, y)
+          else context.lineTo(x, y)
+        }
+        context.closePath()
+      }
+      context.fill()
+    }
+    const texture = new CanvasTexture(canvas)
+    // Row 0 is the north edge, matching the shader's v.
+    texture.flipY = false
+    return texture
+  }
+
   private buildTerrain(data: TerrainData): void {
     const g = data.grid
+    const { w: W, d: D } = this.terrain
     const geometry = this.track(new PlaneGeometry(W, D, g.w - 1, g.h - 1))
     geometry.rotateX(-Math.PI / 2)
     const position = geometry.getAttribute("position")
     let maxH = 0
     for (let k = 0; k < position.count; k += 1) {
-      const y = toY(g.meters[k] ?? 0)
+      const y = this.toY(g.meters[k] ?? 0)
       position.setY(k, y)
       maxH = Math.max(maxH, y)
     }
     geometry.computeVertexNormals()
     const depth = { uNear: { value: CAMERA_DISTANCE - 10 }, uFar: { value: CAMERA_DISTANCE + 10 } }
+    const mask = this.track(this.outlineMask(data))
     const topMaterial = this.track(
       new ShaderMaterial({
         uniforms: {
@@ -366,6 +530,8 @@ export class PortfolioScene {
           uHigh: { value: new Color(0x7f938b) },
           uGeo: { value: new Vector4(g.west, g.east, g.north, g.south) },
           uSize: { value: new Vector2(W, D) },
+          uMask: { value: mask },
+          uMaskOn: { value: data.outline ? 1 : 0 },
           uZonesOn: { value: 0 },
           uHome: { value: new Vector2(0, 0) },
           uZoneEdges: { value: new Array<number>(MAX_ZONE_EDGES).fill(0) },
@@ -386,29 +552,43 @@ export class PortfolioScene {
     this.scene.add(new Mesh(geometry, topMaterial))
     this.topMaterial = topMaterial
 
-    // Walls from the carved edge down to a flat base.
-    const gx = (i: number): number => (i / (g.w - 1) - 0.5) * W
-    const gz = (j: number): number => (j / (g.h - 1) - 0.5) * D
-    const hy = (i: number, j: number): number => toY(g.meters[j * g.w + i] ?? 0)
-    const edge: [number, number, number][] = []
-    for (let i = 0; i < g.w; i += 1) edge.push([gx(i), hy(i, 0), gz(0)])
-    for (let j = 1; j < g.h; j += 1) edge.push([gx(g.w - 1), hy(g.w - 1, j), gz(j)])
-    for (let i = g.w - 2; i >= 0; i -= 1) edge.push([gx(i), hy(i, g.h - 1), gz(g.h - 1)])
-    for (let j = g.h - 2; j >= 0; j -= 1) edge.push([gx(0), hy(0, j), gz(j)])
+    // Walls from the carved edge (the grid's rectangle, or the state outline) down to a flat base.
+    const edges = this.carvedEdges(data)
     const wallPositions: number[] = []
     const wallNormals: number[] = []
-    edge.forEach((p, index) => {
-      const q = edge[(index + 1) % edge.length] ?? p
-      const length = Math.hypot(q[2] - p[2], q[0] - p[0]) || 1
-      const nx = (q[2] - p[2]) / length
-      const nz = -(q[0] - p[0]) / length
-      const quad = [
-        p[0], p[1], p[2], p[0], BASE, p[2], q[0], q[1], q[2],
-        q[0], q[1], q[2], p[0], BASE, p[2], q[0], BASE, q[2],
-      ]
-      wallPositions.push(...quad)
-      for (let v = 0; v < 6; v += 1) wallNormals.push(nx, 0, nz)
-    })
+    for (const edge of edges) {
+      const faces = edge.map((p, index) => {
+        const q = edge[(index + 1) % edge.length] ?? p
+        const length = Math.hypot(q[2] - p[2], q[0] - p[0]) || 1
+        return [(q[2] - p[2]) / length, -(q[0] - p[0]) / length] as const
+      })
+      // A jagged outline lights as flickering stripes; corners of the rectangle stay sharp.
+      const smooth = data.outline !== null
+      // Average the faces around each corner (a few segments each way), so winding river borders shade evenly.
+      const corner = (index: number): readonly [number, number] => {
+        let x = 0
+        let z = 0
+        for (let k = -WALL_SMOOTHING; k < WALL_SMOOTHING; k += 1) {
+          const face = faces[(index + k + faces.length) % faces.length] ?? [0, 0]
+          x += face[0]
+          z += face[1]
+        }
+        const length = Math.hypot(x, z) || 1
+        return [x / length, z / length]
+      }
+      edge.forEach((p, index) => {
+        const next = (index + 1) % edge.length
+        const q = edge[next] ?? p
+        const quad = [
+          p[0], p[1], p[2], p[0], BASE, p[2], q[0], q[1], q[2],
+          q[0], q[1], q[2], p[0], BASE, p[2], q[0], BASE, q[2],
+        ]
+        wallPositions.push(...quad)
+        const [px, pz] = smooth ? corner(index) : (faces[index] ?? [0, 0])
+        const [qx, qz] = smooth ? corner(next) : (faces[index] ?? [0, 0])
+        wallNormals.push(px, 0, pz, px, 0, pz, qx, 0, qz, qx, 0, qz, px, 0, pz, qx, 0, qz)
+      })
+    }
     const wallGeometry = this.track(new BufferGeometry())
     wallGeometry.setAttribute("position", new Float32BufferAttribute(wallPositions, 3))
     wallGeometry.setAttribute("normal", new Float32BufferAttribute(wallNormals, 3))
@@ -421,31 +601,26 @@ export class PortfolioScene {
       }),
     )
     this.scene.add(new Mesh(wallGeometry, wallMaterial))
-    const bottomGeometry = this.track(new PlaneGeometry(W, D))
-    bottomGeometry.rotateX(Math.PI / 2)
-    bottomGeometry.translate(0, BASE, 0)
-    this.scene.add(
-      new Mesh(bottomGeometry, this.track(new MeshBasicMaterial({ color: 0x050806, side: DoubleSide }))),
-    )
-    const rimGeometry = this.track(
-      new BufferGeometry().setFromPoints(edge.map((p) => new Vector3(p[0], p[1] + 0.004, p[2]))),
-    )
-    this.scene.add(
-      new LineLoop(rimGeometry, this.track(new LineBasicMaterial({ color: 0xc6d6cf, transparent: true, opacity: 0.8 }))),
-    )
-    const footGeometry = this.track(
-      new BufferGeometry().setFromPoints([
-        new Vector3(-W / 2, BASE, -D / 2),
-        new Vector3(W / 2, BASE, -D / 2),
-        new Vector3(W / 2, BASE, D / 2),
-        new Vector3(-W / 2, BASE, D / 2),
-      ]),
-    )
-    this.scene.add(
-      new LineLoop(footGeometry, this.track(new LineBasicMaterial({ color: 0x8c9c95, transparent: true, opacity: 0.7 }))),
-    )
+    const bottomMaterial = this.track(new MeshBasicMaterial({ color: 0x050806, side: DoubleSide }))
+    const rimMaterial = this.track(new LineBasicMaterial({ color: 0xc6d6cf, transparent: true, opacity: 0.8 }))
+    const footMaterial = this.track(new LineBasicMaterial({ color: 0x8c9c95, transparent: true, opacity: 0.7 }))
+    for (const edge of edges) {
+      // Shape x,y become world x,z after the quarter turn.
+      const bottomGeometry = this.track(new ShapeGeometry(new Shape(edge.map((p) => new Vector2(p[0], p[2])))))
+      bottomGeometry.rotateX(Math.PI / 2)
+      bottomGeometry.translate(0, BASE, 0)
+      this.scene.add(new Mesh(bottomGeometry, bottomMaterial))
+      const rimGeometry = this.track(
+        new BufferGeometry().setFromPoints(edge.map((p) => new Vector3(p[0], p[1] + 0.004, p[2]))),
+      )
+      this.scene.add(new LineLoop(rimGeometry, rimMaterial))
+      const footGeometry = this.track(
+        new BufferGeometry().setFromPoints(edge.map((p) => new Vector3(p[0], BASE, p[2]))),
+      )
+      this.scene.add(new LineLoop(footGeometry, footMaterial))
+    }
 
-    // OSM roads: one batched line set per class, draped on the surface.
+    // Major roads (OpenStreetMap for Colorado, Census TIGER elsewhere): one batched line set per class, draped on the surface.
     const buckets: number[][] = [[], [], []]
     for (const road of data.roads) {
       const roadClass = road[0] ?? 2
@@ -484,7 +659,7 @@ export class PortfolioScene {
       this.scene.add(lines)
     })
 
-    this.landmarks = LANDMARKS.map((landmark) => {
+    this.landmarks = (data.labels ?? LANDMARKS).map((landmark) => {
       const xz = this.worldXZ(landmark.lon, landmark.lat)
       return {
         title: landmark.title,
@@ -512,6 +687,8 @@ export class PortfolioScene {
     }
     this.markers = jobs.flatMap((job): Marker[] => {
       if (job.lon === null || job.lat === null) return []
+      // Jobs in other states stay in the job list but have no place on this map.
+      if (!this.inState(job.lon, job.lat)) return []
       const xz = this.worldXZ(job.lon, job.lat)
       const ground = this.heightAt(job.lon, job.lat)
       const building = job.phase === "construction"
@@ -592,8 +769,8 @@ export class PortfolioScene {
           const [x, z] = this.worldXZ(lon, lat)
           return new Vector3(x, this.heightAt(lon, lat) + lift, z)
         },
-        unitsPerDegree: { lon: W / (g.east - g.west), lat: D / (g.north - g.south) },
-        inBounds: (lon, lat) => lon >= g.west && lon <= g.east && lat >= g.south && lat <= g.north,
+        unitsPerDegree: { lon: this.terrain.w / (g.east - g.west), lat: this.terrain.d / (g.north - g.south) },
+        inBounds: (lon, lat) => this.inState(lon, lat),
         reduceMotion: this.reduceMotion,
       })
     }
@@ -663,7 +840,7 @@ export class PortfolioScene {
       const bands = elevation.bandsFeet.slice(0, MAX_ELEVATION_BANDS)
       u.uElevOn.value = 1
       u.uBandY.value = [
-        ...bands.map((feet) => toY(feet * 0.3048)),
+        ...bands.map((feet) => this.toY(feet * 0.3048)),
         ...new Array<number>(MAX_ELEVATION_BANDS - bands.length).fill(0),
       ]
       u.uBandCount.value = bands.length

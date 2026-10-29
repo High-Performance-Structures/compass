@@ -15,6 +15,8 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { resolveTown } from "@/lib/portfolio-map/model"
+import { placeIndexResolver } from "@/lib/portfolio-map/places-server"
+import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
 import {
   applyTravelOverride,
   EMPTY_TRAVEL_OVERRIDE,
@@ -144,7 +146,12 @@ export async function getProjectTravelCharge(projectId: string): Promise<Project
       project.siteLongitude !== null
         ? { lat: project.siteLatitude, lon: project.siteLongitude, elevationFt: project.siteElevationFt }
         : null
-    const town = site ? null : resolveTown(project)
+    const town = site
+      ? null
+      : resolveTown(
+          project,
+          (await placeIndexResolver([project.address], (await readPortfolioMapRules(db, organizationId)).mapState))(project.address),
+        )
     const lat = site?.lat ?? town?.lat ?? null
     const lon = site?.lon ?? town?.lon ?? null
     let effective: EffectiveTravelCharge | null = null

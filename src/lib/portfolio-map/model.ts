@@ -146,6 +146,7 @@ export function phaseForJobStatus(
   return null
 }
 
+/** Town center [lon, lat, rank]; rank 0 is a major city, 3 a scattered locality. */
 type PlaceEntry = readonly [number, number, number]
 
 function isPlaceEntry(value: unknown): value is PlaceEntry {
@@ -156,11 +157,12 @@ function isPlaceEntry(value: unknown): value is PlaceEntry {
   )
 }
 
-const PLACES: ReadonlyMap<string, PlaceEntry> = new Map(
-  Object.entries(placesData).flatMap(([name, entry]): [string, PlaceEntry][] =>
-    isPlaceEntry(entry) ? [[name, entry]] : [],
-  ),
-)
+function placeMap(value: unknown): ReadonlyMap<string, PlaceEntry> {
+  if (typeof value !== "object" || value === null) return new Map()
+  return new Map(
+    Object.entries(value).flatMap(([name, entry]): [string, PlaceEntry][] => (isPlaceEntry(entry) ? [[name, entry]] : [])),
+  )
+}
 
 type ZipEntry = readonly [number, number, string]
 
@@ -174,24 +176,48 @@ function isZipEntry(value: unknown): value is ZipEntry {
   )
 }
 
-/** Census ZIP code areas in Colorado: center point and the nearest town's name. */
-const ZIPS: ReadonlyMap<string, ZipEntry> = new Map(
-  Object.entries(zipsData).flatMap(([zip, entry]): [string, ZipEntry][] =>
-    isZipEntry(entry) ? [[zip, entry]] : [],
-  ),
-)
+function zipMap(value: unknown): ReadonlyMap<string, ZipEntry> {
+  if (typeof value !== "object" || value === null) return new Map()
+  return new Map(Object.entries(value).flatMap(([zip, entry]): [string, ZipEntry][] => (isZipEntry(entry) ? [[zip, entry]] : [])))
+}
 
-const COLORADO_ZIP = /\b(8[01]\d{3})(?:-\d{4})?\b/
+/** One state's towns and Census ZIP code areas (center point and the nearest town's name). */
+export type PlaceIndex = {
+  readonly places: ReadonlyMap<string, PlaceEntry>
+  readonly zips: ReadonlyMap<string, ZipEntry>
+  /** Trailing words naming the state ("co", "colorado"), dropped from town names. */
+  readonly trailingState: RegExp
+}
+
+function trailingStatePattern(words: readonly string[]): RegExp {
+  // Only a trailing state or country is dropped, so towns like "Colorado
+  // Springs" and "Colorado City" keep their full names.
+  return new RegExp(`(?:\\s+(?:${[...words, "usa", "us"].map((word) => normalizeLabel(word)).join("|")}))+$`)
+}
+
+/** A state's place file (public/maps/places), validated instead of trusted. */
+export function parsePlaceIndex(value: unknown, stateWords: readonly string[]): PlaceIndex {
+  const record = typeof value === "object" && value !== null ? value : {}
+  return {
+    places: placeMap(Reflect.get(record, "places")),
+    zips: zipMap(Reflect.get(record, "zips")),
+    trailingState: trailingStatePattern(stateWords),
+  }
+}
+
+/** Colorado's towns and ZIP codes ship with the app; other states load on demand. */
+export const COLORADO_PLACES: PlaceIndex = {
+  places: placeMap(placesData),
+  zips: zipMap(zipsData),
+  trailingState: trailingStatePattern(["co", "colo", "colorado"]),
+}
 
 const ZIP_CODE = /\b\d{5}(?:-\d{4})?\b/g
-// Only a trailing state or country is dropped, so towns like "Colorado
-// Springs" and "Colorado City" keep their full names.
-const TRAILING_STATE = /(?:\s+(?:co|colo|colorado|usa|us))+$/
 
-function placeKey(candidate: string): string {
+function placeKey(candidate: string, index: PlaceIndex): string {
   return normalizeLabel(candidate.replace(ZIP_CODE, " "))
     .replace(/^(?:town|city) of\s+/, "")
-    .replace(TRAILING_STATE, "")
+    .replace(index.trailingState, "")
     .trim()
 }
 
@@ -210,41 +236,44 @@ export type ResolvedTown = {
  * in the site address, then its ZIP code, then the "… - Town" suffix of the
  * project name.
  */
-export function resolveTown(input: {
-  readonly publicLocationCity: string | null
-  readonly address: string | null
-  readonly name: string
-}): ResolvedTown | null {
+export function resolveTown(
+  input: {
+    readonly publicLocationCity: string | null
+    readonly address: string | null
+    readonly name: string
+  },
+  index: PlaceIndex = COLORADO_PLACES,
+): ResolvedTown | null {
   const found = (key: string): ResolvedTown | null => {
-    const place = key ? PLACES.get(key) : undefined
+    const place = key ? index.places.get(key) : undefined
     return place ? { town: titleCase(key), lon: place[0], lat: place[1] } : null
   }
   if (input.publicLocationCity) {
-    const town = found(placeKey(input.publicLocationCity))
+    const town = found(placeKey(input.publicLocationCity, index))
     if (town) return town
   }
   if (input.address) {
     const parts = input.address.split(/[,\n]/).reverse()
     for (const part of parts) {
-      const town = found(placeKey(part))
+      const town = found(placeKey(part, index))
       if (town) return town
     }
     // Addresses written without commas ("12 Twinkle Rd Guffey CO 80820"):
     // try the last one to three words before the state and ZIP.
-    const words = placeKey(input.address).split(" ")
+    const words = placeKey(input.address, index).split(" ")
     for (let size = 3; size >= 1; size -= 1) {
       if (words.length <= size) continue
       const town = found(words.slice(-size).join(" "))
       if (town) return town
     }
-    // Then the ZIP code, labeled with its nearest town.
-    const zip = COLORADO_ZIP.exec(input.address)?.[1]
-    const zipEntry = zip ? ZIPS.get(zip) : undefined
+    // Then the ZIP code (the last one in the state's list), labeled with its nearest town.
+    const zips = [...input.address.matchAll(ZIP_CODE)].map((match) => match[0].slice(0, 5)).reverse()
+    const zipEntry = zips.map((zip) => index.zips.get(zip)).find((entry) => entry !== undefined)
     if (zipEntry) return { town: zipEntry[2], lon: zipEntry[0], lat: zipEntry[1] }
   }
   const nameParts = input.name.split(/\s+[-–—]\s+/)
   const nameTown = nameParts.length > 1 ? nameParts[nameParts.length - 1] : undefined
-  return nameTown ? found(placeKey(nameTown)) : null
+  return nameTown ? found(placeKey(nameTown, index)) : null
 }
 
 const TOWN_RADIUS_KM = 2.5
@@ -256,10 +285,10 @@ const TOWN_MAX_RANK = 2
  * or null in the countryside. Used to tell when a street match is really in
  * another town ("Main Street" in Fairplay for an Alma address).
  */
-export function townAt(latitude: number, longitude: number): string | null {
+export function townAt(latitude: number, longitude: number, index: PlaceIndex = COLORADO_PLACES): string | null {
   const kmPerLon = 111.32 * Math.cos((latitude * Math.PI) / 180)
   let best: { readonly name: string; readonly km: number } | null = null
-  for (const [name, [lon, lat, rank]] of PLACES) {
+  for (const [name, [lon, lat, rank]] of index.places) {
     if (rank > TOWN_MAX_RANK) continue
     const km = Math.hypot((lat - latitude) * 110.57, (lon - longitude) * kmPerLon)
     if (km <= TOWN_RADIUS_KM && (!best || km < best.km)) best = { name, km }
