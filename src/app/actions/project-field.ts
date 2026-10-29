@@ -50,6 +50,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { canUseProjectDailyLogWorkspace } from "@/lib/daily-logs/workspace-access"
 import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
 import { resolveTown } from "@/lib/portfolio-map/model"
+import { placeIndexResolver } from "@/lib/portfolio-map/places-server"
+import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
+import { DEFAULT_MAP_STATE } from "@/lib/portfolio-map/states"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
@@ -2390,6 +2393,7 @@ export async function getProjectWeatherSnapshot(
       .select({
         address: projects.address,
         name: projects.name,
+        organizationId: projects.organizationId,
       })
       .from(projects)
       .where(eq(projects.id, projectId))
@@ -2409,15 +2413,17 @@ export async function getProjectWeatherSnapshot(
 
     // Weather is regional, so a town or ZIP center stands in for a rural
     // address the geocoders don't know.
-    const state = addressState(address)
-    const town =
-      state === null || state === "CO"
-        ? resolveTown({ publicLocationCity: null, address, name: project.name })
-        : null
+    // Addresses without a state are in the company's map state.
+    const homeState = project.organizationId
+      ? (await readPortfolioMapRules(db, project.organizationId)).mapState
+      : DEFAULT_MAP_STATE
+    const places = (await placeIndexResolver([address], homeState))(address)
+    const town = resolveTown({ publicLocationCity: null, address, name: project.name }, places)
+    const townState = addressState(address) ?? homeState
     const coordinates =
-      located(await geocodeProjectAddress(address)) ??
+      located(await geocodeProjectAddress(address, homeState, places)) ??
       (town
-        ? { latitude: town.lat, longitude: town.lon, label: `${town.town}, CO (town center)`, query: address, precision: "town" }
+        ? { latitude: town.lat, longitude: town.lon, label: `${town.town}, ${townState} (town center)`, query: address, precision: "town" }
         : null)
     if (!coordinates) {
       return {

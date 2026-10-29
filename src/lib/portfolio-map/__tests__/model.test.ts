@@ -5,6 +5,7 @@ import {
   portfolioPhaseStatuses,
   phaseForJobStatus,
   portfolioHealth,
+  parsePlaceIndex,
   resolveTown,
   townAt,
   spreadSharedTowns,
@@ -219,5 +220,38 @@ describe("company map rules", () => {
   it("lists a phase's statuses for moves, in workflow order, with the company's changes", () => {
     expect(portfolioPhaseStatuses("closeout")).toEqual(["punchlist", "under_warranty"])
     expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departmentViews: {}, salesTitles: {} })).toContain("complete")
+  })
+})
+
+describe("resolveTown in another state", () => {
+  const texas = parsePlaceIndex(
+    {
+      places: { austin: [-97.7437, 30.2711, 0], "round rock": [-97.6789, 30.5083, 1], washington: [-96.15, 30.32, 2] },
+      zips: { "78701": [-97.7426, 30.2713, "Austin"] },
+    },
+    ["TX", "Texas"],
+  )
+
+  it("finds a town in the state's list and drops a trailing state", () => {
+    expect(resolveTown({ publicLocationCity: null, address: "12 Main St, Round Rock, TX", name: "" }, texas)).toEqual({
+      town: "Round Rock",
+      lon: -97.6789,
+      lat: 30.5083,
+    })
+    expect(resolveTown({ publicLocationCity: "Austin Texas", address: null, name: "" }, texas)?.town).toBe("Austin")
+  })
+
+  it("falls back to the state's ZIP codes", () => {
+    expect(resolveTown({ publicLocationCity: null, address: "1200 Congress Ave TX 78701", name: "" }, texas)?.town).toBe("Austin")
+  })
+
+  it("does not use Colorado's towns", () => {
+    expect(resolveTown({ publicLocationCity: "Alma", address: null, name: "" }, texas)).toBeNull()
+  })
+
+  it("rejects malformed entries", () => {
+    const index = parsePlaceIndex({ places: { bad: ["x", 1, 2] }, zips: null }, ["TX"])
+    expect(index.places.size).toBe(0)
+    expect(index.zips.size).toBe(0)
   })
 })

@@ -379,6 +379,7 @@ export function PortfolioSection({
           {showMap ? (
             nearViewport ? (
               <PortfolioTerrain
+                mapState={rules.mapState}
                 weather={weatherProps}
                 jobs={mapJobs}
                 highlight={highlight}

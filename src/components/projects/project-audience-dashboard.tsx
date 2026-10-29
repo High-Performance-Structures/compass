@@ -11,6 +11,7 @@ import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ownerUpdatePreviewHref, projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import type { ProjectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { getAudienceJobMap } from "@/lib/portfolio-map/audience"
+import { DEFAULT_MAP_STATE } from "@/lib/portfolio-map/states"
 import { VendorJobMap } from "@/components/projects/vendor-job-map"
 import { OwnerSiteRelief } from "@/components/projects/owner-site-relief"
 import { ownerScheduleProgress } from "@/lib/portfolio-map/audience-model"
@@ -40,7 +41,8 @@ export async function ProjectAudienceDashboard({
           data.projectOptions.length > 0 ? data.projectOptions.map((option) => option.id) : [data.project.id],
         ),
   ])
-  const jobs = mapJobs.status === "fulfilled" ? mapJobs.value : []
+  const jobs = mapJobs.status === "fulfilled" ? mapJobs.value.jobs : []
+  const mapState = mapJobs.status === "fulfilled" ? mapJobs.value.mapState : DEFAULT_MAP_STATE
   const ownerJob = data.audience === "owner" ? jobs[0] : undefined
   const date = audienceDashboardDate(new Date())
   // The owner panel shows only owner-visible work and the owner's sections.
@@ -53,6 +55,7 @@ export async function ProjectAudienceDashboard({
   const mapSection = ownerJob ? (
     <OwnerSiteRelief
       job={ownerJob}
+      mapState={mapState}
       progress={ownerScheduleProgress(data.scheduleItems)}
       upcoming={ownerUpcoming}
       latestUpdate={
@@ -66,7 +69,7 @@ export async function ProjectAudienceDashboard({
       }))}
     />
   ) : data.audience === "sub_vendor" && jobs.length > 0 ? (
-    <VendorJobMap jobs={jobs} currentProjectId={data.project.id} />
+    <VendorJobMap jobs={jobs} currentProjectId={data.project.id} mapState={mapState} />
   ) : null
   return (
     <ProjectAudienceDashboardView

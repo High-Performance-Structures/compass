@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addressState, COLORADO_BOUNDS, confirmsAddress, geocodePlan } from "@/lib/geo/site-lookup"
+import { addressState, COLORADO_BOUNDS, confirmsAddress, geocodePlan, stateGeoBounds } from "@/lib/geo/site-lookup"
 
 describe("addressState", () => {
   it("reads a state in its own part, before a ZIP, or ending the town part", () => {
@@ -41,10 +41,20 @@ describe("geocodePlan", () => {
     })
   })
 
-  it("looks up another named state as written, without the Colorado limit", () => {
-    expect(geocodePlan("400 Pine St, Cheyenne, WY 82001")).toEqual({
-      queries: ["400 Pine St, Cheyenne, WY 82001"],
-      bounds: null,
+  it("looks up another named state as written, limited to that state", () => {
+    const plan = geocodePlan("400 Pine St, Cheyenne, WY 82001")
+    expect(plan.queries).toEqual(["400 Pine St, Cheyenne, WY 82001"])
+    expect(plan.bounds).toEqual(stateGeoBounds("WY"))
+    const bounds = plan.bounds
+    // Cheyenne is inside Wyoming's box; Denver is not.
+    expect(bounds && -104.82 > bounds.west && -104.82 < bounds.east && 41.14 > bounds.south && 41.14 < bounds.north).toBe(true)
+    expect(bounds && 39.74 > bounds.south).toBe(false)
+  })
+
+  it("assumes the company's map state when no state is named", () => {
+    expect(geocodePlan("1200 Congress Ave, Austin 78701", "TX")).toEqual({
+      queries: ["1200 Congress Ave, Austin, TX 78701", "1200 Congress Ave, Austin 78701"],
+      bounds: stateGeoBounds("TX"),
     })
   })
 

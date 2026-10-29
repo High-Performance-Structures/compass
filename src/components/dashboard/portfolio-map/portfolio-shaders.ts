@@ -13,17 +13,19 @@ void main() {
 }`
 
 /*
- * Elevation and depth shading, faint contour lines and a fine grain, then the
+ * Clipped to the state outline, then elevation and depth shading, faint contour lines and a fine grain, then the
  * optional zone rings (miles from home base, equirectangular around the mid
  * latitude) and elevation bands.
  */
 export const TOP_FRAGMENT = `
 uniform float uMaxH; uniform float uNear; uniform float uFar; uniform vec3 uLow; uniform vec3 uHigh;
-uniform vec4 uGeo; uniform vec2 uSize;
+uniform vec4 uGeo; uniform vec2 uSize; uniform sampler2D uMask; uniform float uMaskOn;
 uniform float uZonesOn; uniform vec2 uHome; uniform float uZoneEdges[${MAX_ZONE_EDGES}]; uniform int uZoneEdgeCount; uniform vec3 uZoneColor;
 uniform float uElevOn; uniform float uBandY[${MAX_ELEVATION_BANDS}]; uniform int uBandCount; uniform vec3 uElevColor;
 varying float vH; varying vec3 vN; varying float vDepth; varying vec2 vXZ;
 void main() {
+  // Outside the state's outline (the grid covers its bounding box).
+  if (uMaskOn > 0.5 && texture2D(uMask, vXZ / uSize + 0.5).r < 0.5) discard;
   vec3 n = normalize(vN);
   float light = clamp(dot(n, normalize(vec3(-0.5, 0.75, 0.35))), 0.0, 1.0);
   float e = clamp(vH / uMaxH, 0.0, 1.0);

@@ -2,7 +2,8 @@ import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { weatherAreaSnapshots, weatherCells, weatherPoints, weatherZoneShapes } from "@/db/schema"
 import { parseAlerts, withZoneShapes, zonesNeedingShapes, ALERT_TOLERANCE_DEG, type WeatherAlert } from "@/lib/weather/alerts"
-import { areaSamplePoints, weatherPointKey, WEATHER_AREAS, type WeatherArea } from "@/lib/weather/areas"
+import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
+import { weatherAreasInUse } from "@/lib/weather/areas-server"
 import { parseFires } from "@/lib/weather/fires"
 import { outerRings, simplifyRing, type FlatRing } from "@/lib/weather/geometry"
 import { parseGridSeries } from "@/lib/weather/series"
@@ -25,7 +26,9 @@ const CELL_EVERY_MS = 60 * MINUTE
 export const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
 const ZONE_SHAPE_MAX_AGE_MS = 30 * 24 * 60 * MINUTE
 const POINTS_PER_RUN = 10
+// Per area shown on some company's map, up to the cap; the time budget still applies.
 const CELLS_PER_RUN = 12
+const MAX_CELLS_PER_RUN = 36
 const ZONES_PER_RUN = 8
 
 export type WeatherRefreshSummary = {
@@ -228,7 +231,7 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
 }
 
 /** Refreshes the stalest cells someone has read recently. */
-async function refreshCells(db: Db, deadline: number, nowMs: number): Promise<{ refreshed: number; failures: number }> {
+async function refreshCells(db: Db, deadline: number, nowMs: number, limit: number): Promise<{ refreshed: number; failures: number }> {
   const now = new Date(nowMs).toISOString()
   const idleBefore = new Date(nowMs - IDLE_AFTER_MS).toISOString()
   const staleBefore = new Date(nowMs - CELL_EVERY_MS).toISOString()
@@ -243,7 +246,7 @@ async function refreshCells(db: Db, deadline: number, nowMs: number): Promise<{ 
       ),
     )
     .orderBy(sql`${weatherCells.fetchedAt} IS NOT NULL`, asc(weatherCells.fetchedAt))
-    .limit(CELLS_PER_RUN)
+    .limit(limit)
   let refreshed = 0
   let failures = 0
   for (const cell of due) {
@@ -290,7 +293,8 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
   let alerts = 0
   let fires = 0
   let failures = 0
-  for (const area of WEATHER_AREAS) {
+  const areas = await weatherAreasInUse(db)
+  for (const area of areas) {
     await seedAreaPoints(db, area, now)
     if ((await snapshotAge(db, area.key, "alerts", nowMs)) >= ALERTS_EVERY_MS) {
       try {
@@ -310,7 +314,7 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
     }
   }
   const points = Date.now() < deadline ? await resolvePoints(db, deadline, nowMs) : { resolved: 0, failures: 0 }
-  const cells = Date.now() < deadline ? await refreshCells(db, deadline, nowMs) : { refreshed: 0, failures: 0 }
+  const cells = Date.now() < deadline ? await refreshCells(db, deadline, nowMs, Math.min(MAX_CELLS_PER_RUN, CELLS_PER_RUN * Math.max(1, areas.length))) : { refreshed: 0, failures: 0 }
   return {
     alerts,
     fires,

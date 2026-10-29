@@ -9,6 +9,7 @@ import { type ProjectDepartment } from "@/lib/project-branding"
 import { DEFAULT_DEPARTMENT_PROFILES, DEPARTMENT_CODES } from "@/lib/department-profiles"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
+import { placeIndexResolver } from "@/lib/portfolio-map/places-server"
 import { departmentView } from "@/lib/portfolio-map/phases"
 import { projectDisplayName } from "@/lib/project-display-name"
 import {
@@ -96,6 +97,7 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
       .from(projects)
       .where(and(eq(projects.organizationId, user.organizationId), inArray(projects.department, departments)))
     const detailById = new Map(details.map((row) => [row.id, row]))
+    const placesFor = await placeIndexResolver(details.map((row) => row.address), rules.mapState)
     const followUps = await loadProjectFollowUpSignals(
       db,
       user.organizationId,
@@ -111,11 +113,14 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
       const jobs = staged.flatMap(({ project, stage }): SalesPipelineJob[] => {
         const detail = detailById.get(project.id)
         if (!detail || detail.department !== department) return []
-        const town = resolveTown({
-          publicLocationCity: detail.publicLocationCity,
-          address: detail.address,
-          name: project.name,
-        })
+        const town = resolveTown(
+          {
+            publicLocationCity: detail.publicLocationCity,
+            address: detail.address,
+            name: project.name,
+          },
+          placesFor(detail.address),
+        )
         return [{
           id: project.id,
           name: projectDisplayName(project),

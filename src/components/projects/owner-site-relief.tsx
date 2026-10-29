@@ -18,6 +18,7 @@ import { messageStacksFrom } from "@/lib/notifications/message-stacks"
 import { ownerPhaseSteps } from "@/lib/portfolio-map/audience-model"
 import { phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
 import { cn } from "@/lib/utils"
+import { DEFAULT_MAP_STATE, type MapStateCode } from "@/lib/portfolio-map/states"
 
 // three.js loads only when the map is shown.
 const PortfolioTerrain = dynamic(
@@ -56,8 +57,11 @@ export function OwnerSiteRelief({
   upcoming,
   latestUpdate,
   links,
+  mapState = DEFAULT_MAP_STATE,
 }: {
   readonly job: PortfolioMapJob
+  /** The contractor's map state. */
+  readonly mapState?: MapStateCode
   readonly progress: number | null
   readonly upcoming: readonly AudiencePanelItem[]
   readonly latestUpdate: { readonly title: string; readonly href: string } | null
@@ -209,6 +213,7 @@ export function OwnerSiteRelief({
         {showMap ? (
           <div className="h-[30rem] min-w-0 flex-[999_1_32rem]">
             <PortfolioTerrain
+              mapState={mapState}
               jobs={jobs}
               highlight={highlight}
               onSelectJob={noop}

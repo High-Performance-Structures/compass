@@ -5,9 +5,11 @@ import { Minus, Plus, RotateCcw, RotateCw } from "lucide-react"
 import { PORTFOLIO_PHASES, type PortfolioMapJob } from "@/lib/portfolio-map/model"
 import {
   PortfolioScene,
+  terrainUrlForState,
   type SceneHighlight,
   type SceneLabel,
 } from "@/components/dashboard/portfolio-map/portfolio-scene"
+import { DEFAULT_MAP_STATE, mapStateName, type MapStateCode } from "@/lib/portfolio-map/states"
 import {
   MESSAGE_KIND_COLOR_TOKEN,
   PHASE_COLOR_TOKEN,
@@ -29,7 +31,7 @@ import {
 import type { WeatherSublayers } from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
 import { WeatherTimeBar } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
 import type { AlertKind } from "@/lib/weather/alerts"
-import { areaGrid, DEFAULT_WEATHER_AREA } from "@/lib/weather/areas"
+import { areaGrid, DEFAULT_WEATHER_AREA, weatherArea } from "@/lib/weather/areas"
 import { DEFAULT_WEATHER_LIMITS, type FireLayerData, type WeatherLayerData, type WeatherLimits } from "@/lib/weather/layer"
 
 /** Weather and Fire & smoke layer data, loaded by the dashboard only while a layer is on. */
@@ -85,6 +87,8 @@ type PortfolioTerrainProps = {
     readonly onChange: (next: PortfolioLayerState) => void
   }
   readonly weather?: PortfolioWeatherProps
+  /** The state whose terrain is shown. */
+  readonly mapState?: MapStateCode
 }
 
 function supportsWebGL2(): boolean {
@@ -114,6 +118,7 @@ export default function PortfolioTerrain({
   layers,
   messageStacks = null,
   weather,
+  mapState = DEFAULT_MAP_STATE,
 }: PortfolioTerrainProps): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -144,7 +149,7 @@ export default function PortfolioTerrain({
         onLabels: setLabels,
         onReady: () => setReady(true),
         onError: () => callbacks.current.onUnavailable(),
-      })
+      }, terrainUrlForState(mapState))
     } catch (error) {
       console.error("Portfolio map could not start", error)
       callbacks.current.onUnavailable()
@@ -179,7 +184,8 @@ export default function PortfolioTerrain({
       sceneRef.current = null
       scene.dispose()
     }
-  }, [generation])
+    // A new state rebuilds the scene with its terrain.
+  }, [generation, mapState])
 
   React.useEffect(() => {
     // Theme colors are lifted for contrast against the dark terrain.
@@ -237,7 +243,7 @@ export default function PortfolioTerrain({
       sceneRef.current?.setWeather(null)
       return
     }
-    const grid = areaGrid(DEFAULT_WEATHER_AREA)
+    const grid = areaGrid(weatherArea(weatherData.areaKey) ?? DEFAULT_WEATHER_AREA)
     sceneRef.current?.setWeather({
       cells: weatherData.cells.map((cell) => ({
         lon: cell.lon,
@@ -323,7 +329,7 @@ export default function PortfolioTerrain({
       <canvas
         key={generation}
         ref={canvasRef}
-        aria-label="3D terrain map of Colorado with job markers. Use the job list for keyboard access."
+        aria-label={`3D terrain map of ${mapStateName(mapState)} with job markers. Use the job list for keyboard access.`}
         className="absolute inset-0 block size-full cursor-grab touch-none active:cursor-grabbing"
       />
       {labels.map((label) => (
@@ -442,7 +448,8 @@ export default function PortfolioTerrain({
         </ul>
       ) : null}
       <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-muted-foreground">
-        Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) · Roads © OpenStreetMap contributors
+        Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) ·{" "}
+        {mapState === "CO" ? "Roads © OpenStreetMap contributors" : "Outline and roads: U.S. Census Bureau"}
         {weatherOn ? " · Weather: NOAA National Weather Service" : ""}
         {fireOn ? " · Fires: NIFC WFIGS" : ""}
       </p>

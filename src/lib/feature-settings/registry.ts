@@ -13,6 +13,7 @@ import {
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { DEFAULT_TRADE_DOC_SETTINGS, tradeDocSettingsSchema, type TradeDocSettings } from "@/lib/trade-docs/settings"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
+import { DEFAULT_MAP_STATE, MAP_STATE_CODES } from "@/lib/portfolio-map/states"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
@@ -48,6 +49,7 @@ export const portfolioMapSettingsSchema = z.object({
   departmentViews: z.record(z.string().min(1).max(8), z.enum(PORTFOLIO_DEPARTMENT_VIEWS)),
   /** Sales pipeline titles by department; blank uses the built-in title. */
   salesTitles: z.record(z.string().min(1).max(8), z.string().max(60)),
+  mapState: z.enum(MAP_STATE_CODES),
 })
 
 export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
@@ -933,8 +935,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "portfolio-map": {
     label: "Portfolio map",
-    description: "Which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
-    defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {} },
+    description: "Which state the map shows, which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
+    defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {}, mapState: DEFAULT_MAP_STATE },
     schema: portfolioMapSettingsSchema,
   },
   "weather-alerts": {

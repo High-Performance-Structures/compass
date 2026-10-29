@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { fetchElevationFeet, geocodeProjectAddress } from "@/lib/geo/site-lookup"
+import { fetchElevationFeet, geocodeProjectAddress, type GeocodeResult } from "@/lib/geo/site-lookup"
 
 /** Few per dashboard load: the public geocoders ask for light, sequential use. */
 export const SITE_LOOKUPS_PER_LOAD = 5
@@ -50,8 +50,10 @@ type LookupOutcome =
       }
     }
 
-async function lookUp(address: string): Promise<LookupOutcome> {
-  const result = await geocodeProjectAddress(address)
+type Geocode = (address: string) => Promise<GeocodeResult>
+
+async function lookUp(address: string, geocode: Geocode): Promise<LookupOutcome> {
+  const result = await geocode(address)
   if (result.status === "unavailable") return { status: "unavailable" }
   const found = result.status === "found" ? result.coordinates : null
   const elevation = found ? await fetchElevationFeet(found.latitude, found.longitude) : null
@@ -103,6 +105,8 @@ export async function locateSites(
   write: SiteLocationWriter,
   rows: readonly SiteLocationRow[],
   clock: () => number = Date.now,
+  /** Assumes the company's map state for addresses that name none. */
+  geocode: Geocode = geocodeProjectAddress,
 ): Promise<void> {
   const started = clock()
   for (const row of rows) {
@@ -126,7 +130,7 @@ export async function locateSites(
               siteLocatedAt: stamp,
             },
       )
-      const outcome = await Promise.race([lookUp(address), timeout(LOOKUP_DEADLINE_MS - (clock() - started))])
+      const outcome = await Promise.race([lookUp(address, geocode), timeout(LOOKUP_DEADLINE_MS - (clock() - started))])
       if (outcome.status === "timeout") break
       if (outcome.status === "unavailable") continue
       await write(row.id, { ...outcome.values, siteLocationAddress: address, siteLocatedAt: new Date(clock()).toISOString() })

@@ -1,3 +1,4 @@
+import { DEFAULT_MAP_STATE, type MapStateCode } from "@/lib/portfolio-map/states"
 /**
  * The map's pipeline phases and which job statuses fall in each by default.
  * Kept free of map data so settings can import it.
@@ -82,9 +83,16 @@ export type PortfolioMapRules = {
   readonly departmentViews: Readonly<Record<string, PortfolioDepartmentView>>
   /** Titles for sales pipeline views, by department; blank uses the built-in title. */
   readonly salesTitles: Readonly<Record<string, string>>
+  /** The state the map shows. */
+  readonly mapState: MapStateCode
 }
 
-export const DEFAULT_PORTFOLIO_MAP_RULES: PortfolioMapRules = { statusPhases: {}, departmentViews: {}, salesTitles: {} }
+export const DEFAULT_PORTFOLIO_MAP_RULES: PortfolioMapRules = {
+  statusPhases: {},
+  departmentViews: {},
+  salesTitles: {},
+  mapState: DEFAULT_MAP_STATE,
+}
 
 /** The view a department's jobs appear on; jobs without a department are projects. */
 export function departmentView(department: string | null, rules: PortfolioMapRules): PortfolioDepartmentView {
