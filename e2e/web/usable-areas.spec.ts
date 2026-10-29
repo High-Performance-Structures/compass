@@ -411,6 +411,8 @@ test.describe("usable Compass areas", () => {
 
   test("Global project schedules expose header actions through outer scrolling", async ({
     page,
+    browserName,
+    isMobile,
   }) => {
     await page.setViewportSize({ width: 640, height: 700 })
     const path =
@@ -430,11 +432,16 @@ test.describe("usable Compass areas", () => {
     expect(regionBox).not.toBeNull()
     if (!regionBox) return
 
-    await page.mouse.move(regionBox.x + 5, regionBox.y + 5)
-    await page.mouse.wheel(1_200, 0)
-    await expect
-      .poll(() => scrollRegion.evaluate((element) => element.scrollLeft))
-      .toBeGreaterThan(0)
+    // Mouse wheel events are unsupported in mobile WebKit, so only the
+    // pointer-driven browsers assert the user-initiated scroll; mobile Safari
+    // still verifies the header actions via the programmatic scroll below.
+    if (!(browserName === "webkit" && isMobile)) {
+      await page.mouse.move(regionBox.x + 5, regionBox.y + 5)
+      await page.mouse.wheel(1_200, 0)
+      await expect
+        .poll(() => scrollRegion.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(0)
+    }
     await scrollRegion.evaluate((element) => {
       element.scrollLeft = element.scrollWidth
     })

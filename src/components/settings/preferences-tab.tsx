@@ -91,14 +91,25 @@ export function PreferencesTab() {
   React.useEffect(() => {
     let cancelled = false
     async function loadPreferences(): Promise<void> {
-      const result = await getNotificationPreferences()
-      if (!cancelled) {
+      // Server-action calls can reject outright (network loss, mid-deploy
+      // worker swap); without a catch the tab would stay on the loading
+      // placeholder forever.
+      try {
+        const result = await getNotificationPreferences()
+        if (cancelled) return
         if (result.success) {
           setPreferences(result.data)
           setHasUnsavedChanges(false)
         } else {
           setMessage(result.error)
         }
+      } catch {
+        if (cancelled) return
+        setMessage(
+          "Could not load notification preferences. Reload the page to try again."
+        )
+      }
+      if (!cancelled) {
         setLoading(false)
       }
     }
@@ -188,16 +199,20 @@ export function PreferencesTab() {
       return
     }
     setSaving(true)
-    const result = await updateNotificationPreferences(preferences)
-    setSaving(false)
-    if (result.success) {
-      setHasUnsavedChanges(false)
+    try {
+      const result = await updateNotificationPreferences(preferences)
+      if (result.success) {
+        setHasUnsavedChanges(false)
+      }
+      setMessage(
+        result.success
+          ? "Preferences saved."
+          : result.error
+      )
+    } catch {
+      setMessage("Could not save preferences. Please try again.")
     }
-    setMessage(
-      result.success
-        ? "Preferences saved."
-        : result.error
-    )
+    setSaving(false)
   }
 
   async function sendTestText(): Promise<void> {
@@ -207,13 +222,17 @@ export function PreferencesTab() {
     }
 
     setTestingSms(true)
-    const result = await sendTestSmsNotification()
+    try {
+      const result = await sendTestSmsNotification()
+      setMessage(
+        result.success
+          ? "Test text sent."
+          : `Test text failed: ${result.error}`
+      )
+    } catch {
+      setMessage("Test text failed: the request did not reach Compass.")
+    }
     setTestingSms(false)
-    setMessage(
-      result.success
-        ? "Test text sent."
-        : `Test text failed: ${result.error}`
-    )
   }
 
   if (loading) {
