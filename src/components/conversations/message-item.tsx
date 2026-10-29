@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { formatDistanceToNow, format, parseISO } from "date-fns"
+import { formatDistanceToNow, parseISO } from "date-fns"
+import { conversationTimeLabel } from "@/lib/conversations/message-dates"
+import { useConversationClock } from "@/hooks/use-conversation-clock"
 import {
   MessageSquare,
   Smile,
@@ -113,11 +115,12 @@ export const MessageItem = React.memo(function MessageItem({
   const isOwnMessage = currentUserId !== null && user?.id === currentUserId
   const alignmentClass = getMessageAlignmentClass(currentUserId, user?.id ?? null)
 
+  const { hydrated, timeZone } = useConversationClock()
   const timestamp = parseISO(message.createdAt)
-  const isRecent = Date.now() - timestamp.getTime() < 24 * 60 * 60 * 1000
+  const isRecent = hydrated && Date.now() - timestamp.getTime() < 24 * 60 * 60 * 1000
   const timeDisplay = isRecent
     ? formatDistanceToNow(timestamp, { addSuffix: true })
-    : format(timestamp, "MMM d 'at' h:mm a")
+    : conversationTimeLabel(message.createdAt, timeZone)
 
   const handleDelete = async () => {
     if (!confirm("Delete this message?")) return
@@ -268,7 +271,7 @@ export const MessageItem = React.memo(function MessageItem({
             <span>{message.replyCount} {message.replyCount === 1 ? "reply" : "replies"}</span>
             {message.lastReplyAt && (
               <span className="text-muted-foreground">
-                · Last reply {formatDistanceToNow(parseISO(message.lastReplyAt), { addSuffix: true })}
+                · Last reply {hydrated ? formatDistanceToNow(parseISO(message.lastReplyAt), { addSuffix: true }) : conversationTimeLabel(message.lastReplyAt, timeZone)}
               </span>
             )}
           </button>
