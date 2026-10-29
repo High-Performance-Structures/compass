@@ -88,7 +88,7 @@ Choose a bid, untick any codes you're giving to someone else, and choose **Accep
 
 **Selected trades** on the pricing board lists each vendor you accepted, with its cost codes, amounts, total, and who accepted it and when. Owner-scope rows are marked and left out of the trades total.
 
-### Letters of intent and award letters {#trade-letters}
+### Letters of intent and award letters
 
 Each subcontractor in **Selected trades** shows its trade docs (how many are on file and what's owed) and the letters sent to it. Choose **Trade docs and request** to see their documents or email them the secure docs link.
 
