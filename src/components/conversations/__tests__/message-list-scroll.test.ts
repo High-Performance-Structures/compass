@@ -68,6 +68,21 @@ describe("MessageList scrolling", () => {
     vi.useRealTimers()
   })
 
+  it("requests timestamp-tied older history with the oldest message ID", async () => {
+    const { getMessages } = await import("@/app/actions/chat-messages")
+    const createdAt = "2026-07-29T21:53:00.000Z"
+    const message = (id: string) => ({ id, channelId: "archive", threadId: null, content: id, contentHtml: null,
+      editedAt: null, deletedAt: null, isPinned: false, replyCount: 0, lastReplyAt: null, createdAt, user: null })
+    vi.mocked(getMessages).mockReset().mockResolvedValueOnce({ success: true, data: [{ ...message("message-099"), attachments: [], reactions: [] }] })
+    const initialMessages = Array.from({ length: 50 }, (_, i) => message(`message-${149 - i}`))
+    await act(async () => root.render(React.createElement(MessageList, { channelId: "archive", initialMessages, currentUserId: null })))
+    const older = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Load older messages")
+    if (older === undefined) throw new Error("Missing older history control")
+    await act(async () => older.click())
+    expect(getMessages).toHaveBeenCalledWith("archive", { limit: 50, cursor: { createdAt, id: "message-100" } })
+    expect(host.querySelector('[data-message-id="message-099"]')).not.toBeNull()
+  })
+
   it("keeps unseen realtime arrivals unread until the reader returns to newest", async () => {
     const { markChannelRead } = await import("@/app/actions/chat-messages")
     vi.mocked(markChannelRead).mockClear()
