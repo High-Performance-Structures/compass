@@ -95,6 +95,8 @@ Each subcontractor in **Selected trades** shows its trade docs (how many are on 
 - **Award letter** accepts the trade's quote in writing. It stays locked until the owner signs the estimate or contract.
 - **Letter of intent** holds a trade's place before the owner signs. Once the owner signs, send the award letter as the follow-up.
 - Suppliers get purchase orders instead of letters, and owner scope is covered by the owner contract.
+- On a supplier's row, **Purchase order** opens the PO form already filled in: the supplier, and each accepted cost code still left to order. Adjust the lines as needed, and split the order over as many POs as you need with **Another PO**.
+- The row keeps a running total: what's been ordered against the accepted price, what's left, and a warning if the POs go over. A void PO doesn't count.
 
 In the letter window, check the vendor, who signs for them and their email, and untick any cost codes you're not awarding. Missing documents don't block the letter: it lists what's still owed and says no payment is made until they're in. If the trade has no signed Trade Contractor Agreement, tick the box to include it, and signing the letter signs the agreement too. Then choose **Save and preview** to check the PDF, or **Send for e-signature**. Foxit opens; check the letter and press **Send**. The trade signs first, then you.
 

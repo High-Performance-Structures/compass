@@ -23,7 +23,14 @@ type Db = ReturnType<typeof getDb>
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 
-export type TradeVendor = { readonly id: string; readonly name: string; readonly category: string; readonly tradeDocsFolderId: string | null }
+export type TradeVendor = {
+  readonly id: string
+  readonly name: string
+  readonly category: string
+  readonly tradeDocsFolderId: string | null
+  /** Accounting vendor id, for coding a PO to them. */
+  readonly sageVendorId: string | null
+}
 
 export type TradeVendorResolver = (input: { readonly email: string | null; readonly name: string }) => TradeVendor | null
 
@@ -35,7 +42,7 @@ export type TradeVendorResolver = (input: { readonly email: string | null; reado
 export async function tradeVendorResolver(db: Db, organizationId: string): Promise<TradeVendorResolver> {
   const [rows, contacts] = await Promise.all([
     db
-      .select({ id: vendors.id, name: vendors.name, category: vendors.category, email: vendors.email, primaryEmail: vendors.primaryEmail, tradeDocsFolderId: vendors.tradeDocsFolderId })
+      .select({ id: vendors.id, name: vendors.name, category: vendors.category, email: vendors.email, primaryEmail: vendors.primaryEmail, tradeDocsFolderId: vendors.tradeDocsFolderId, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
       .from(vendors)
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"))),
     db
@@ -44,7 +51,7 @@ export async function tradeVendorResolver(db: Db, organizationId: string): Promi
       .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"))),
   ])
-  const toVendor = (row: (typeof rows)[number]): TradeVendor => ({ id: row.id, name: row.name, category: row.category, tradeDocsFolderId: row.tradeDocsFolderId })
+  const toVendor = (row: (typeof rows)[number]): TradeVendor => ({ id: row.id, name: row.name, category: row.category, tradeDocsFolderId: row.tradeDocsFolderId, sageVendorId: row.sageVendorId ?? row.sageVendorNumber })
   return (input) => {
     const email = input.email?.trim().toLowerCase() ?? ""
     if (email) {
@@ -63,11 +70,12 @@ export async function tradeVendorResolver(db: Db, organizationId: string): Promi
 
 export async function loadTradeVendor(db: Db, organizationId: string, vendorId: string): Promise<TradeVendor | null> {
   const vendor = await db
-    .select({ id: vendors.id, name: vendors.name, category: vendors.category, tradeDocsFolderId: vendors.tradeDocsFolderId })
+    .select({ id: vendors.id, name: vendors.name, category: vendors.category, tradeDocsFolderId: vendors.tradeDocsFolderId, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
     .from(vendors)
     .where(and(eq(vendors.id, vendorId), eq(vendors.organizationId, organizationId)))
     .get()
-  return vendor ?? null
+  if (!vendor) return null
+  return { id: vendor.id, name: vendor.name, category: vendor.category, tradeDocsFolderId: vendor.tradeDocsFolderId, sageVendorId: vendor.sageVendorId ?? vendor.sageVendorNumber }
 }
 
 /** A vendor's trade doc standing today, and their master agreement if one is on file. */
