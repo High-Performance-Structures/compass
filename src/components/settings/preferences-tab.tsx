@@ -39,7 +39,11 @@ import {
   SMS_OPT_IN_DISCLOSURE_VERSION,
 } from "@/lib/notifications/sms-consent"
 
-const ACTION_TIMEOUT_MS = 8_000
+// During production slow spells individual actions complete in 5-12s, and
+// Next serializes server actions per tab, so a timeout below that abandons
+// requests that are about to succeed and each retry deepens the queue. Keep
+// the timeout above the observed worst case; it only needs to beat "never".
+const ACTION_TIMEOUT_MS = 20_000
 const ACTION_ATTEMPTS = 3
 
 /**
@@ -227,6 +231,9 @@ export function PreferencesTab() {
       return
     }
     setSaving(true)
+    // Clear any notice from a previous attempt so the outcome shown always
+    // belongs to this save.
+    setMessage(null)
     try {
       const result = await callWithRetry(() =>
         updateNotificationPreferences(preferences)

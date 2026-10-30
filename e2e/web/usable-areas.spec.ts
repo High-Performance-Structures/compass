@@ -184,18 +184,19 @@ test.describe("usable Compass areas", () => {
 
   test("timezone preference persists after reloading settings", async ({ page }) => {
     // Production can drop individual requests without answering them
-    // (issue #1036). The Preferences tab retries internally and surfaces an
-    // error when every attempt dies, so drive it the way a user would —
-    // re-click Save on a reported failure, reload again on a failed load —
-    // inside an extended budget. A genuine persistence bug still fails: the
-    // saved notice never appears, or the reloaded value is wrong.
+    // (issue #1036). The Preferences tab retries internally (up to ~60s)
+    // and surfaces an error when every attempt dies, so drive it the way a
+    // user would — re-click Save on a reported failure, reload again on a
+    // failed load — waiting out the tab's full retry budget each time. A
+    // genuine persistence bug still fails: the saved notice never appears,
+    // or the reloaded value is wrong.
     test.slow()
     const path = "/dashboard/settings"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
 
     const timezone = page.getByRole("combobox", { name: "Timezone" })
-    await expect(timezone).toBeVisible({ timeout: 45_000 })
+    await expect(timezone).toBeVisible({ timeout: 75_000 })
     await timezone.click()
     await page.getByRole("option", { name: "Pacific (PT)" }).click()
     await expect(timezone).toContainText("Pacific (PT)")
@@ -207,7 +208,7 @@ test.describe("usable Compass areas", () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await page.getByRole("button", { name: "Save preferences" }).click()
       await expect(savedNotice.or(saveFailedNotice).first()).toBeVisible({
-        timeout: 45_000,
+        timeout: 75_000,
       })
       if (await savedNotice.isVisible()) break
     }
@@ -220,7 +221,7 @@ test.describe("usable Compass areas", () => {
       await page.reload()
       await expect(
         page.getByRole("combobox", { name: "Timezone" })
-      ).toBeVisible({ timeout: 45_000 })
+      ).toBeVisible({ timeout: 75_000 })
       if (!(await loadFailedNotice.isVisible())) break
     }
     await expect(
