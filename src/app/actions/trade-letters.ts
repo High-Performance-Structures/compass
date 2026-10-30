@@ -13,6 +13,8 @@ import { estimateAccess, revalidateEstimate } from "@/lib/estimates/access"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { createFoxitPreparedEnvelope } from "@/lib/foxit/esign"
 import { arrayBufferBase64 } from "@/lib/trade-letters/base64"
+import { orderedCents, remainingTradeCodes, type TradeCode } from "@/lib/trade-letters/orders"
+import { loadTradePurchaseOrders, type TradePurchaseOrder } from "@/lib/trade-letters/orders-server"
 import {
   isTradeLetterKind,
   isTradeLetterStatus,
@@ -67,9 +69,14 @@ export type TradeLetterDocs = {
 export type TradeLetterRow = {
   readonly trade: SelectedTrade
   readonly route: TradeLetterRoute
-  readonly vendor: { readonly id: string; readonly name: string; readonly category: string } | null
+  readonly vendor: { readonly id: string; readonly name: string; readonly category: string; readonly sageVendorId: string | null } | null
   readonly docs: TradeLetterDocs | null
   readonly letters: readonly TradeLetterSummary[]
+  /** Supplier POs drawn against this accepted quote (route purchase_order). */
+  readonly orders: readonly TradePurchaseOrder[]
+  readonly orderedCents: number
+  /** The accepted codes, less what's already on POs. */
+  readonly leftToOrder: readonly TradeCode[]
 }
 
 export type TradeLetterBoard = {
@@ -177,6 +184,10 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
         .orderBy(desc(tradeLetters.createdAt)),
     ])
     const resolveVendor = await tradeVendorResolver(access.db, access.organizationId)
+    const supplierRfqIds = trades.data
+      .filter((trade) => tradeLetterRoute({ ownerScope: trade.ownerScope, sageCostTypes: trade.sageCostTypes }) === "purchase_order")
+      .map((trade) => trade.rfqId)
+    const ordersByRfq = await loadTradePurchaseOrders(access.db, projectId, supplierRfqIds)
     const rows: TradeLetterRow[] = []
     for (const trade of trades.data) {
       const route = tradeLetterRoute({ ownerScope: trade.ownerScope, sageCostTypes: trade.sageCostTypes })
@@ -189,10 +200,11 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
           : resolveVendor({ email: trade.recipientEmail, name: trade.vendor })
       }
       const standing = vendor ? await vendorTradeStanding(access.db, settings, vendor) : null
+      const orders = ordersByRfq.get(trade.rfqId) ?? []
       rows.push({
         trade,
         route,
-        vendor: vendor ? { id: vendor.id, name: vendor.name, category: vendor.category } : null,
+        vendor: vendor ? { id: vendor.id, name: vendor.name, category: vendor.category, sageVendorId: vendor.sageVendorId } : null,
         docs: standing
           ? {
               requiredCount: standing.summary.requiredCount,
@@ -203,6 +215,9 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
             }
           : null,
         letters: tradeLettersForRfq.map(summarize),
+        orders,
+        orderedCents: orderedCents(orders),
+        leftToOrder: remainingTradeCodes(trade.codes, orders),
       })
     }
     return {

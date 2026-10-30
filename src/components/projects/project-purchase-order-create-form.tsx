@@ -246,6 +246,41 @@ function textFromNumber(value: number): string {
   return Number.isFinite(value) ? String(value) : ""
 }
 
+/**
+ * Starts a new PO from an accepted supplier quote: the supplier, the accepted
+ * cost codes still left to order, and the running total against that price.
+ */
+export type PurchaseOrderPrefill = {
+  readonly title: string
+  readonly companyName: string
+  readonly sageVendorId: string | null
+  readonly lines: readonly {
+    readonly costCode: string | null
+    readonly description: string
+    readonly amount: number
+  }[]
+  /** The RFQ whose accepted quote this PO orders against. */
+  readonly awardedRfqId: string
+  readonly acceptedAmount: number
+  readonly alreadyOrdered: number
+}
+
+function draftLinesFromPrefill(
+  prefill: PurchaseOrderPrefill,
+  costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
+): readonly DraftPurchaseOrderLine[] {
+  if (prefill.lines.length === 0) return [newLine()]
+  return prefill.lines.map((line) => ({
+    ...newLine(),
+    description: line.description,
+    costCode: line.costCode ?? "",
+    phaseCode:
+      costCodeOptions.find((option) => option.value === line.costCode)
+        ?.divisionCode ?? "",
+    unitCost: line.amount.toFixed(2),
+  }))
+}
+
 function draftLinesFromPurchaseOrder(
   purchaseOrder: ProjectPurchaseOrderItem | null
 ): readonly DraftPurchaseOrderLine[] {
@@ -336,9 +371,19 @@ type SharedPurchaseOrderFormProps = {
   readonly createSecondary?: boolean
 }
 
+type CreatePurchaseOrderFormProps = SharedPurchaseOrderFormProps & {
+  readonly prefill?: PurchaseOrderPrefill
+  /** Called instead of opening the purchase orders page after saving. */
+  readonly onCreated?: (id: string) => void
+}
+
 type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
   (
-    | { readonly kind: "create" }
+    | {
+        readonly kind: "create"
+        readonly prefill?: PurchaseOrderPrefill
+        readonly onCreated?: (id: string) => void
+      }
     | {
         readonly kind: "edit"
         readonly purchaseOrder: ProjectPurchaseOrderItem
@@ -368,16 +413,21 @@ function ProjectPurchaseOrderForm(
     catalogItems,
   } = props
   const purchaseOrder = props.kind === "edit" ? props.purchaseOrder : null
+  const prefill = props.kind === "create" ? props.prefill ?? null : null
+  const onCreated = props.kind === "create" ? props.onCreated : undefined
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [lines, setLines] = React.useState<readonly DraftPurchaseOrderLine[]>(
-    () => draftLinesFromPurchaseOrder(purchaseOrder)
+    () =>
+      prefill !== null
+        ? draftLinesFromPrefill(prefill, costCodeOptions)
+        : draftLinesFromPurchaseOrder(purchaseOrder)
   )
   const [sageVendorId, setSageVendorId] = React.useState(
-    purchaseOrder?.sageVendorId ?? ""
+    purchaseOrder?.sageVendorId ?? prefill?.sageVendorId ?? ""
   )
   const [companyName, setCompanyName] = React.useState(
-    purchaseOrder?.companyName ?? ""
+    purchaseOrder?.companyName ?? prefill?.companyName ?? ""
   )
   const [assigneeName, setAssigneeName] = React.useState(
     purchaseOrder?.assigneeName ?? ""
@@ -468,6 +518,10 @@ function ProjectPurchaseOrderForm(
             jobsiteAddress,
           })
         )
+      } else if (prefill !== null) {
+        setLines(draftLinesFromPrefill(prefill, costCodeOptions))
+        setSageVendorId(prefill.sageVendorId ?? "")
+        setCompanyName(prefill.companyName)
       }
     }
     setOpen(nextOpen)
@@ -497,6 +551,7 @@ function ProjectPurchaseOrderForm(
         dueDate: cleanText(String(formData.get("dueDate") ?? "")),
         priority: String(formData.get("priority") ?? "normal"),
         lines: lines.map(toLineInput),
+        awardedRfqId: prefill?.awardedRfqId ?? null,
       }
       const result =
         purchaseOrder === null
@@ -530,7 +585,9 @@ function ProjectPurchaseOrderForm(
           : "Purchase order draft updated."
       )
       setOpen(false)
-      if (purchaseOrder === null) {
+      if (purchaseOrder === null && onCreated) {
+        onCreated(result.id)
+      } else if (purchaseOrder === null) {
         router.push(
           `/dashboard/projects/${projectId}/purchase-orders?created=${encodeURIComponent(
             result.id
@@ -555,7 +612,8 @@ function ProjectPurchaseOrderForm(
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       {/* Edit forms share this component but must never consume a create request. */}
-      {props.kind === "create" && (
+      {/* Prefilled forms (one per supplier row) leave quick add to the page's own form. */}
+      {props.kind === "create" && prefill === null && (
         <PurchaseOrderQuickAddEntry onEntry={() => setOpen(true)} />
       )}
       <SheetTrigger asChild>
@@ -596,12 +654,15 @@ function ProjectPurchaseOrderForm(
             {formatPurchaseOrderMoney(total)} total · {codedLineCount}/{lines.length} lines coded
           </span>
         </div>
+        {prefill !== null && (
+          <AcceptedPriceNote prefill={prefill} total={total} />
+        )}
         <div className="space-y-3">
           <Field label="P.O. title / scope">
             <Input
               name="title"
               placeholder="ICF bracing rental"
-              defaultValue={purchaseOrder?.title ?? ""}
+              defaultValue={purchaseOrder?.title ?? prefill?.title ?? ""}
               required
               className={DOCUMENT_INPUT_CLASS}
             />
@@ -957,8 +1018,32 @@ function ProjectPurchaseOrderForm(
   )
 }
 
+function AcceptedPriceNote({
+  prefill,
+  total,
+}: {
+  readonly prefill: PurchaseOrderPrefill
+  readonly total: number
+}): React.ReactElement {
+  const left = prefill.acceptedAmount - prefill.alreadyOrdered - total
+  return (
+    <p
+      className={`border-b pb-3 text-sm ${left < -0.005 ? "text-destructive" : "text-muted-foreground"}`}
+    >
+      Accepted price {formatPurchaseOrderMoney(prefill.acceptedAmount)}
+      {prefill.alreadyOrdered > 0
+        ? ` · already on POs ${formatPurchaseOrderMoney(prefill.alreadyOrdered)}`
+        : ""}
+      {" · "}
+      {left < -0.005
+        ? `this PO goes ${formatPurchaseOrderMoney(-left)} over the accepted price`
+        : `${formatPurchaseOrderMoney(left)} left to order after this PO`}
+    </p>
+  )
+}
+
 export function ProjectPurchaseOrderCreateForm(
-  props: SharedPurchaseOrderFormProps
+  props: CreatePurchaseOrderFormProps
 ): React.ReactElement {
   return <ProjectPurchaseOrderForm {...props} kind="create" />
 }

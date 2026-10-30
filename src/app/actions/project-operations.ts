@@ -280,6 +280,8 @@ export type CreatePurchaseOrderRequestInput = {
   readonly dueDate: string | null
   readonly priority: string
   readonly lines: readonly CreatePurchaseOrderLineInput[]
+  /** Set when the PO orders against an accepted supplier quote (Selected trades). */
+  readonly awardedRfqId?: string | null
 }
 
 export type UpdatePurchaseOrderRequestInput =
@@ -1828,6 +1830,21 @@ export async function createPurchaseOrderRequest(
     const companyName = cleanText(input.companyName)
     const shipTo = cleanText(input.shipTo)
     const orderDate = cleanText(input.orderDate) ?? now.slice(0, 10)
+    const awardedRfqId = cleanText(input.awardedRfqId ?? null)
+    if (awardedRfqId !== null) {
+      const [rfq] = await db
+        .select({ id: projectOperations.id })
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.id, awardedRfqId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "rfq")
+          )
+        )
+        .limit(1)
+      if (!rfq) throw new Error("That accepted quote is no longer on this job.")
+    }
     const dueDate = cleanText(input.dueDate)
     const lines = normalizePurchaseOrderLines(input.lines, description ?? title)
     const amount = lines.reduce((total, line) => total + line.amount, 0)
@@ -1878,6 +1895,7 @@ export async function createPurchaseOrderRequest(
       sagePayloadJson,
       syncDirection: "write",
       syncStatus: "pending_sage",
+      awardedRfqId,
       createdAt: now,
       updatedAt: now,
     }

@@ -1843,6 +1843,8 @@ export const projectOperations = sqliteTable("project_operations", {
   syncDirection: text("sync_direction").notNull().default("read"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
+  /** For a supplier PO: the RFQ whose accepted quote it orders against. */
+  awardedRfqId: text("awarded_rfq_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

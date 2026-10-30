@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/trade-letters"
 import { VendorTradeDocsDialog } from "@/components/financials/vendor-trade-docs-dialog"
 import { TradeLetterDialog, type TradeLetterDialogTarget } from "@/components/projects/trade-letter-dialog"
+import { TradeOrdersCell, TradePurchaseOrderButton, useTradePurchaseOrderSetup } from "@/components/projects/trade-purchase-orders"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,7 +77,7 @@ function LetterCell({
   readonly onDelete: (letter: TradeLetterSummary) => void
 }): React.ReactElement {
   if (row.route === "none") return <span className="text-xs text-muted-foreground">In the owner contract</span>
-  if (row.route === "purchase_order") return <span className="text-xs text-muted-foreground">Suppliers get purchase orders (coming next)</span>
+  if (row.route === "purchase_order") return <TradeOrdersCell projectId={projectId} row={row} />
   if (row.letters.length === 0) return <span className="text-xs text-muted-foreground">Not sent</span>
   return (
     <ul className="grid gap-2">
@@ -126,6 +127,8 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
   const [docsVendor, setDocsVendor] = React.useState<{ readonly id: string; readonly name: string } | null>(null)
   const [removing, setRemoving] = React.useState<TradeLetterSummary | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const hasSuppliers = board?.canEdit === true && board.rows.some((row) => row.route === "purchase_order")
+  const poSetup = useTradePurchaseOrderSetup(projectId, hasSuppliers)
 
   const load = React.useCallback(async () => {
     const result = await getTradeLetterBoard(projectId, estimateId)
@@ -199,7 +202,7 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
               <th className="py-2 pr-4 font-medium">Cost codes</th>
               <th className="py-2 pr-4 text-right font-medium">Accepted</th>
               <th className="py-2 pr-4 font-medium">Trade docs</th>
-              <th className="py-2 pr-4 font-medium">Letters</th>
+              <th className="py-2 pr-4 font-medium">Letters and POs</th>
               <th className="py-2 text-right font-medium">Next step</th>
             </tr>
           </thead>
@@ -242,6 +245,9 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
                     />
                   </td>
                   <td className="py-3 text-right">
+                    {row.route === "purchase_order" && board.canEdit && poSetup && (
+                      <TradePurchaseOrderButton projectId={projectId} row={row} setup={poSetup} onCreated={() => void load()} />
+                    )}
                     {row.route === "letter" && board.canEdit && !hasSignedAward && (
                       <div className="flex flex-wrap justify-end gap-2">
                         {intent.allowed && (
@@ -270,6 +276,7 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
       </div>
       <p className="text-xs text-muted-foreground">
         Missing documents don&apos;t block a letter: it lists what&apos;s still owed, and no payment is made until they&apos;re in.
+        Suppliers get one or more purchase orders against their accepted price.
       </p>
 
       {composer && (
