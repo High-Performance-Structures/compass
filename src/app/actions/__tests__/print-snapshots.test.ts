@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
 
-vi.mock("@/lib/auth", () => ({ requireAuth: vi.fn(async () => ({ id: "user-1" })) }))
-vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => { throw new Error("no database in this test") }) }))
+vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => ({ id: "user-1", organizationId: null })) }))
+vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })) }))
+// Any query fails the test: validation must turn these away before the database is used.
+vi.mock("@/db", () => ({
+  getDb: () =>
+    new Proxy({}, { get: () => { throw new Error("no database in this test") } }),
+}))
 
 import { createPrintSnapshot } from "../print-snapshots"
 

@@ -1,7 +1,5 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
 import { projectOperations } from "@/db/schema"
 import { loadProjectListForRequest, type ProjectListItem } from "@/lib/projects/project-list"
 import { and, eq } from "drizzle-orm"
@@ -60,7 +58,6 @@ import {
   shellRecordStatements,
   shellSageWritePayload,
 } from "@/lib/domain/project/intake-shell"
-import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import {
   buildProjectDriveFolderName,
@@ -93,28 +90,35 @@ export type {
   ProjectStatusValue,
   ProvisionProjectDriveResult,
 } from "@/lib/domain/project/intake-types"
+import { CONTEXT_ERRORS, userContext, type Db, type UserContext } from "@/lib/server/action-context"
+
+/**
+ * The signed-in user and database. Failures throw the messages this file
+ * always used: "Unauthorized" (requireAuth) and "D1 not available".
+ */
+async function projectUserContext(): Promise<UserContext> {
+  const context = await userContext()
+  if (context.success) return context.data
+  throw new Error(context.error === CONTEXT_ERRORS.noDatabase ? "D1 not available" : context.error)
+}
 
 export async function getProjectIntakeCustomerOptions(): Promise<readonly ProjectIntakeCustomerOption[]> {
-  const user = await requireAuth()
+  const { user, db } = await projectUserContext()
   requirePermission(user, "project", "create")
   const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
   await requireFeaturePermission(user, "customers", "read")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return loadIntakeCustomerOptions(db, organizationId)
 }
 
 export async function getProjectIntakeAssignees(): Promise<readonly ProjectIntakeAssignee[]> {
   try {
-    const user = await requireAuth()
+    // Any failure, including no database, returns [] through the catch.
+    const { user, db } = await projectUserContext()
     requirePermission(user, "project", "create")
     const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
     await requireFeaturePermission(user, "internal-directory", "read")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
-    const db = getDb(env.DB)
     return await loadIntakeAssignees(db, organizationId)
   } catch {
     return []
@@ -209,7 +213,7 @@ export async function createProjectIntake(
   input: CreateProjectIntakeInput
 ): Promise<CreateProjectIntakeResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await projectUserContext()
     requirePermission(user, "project", "create")
     const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
     // Intake reads canonical client details and may create a new directory row.
@@ -223,9 +227,6 @@ export async function createProjectIntake(
       await requireFeaturePermission(user, "internal-directory", "read")
     }
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return { success: false, error: "D1 not available" }
-    const db = getDb(env.DB)
 
     const projectName = requireText(input.projectName, "Project name")
     const clientName = requireText(intakeClientName(input) ?? "", "Client")
@@ -475,13 +476,10 @@ export async function provisionProjectDriveFolder(
   projectId: string
 ): Promise<ProvisionProjectDriveResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await projectUserContext()
     requirePermission(user, "project", "update")
     requirePermission(user, "document", "create")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return { success: false, error: "D1 not available" }
-    const db = getDb(env.DB)
     // Office staff on the job can create its folder: it always lands in the
     // company's standard structure, and an existing folder is relinked, never
     // duplicated.
@@ -579,13 +577,9 @@ export async function createProjectShell(
   input: CreateProjectShellInput
 ): Promise<CreateProjectShellResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await projectUserContext()
     requirePermission(user, "project", "create")
     const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return { success: false, error: "D1 not available" }
-
-    const db = getDb(env.DB)
     const projectNumber = cleanText(input.projectNumber)
     const name = requireText(input.name, "Project name")
     const clientName = requireText(input.clientName ?? "", "Client")

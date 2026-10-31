@@ -2,19 +2,17 @@
 
 import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { projectRecordDriveFiles, type PaperTrailFileStatus, type PaperTrailRecordType } from "@/db/schema-paper-trail"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { insertRecordDriveFile, updateRecordDriveFile, updateRecordDriveFilesReturningIds } from "@/lib/domain/documents/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
-import { projectContext } from "@/lib/server/action-context"
 import { requireOrg } from "@/lib/org-scope"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { projectContext, requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -201,11 +199,9 @@ export type PaperTrailChoiceItem = {
 /** Every record across the company waiting for a duplicate choice, for Settings. */
 export async function getPaperTrailChoices(): Promise<Result<readonly PaperTrailChoiceItem[]>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (!canEditFeatureSettings(user.role, "paper-trail")) return { success: true, data: [] }
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const rows = await db
       .select({
         projectId: projectRecordDriveFiles.projectId,

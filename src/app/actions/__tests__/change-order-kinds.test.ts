@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   rebuild: vi.fn(async () => ({ success: true, revisionId: "r", revisionNumber: 1, changed: true })),
 }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: vi.fn(async () => undefined),
   canFeature: vi.fn(async () => true),

@@ -28,8 +28,6 @@ import {
   updateTask,
   updateTaskForAssignee,
 } from "@/lib/domain/schedule/store"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
@@ -54,6 +52,7 @@ import {
   type ScheduleAssigneeProposalInput,
   type ScheduleAssigneeResponse,
 } from "@/lib/schedule/multi-assignee"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ConfirmationResponse = "confirmed" | "declined"
 
@@ -192,14 +191,12 @@ export async function sendPublishedScheduleAssignment(
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -440,14 +437,12 @@ export async function sendScheduleTaskReminder(
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -605,10 +600,8 @@ export async function respondToScheduleTaskConfirmation(
     if (typeof note !== "string" || note.length > 1000) {
       return { success: false, error: "Notes must be 1,000 characters or fewer." }
     }
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select()
       .from(scheduleTasks)
@@ -746,10 +739,8 @@ export async function proposeScheduleTaskChange(
     await assertAudiencePreviewWriteAllowed()
     const validation = validateScheduleChangeProposal(input)
     if (!validation.success) return validation
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select()
       .from(scheduleTasks)
@@ -880,12 +871,12 @@ export async function proposeScheduleTaskChange(
 export async function getScheduleTaskChangeProposal(
   taskId: string
 ): Promise<ScheduleTaskChangeProposal | null> {
-  const user = await conversationRequestViewer(await requireAuth())
+  const context = await requireUserContext()
+  const user = await conversationRequestViewer(context.user)
   if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "update")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { db } = context
   const task = await db
     .select({
       projectId: scheduleTasks.projectId,
@@ -924,12 +915,10 @@ export async function rejectScheduleTaskChangeProposal(
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -1143,12 +1132,12 @@ async function resolveReviewedAssignmentTarget(
 export async function getScheduleTaskAssignees(
   taskId: string,
 ): Promise<readonly ScheduleTaskAssigneeView[]> {
-  const user = await conversationRequestViewer(await requireAuth())
+  const context = await requireUserContext()
+  const user = await conversationRequestViewer(context.user)
   if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "read")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { db } = context
   const task = await db
     .select({ projectId: scheduleTasks.projectId })
     .from(scheduleTasks)
@@ -1230,10 +1219,8 @@ export async function respondToScheduleTaskAssignee(
     }
     const state = scheduleAssigneeResponseState(responseInput)
     if ("error" in state) return { success: false, error: state.error }
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const assignment = await db
       .select({
         id: scheduleTaskAssignees.id,

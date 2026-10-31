@@ -3,11 +3,8 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { customerContacts, customers, projectContacts } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { getCloudflareContext } from "@/lib/db"
 import {
   clearOtherCustomerPrimaryPeople,
   insertCustomerPerson,
@@ -16,6 +13,7 @@ import {
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type CustomerDirectoryPerson = {
   readonly id: string
@@ -43,11 +41,9 @@ type MutationResult =
   | { readonly success: false; readonly error: string }
 
 export async function getCustomerDirectoryPeople(customerId: string): Promise<readonly CustomerDirectoryPerson[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return db.select({
     id: customerContacts.id,
     customerId: customerContacts.customerId,
@@ -81,14 +77,12 @@ export async function saveCustomerDirectoryPerson(
   input: CustomerPersonInput
 ): Promise<MutationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "customers", personId ? "update" : "create")
     const orgId = requireOrg(user)
     const value = normalized(input)
     if (!value.name) return { success: false, error: "Contact name is required." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const company = await db.select({ id: customers.id })
       .from(customers).where(and(eq(customers.id, customerId), eq(customers.organizationId, orgId),
         isNull(customers.mergedIntoCustomerId))).get()
@@ -148,12 +142,10 @@ export async function saveCustomerDirectoryPerson(
 
 export async function deleteCustomerDirectoryPerson(personId: string): Promise<MutationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "customers", "delete")
     const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const person = await db.select({
       id: customerContacts.id, userId: customerContacts.userId,
       sageContactId: customerContacts.sageContactId,

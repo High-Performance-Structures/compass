@@ -61,6 +61,7 @@ import {
   newestXRefreshAccount,
 } from "@/lib/social/x-account-sharing"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type SocialResult =
   | { readonly success: true; readonly postId: string }
@@ -160,14 +161,12 @@ async function socialContext(
   projectId: string,
   action: "read" | "create" | "update" | "delete" | "approve",
 ): Promise<SocialContext> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   await requireFeaturePermission(user, "social-publishing", action)
   if (!isInternalStaffRole(user.role)) {
     throw new Error("Social publishing is available to internal staff only.")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const access = await getProjectAccessRecord(db, user, projectId)
   if (!access || access.organizationId !== organizationId) {
     throw new Error("Project not found or access denied.")

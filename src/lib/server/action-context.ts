@@ -60,9 +60,10 @@ function permissionDenied(user: AuthUser, feature: string, action: Action): stri
   return `Permission denied: ${user.role} cannot ${action} ${feature}`
 }
 
-type UserContext = Omit<OrgContext, "organizationId"> & { readonly organizationId: string | null }
+/** A signed-in user whose active organization may be null. */
+export type UserContext = Omit<OrgContext, "organizationId"> & { readonly organizationId: string | null }
 
-async function userContext(
+async function resolveUserContext(
   options: ContextOptions,
   requireOrganization: boolean,
 ): Promise<ContextResult<UserContext>> {
@@ -84,8 +85,26 @@ async function userContext(
   return { success: true, data: { user, organizationId, db: getDb(env.DB), env } }
 }
 
+/**
+ * For actions open to any signed-in user, whether or not they have an active
+ * organization (personal settings, a user's own records).
+ */
+export async function userContext(options: ContextOptions = {}): Promise<ContextResult<UserContext>> {
+  return resolveUserContext(options, false)
+}
+
+/**
+ * `userContext` for actions that throw on failure, as `requireAuth()` does:
+ * the same messages ("Unauthorized", ...), thrown instead of returned.
+ */
+export async function requireUserContext(options: ContextOptions = {}): Promise<UserContext> {
+  const context = await resolveUserContext(options, false)
+  if (!context.success) throw new Error(context.error)
+  return context.data
+}
+
 export async function orgContext(options: ContextOptions = {}): Promise<ContextResult<OrgContext>> {
-  const context = await userContext(options, true)
+  const context = await resolveUserContext(options, true)
   if (!context.success) return context
   const { organizationId } = context.data
   if (!organizationId) return actionFailure(CONTEXT_ERRORS.noOrganization)
@@ -127,7 +146,7 @@ export async function projectContext(
   projectId: string,
   options: ProjectContextOptions,
 ): Promise<ContextResult<ProjectContext>> {
-  const context = await userContext(options, options.scope === "organization")
+  const context = await resolveUserContext(options, options.scope === "organization")
   if (!context.success) return context
   const { db, user, organizationId } = context.data
   const project =

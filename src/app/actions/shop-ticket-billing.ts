@@ -2,12 +2,10 @@
 
 import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { shopTicketLines, shopTickets } from "@/db/schema-shop-tickets"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type PayApplicationShopTicket = {
   readonly id: string
@@ -31,11 +29,9 @@ export type PayApplicationShopTickets = {
  * person can't see shop tickets.
  */
 export async function getPayApplicationShopTickets(projectId: string, applicationId: string): Promise<PayApplicationShopTickets | null> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!(await canFeature(user, "shop-tickets", "read"))) return null
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const tickets = await db
     .select({
       id: shopTickets.id,

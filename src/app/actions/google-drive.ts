@@ -40,6 +40,7 @@ import {
   withProjectFileSource,
   withProjectFolderMetadata,
 } from "@/lib/project-files"
+import { requireUserContext } from "@/lib/server/action-context"
 
 // helpers
 
@@ -307,10 +308,8 @@ export async function disconnectGoogleDrive(): Promise<
   { success: true } | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "delete")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     await db.delete(googleAuth).run()
     revalidatePath("/dashboard/files")
     return { success: true }
@@ -375,11 +374,9 @@ export async function selectSharedDrive(
   driveName: string | null
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -1194,11 +1191,8 @@ export async function toggleStarFile(
   | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "document", "read")
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select()
@@ -1250,15 +1244,12 @@ export async function updateUserGoogleEmail(
   googleEmail: string | null
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "user", "update")
     if (!user.organizationId) {
       return { success: false, error: "No active organization selected" }
     }
     const organizationId = user.organizationId
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const target = await db
       .select({

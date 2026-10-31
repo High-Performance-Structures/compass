@@ -10,6 +10,7 @@ import { deleteUserViewPreference, saveUserViewPreference } from "@/lib/domain/s
 import { parseSavedOrder, ROLE_DASHBOARD_VIEW_PREFIX } from "@/lib/view-preferences/order"
 import { isProjectWorkflowRoleId } from "@/lib/project-workflow-roles"
 import { isInternalQueueRoleId } from "@/lib/internal-duties/queues"
+import { userContext } from "@/lib/server/action-context"
 
 type SaveResult = { readonly success: true } | { readonly success: false; readonly error: string }
 
@@ -28,13 +29,12 @@ export async function getRoleDashboardOrders(): Promise<Readonly<Record<string, 
 /** Saves (or, with an empty list, resets) the user's order for one role's dashboard. */
 export async function saveRoleDashboardOrder(roleId: string, orderedIds: readonly string[]): Promise<SaveResult> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Sign in to save your layout." }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Sign in to save your layout." }
+    const { user, db } = context.data
     if (isDemoUser(user.id)) return { success: false, error: "Demo accounts are read-only." }
     if (!isProjectWorkflowRoleId(roleId) && !isInternalQueueRoleId(roleId)) return { success: false, error: "Unknown role." }
     const order = parseSavedOrder(JSON.stringify(orderedIds))
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const viewKey = `${ROLE_DASHBOARD_VIEW_PREFIX}${roleId}`
     if (order.length === 0) {
       await deleteUserViewPreference(db, user.id, viewKey)

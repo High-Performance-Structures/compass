@@ -1,11 +1,9 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
 import { agentConversations, agentMemories } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
-import { getCurrentUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
+import { userContext } from "@/lib/server/action-context"
 
 interface SerializedMessage {
   readonly id: string
@@ -21,15 +19,14 @@ export async function saveConversation(
   title?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
 
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const now = new Date().toISOString()
 
     const existing = await db.query.agentConversations.findFirst({

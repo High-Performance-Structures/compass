@@ -13,6 +13,7 @@ import {
   exchangeCode as exchangeOAuthCode_,
   refreshAccessToken as refreshToken_,
 } from "agent-core"
+import { userContext } from "@/lib/server/action-context"
 
 export async function exchangeOAuthCode(
   code: string,
@@ -192,11 +193,9 @@ export async function getOAuthStatus(): Promise<{
   expiresAt?: string
 }> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { connected: false }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await userContext()
+    if (!context.success) return { connected: false }
+    const { user, db } = context.data
 
     const row = await db
       .select()

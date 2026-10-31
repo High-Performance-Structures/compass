@@ -8,11 +8,11 @@ import { projectBudgetApplications, projectOperations, projects } from "@/db/sch
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 /*
  * After review, staff approve a Compass pay application for billing: it is
@@ -29,12 +29,10 @@ async function billingAccess(projectId: string): Promise<{
   readonly user: AuthUser
   readonly organizationId: string
 }> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", "update")
   if (!isInternalStaffRole(user.role)) throw new Error("Only staff can bill pay applications.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const project = await db
     .select({ id: projects.id })
     .from(projects)

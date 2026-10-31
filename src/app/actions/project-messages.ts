@@ -15,12 +15,12 @@ import {
   channelMembers,
   channels,
 } from "@/db/schema-conversations"
-import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { channelNotificationRecipients } from "@/lib/notifications/audience"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -160,10 +160,8 @@ export async function sendProjectMessage(input: {
   }[]
 }): Promise<ProjectMessageResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const channel = await db
       .select({

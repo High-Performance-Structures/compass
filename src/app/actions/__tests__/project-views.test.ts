@@ -9,7 +9,7 @@ import { DEFAULT_PROJECT_VIEW, projectDefaultViewKey, type ProjectViewDefinition
 const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn(), revalidate: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.db }))
 vi.mock("@/lib/auth", () => ({ getCurrentUser: mocks.user, requireAuth: mocks.user }))
-vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: null } }) }))
+vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: {} } }) }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }))
 import { deleteProjectView, getProjectSavedViews, getProjectViewPreferences, saveProjectView, setDefaultProjectView } from "@/app/actions/project-views"
 

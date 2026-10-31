@@ -8,7 +8,7 @@ import { sendProjectAccessInvitation } from "../project-access-invitations"
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), deliver: vi.fn(), workos: vi.fn(), conversation: vi.fn() }))
 let database: CorrespondenceTestDatabase
 vi.mock("server-only", () => ({}))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: database.d1 } }) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/workos-invitations", () => ({ sendOrResendProjectWorkOSInvitation: mocks.workos }))

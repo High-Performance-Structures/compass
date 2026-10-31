@@ -9,8 +9,6 @@ import {
   projects,
   type ProjectExternalLink,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import {
   deleteProjectExternalLinks,
@@ -24,6 +22,7 @@ import {
   requirePermission,
 } from "@/lib/permissions"
 import { isProjectDepartment } from "@/lib/project-branding"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ProjectRegistryProject = {
   readonly id: string
@@ -132,15 +131,12 @@ async function verifyProjectAccess(
   projectId: string,
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", action)
   if (!canManageProjectRegistry(user)) {
     throw new Error("Permission denied: project registry is admin-only")
   }
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const existing = await db
     .select({ id: projects.id })
@@ -270,7 +266,7 @@ export async function updateProjectRegistry(
   formData: FormData
 ): Promise<UpdateResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -282,9 +278,6 @@ export async function updateProjectRegistry(
       }
     }
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select({ id: projects.id, projectNumber: projects.projectNumber })

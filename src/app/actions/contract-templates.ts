@@ -34,6 +34,7 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const WARRANTY_MANUAL_URL =
   "https://drive.google.com/file/d/1ArwPZO9qH1sLkKkSHftK9nNg6hHCkj95/view"
@@ -130,12 +131,10 @@ async function templateManagementContext(): Promise<{
 export async function getContractTemplateLibrary(): Promise<
   readonly ContractTemplateLibraryItem[]
 > {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "budget", "read")
   if (!isInternalStaffRole(user.role)) return []
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const templates = await db
     .select()
     .from(contractDocumentTemplates)

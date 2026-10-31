@@ -9,7 +9,6 @@ import {
   projectTemplateVersions,
   scheduleTemplateItems
 } from "@/db/schema-templates"
-import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -22,6 +21,7 @@ import {
   resolveTemplateSchedulePhase
 } from "@/lib/templates/template-creation-import"
 import { SAVED_SCHEDULE_TEMPLATE_KIND } from "@/lib/templates/schedule-template-capture"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ScheduleTemplateImportTodo = {
   readonly id: string
@@ -115,15 +115,13 @@ async function publishedTemplateVersions(
 export async function getScheduleTemplateImportOptions(): Promise<
   readonly ScheduleTemplateImportGroup[]
 > {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "schedule", "read")
   ensureInternalUser(user.role)
   const organizationId = requireOrg(user)
   const versions = await publishedTemplateVersions(organizationId)
   if (versions.length === 0) return []
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const versionIds = versions.map((version) => version.versionId)
   const [scheduleItems, taskItems] = await Promise.all([
     db
@@ -184,15 +182,13 @@ export async function getScheduleTemplateImportOptions(): Promise<
 export async function getFinishSelectionTemplateImportOptions(): Promise<
   readonly FinishSelectionTemplateImportGroup[]
 > {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "finish-selections", "read")
   ensureInternalUser(user.role)
   const organizationId = requireOrg(user)
   const versions = await publishedTemplateVersions(organizationId)
   if (versions.length === 0) return []
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const contentItems = await db
     .select()
     .from(projectTemplateContentItems)

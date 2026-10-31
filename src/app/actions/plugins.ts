@@ -1,16 +1,14 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
 import {
   plugins,
   pluginConfig,
   pluginEvents,
 } from "@/db/schema-plugins"
-import { getCurrentUser } from "@/lib/auth"
 import { fetchSkillFromGitHub } from "@/lib/agent/plugins/skills-client"
 import { isDemoUser } from "@/lib/demo"
+import { userContext } from "@/lib/server/action-context"
 
 function skillId(source: string): string {
   return "skill-" + source.replace(/\//g, "-").toLowerCase()
@@ -20,15 +18,13 @@ export async function installSkill(source: string): Promise<
   | { readonly success: true; readonly plugin: { readonly id: string; readonly name: string } }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { user, db } = context.data
 
   if (isDemoUser(user.id)) {
     return { success: false, error: "DEMO_READ_ONLY" }
   }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const id = skillId(source)
   const now = new Date().toISOString()
@@ -102,15 +98,13 @@ export async function uninstallSkill(pluginId: string): Promise<
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { user, db } = context.data
 
   if (isDemoUser(user.id)) {
     return { success: false, error: "DEMO_READ_ONLY" }
   }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const existing = await db.query.plugins.findFirst({
     where: (p, { eq: e }) => e(p.id, pluginId),
@@ -139,15 +133,14 @@ export async function toggleSkill(
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { user, db } = context.data
 
   if (isDemoUser(user.id)) {
     return { success: false, error: "DEMO_READ_ONLY" }
   }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const now = new Date().toISOString()
 
   const existing = await db.query.plugins.findFirst({
@@ -198,11 +191,9 @@ export async function getInstalledSkills(): Promise<
     }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { db } = context.data
 
   const rows = await db
     .select()

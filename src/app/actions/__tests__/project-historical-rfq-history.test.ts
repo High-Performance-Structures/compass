@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   requireFeaturePermission: vi.fn(),
 }))
 
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/demo", () => ({ isDemoUser: mocks.isDemoUser }))

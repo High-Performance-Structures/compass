@@ -12,8 +12,7 @@ import {
   staffMessageRecords,
   users,
 } from "@/db/schema"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import {
   buildGotoStaffMessageDraft,
   buildStaffMessageAssignmentNotification,
@@ -35,6 +34,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { countStaleMessagesForUser } from "@/lib/staff-message-desk/stale-reminders"
 import { clearStaleMessageReminders } from "@/lib/notifications/clear-on-read"
 import { insertStaffMessageEvents, insertStaffMessageRecords, updateStaffMessageRecords } from "@/lib/domain/feedback/inbound-store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
 
@@ -147,13 +147,11 @@ async function staffMessageContext(): Promise<{
   readonly organizationId: string
   readonly user: AuthUser
 }> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!isStaffMessageDeskUser(deskUser(user))) {
     throw new Error("Staff Message Desk access is restricted to active internal staff")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const organization = await db
     .select({ id: organizations.id })
     .from(organizations)

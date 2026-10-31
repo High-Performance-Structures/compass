@@ -2,15 +2,13 @@
 
 import { eq } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { userSchedulePreferences } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import {
   DEFAULT_GANTT_SCROLL_MODE,
   isGanttScrollMode,
   type GanttScrollMode,
 } from "@/lib/schedule/gantt-interaction-mode"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type UserSchedulePreferences = {
   readonly ganttScrollMode: GanttScrollMode
@@ -22,9 +20,7 @@ const defaultPreferences: UserSchedulePreferences = {
 
 export async function getUserSchedulePreferences(): Promise<UserSchedulePreferences> {
   try {
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const row = await db
       .select({ ganttScrollMode: userSchedulePreferences.ganttScrollMode })
       .from(userSchedulePreferences)

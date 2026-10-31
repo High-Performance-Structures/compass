@@ -1,8 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq, and, asc, desc } from "drizzle-orm"
-import { getDb } from "@/db"
 import {
   internalContacts,
   organizationMembers,
@@ -11,7 +9,6 @@ import {
   vendors,
   type Vendor,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
@@ -38,6 +35,7 @@ import {
   sameSageLinkedVendorContacts,
 } from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -141,12 +139,9 @@ function normalizedContactInputs(
 }
 
 export async function getVendors(): Promise<VendorDirectoryCompany[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "vendors", "read")
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const [vendorRows, contactRows] = await Promise.all([
     db
@@ -205,12 +200,9 @@ export async function getVendors(): Promise<VendorDirectoryCompany[]> {
 export async function getInternalDirectoryContacts(): Promise<
   readonly InternalDirectoryContact[]
 > {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "internal-directory", "read")
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const directoryRows = await db
     .select({
@@ -273,15 +265,12 @@ export async function createVendor(
   data: VendorCompanyMutationInput
 ): Promise<VendorMutationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     await requireFeaturePermission(user, "vendors", "create")
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const name = data.name.trim()
     const category = data.category.trim()
@@ -339,15 +328,12 @@ export async function updateVendor(
   data: VendorCompanyUpdateInput
 ): Promise<VendorUpdateResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select()
@@ -565,15 +551,13 @@ export async function createVendorContact(
   input: VendorContactMutationInput
 ): Promise<VendorContactMutationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
     const name = input.name.trim()
     if (!name) return { success: false, error: "Contact name is required" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const vendor = await db
       .select({ id: vendors.id, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
       .from(vendors)
@@ -629,16 +613,13 @@ export async function createVendorContact(
 
 export async function deleteVendor(id: string) {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     await requireFeaturePermission(user, "vendors", "delete")
     requirePermission(user, "vendor", "delete")
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db.select({ mergedIntoVendorId: vendors.mergedIntoVendorId })
       .from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId))).get()

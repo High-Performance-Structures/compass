@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   recordActivityEvent: vi.fn(), createNotificationEvent: vi.fn(),
   revalidatePath: vi.fn(), isInternalStaffRole: vi.fn(), updateSet: vi.fn(),
 }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))

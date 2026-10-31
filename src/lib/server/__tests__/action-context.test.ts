@@ -26,7 +26,7 @@ vi.mock("@/db", () => ({ getDb: () => fakeDb.db }))
 
 import type { AuthUser } from "@/lib/auth"
 import { DEMO_ORG_ID, DEMO_USER_ID } from "@/lib/demo"
-import { orgContext, projectContext } from "@/lib/server/action-context"
+import { orgContext, projectContext, userContext } from "@/lib/server/action-context"
 
 const staff: AuthUser = {
   id: "user-1",
@@ -45,6 +45,29 @@ const staff: AuthUser = {
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 }
+
+describe("userContext", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getCurrentUser.mockResolvedValue(staff)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+    mocks.canFeature.mockResolvedValue(true)
+  })
+
+  it("allows a signed-in user without an active organization", async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ ...staff, organizationId: null })
+    expect(await userContext()).toMatchObject({ success: true, data: { organizationId: null, db: fakeDb.db } })
+  })
+
+  it("still refuses signed-out users, missing storage, and demo writes", async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce(null)
+    expect(await userContext()).toEqual({ success: false, error: "Unauthorized" })
+    mocks.getCloudflareContext.mockResolvedValueOnce({ env: {} })
+    expect(await userContext()).toEqual({ success: false, error: "Database not available" })
+    mocks.getCurrentUser.mockResolvedValueOnce({ ...staff, id: DEMO_USER_ID, organizationId: null })
+    expect(await userContext({ mutation: true })).toEqual({ success: false, error: "DEMO_READ_ONLY" })
+  })
+})
 
 describe("orgContext", () => {
   beforeEach(() => {

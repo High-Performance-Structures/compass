@@ -8,7 +8,6 @@ import {
   jarvisBridgeEvents,
 } from "@/db/schema-jarvis"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import {
   confirmedFeedbackReportFromPayload,
   feedbackCandidateFromReport,
@@ -23,6 +22,7 @@ import {
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageUserAccessRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type FeedbackRequestScope = "mine" | "all"
 
@@ -191,10 +191,8 @@ export async function getMyFeedbackRequests(
   scope: FeedbackRequestScope = "mine",
 ): Promise<MyFeedbackRequestsResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const { email, googleEmail } = normalizedUserEmails(user)
 
     const canViewAll = canViewAllRequests(user.role)
@@ -234,11 +232,9 @@ export async function getMyFeedbackRequest(
   requestId: string,
 ): Promise<MyFeedbackRequestResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = requireOrg(user)
     const { email, googleEmail } = normalizedUserEmails(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const row = await db
       .select(requestSelection)
       .from(feedbackDeskItems)
@@ -291,11 +287,9 @@ export async function refreshMyFeedbackRequests(
   scope: FeedbackRequestScope = "mine",
 ): Promise<FeedbackRefreshResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     const organizationId = requireOrg(user)
     const { email, googleEmail } = normalizedUserEmails(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const recoveredCount = await recoverConfirmedFeedbackRequests(db, {
       userId: user.id,
       organizationId,

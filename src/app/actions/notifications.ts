@@ -48,6 +48,7 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { isValidTimeZone } from "@/lib/work-calendar"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -279,9 +280,7 @@ export async function updateNotificationPreferences(
         error: "Choose valid SMS quiet-hour start and end times.",
       }
     }
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const now = new Date().toISOString()
     const smsPhoneNumber = input.smsPhoneNumber?.trim() || null
     const wantsSms = input.smsEnabled
@@ -364,10 +363,8 @@ export async function updateNotificationPreferences(
 export async function sendTestSmsNotification(): Promise<NotificationSmsTestResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const now = new Date().toISOString()
     const preferences = await db
       .select()
@@ -563,9 +560,7 @@ export async function markNotificationRead(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
     await markNotificationRecipientRead(db, {
@@ -593,9 +588,7 @@ export async function markAllNotificationsRead(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
     await markAllNotificationRecipientsRead(db, {
@@ -642,9 +635,7 @@ export async function setNotificationsDismissed(
     ) {
       return { success: false, error: "Choose up to 100 notifications." }
     }
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
     await setNotificationRecipientsDismissed(db, {
@@ -669,9 +660,7 @@ export async function dismissReadNotifications(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     await dismissReadNotificationRecipients(db, {
       userId: user.id,

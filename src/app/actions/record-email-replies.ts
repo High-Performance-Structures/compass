@@ -2,13 +2,11 @@
 
 import { and, desc, eq } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { emailReplyThreads, inboundEmails, projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type RecordEmailReplyItem = {
   readonly id: string
@@ -24,12 +22,10 @@ export async function getProjectRecordEmailReplies(
   projectId: string,
   kind: "rfq" | "purchase_order"
 ): Promise<readonly RecordEmailReplyItem[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, kind === "rfq" ? "rfqs" : "purchase-orders", "read")
   if (!isInternalStaffRole(user.role)) return []
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const rows = await db
     .select({
       id: inboundEmails.id,

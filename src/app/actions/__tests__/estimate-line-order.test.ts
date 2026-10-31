@@ -6,7 +6,7 @@ import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } fro
 
 const mocks = vi.hoisted(() => ({ getDb: vi.fn(), requireAuth: vi.fn(), requirePermission: vi.fn(), assertProjectAccess: vi.fn(), recordActivityEvent: vi.fn(), context: vi.fn(), revalidate: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))

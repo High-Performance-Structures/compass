@@ -27,6 +27,7 @@ import { sageContactKindSchema, sageContactOrganizationMatches, sageContactSnaps
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { SAGE_LINK_CANDIDATE_MAX_AGE_MS, sageContactLinkCandidateError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, sageLinkReadbackRefreshReason } from "@/lib/sage/contact-link-review"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type LinkResult =
   | { readonly success: true; readonly id: string; readonly status: string; readonly disposition?: "new" | "existing" | "refreshed" }
@@ -198,11 +199,9 @@ export async function requestSageContactLinkCandidate(
 }
 
 export async function listSageContactLinkCandidates(): Promise<readonly SageContactLinkCandidate[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "sage-contact-review", "read")
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const canSeeEmployee = await requireFeaturePermission(user, "employee-contact-private", "read")
     .then(() => true).catch(() => false)
   const canSeeClients = await requireFeaturePermission(user, "customers", "read")

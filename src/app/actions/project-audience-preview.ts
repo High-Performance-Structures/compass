@@ -34,8 +34,6 @@ import { channelMembers, channels } from "@/db/schema-conversations"
 import { scopedAudienceHref } from "@/lib/project-audience-request"
 import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import {
   canUseProjectAudience,
@@ -77,6 +75,7 @@ import {
   type PortalRfqScopeItem,
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -340,12 +339,10 @@ export async function getProjectAudienceOptions(
 ): Promise<readonly AudienceProjectOption[]> {
   const scope = await getProjectAudienceRequestScope()
   if (scope && (await resolveProjectAudienceViewer(scope.projectId, audience)).isPreview) return []
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", "read")
   if (isInternalStaffRole(user.role)) return []
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return loadAudienceProjectOptions({
     db,
     userId: user.id,
