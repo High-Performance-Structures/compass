@@ -1,6 +1,8 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
 import { rateBookEntries } from "./schema-rate-book"
+import { EQUIPMENT_LOG_STATUSES, EQUIPMENT_LOG_KINDS, type EquipmentLogKind, type EquipmentLogStatus } from "../lib/domain/field/statuses"
+export type { EquipmentLogKind, EquipmentLogStatus }
 
 /**
  * A company machine (loader, excavator). Its running rate comes from its rate
@@ -58,12 +60,6 @@ export const equipmentServiceItems = sqliteTable(
   (table) => [index("equipment_service_items_machine_idx").on(table.machineId),
     index("equipment_service_items_organization_id_idx").on(table.organizationId)],
 )
-
-export const EQUIPMENT_LOG_KINDS = ["hours", "fuel", "maintenance", "repair", "other"] as const
-export type EquipmentLogKind = (typeof EQUIPMENT_LOG_KINDS)[number]
-
-export const EQUIPMENT_LOG_STATUSES = ["pending", "approved", "rejected"] as const
-export type EquipmentLogStatus = (typeof EQUIPMENT_LOG_STATUSES)[number]
 
 /**
  * One machine log entry: hours on a job, a fill-up, a service or repair, or

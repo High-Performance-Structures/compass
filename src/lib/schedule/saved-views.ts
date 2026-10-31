@@ -1,5 +1,7 @@
 import { z } from "zod/v4"
 
+import type { SavedViewVisibility } from "@/lib/domain/settings/statuses"
+
 export const SCHEDULE_VIEW_PRESETS = [
   "all",
   "my-items",
@@ -59,7 +61,7 @@ export type ScheduleViewDefinition = z.infer<
 export type SavedScheduleViewData = {
   readonly id: string
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly ownerUserId: string
   readonly isOwner: boolean
   readonly definition: ScheduleViewDefinition

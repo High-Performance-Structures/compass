@@ -89,6 +89,76 @@ function typeEscapes(path, text) {
   return counts
 }
 
+/*
+ * Status and type values come from one list (section 3). A text column whose
+ * name ends in status, state, kind, type or role, or any column with an
+ * inline `enum: [...]`, must be typed with `enum: SHARED_LIST` (an imported
+ * `as const` array from its domain module). Columns whose values are data,
+ * not a fixed list, are exempt here with the reason. Keyed by
+ * `sql_table.sql_column`.
+ */
+export const STATUS_COLUMN_EXEMPTIONS = {
+  // Company-configured values: each company adds its own, so they are data.
+  "project_contacts.role": "free-text project role; staff can type a custom role",
+  "project_finish_selections.room_type": "room names are company and project data (custom rooms allowed)",
+  "project_finish_selection_rooms.room_type": "room names are company and project data (custom rooms allowed)",
+  "project_interactions.interaction_type": "companies add custom interaction types in Settings",
+  "vendor_trade_documents.doc_type": "trade document types are configured per company in Settings",
+  // Postal address regions, not statuses.
+  "customers.state": "postal address state or region",
+  "customers.billing_state": "postal address state or region",
+  "vendors.state": "postal address state or region",
+  "internal_contact_private_addresses.state": "postal address state or region",
+  "cherish_card_fulfillments.recipient_state": "postal address state or region",
+  "greeting_card_requests.recipient_state": "postal address state or region",
+  // File media types reported by the browser, Drive or a provider.
+  "buildertrend_staging_files.mime_type": "file MIME type",
+  "message_attachments.mime_type": "file MIME type",
+  "correspondence_attachments.content_type": "file MIME type",
+  "project_documents.source_mime_type": "file MIME type",
+  "project_videos.source_mime_type": "file MIME type",
+  "daily_log_photos.mime_type": "file MIME type",
+  "project_rfi_attachments.mime_type": "file MIME type",
+  "project_warranty_claim_attachments.mime_type": "file MIME type",
+}
+
+const ENUM_COLUMN_NAME = /(?:^|_)(?:status|state|kind|type|role)$/
+const TEXT_COLUMN = /\btext\(\s*["'`]([a-z0-9_]+)["'`]\s*(?:,\s*(\{[^}]*\}))?\s*\)/g
+const SHARED_LIST_ENUM = /\benum:\s*([A-Z][A-Z0-9_]*)\b/
+
+/** Every enumerated text column in a schema file, and whether it uses a shared list. */
+export function enumeratedSchemaColumns(text) {
+  const tables = [...text.matchAll(/sqliteTable\(\s*["'`]([A-Za-z0-9_]+)["'`]/g)].map((match) => ({
+    name: match[1],
+    index: match.index,
+  }))
+  const columns = []
+  for (const match of text.matchAll(TEXT_COLUMN)) {
+    const column = match[1]
+    const options = match[2] ?? ""
+    const table = tables.filter((entry) => entry.index < match.index).at(-1)?.name ?? "?"
+    const listName = options.match(SHARED_LIST_ENUM)?.[1] ?? null
+    const listed = listName !== null
+    const enumerated = listed || /\benum:/.test(options) || ENUM_COLUMN_NAME.test(column)
+    if (!enumerated) continue
+    const key = `${table}.${column}`
+    columns.push({ key, table, column, listName, listed, exempt: !listed && Object.hasOwn(STATUS_COLUMN_EXEMPTIONS, key) })
+  }
+  return columns
+}
+
+/** Enumerated columns per schema file that are neither on a shared list nor exempt. */
+function statusColumnsWithoutList(root, files) {
+  const counts = {}
+  for (const path of files) {
+    if (!/^src\/db\/schema.*\.ts$/.test(path)) continue
+    const text = readFileSync(join(root, path), "utf8")
+    const missing = enumeratedSchemaColumns(text).filter((column) => !column.listed && !column.exempt).length
+    if (missing > 0) counts[path] = missing
+  }
+  return counts
+}
+
 /** Every ratchet metric, keyed by rule. */
 function schemaTables(root, files) {
   const names = new Set()
@@ -195,6 +265,7 @@ export function computeArchitectureMetrics(root) {
     typeAssertions: sorted(typeAssertions),
     nonNullAssertions: sorted(nonNullAssertions),
     explicitAny: sorted(explicitAny),
+    statusColumnsWithoutList: sorted(statusColumnsWithoutList(root, files)),
   }
 }
 
@@ -210,4 +281,5 @@ export const ARCHITECTURE_RULES = {
   typeAssertions: "No `as` type assertions (`as const` is fine): narrow with a type guard or fix the types (conventions: no `as`).",
   nonNullAssertions: "No non-null `!` assertions: check for null explicitly (conventions: no `!`).",
   explicitAny: "No `any`: use `unknown` and narrow (conventions: no `any`).",
+  statusColumnsWithoutList: "Type every status, state, kind, type or role column with `enum:` from a shared `as const` list in its domain module, or exempt it in STATUS_COLUMN_EXEMPTIONS with the reason when its values are company data (section 3).",
 }

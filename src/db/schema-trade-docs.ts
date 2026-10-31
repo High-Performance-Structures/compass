@@ -2,6 +2,7 @@ import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } 
 import { sql } from "drizzle-orm"
 
 import { organizations, projects, users, vendors } from "./schema"
+import { TRADE_LETTER_KINDS, TRADE_LETTER_STATUSES } from "../lib/domain/trade-letters/statuses"
 
 /**
  * A trade document received from a vendor. The file itself lives in Google
@@ -102,10 +103,10 @@ export const tradeLetters = sqliteTable(
     vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
     vendorName: text("vendor_name").notNull(),
     /** "intent" or "award". */
-    kind: text("kind").notNull(),
+    kind: text("kind", { enum: TRADE_LETTER_KINDS }).notNull(),
     letterNumber: text("letter_number").notNull(),
     /** "draft", "preparing", "sent", "signed", "declined" or "cancelled". */
-    status: text("status").notNull().default("draft"),
+    status: text("status", { enum: TRADE_LETTER_STATUSES }).notNull().default("draft"),
     /** { costCode, description, amountCents }[] awarded by this letter. */
     scopeJson: text("scope_json").notNull(),
     totalCents: integer("total_cents").notNull(),

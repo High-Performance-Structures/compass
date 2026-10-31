@@ -1,9 +1,7 @@
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
 import { formatCents } from "@/lib/format"
-
-/** reserved: planned, not yet out. out: signed out to the job. returned: checked back in. */
-const BRACING_RENTAL_STATUSES = ["reserved", "out", "returned"] as const
-export type BracingRentalStatus = (typeof BRACING_RENTAL_STATUSES)[number]
+import { BRACING_RENTAL_STATUSES, type BracingRentalStatus } from "@/lib/domain/nutech/statuses"
+export type { BracingRentalStatus }
 
 export function isBracingRentalStatus(value: string): value is BracingRentalStatus {
   return BRACING_RENTAL_STATUSES.some((status) => status === value)

@@ -10,6 +10,31 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
+import {
+  DELIVERY_METHODS,
+  PORTFOLIO_MAP_VISIBILITIES,
+  PROJECT_CLIENT_STATUSES,
+  PROJECT_DEPARTMENTS,
+  PROJECT_DUPLICATE_DECISION_STATUSES,
+  PROJECT_LODGING_CHOICES,
+  PROJECT_NUMBER_REVIEW_STATUSES,
+  SITE_LOCATION_STATUSES,
+  WORKSPACE_KINDS,
+} from "../lib/domain/project/statuses"
+import { CHANGE_ORDER_KINDS, CHANGE_ORDER_STATUSES } from "../lib/domain/estimates/statuses"
+import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "../lib/domain/identity/statuses"
+import { FEEDBACK_TYPES, STAFF_MESSAGE_STATUSES } from "../lib/domain/feedback/statuses"
+import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
+import { SAVED_VIEW_SCOPES, SAVED_VIEW_VISIBILITIES } from "../lib/domain/settings/statuses"
+import { PROJECT_CONTACT_TYPES } from "../lib/domain/contacts/statuses"
+import {
+  DEPENDENCY_TYPES,
+  SCHEDULE_TASK_STATUSES,
+  STORED_SCHEDULE_LINK_TYPES,
+  WORKDAY_EXCEPTION_TYPES,
+} from "../lib/domain/schedule/statuses"
+import { WORK_CALENDAR_EVENT_TYPES, WORK_CALENDAR_EVENT_VISIBILITIES } from "../lib/domain/work-calendar/statuses"
+
 // Auth and user management tables
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(), // workos user id
@@ -22,7 +47,7 @@ export const users = sqliteTable("users", {
   avatarUrl: text("avatar_url"),
   dashboardDeskPhotoUrl: text("dashboard_desk_photo_url"),
   sidebarDeskPhotoUrl: text("sidebar_desk_photo_url"),
-  role: text("role").notNull().default("office"), // admin, office, field, client
+  role: text("role", { enum: STORED_USER_ROLES }).notNull().default("office"),
   googleEmail: text("google_email"), // override for google workspace impersonation
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   lastLoginAt: text("last_login_at"),
@@ -44,7 +69,7 @@ export const accountDeletionRequests = sqliteTable(
     // must be cleared when deletion completes.
     emailSnapshot: text("email_snapshot"),
     displayNameSnapshot: text("display_name_snapshot"),
-    status: text("status").notNull().default("pending"),
+    status: text("status", { enum: ACCOUNT_DELETION_REQUEST_STATUSES }).notNull().default("pending"),
     requestedAt: text("requested_at").notNull(),
     processingStartedAt: text("processing_started_at"),
     processingStartedBy: text("processing_started_by").references(
@@ -89,7 +114,7 @@ export const organizationMembers = sqliteTable("organization_members", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  role: text("role").notNull(),
+  role: text("role", { enum: USER_ROLES }).notNull(),
   joinedAt: text("joined_at").notNull(),
 }, (table) => [
   // Resolved on every authenticated request (current user's memberships).
@@ -580,7 +605,7 @@ export const organizationInvites = sqliteTable("organization_invites", {
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
   code: text("code").notNull().unique(),
-  role: text("role").notNull().default("office"),
+  role: text("role", { enum: USER_ROLES }).notNull().default("office"),
   maxUses: integer("max_uses"),
   useCount: integer("use_count").notNull().default(0),
   expiresAt: text("expires_at"),
@@ -630,7 +655,7 @@ export const rolePermissionOverrides = sqliteTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
+    role: text("role", { enum: USER_ROLES }).notNull(),
     featureId: text("feature_id").notNull(),
     accessLevel: text("access_level").notNull(),
     createdBy: text("created_by").references(() => users.id, {
@@ -724,7 +749,7 @@ export const permissionAuditEvents = sqliteTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     scope: text("scope").notNull(),
-    role: text("role"),
+    role: text("role", { enum: USER_ROLES }),
     teamId: text("team_id").references(() => teams.id, {
       onDelete: "set null",
     }),
@@ -797,13 +822,13 @@ export const groupMembers = sqliteTable("group_members", {
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   projectNumber: text("project_number"),
-  department: text("department", { enum: ["O", "H", "N", "D"] }),
+  department: text("department", { enum: PROJECT_DEPARTMENTS }),
   name: text("name").notNull(),
   status: text("status").notNull().default("OPEN"),
   // `address` remains the project/site address for compatibility with existing data.
   address: text("address"),
   mailingAddress: text("mailing_address"),
-  clientStatus: text("client_status").notNull().default("customer"),
+  clientStatus: text("client_status", { enum: PROJECT_CLIENT_STATUSES }).notNull().default("customer"),
   jobStatusId: text("job_status_id").notNull().default("current"),
   // Fallback copy, not a snapshot: the client name as typed or imported. Reads
   // prefer the linked directory client (clientCustomerId) and fall back to it.
@@ -816,7 +841,7 @@ export const projects = sqliteTable("projects", {
    * Office), "field" for crew work at the yard or generic order help.
    * Null for every client project.
    */
-  workspaceKind: text("workspace_kind", { enum: ["office", "executive", "field"] }),
+  workspaceKind: text("workspace_kind", { enum: WORKSPACE_KINDS }),
   /**
    * Listed under the company's Internal department on the Project Hub rather
    * than its own department. Only internal workspaces set it; a workspace can
@@ -849,9 +874,7 @@ export const projects = sqliteTable("projects", {
   publicTitle: text("public_title"),
   publicLocationCity: text("public_location_city"),
   /** Portfolio map override: "default" follows status and department rules. */
-  portfolioMapVisibility: text("portfolio_map_visibility", {
-    enum: ["default", "shown", "hidden"],
-  })
+  portfolioMapVisibility: text("portfolio_map_visibility", { enum: PORTFOLIO_MAP_VISIBILITIES })
     .notNull()
     .default("default"),
   schedulePublished: integer("schedule_published", { mode: "boolean" })
@@ -866,12 +889,12 @@ export const projects = sqliteTable("projects", {
   siteLongitude: real("site_longitude"),
   siteElevationFt: integer("site_elevation_ft"),
   siteLocationAddress: text("site_location_address"),
-  siteLocationStatus: text("site_location_status", { enum: ["found", "not_found"] }),
+  siteLocationStatus: text("site_location_status", { enum: SITE_LOCATION_STATUSES }),
   siteLocatedAt: text("site_located_at"),
   /** Set when the site was placed from a nearby number or the street, e.g. "Near 1062 CR 8952". */
   siteLocationNote: text("site_location_note"),
   /** Material sales: delivered to the project address, or picked up by the customer. */
-  deliveryMethod: text("delivery_method", { enum: ["delivery", "pickup"] }),
+  deliveryMethod: text("delivery_method", { enum: DELIVERY_METHODS }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [
@@ -912,7 +935,7 @@ export const projectTravelChargeOverrides = sqliteTable(
     zoneRateCents: integer("zone_rate_cents"),
     siteElevationFt: integer("site_elevation_ft"),
     mountainRateCents: integer("mountain_rate_cents"),
-    lodging: text("lodging", { enum: ["default", "yes", "no"] }).notNull().default("default"),
+    lodging: text("lodging", { enum: PROJECT_LODGING_CHOICES }).notNull().default("default"),
     lodgingPerNightCents: integer("lodging_per_night_cents"),
     perDiemPerDayCents: integer("per_diem_per_day_cents"),
     note: text("note"),
@@ -1012,7 +1035,7 @@ export const projectDuplicateDecisions = sqliteTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     projectAId: text("project_a_id").notNull(),
     projectBId: text("project_b_id").notNull(),
-    status: text("status", { enum: ["not_duplicate", "merged"] }).notNull(),
+    status: text("status", { enum: PROJECT_DUPLICATE_DECISION_STATUSES }).notNull(),
     keptProjectId: text("kept_project_id"),
     removedProjectId: text("removed_project_id"),
     score: integer("score").notNull(),
@@ -1060,7 +1083,7 @@ export const projectNumberReviewDecisions = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
     projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
     projectNumber: text("project_number").notNull(),
-    status: text("status", { enum: ["approved_exception"] }).notNull(),
+    status: text("status", { enum: PROJECT_NUMBER_REVIEW_STATUSES }).notNull(),
     resolvedByUserId: text("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
     resolvedAt: text("resolved_at").notNull(),
     createdAt: text("created_at").notNull(),
@@ -1334,7 +1357,7 @@ export const staffMessageRecords = sqliteTable(
       onDelete: "set null",
     }),
     /** See STAFF_MESSAGE_STATUSES (migration 0111 adds the CHECK). */
-    status: text("status").notNull().default("new"),
+    status: text("status", { enum: STAFF_MESSAGE_STATUSES }).notNull().default("new"),
     statusChangedAt: text("status_changed_at"),
     /** Last status change, note or reassignment; null means use updated_at. */
     lastActivityAt: text("last_activity_at"),
@@ -1385,8 +1408,8 @@ export const staffMessageEvents = sqliteTable(
     }),
     actorName: text("actor_name").notNull(),
     eventType: text("event_type").notNull(),
-    fromStatus: text("from_status"),
-    toStatus: text("to_status"),
+    fromStatus: text("from_status", { enum: STAFF_MESSAGE_STATUSES }),
+    toStatus: text("to_status", { enum: STAFF_MESSAGE_STATUSES }),
     fromAssigneeUserId: text("from_assignee_user_id"),
     toAssigneeUserId: text("to_assignee_user_id"),
     note: text("note"),
@@ -1654,7 +1677,7 @@ export const projectSavedViews = sqliteTable(
     organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
     ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    visibility: text("visibility", { enum: ["personal", "shared"] }).notNull().default("personal"),
+    visibility: text("visibility", { enum: SAVED_VIEW_VISIBILITIES }).notNull().default("personal"),
     definition: text("definition").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1676,7 +1699,7 @@ export const scheduleSavedViews = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    visibility: text("visibility").notNull().default("personal"),
+    visibility: text("visibility", { enum: SAVED_VIEW_VISIBILITIES }).notNull().default("personal"),
     definition: text("definition").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1693,10 +1716,6 @@ export const scheduleSavedViews = sqliteTable(
 
 export type ScheduleSavedView = typeof scheduleSavedViews.$inferSelect
 
-/** The screens a saved view can filter. A new scope is a value here plus a zod schema in its caller. */
-export const SAVED_VIEW_SCOPES = ["projects", "schedule"] as const
-export type SavedViewScope = (typeof SAVED_VIEW_SCOPES)[number]
-export const SAVED_VIEW_VISIBILITIES = ["personal", "shared"] as const
 
 /**
  * Named filter views for every screen (migration 0282). Replaces
@@ -2074,8 +2093,8 @@ export const workCalendarEvents = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title").notNull(),
-    eventType: text("event_type").notNull().default("meeting"),
-    visibility: text("visibility").notNull().default("organization"),
+    eventType: text("event_type", { enum: WORK_CALENDAR_EVENT_TYPES }).notNull().default("meeting"),
+    visibility: text("visibility", { enum: WORK_CALENDAR_EVENT_VISIBILITIES }).notNull().default("organization"),
     description: text("description"),
     startDate: text("start_date"),
     endDateExclusive: text("end_date_exclusive"),
@@ -2708,7 +2727,7 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   productUrl: text("product_url"),
   costCode: text("cost_code"),
   phaseCode: text("phase_code"),
-  status: text("status").notNull().default("needed"),
+  status: text("status", { enum: PROJECT_SELECTION_STATUSES }).notNull().default("needed"),
   ownerVisible: integer("owner_visible", { mode: "boolean" })
     .notNull()
     .default(false),
@@ -3005,7 +3024,7 @@ export const projectChangeOrders = sqliteTable(
     reason: text("reason"),
     amountCents: integer("amount_cents"),
     scheduleImpactDays: integer("schedule_impact_days"),
-    status: text("status").notNull().default("draft"),
+    status: text("status", { enum: CHANGE_ORDER_STATUSES }).notNull().default("draft"),
     audience: text("audience").notNull().default("internal"),
     requesterType: text("requester_type").notNull(),
     requesterUserId: text("requester_user_id").references(() => users.id, {
@@ -3019,7 +3038,7 @@ export const projectChangeOrders = sqliteTable(
     internalNotes: text("internal_notes"),
     budgetTreatment: text("budget_treatment").notNull().default("additive"),
     // See src/lib/change-orders/kinds.ts; NULL for older recorded change orders.
-    changeOrderKind: text("change_order_kind"),
+    changeOrderKind: text("change_order_kind", { enum: CHANGE_ORDER_KINDS }),
     baselineEstimateId: text("baseline_estimate_id"),
     replacementEstimateId: text("replacement_estimate_id"),
     rebaselineExecutionToken: text("rebaseline_execution_token"),
@@ -3154,8 +3173,8 @@ export const projectChangeOrderHistory = sqliteTable(
       .notNull()
       .references(() => projectChangeOrders.id, { onDelete: "cascade" }),
     eventType: text("event_type").notNull(),
-    fromStatus: text("from_status"),
-    toStatus: text("to_status"),
+    fromStatus: text("from_status", { enum: CHANGE_ORDER_STATUSES }),
+    toStatus: text("to_status", { enum: CHANGE_ORDER_STATUSES }),
     actorUserId: text("actor_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -3179,7 +3198,7 @@ export const projectContacts = sqliteTable("project_contacts", {
   projectId: text("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
-  contactType: text("contact_type").notNull(), // owner, supplier, subcontractor, internal
+  contactType: text("contact_type", { enum: PROJECT_CONTACT_TYPES }).notNull(),
   sourceSystem: text("source_system").notNull().default("compass"),
   sourceRecordId: text("source_record_id"),
   sourceEntityType: text("source_entity_type").notNull().default("manual"),
@@ -3528,7 +3547,7 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   endTime: text("end_time"),
   phase: text("phase").notNull(),
   displayColor: text("display_color").notNull().default("blue"),
-  status: text("status").notNull().default("PENDING"),
+  status: text("status", { enum: SCHEDULE_TASK_STATUSES }).notNull().default("PENDING"),
   isCriticalPath: integer("is_critical_path", { mode: "boolean" })
     .notNull()
     .default(false),
@@ -3580,7 +3599,7 @@ export const scheduleTaskLinks = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    resourceType: text("resource_type").notNull(),
+    resourceType: text("resource_type", { enum: STORED_SCHEDULE_LINK_TYPES }).notNull(),
     resourceId: text("resource_id"),
     label: text("label").notNull(),
     href: text("href").notNull(),
@@ -3679,7 +3698,7 @@ export const taskDependencies = sqliteTable("task_dependencies", {
   successorId: text("successor_id")
     .notNull()
     .references(() => scheduleTasks.id, { onDelete: "cascade" }),
-  type: text("type").notNull().default("FS"),
+  type: text("type", { enum: DEPENDENCY_TYPES }).notNull().default("FS"),
   lagDays: integer("lag_days").notNull().default(0),
 },
   (table) => [
@@ -3695,7 +3714,7 @@ export const workdayExceptions = sqliteTable("workday_exceptions", {
   title: text("title").notNull(),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
-  type: text("type").notNull().default("non_working"),
+  type: text("type", { enum: WORKDAY_EXCEPTION_TYPES }).notNull().default("non_working"),
   category: text("category").notNull().default("company_holiday"),
   recurrence: text("recurrence").notNull().default("one_time"),
   notes: text("notes"),
@@ -4165,7 +4184,7 @@ export type SageCostCode = typeof sageCostCodes.$inferSelect
 export type NewSageCostCode = typeof sageCostCodes.$inferInsert
 export const feedback = sqliteTable("feedback", {
   id: text("id").primaryKey(),
-  type: text("type").notNull(),
+  type: text("type", { enum: FEEDBACK_TYPES }).notNull(),
   message: text("message").notNull(),
   name: text("name"),
   email: text("email"),

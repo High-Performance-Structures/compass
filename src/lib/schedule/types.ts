@@ -1,6 +1,6 @@
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED"
+import type { DependencyType, TaskStatus, WorkdayExceptionType } from "@/lib/domain/schedule/statuses"
 
-export type DependencyType = "FS" | "SS" | "FF" | "SF"
+export type { DependencyType, TaskStatus, WorkdayExceptionType }
 
 export type ConstructionPhase =
   | "preconstruction"
@@ -26,8 +26,6 @@ export type ExceptionCategory =
   | "extra_workday"
 
 export type ExceptionRecurrence = "one_time" | "yearly"
-
-export type WorkdayExceptionType = "non_working" | "working"
 
 export interface ScheduleTaskData {
   id: string

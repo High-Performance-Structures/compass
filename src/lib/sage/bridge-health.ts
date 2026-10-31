@@ -8,12 +8,12 @@ import {
   users,
 } from "@/db/schema"
 import { sageBridgeStatus } from "@/db/schema-sage"
+import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import { dismissNotificationRecipients } from "@/lib/domain/notifications/store"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 export const SAGE_BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
 
-const ADMIN_ROLES = ["admin", "secondary_admin"]
 const HEALTH_SOURCE_TYPE = "sage_bridge_health"
 const OFFLINE_EVENT_TYPE = "sage_bridge.offline"
 
@@ -155,7 +155,7 @@ export async function runSageBridgeHealthCheck(
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(
-      and(eq(users.isActive, true), inArray(users.role, ADMIN_ROLES))
+      and(eq(users.isActive, true), inArray(users.role, [...ADMIN_USER_ROLES]))
     )
   if (admins.length === 0) {
     return {

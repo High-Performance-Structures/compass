@@ -1,11 +1,5 @@
-const SCHEDULE_LINK_TYPES = [
-  "file",
-  "rfi",
-  "conversation",
-  "todo",
-] as const
-
-export type ScheduleLinkType = (typeof SCHEDULE_LINK_TYPES)[number]
+import { SCHEDULE_LINK_TYPES, type ScheduleLinkType } from "@/lib/domain/schedule/statuses"
+export type { ScheduleLinkType }
 
 export function isScheduleLinkType(value: string): value is ScheduleLinkType {
   return SCHEDULE_LINK_TYPES.some((linkType) => linkType === value)

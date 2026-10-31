@@ -1,7 +1,8 @@
 import { sql, type SQL } from "drizzle-orm"
 import { writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import type { CorrespondenceContext } from "./access"
-import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondencePerson } from "./types"
 
 export function correspondenceWriteGuard(ctx: CorrespondenceContext, input: {

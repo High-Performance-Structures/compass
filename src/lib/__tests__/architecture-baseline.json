@@ -1349,7 +1349,6 @@
     "src/lib/netsuite/client/suiteql-client.ts": 1,
     "src/lib/netsuite/sync/delta-sync.ts": 1,
     "src/lib/netsuite/sync/sync-engine.ts": 1,
-    "src/lib/paper-trail/print-token.ts": 1,
     "src/lib/paper-trail/sweep.ts": 1,
     "src/lib/schedule/appearance.ts": 2,
     "src/lib/schedule/gantt-transform.ts": 2,
@@ -1376,5 +1375,30 @@
     "src/lib/sync/engine.ts": 4,
     "src/lib/sync/queue/mutation-queue.ts": 1
   },
-  "explicitAny": {}
+  "explicitAny": {},
+  "statusColumnsWithoutList": {
+    "src/db/schema-agent.ts": 1,
+    "src/db/schema-ai-config.ts": 1,
+    "src/db/schema-buildertrend.ts": 25,
+    "src/db/schema-contracts.ts": 3,
+    "src/db/schema-conversations.ts": 6,
+    "src/db/schema-correspondence-email.ts": 2,
+    "src/db/schema-correspondence.ts": 1,
+    "src/db/schema-documents.ts": 1,
+    "src/db/schema-estimates.ts": 7,
+    "src/db/schema-jarvis.ts": 6,
+    "src/db/schema-netsuite.ts": 10,
+    "src/db/schema-nutech.ts": 9,
+    "src/db/schema-participants.ts": 9,
+    "src/db/schema-plugins.ts": 3,
+    "src/db/schema-project-families.ts": 1,
+    "src/db/schema-rfqs.ts": 1,
+    "src/db/schema-sage.ts": 18,
+    "src/db/schema-selection-decisions.ts": 1,
+    "src/db/schema-social.ts": 3,
+    "src/db/schema-templates.ts": 8,
+    "src/db/schema-trade-docs.ts": 1,
+    "src/db/schema-warranty.ts": 5,
+    "src/db/schema.ts": 94
+  }
 }

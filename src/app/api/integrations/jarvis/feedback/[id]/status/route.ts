@@ -10,7 +10,7 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
-import { FEEDBACK_DESK_STATUSES } from "@/lib/jarvis/feedback-lifecycle"
+import { FEEDBACK_DESK_STATUSES } from "@/lib/domain/feedback/statuses"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
 import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"

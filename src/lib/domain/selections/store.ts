@@ -5,6 +5,12 @@ import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core
 import { projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
 import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
+
+import { PROJECT_SELECTION_STATUSES } from "./statuses"
+
+// Enumerated columns are checked against their shared list before every write.
+const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES }
 
 /*
  * The only code that inserts, updates or deletes project finish selections and their rooms
@@ -55,18 +61,22 @@ type FinishSelectionInsert = typeof projectFinishSelections.$inferInsert
 type FinishSelectionPatch = SQLiteUpdateSetSource<typeof projectFinishSelections>
 
 export function insertFinishSelectionStatement(db: Db, values: FinishSelectionInsert | readonly FinishSelectionInsert[]): Statement {
+  assertListFields("project_finish_selections", values, SELECTION_LISTS)
   return isRows(values) ? db.insert(projectFinishSelections).values([...values]) : db.insert(projectFinishSelections).values(values)
 }
 
 export async function insertFinishSelection(db: Db, values: FinishSelectionInsert | readonly FinishSelectionInsert[]): Promise<D1Result> {
+  assertListFields("project_finish_selections", values, SELECTION_LISTS)
   return isRows(values) ? db.insert(projectFinishSelections).values([...values]).run() : db.insert(projectFinishSelections).values(values).run()
 }
 
 export function updateFinishSelectionsStatement(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Statement {
+  assertListFields("project_finish_selections", patch, SELECTION_LISTS)
   return db.update(projectFinishSelections).set(patch).where(where)
 }
 
 export async function updateFinishSelections(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Promise<D1Result> {
+  assertListFields("project_finish_selections", patch, SELECTION_LISTS)
   return db.update(projectFinishSelections).set(patch).where(where).run()
 }
 

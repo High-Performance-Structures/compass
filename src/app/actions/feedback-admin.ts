@@ -16,9 +16,9 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isFeatureImplementationStatus } from "@/lib/jarvis/feedback-feature-priority"
 import {
-  FEEDBACK_DESK_STATUSES,
   feedbackIsOverdue,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { FEEDBACK_DESK_STATUSES } from "@/lib/domain/feedback/statuses"
 import { runFeedbackMaintenance } from "@/lib/jarvis/feedback-maintenance"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"

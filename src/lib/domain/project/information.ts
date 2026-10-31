@@ -33,6 +33,7 @@ import {
   updateProjectExternalLinksStatement,
   updateProjectsStatement,
 } from "@/lib/domain/project/store"
+import { PROJECT_CLIENT_STATUSES } from "@/lib/domain/project/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
@@ -40,7 +41,6 @@ import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { isProjectDepartment, resolvedProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import {
-  PROJECT_CLIENT_STATUSES,
   buildProjectNumberWithAddressSuffix,
   legacyProjectStatusAfterClientUpdate,
   projectInteractionTypeLabel,

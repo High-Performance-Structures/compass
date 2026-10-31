@@ -1,7 +1,7 @@
 import "server-only"
 
 import { cache } from "react"
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -106,7 +106,8 @@ const loadPermissionOverrides = cache(
         .where(
           and(
             eq(rolePermissionOverrides.organizationId, organizationId),
-            eq(rolePermissionOverrides.role, role)
+            // The signed-in role is read as text, so compare it in SQL.
+            sql`${rolePermissionOverrides.role} = ${role}`
           )
         ),
       db

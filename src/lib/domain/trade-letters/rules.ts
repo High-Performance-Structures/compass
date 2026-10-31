@@ -28,11 +28,13 @@ export type TradeLetterSummary = {
 type LetterValues = Partial<typeof tradeLetters.$inferInsert>
 type TradeCodeLine ={ readonly costCode: string | null; readonly description: string; readonly amountCents: number }
 
-export function tradeLetterKindOf(letter: Pick<TradeLetter, "kind">): TradeLetterKind {
+/** Reads legacy or unknown stored values as a letter of intent. */
+export function tradeLetterKindOf(letter: { readonly kind: string }): TradeLetterKind {
   return letter.kind === "award" ? "award" : "intent"
 }
 
-export function tradeLetterStatusOf(letter: Pick<TradeLetter, "status">): TradeLetterStatus {
+/** Reads legacy or unknown stored values as a draft. */
+export function tradeLetterStatusOf(letter: { readonly status: string }): TradeLetterStatus {
   return isTradeLetterStatus(letter.status) ? letter.status : "draft"
 }
 

@@ -1,16 +1,5 @@
-export const FEEDBACK_DESK_STATUSES = [
-  "new",
-  "triaged",
-  "needs_info",
-  "planned",
-  "in_progress",
-  "testing",
-  "deployed",
-  "closed",
-] as const
-
-export type FeedbackDeskStatus =
-  (typeof FEEDBACK_DESK_STATUSES)[number]
+import { FEEDBACK_DESK_STATUSES, type FeedbackDeskStatus } from "@/lib/domain/feedback/statuses"
+export type { FeedbackDeskStatus }
 
 export const FEEDBACK_PRIORITIES = ["low", "normal", "high", "urgent"] as const
 export type FeedbackPriority = (typeof FEEDBACK_PRIORITIES)[number]

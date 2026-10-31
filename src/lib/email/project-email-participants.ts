@@ -2,7 +2,8 @@ import { and, eq, isNull, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { organizationMembers, organizations, projectMembers, users, notificationPreferences } from "@/db/schema"
 import { correspondenceParticipants } from "@/db/schema-correspondence"
-import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondencePerson } from "@/lib/correspondence/types"
 
 export async function activeProjectEmailParticipants(db: ReturnType<typeof getDb>, organizationId: string, projectId: string, conversationId: string): Promise<readonly (CorrespondencePerson & { readonly inApp: boolean })[]> {

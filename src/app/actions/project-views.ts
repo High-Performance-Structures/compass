@@ -3,6 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
+
+import { SAVED_VIEW_VISIBILITIES, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import { projectJobStatuses } from "@/db/schema"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { listVisibleSavedViews, readSavedViewDefault } from "@/lib/domain/settings/saved-views"
@@ -30,13 +32,13 @@ type MutationResult = { readonly success: true } | { readonly success: false; re
 type SaveViewInput = {
   readonly id: string | null
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly definition: ProjectViewDefinition | null
 }
 const saveSchema = z.object({
   id: z.string().min(1).max(200).nullable(),
   name: z.string().trim().min(1, "Enter a view name.").max(80),
-  visibility: z.enum(["personal", "shared"]),
+  visibility: z.enum(SAVED_VIEW_VISIBILITIES),
   // Null on an edit preserves the stored filters, even if a status was removed.
   definition: projectViewDefinitionSchema.nullable(),
 })

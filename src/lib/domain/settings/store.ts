@@ -21,12 +21,12 @@ import {
   savedViews,
   scheduleSavedViews,
   userViewPreferences,
-  type SavedViewScope,
 } from "@/db/schema"
 import { userProviderConfig } from "@/db/schema-ai-config"
 import { customDashboards } from "@/db/schema-dashboards"
 import { mcpApiKeys, type NewMcpApiKey } from "@/db/schema-mcp"
 import { customThemes, userThemePreference } from "@/db/schema-theme"
+import { SAVED_VIEW_VISIBILITIES, type SavedViewScope, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 type Statement = BatchItem<"sqlite">
@@ -337,7 +337,7 @@ type SavedViewContent = {
   readonly organizationId: string
   readonly ownerUserId: string
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly definition: string
   readonly createdAt: string
   readonly updatedAt: string
@@ -382,11 +382,11 @@ function mirrorScheduleSavedView(db: Db, id: string) {
       ownerUserId: scheduleSavedViews.ownerUserId,
       scope: sql<SavedViewScope>`'schedule'`.as("scope"),
       name: scheduleSavedViews.name,
-      visibility: sql<"personal" | "shared">`${scheduleSavedViews.visibility}`.as("visibility"),
+      visibility: sql<SavedViewVisibility>`${scheduleSavedViews.visibility}`.as("visibility"),
       definition: scheduleSavedViews.definition,
       createdAt: scheduleSavedViews.createdAt,
       updatedAt: scheduleSavedViews.updatedAt,
-    }).from(scheduleSavedViews).where(and(eq(scheduleSavedViews.id, id), inArray(scheduleSavedViews.visibility, ["personal", "shared"]))),
+    }).from(scheduleSavedViews).where(and(eq(scheduleSavedViews.id, id), inArray(scheduleSavedViews.visibility, [...SAVED_VIEW_VISIBILITIES]))),
   ).onConflictDoUpdate(MIRROR_ON_CONFLICT)
 }
 
@@ -415,7 +415,7 @@ export async function updateOwnedProjectSavedView(
     readonly organizationId: string
     readonly ownerUserId: string
     readonly name: string
-    readonly visibility: "personal" | "shared"
+    readonly visibility: SavedViewVisibility
     readonly definition?: string
     readonly updatedAt: string
   },
@@ -471,7 +471,7 @@ export async function insertScheduleSavedView(db: Db, row: SavedViewContent): Pr
 export async function updateScheduleSavedView(
   db: Db,
   viewId: string,
-  values: { readonly visibility: "personal" | "shared"; readonly definition: string; readonly updatedAt: string },
+  values: { readonly visibility: SavedViewVisibility; readonly definition: string; readonly updatedAt: string },
 ): Promise<void> {
   await db.batch([
     db.update(scheduleSavedViews).set(values).where(eq(scheduleSavedViews.id, viewId)),

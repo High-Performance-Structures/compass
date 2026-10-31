@@ -1,28 +1,11 @@
+import { WORK_CALENDAR_EVENT_VISIBILITIES, WORK_CALENDAR_EVENT_TYPES, type WorkCalendarEventType } from "@/lib/domain/work-calendar/statuses"
+export type { WorkCalendarEventType }
+
 export type WorkCalendarProjectIdentity = {
   readonly id: string
   readonly name: string
   readonly projectNumber: string | null
 }
-
-const WORK_CALENDAR_EVENT_TYPES = [
-  "meeting",
-  "appointment",
-  "inspection",
-  "delivery",
-  "company_event",
-  "absence",
-  "other",
-] as const
-
-export type WorkCalendarEventType =
-  (typeof WORK_CALENDAR_EVENT_TYPES)[number]
-
-const WORK_CALENDAR_EVENT_VISIBILITIES = [
-  "organization",
-  "participants",
-  "busy",
-  "private",
-] as const
 
 export type WorkCalendarEventVisibility =
   (typeof WORK_CALENDAR_EVENT_VISIBILITIES)[number]

@@ -1,6 +1,7 @@
 import type { PaperTrailRecordType } from "@/db/schema-paper-trail"
-import { PAPER_TRAIL_RECORD_TYPES } from "@/db/schema-paper-trail"
+import { PAPER_TRAIL_RECORD_TYPES } from "@/lib/domain/documents/statuses"
 import { getJarvisBridgeSecrets } from "@/lib/jarvis/auth"
+import { isListValue } from "@/lib/shared/statuses"
 
 /**
  * A short-lived pass that lets the PDF renderer open the record-copy print
@@ -60,7 +61,7 @@ export async function signRecordCopyToken(secret: string, grant: RecordCopyGrant
 }
 
 function isRecordType(value: unknown): value is PaperTrailRecordType {
-  return typeof value === "string" && (PAPER_TRAIL_RECORD_TYPES as readonly string[]).includes(value)
+  return typeof value === "string" && isListValue(PAPER_TRAIL_RECORD_TYPES, value)
 }
 
 /** The grant a valid, unexpired pass carries, or null. Accepts a rotated secondary secret. */

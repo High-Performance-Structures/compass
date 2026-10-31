@@ -2,6 +2,7 @@ import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { correspondence, correspondenceMessages } from "./schema-correspondence"
 import { projects, users } from "./schema"
+import { EMAIL_RECIPIENT_KINDS, PROJECT_EMAIL_CAMPAIGN_STATUSES } from "../lib/domain/correspondence/statuses"
 
 /** One send attempt per project message. An unknown provider outcome is never retried automatically. */
 export const projectEmailCampaigns = sqliteTable("project_email_campaigns", {
@@ -13,7 +14,7 @@ export const projectEmailCampaigns = sqliteTable("project_email_campaigns", {
   senderUserId: text("sender_user_id").notNull().references(() => users.id),
   requestHash: text("request_hash").notNull(),
   replyThreadId: text("reply_thread_id").notNull(),
-  status: text("status", { enum: ["queued", "dispatching", "sent", "failed", "unknown"] }).notNull(),
+  status: text("status", { enum: PROJECT_EMAIL_CAMPAIGN_STATUSES }).notNull(),
   provider: text("provider"),
   providerMessageId: text("provider_message_id"),
   error: text("error"),
@@ -32,7 +33,7 @@ export const projectEmailRecipients = sqliteTable("project_email_recipients", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id").notNull().references(() => projectEmailCampaigns.id),
   email: text("email").notNull(),
-  kind: text("kind", { enum: ["to", "cc", "bcc"] }).notNull(),
+  kind: text("kind", { enum: EMAIL_RECIPIENT_KINDS }).notNull(),
 }, (table) => [
   uniqueIndex("project_email_recipient_unique").on(table.campaignId, table.email),
   index("project_email_recipient_email_idx").on(table.email),

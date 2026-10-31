@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { USER_ROLES } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
 
 // --- Primitive schemas ---
 

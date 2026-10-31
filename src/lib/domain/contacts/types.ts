@@ -7,11 +7,9 @@ import type {
   ProjectContactCompassAccountStatus,
 } from "@/lib/project-contact-access-status"
 
-export type ProjectContactType =
-  | "owner"
-  | "supplier"
-  | "subcontractor"
-  | "internal"
+import type { ProjectContactType } from "./statuses"
+
+export type { ProjectContactType }
 
 export type ProjectContactAudience = "internal" | "owner" | "sub_vendor"
 

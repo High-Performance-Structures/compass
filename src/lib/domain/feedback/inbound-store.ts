@@ -15,16 +15,20 @@ import {
   staffMessageEvents,
   staffMessageRecords,
 } from "@/db/schema"
+import { STAFF_MESSAGE_STATUSES } from "@/lib/domain/feedback/statuses"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
 
 // ---------------------------------------------------------------------------
 // staffMessageRecords: Message Desk records
 // ---------------------------------------------------------------------------
 
 function staffMessageRecordsInsert(db: Db, values: SQLiteInsertValue<typeof staffMessageRecords>) {
+  assertListFields("staff_message_records", values, { status: STAFF_MESSAGE_STATUSES })
   return db.insert(staffMessageRecords).values(values)
 }
 function staffMessageRecordsUpdate(db: Db, changes: SQLiteUpdateSetSource<typeof staffMessageRecords>, where: SQL | undefined) {
+  assertListFields("staff_message_records", changes, { status: STAFF_MESSAGE_STATUSES })
   return db.update(staffMessageRecords).set(changes).where(where)
 }
 
@@ -43,6 +47,7 @@ export function updateStaffMessageRecords(db: Db, changes: SQLiteUpdateSetSource
 // ---------------------------------------------------------------------------
 
 function staffMessageEventsInsert(db: Db, values: SQLiteInsertValue<typeof staffMessageEvents>) {
+  assertListFields("staff_message_events", values, { fromStatus: STAFF_MESSAGE_STATUSES, toStatus: STAFF_MESSAGE_STATUSES })
   return db.insert(staffMessageEvents).values(values)
 }
 

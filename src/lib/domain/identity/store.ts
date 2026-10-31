@@ -19,8 +19,10 @@ import {
   type NewUser,
 } from "@/db/schema"
 import { PERSONAL_DATA_TABLES } from "@/lib/account-deletion"
+import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "@/lib/domain/identity/statuses"
 import { deleteProjectSavedViewsOwnedByStatements, deleteSavedViewDefaultsForUserStatement } from "@/lib/domain/settings/store"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields, requireListValue } from "@/lib/shared/statuses"
 
 import { deidentifiedUserValues, externalOrganizationRole } from "./rules"
 
@@ -32,15 +34,22 @@ type ProjectAccessInvitation = typeof projectAccessInvitations.$inferSelect
 // Users
 // ---------------------------------------------------------------------------
 
+// Enumerated columns are checked against their shared lists before every write.
+const USER_LISTS = { role: STORED_USER_ROLES }
+const MEMBER_LISTS = { role: USER_ROLES }
+
 export async function insertUser(db: Db, row: NewUser): Promise<void> {
+  assertListFields("users", row, USER_LISTS)
   await db.insert(users).values(row).run()
 }
 
 export async function updateUser(db: Db, userId: string, changes: UserChanges): Promise<void> {
+  assertListFields("users", changes, USER_LISTS)
   await db.update(users).set(changes).where(eq(users.id, userId)).run()
 }
 
 export function updateUserStatement(db: Db, userId: string, changes: UserChanges): Statement {
+  assertListFields("users", changes, USER_LISTS)
   return db.update(users).set(changes).where(eq(users.id, userId))
 }
 
@@ -49,15 +58,18 @@ export function updateUserStatement(db: Db, userId: string, changes: UserChanges
 // ---------------------------------------------------------------------------
 
 export async function insertOrganizationMember(db: Db, row: NewOrganizationMember): Promise<void> {
+  assertListFields("organization_members", row, MEMBER_LISTS)
   await db.insert(organizationMembers).values(row).run()
 }
 
 export function insertOrganizationMemberStatement(db: Db, row: NewOrganizationMember): Statement {
+  assertListFields("organization_members", row, MEMBER_LISTS)
   return db.insert(organizationMembers).values(row)
 }
 
 export async function setOrganizationMemberRole(db: Db, membershipId: string, role: string): Promise<void> {
-  await db.update(organizationMembers).set({ role }).where(eq(organizationMembers.id, membershipId)).run()
+  const known = requireListValue(USER_ROLES, role, "organization_members.role")
+  await db.update(organizationMembers).set({ role: known }).where(eq(organizationMembers.id, membershipId)).run()
 }
 
 /**
@@ -78,7 +90,7 @@ export async function ensureExternalOrganizationMembership(
     .from(organizationMembers)
     .where(and(eq(organizationMembers.userId, input.userId), eq(organizationMembers.organizationId, input.organizationId)))
     .get()
-  const role = externalOrganizationRole(input.role)
+  const role = requireListValue(USER_ROLES, externalOrganizationRole(input.role), "organization_members.role")
 
   if (existing) {
     await setOrganizationMemberRole(db, existing.id, role)
@@ -326,6 +338,7 @@ export async function insertAccountDeletionRequest(
   db: Db,
   row: typeof accountDeletionRequests.$inferInsert,
 ): Promise<void> {
+  assertListFields("account_deletion_requests", row, { status: ACCOUNT_DELETION_REQUEST_STATUSES })
   await db.insert(accountDeletionRequests).values(row).run()
 }
 

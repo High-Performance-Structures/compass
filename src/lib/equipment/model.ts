@@ -4,8 +4,12 @@
  * Free of path aliases so the native Field Mode bundle can import it.
  */
 
-export const MACHINE_LOG_KINDS = ["hours", "fuel", "maintenance", "repair", "other"] as const
-export type MachineLogKind = (typeof MACHINE_LOG_KINDS)[number]
+// Relative import: this module stays free of path aliases (see above).
+import { EQUIPMENT_LOG_KINDS, type EquipmentLogKind } from "../domain/field/statuses"
+
+/** Machine log kinds are the equipment log list; one list, two names. */
+export const MACHINE_LOG_KINDS = EQUIPMENT_LOG_KINDS
+export type MachineLogKind = EquipmentLogKind
 
 export const MACHINE_LOG_KIND_LABELS: { readonly [K in MachineLogKind]: string } = {
   hours: "Hours",

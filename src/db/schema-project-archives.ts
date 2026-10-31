@@ -1,5 +1,6 @@
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
+import { ARCHIVE_AUDIENCES, ARCHIVE_DOCUMENT_KINDS, ARCHIVE_DOCUMENT_STATUSES } from "../lib/domain/documents/statuses"
 
 /** Historical reading editions have explicit readers, separate from construction sets. */
 export const projectArchiveDocuments = sqliteTable("project_archive_documents", {
@@ -7,9 +8,9 @@ export const projectArchiveDocuments = sqliteTable("project_archive_documents", 
   organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  kind: text("kind").notNull(),
+  kind: text("kind", { enum: ARCHIVE_DOCUMENT_KINDS }).notNull(),
   period: text("period").notNull(),
-  audience: text("audience", { enum: ["owner", "sub_vendor"] }).notNull(),
+  audience: text("audience", { enum: ARCHIVE_AUDIENCES }).notNull(),
   sourceSystem: text("source_system").notNull().default("buildertrend"),
   sourceRecordIds: text("source_record_ids").notNull(),
   sourceAudienceEvidence: text("source_audience_evidence").notNull(),
@@ -18,7 +19,7 @@ export const projectArchiveDocuments = sqliteTable("project_archive_documents", 
   sha256: text("sha256").notNull(),
   byteSize: integer("byte_size").notNull(),
   pageCount: integer("page_count").notNull(),
-  status: text("status", { enum: ["published", "revoked"] }).notNull().default("published"),
+  status: text("status", { enum: ARCHIVE_DOCUMENT_STATUSES }).notNull().default("published"),
   publishedBy: text("published_by").references(() => users.id, { onDelete: "set null" }),
   publishedAt: text("published_at").notNull(),
   revokedBy: text("revoked_by").references(() => users.id, { onDelete: "set null" }),

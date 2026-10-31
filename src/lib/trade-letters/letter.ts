@@ -3,17 +3,13 @@
  * the owner signs; the award letter accepts their quote in writing once the
  * owner has signed. Pure helpers shared by the server and the composer.
  */
-
-const TRADE_LETTER_KINDS = ["intent", "award"] as const
-export type TradeLetterKind = (typeof TRADE_LETTER_KINDS)[number]
+import { TRADE_LETTER_STATUSES, TRADE_LETTER_KINDS, type TradeLetterKind, type TradeLetterStatus } from "@/lib/domain/trade-letters/statuses"
+export type { TradeLetterKind, TradeLetterStatus }
 
 export const TRADE_LETTER_KIND_LABELS: Readonly<Record<TradeLetterKind, string>> = {
   intent: "Letter of intent",
   award: "Award letter",
 }
-
-const TRADE_LETTER_STATUSES = ["draft", "preparing", "sent", "signed", "declined", "cancelled"] as const
-export type TradeLetterStatus = (typeof TRADE_LETTER_STATUSES)[number]
 
 export const TRADE_LETTER_STATUS_LABELS: Readonly<Record<TradeLetterStatus, string>> = {
   draft: "Draft",

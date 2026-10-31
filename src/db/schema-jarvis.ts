@@ -6,6 +6,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
+import { FEEDBACK_DESK_STATUSES } from "../lib/domain/feedback/statuses"
+
 export const feedbackDeskItems = sqliteTable(
   "feedback_desk_items",
   {
@@ -14,7 +16,7 @@ export const feedbackDeskItems = sqliteTable(
     source: text("source").notNull(),
     sourceId: text("source_id").notNull(),
     kind: text("kind").notNull(),
-    status: text("status").notNull().default("new"),
+    status: text("status", { enum: FEEDBACK_DESK_STATUSES }).notNull().default("new"),
     priority: text("priority").notNull().default("normal"),
     title: text("title").notNull(),
     description: text("description").notNull(),

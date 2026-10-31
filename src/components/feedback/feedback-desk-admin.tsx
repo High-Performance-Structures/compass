@@ -24,13 +24,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
-  FEEDBACK_DESK_STATUSES,
   FEEDBACK_PRIORITIES,
   feedbackIsResolved,
   feedbackStatusLabel,
   knownFeedbackPriority,
   knownFeedbackStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { FEEDBACK_DESK_STATUSES } from "@/lib/domain/feedback/statuses"
 import {
   feedbackDeskQueueItems,
   feedbackDeskQueueViews,

@@ -99,7 +99,8 @@ describe("selection input rules", () => {
 
 describe("selection read model", () => {
   it("parses choices and groups selections into rooms with counts", () => {
-    const item = toSelectionItem(row({ choiceOptionsJson: '["A"," ",3]', status: "weird" }))
+    // A legacy stored value outside the list still reads as "needed".
+    const item = toSelectionItem(Object.assign(row({ choiceOptionsJson: '["A"," ",3]' }), { status: "weird" }))
     expect(item.choiceOptions).toEqual(["A"])
     expect(item.status).toBe("needed")
     const summary = summarizeSelections(

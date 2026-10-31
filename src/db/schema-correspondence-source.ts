@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm"
 
 import { correspondence, correspondenceMessages } from "./schema-correspondence"
 import { organizations, projects } from "./schema"
+import { CORRESPONDENCE_SOURCE_RECIPIENT_KINDS } from "../lib/domain/correspondence/statuses"
 
 export const correspondenceSourceMessages = sqliteTable("correspondence_source_messages", {
   id: text("id").primaryKey(),
@@ -38,7 +39,7 @@ export const correspondenceSourceRecipients = sqliteTable("correspondence_source
   sourceUserId: text("source_user_id"),
   sourceName: text("source_name").notNull(),
   sourceEmail: text("source_email"),
-  kind: text("kind", { enum: ["author", "to", "cc", "bcc"] }).notNull(),
+  kind: text("kind", { enum: CORRESPONDENCE_SOURCE_RECIPIENT_KINDS }).notNull(),
   sourceOrdinal: integer("source_ordinal").notNull(),
   evidenceJson: text("evidence_json").notNull(),
 }, (table) => [

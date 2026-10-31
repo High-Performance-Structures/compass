@@ -6,6 +6,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 import { projectFinishSelections, projectOperations, projects } from "./schema"
+import { SELECTION_REQUEST_KINDS, SELECTION_REQUEST_STATUSES } from "../lib/domain/selections/statuses"
 
 // Published owner terms are separate from editable staff notes and supplier costs.
 export const projectSelectionDecisions = sqliteTable(
@@ -55,10 +56,10 @@ export const projectSelectionRequests = sqliteTable(
       .references(() => projectFinishSelections.id, { onDelete: "cascade" }),
     requesterId: text("requester_id").notNull(),
     requesterName: text("requester_name").notNull(),
-    kind: text("kind", { enum: ["pricing", "alternative"] }).notNull(),
+    kind: text("kind", { enum: SELECTION_REQUEST_KINDS }).notNull(),
     note: text("note").notNull(),
     productUrl: text("product_url"),
-    status: text("status", { enum: ["open", "resolved", "withdrawn"] })
+    status: text("status", { enum: SELECTION_REQUEST_STATUSES })
       .notNull()
       .default("open"),
     response: text("response"),

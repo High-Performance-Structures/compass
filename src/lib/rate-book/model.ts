@@ -1,5 +1,5 @@
 import { z } from "zod/v4"
-import { RATE_BOOK_CATEGORIES, type RateBookCategory } from "@/db/schema-rate-book"
+import { RATE_BOOK_CATEGORIES, type RateBookCategory } from "@/lib/domain/operations/statuses"
 
 export { RATE_BOOK_CATEGORIES, type RateBookCategory }
 

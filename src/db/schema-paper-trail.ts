@@ -1,31 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects } from "./schema"
-
-export const PAPER_TRAIL_RECORD_TYPES = [
-  "purchase_order",
-  "estimate",
-  "rfi",
-  "change_order",
-  "shop_ticket",
-] as const
-export type PaperTrailRecordType = (typeof PAPER_TRAIL_RECORD_TYPES)[number]
-
-export const PAPER_TRAIL_FILE_STATUSES = [
-  "pending",
-  "synced",
-  "failed",
-  // Written to the private "Compass Records" folder because the usual
-  // subfolder is shared outside the company.
-  "held_private",
-  // The record no longer exists; its last Drive copy is kept.
-  "removed",
-  // A file that looks like this record was already in the folder (saved by
-  // hand); nothing is written until someone chooses what to do.
-  "needs_choice",
-  // Someone chose to keep the hand-saved file; Compass stops saving this record.
-  "kept_existing",
-] as const
-export type PaperTrailFileStatus = (typeof PAPER_TRAIL_FILE_STATUSES)[number]
+import { PAPER_TRAIL_FILE_STATUSES, PAPER_TRAIL_RECORD_TYPES, PAPER_TRAIL_SNAPSHOT_STATUSES, type PaperTrailRecordType, type PaperTrailFileStatus } from "../lib/domain/documents/statuses"
+export type { PaperTrailRecordType, PaperTrailFileStatus }
 
 /**
  * One living Drive copy per Compass record. Edits only move `dueAt`; the
@@ -93,7 +69,7 @@ export const projectRecordDriveSnapshots = sqliteTable(
     milestone: text("milestone").notNull(),
     /** When the milestone happened (sent, signed, approved, answered). */
     milestoneAt: text("milestone_at").notNull(),
-    status: text("status", { enum: ["pending", "saved", "failed"] }).notNull().default("pending"),
+    status: text("status", { enum: PAPER_TRAIL_SNAPSHOT_STATUSES }).notNull().default("pending"),
     requestedAt: text("requested_at").notNull(),
     savedAt: text("saved_at"),
     driveFileId: text("drive_file_id"),

@@ -10,6 +10,9 @@ import {
   projects,
 } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
+
+import { PROJECT_LISTS } from "./statuses"
 
 /*
  * The only code that inserts, updates or deletes the project tables: projects, project members, project job statuses and project external links
@@ -43,18 +46,22 @@ type ProjectInsert = typeof projects.$inferInsert
 type ProjectPatch = SQLiteUpdateSetSource<typeof projects>
 
 export function insertProjectStatement(db: Db, values: ProjectInsert | readonly ProjectInsert[]): Statement {
+  assertListFields("projects", values, PROJECT_LISTS)
   return isRows(values) ? db.insert(projects).values([...values]) : db.insert(projects).values(values)
 }
 
 export async function insertProject(db: Db, values: ProjectInsert | readonly ProjectInsert[]): Promise<D1Result> {
+  assertListFields("projects", values, PROJECT_LISTS)
   return isRows(values) ? db.insert(projects).values([...values]).run() : db.insert(projects).values(values).run()
 }
 
 export function updateProjectsStatement(db: Db, where: SQL | undefined, patch: ProjectPatch): Statement {
+  assertListFields("projects", patch, PROJECT_LISTS)
   return db.update(projects).set(patch).where(where)
 }
 
 export async function updateProjects(db: Db, where: SQL | undefined, patch: ProjectPatch): Promise<D1Result> {
+  assertListFields("projects", patch, PROJECT_LISTS)
   return db.update(projects).set(patch).where(where).run()
 }
 
@@ -64,6 +71,7 @@ export async function updateProjectsReturningIds(
   where: SQL | undefined,
   patch: ProjectPatch,
 ): Promise<readonly { readonly id: string }[]> {
+  assertListFields("projects", patch, PROJECT_LISTS)
   return db.update(projects).set(patch).where(where).returning({ id: projects.id })
 }
 

@@ -149,7 +149,7 @@ async function findSystemUser(input: {
     .where(
       and(
         eq(organizationMembers.organizationId, input.organizationId),
-        inArray(organizationMembers.role, ["admin", "owner", "office"]),
+        inArray(sql`${organizationMembers.role}`, ["admin", "owner", "office"]), // text compare: "owner" is a legacy role
         eq(users.isActive, true)
       )
     )

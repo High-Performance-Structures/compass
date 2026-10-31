@@ -31,6 +31,7 @@ import {
   supersedeCurrentContractBudgetRevisionStatement,
 } from "@/lib/domain/financials/store"
 import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/domain/estimates/rules"
+import type { ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
 import {
   buildContractBudget,
   contractBudgetSourceHash,
@@ -51,7 +52,7 @@ export type ContractBudgetRebuildResult =
 
 type CompassDb = ReturnType<typeof getDb>
 
-const BUDGET_CHANGE_ORDER_STATUSES = [
+const BUDGET_CHANGE_ORDER_STATUSES: readonly ChangeOrderStatus[] = [
   "executed",
   "sage_pending",
   "synced",

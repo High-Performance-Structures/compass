@@ -24,6 +24,7 @@ import {
 } from "@/db/schema-estimates"
 import { projectFamilies, projectFamilyPhases } from "@/db/schema-project-families"
 import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports } from "@/db/schema-rfqs"
+import type { EstimateStatus } from "@/lib/domain/estimates/statuses"
 
 const mocks = vi.hoisted(() => {
   const rawDb: { current: unknown } = { current: null }
@@ -99,7 +100,7 @@ function line(id: string, estimateId: string, assemblyId: string | null, costCod
   }
 }
 
-function seed(contractStatus: string): void {
+function seed(contractStatus: EstimateStatus): void {
   const db = drizzle(sqlite)
   db.insert(projects).values({
     id: "squires", name: "Ridge Rd - Squires Residence", projectNumber: "O-184-5250", organizationId: "org",
