@@ -4,11 +4,9 @@ import { and, asc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { getDb } from "@/db"
 import { scheduleSavedViews } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
+import { deleteOwnSavedView, insertSavedView, updateSavedView } from "@/lib/domain/schedule/store"
+import { orgContext } from "@/lib/server/action-context"
 import {
   scheduleViewDefinitionSchema,
   type SavedScheduleViewData,
@@ -32,11 +30,10 @@ export async function getScheduleSavedViews(): Promise<
   readonly SavedScheduleViewData[]
 > {
   try {
-    const user = await requireAuth()
+    const context = await orgContext()
+    if (!context.success) throw new Error(context.error)
+    const { db, organizationId, user } = context.data
     if (!isInternalStaffRole(user.role)) return []
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const rows = await db
       .select()
       .from(scheduleSavedViews)
@@ -98,13 +95,12 @@ export async function saveScheduleView(
   }
 
   try {
-    const user = await requireAuth()
+    const context = await orgContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
     if (!isInternalStaffRole(user.role)) {
       return { success: false, error: "Only internal staff can save views." }
     }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const now = new Date().toISOString()
     const existing = await db
       .select({ id: scheduleSavedViews.id })
@@ -119,29 +115,22 @@ export async function saveScheduleView(
     const id = existing?.id ?? crypto.randomUUID()
 
     if (existing) {
-      await db
-        .update(scheduleSavedViews)
-        .set({
-          visibility: parsed.data.visibility,
-          definition: JSON.stringify(parsed.data.definition),
-          updatedAt: now,
-        })
-        .where(eq(scheduleSavedViews.id, id))
-        .run()
+      await updateSavedView(db, id, {
+        visibility: parsed.data.visibility,
+        definition: JSON.stringify(parsed.data.definition),
+        updatedAt: now,
+      })
     } else {
-      await db
-        .insert(scheduleSavedViews)
-        .values({
-          id,
-          organizationId,
-          ownerUserId: user.id,
-          name: parsed.data.name,
-          visibility: parsed.data.visibility,
-          definition: JSON.stringify(parsed.data.definition),
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run()
+      await insertSavedView(db, {
+        id,
+        organizationId,
+        ownerUserId: user.id,
+        name: parsed.data.name,
+        visibility: parsed.data.visibility,
+        definition: JSON.stringify(parsed.data.definition),
+        createdAt: now,
+        updatedAt: now,
+      })
     }
 
     revalidatePath("/dashboard/schedule")
@@ -171,20 +160,10 @@ export async function deleteScheduleView(
   { readonly success: true } | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    await db
-      .delete(scheduleSavedViews)
-      .where(
-        and(
-          eq(scheduleSavedViews.id, id),
-          eq(scheduleSavedViews.organizationId, organizationId),
-          eq(scheduleSavedViews.ownerUserId, user.id)
-        )
-      )
-      .run()
+    const context = await orgContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    await deleteOwnSavedView(db, id, organizationId, user.id)
     revalidatePath("/dashboard/schedule")
     return { success: true }
   } catch (error) {

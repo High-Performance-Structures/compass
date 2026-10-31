@@ -3,18 +3,14 @@
 import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   projects,
   scheduleTaskLinks,
   scheduleTasks,
 } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { scheduleReadContext, scheduleWriteContext } from "@/lib/domain/schedule/access"
+import { deleteTaskLink, insertTaskLink } from "@/lib/domain/schedule/store"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
   isScheduleLinkType,
@@ -44,11 +40,8 @@ function revalidateSchedule(projectId: string): void {
 export async function getScheduleTaskLinks(
   taskId: string
 ): Promise<readonly ScheduleTaskLink[]> {
-  const user = await requireAuth()
-  requirePermission(user, "schedule", "read")
+  const { db, user } = await scheduleReadContext()
   if (!isInternalStaffRole(user.role)) return []
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const task = await db
     .select({ projectId: scheduleTasks.projectId })
     .from(scheduleTasks)
@@ -88,15 +81,12 @@ export async function createScheduleTaskLink(input: {
   readonly href: string
 }): Promise<ScheduleLinkResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
     if (!isInternalStaffRole(user.role)) {
       return { success: false, error: "Only internal staff can manage links." }
     }
-    const organizationId = requireOrg(user)
     if (!isScheduleLinkType(input.resourceType)) {
       return { success: false, error: "Choose a supported link type." }
     }
@@ -112,8 +102,6 @@ export async function createScheduleTaskLink(input: {
       }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -135,7 +123,7 @@ export async function createScheduleTaskLink(input: {
 
     const now = new Date().toISOString()
     const linkId = crypto.randomUUID()
-    await db.insert(scheduleTaskLinks).values({
+    await insertTaskLink(db, {
       id: linkId,
       scheduleTaskId: task.id,
       projectId: task.projectId,
@@ -169,17 +157,12 @@ export async function deleteScheduleTaskLink(
   linkId: string
 ): Promise<ScheduleLinkResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
     if (!isInternalStaffRole(user.role)) {
       return { success: false, error: "Only internal staff can manage links." }
     }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const link = await db
       .select({
         id: scheduleTaskLinks.id,
@@ -197,14 +180,7 @@ export async function deleteScheduleTaskLink(
       .get()
     if (!link) return { success: false, error: "Link not found." }
 
-    await db
-      .delete(scheduleTaskLinks)
-      .where(
-        and(
-          eq(scheduleTaskLinks.id, link.id),
-          eq(scheduleTaskLinks.projectId, link.projectId)
-        )
-      )
+    await deleteTaskLink(db, link.id, link.projectId)
     await recordActivityEvent({
       db,
       organizationId,

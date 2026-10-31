@@ -25,6 +25,7 @@ import {
 } from "@/lib/schedule/print-range"
 import { cn } from "@/lib/utils"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { formatDate } from "@/lib/format"
 
 export type SchedulePrintItem = {
   readonly id: string
@@ -47,14 +48,9 @@ type SchedulePrintProject = {
   readonly projectNumber: string | null
 }
 
-function formatDate(value: string): string {
-  const parsed = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) return value
-  return parsed.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
+function dateLabel(value: string): string {
+  return formatDate(value, "medium", value)
 }
 
 function formatLabel(value: string): string {
@@ -216,7 +212,7 @@ function SchedulePrintGantt({
                 <td className="schedule-print-task-label">
                   <strong>{item.title}</strong>
                   <span>
-                    {formatDate(item.startDate)} – {formatDate(item.endDate)}
+                    {dateLabel(item.startDate)} – {dateLabel(item.endDate)}
                   </span>
                 </td>
                 <td className="schedule-print-timeline-row">
@@ -460,8 +456,8 @@ export function SchedulePrintDocument({
                       <td>{itemProject ? projectLabel(itemProject) : "—"}</td>
                     )}
                     <td>{formatLabel(item.phase)}</td>
-                    <td>{formatDate(item.startDate)}</td>
-                    <td>{formatDate(item.endDate)}</td>
+                    <td>{dateLabel(item.startDate)}</td>
+                    <td>{dateLabel(item.endDate)}</td>
                     <td>
                       {item.isMilestone ? "Milestone" : `${item.workdays} wd`}
                     </td>

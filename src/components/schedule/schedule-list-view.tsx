@@ -34,7 +34,7 @@ import {
   assignScheduleTasks,
   completeScheduleTasks,
   deleteScheduleTasks,
-} from "@/app/actions/schedule"
+} from "@/app/actions/schedule-tasks"
 import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contacts"
 import type {
   ScheduleTaskData,
@@ -52,7 +52,6 @@ import {
 } from "@/components/data-table-pagination"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { format, parseISO } from "date-fns"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { cn } from "@/lib/utils"
 import { scheduleItemHref } from "@/lib/work-calendar"
@@ -75,6 +74,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { formatDate } from "@/lib/format"
 
 interface ScheduleListViewProps {
   readonly projectId: string | null
@@ -142,12 +142,9 @@ function InitialsAvatar({ name }: { name: string }) {
   )
 }
 
-function formatDate(dateStr: string): string {
-  try {
-    return format(parseISO(dateStr), "MMM d, yyyy")
-  } catch {
-    return dateStr
-  }
+/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
+function dateLabel(value: string): string {
+  return formatDate(value, "medium", value)
 }
 
 export function ScheduleListView({
@@ -327,7 +324,7 @@ export function ScheduleListView({
           const time = scheduleItemTimeLabel(row.original)
           return (
             <span className="text-xs text-muted-foreground">
-              {formatDate(row.original.startDate)}
+              {dateLabel(row.original.startDate)}
               {time ? <span className="block">{time}</span> : null}
             </span>
           )
@@ -338,7 +335,7 @@ export function ScheduleListView({
         header: "End",
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
-            {formatDate(row.original.endDateCalculated)}
+            {dateLabel(row.original.endDateCalculated)}
           </span>
         ),
       },

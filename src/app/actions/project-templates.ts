@@ -8,7 +8,6 @@ import { getDb } from "@/db"
 import {
   projects,
   scheduleTasks,
-  taskDependencies,
   workdayExceptions,
 } from "@/db/schema"
 import {
@@ -26,12 +25,14 @@ import { requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { findCriticalPath } from "@/lib/schedule/critical-path"
+import {
+  dependencyInsertStatement,
+  recalcCriticalPath,
+  templateTaskInsertStatement,
+} from "@/lib/domain/schedule/store"
 import type {
-  DependencyType,
   ExceptionCategory,
   ExceptionRecurrence,
-  TaskStatus,
   WorkdayExceptionData,
   WorkdayExceptionType,
 } from "@/lib/schedule/types"
@@ -95,27 +96,6 @@ function ensureInternalUser(role: string): void {
   }
 }
 
-function taskStatus(value: string): TaskStatus {
-  switch (value) {
-    case "IN_PROGRESS":
-    case "COMPLETE":
-    case "BLOCKED":
-      return value
-    default:
-      return "PENDING"
-  }
-}
-
-function dependencyType(value: string): DependencyType {
-  switch (value) {
-    case "SS":
-    case "FF":
-    case "SF":
-      return value
-    default:
-      return "FS"
-  }
-}
 
 function exceptionType(value: string): WorkdayExceptionType {
   return value === "working" ? "working" : "non_working"
@@ -154,38 +134,6 @@ function isIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
-}
-
-async function recalculateCriticalPath(
-  db: ReturnType<typeof getDb>,
-  projectId: string
-): Promise<void> {
-  const tasks = await db
-    .select()
-    .from(scheduleTasks)
-    .where(eq(scheduleTasks.projectId, projectId))
-  const taskIds = new Set(tasks.map((task) => task.id))
-  const dependencies = (await db.select().from(taskDependencies)).filter(
-    (dependency) =>
-      taskIds.has(dependency.predecessorId) &&
-      taskIds.has(dependency.successorId)
-  )
-  const criticalIds = findCriticalPath(
-    tasks.map((task) => ({ ...task, status: taskStatus(task.status) })),
-    dependencies.map((dependency) => ({
-      ...dependency,
-      type: dependencyType(dependency.type),
-    }))
-  )
-
-  for (const task of tasks) {
-    const isCriticalPath = criticalIds.has(task.id)
-    if (task.isCriticalPath === isCriticalPath) continue
-    await db
-      .update(scheduleTasks)
-      .set({ isCriticalPath })
-      .where(eq(scheduleTasks.id, task.id))
-  }
 }
 
 export async function getProjectTemplateLibrary(): Promise<
@@ -543,35 +491,8 @@ export async function applyProjectTemplate(input: {
     ]
 
     for (const task of build.data.tasks) {
-      statements.push(
-        env.DB.prepare(
-          `INSERT INTO schedule_tasks (
-            id, project_id, title, start_date, workdays,
-            end_date_calculated, phase, display_color, status,
-            is_critical_path, is_milestone, percent_complete, assigned_to,
-            assigned_user_id, owner_visible, sub_vendor_visible,
-            confirmation_required, confirmation_status, sort_order,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, 0, ?, NULL,
-            ?, ?, 0, 'not_requested', ?, ?, ?)`
-        ).bind(
-          task.id,
-          input.projectId,
-          task.title,
-          task.startDate,
-          task.workdays,
-          task.endDateCalculated,
-          task.phase,
-          task.displayColor,
-          task.isMilestone ? 1 : 0,
-          task.assignedTo,
-          task.ownerVisible ? 1 : 0,
-          task.subVendorVisible ? 1 : 0,
-          task.sortOrder,
-          now,
-          now
-        )
-      )
+      // Template applications have always left item notes empty.
+      statements.push(templateTaskInsertStatement(env.DB, input.projectId, task, now, null))
       statements.push(
         env.DB.prepare(
           `INSERT INTO project_template_application_items (
@@ -587,19 +508,7 @@ export async function applyProjectTemplate(input: {
     }
 
     for (const dependency of build.data.dependencies) {
-      statements.push(
-        env.DB.prepare(
-          `INSERT INTO task_dependencies (
-            id, predecessor_id, successor_id, type, lag_days
-          ) VALUES (?, ?, ?, ?, ?)`
-        ).bind(
-          dependency.id,
-          dependency.predecessorId,
-          dependency.successorId,
-          dependency.type,
-          dependency.lagDays
-        )
-      )
+      statements.push(dependencyInsertStatement(env.DB, dependency))
     }
     for (const todo of contentBuild.todos) {
       statements.push(
@@ -719,7 +628,7 @@ export async function applyProjectTemplate(input: {
       throw new Error("Template application batch failed")
     }
     try {
-      await recalculateCriticalPath(db, input.projectId)
+      await recalcCriticalPath(db, input.projectId)
     } catch (error) {
       console.error("Unable to refresh critical path after template application", error)
     }

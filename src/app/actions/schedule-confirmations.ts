@@ -22,6 +22,12 @@ import {
   scheduleTaskAssignees,
 } from "@/db/schema-participants"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  markTaskReminderSent,
+  recordAssigneeResponse,
+  updateTask,
+  updateTaskForAssignee,
+} from "@/lib/domain/schedule/store"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -566,15 +572,7 @@ export async function sendScheduleTaskReminder(
     })
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({ reminderSentAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.projectId, task.projectId)
-        )
-      )
+    await markTaskReminderSent(db, task.id, task.projectId, now)
     await recordActivityEvent({
       db,
       organizationId,
@@ -697,23 +695,15 @@ export async function respondToScheduleTaskConfirmation(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: response,
-        confirmationRespondedAt: now,
-        proposedStartDate: null,
-        proposedWorkdays: null,
-        proposalNote: note.trim() || null,
-        proposalSubmittedAt: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.assignedUserId, user.id)
-        )
-      )
+    await updateTaskForAssignee(db, task.id, user.id, {
+      confirmationStatus: response,
+      confirmationRespondedAt: now,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: note.trim() || null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
@@ -837,23 +827,15 @@ export async function proposeScheduleTaskChange(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: "proposed",
-        confirmationRespondedAt: now,
-        proposedStartDate: validation.proposal.startDate,
-        proposedWorkdays: validation.proposal.workdays,
-        proposalNote: validation.proposal.note,
-        proposalSubmittedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.assignedUserId, user.id)
-        )
-      )
+    await updateTaskForAssignee(db, task.id, user.id, {
+      confirmationStatus: "proposed",
+      confirmationRespondedAt: now,
+      proposedStartDate: validation.proposal.startDate,
+      proposedWorkdays: validation.proposal.workdays,
+      proposalNote: validation.proposal.note,
+      proposalSubmittedAt: now,
+      updatedAt: now,
+    })
     const proposal: ScheduleTaskChangeProposal = {
       startDate: validation.proposal.startDate,
       workdays: validation.proposal.workdays,
@@ -969,18 +951,15 @@ export async function rejectScheduleTaskChangeProposal(
       return { success: false, error: "There is no pending date proposal." }
     }
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: "pending",
-        confirmationRespondedAt: null,
-        proposedStartDate: null,
-        proposedWorkdays: null,
-        proposalNote: null,
-        proposalSubmittedAt: null,
-        updatedAt: now,
-      })
-      .where(eq(scheduleTasks.id, task.id))
+    await updateTask(db, task.id, {
+      confirmationStatus: "pending",
+      confirmationRespondedAt: null,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId,
@@ -1363,21 +1342,18 @@ export async function respondToScheduleTaskAssignee(
       }
     }
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTaskAssignees)
-      .set({
-        responseStatus: state.responseStatus,
-        dateResponseStatus: state.dateResponseStatus,
-        durationResponseStatus: state.durationResponseStatus,
-        proposedStartDate: responseInput.response === "proposed" ? responseInput.proposedStartDate?.trim() || null : null,
-        proposedWorkdays: responseInput.response === "proposed" ? responseInput.proposedWorkdays ?? null : null,
-        responseMessage: responseInput.message?.trim() || null,
-        respondedAt: now,
-        respondedByUserId: user.id,
-        responseSource: "compass",
-        updatedAt: now,
-      })
-      .where(eq(scheduleTaskAssignees.id, assignment.id))
+    await recordAssigneeResponse(db, assignment.id, {
+      responseStatus: state.responseStatus,
+      dateResponseStatus: state.dateResponseStatus,
+      durationResponseStatus: state.durationResponseStatus,
+      proposedStartDate: responseInput.response === "proposed" ? responseInput.proposedStartDate?.trim() || null : null,
+      proposedWorkdays: responseInput.response === "proposed" ? responseInput.proposedWorkdays ?? null : null,
+      responseMessage: responseInput.message?.trim() || null,
+      respondedAt: now,
+      respondedByUserId: user.id,
+      responseSource: "compass",
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
