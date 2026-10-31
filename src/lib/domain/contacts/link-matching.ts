@@ -36,7 +36,7 @@ export type LinkSubject = {
   readonly compareCompany: boolean
 }
 
-export type LinkRule = "email" | "name_company"
+type LinkRule = "email" | "name_company"
 
 export type LinkProposal =
   | { readonly outcome: "exact"; readonly rule: LinkRule; readonly candidate: DirectoryCandidate }
@@ -90,7 +90,7 @@ export function proposeDirectoryLink(subject: LinkSubject, candidates: readonly 
   return byName ?? { outcome: "none" }
 }
 
-export type LinkReportCounts = {
+type LinkReportCounts = {
   readonly total: number
   readonly exactByEmail: number
   readonly exactByNameCompany: number
