@@ -14,7 +14,7 @@ describe("custom estimate report phase persistence", () => {
 
   it("keeps the RFQ guarded insert-select aligned with the expanded estimate line schema", () => {
     const source = readFileSync(resolve(process.cwd(), "src/app/actions/project-rfq-bids.ts"), "utf8")
-    const select = source.match(/insert\(projectEstimateLines\)\.select\(\s*sql`SELECT([\s\S]*?)WHERE EXISTS/)?.[1]
+    const select = source.match(/insertEstimateLineFromSelectStatement\(access\.db,\s*sql`SELECT([\s\S]*?)WHERE EXISTS/)?.[1]
     if (!select) throw new Error("RFQ guarded estimate line insert not found")
     // Use the actual action projection and Drizzle target column order, not a
     // duplicated fixture; the existence guard does not affect projection arity.

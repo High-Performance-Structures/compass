@@ -15,10 +15,16 @@ import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports } from "@/db/schema-rfqs"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, revalidateEstimate } from "@/lib/domain/estimates/access"
+import { estimateTotalsForLines } from "@/lib/domain/estimates/rules"
+import {
+  copyAssemblyAsPhaseEstimate,
+  deleteEstimatesStatement,
+  deletePhaseProposalsStatement,
+  updateEstimates,
+} from "@/lib/domain/estimates/store"
 import { isContractEstimate } from "@/lib/estimates/estimate-family"
 import {
   completePhaseProposal,
-  estimateTotalsForLines,
   isPhaseProposalContractRemoval,
   nextPhaseEstimateNumber,
   type PhaseProposalContractRemoval,
@@ -98,153 +104,69 @@ export async function exportEstimateAssemblyAsPhase(
     const newAssemblyId = crypto.randomUUID()
     const now = new Date().toISOString()
     const estimateNumber = await nextPhaseEstimateNumber(access.db, projectId, access.projectNumber)
-    const proposal = access.db.insert(projectPhaseProposals).values({
-      id: proposalId,
+    const results = await copyAssemblyAsPhaseEstimate(access.db, access.rawDb, {
+      proposal: {
+        id: proposalId,
+        projectId,
+        phaseName,
+        assemblyName: assembly.name,
+        sourceEstimateId: source.id,
+        sourceEstimateNumber: source.estimateNumber,
+        sourceVersionNumber: source.versionNumber,
+        status: "proposed",
+        createdBy: access.user.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+      header: {
+        ...source,
+        id,
+        phaseProposalId: proposalId,
+        estimateNumber,
+        versionNumber: 1,
+        title: phaseName,
+        status: "draft",
+        estimateDate: now.slice(0, 10),
+        sourceSystem: "compass_revision",
+        sourceRevision: `${assembly.name} from ${source.estimateNumber} version ${source.versionNumber}, exported as a phase on ${now.slice(0, 10)}`,
+        foxitStatus: "not_started",
+        foxitEnvelopeId: null,
+        foxitEmbeddedSessionUrl: null,
+        foxitPreparedSourceHash: null,
+        foxitPreparedAt: null,
+        signaturePackageUrl: null,
+        signatureRequestedAt: null,
+        signedAt: null,
+        acceptanceMethod: null,
+        acceptanceNote: null,
+        acceptanceEvidenceLabel: null,
+        acceptanceRecordedByName: null,
+        acceptedAt: null,
+        acceptedBy: null,
+        sageStatus: "not_ready",
+        sageRecordId: null,
+        lastSageSyncAt: null,
+        sourceHash: null,
+        createdBy: access.user.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+      estimateId: id,
       projectId,
-      phaseName,
-      assemblyName: assembly.name,
-      sourceEstimateId: source.id,
-      sourceEstimateNumber: source.estimateNumber,
-      sourceVersionNumber: source.versionNumber,
-      status: "proposed",
-      createdBy: access.user.id,
-      createdAt: now,
-      updatedAt: now,
-    }).toSQL()
-    const header = access.db.insert(projectEstimates).values({
-      ...source,
-      id,
-      phaseProposalId: proposalId,
-      estimateNumber,
-      versionNumber: 1,
-      title: phaseName,
-      status: "draft",
-      estimateDate: now.slice(0, 10),
-      sourceSystem: "compass_revision",
-      sourceRevision: `${assembly.name} from ${source.estimateNumber} version ${source.versionNumber}, exported as a phase on ${now.slice(0, 10)}`,
-      foxitStatus: "not_started",
-      foxitEnvelopeId: null,
-      foxitEmbeddedSessionUrl: null,
-      foxitPreparedSourceHash: null,
-      foxitPreparedAt: null,
-      signaturePackageUrl: null,
-      signatureRequestedAt: null,
-      signedAt: null,
-      acceptanceMethod: null,
-      acceptanceNote: null,
-      acceptanceEvidenceLabel: null,
-      acceptanceRecordedByName: null,
-      acceptedAt: null,
-      acceptedBy: null,
-      sageStatus: "not_ready",
-      sageRecordId: null,
-      lastSageSyncAt: null,
-      sourceHash: null,
-      createdBy: access.user.id,
-      createdAt: now,
-      updatedAt: now,
-    }).toSQL()
-    const db = access.rawDb
-    const results = await db.batch([
-      db.prepare(proposal.sql).bind(...proposal.params),
-      db.prepare(header.sql).bind(...header.params),
-      db.prepare(
-        `INSERT INTO project_estimate_assemblies (id, estimate_id, name, description, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?)`
-      ).bind(newAssemblyId, id, assembly.name, assembly.description, now, now),
-      // Report phases keep their ids' meaning through a lookup on the copy.
-      db.prepare(
-        `INSERT INTO project_estimate_report_phases
-         (id, project_id, estimate_id, division_code, name, description, itemize, sort_order, created_at, updated_at)
-         SELECT lower(hex(randomblob(16))), project_id, ?, division_code, name, description, itemize, sort_order, ?, ?
-         FROM project_estimate_report_phases WHERE estimate_id = ? AND project_id = ?`
-      ).bind(id, now, now, estimateId, projectId),
-      db.prepare(
-        `INSERT INTO project_estimate_lines (
-           id, project_id, estimate_id, template_line_id, report_phase_id, assembly_id, division_code,
-           division_name, cost_code, cost_code_name, description,
-           specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
-           markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
-           tax_code, tax_name, tax_rate_basis_points, tax_cents,
-           line_total_cents, owner_visible, include_in_builder_fee,
-           sort_order, created_at, updated_at
-         )
-         SELECT lower(hex(randomblob(16))), project_id, ?, template_line_id,
-           (SELECT copy.id FROM project_estimate_report_phases AS copy
-              INNER JOIN project_estimate_report_phases AS original ON original.id = line.report_phase_id
-              WHERE copy.estimate_id = ? AND copy.name = original.name
-                AND copy.division_code = original.division_code AND copy.sort_order = original.sort_order
-              LIMIT 1),
-           ?, division_code, division_name, cost_code, cost_code_name,
-           description, specifications, quantity, unit, unit_cost_cents,
-           direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
-           tax_entity_id, tax_code, tax_name, tax_rate_basis_points, tax_cents,
-           line_total_cents, owner_visible, include_in_builder_fee,
-           sort_order, ?, ?
-         FROM project_estimate_lines AS line
-         WHERE estimate_id = ? AND project_id = ? AND assembly_id = ?`
-      ).bind(id, id, newAssemblyId, now, now, estimateId, projectId, assemblyId),
-      db.prepare(
-        `INSERT INTO project_estimate_line_cost_items (
-           id, project_id, estimate_id, estimate_line_id, division_code,
-           division_name, cost_code, cost_code_name, description, quantity,
-           unit, unit_cost_cents, direct_cost_cents,
-           markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
-           tax_code, tax_name, tax_rate_basis_points, tax_cents,
-           line_total_cents, total_cost_cents, sort_order, created_at, updated_at
-         )
-         SELECT lower(hex(randomblob(16))), cost_item.project_id, ?,
-           copied_line.id, cost_item.division_code, cost_item.division_name,
-           cost_item.cost_code, cost_item.cost_code_name,
-           cost_item.description, cost_item.quantity, cost_item.unit,
-           cost_item.unit_cost_cents, cost_item.direct_cost_cents,
-           cost_item.markup_rate_basis_points, cost_item.markup_cents,
-           cost_item.taxable, cost_item.tax_entity_id, cost_item.tax_code,
-           cost_item.tax_name, cost_item.tax_rate_basis_points,
-           cost_item.tax_cents, cost_item.line_total_cents,
-           cost_item.total_cost_cents, cost_item.sort_order, ?, ?
-         FROM project_estimate_line_cost_items AS cost_item
-         INNER JOIN project_estimate_lines AS source_line
-           ON source_line.id = cost_item.estimate_line_id AND source_line.assembly_id = ?
-         INNER JOIN project_estimate_lines AS copied_line
-           ON copied_line.estimate_id = ?
-           AND copied_line.sort_order = source_line.sort_order
-           AND copied_line.cost_code = source_line.cost_code
-           AND copied_line.description = source_line.description
-         WHERE cost_item.estimate_id = ? AND cost_item.project_id = ?
-           AND cost_item.deleted_at IS NULL`
-      ).bind(id, now, now, assemblyId, id, estimateId, projectId),
-      db.prepare(
-        `INSERT INTO project_estimate_phase_descriptions (id, project_id, estimate_id, division_code, description, created_at, updated_at)
-         SELECT lower(hex(randomblob(16))), project_id, ?, division_code, description, ?, ?
-         FROM project_estimate_phase_descriptions WHERE estimate_id = ? AND project_id = ?`
-      ).bind(id, now, now, estimateId, projectId),
-      db.prepare(
-        `INSERT INTO project_estimate_acknowledgements (
-           id, project_id, estimate_id, template_id, title, body, source_document_id, source_url, sort_order, created_at, updated_at
-         )
-         SELECT lower(hex(randomblob(16))), project_id, ?, template_id, title, body, source_document_id, source_url, sort_order, ?, ?
-         FROM project_estimate_acknowledgements WHERE estimate_id = ? AND project_id = ?`
-      ).bind(id, now, now, estimateId, projectId),
-      db.prepare(
-        `INSERT INTO project_estimate_basis_documents (
-           id, project_id, estimate_id, project_document_id, document_type, title, document_date,
-           revision, drive_file_id, drive_url, notes, sort_order, created_at, updated_at
-         )
-         SELECT lower(hex(randomblob(16))), project_id, ?, project_document_id, document_type, title, document_date,
-           revision, drive_file_id, drive_url, notes, sort_order, ?, ?
-         FROM project_estimate_basis_documents WHERE estimate_id = ? AND project_id = ?`
-      ).bind(id, now, now, estimateId, projectId),
-    ])
+      sourceEstimateId: estimateId,
+      sourceAssemblyId: assemblyId,
+      newAssemblyId,
+      assembly,
+      now,
+    })
     if (results.some((result) => !result.success)) throw new Error("The phase estimate copy did not complete.")
 
     // The copied header carried the contract totals; price just this assembly.
     const lines = await access.db.select().from(projectEstimateLines).where(eq(projectEstimateLines.estimateId, id))
-    await access.db
-      .update(projectEstimates)
-      .set({ ...estimateTotalsForLines(source, lines), updatedAt: now })
-      .where(eq(projectEstimates.id, id))
-      .run()
+    await updateEstimates(access.db, eq(projectEstimates.id, id), {
+      ...estimateTotalsForLines(source, lines),
+      updatedAt: now,
+    })
 
     if (access.organizationId) {
       await recordActivityEvent({
@@ -374,11 +296,11 @@ export async function deletePhaseProposal(projectId: string, proposalId: string)
             eq(projectEstimateRfqBidImports.projectId, projectId),
             inArray(projectEstimateRfqBidImports.estimateId, versionIds),
           )),
-          access.db.delete(projectEstimates).where(and(eq(projectEstimates.projectId, projectId), inArray(projectEstimates.id, versionIds))),
+          deleteEstimatesStatement(access.db, and(eq(projectEstimates.projectId, projectId), inArray(projectEstimates.id, versionIds))),
         ]
       : []
     await access.db.batch([
-      access.db.delete(projectPhaseProposals).where(eq(projectPhaseProposals.id, proposalId)),
+      deletePhaseProposalsStatement(access.db, eq(projectPhaseProposals.id, proposalId)),
       ...estimateDeletes,
     ])
     if (access.organizationId) {

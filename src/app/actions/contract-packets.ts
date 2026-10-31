@@ -16,6 +16,7 @@ import {
   contractPackets,
 } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
+import { supersedeOtherContractEstimatesStatement, updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { validateExecutedContractDocumentReplacement } from "@/lib/contracts/executed-document"
@@ -1228,15 +1229,12 @@ export async function markProjectContractPacketSentOutsideCompass(
           updatedAt: now,
         })
         .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          status: "signature_pending",
-          foxitStatus: "included_in_manual_contract_packet",
-          signatureRequestedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, packet.estimateId)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, packet.estimateId), {
+        status: "signature_pending",
+        foxitStatus: "included_in_manual_contract_packet",
+        signatureRequestedAt: now,
+        updatedAt: now,
+      }),
     ])
     revalidateContractPacket(projectId)
     return { success: true, id: packet.id, message: "Packet frozen for outside signatures." }
@@ -1307,18 +1305,7 @@ export async function recordManualProjectContractPacketExecution(
             ne(contractPackets.id, packet.id)
           )
         ),
-      access.db
-        .update(projectEstimates)
-        .set({ status: "superseded", updatedAt: now })
-        .where(
-          and(
-            eq(projectEstimates.projectId, projectId),
-            eq(projectEstimates.status, "accepted"),
-            ne(projectEstimates.id, packet.estimateId),
-            // Change-order and phase estimates aren't part of the contract.
-            ...contractEstimateConditions()
-          )
-        ),
+      supersedeOtherContractEstimatesStatement(access.db, projectId, packet.estimateId, now),
       access.db
         .update(contractPackets)
         .set({
@@ -1334,22 +1321,19 @@ export async function recordManualProjectContractPacketExecution(
           updatedAt: now,
         })
         .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          status: "accepted",
-          foxitStatus: "completed_in_manual_contract_packet",
-          signaturePackageUrl: url.toString(),
-          signedAt: signedAtIso,
-          acceptanceMethod: "manual_contract_packet",
-          acceptanceEvidenceLabel: evidenceLabel,
-          acceptanceRecordedByName: access.user.displayName ?? access.user.email,
-          acceptedAt: now,
-          acceptedBy: access.user.id,
-          sageStatus: "ready",
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, packet.estimateId)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, packet.estimateId), {
+        status: "accepted",
+        foxitStatus: "completed_in_manual_contract_packet",
+        signaturePackageUrl: url.toString(),
+        signedAt: signedAtIso,
+        acceptanceMethod: "manual_contract_packet",
+        acceptanceEvidenceLabel: evidenceLabel,
+        acceptanceRecordedByName: access.user.displayName ?? access.user.email,
+        acceptedAt: now,
+        acceptedBy: access.user.id,
+        sageStatus: "ready",
+        updatedAt: now,
+      }),
     ])
     const budget = await rebuildProjectContractBudget({
       db: access.db,
@@ -1419,14 +1403,11 @@ export async function replaceExecutedProjectContractPacketDocument(
           updatedAt: now,
         })
         .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          signaturePackageUrl: replacement.url,
-          acceptanceEvidenceLabel: replacement.label,
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, linkedEstimate.id)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, linkedEstimate.id), {
+        signaturePackageUrl: replacement.url,
+        acceptanceEvidenceLabel: replacement.label,
+        updatedAt: now,
+      }),
     ])
 
     await recordActivityEvent({

@@ -1,14 +1,15 @@
 import { and, eq, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
-import {
-  projectChangeOrderHistory,
-  projectChangeOrderLines,
-  projectChangeOrders,
-  projects,
-} from "@/db/schema"
+import { projectChangeOrders, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 import { estimateVersionDifference, type VersionDifference } from "@/lib/change-orders/version-difference"
+import {
+  insertChangeOrderHistoryStatement,
+  insertChangeOrderLineStatement,
+  insertChangeOrderStatement,
+  type Statement,
+} from "@/lib/domain/estimates/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
 
@@ -81,7 +82,14 @@ export type VersionChangeOrderInput = {
  * execution to claim in the same batch; a difference change order is
  * executed at once and its lines feed the budget.
  */
-export async function versionChangeOrderStatements(db: Db, input: VersionChangeOrderInput) {
+export async function versionChangeOrderStatements(
+  db: Db,
+  input: VersionChangeOrderInput
+): Promise<{
+  readonly changeOrderId: string
+  readonly changeOrderNumber: string
+  readonly statements: readonly Statement[]
+}> {
   const [project, existing] = await Promise.all([
     db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get(),
     db.select({ id: projectChangeOrders.id }).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId)),
@@ -91,11 +99,12 @@ export async function versionChangeOrderStatements(db: Db, input: VersionChangeO
   const from = `v${input.baseline.versionNumber}`
   const to = `v${input.replacement.versionNumber}`
   const lines = input.difference.lines
-  const lineInserts = []
+  const lineInserts: Statement[] = []
   // Each line binds 13 columns; seven per statement stays under D1's limit.
   for (let index = 0; index < lines.length; index += 7) {
     lineInserts.push(
-      db.insert(projectChangeOrderLines).values(
+      insertChangeOrderLineStatement(
+        db,
         lines.slice(index, index + 7).map((line) => ({
           id: crypto.randomUUID(),
           projectId: input.projectId,
@@ -118,7 +127,7 @@ export async function versionChangeOrderStatements(db: Db, input: VersionChangeO
     changeOrderId: id,
     changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing.length),
     statements: [
-      db.insert(projectChangeOrders).values({
+      insertChangeOrderStatement(db, {
         id,
         projectId: input.projectId,
         changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing.length),
@@ -153,7 +162,7 @@ export async function versionChangeOrderStatements(db: Db, input: VersionChangeO
         updatedAt: input.now,
       }),
       ...lineInserts,
-      db.insert(projectChangeOrderHistory).values({
+      insertChangeOrderHistoryStatement(db, {
         id: crypto.randomUUID(),
         projectId: input.projectId,
         changeOrderId: id,

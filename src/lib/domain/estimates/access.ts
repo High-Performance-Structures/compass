@@ -19,6 +19,8 @@ export type CompassDb = Db
 export type EstimateAccess = {
   readonly db: CompassDb
   readonly rawDb: D1Database
+  /** The request's Cloudflare bindings (Browser Run, Foxit and Google settings). */
+  readonly env: CloudflareEnv
   readonly user: AuthUser
   readonly projectNumber: string | null
   readonly projectName: string
@@ -58,6 +60,7 @@ export async function estimateSourceForRecordCopy(
   return {
     db,
     rawDb: env.DB,
+    env,
     projectNumber: project.projectNumber,
     projectName: project.name,
     projectAddress: project.address,
@@ -107,6 +110,7 @@ export async function estimateAccess(
   return {
     db,
     rawDb: env.DB,
+    env,
     user,
     projectNumber: access.projectNumber,
     projectName: project.name,

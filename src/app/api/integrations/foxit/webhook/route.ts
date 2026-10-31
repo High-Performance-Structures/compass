@@ -10,7 +10,11 @@ import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
-import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import {
+  supersedeOtherContractEstimatesStatement,
+  updateEstimates,
+  updateEstimatesStatement,
+} from "@/lib/domain/estimates/store"
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
 import { contractVersionBaseline } from "@/lib/change-orders/contract-version-acceptance"
 import { announceEsignOutcome } from "@/lib/esign/announce"
@@ -100,15 +104,12 @@ export async function POST(request: Request): Promise<Response> {
               updatedAt: now,
             })
             .where(eq(contractPackets.id, packet.id)),
-          db
-            .update(projectEstimates)
-            .set({
-              status: "signature_pending",
-              foxitStatus: "included_in_contract_packet",
-              signatureRequestedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(projectEstimates.id, linkedEstimate.id)),
+          updateEstimatesStatement(db, eq(projectEstimates.id, linkedEstimate.id), {
+            status: "signature_pending",
+            foxitStatus: "included_in_contract_packet",
+            signatureRequestedAt: now,
+            updatedAt: now,
+          }),
         ])
       }
       return Response.json({ success: true })
@@ -190,17 +191,7 @@ export async function POST(request: Request): Promise<Response> {
               ne(contractPackets.id, packet.id)
             )
           ),
-        db
-          .update(projectEstimates)
-          .set({ status: "superseded", updatedAt: now })
-          .where(
-            and(
-              eq(projectEstimates.projectId, linkedEstimate.projectId),
-              eq(projectEstimates.status, "accepted"),
-              ne(projectEstimates.id, linkedEstimate.id),
-              ...contractEstimateConditions()
-            )
-          ),
+        supersedeOtherContractEstimatesStatement(db, linkedEstimate.projectId, linkedEstimate.id, now),
         db
           .update(contractPackets)
           .set({
@@ -216,22 +207,19 @@ export async function POST(request: Request): Promise<Response> {
             updatedAt: now,
           })
           .where(eq(contractPackets.id, packet.id)),
-        db
-          .update(projectEstimates)
-          .set({
-            status: "accepted",
-            foxitStatus: "completed_in_contract_packet",
-            signaturePackageUrl: signedUrl,
-            signedAt: now,
-            acceptanceMethod: "foxit_contract_packet",
-            acceptanceEvidenceLabel: "Completed Foxit contract packet",
-            acceptanceRecordedByName: "Foxit eSign",
-            acceptedAt: now,
-            acceptedBy: packet.createdBy,
-            sageStatus: "ready",
-            updatedAt: now,
-          })
-          .where(eq(projectEstimates.id, linkedEstimate.id)),
+        updateEstimatesStatement(db, eq(projectEstimates.id, linkedEstimate.id), {
+          status: "accepted",
+          foxitStatus: "completed_in_contract_packet",
+          signaturePackageUrl: signedUrl,
+          signedAt: now,
+          acceptanceMethod: "foxit_contract_packet",
+          acceptanceEvidenceLabel: "Completed Foxit contract packet",
+          acceptanceRecordedByName: "Foxit eSign",
+          acceptedAt: now,
+          acceptedBy: packet.createdBy,
+          sageStatus: "ready",
+          updatedAt: now,
+        }),
       ])
       await announceEsignOutcome({
         db,
@@ -267,29 +255,21 @@ export async function POST(request: Request): Promise<Response> {
   const now = new Date().toISOString()
   if (event === "folder_sent") {
     if (estimate.status === "draft" || estimate.status === "internal_review") {
-      await db
-        .update(projectEstimates)
-        .set({
-          status: "signature_pending",
-          foxitStatus: "sent",
-          signatureRequestedAt: now,
-          sourceHash: estimate.foxitPreparedSourceHash,
-          foxitEmbeddedSessionUrl: null,
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, estimate.id))
-        .run()
+      await updateEstimates(db, eq(projectEstimates.id, estimate.id), {
+        status: "signature_pending",
+        foxitStatus: "sent",
+        signatureRequestedAt: now,
+        sourceHash: estimate.foxitPreparedSourceHash,
+        foxitEmbeddedSessionUrl: null,
+        updatedAt: now,
+      })
     }
     return Response.json({ success: true })
   }
 
   if (event === "folder_cancelled" || event === "folder_declined") {
     const outcome = event === "folder_declined" ? "declined" : "cancelled"
-    await db
-      .update(projectEstimates)
-      .set({ foxitStatus: outcome, updatedAt: now })
-      .where(eq(projectEstimates.id, estimate.id))
-      .run()
+    await updateEstimates(db, eq(projectEstimates.id, estimate.id), { foxitStatus: outcome, updatedAt: now })
     if (estimate.foxitStatus !== outcome) {
       await announceEsignOutcome({
         db,
@@ -331,11 +311,12 @@ export async function POST(request: Request): Promise<Response> {
     // whether it replaces the contract or becomes a change order.
     if (await contractVersionBaseline(db, estimate, mode)) {
       if (estimate.foxitStatus !== "completed") {
-        await db
-          .update(projectEstimates)
-          .set({ foxitStatus: "completed", signaturePackageUrl: signedDocumentUrl, signedAt: now, updatedAt: now })
-          .where(eq(projectEstimates.id, estimate.id))
-          .run()
+        await updateEstimates(db, eq(projectEstimates.id, estimate.id), {
+          foxitStatus: "completed",
+          signaturePackageUrl: signedDocumentUrl,
+          signedAt: now,
+          updatedAt: now,
+        })
         await announceEsignOutcome({
           db,
           projectId: estimate.projectId,
@@ -363,26 +344,23 @@ export async function POST(request: Request): Promise<Response> {
         })
       : []
     await db.batch([
-      db
-        .update(projectEstimates)
-        .set({ status: "superseded", updatedAt: now })
-        .where(and(...estimateSupersedeConditions(estimate, mode))),
-      db
-        .update(projectEstimates)
-        .set({
-          status: "accepted",
-          foxitStatus: "completed",
-          signaturePackageUrl: `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`,
-          signedAt: now,
-          acceptanceMethod: "foxit",
-          acceptanceEvidenceLabel: "Completed Foxit estimate",
-          acceptanceRecordedByName: "Foxit eSign",
-          acceptedAt: now,
-          acceptedBy: estimate.createdBy,
-          sageStatus: "ready",
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, estimate.id)),
+      updateEstimatesStatement(db, and(...estimateSupersedeConditions(estimate, mode)), {
+        status: "superseded",
+        updatedAt: now,
+      }),
+      updateEstimatesStatement(db, eq(projectEstimates.id, estimate.id), {
+        status: "accepted",
+        foxitStatus: "completed",
+        signaturePackageUrl: `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`,
+        signedAt: now,
+        acceptanceMethod: "foxit",
+        acceptanceEvidenceLabel: "Completed Foxit estimate",
+        acceptanceRecordedByName: "Foxit eSign",
+        acceptedAt: now,
+        acceptedBy: estimate.createdBy,
+        sageStatus: "ready",
+        updatedAt: now,
+      }),
       ...changeOrderExecution,
     ])
     await announceEsignOutcome({

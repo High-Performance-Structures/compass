@@ -5,6 +5,14 @@ import { z } from "zod/v4"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
+import {
+  insertEstimateAssemblyStatement,
+  updateEstimateAssembliesStatement,
+  updateEstimateLinesStatement,
+  updateEstimatesStatement,
+  deleteEstimateAssembliesStatement,
+  type Statement,
+} from "@/lib/domain/estimates/store"
 import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
 
 const assemblyInput = z.object({
@@ -40,25 +48,27 @@ export async function saveProjectEstimateAssembly(
     const now = new Date().toISOString()
     const values = { name: data.name, description: data.description || null, updatedAt: now }
     const mutation = existing
-      ? access.db.update(projectEstimateAssemblies).set(values).where(and(
-          eq(projectEstimateAssemblies.id, id), eq(projectEstimateAssemblies.estimateId, estimateId)))
-      : access.db.insert(projectEstimateAssemblies).values({
+      ? updateEstimateAssembliesStatement(access.db, and(
+          eq(projectEstimateAssemblies.id, id), eq(projectEstimateAssemblies.estimateId, estimateId)), values)
+      : insertEstimateAssemblyStatement(access.db, {
           id, estimateId, ...values, createdAt: now,
           sortOrder: Math.max(-1, ...existingAssemblies.map((row) => row.sortOrder)) + 1,
         })
-    const assignments = []
+    const assignments: Statement[] = []
     // D1 limits bind parameters per statement; assigning many items stays atomic
     // by chunking statements inside one batch.
     for (let offset = 0; offset < selectedIds.length; offset += 80) {
-      assignments.push(access.db.update(projectEstimateLines).set({ assemblyId: id, updatedAt: now })
-        .where(and(eq(projectEstimateLines.estimateId, estimateId), inArray(projectEstimateLines.id, selectedIds.slice(offset, offset + 80)))))
+      assignments.push(updateEstimateLinesStatement(access.db,
+        and(eq(projectEstimateLines.estimateId, estimateId), inArray(projectEstimateLines.id, selectedIds.slice(offset, offset + 80))),
+        { assemblyId: id, updatedAt: now }))
     }
     await access.db.batch([
       mutation,
-      access.db.update(projectEstimateLines).set({ assemblyId: null, updatedAt: now })
-        .where(and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.assemblyId, id))),
+      updateEstimateLinesStatement(access.db,
+        and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.assemblyId, id)),
+        { assemblyId: null, updatedAt: now }),
       ...assignments,
-      access.db.update(projectEstimates).set({ updatedAt: now }).where(eq(projectEstimates.id, estimateId)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, estimateId), { updatedAt: now }),
     ])
     if (access.organizationId) await recordActivityEvent({
       db: access.db, organizationId: access.organizationId, projectId, actor: access.user,
@@ -87,11 +97,12 @@ export async function deleteProjectEstimateAssembly(
     if (!assembly) return { success: false, error: "Assembly not found in this estimate." }
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db.update(projectEstimateLines).set({ assemblyId: null, updatedAt: now }).where(and(
-        eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.assemblyId, assemblyId))),
-      access.db.delete(projectEstimateAssemblies).where(and(
+      updateEstimateLinesStatement(access.db, and(
+        eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.assemblyId, assemblyId)),
+        { assemblyId: null, updatedAt: now }),
+      deleteEstimateAssembliesStatement(access.db, and(
         eq(projectEstimateAssemblies.id, assemblyId), eq(projectEstimateAssemblies.estimateId, estimateId))),
-      access.db.update(projectEstimates).set({ updatedAt: now }).where(eq(projectEstimates.id, estimateId)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, estimateId), { updatedAt: now }),
     ])
     if (access.organizationId) await recordActivityEvent({
       db: access.db, organizationId: access.organizationId, projectId, actor: access.user,
@@ -128,13 +139,14 @@ export async function setEstimateAssemblyClientDetail(
     }
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db.update(projectEstimateAssemblies).set({ clientDetail: false, updatedAt: now })
-        .where(eq(projectEstimateAssemblies.estimateId, estimateId)),
+      updateEstimateAssembliesStatement(access.db, eq(projectEstimateAssemblies.estimateId, estimateId),
+        { clientDetail: false, updatedAt: now }),
       ...(selected.length > 0
-        ? [access.db.update(projectEstimateAssemblies).set({ clientDetail: true, updatedAt: now })
-            .where(and(eq(projectEstimateAssemblies.estimateId, estimateId), inArray(projectEstimateAssemblies.id, selected)))]
+        ? [updateEstimateAssembliesStatement(access.db,
+            and(eq(projectEstimateAssemblies.estimateId, estimateId), inArray(projectEstimateAssemblies.id, selected)),
+            { clientDetail: true, updatedAt: now })]
         : []),
-      access.db.update(projectEstimates).set({ updatedAt: now }).where(eq(projectEstimates.id, estimateId)),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, estimateId), { updatedAt: now }),
     ])
     const names = assemblies.filter((assembly) => selected.includes(assembly.id)).map((assembly) => assembly.name)
     if (access.organizationId) await recordActivityEvent({

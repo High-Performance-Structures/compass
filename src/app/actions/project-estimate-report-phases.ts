@@ -12,6 +12,14 @@ import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { validateEstimateReportPhase, type EstimateReportPhaseInput } from "@/lib/estimates/report-phases"
 import { estimateCanBeEdited, isEstimateStatus } from "@/lib/domain/estimates/rules"
+import {
+  deleteEstimateReportPhasesStatement,
+  insertEstimateReportPhaseStatement,
+  invalidatePreparedSignatureStatement,
+  updateEstimateLinesStatement,
+  updateEstimateReportPhasesStatement,
+  type Statement,
+} from "@/lib/domain/estimates/store"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -42,17 +50,6 @@ async function phaseAccess(projectId: string, estimateId: string, deleting: bool
   return { db, user, organizationId: project.organizationId }
 }
 
-function signatureInvalidation(db: PhaseAccess["db"], estimateId: string, now: string) {
-  return db.update(projectEstimates).set({
-    foxitStatus: "not_started",
-    foxitEnvelopeId: null,
-    foxitEmbeddedSessionUrl: null,
-    foxitPreparedSourceHash: null,
-    foxitPreparedAt: null,
-    updatedAt: now,
-  }).where(eq(projectEstimates.id, estimateId))
-}
-
 function revalidatePhaseReport(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/estimate`)
   revalidatePath(`/print/projects/${projectId}/estimate`)
@@ -80,19 +77,19 @@ export async function saveProjectEstimateReportPhase(
     const now = new Date().toISOString()
     const values = { divisionCode: value.divisionCode, name: value.name, description: value.description, itemize: value.itemize, sortOrder: value.sortOrder, updatedAt: now }
     const phaseWrite = phaseId
-      ? access.db.update(projectEstimateReportPhases).set(values).where(and(eq(projectEstimateReportPhases.id, id), eq(projectEstimateReportPhases.estimateId, estimateId)))
-      : access.db.insert(projectEstimateReportPhases).values({ id, projectId, estimateId, ...values, createdAt: now })
+      ? updateEstimateReportPhasesStatement(access.db, and(eq(projectEstimateReportPhases.id, id), eq(projectEstimateReportPhases.estimateId, estimateId)), values)
+      : insertEstimateReportPhaseStatement(access.db, { id, projectId, estimateId, ...values, createdAt: now })
     // Phase definition and membership change together; no cost or CSI field changes.
-    const assignmentWrites = []
+    const assignmentWrites: Statement[] = []
     // D1 limits parameters per statement, not the size of an estimate phase.
     for (let offset = 0; offset < value.lineIds.length; offset += 80) {
-      assignmentWrites.push(access.db.update(projectEstimateLines).set({ reportPhaseId: id, updatedAt: now }).where(and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.projectId, projectId), eq(projectEstimateLines.divisionCode, value.divisionCode), inArray(projectEstimateLines.id, value.lineIds.slice(offset, offset + 80)))))
+      assignmentWrites.push(updateEstimateLinesStatement(access.db, and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.projectId, projectId), eq(projectEstimateLines.divisionCode, value.divisionCode), inArray(projectEstimateLines.id, value.lineIds.slice(offset, offset + 80))), { reportPhaseId: id, updatedAt: now }))
     }
     await access.db.batch([
       phaseWrite,
-      access.db.update(projectEstimateLines).set({ reportPhaseId: null, updatedAt: now }).where(and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.reportPhaseId, id))),
+      updateEstimateLinesStatement(access.db, and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.reportPhaseId, id)), { reportPhaseId: null, updatedAt: now }),
       ...assignmentWrites,
-      signatureInvalidation(access.db, estimateId, now),
+      invalidatePreparedSignatureStatement(access.db, estimateId, now),
     ])
     if (access.organizationId) {
       await recordActivityEvent({
@@ -122,9 +119,9 @@ export async function deleteProjectEstimateReportPhase(
     if (!phase) throw new Error("Report phase not found.")
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db.update(projectEstimateLines).set({ reportPhaseId: null, updatedAt: now }).where(and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.reportPhaseId, phaseId))),
-      access.db.delete(projectEstimateReportPhases).where(and(eq(projectEstimateReportPhases.id, phaseId), eq(projectEstimateReportPhases.estimateId, estimateId))),
-      signatureInvalidation(access.db, estimateId, now),
+      updateEstimateLinesStatement(access.db, and(eq(projectEstimateLines.estimateId, estimateId), eq(projectEstimateLines.reportPhaseId, phaseId)), { reportPhaseId: null, updatedAt: now }),
+      deleteEstimateReportPhasesStatement(access.db, and(eq(projectEstimateReportPhases.id, phaseId), eq(projectEstimateReportPhases.estimateId, estimateId))),
+      invalidatePreparedSignatureStatement(access.db, estimateId, now),
     ])
     if (access.organizationId) {
       await recordActivityEvent({
