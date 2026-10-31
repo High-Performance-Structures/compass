@@ -147,11 +147,19 @@ export async function loadProjectScheduleRows(
 export async function loadWorkingSchedule(db: Db, projectId: string): Promise<ScheduleData> {
   const tasks = await loadProjectTasks(db, projectId)
   const taskIds = tasks.map((task) => task.id)
-  const assigneeRows = await db
-    .select()
-    .from(scheduleTaskAssignees)
-    .where(inArray(scheduleTaskAssignees.scheduleTaskId, taskIds))
-    .catch(() => [])
+  // Chunked: one IN list over D1's 100-parameter limit used to fail and,
+  // being fail-soft, showed every task unassigned on larger schedules.
+  const assigneeRows = (
+    await Promise.all(
+      chunkD1Values(taskIds).map((chunk) =>
+        db
+          .select()
+          .from(scheduleTaskAssignees)
+          .where(inArray(scheduleTaskAssignees.scheduleTaskId, chunk))
+          .catch(() => [])
+      )
+    )
+  ).flat()
   const assigneesByTask = new Map<string, ScheduleTaskAssigneeData[]>()
   for (const row of assigneeRows) {
     const existing = assigneesByTask.get(row.scheduleTaskId) ?? []
