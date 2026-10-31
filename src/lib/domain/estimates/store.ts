@@ -675,3 +675,111 @@ export function supersedeOtherContractEstimatesStatement(
       )
     )
 }
+
+// ==== Raw-SQL writes from estimate templates and line reordering
+
+/** One position for {@link reorderEstimateLinesStatements}. */
+export type EstimateLinePosition = { readonly id: string; readonly sortOrder: number }
+
+/**
+ * Reorders estimate lines and touches the estimate in one atomic batch. Each
+ * line statement covers at most 25 lines so it stays below D1's parameter
+ * limit. The timestamp/status guard keeps a stale save, or an estimate that
+ * was locked between the read and the write, from being overwritten; the
+ * caller checks the last statement changed exactly one row.
+ */
+export function reorderEstimateLinesStatements(rawDb: D1Database, input: {
+  readonly estimateId: string
+  readonly projectId: string
+  readonly expectedUpdatedAt: string
+  readonly now: string
+  readonly positions: readonly EstimateLinePosition[]
+}): D1PreparedStatement[] {
+  const { estimateId, projectId, expectedUpdatedAt, now, positions } = input
+  const writes: D1PreparedStatement[] = []
+  for (let offset = 0; offset < positions.length; offset += 25) {
+    const chunk = positions.slice(offset, offset + 25)
+    writes.push(rawDb.prepare(`UPDATE project_estimate_lines
+        SET sort_order = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END, updated_at = ?
+        WHERE id IN (${chunk.map(() => "?").join(",")}) AND estimate_id = ? AND project_id = ?
+        AND EXISTS (SELECT 1 FROM project_estimates WHERE id = ? AND project_id = ?
+          AND updated_at = ? AND status IN ('draft', 'internal_review'))`)
+      .bind(...chunk.flatMap((position) => [position.id, position.sortOrder]), now,
+        ...chunk.map((position) => position.id), estimateId, projectId,
+        estimateId, projectId, expectedUpdatedAt))
+  }
+  writes.push(rawDb.prepare(`UPDATE project_estimates SET updated_at = ?,
+      foxit_status = 'not_started', foxit_envelope_id = NULL, foxit_embedded_session_url = NULL,
+      foxit_prepared_source_hash = NULL, foxit_prepared_at = NULL
+      WHERE id = ? AND project_id = ? AND updated_at = ? AND status IN ('draft', 'internal_review')`)
+    .bind(now, estimateId, projectId, expectedUpdatedAt))
+  return writes
+}
+
+/** A new draft estimate created from a published estimate template. */
+export type TemplateEstimateRow = {
+  readonly id: string; readonly projectId: string; readonly estimateNumber: string
+  readonly versionNumber: number; readonly title: string; readonly estimateDate: string
+  readonly sourceRevision: string; readonly templateVersionId: string
+  readonly templateApplicationId: string; readonly defaultTaxEntityId: string | null
+  readonly defaultTaxCode: string | null; readonly defaultTaxName: string | null
+  readonly defaultTaxRateBasisPoints: number; readonly contractTerms: string | null
+  readonly directCostCents: number; readonly markupCents: number; readonly taxCents: number
+  readonly builderFeeBaseCents: number; readonly estimateTotalCents: number; readonly createdBy: string
+  readonly now: string
+}
+
+export function insertTemplateEstimateStatement(rawDb: D1Database, row: TemplateEstimateRow): D1PreparedStatement {
+  return rawDb.prepare(
+    `INSERT INTO project_estimates (
+          id, project_id, estimate_number, version_number, title, status,
+          estimate_date, source_system, source_revision, template_version_id,
+          template_application_id, default_tax_entity_id, default_tax_code,
+          default_tax_name, default_tax_rate_basis_points, contract_terms,
+          direct_cost_cents, markup_cents, tax_cents,
+          builder_fee_base_cents, estimate_total_cents,
+          created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'draft', ?, 'compass_template', ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    row.id, row.projectId, row.estimateNumber, row.versionNumber, row.title, row.estimateDate,
+    row.sourceRevision, row.templateVersionId, row.templateApplicationId, row.defaultTaxEntityId,
+    row.defaultTaxCode, row.defaultTaxName, row.defaultTaxRateBasisPoints, row.contractTerms,
+    row.directCostCents, row.markupCents, row.taxCents, row.builderFeeBaseCents,
+    row.estimateTotalCents, row.createdBy, row.now, row.now
+  )
+}
+
+/** Booleans are bound as 0/1, as the template application always has. */
+export type TemplateEstimateLineRow = {
+  readonly id: string; readonly projectId: string; readonly estimateId: string
+  readonly templateLineId: string; readonly divisionCode: string; readonly divisionName: string
+  readonly costCode: string; readonly costCodeName: string; readonly description: string
+  readonly specifications: string | null; readonly quantity: number; readonly unit: string
+  readonly unitCostCents: number; readonly directCostCents: number; readonly markupRateBasisPoints: number
+  readonly markupCents: number; readonly taxable: boolean; readonly taxEntityId: string | null
+  readonly taxCode: string | null; readonly taxName: string | null; readonly taxRateBasisPoints: number
+  readonly taxCents: number; readonly lineTotalCents: number; readonly ownerVisible: boolean
+  readonly sortOrder: number; readonly now: string
+}
+
+export function insertTemplateEstimateLineStatement(rawDb: D1Database, line: TemplateEstimateLineRow): D1PreparedStatement {
+  return rawDb.prepare(
+    `INSERT INTO project_estimate_lines (
+            id, project_id, estimate_id, template_line_id, division_code,
+            division_name, cost_code, cost_code_name, description,
+            specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
+            markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
+            tax_code, tax_name, tax_rate_basis_points, tax_cents,
+            line_total_cents, owner_visible, sort_order, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    line.id, line.projectId, line.estimateId, line.templateLineId, line.divisionCode,
+    line.divisionName, line.costCode, line.costCodeName, line.description, line.specifications,
+    line.quantity, line.unit, line.unitCostCents, line.directCostCents, line.markupRateBasisPoints,
+    line.markupCents, line.taxable ? 1 : 0, line.taxEntityId, line.taxCode, line.taxName,
+    line.taxRateBasisPoints, line.taxCents, line.lineTotalCents, line.ownerVisible ? 1 : 0,
+    line.sortOrder, line.now, line.now
+  )
+}

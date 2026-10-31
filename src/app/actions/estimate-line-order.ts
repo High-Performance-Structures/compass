@@ -5,13 +5,14 @@ import { z } from "zod/v4"
 import { projectEstimateAssemblies, projectEstimateLines } from "@/db/schema-estimates"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
+import { reorderEstimateLinesStatements } from "@/lib/domain/estimates/store"
+import type { ProjectEstimateActionResult } from "@/lib/domain/estimates/types"
 import {
   compareEstimateLineOrder,
   reorderedEstimateLinePositions,
   sameEstimateLineOrder,
   type EstimateLineOrderGroup,
 } from "@/lib/estimates/line-order"
-import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
 
 const orderInput = z.object({
   group: z.discriminatedUnion("type", [
@@ -70,26 +71,9 @@ export async function reorderProjectEstimateLines(
     if (sameEstimateLineOrder(currentIds, data.orderedIds)) return { success: true, id: estimateId }
     const now = new Date(Math.max(Date.now(), (Date.parse(estimate.updatedAt) || 0) + 1)).toISOString()
     const positions = reorderedEstimateLinePositions(lines, data.orderedIds)
-    const writes: D1PreparedStatement[] = []
-    // Each statement stays below D1's parameter limit. The batch is atomic;
-    // the timestamp/status guard prevents a stale save or a newly locked estimate
-    // from being overwritten between the read and the write.
-    for (let offset = 0; offset < positions.length; offset += 25) {
-      const chunk = positions.slice(offset, offset + 25)
-      writes.push(access.rawDb.prepare(`UPDATE project_estimate_lines
-        SET sort_order = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END, updated_at = ?
-        WHERE id IN (${chunk.map(() => "?").join(",")}) AND estimate_id = ? AND project_id = ?
-        AND EXISTS (SELECT 1 FROM project_estimates WHERE id = ? AND project_id = ?
-          AND updated_at = ? AND status IN ('draft', 'internal_review'))`)
-        .bind(...chunk.flatMap((position) => [position.id, position.sortOrder]), now,
-          ...chunk.map((position) => position.id), estimateId, projectId,
-          estimateId, projectId, estimate.updatedAt))
-    }
-    writes.push(access.rawDb.prepare(`UPDATE project_estimates SET updated_at = ?,
-      foxit_status = 'not_started', foxit_envelope_id = NULL, foxit_embedded_session_url = NULL,
-      foxit_prepared_source_hash = NULL, foxit_prepared_at = NULL
-      WHERE id = ? AND project_id = ? AND updated_at = ? AND status IN ('draft', 'internal_review')`)
-      .bind(now, estimateId, projectId, estimate.updatedAt))
+    const writes = reorderEstimateLinesStatements(access.rawDb, {
+      estimateId, projectId, expectedUpdatedAt: estimate.updatedAt, now, positions,
+    })
     const results = await access.rawDb.batch(writes)
     if (results.at(-1)?.meta.changes !== 1) return { success: false, error: stale }
     if (access.organizationId) await recordActivityEvent({
