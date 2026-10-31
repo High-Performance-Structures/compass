@@ -109,7 +109,7 @@ The transition table is `TRANSITIONS` in `src/lib/change-orders/status.ts`, chec
 
    The owner can now see the application.
 5. **Accounting invoice.** Accounting creates the invoice in the accounting system. Staff then record its number with `setProjectOwnerPayApplicationSageInvoice`, which sets `sync_status: synced`.
-6. **Undo.** `undoProjectOwnerPayApplicationBilling` is blocked once a later application or an invoice number exists.
+6. **Undo.** `undoProjectOwnerPayApplicationBilling` is blocked once a later application or an invoice number exists, and while payments are applied to the application (`payApplicationHasActivePayments`; void them first). Payments received against a billed application follow section 6.10.
 7. **Read-only check.** `queueSagePayApplicationSync` queues a run that the on-premises poller claims. The poller reads the accounting system's latest progress-billing application, and `ingestSagePayApplicationSnapshot` stores and reconciles it against the Compass budget. The poller does not write the invoice number.
 
 ## 6.5 Daily log → to-dos
@@ -197,3 +197,17 @@ All overrides are read once per request. A missing project returns "Project not 
 - **Phased work.** Phases use project families:
   - an accepted phase proposal creates a family phase in `awaiting_funding`;
   - `activateProjectFamilyPhase` needs a phase number and an authorization (the contract amount or an originating change order) before it creates the project shell and syncs the trackers.
+
+## 6.10 Payment received → pay application or invoice
+
+![Payment received against pay applications and invoices](diagrams/flow-payment-received.png)
+
+The actions are in `src/app/actions/received-payments.ts`; the money rules are in `src/lib/domain/financials/rules.ts`, the reads in `receivables.ts`, and the only writer is `src/lib/domain/financials/store.ts`.
+
+1. **Open.** `getProjectReceivablePayments` (feature `financials`, action `read`) lists the project's billed items and payments. `getRecordPaymentOptions` lists the customer's open items on the project, with the focused item first and prefilled.
+2. **Record.** `recordReceivedPayment` (action `create`) takes the amount, date, method (`check`, `cash`, `ach` or `card`), reference, memo and the requested split. The dialog shows an applied and unapplied preview, but the server recomputes everything with `planPaymentAllocations`.
+3. **Write.** One D1 batch inserts the `payments` row, one `invoice_payment_allocations` or `pay_application_payment_allocations` row per item, and each invoice's new `amount_paid`, `amount_due` and `status`. Each allocation insert repeats the action's read as a guard; a failed guard writes 0 cents, the positive-amount CHECK rejects it, and the whole batch rolls back with "A balance changed… refresh". Activity `payment_received` is recorded.
+4. **Apply later.** `applyReceivedPaymentToItems` (action `create`) applies an unapplied remainder with the same checks and the same guarded batch. Activity `payment_applied`.
+5. **Accounting.** Nothing is posted to the accounting system. Staff enter the receipt there by hand, because the accounting system restricts automated payment posting. Card payments follow section 6.6 and are posted only by that bridge.
+6. **Void.** `voidReceivedPaymentWithReason` (action `update`) needs a reason. It is refused for a payment that is already void or that came from the card-payment bridge. It stamps `voided_at`, `voided_by` and `void_reason`, releases every active allocation (`released_at`, `released_by`) and lowers each invoice's paid amount by what this payment applied, never below zero. Invoice allocations added after the read abort the void, and a second void writes a blank reason that the CHECK rejects. Activity `payment_voided`. If the receipt was entered in accounting, staff reverse it there.
+7. **Owner view.** `getOwnerPayApplicationBalances` (`scope: "member"`) gives the owner's billing page the paid and outstanding amounts of billed applications.

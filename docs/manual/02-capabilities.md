@@ -41,7 +41,8 @@ A note on shared plumbing: to-dos, RFQs, purchase orders, pay-application mirror
 - **Linked jobs and families.** See section 6.9.
   - `project_links` ties jobs for the same customer and site across departments (one row per pair).
   - `project_families` and `project_family_phases` group phased work under one base number. Family management is admin-only (`src/lib/domain/families/access.ts`).
-- **Saved views.** `project_saved_views` are `personal` or `shared`. Each holds a department filter plus a status bucket or a specific status (`src/lib/project-views.ts`). Search always crosses filters.
+- **Saved views.** Views are `personal` or `shared`. Each holds a department filter plus a status bucket or a specific status (`src/lib/project-views.ts`). Search always crosses filters. Views are stored in the consolidated `saved_views` table (scope `projects`) while the legacy `project_saved_views` table is still written in the same batch; section 5.3 describes the dual-write and the read fallback.
+- **All Projects loading.** The hub (`dashboard/projects/page.tsx`) waits only for intake assignees, the internal department name and saved views. The dashboard overview, the duplicate scan and the number-review exceptions start at once but reach the client as promises, so the list renders first and the card health line, next step and photo fill in inside small `<Suspense>` boundaries. Section 10.2 has the measurements.
 - **Templates.** `project_templates` with versions, modules and content items. Applying a template is recorded in `project_template_applications` (`src/lib/domain/templates/`).
 
 **Integrations.**
@@ -51,7 +52,7 @@ A note on shared plumbing: to-dos, RFQs, purchase orders, pay-application mirror
 - The accounting bridge: an "ensure client and job" handoff (section 6.1).
 - Geocoding and elevation for the map and for travel-zone charges.
 
-**Tables.** `projects`, `project_members`, `project_access_invitations`, `project_job_statuses`, `project_number_reservations`, `project_number_aliases`, `project_number_retirements`, `project_route_aliases`, `project_registry_removals`, `project_duplicate_decisions`, `project_saved_views`, `project_profile_audit_events`, `project_links`, `project_families`, `project_family_phases`, `project_archive_documents`, `project_templates*`.
+**Tables.** `projects`, `project_members`, `project_access_invitations`, `project_job_statuses`, `project_number_reservations`, `project_number_aliases`, `project_number_retirements`, `project_route_aliases`, `project_registry_removals`, `project_duplicate_decisions`, `project_saved_views`, `saved_views`, `saved_view_defaults`, `project_profile_audit_events`, `project_links`, `project_families`, `project_family_phases`, `project_archive_documents`, `project_templates*`.
 
 **Modules.**
 
@@ -146,7 +147,15 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
 - **Workdays.** Weekends are non-working. Exceptions are `non_working` or `working`, with a category (holiday, vacation, weather day, extra workday) and a recurrence of one-time or yearly (`src/lib/schedule/business-days.ts`).
 - **Publication.** Only staff publish. The snapshot holds tasks, assignees, dependencies and exceptions. Unpublished changes are found by diffing against the last snapshot.
 - **Confirmations.** Statuses are `not_requested`, `pending`, `unavailable`, `proposed`, `confirmed` and `declined` (`src/lib/schedule/confirmation.ts`). Only the external assignee responds. Staff accept or reject proposals.
-- **Assignees.** A task can have several assignees with equal standing (`schedule_task_assignees`). Each task's visibility to owners and vendors is set separately.
+- **Assignees.** A schedule item can be assigned to several people, and all of them are equal: there is no lead or helper role.
+  - **Storage.** Each person is a `schedule_task_people` row (`position`, a `display_name` snapshot, and an optional `assigned_user_id` and `project_contact_id`), unique on `(schedule_task_id, display_name)`. The picker also offers typed names and directory customers or vendors, which have no account to point at, so the name is kept as a named snapshot. `src/lib/domain/schedule/store.ts` is the only writer.
+  - **Dual-write.** In the same `db.batch`, `schedule_tasks.assigned_to` keeps every name joined with ", ", and `assigned_user_id` keeps the first linked account. Readers that already split `assigned_to` on commas (conflicts, the daily plan, the personal calendar, print, CSV, the Work Calendar, owner updates and Field Mode) see everyone without changes.
+  - **Safety net.** Readers use the people rows only while their joined names still equal `assigned_to`; otherwise they fall back to the single stored name. Writers that set only `assigned_to` (template application, older imports, the agent API and CSV import) therefore never show stale people.
+  - **Form and list.** `ScheduleAssigneesField` is a multi-select with a cap of 25 (`MAX_SCHEDULE_ASSIGNEES`). The list view shows avatars plus "+N". The people filter and "My items" match any one of an item's people. Bulk assign replaces the people with the one chosen name. Follow-up to-dos and Gantt crew grouping use the first person, because a to-do has a single assignee.
+  - **Notifications.** Publication snapshots record `assigneeUserIds`. On publish, each newly added linked account gets one `schedule.assigned` notice (in-app, email and push) through `src/lib/domain/schedule/assignment-notices.ts`, plus one Activity entry; the manual resend tells every published assignee. Daily-log reminders count every linked person on an open item as "scheduled today".
+  - **Limits.** Owner and vendor commitment confirmation is still one task-level response, from `assigned_user_id` (the first linked person), and the confirmation reminder goes to that account. Weather-risk notices also name only the first person as the owner; job staff are notified as before.
+  - **Not the same as `schedule_task_assignees`.** That older table holds reviewed, imported source participants, each with its own response authority, and it drives the publication-gated per-participant response flow. Staff picks are not written there.
+- **Visibility.** Each task's visibility to owners and vendors is set separately.
 
 **Integrations.**
 
@@ -154,7 +163,7 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
 - Personal and project calendar sync (section 2.8).
 - Template import and export.
 
-**Tables.** `schedule_tasks`, `task_dependencies`, `schedule_task_assignees`, `schedule_task_links`, `schedule_baselines`, `schedule_publications`, `workday_exceptions`, `schedule_phase_options`, `schedule_saved_views`, `schedule_template_items`, `schedule_template_dependencies`, `weather_schedule_risks`.
+**Tables.** `schedule_tasks`, `task_dependencies`, `schedule_task_people`, `schedule_task_assignees`, `schedule_task_links`, `schedule_baselines`, `schedule_publications`, `workday_exceptions`, `schedule_phase_options`, `schedule_saved_views`, `schedule_template_items`, `schedule_template_dependencies`, `weather_schedule_risks`.
 
 **Modules.**
 
@@ -216,6 +225,9 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
   | RFI | `<job>-RFI-NNN` |
 
 - **To-dos.** Statuses are `open`, `in_progress`, `blocked`, `complete` and `archived`. Aliases are normalized: cancelled becomes archived, and done or closed becomes complete. Record types are staff, subcontractor, supplier and schedule task. Events go to `project_todo_events`.
+- **To-do list.** To-dos are the first list on the shared record table (section 4.7): sortable name, description, status, assignee, due date, author and priority columns, search, record details and 25/50/100 paging. A deep link to a record beyond page one reveals it.
+  - **Bulk actions.** Staff select to-dos and confirm *archive*, *restore* or *delete* (`changeProjectTodos` → `changeProjectTodosCommand`, `src/lib/domain/operations/bulk-todos.ts`).
+  - **Rules.** Archive takes only active to-dos; restore and permanent delete take only archived ones. Delete also needs the `tasks` delete permission, and the single-record delete dialog follows the same rule. Each selected row carries its `updated_at`; if any row changed or disappeared, nothing is written and the user is asked to refresh. The store write checks project, record type, status and version, and a restore writes its history and status change atomically. Ids are read in `chunkD1Values` chunks.
 - **Purchase orders.** Statuses are `draft`, `approved`, `sent`, `ordered`, `partially_received`, `received`, `complete`, `closed` and `void`. A PO can be edited only while it is a Compass draft that has not been queued to accounting. The header total is the server-computed sum of its lines.
 - **RFQs.** Statuses are `draft`, `sent`, `response_received`, `awarded`, `declined`, `complete`, `closed` and `void`.
   - Awarding needs the `rfqs` approve permission and locks the RFQ.
@@ -244,6 +256,7 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
 - Keep accounts receivable and payable records: invoices, vendor bills, payments and credit memos.
 - Build owner pay applications in G702/G703 form against the contract budget, with retainage, deposits and change orders.
 - Approve pay applications for billing and tie them to an accounting invoice.
+- Record payments received against billed pay applications and invoices, and void them with a reason.
 - Feed billing from shop tickets and travel-zone charges.
 - Reconcile card payments into accounting.
 
@@ -275,7 +288,18 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
   The status flow is `building` → `draft` → `internal_review` → `billed` (section 6.4).
   - Billing makes the application visible to the owner.
   - The accounting invoice number can be set only once the application is billed.
-  - Undoing billing is blocked once a later application or an invoice number exists.
+  - Undoing billing is blocked once a later application or an invoice number exists, or while payments are applied to the application.
+- **Payments received against pay applications and invoices.** Staff record a customer's payment against a specific billed pay application or invoice, split one payment across several of the same customer's open items on the project, apply an unapplied remainder later, and void a payment with a reason. Section 6.10 has the flow.
+  - **Where.** A "Payments received" panel on the pay application page (billed applications) and on project financials, with two lists on the shared record table: *Billed items* (item, billed date, amount, paid, outstanding, status *Open* / *Partially paid* / *Paid*, and **Record payment**) and *Payments* (reference, received, method, amount, applied to, unapplied, status *Applied* / *Partly applied* / *Unapplied* / *Void*, the accounting note, and the **Apply** and **Void** actions). The organization-wide invoices list adds a Paid column and a "Record payment" link. The owner's billing page shows *Paid* or *Partially paid* and "paid · outstanding" amounts once payments exist.
+  - **What can take a payment.** Only Compass-billed pay applications (`source_system = 'compass_contract_budget'`, status `billed`) and invoices that are neither `draft` nor `void` (`payApplicationAcceptsPayments`, `invoiceAcceptsPayments`). Pay applications imported from the accounting system or the shared drive do not take payments.
+  - **Methods.** `check`, `cash`, `ach` and `card` (`RECEIVED_PAYMENT_METHODS`, `src/lib/domain/financials/statuses.ts`). Card payments taken through the card-payment provider arrive through the bridge instead (section 6.6).
+  - **Allocation rules.** `planPaymentAllocations` (`src/lib/domain/financials/rules.ts`) works in integer cents from the stored values. It refuses a non-positive amount, an item that is not one of this customer's open items, the same item twice, more than an item's open balance, more than the payment's unapplied amount, and a payment that mixes construction and preconstruction billing. A payment belongs to one project, so it can be split across that customer's items on that job but not across jobs.
+  - **Balances.** A pay application's paid amount is not copied onto the application: it is the sum of its unreleased `pay_application_payment_allocations` rows, read on demand. Its billed amount is `current_payment_due`, which is already net of any applied deposit. An invoice keeps its stored `amount_paid`, `amount_due` and `status`, updated in the same batch (`invoicePaidValues`).
+  - **Void rules.** A payment is never deleted once applied. Voiding needs a reason (required, at most 500 characters), stamps `voided_at`, `voided_by` and `void_reason` on the payment, and releases its allocation rows (`released_at`, `released_by`), which stay as history and stop counting toward balances. An invoice's paid amount drops only by what that payment applied, never below zero (`paidCentsAfterRelease`). A payment that is already void, or that came from the card-payment bridge, cannot be voided in Compass (`paymentVoidBlocker`); a bridge payment is refunded or reversed in the accounting system. The older payment edit and delete actions refuse to change the amount, project, customer or billing scope of an applied payment, and refuse to delete it ("void it instead"). Undo billing on a pay application is refused while payments are applied to it.
+  - **Concurrency.** One D1 batch per payment holds the payment insert, every allocation and every invoice update. Each allocation insert repeats the action's read as a guard (the application is still billed, the item's paid amount and the payment's applied total are unchanged, the payment is not void). If a guard fails it writes 0 cents, which the positive-amount CHECK rejects, so the whole batch rolls back and the user is asked to refresh. A second void writes a blank reason, which the void-reason CHECK rejects, in the same way.
+  - **Permissions.** Every action uses `projectContext(projectId, { scope: "organization", feature: "financials" })`: read needs `read`, record and apply need `create`, and void needs `update`. Mutations refuse the demo account. The owner balance read uses `scope: "member"`, the same rule as the owner budget page.
+  - **Activity.** `payment_received`, `payment_applied` and `payment_voided`. No email or notification is sent.
+  - **Accounting.** Compass does **not** post payments to the accounting system. Staff enter receipts there themselves, because the accounting system restricts automated payment posting. Each Compass-recorded payment shows "Enter in" the accounting system, or "Reverse … if entered" once void. Card payments are posted only by the existing card-payment bridge (section 6.6), and Compass shows them as posted by that bridge.
 - **Contract budget revisions.** Revisions are numbered R1, R2 and so on, and exactly one is `current`. A rebuild is skipped when a source hash shows nothing changed.
 - **Travel and zone charges.** There is a per-man-hour charge by straight-line distance zone from a configurable home base, a mountain charge by site elevation band, and lodging and per-diem flags (`src/lib/portfolio-map/travel-zones.ts`). Company settings live in `travel_charge_settings`; per-job overrides live in `project_travel_charge_overrides`.
 - **Shop tickets.** Statuses are `draft`, `issued` and `void`. Labor and machine rates come from the rate book.
@@ -289,12 +313,12 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
 - The card-payments adapter (section 6.6).
 - A legacy ERP module whose sync columns remain on the AR and AP tables.
 
-**Tables.** `invoices`, `vendor_bills`, `payments`, `credit_memos`, `invoice_payment_allocations`, `project_budget_applications`, `project_budget_lines`, `project_contract_budget_*`, `project_contract_deposits`, `travel_charge_settings`, `shop_tickets`, `shop_ticket_lines`, `rate_book_entries`, `sage_pay_application_*`, `sage_square_*`.
+**Tables.** `invoices`, `vendor_bills`, `payments`, `credit_memos`, `invoice_payment_allocations`, `pay_application_payment_allocations`, `project_budget_applications`, `project_budget_lines`, `project_contract_budget_*`, `project_contract_deposits`, `travel_charge_settings`, `shop_tickets`, `shop_ticket_lines`, `rate_book_entries`, `sage_pay_application_*`, `sage_square_*`.
 
 **Modules.**
 
 - Libraries: `src/lib/domain/financials/`, `src/lib/domain/budget/`, `src/lib/financials/` and `src/lib/shop-tickets/`.
-- Actions: `invoices.ts`, `vendor-bills.ts`, `payments.ts`, `credit-memos.ts`, `project-financial-workflows.ts`, `pay-application-billing.ts`, `sage-pay-applications.ts`, `shop-tickets.ts` and `travel-charges.ts`.
+- Actions: `invoices.ts`, `vendor-bills.ts`, `payments.ts`, `received-payments.ts`, `credit-memos.ts`, `project-financial-workflows.ts`, `pay-application-billing.ts`, `sage-pay-applications.ts`, `shop-tickets.ts` and `travel-charges.ts`.
 
 ## 2.7 Documents and Drive
 
@@ -354,6 +378,8 @@ Schedules are published as snapshots to owners and vendors, and assignees confir
 - **Notifications.** Each person sets in-app, email, SMS and push channels and per-topic switches (`notification_preferences`).
   - SMS needs recorded consent for the current phone number. Quiet hours fail closed (`src/lib/notifications/sms-policy.ts`).
   - Push goes through FCM or APNs (`src/lib/push/`).
+  - **Links go to the exact record.** When a notification's source is a known RFI, RFQ, purchase order, to-do or schedule item, `notificationSourceHref` (`src/lib/notifications/source-href.ts`) turns its project or list link into a link to that record, with a status filter that keeps the record visible. The shared persistence path (`src/lib/notifications/create-event.ts`) supplies this link to the bell, email and push. Bell entries issued before the change are repaired from their stored source when read; events and recipients are not rewritten. Recipient-specific preview routes, conversations, outside replies, links to a different project, unknown types and sources without an exact id keep their own route.
+- **Work Calendar.** The cross-project Work Calendar (`dashboard/schedule`) opens on *Events*. Explicit links to tasks, RFIs, purchase orders, schedules or *All* still select that source, and an older source link without a kind shows all kinds so its target is not hidden (`workCalendarFilter`, `src/lib/work-calendar-navigation.ts`). Filter changes are written to the URL, and date navigation keeps an explicit *All*. A project's own schedule keeps its separate Gantt entry point.
 - **Tracked email.** `sendTrackedEmail` (`src/lib/email/tracked-send.ts`) is the only way to email an outside party about a record. See section 6.7 and section 4.6.
   - Sender: the staff member's own verified mailbox, a department mailbox, or the system sender (`src/lib/email/staff-sender.ts`).
   - Transport: Gmail first, with a transactional-email fallback (`src/lib/email/compass-email.ts`).
@@ -460,6 +486,7 @@ Project priority score = open RFIs × 5 + photos to review × 3 + open POs × 2 
 **Portfolio map, weather and fire.**
 
 - **Map.** A 3D terrain map of jobs with a 2D pipeline fallback (`components/dashboard/portfolio-map/`, `src/lib/portfolio-map/`). The map state is a company setting and can be any US state. Markers show late or at-risk work.
+- **Notifications on the map and pipelines.** Map notification tiles open the exact source record (the same `notificationSourceHref` links as the bell), and each tile keeps its notification's identity after the tiles are sorted by kind. Project markers still select the job's details. Pipeline cards show an unread indicator: one source opens directly, several open the job's source list. The project, sales and internal-workspace views, and the 2D pipeline fallback, behave the same way. The dashboard reuses the bell's recipient-scoped inbox and groups unread sources once rather than querying each job. Navigation happens before the optimistic mark-read, and modified clicks (for example opening in a new tab) keep normal browser behavior. Owner and vendor map views keep project selection only.
 - **Weather.** Every 10 minutes a job refreshes weather warnings, active wildfires and perimeters, and site forecasts that someone has viewed recently (chapter 7).
 - **Default limits.** Snow 4 in, rain 0.5 in, gusts 30 mph, cold 0 °F, heat 95 °F, fire within 25 miles. Work rules flag pours below 40 °F, lifts in gusts over 30 mph and exterior work in heavy rain. Both are company settings.
 

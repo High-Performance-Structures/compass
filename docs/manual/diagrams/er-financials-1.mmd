@@ -22,15 +22,22 @@ erDiagram
     key id
     ref customer_id
   }
+  pay_application_payment_allocations {
+    key id
+    ref organization_id
+    ref project_id
+    ref application_id
+    ref payment_id
+  }
   payments {
     key id
     ref customer_id
     ref vendor_id
   }
-  netsuite_auth {
+  customers {
     key id
   }
-  customers {
+  project_budget_applications {
     key id
   }
   vendors {
@@ -43,4 +50,6 @@ erDiagram
   invoices ||--o{ invoice_credit_allocations : ""
   invoices ||--o{ invoice_payment_allocations : ""
   payments ||--o{ invoice_payment_allocations : ""
+  payments ||--o{ pay_application_payment_allocations : ""
+  project_budget_applications ||--o{ pay_application_payment_allocations : ""
   vendors |o--o{ payments : ""

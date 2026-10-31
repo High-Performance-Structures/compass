@@ -36,7 +36,7 @@ Estimates, lines, assemblies, phases, acknowledgements, change orders and trade 
 
 ### Contracts, budgets and financials
 
-Contract budgets and revisions, deposits, invoices, payments, vendor bills, credit memos, travel charges, shop tickets. Tables (20): `credit_memos`, `invoice_credit_allocations`, `invoice_payment_allocations`, `invoices`, `netsuite_auth`, `netsuite_sync_log`, `netsuite_sync_metadata`, `payments`, `project_budget_applications`, `project_budget_lines`, `project_contract_budget_adjustments`, `project_contract_budget_lines`, `project_contract_budget_revisions`, `project_contract_deposits`, `project_travel_charge_overrides`, `shop_ticket_labor_claims`, `shop_ticket_lines`, `shop_tickets`, `travel_charge_settings`, `vendor_bills`.
+Contract budgets and revisions, deposits, invoices, payments, vendor bills, credit memos, travel charges, shop tickets. Tables (21): `credit_memos`, `invoice_credit_allocations`, `invoice_payment_allocations`, `invoices`, `netsuite_auth`, `netsuite_sync_log`, `netsuite_sync_metadata`, `pay_application_payment_allocations`, `payments`, `project_budget_applications`, `project_budget_lines`, `project_contract_budget_adjustments`, `project_contract_budget_lines`, `project_contract_budget_revisions`, `project_contract_deposits`, `project_travel_charge_overrides`, `shop_ticket_labor_claims`, `shop_ticket_lines`, `shop_tickets`, `travel_charge_settings`, `vendor_bills`.
 
 ![Contracts, budgets and financials (1 of 4)](diagrams/er-financials-1.png)
 
@@ -60,7 +60,7 @@ Project operations (to-dos, RFQs, purchase orders), bids, RFIs, selections and w
 
 ### Schedule and templates
 
-Schedule tasks, dependencies, baselines, publications, and the project, estimate and schedule templates. Tables (20): `estimate_template_defaults`, `estimate_template_lines`, `project_template_application_items`, `project_template_applications`, `project_template_content_items`, `project_template_modules`, `project_template_versions`, `project_templates`, `schedule_baselines`, `schedule_phase_options`, `schedule_publications`, `schedule_saved_views`, `schedule_task_assignees`, `schedule_task_links`, `schedule_tasks`, `schedule_template_dependencies`, `schedule_template_items`, `task_dependencies`, `user_schedule_preferences`, `workday_exceptions`.
+Schedule tasks, dependencies, baselines, publications, and the project, estimate and schedule templates. Tables (20): `estimate_template_defaults`, `estimate_template_lines`, `project_template_application_items`, `project_template_applications`, `project_template_content_items`, `project_template_modules`, `project_template_versions`, `project_templates`, `schedule_baselines`, `schedule_phase_options`, `schedule_publications`, `schedule_task_assignees`, `schedule_task_links`, `schedule_task_people`, `schedule_tasks`, `schedule_template_dependencies`, `schedule_template_items`, `task_dependencies`, `user_schedule_preferences`, `workday_exceptions`.
 
 ![Schedule and templates (1 of 4)](diagrams/er-schedule-1.png)
 
@@ -152,25 +152,27 @@ Product catalog versions and prices, order workflows and items, rentals. Tables 
 
 ### Dashboard, values board, settings and AI
 
-Dashboards, the company values board, themes and preferences, AI agent, plugins, feedback desk, listening room, social, offline sync. Tables (54): `agent_action_confirmations`, `agent_config`, `agent_conversations`, `agent_items`, `agent_memories`, `agent_usage`, `anthropic_oauth_tokens`, `{values}_card_fulfillments`, `{values}_pulse_responses`, `{values}_pulse_story_replies`, `{values}_pulse_story_states`, `custom_dashboards`, `custom_themes`, `feedback`, `feedback_desk_items`, `feedback_interviews`, `feedback_maintenance_runs`, `feedback_service_health`, `goto_inbound_events`, `goto_inbound_settings`, `greeting_card_requests`, `jarvis_bridge_events`, `listening_playlist_items`, `listening_playlist_track_links`, `listening_playlists`, `listening_queue_items`, `listening_room_participants`, `listening_rooms`, `listening_track_links`, `local_sync_metadata`, `mcp_api_keys`, `mcp_servers`, `mcp_usage`, `morning_plan_preferences`, `mutation_queue`, `organization_feature_settings`, `plugin_config`, `plugin_events`, `plugins`, `project_saved_views`, `push_tokens`, `slab_memories`, `social_post_media`, `social_post_targets`, `social_posts`, `social_project_albums`, `staff_message_events`, `staff_message_records`, `sync_checkpoint`, `sync_tombstone`, `user_model_preference`, `user_provider_config`, `user_theme_preference`, `user_view_preferences`.
+Dashboards, the company values board, themes and preferences, AI agent, plugins, feedback desk, listening room, social, offline sync. Tables (57): `agent_action_confirmations`, `agent_config`, `agent_conversations`, `agent_items`, `agent_memories`, `agent_usage`, `anthropic_oauth_tokens`, `{values}_card_fulfillments`, `{values}_pulse_responses`, `{values}_pulse_story_replies`, `{values}_pulse_story_states`, `custom_dashboards`, `custom_themes`, `feedback`, `feedback_desk_items`, `feedback_interviews`, `feedback_maintenance_runs`, `feedback_service_health`, `goto_inbound_events`, `goto_inbound_settings`, `greeting_card_requests`, `jarvis_bridge_events`, `listening_playlist_items`, `listening_playlist_track_links`, `listening_playlists`, `listening_queue_items`, `listening_room_participants`, `listening_rooms`, `listening_track_links`, `local_sync_metadata`, `mcp_api_keys`, `mcp_servers`, `mcp_usage`, `morning_plan_preferences`, `mutation_queue`, `organization_feature_settings`, `plugin_config`, `plugin_events`, `plugins`, `project_saved_views`, `push_tokens`, `saved_view_defaults`, `saved_views`, `schedule_saved_views`, `slab_memories`, `social_post_media`, `social_post_targets`, `social_posts`, `social_project_albums`, `staff_message_events`, `staff_message_records`, `sync_checkpoint`, `sync_tombstone`, `user_model_preference`, `user_provider_config`, `user_theme_preference`, `user_view_preferences`.
 
-![Dashboard, values board, settings and AI (1 of 9)](diagrams/er-workspace-1.png)
+![Dashboard, values board, settings and AI (1 of 10)](diagrams/er-workspace-1.png)
 
-![Dashboard, values board, settings and AI (2 of 9)](diagrams/er-workspace-2.png)
+![Dashboard, values board, settings and AI (2 of 10)](diagrams/er-workspace-2.png)
 
-![Dashboard, values board, settings and AI (3 of 9)](diagrams/er-workspace-3.png)
+![Dashboard, values board, settings and AI (3 of 10)](diagrams/er-workspace-3.png)
 
-![Dashboard, values board, settings and AI (4 of 9)](diagrams/er-workspace-4.png)
+![Dashboard, values board, settings and AI (4 of 10)](diagrams/er-workspace-4.png)
 
-![Dashboard, values board, settings and AI (5 of 9)](diagrams/er-workspace-5.png)
+![Dashboard, values board, settings and AI (5 of 10)](diagrams/er-workspace-5.png)
 
-![Dashboard, values board, settings and AI (6 of 9)](diagrams/er-workspace-6.png)
+![Dashboard, values board, settings and AI (6 of 10)](diagrams/er-workspace-6.png)
 
-![Dashboard, values board, settings and AI (7 of 9)](diagrams/er-workspace-7.png)
+![Dashboard, values board, settings and AI (7 of 10)](diagrams/er-workspace-7.png)
 
-![Dashboard, values board, settings and AI (8 of 9)](diagrams/er-workspace-8.png)
+![Dashboard, values board, settings and AI (8 of 10)](diagrams/er-workspace-8.png)
 
-![Dashboard, values board, settings and AI (9 of 9)](diagrams/er-workspace-9.png)
+![Dashboard, values board, settings and AI (9 of 10)](diagrams/er-workspace-9.png)
+
+![Dashboard, values board, settings and AI (10 of 10)](diagrams/er-workspace-10.png)
 
 ### Legacy-system import
 
