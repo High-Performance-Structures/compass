@@ -11,7 +11,7 @@ import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { profileOrgContext, projectProfileContext } from "@/lib/domain/project/profile-access"
 import type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 import { insertProjectJobStatus, updateProjectsStatement } from "@/lib/domain/project/store"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isPortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import {
@@ -188,9 +188,11 @@ export async function addCustomProjectJobStatus(input: {
   readonly followUpCadenceDays: number | null
 }): Promise<ProjectProfileResult> {
   const { db, organizationId, user } = await profileOrgContext()
-  // Not awaited, exactly as before this move: the permission check runs but
-  // does not block the save. Kept to preserve behaviour; see the PR notes.
-  requireFeaturePermission(user, "project-hub", "update")
+  // The Project Hub permission was once called without await, so it never
+  // blocked the save (and a denial surfaced as an unhandled rejection).
+  if (!(await canFeature(user, "project-hub", "update"))) {
+    return { success: false, error: `Permission denied: ${user.role} cannot update project-hub` }
+  }
   if (!canManageProjectRegistry(user)) return { success: false, error: "Only project registry managers can add job statuses." }
   const label = cleanText(input.label)
   if (!label) return { success: false, error: "Enter a job-status label." }
