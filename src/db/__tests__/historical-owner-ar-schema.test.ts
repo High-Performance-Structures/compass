@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from "vitest"
 
 const actionState = vi.hoisted(() => ({ database: null, inserted: [], updates: [], selectResults: [] }))
 
-vi.mock("@/lib/db", () => ({
-  getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })),
+vi.mock("@/lib/server/action-context", () => ({
+  orgContext: vi.fn(async () => ({
+    success: true,
+    data: { user: { id: "user-a", role: "admin" }, organizationId: "org-auth", db: actionState.database, env: {} },
+  })),
 }))
-vi.mock("@/db", () => ({ getDb: vi.fn(() => actionState.database) }))
-vi.mock("@/lib/auth", () => ({ requireAuth: vi.fn(async () => ({ id: "user-a" })) }))
-vi.mock("@/lib/permissions", () => ({ requirePermission: vi.fn() }))
-vi.mock("@/lib/org-scope", () => ({ requireOrg: vi.fn(() => "org-auth") }))
+vi.mock("@/lib/permissions", () => ({ can: vi.fn(() => true) }))
 vi.mock("@/lib/demo", () => ({ isDemoUser: vi.fn(() => false) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 

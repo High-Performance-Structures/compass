@@ -1,25 +1,25 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
-import { getDb } from "@/db"
-import { payments, type NewPayment } from "@/db/schema-netsuite"
+import { payments, type NewPayment, type Payment } from "@/db/schema-netsuite"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
-import { requireOrg } from "@/lib/org-scope"
-import { isDemoUser } from "@/lib/demo"
+import type { ActionDone, ActionFailure } from "@/lib/action-result"
 import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
 import { isBillingScope } from "@/lib/financials/billing-scope"
+import {
+  financeContext,
+  financeReadContext,
+  isOrganizationProject,
+  PROJECT_NOT_FOUND,
+} from "@/lib/domain/financials/access"
+import { deletePaymentRow, insertPayment, updatePaymentRow } from "@/lib/domain/financials/store"
 
-export async function getPayments() {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
+const BILLING_SCOPE_ERROR = "Choose construction or preconstruction billing."
+const NOT_FOUND = "Payment not found or access denied"
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+export async function getPayments(): Promise<Payment[]> {
+  const { db, organizationId } = await financeReadContext()
 
   // join through projects to filter by org
   return db
@@ -48,47 +48,33 @@ export async function getPayments() {
     })
     .from(payments)
     .innerJoin(projects, eq(payments.projectId, projects.id))
-    .where(eq(projects.organizationId, orgId))
+    .where(eq(projects.organizationId, organizationId))
 }
 
 export async function createPayment(
   data: Omit<NewPayment, "id" | "createdAt" | "updatedAt">
-) {
+): Promise<{ readonly success: true; readonly id: string } | ActionFailure> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "create")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("create")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify project belongs to org if provided
-    if (data.projectId) {
-      const [project] = await db
-        .select()
-        .from(projects)
-        .where(and(eq(projects.id, data.projectId), eq(projects.organizationId, orgId)))
-        .limit(1)
-
-      if (!project) {
-        return { success: false, error: "Project not found or access denied" }
-      }
+    if (data.projectId && !(await isOrganizationProject(db, organizationId, data.projectId))) {
+      return { success: false, error: PROJECT_NOT_FOUND }
     }
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const safeData = omitOwnerArSourceFields(data)
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
-      return { success: false, error: "Choose construction or preconstruction billing." }
+      return { success: false, error: BILLING_SCOPE_ERROR }
     }
 
-    await db.insert(payments).values({
+    await insertPayment(db, {
       id,
       ...safeData,
-      organizationId: orgId,
+      organizationId,
       sourceSystem: "compass",
       createdAt: now,
       updatedAt: now,
@@ -108,48 +94,37 @@ export async function createPayment(
 export async function updatePayment(
   id: string,
   data: Partial<NewPayment>
-) {
+): Promise<ActionDone> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("update")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify payment belongs to org via project
     const [existing] = await db
       .select({ projectId: payments.projectId })
       .from(payments)
       .innerJoin(projects, eq(payments.projectId, projects.id))
-      .where(and(eq(payments.id, id), eq(projects.organizationId, orgId)))
+      .where(and(eq(payments.id, id), eq(projects.organizationId, organizationId)))
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Payment not found or access denied" }
+      return { success: false, error: NOT_FOUND }
     }
 
     const safeData = omitOwnerArSourceFields(data)
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
-      return { success: false, error: "Choose construction or preconstruction billing." }
+      return { success: false, error: BILLING_SCOPE_ERROR }
     }
-    if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
-      const [project] = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(eq(projects.id, safeData.projectId), eq(projects.organizationId, orgId)))
-        .limit(1)
-      if (!project) {
-        return { success: false, error: "Project not found or access denied" }
-      }
+    if (
+      safeData.projectId !== undefined &&
+      safeData.projectId !== null &&
+      safeData.projectId !== existing.projectId &&
+      !(await isOrganizationProject(db, organizationId, safeData.projectId))
+    ) {
+      return { success: false, error: PROJECT_NOT_FOUND }
     }
-    await db
-      .update(payments)
-      .set({ ...safeData, updatedAt: new Date().toISOString() })
-      .where(eq(payments.id, id))
+    await updatePaymentRow(db, id, { ...safeData, updatedAt: new Date().toISOString() })
 
     revalidatePath("/dashboard/financials")
     return { success: true }
@@ -162,31 +137,25 @@ export async function updatePayment(
   }
 }
 
-export async function deletePayment(id: string) {
+export async function deletePayment(id: string): Promise<ActionDone> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "delete")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("delete")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify payment belongs to org via project
     const [existing] = await db
       .select({ projectId: payments.projectId })
       .from(payments)
       .innerJoin(projects, eq(payments.projectId, projects.id))
-      .where(and(eq(payments.id, id), eq(projects.organizationId, orgId)))
+      .where(and(eq(payments.id, id), eq(projects.organizationId, organizationId)))
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Payment not found or access denied" }
+      return { success: false, error: NOT_FOUND }
     }
 
-    await db.delete(payments).where(eq(payments.id, id))
+    await deletePaymentRow(db, id)
 
     revalidatePath("/dashboard/financials")
     return { success: true }

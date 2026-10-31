@@ -4,8 +4,7 @@ import { and, asc, eq, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { findNuTechOrder } from "@/lib/nutech/order-select"
 
-import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
+import { projectOperations } from "@/db/schema"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -13,9 +12,21 @@ import {
   nuTechOrderWorkflows,
   nuTechProducts,
 } from "@/db/schema-nutech"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
+import { isNuTechJob, nuTechOrgContext, readNuTechProject, type NuTechProject } from "@/lib/domain/nutech/access"
+import {
+  nuTechShippingCents,
+  nuTechWorkbookStatusAfterChange,
+  storedNuTechCustomerType,
+  storedNuTechPricingMode,
+} from "@/lib/domain/nutech/rules"
+import {
+  deleteNuTechOrderItem as deleteNuTechOrderItemRow,
+  recordNuTechOrderWorkbook,
+  saveNuTechOrderItem as saveNuTechOrderItemRow,
+} from "@/lib/domain/nutech/store"
+import type { Db } from "@/lib/server/action-context"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import {
   airlitePurchaseOrderLabel,
@@ -31,25 +42,15 @@ import {
   nuTechCustomerPriceCents,
   validateNuTechOrderQuantity,
 } from "@/lib/nutech/catalog-pricing"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { NUTECH_FREIGHT_CATEGORY } from "@/lib/nutech/freight"
-import { projectDepartment } from "@/lib/project-branding"
-
-type CompassDb = ReturnType<typeof getDb>
 
 type NuTechItemAccess = {
-  readonly db: CompassDb
+  readonly db: Db
+  readonly env: CloudflareEnv
   readonly user: AuthUser
   readonly organizationId: string
-  readonly project: {
-    readonly id: string
-    readonly projectNumber: string | null
-    readonly name: string
-    readonly clientName: string | null
-    readonly address: string | null
-    readonly googleDriveFolderId: string | null
-  }
+  readonly project: NuTechProject
 }
 
 export type NuTechOrderItemActionResult =
@@ -57,37 +58,15 @@ export type NuTechOrderItemActionResult =
   | { readonly success: false; readonly error: string }
 
 async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
-  const user = await requireAuth()
+  const { db, env, user, organizationId } = await nuTechOrgContext()
   if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
   await requireFeaturePermission(user, "nutech-orders", "update")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const project = await db
-    .select({
-      id: projects.id,
-      projectNumber: projects.projectNumber,
-      name: projects.name,
-      clientName: projects.clientName,
-      address: projects.address,
-      googleDriveFolderId: projects.googleDriveFolderId,
-    })
-    .from(projects)
-    .where(
-      and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))
-    )
-    .limit(1)
-    .get()
+  const project = await readNuTechProject(db, organizationId, projectId)
   if (!project) throw new Error("Project not found.")
-  if (
-    projectDepartment({
-      projectId: project.id,
-      projectNumber: project.projectNumber,
-    }) !== "N"
-  ) {
+  if (!isNuTechJob(project)) {
     throw new Error("The Nu-Tech order workflow is available only for N projects.")
   }
-  return { db, user, organizationId, project }
+  return { db, env, user, organizationId, project }
 }
 
 function revalidateNuTechOrder(projectId: string): void {
@@ -100,14 +79,6 @@ function actionError(error: unknown, fallback: string): NuTechOrderItemActionRes
     success: false,
     error: error instanceof Error ? error.message : fallback,
   }
-}
-
-function storedCustomerType(value: string): "new" | "returning" {
-  return value === "returning" ? "returning" : "new"
-}
-
-function storedPricingMode(value: string): "standard" | "cash_discount" {
-  return value === "cash_discount" ? "cash_discount" : "standard"
 }
 
 export async function saveNuTechOrderItem(
@@ -174,52 +145,33 @@ export async function saveNuTechOrderItem(
     const now = new Date().toISOString()
     const unitPriceCents = nuTechCustomerPriceCents(
       product,
-      storedCustomerType(workflow.customerType),
-      storedPricingMode(workflow.pricingMode)
+      storedNuTechCustomerType(workflow.customerType),
+      storedNuTechPricingMode(workflow.pricingMode)
     )
-    await access.db.batch([
-      access.db
-        .insert(nuTechOrderItems)
-        .values({
-          id,
-          workflowId: workflow.id,
-          productId: product.id,
-          catalogVersionId: workflow.catalogVersionId,
-          quantity: input.quantity,
-          manufacturerSkuSnapshot: product.manufacturerSku,
-          productNameSnapshot: product.name,
-          priceUnitSnapshot: product.priceUnit,
-          unitCostCents: product.airliteCostCents,
-          unitPriceCents,
-          sortOrder: existing?.sortOrder ?? existingItems.length,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [nuTechOrderItems.workflowId, nuTechOrderItems.productId],
-          set: {
-            quantity: input.quantity,
-            unitCostCents: product.airliteCostCents,
-            unitPriceCents,
-            updatedAt: now,
-          },
-        }),
-      access.db
-        .update(nuTechOrderWorkflows)
-        .set({
-          orderStatus:
-            workflow.orderStatus === "intake"
-              ? "quantities_ready"
-              : workflow.orderStatus,
-          airliteWorkbookStatus:
-            workflow.airliteWorkbookStatus.startsWith("generated")
-              ? "stale"
-              : workflow.airliteWorkbookStatus,
-          updatedBy: access.user.id,
-          updatedAt: now,
-        })
-        .where(eq(nuTechOrderWorkflows.id, workflow.id)),
-    ])
+    await saveNuTechOrderItemRow(access.db, {
+      item: {
+        id,
+        workflowId: workflow.id,
+        productId: product.id,
+        catalogVersionId: workflow.catalogVersionId,
+        quantity: input.quantity,
+        manufacturerSkuSnapshot: product.manufacturerSku,
+        productNameSnapshot: product.name,
+        priceUnitSnapshot: product.priceUnit,
+        unitCostCents: product.airliteCostCents,
+        unitPriceCents,
+        sortOrder: existing?.sortOrder ?? existingItems.length,
+        createdAt: now,
+        updatedAt: now,
+      },
+      order: {
+        id: workflow.id,
+        orderStatus: workflow.orderStatus === "intake" ? "quantities_ready" : workflow.orderStatus,
+        workbookStatus: nuTechWorkbookStatusAfterChange(workflow.airliteWorkbookStatus),
+      },
+      userId: access.user.id,
+      now,
+    })
     revalidateNuTechOrder(projectId)
     return { success: true, id }
   } catch (error) {
@@ -258,19 +210,13 @@ export async function deleteNuTechOrderItem(
       throw new Error("Released Airlite PO quantities are locked.")
     }
     const now = new Date().toISOString()
-    await access.db.batch([
-      access.db.delete(nuTechOrderItems).where(eq(nuTechOrderItems.id, item.id)),
-      access.db
-        .update(nuTechOrderWorkflows)
-        .set({
-          airliteWorkbookStatus: item.airliteWorkbookStatus.startsWith("generated")
-            ? "stale"
-            : item.airliteWorkbookStatus,
-          updatedBy: access.user.id,
-          updatedAt: now,
-        })
-        .where(eq(nuTechOrderWorkflows.id, item.workflowId)),
-    ])
+    await deleteNuTechOrderItemRow(access.db, {
+      itemId: item.id,
+      orderId: item.workflowId,
+      workbookStatus: nuTechWorkbookStatusAfterChange(item.airliteWorkbookStatus),
+      userId: access.user.id,
+      now,
+    })
     revalidateNuTechOrder(projectId)
     return { success: true, id: item.id }
   } catch (error) {
@@ -375,7 +321,7 @@ export async function generateNuTechAirliteWorkbook(
     const now = new Date().toISOString()
     const delivery = workflow.deliveryMethod === "delivery"
     const clientLastName = (access.project.clientName ?? "").replace(/[,&].*$/, "").trim().split(/\s+/).pop() ?? ""
-    const shippingCents = delivery ? (workflow.shippingCents ?? 0) : 0
+    const shippingCents = nuTechShippingCents(workflow.deliveryMethod, workflow.shippingCents)
     const header: NuTechAirliteOrderHeader = {
       purchaseOrderLabel: airlitePurchaseOrderLabel({
         projectNumber: access.project.projectNumber,
@@ -400,10 +346,9 @@ export async function generateNuTechAirliteWorkbook(
           .join(" ") || null,
       miscNote: !delivery && workflow.trailerDimensions ? `Trailer: ${workflow.trailerDimensions}.` : null,
     }
-    const { env } = await getCloudflareContext()
     const { client, sheetsClient, userEmail } = await getOrganizationDriveContext({
       db: access.db,
-      environment: env,
+      environment: access.env,
       organizationId: access.organizationId,
       user: access.user,
     })
@@ -442,27 +387,17 @@ export async function generateNuTechAirliteWorkbook(
     const workbookUrl =
       workbook.webViewLink ??
       `https://docs.google.com/spreadsheets/d/${workbook.id}/edit`
-    await access.db
-      .update(nuTechOrderWorkflows)
-      .set({
-        airliteWorkbookId: workbook.id,
-        airliteWorkbookUrl: workbookUrl,
-        airliteWorkbookStatus:
-          plan.addendumItemCount > 0 ? "generated_with_addendum" : "generated",
-        airliteWorkbookGeneratedAt: now,
-        airliteWorkbookGeneratedBy: access.user.id,
-        orderStatus: [
-          "intake",
-          "quantities_ready",
-          "estimate_ready",
-          "customer_approved",
-        ].includes(workflow.orderStatus)
-          ? "po_ready"
-          : workflow.orderStatus,
-        updatedBy: access.user.id,
-        updatedAt: now,
-      })
-      .where(eq(nuTechOrderWorkflows.id, workflow.id))
+    await recordNuTechOrderWorkbook(access.db, {
+      orderId: workflow.id,
+      workbookId: workbook.id,
+      workbookUrl,
+      workbookStatus: plan.addendumItemCount > 0 ? "generated_with_addendum" : "generated",
+      orderStatus: ["intake", "quantities_ready", "estimate_ready", "customer_approved"].includes(workflow.orderStatus)
+        ? "po_ready"
+        : workflow.orderStatus,
+      userId: access.user.id,
+      now,
+    })
     revalidateNuTechOrder(projectId)
     return { success: true, id: workflow.id, workbookUrl }
   } catch (error) {

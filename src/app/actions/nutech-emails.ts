@@ -4,11 +4,10 @@ import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, asc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
-import { projectContacts, projectInteractions, projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { projectContacts, projectInteractions, projectOperations, projectProfileAuditEvents } from "@/db/schema"
 import { isDemoUser } from "@/lib/demo"
+import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
+import { parseDateOnly } from "@/lib/format"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
 import type { EmailRecipientOption } from "@/lib/email/recipient-options"
@@ -23,9 +22,7 @@ import {
   type NuTechEmailContext,
   type NuTechEmailTemplate,
 } from "@/lib/nutech/email-templates"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { projectDepartment } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type NuTechEmailDraft = {
@@ -47,12 +44,11 @@ type Result<T> = { readonly success: true; readonly data: T } | { readonly succe
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function formatDate(value: string | null): string {
+/** A requested date as "Friday, October 30, 2026" for the email; text that isn't a date stays as typed. */
+function emailDate(value: string | null): string {
   if (!value) return ""
-  const date = new Date(`${value}T12:00:00`)
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+  const date = parseDateOnly(value)
+  return date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : value
 }
 
 function splitName(name: string): { readonly first: string; readonly last: string } {
@@ -65,26 +61,12 @@ function templateById(id: string): NuTechEmailTemplate | null {
 }
 
 async function nuTechEmailContext(projectId: string, action: "read" | "update", orderId?: string | null) {
-  const user = await requireAuth()
+  const { db, env, user, organizationId } = await nuTechOrgContext()
   if (!isInternalStaffRole(user.role)) throw new Error("Nu-Tech emails are available to office staff.")
   await requireFeaturePermission(user, "nutech-orders", action)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const project = await db
-    .select({
-      id: projects.id,
-      projectNumber: projects.projectNumber,
-      address: projects.address,
-      clientName: projects.clientName,
-      deliveryMethod: projects.deliveryMethod,
-    })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-    .limit(1)
-    .get()
+  const project = await readNuTechProject(db, organizationId, projectId)
   if (!project) throw new Error("Project not found.")
-  if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
+  if (!isNuTechJob(project)) {
     throw new Error("Nu-Tech emails are available only for N projects.")
   }
   const [settings, profiles, contacts, order] = await Promise.all([
@@ -123,7 +105,7 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update", 
     jobAddress: project.address ?? "",
     poNumber: purchaseOrder?.number ?? "",
     epsNumber: order?.vendorConfirmationNumber ?? "",
-    requestedDate: formatDate(order?.requestedDeliveryDate ?? null),
+    requestedDate: emailDate(order?.requestedDeliveryDate ?? null),
     trailerDimensions: order?.trailerDimensions ?? "",
     quantitySummary: order?.blockQuantityNotes ?? "",
     pricingLabel: order?.pricingMode === "cash_discount" ? "cash-discounted pricing" : "standard pricing",

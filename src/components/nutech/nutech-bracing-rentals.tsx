@@ -21,7 +21,8 @@ import { Textarea } from "@/components/ui/textarea"
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
 import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_CLASS } from "@/lib/ui/document-fields"
 import { cn } from "@/lib/utils"
-import { bracingCharges, bracingRentalDays, bracingSignOutIssues, formatCents } from "@/lib/nutech/bracing"
+import { bracingCharges, bracingRentalDays, bracingSignOutIssues } from "@/lib/nutech/bracing"
+import { formatCents } from "@/lib/format"
 
 type LineDraft = {
   readonly key: string

@@ -5,6 +5,7 @@ import * as React from "react"
 
 import type { SquareReceiptListItem } from "@/app/actions/sage-square-receipts"
 import { SortableTableHead, useTableSort } from "@/components/ui/sortable-header"
+import { formatCents } from "@/lib/format"
 import {
   Table,
   TableBody,
@@ -17,13 +18,6 @@ import {
 type SquareReceiptsTableProps = {
   readonly receipts: readonly SquareReceiptListItem[]
   readonly selectedReceiptId: string | null
-}
-
-function dollars(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100)
 }
 
 function statusLabel(status: string): string {
@@ -132,10 +126,10 @@ export function SquareReceiptsTable({
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {dollars(receipt.amountCents)}
+                    {formatCents(receipt.amountCents)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {dollars(receipt.feeCents)}
+                    {formatCents(receipt.feeCents)}
                     {receipt.feeStatus ? (
                       <div className="text-xs text-muted-foreground">
                         {statusLabel(receipt.feeStatus)}

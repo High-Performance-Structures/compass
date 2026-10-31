@@ -1,32 +1,14 @@
 "use client"
 
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-
 import * as React from "react"
 import { IconDotsVertical } from "@tabler/icons-react"
 import type { VendorDirectoryCompany } from "@/app/actions/vendors"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type RowSelectionState,
-  type SortingState,
-} from "@tanstack/react-table"
+import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table"
 
-import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,26 +16,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { TradeDocStatusBadge } from "@/components/financials/trade-doc-status-badge"
 import type { VendorTradeDocStatus } from "@/app/actions/vendor-trade-docs"
+import {
+  columnFilterText,
+  EntitySearchInput,
+  EntityTable,
+} from "@/components/financials/entity-table"
+import { DirectorySortSelect } from "@/components/financials/directory-sort-select"
+import { RecordsEmpty } from "@/components/financials/record-columns"
 
 interface VendorsTableProps {
   vendors: readonly VendorDirectoryCompany[]
@@ -70,6 +43,8 @@ interface VendorsTableProps {
 }
 
 const EMPTY_SELECTION: readonly string[] = []
+const INITIAL_SORTING = [{ id: "name", desc: false }]
+const COLUMN_VISIBILITY = { category: false }
 
 function vendorSourceLabel(vendor: VendorDirectoryCompany): string {
   if (vendor.sourceSystem?.includes("sage")) return "Sage"
@@ -83,6 +58,89 @@ function vendorSyncLabel(vendor: VendorDirectoryCompany): string {
   return "Manual"
 }
 
+function nameInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function CategoryFilter({
+  table,
+  categories,
+  className,
+}: {
+  readonly table: TanstackTable<VendorDirectoryCompany>
+  readonly categories: readonly string[]
+  readonly className?: string
+}) {
+  return (
+    <SearchableCombobox
+      value={columnFilterText(table, "category", "all")}
+      onValueChange={(v) =>
+        table.getColumn("category")?.setFilterValue(v === "all" ? "" : v)
+      }
+      ariaLabel="Filter vendors by category"
+      placeholder="All Categories"
+      searchPlaceholder="Search categories..."
+      className={className}
+      options={[
+        { value: "all", label: "All Categories" },
+        ...categories.map((categoryOption) => ({
+          value: categoryOption,
+          label: categoryOption,
+        })),
+      ]}
+    />
+  )
+}
+
+type VendorMenuProps = {
+  readonly vendor: VendorDirectoryCompany
+  readonly onEdit?: (vendor: VendorDirectoryCompany) => void
+  readonly onDelete?: (id: string) => void
+  readonly onView?: (vendor: VendorDirectoryCompany) => void
+  readonly onTradeDocs?: (vendor: VendorDirectoryCompany) => void
+  readonly mobile: boolean
+}
+
+function VendorMenu({ vendor, onEdit, onDelete, onView, onTradeDocs, mobile }: VendorMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {mobile ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+          >
+            <IconDotsVertical className="size-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" className="size-8 p-0">
+            <span className="sr-only">open menu</span>
+            <IconDotsVertical className="size-4" />
+          </Button>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
+        {onTradeDocs && <DropdownMenuItem onClick={() => onTradeDocs(vendor)}>Trade docs</DropdownMenuItem>}
+        {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
+        {onEdit && onDelete && <DropdownMenuSeparator />}
+        {onDelete && <DropdownMenuItem
+          className="text-destructive"
+          onClick={() => onDelete(vendor.id)}
+        >
+          Delete
+        </DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function VendorsTable({
   vendors,
   categories,
@@ -94,50 +152,7 @@ export function VendorsTable({
   selectedIds = EMPTY_SELECTION,
   onSelectionChange,
 }: VendorsTableProps) {
-  const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
-  const [sorting, setSorting] = React.useState<SortingState>([
-    { id: "name", desc: false },
-  ])
-  const [columnFilters, setColumnFilters] =
-    React.useState<ColumnFiltersState>([])
-  const [columnVisibility] = React.useState({ category: false })
-  const rowSelection = React.useMemo<RowSelectionState>(
-    () => Object.fromEntries(selectedIds.map((id) => [id, true])),
-    [selectedIds]
-  )
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
-  // TanStack Table must receive stable data/column references across local state updates.
-  const tableData = React.useMemo(() => [...vendors], [vendors])
-
-  const sortKey = React.useMemo(() => {
-    if (!sorting.length) return "name-asc"
-    const s = sorting[0]
-    if (s.id === "name") return s.desc ? "name-desc" : "name-asc"
-    if (s.id === "createdAt") return s.desc ? "newest" : "oldest"
-    return "name-asc"
-  }, [sorting])
-
-  const handleSort = (value: string) => {
-    setPagination((current) => ({ ...current, pageIndex: 0 }))
-    switch (value) {
-      case "name-asc":
-        setSorting([{ id: "name", desc: false }])
-        break
-      case "name-desc":
-        setSorting([{ id: "name", desc: true }])
-        break
-      case "newest":
-        setSorting([{ id: "createdAt", desc: true }])
-        break
-      case "oldest":
-        setSorting([{ id: "createdAt", desc: false }])
-        break
-    }
-  }
 
   const columns = React.useMemo<ColumnDef<VendorDirectoryCompany>[]>(() => [
     {
@@ -160,17 +175,11 @@ export function VendorsTable({
       header: "Name",
       cell: ({ row }) => {
         const v = row.original
-        const initials = v.name
-          .split(/\s+/)
-          .map((w) => w[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase()
         return (
           <div className="flex items-center gap-3">
             <Avatar size="sm">
               <AvatarFallback className="text-[10px]">
-                {initials}
+                {nameInitials(v.name)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex items-center gap-2">
@@ -192,7 +201,7 @@ export function VendorsTable({
       accessorKey: "category",
       header: "Category",
       cell: ({ row }) => (
-        <Badge variant="secondary">{row.getValue("category")}</Badge>
+        <Badge variant="secondary">{row.original.category}</Badge>
       ),
       filterFn: (row, id, value) => {
         if (!value || value === "all") return true
@@ -307,28 +316,15 @@ export function VendorsTable({
       id: "actions",
       cell: ({ row }) => {
         if (!onEdit && !onDelete && !onView && !onTradeDocs) return null
-        const vendor = row.original
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="size-8 p-0">
-                <span className="sr-only">open menu</span>
-                <IconDotsVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
-              {onTradeDocs && <DropdownMenuItem onClick={() => onTradeDocs(vendor)}>Trade docs</DropdownMenuItem>}
-              {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
-              {onEdit && onDelete && <DropdownMenuSeparator />}
-              {onDelete && <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDelete(vendor.id)}
-              >
-                Delete
-              </DropdownMenuItem>}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <VendorMenu
+            vendor={row.original}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onView={onView}
+            onTradeDocs={onTradeDocs}
+            mobile={false}
+          />
         )
       },
     },
@@ -339,252 +335,98 @@ export function VendorsTable({
     (onEdit !== undefined || onDelete !== undefined || onView !== undefined || column.id !== "actions")
   ), [columns, developerModeEnabled, onEdit, onDelete, onView, onSelectionChange])
 
-  const table = useReactTable({
-    data: tableData,
-    columns: visibleColumns,
-    getRowId: (vendor) => vendor.id,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: onSelectionChange ? (updater) => {
-      const next = typeof updater === "function" ? updater(rowSelection) : updater
-      onSelectionChange(Object.keys(next).filter((id) => next[id]))
-    } : undefined,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: { sorting, columnFilters, columnVisibility, rowSelection, pagination },
-  })
-
-  const emptyState = (
-    <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-muted-foreground">No vendors yet</p>
-      <p className="text-sm text-muted-foreground/70 mt-1">
-        Add your first vendor to manage subcontractors, suppliers, and bills.
-      </p>
-    </div>
-  )
-
-  const categoryFilter = (
-    <SearchableCombobox
-      value={
-        (table.getColumn("category")?.getFilterValue() as string) ?? "all"
-      }
-      onValueChange={(v) =>
-        table.getColumn("category")?.setFilterValue(v === "all" ? "" : v)
-      }
-      ariaLabel="Filter vendors by category"
-      placeholder="All Categories"
-      searchPlaceholder="Search categories..."
-      className="h-8 flex-1 sm:w-[200px] sm:flex-none"
-      options={[
-        { value: "all", label: "All Categories" },
-        ...categories.map((categoryOption) => ({
-          value: categoryOption,
-          label: categoryOption,
-        })),
-      ]}
-    />
-  )
-
-  if (isMobile) {
-    const rows = table.getRowModel().rows
-    return (
-      <div className="space-y-3">
-        <Input
-          placeholder="Search vendors..."
-          value={
-            (table.getColumn("name")?.getFilterValue() as string) ?? ""
-          }
-          onChange={(e) =>
-            table.getColumn("name")?.setFilterValue(e.target.value)
-          }
-          className="w-full"
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <Select value={sortKey} onValueChange={handleSort}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name-asc">Name A-Z</SelectItem>
-              <SelectItem value="name-desc">Name Z-A</SelectItem>
-              <SelectItem value="newest">Newest</SelectItem>
-              <SelectItem value="oldest">Oldest</SelectItem>
-            </SelectContent>
-          </Select>
-          <SearchableCombobox
-            value={
-              (table.getColumn("category")?.getFilterValue() as string) ??
-              "all"
-            }
-            onValueChange={(v) =>
-              table
-                .getColumn("category")
-                ?.setFilterValue(v === "all" ? "" : v)
-            }
-            ariaLabel="Filter vendors by category"
-            placeholder="All Categories"
-            searchPlaceholder="Search categories..."
-            options={[
-              { value: "all", label: "All Categories" },
-              ...categories.map((categoryOption) => ({
-                value: categoryOption,
-                label: categoryOption,
-              })),
-            ]}
+  return (
+    <EntityTable
+      data={vendors}
+      columns={visibleColumns}
+      getRowId={(vendor) => vendor.id}
+      initialSorting={INITIAL_SORTING}
+      columnVisibility={COLUMN_VISIBILITY}
+      selection={{ selectedIds, onSelectionChange }}
+      layout="fill"
+      mobileToolbar={({ table, sorting, sortBy }) => (
+        <>
+          <EntitySearchInput
+            table={table}
+            columnId="name"
+            placeholder="Search vendors..."
+            className="w-full"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <DirectorySortSelect sorting={sorting} sortBy={sortBy} />
+            <CategoryFilter table={table} categories={categories} />
+          </div>
+        </>
+      )}
+      desktopToolbar={({ table }) => (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
+          <EntitySearchInput
+            table={table}
+            columnId="name"
+            placeholder="Search vendors..."
+            className="h-8 w-full sm:max-w-sm"
+          />
+          <CategoryFilter
+            table={table}
+            categories={categories}
+            className="h-8 flex-1 sm:w-[200px] sm:flex-none"
           />
         </div>
-        {rows.length ? (
-          <div className="rounded-md border divide-y">
-            {rows.map((row) => {
-              const v = row.original
-              return (
-                <div
-                  key={row.id}
-                  className="flex items-center gap-3 px-3 py-2.5"
-                >
-                  <Avatar size="sm">
-                    <AvatarFallback className="text-[10px]">
-                      {v.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
-                        {v.name}
-                      </p>
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 text-xs px-1.5 py-0"
-                      >
-                        {v.category}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {v.contacts.length > 0
-                        ? `${v.contacts.length} ${v.contacts.length === 1 ? "person" : "people"}`
-                        : "No contact people"}
-                    </p>
-                    {tradeDocStatuses?.[v.id] && (
-                      <div className="mt-1"><TradeDocStatusBadge status={tradeDocStatuses[v.id]} /></div>
-                    )}
-                    {developerModeEnabled && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
-                      </p>
-                    )}
-                  </div>
-                  {(onEdit || onDelete || onView || onTradeDocs) && <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 shrink-0"
-                      >
-                        <IconDotsVertical className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {onView && <DropdownMenuItem onClick={() => onView(v)}>View people</DropdownMenuItem>}
-                      {onTradeDocs && <DropdownMenuItem onClick={() => onTradeDocs(v)}>Trade docs</DropdownMenuItem>}
-                      {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
-                      {onEdit && onDelete && <DropdownMenuSeparator />}
-                      {onDelete && <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => onDelete(v.id)}
-                      >
-                        Delete
-                      </DropdownMenuItem>}
-                    </DropdownMenuContent>
-                  </DropdownMenu>}
-                </div>
-              )
-            })}
+      )}
+      mobileRow={(v) => (
+        <>
+          <Avatar size="sm">
+            <AvatarFallback className="text-[10px]">
+              {nameInitials(v.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate">
+                {v.name}
+              </p>
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-xs px-1.5 py-0"
+              >
+                {v.category}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground truncate">
+              {v.contacts.length > 0
+                ? `${v.contacts.length} ${v.contacts.length === 1 ? "person" : "people"}`
+                : "No contact people"}
+            </p>
+            {tradeDocStatuses?.[v.id] && (
+              <div className="mt-1"><TradeDocStatusBadge status={tradeDocStatuses[v.id]} /></div>
+            )}
+            {developerModeEnabled && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
+              </p>
+            )}
           </div>
-        ) : (
-          emptyState
-        )}
-        <DataTablePagination
-          table={table}
-          itemLabel="vendors"
-          id="vendors-mobile-items-per-page"
+          {(onEdit || onDelete || onView || onTradeDocs) && (
+            <VendorMenu
+              vendor={v}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onView={onView}
+              onTradeDocs={onTradeDocs}
+              mobile
+            />
+          )}
+        </>
+      )}
+      mobileEmpty={
+        <RecordsEmpty
+          title="No vendors yet"
+          hint="Add your first vendor to manage subcontractors, suppliers, and bills."
         />
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-1 flex-col min-h-0 gap-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
-        <Input
-          placeholder="Search vendors..."
-          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-          onChange={(e) =>
-            table.getColumn("name")?.setFilterValue(e.target.value)
-          }
-          className="h-8 w-full sm:max-w-sm"
-        />
-        {categoryFilter}
-      </div>
-      <div className="rounded-md border flex-1 min-h-0 overflow-hidden">
-        <div className="overflow-auto h-full">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      <TanstackSortableHeader header={header} />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length}
-                    className="h-24 text-center"
-                  >
-                    No vendors found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-      <DataTablePagination
-        table={table}
-        itemLabel="vendors"
-        id="vendors-items-per-page"
-      />
-    </div>
+      }
+      desktopEmpty="No vendors found"
+      itemLabel="vendors"
+      paginationId="vendors"
+    />
   )
 }

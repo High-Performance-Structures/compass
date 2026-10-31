@@ -27,13 +27,7 @@ import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-
-function money(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100)
-}
+import { formatCents, formatDate } from "@/lib/format"
 
 type Product = NuTechCatalogWorkspace["products"][number]
 type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode" | "taxable"
@@ -67,7 +61,7 @@ function mappingFromValue(value: string): NuTechProductCostCodeMapping {
 function PriceCell({ product, cents }: { readonly product: Product; readonly cents: number }): React.ReactElement {
   return (
     <td className="px-3 py-2 text-right align-top">
-      {product.quotedPerOrder ? <span className="text-muted-foreground">Quoted</span> : money(cents)}
+      {product.quotedPerOrder ? <span className="text-muted-foreground">Quoted</span> : formatCents(cents)}
     </td>
   )
 }
@@ -86,14 +80,6 @@ const PRICE_SHEETS: readonly { readonly label: string; readonly id: string }[] =
 ]
 
 const SOURCE_TAB = NUTECH_2026_CATALOG_SOURCES.sourceRange.split("!")[0]?.replaceAll("'", "") ?? ""
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
 
 /** Where the active prices come from, and how staff update them. */
 function CatalogSourcePanel({

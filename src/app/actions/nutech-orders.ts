@@ -1,10 +1,9 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, isNull, like, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
 import { findNuTechOrder, nextNuTechOrderNumber } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
 import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -17,18 +16,39 @@ import {
   nuTechProducts,
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
+import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
+import { isNuTechJob, nuTechOrgContext, readNuTechProject, type NuTechProject } from "@/lib/domain/nutech/access"
 import {
-  NUTECH_CUSTOMER_TYPE_OPTIONS,
-  NUTECH_DELIVERY_METHOD_OPTIONS,
-  NUTECH_ORDER_STATUS_OPTIONS,
-  NUTECH_PRICING_MODE_OPTIONS,
-  NUTECH_QUANTITY_SOURCE_OPTIONS,
-  NUTECH_SCOPE_TYPE_OPTIONS,
-  NUTECH_TAKEOFF_STATUS_OPTIONS,
-  NUTECH_VENDOR_INVOICE_STATUS_OPTIONS,
+  nuTechEffectiveTaxEntityId,
+  nuTechItemTaxable,
+  parseNuTechCustomerType,
+  parseNuTechDate,
+  parseNuTechDeliveryMethod,
+  parseNuTechPricingMode,
+  parseNuTechQuantitySource,
+  parseNuTechScopeType,
+  storedNuTechCustomerType,
+  storedNuTechDeliveryMethod,
+  storedNuTechOrderStatus,
+  storedNuTechPricingMode,
+  storedNuTechQuantitySource,
+  storedNuTechTakeoffStatus,
+  storedNuTechVendorInvoiceStatus,
+  toNuTechOrderRecord,
+  type NuTechOrderRecord,
+} from "@/lib/domain/nutech/rules"
+import {
+  deleteNuTechOrder,
+  insertNuTechOrder,
+  releaseNuTechOrderPurchaseOrderStatement,
+  releaseNuTechOrderVendorInvoice,
+  saveNuTechOrder,
+} from "@/lib/domain/nutech/store"
+import type { Db } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
+import {
   isNuTechPaymentMethod,
   jobStatusForNuTechOrderStatus,
   normalizedNuTechTakeoffStatus,
@@ -36,25 +56,13 @@ import {
   nuTechPurchaseOrderReleaseReadiness,
   projectDeliveryMethodForNuTech,
   nuTechReleaseAuditIssues,
-  type NuTechCustomerType,
-  type NuTechDeliveryMethod,
-  type NuTechOrderStatus,
-  type NuTechPaymentMethod,
-  type NuTechPricingMode,
   type NuTechQuantitySource,
-  type NuTechScopeType,
-  type NuTechTakeoffAcknowledgementStatus,
-  type NuTechVendorInvoiceStatus,
 } from "@/lib/nutech/workflow"
-import { requireOrg } from "@/lib/org-scope"
 import {
   canFeature,
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
-import { projectDepartment } from "@/lib/project-branding"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
-
-type CompassDb = ReturnType<typeof getDb>
 
 type NuTechPurchaseOrderOption = {
   readonly id: string
@@ -70,48 +78,6 @@ type NuTechEstimateSummary = {
   readonly number: string
   readonly status: string
   readonly totalCents: number
-  readonly updatedAt: string
-}
-
-type NuTechOrderRecord = {
-  readonly id: string
-  /** The order's number on its job (1, 2, …). */
-  readonly orderNumber: number
-  readonly title: string | null
-  /** The estimate this order fills and is sold on. */
-  readonly estimateId: string | null
-  readonly catalogVersionId: string | null
-  readonly customerType: NuTechCustomerType
-  readonly pricingMode: NuTechPricingMode
-  readonly quantitySource: NuTechQuantitySource
-  readonly takeoffAcknowledgementStatus: NuTechTakeoffAcknowledgementStatus
-  readonly scopeType: NuTechScopeType
-  readonly blockQuantityNotes: string | null
-  readonly bracingIncluded: boolean
-  readonly bracingRentalStartDate: string | null
-  readonly bracingRentalEndDate: string | null
-  readonly bracingNotes: string | null
-  readonly deliveryMethod: NuTechDeliveryMethod
-  readonly requestedDeliveryDate: string | null
-  readonly customerPaidAt: string | null
-  readonly customerPaymentMethod: NuTechPaymentMethod | null
-  readonly trailerDimensions: string | null
-  readonly trailerPhotoReceivedAt: string | null
-  readonly airlitePurchaseOrderOperationId: string | null
-  readonly orderStatus: NuTechOrderStatus
-  readonly vendorConfirmationNumber: string | null
-  readonly airliteWorkbookUrl: string | null
-  readonly airliteWorkbookStatus: string
-  readonly airliteWorkbookGeneratedAt: string | null
-  readonly purchaseOrderReleasedAt: string | null
-  readonly vendorInvoiceNumber: string | null
-  readonly vendorInvoiceStatus: NuTechVendorInvoiceStatus
-  readonly vendorInvoiceReceivedAt: string | null
-  readonly vendorInvoiceReleasedAt: string | null
-  readonly shippingCents: number | null
-  readonly shippingNote: string | null
-  readonly taxEntityId: string | null
-  readonly notes: string | null
   readonly updatedAt: string
 }
 
@@ -149,6 +115,8 @@ type NuTechOrderItemRecord = {
   readonly unitCostCents: number
   readonly unitPriceCents: number
   readonly sortOrder: number
+  /** Whether the line is sales-taxed (its price-list setting; see `nuTechItemTaxable`). */
+  readonly taxable: boolean
 }
 
 /** One of a job's orders, for the order switcher. */
@@ -233,187 +201,24 @@ export type NuTechOrderActionResult =
   | { readonly success: false; readonly error: string }
 
 type NuTechAccess = {
-  readonly db: CompassDb
+  readonly db: Db
   readonly user: AuthUser
   readonly organizationId: string
-  readonly project: {
-    readonly id: string
-    readonly projectNumber: string | null
-    readonly name: string
-    readonly clientName: string | null
-    readonly address: string | null
-  }
-}
-
-function cleanText(value: string | null): string | null {
-  const cleaned = value?.trim() ?? ""
-  return cleaned.length > 0 ? cleaned : null
-}
-
-function cleanDate(value: string | null, label: string): string | null {
-  const cleaned = cleanText(value)
-  if (cleaned === null) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-    throw new Error(`${label} must be a valid date.`)
-  }
-  const parsed = new Date(`${cleaned}T12:00:00Z`)
-  if (
-    Number.isNaN(parsed.getTime()) ||
-    parsed.toISOString().slice(0, 10) !== cleaned
-  ) {
-    throw new Error(`${label} must be a valid date.`)
-  }
-  return cleaned
-}
-
-function customerType(value: string): NuTechCustomerType {
-  const match = NUTECH_CUSTOMER_TYPE_OPTIONS.find((option) => option.value === value)
-  if (!match) throw new Error("Choose new or returning customer pricing.")
-  return match.value
-}
-
-function storedCustomerType(value: string): NuTechCustomerType {
-  return value === "returning" ? "returning" : "new"
-}
-
-function pricingMode(value: string): NuTechPricingMode {
-  const match = NUTECH_PRICING_MODE_OPTIONS.find((option) => option.value === value)
-  if (!match) throw new Error("Choose standard or cash-discount pricing.")
-  return match.value
-}
-
-function storedPricingMode(value: string): NuTechPricingMode {
-  return value === "cash_discount" ? "cash_discount" : "standard"
-}
-
-function quantitySource(value: string): NuTechQuantitySource {
-  const match = NUTECH_QUANTITY_SOURCE_OPTIONS.find((option) => option.value === value)
-  if (!match) throw new Error("Record who supplied the order quantities.")
-  return match.value
-}
-
-function storedQuantitySource(value: string): NuTechQuantitySource {
-  return value === "staff_takeoff" ? "staff_takeoff" : "customer_provided"
-}
-
-function takeoffStatus(value: string): NuTechTakeoffAcknowledgementStatus {
-  const match = NUTECH_TAKEOFF_STATUS_OPTIONS.find((option) => option.value === value)
-  return match?.value ?? "pending"
-}
-
-function scopeType(value: string): NuTechScopeType {
-  const match = NUTECH_SCOPE_TYPE_OPTIONS.find((option) => option.value === value)
-  if (!match) throw new Error("Choose the Nu-Tech order scope.")
-  return match.value
-}
-
-function storedScopeType(value: string): NuTechScopeType {
-  if (value === "block_and_bracing" || value === "bracing_only") return value
-  return "block_sale"
-}
-
-function deliveryMethod(value: string): NuTechDeliveryMethod {
-  const match = NUTECH_DELIVERY_METHOD_OPTIONS.find((option) => option.value === value)
-  if (!match) throw new Error("Choose delivery, pickup, or will call.")
-  return match.value
-}
-
-function storedDeliveryMethod(value: string): NuTechDeliveryMethod {
-  if (value === "customer_pickup" || value === "will_call") return value
-  return "delivery"
-}
-
-function orderStatus(value: string): NuTechOrderStatus {
-  const match = NUTECH_ORDER_STATUS_OPTIONS.find((option) => option.value === value)
-  return match?.value ?? "intake"
-}
-
-function vendorInvoiceStatus(value: string): NuTechVendorInvoiceStatus {
-  const match = NUTECH_VENDOR_INVOICE_STATUS_OPTIONS.find(
-    (option) => option.value === value
-  )
-  return match?.value ?? "not_received"
-}
-
-function toOrderRecord(
-  row: typeof nuTechOrderWorkflows.$inferSelect
-): NuTechOrderRecord {
-  return {
-    id: row.id,
-    orderNumber: row.orderNumber,
-    title: row.title,
-    estimateId: row.estimateId,
-    catalogVersionId: row.catalogVersionId,
-    customerType: storedCustomerType(row.customerType),
-    pricingMode: storedPricingMode(row.pricingMode),
-    quantitySource: storedQuantitySource(row.quantitySource),
-    takeoffAcknowledgementStatus: takeoffStatus(
-      row.takeoffAcknowledgementStatus
-    ),
-    scopeType: storedScopeType(row.scopeType),
-    blockQuantityNotes: row.blockQuantityNotes,
-    bracingIncluded: row.bracingIncluded,
-    bracingRentalStartDate: row.bracingRentalStartDate,
-    bracingRentalEndDate: row.bracingRentalEndDate,
-    bracingNotes: row.bracingNotes,
-    deliveryMethod: storedDeliveryMethod(row.deliveryMethod),
-    requestedDeliveryDate: row.requestedDeliveryDate,
-    customerPaidAt: row.customerPaidAt,
-    customerPaymentMethod: isNuTechPaymentMethod(row.customerPaymentMethod) ? row.customerPaymentMethod : null,
-    trailerDimensions: row.trailerDimensions,
-    trailerPhotoReceivedAt: row.trailerPhotoReceivedAt,
-    airlitePurchaseOrderOperationId: row.airlitePurchaseOrderOperationId,
-    orderStatus: orderStatus(row.orderStatus),
-    vendorConfirmationNumber: row.vendorConfirmationNumber,
-    airliteWorkbookUrl: row.airliteWorkbookUrl,
-    airliteWorkbookStatus: row.airliteWorkbookStatus,
-    airliteWorkbookGeneratedAt: row.airliteWorkbookGeneratedAt,
-    purchaseOrderReleasedAt: row.purchaseOrderReleasedAt,
-    vendorInvoiceNumber: row.vendorInvoiceNumber,
-    vendorInvoiceStatus: vendorInvoiceStatus(row.vendorInvoiceStatus),
-    vendorInvoiceReceivedAt: row.vendorInvoiceReceivedAt,
-    vendorInvoiceReleasedAt: row.vendorInvoiceReleasedAt,
-    shippingCents: row.shippingCents,
-    shippingNote: row.shippingNote,
-    taxEntityId: row.taxEntityId,
-    notes: row.notes,
-    updatedAt: row.updatedAt,
-  }
+  readonly project: NuTechProject
 }
 
 async function nuTechProjectAccess(
   projectId: string,
   action: "read" | "update" | "delete"
 ): Promise<NuTechAccess> {
-  const user = await requireAuth()
+  const { db, user, organizationId } = await nuTechOrgContext()
   if (action !== "read" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
   await requireFeaturePermission(user, "nutech-orders", action)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const project = await db
-    .select({
-      id: projects.id,
-      projectNumber: projects.projectNumber,
-      name: projects.name,
-      clientName: projects.clientName,
-      address: projects.address,
-    })
-    .from(projects)
-    .where(
-      and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))
-    )
-    .limit(1)
-    .get()
+  const project = await readNuTechProject(db, organizationId, projectId)
   if (!project) throw new Error("Project not found.")
-  if (
-    projectDepartment({
-      projectId: project.id,
-      projectNumber: project.projectNumber,
-    }) !== "N"
-  ) {
+  if (!isNuTechJob(project)) {
     throw new Error("The Nu-Tech order workflow is available only for N projects.")
   }
   return { db, user, organizationId, project }
@@ -621,6 +426,7 @@ export async function getProjectNuTechOrderWorkspace(
           .orderBy(asc(nuTechOrderItems.sortOrder))
       : Promise.resolve([]),
   ])
+  const productOptions = catalogProducts.filter((product) => !isNuTechFreight(product))
   return {
     orders: orderRows,
     canEdit: canEdit && !isDemoUser(access.user.id),
@@ -630,10 +436,13 @@ export async function getProjectNuTechOrderWorkspace(
     projectName: access.project.name,
     clientName: access.project.clientName,
     address: access.project.address,
-    order: orderRow ? toOrderRecord(orderRow) : null,
+    order: orderRow ? toNuTechOrderRecord(orderRow) : null,
     catalogVersionName: catalogVersion?.name ?? null,
-    catalogProducts: catalogProducts.filter((product) => !isNuTechFreight(product)),
-    orderItems,
+    catalogProducts: productOptions,
+    orderItems: orderItems.map((item) => ({
+      ...item,
+      taxable: nuTechItemTaxable(productOptions.find((product) => product.id === item.productId)?.taxable),
+    })),
     estimate: estimateRow ?? null,
     purchaseOrders: purchaseOrderRows,
     taxDistricts,
@@ -645,11 +454,8 @@ export async function getProjectNuTechOrderWorkspace(
 export async function getNuTechOrderDashboard(): Promise<
   readonly NuTechOrderDashboardItem[]
 > {
-  const user = await requireAuth()
+  const { db, user, organizationId } = await nuTechOrgContext()
   await requireFeaturePermission(user, "nutech-orders", "read")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const projectRows = await db
     .select({
       id: projects.id,
@@ -667,33 +473,27 @@ export async function getNuTechOrderDashboard(): Promise<
     .orderBy(desc(projects.updatedAt), desc(projects.createdAt))
   const projectIds = projectRows.map((project) => project.id)
   if (projectIds.length === 0) return []
-  const [workflowRows, estimateRows, purchaseOrderRows] = await Promise.all([
-    db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(inArray(nuTechOrderWorkflows.projectId, projectIds)),
-    db
-      .select({
-        projectId: projectEstimates.projectId,
-        status: projectEstimates.status,
-        updatedAt: projectEstimates.updatedAt,
-      })
-      .from(projectEstimates)
-      .where(inArray(projectEstimates.projectId, projectIds))
-      .orderBy(desc(projectEstimates.updatedAt)),
-    db
-      .select({
-        projectId: projectOperations.projectId,
-        status: projectOperations.status,
-      })
-      .from(projectOperations)
-      .where(
-        and(
-          inArray(projectOperations.projectId, projectIds),
-          eq(projectOperations.sourceRecordType, "purchase_order")
-        )
-      ),
-  ])
+  // Chunked by job so each IN list stays under D1's parameter limit; a job's
+  // rows all land in one chunk, so their order is kept.
+  const chunks = await Promise.all(
+    chunkD1Values(projectIds).map((ids) =>
+      Promise.all([
+        db.select().from(nuTechOrderWorkflows).where(inArray(nuTechOrderWorkflows.projectId, ids)),
+        db
+          .select({ projectId: projectEstimates.projectId, status: projectEstimates.status, updatedAt: projectEstimates.updatedAt })
+          .from(projectEstimates)
+          .where(inArray(projectEstimates.projectId, ids))
+          .orderBy(desc(projectEstimates.updatedAt)),
+        db
+          .select({ projectId: projectOperations.projectId, status: projectOperations.status })
+          .from(projectOperations)
+          .where(and(inArray(projectOperations.projectId, ids), eq(projectOperations.sourceRecordType, "purchase_order"))),
+      ]),
+    ),
+  )
+  const workflowRows = chunks.flatMap((chunk) => chunk[0])
+  const estimateRows = chunks.flatMap((chunk) => chunk[1])
+  const purchaseOrderRows = chunks.flatMap((chunk) => chunk[2])
   return projectRows.map((project) => {
     // A job can have several orders; the dashboard follows the newest.
     const workflow = workflowRows
@@ -712,7 +512,7 @@ export async function getNuTechOrderDashboard(): Promise<
       clientName: project.clientName,
       orderStatus: workflow?.orderStatus ?? "not_started",
       quantitySource: workflow
-        ? storedQuantitySource(workflow.quantitySource)
+        ? storedNuTechQuantitySource(workflow.quantitySource)
         : null,
       requestedDeliveryDate: workflow?.requestedDeliveryDate ?? null,
       estimateStatus: estimate?.status ?? null,
@@ -727,23 +527,23 @@ export async function saveProjectNuTechOrder(
 ): Promise<NuTechOrderActionResult> {
   try {
     const access = await nuTechProjectAccess(projectId, "update")
-    const parsedCustomerType = customerType(input.customerType)
-    const parsedPricingMode = pricingMode(input.pricingMode)
-    const parsedQuantitySource = quantitySource(input.quantitySource)
+    const parsedCustomerType = parseNuTechCustomerType(input.customerType)
+    const parsedPricingMode = parseNuTechPricingMode(input.pricingMode)
+    const parsedQuantitySource = parseNuTechQuantitySource(input.quantitySource)
     const parsedTakeoffStatus = normalizedNuTechTakeoffStatus({
       quantitySource: parsedQuantitySource,
-      requestedStatus: takeoffStatus(input.takeoffAcknowledgementStatus),
+      requestedStatus: storedNuTechTakeoffStatus(input.takeoffAcknowledgementStatus),
     })
-    const parsedScopeType = scopeType(input.scopeType)
+    const parsedScopeType = parseNuTechScopeType(input.scopeType)
     const bracingIncluded =
       input.bracingIncluded ||
       parsedScopeType === "block_and_bracing" ||
       parsedScopeType === "bracing_only"
     const bracingRentalStartDate = bracingIncluded
-      ? cleanDate(input.bracingRentalStartDate, "Bracing rental start")
+      ? parseNuTechDate(input.bracingRentalStartDate, "Bracing rental start")
       : null
     const bracingRentalEndDate = bracingIncluded
-      ? cleanDate(input.bracingRentalEndDate, "Bracing rental end")
+      ? parseNuTechDate(input.bracingRentalEndDate, "Bracing rental end")
       : null
     if (
       bracingRentalStartDate !== null &&
@@ -770,31 +570,35 @@ export async function saveProjectNuTechOrder(
         throw new Error("Choose a purchase order from this Nu-Tech project.")
       }
     }
-    const vendorInvoiceReceivedAt = cleanDate(
+    const vendorInvoiceReceivedAt = parseNuTechDate(
       input.vendorInvoiceReceivedAt,
       "Vendor invoice received date"
     )
-    const requestedDeliveryDate = cleanDate(
+    const requestedDeliveryDate = parseNuTechDate(
       input.requestedDeliveryDate,
       "Requested delivery date"
     )
-    const customerPaidAt = cleanDate(input.customerPaidAt, "Customer paid date")
+    const customerPaidAt = parseNuTechDate(input.customerPaidAt, "Customer paid date")
     const paymentMethod = cleanText(input.customerPaymentMethod)
     if (paymentMethod !== null && !isNuTechPaymentMethod(paymentMethod)) {
       throw new Error("Choose check, cash, ACH, or card.")
     }
-    const trailerPhotoReceivedAt = cleanDate(input.trailerPhotoReceivedAt, "Trailer photo received date")
-    const parsedDeliveryMethod = deliveryMethod(input.deliveryMethod)
+    const trailerPhotoReceivedAt = parseNuTechDate(input.trailerPhotoReceivedAt, "Trailer photo received date")
+    const parsedDeliveryMethod = parseNuTechDeliveryMethod(input.deliveryMethod)
     if (input.shippingCents !== null && (!Number.isInteger(input.shippingCents) || input.shippingCents < 0 || input.shippingCents > 100_000_000)) {
       throw new Error("Enter the shipping charge in dollars and cents.")
     }
     // Shipping applies to deliveries only; pickups default to the warehouse's tax district.
     const shippingCents = parsedDeliveryMethod === "delivery" ? input.shippingCents : null
-    let taxEntityId = cleanText(input.taxEntityId)
-    if (taxEntityId === null && parsedDeliveryMethod !== "delivery") {
-      const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
-      taxEntityId = settings.warehouseTaxEntityId || null
-    }
+    const chosenTaxEntityId = cleanText(input.taxEntityId)
+    const taxEntityId = nuTechEffectiveTaxEntityId({
+      chosenTaxEntityId,
+      deliveryMethod: parsedDeliveryMethod,
+      warehouseTaxEntityId:
+        chosenTaxEntityId === null && parsedDeliveryMethod !== "delivery"
+          ? (await readFeatureSettings(access.db, access.organizationId, "nutech-emails")).warehouseTaxEntityId
+          : null,
+    })
     if (taxEntityId !== null) {
       const district = await access.db
         .select({ id: sageTaxEntities.id })
@@ -803,9 +607,8 @@ export async function saveProjectNuTechOrder(
         .get()
       if (!district) throw new Error("Choose an active sales tax district.")
     }
-    const parsedOrderStatus = orderStatus(input.orderStatus)
-    const parsedVendorInvoiceStatus = vendorInvoiceStatus(
-      input.vendorInvoiceStatus
+    const parsedOrderStatus = storedNuTechOrderStatus(input.orderStatus)
+    const parsedVendorInvoiceStatus = storedNuTechVendorInvoiceStatus(input.vendorInvoiceStatus
     )
     const existing = await findNuTechOrder(access.db, projectId, input.orderId)
     if (input.orderId && !existing) throw new Error("That order is no longer on this job.")
@@ -821,8 +624,8 @@ export async function saveProjectNuTechOrder(
     if (
       existing?.purchaseOrderReleasedAt !== null &&
       existing?.purchaseOrderReleasedAt !== undefined &&
-      (parsedCustomerType !== storedCustomerType(existing.customerType) ||
-        parsedPricingMode !== storedPricingMode(existing.pricingMode) ||
+      (parsedCustomerType !== storedNuTechCustomerType(existing.customerType) ||
+        parsedPricingMode !== storedNuTechPricingMode(existing.pricingMode) ||
         purchaseOrderId !== existing.airlitePurchaseOrderOperationId ||
         requestedDeliveryDate !== existing.requestedDeliveryDate)
     ) {
@@ -897,74 +700,25 @@ export async function saveProjectNuTechOrder(
       workbookInputsChanged
         ? "stale"
         : existing?.airliteWorkbookStatus ?? "not_generated"
-    const saveWorkflowQuery = access.db
-      .insert(nuTechOrderWorkflows)
-      .values(values)
-      .onConflictDoUpdate({
-        target: nuTechOrderWorkflows.id,
-        set: {
-          title: values.title,
-          catalogVersionId: values.catalogVersionId,
-          customerType: values.customerType,
-          pricingMode: values.pricingMode,
-          quantitySource: values.quantitySource,
-          takeoffAcknowledgementStatus: values.takeoffAcknowledgementStatus,
-          scopeType: values.scopeType,
-          blockQuantityNotes: values.blockQuantityNotes,
-          bracingIncluded: values.bracingIncluded,
-          bracingRentalStartDate: values.bracingRentalStartDate,
-          bracingRentalEndDate: values.bracingRentalEndDate,
-          bracingNotes: values.bracingNotes,
-          deliveryMethod: values.deliveryMethod,
-          requestedDeliveryDate: values.requestedDeliveryDate,
-          customerPaidAt: values.customerPaidAt,
-          customerPaymentMethod: values.customerPaymentMethod,
-          trailerDimensions: values.trailerDimensions,
-          trailerPhotoReceivedAt: values.trailerPhotoReceivedAt,
-          airlitePurchaseOrderOperationId: values.airlitePurchaseOrderOperationId,
-          orderStatus: values.orderStatus,
-          vendorConfirmationNumber: values.vendorConfirmationNumber,
-          vendorInvoiceNumber: values.vendorInvoiceNumber,
-          vendorInvoiceStatus: values.vendorInvoiceStatus,
-          vendorInvoiceReceivedAt: values.vendorInvoiceReceivedAt,
-          airliteWorkbookStatus: nextWorkbookStatus,
-          shippingCents: values.shippingCents,
-          shippingNote: values.shippingNote,
-          taxEntityId: values.taxEntityId,
-          notes: values.notes,
-          updatedBy: access.user.id,
-          updatedAt: now,
-        },
-      })
-    if (values.catalogVersionId !== null) {
-      const selectedPriceColumn =
-        parsedCustomerType === "new"
-          ? parsedPricingMode === "cash_discount"
-            ? nuTechCatalogPrices.newCashPriceCents
-            : nuTechCatalogPrices.newStandardPriceCents
-          : parsedPricingMode === "cash_discount"
-            ? nuTechCatalogPrices.returningCashPriceCents
-            : nuTechCatalogPrices.returningStandardPriceCents
-      const repriceOrderItemsQuery = access.db
-        .update(nuTechOrderItems)
-        .set({
-          unitPriceCents: sql`(
-            SELECT ${selectedPriceColumn}
-            FROM ${nuTechCatalogPrices}
-            WHERE ${nuTechCatalogPrices.catalogVersionId} = ${values.catalogVersionId}
-              AND ${nuTechCatalogPrices.productId} = ${nuTechOrderItems.productId}
-            LIMIT 1
-          )`,
-          updatedAt: now,
-        })
-        .where(eq(nuTechOrderItems.workflowId, id))
-      await access.db.batch([saveWorkflowQuery, repriceOrderItemsQuery])
-    } else {
-      await saveWorkflowQuery
-    }
+    await saveNuTechOrder(access.db, {
+      values,
+      workbookStatus: nextWorkbookStatus,
+      userId: access.user.id,
+      now,
+      reprice:
+        typeof values.catalogVersionId !== "string"
+          ? null
+          : {
+              catalogVersionId: values.catalogVersionId,
+              priceColumn:
+                parsedCustomerType === "new"
+                  ? parsedPricingMode === "cash_discount" ? "newCash" : "newStandard"
+                  : parsedPricingMode === "cash_discount" ? "returningCash" : "returningStandard",
+            },
+    })
     await syncProjectWithOrder(access, {
       jobStatusId: jobStatusForNuTechOrderStatus(parsedOrderStatus),
-      deliveryMethod: projectDeliveryMethodForNuTech(deliveryMethod(input.deliveryMethod)),
+      deliveryMethod: projectDeliveryMethodForNuTech(parseNuTechDeliveryMethod(input.deliveryMethod)),
       now,
     })
     revalidateNuTechPaths(projectId)
@@ -993,17 +747,17 @@ export async function releaseNuTechAirlitePurchaseOrder(
       .from(nuTechOrderItems)
       .where(eq(nuTechOrderItems.workflowId, order.id))
     const readiness = nuTechPurchaseOrderReleaseReadiness({
-      customerType: storedCustomerType(order.customerType),
-      pricingMode: storedPricingMode(order.pricingMode),
-      quantitySource: storedQuantitySource(order.quantitySource),
-      takeoffAcknowledgementStatus: takeoffStatus(
+      customerType: storedNuTechCustomerType(order.customerType),
+      pricingMode: storedNuTechPricingMode(order.pricingMode),
+      quantitySource: storedNuTechQuantitySource(order.quantitySource),
+      takeoffAcknowledgementStatus: storedNuTechTakeoffStatus(
         order.takeoffAcknowledgementStatus
       ),
       airlitePurchaseOrderOperationId: order.airlitePurchaseOrderOperationId,
       orderItemCount: orderItemRows.length,
       airliteWorkbookStatus: order.airliteWorkbookStatus,
       customerReadinessIssues: nuTechCustomerReadinessIssues({
-        deliveryMethod: storedDeliveryMethod(order.deliveryMethod),
+        deliveryMethod: storedNuTechDeliveryMethod(order.deliveryMethod),
         customerPaidAt: order.customerPaidAt,
         requestedDeliveryDate: order.requestedDeliveryDate,
         trailerDimensions: order.trailerDimensions,
@@ -1032,16 +786,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
         ? "sent"
         : purchaseOrder.status
     await access.db.batch([
-      access.db
-        .update(nuTechOrderWorkflows)
-        .set({
-          orderStatus: "po_released",
-          purchaseOrderReleasedAt: now,
-          purchaseOrderReleasedBy: access.user.id,
-          updatedBy: access.user.id,
-          updatedAt: now,
-        })
-        .where(eq(nuTechOrderWorkflows.id, order.id)),
+      releaseNuTechOrderPurchaseOrderStatement(access.db, { orderId: order.id, userId: access.user.id, now }),
       access.db
         .update(projectOperations)
         .set({ status: purchaseOrderStatus, updatedAt: now })
@@ -1077,18 +822,12 @@ export async function releaseNuTechVendorInvoice(
       throw new Error("Record the Airlite PO release before releasing its invoice.")
     }
     const now = new Date().toISOString()
-    await access.db
-      .update(nuTechOrderWorkflows)
-      .set({
-        orderStatus: "invoice_released",
-        vendorInvoiceStatus: "released",
-        vendorInvoiceReceivedAt: order.vendorInvoiceReceivedAt ?? now.slice(0, 10),
-        vendorInvoiceReleasedAt: now,
-        vendorInvoiceReleasedBy: access.user.id,
-        updatedBy: access.user.id,
-        updatedAt: now,
-      })
-      .where(eq(nuTechOrderWorkflows.id, order.id))
+    await releaseNuTechOrderVendorInvoice(access.db, {
+      orderId: order.id,
+      receivedAt: order.vendorInvoiceReceivedAt ?? now.slice(0, 10),
+      userId: access.user.id,
+      now,
+    })
     revalidateNuTechPaths(projectId)
     revalidatePath("/dashboard/financials")
     return { success: true, id: order.id }
@@ -1119,9 +858,7 @@ export async function deleteProjectNuTechOrder(
         "Released Nu-Tech workflows are retained for audit and cannot be deleted."
       )
     }
-    await access.db
-      .delete(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.id, existing.id))
+    await deleteNuTechOrder(access.db, existing.id)
     revalidateNuTechPaths(projectId)
     return { success: true, id: existing.id }
   } catch (error) {
@@ -1165,7 +902,7 @@ export async function createNuTechOrder(
     // Two people adding an order at once can pick the same number; retry with the next.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await access.db.insert(nuTechOrderWorkflows).values({
+        await insertNuTechOrder(access.db, {
           id,
           projectId,
           orderNumber: await nextNuTechOrderNumber(access.db, projectId),
@@ -1232,10 +969,9 @@ export async function getNuTechOrdersForEstimates(projectId: string): Promise<re
 /** Active sales tax districts, for choosing the warehouse's district in Settings. */
 export async function getNuTechTaxDistricts(): Promise<readonly NuTechTaxDistrict[]> {
   try {
-    const user = await requireAuth()
+    const { db, user } = await nuTechOrgContext()
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const { env } = await getCloudflareContext()
-    return await getDb(env.DB)
+    return await db
       .select({ id: sageTaxEntities.id, code: sageTaxEntities.code, name: sageTaxEntities.name, rateBasisPoints: sageTaxEntities.rateBasisPoints })
       .from(sageTaxEntities)
       .where(eq(sageTaxEntities.active, true))

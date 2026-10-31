@@ -21,7 +21,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { LineItemsEditor, type LineItem } from "./line-items-editor"
+import { LineItemsEditor } from "./line-items-editor"
+import {
+  billTotals,
+  lineItemsSubtotal,
+  parseLineItems,
+  type LineItem,
+} from "@/lib/domain/financials/rules"
 import type { Invoice } from "@/db/schema-netsuite"
 import type { BillingScope } from "@/lib/financials/billing-scope"
 import type { Customer, Project } from "@/db/schema"
@@ -90,9 +96,7 @@ export function InvoiceDialog({
       setPreconstruction(initialData.billingScope === "preconstruction")
       setTax(initialData.tax)
       setLines(
-        initialData.lineItems
-          ? JSON.parse(initialData.lineItems)
-          : []
+        parseLineItems(initialData.lineItems) ?? []
       )
     } else {
       setCustomerId("")
@@ -108,9 +112,12 @@ export function InvoiceDialog({
     }
   }, [initialData, open])
 
-  const subtotal = lines.reduce((s, l) => s + l.amount, 0)
-  const total = subtotal + tax
-  const amountDue = total - (initialData?.amountPaid ?? 0)
+  // Preview only: the server recomputes these from the lines on save.
+  const { subtotal, total, amountDue } = billTotals(
+    lineItemsSubtotal(lines),
+    tax,
+    initialData?.amountPaid ?? 0
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

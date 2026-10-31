@@ -47,6 +47,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { NUTECH_RESOURCE_LINKS, nuTechPricingFolderUrl } from "@/lib/nutech/resources"
 import { nuTechCustomerPriceCents } from "@/lib/nutech/catalog-pricing"
 import {
+  nuTechEffectiveTaxEntityId,
+  nuTechOrderCostCents,
+  nuTechOrderTotals,
+  nuTechShippingCents,
+  nuTechShippingInputCents,
+} from "@/lib/domain/nutech/rules"
+import { formatCents, formatDateTime, formatDollars } from "@/lib/format"
+import {
   NUTECH_CUSTOMER_TYPE_OPTIONS,
   NUTECH_DELIVERY_METHOD_OPTIONS,
   NUTECH_ORDER_STATUS_OPTIONS,
@@ -88,25 +96,6 @@ function takeoffStatusValue(value: string): NuTechTakeoffAcknowledgementStatus {
     return value
   }
   return "pending"
-}
-
-function money(value: number | null): string {
-  if (value === null) return "Amount TBD"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value)
-}
-
-function formatDateTime(value: string | null): string {
-  if (value === null) return "Not recorded"
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
 }
 
 export function NuTechOrderWorkspace({
@@ -159,14 +148,7 @@ export function NuTechOrderWorkspace({
   const selectedProduct = workspace.catalogProducts.find(
     (product) => product.id === selectedProductId
   )
-  const customerTotalCents = workspace.orderItems.reduce(
-    (total, item) => total + item.quantity * item.unitPriceCents,
-    0
-  )
-  const airliteTotalCents = workspace.orderItems.reduce(
-    (total, item) => total + item.quantity * item.unitCostCents,
-    0
-  )
+  const airliteTotalCents = nuTechOrderCostCents(workspace.orderItems)
   const pricingBasisChanged =
     order !== null &&
     (customerType !== order.customerType || pricingMode !== order.pricingMode)
@@ -221,19 +203,23 @@ export function NuTechOrderWorkspace({
   const [taxEntityId, setTaxEntityId] = useState(order?.taxEntityId ?? "")
   const isDelivery = fulfillment === "delivery"
   // Pickups are taxed at the warehouse unless someone picked a district.
-  const effectiveTaxEntityId = taxEntityId || (isDelivery ? "" : (workspace.warehouseTaxEntityId ?? ""))
+  const effectiveTaxEntityId = nuTechEffectiveTaxEntityId({
+    chosenTaxEntityId: taxEntityId,
+    deliveryMethod: fulfillment,
+    warehouseTaxEntityId: workspace.warehouseTaxEntityId,
+  }) ?? ""
   const taxDistrict = workspace.taxDistricts.find((district) => district.id === effectiveTaxEntityId) ?? null
-  const shippingCents = isDelivery ? Math.max(0, Math.round((Number.parseFloat(shipping.replace(/[$,]/g, "")) || 0) * 100)) : 0
-  // Items are taxed per their price-list setting (old catalog rows default to taxable); shipping per Freight's.
-  const taxableCents =
-    workspace.orderItems.reduce(
-      (total, item) =>
-        workspace.catalogProducts.find((product) => product.id === item.productId)?.taxable === false
-          ? total
-          : total + item.quantity * item.unitPriceCents,
-      0
-    ) + (workspace.shippingTaxable ? shippingCents : 0)
-  const taxCents = taxDistrict ? Math.round((taxableCents * taxDistrict.rateBasisPoints) / 10_000) : 0
+  const shippingCents = nuTechShippingCents(fulfillment, nuTechShippingInputCents(shipping))
+  // A preview of the unsaved form with the server's own rules: items taxed per
+  // their price-list setting (flagged by the server), shipping per Freight's.
+  const totals = nuTechOrderTotals({
+    items: workspace.orderItems,
+    shippingCents,
+    shippingTaxable: workspace.shippingTaxable,
+    taxRateBasisPoints: taxDistrict?.rateBasisPoints ?? null,
+  })
+  const customerTotalCents = totals.itemsCents
+  const taxCents = totals.taxCents
 
   function orderInput(formData: FormData): Parameters<typeof saveProjectNuTechOrder>[1] {
     return {
@@ -411,7 +397,7 @@ export function NuTechOrderWorkspace({
             <p className="text-sm font-semibold">Current handoff</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {order
-                ? `${nuTechOrderStatusLabel(order.orderStatus)} · updated ${formatDateTime(order.updatedAt)}`
+                ? `${nuTechOrderStatusLabel(order.orderStatus)} · updated ${formatDateTime(order.updatedAt, "Not recorded")}`
                 : "No Nu-Tech order workflow has been started for this project."}
             </p>
           </div>
@@ -463,7 +449,7 @@ export function NuTechOrderWorkspace({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {workspace.estimate
-              ? `${workspace.estimate.number} · ${workspace.estimate.status} · ${money(workspace.estimate.totalCents / 100)}`
+              ? `${workspace.estimate.number} · ${workspace.estimate.status} · ${formatCents(workspace.estimate.totalCents)}`
               : "Start the client estimate and takeoff acknowledgement here."}
           </p>
         </Link>
@@ -624,11 +610,11 @@ export function NuTechOrderWorkspace({
                     options={workspace.catalogProducts.map((product) => ({
                       value: product.id,
                       label: `${product.manufacturerSku} · ${product.name}`,
-                      selectedLabel: `${product.manufacturerSku} · ${product.name} · ${money(
-                        nuTechCustomerPriceCents(product, customerType, pricingMode) / 100
+                      selectedLabel: `${product.manufacturerSku} · ${product.name} · ${formatCents(
+                        nuTechCustomerPriceCents(product, customerType, pricingMode)
                       )}/${product.priceUnit}`,
-                      description: `${money(
-                        nuTechCustomerPriceCents(product, customerType, pricingMode) / 100
+                      description: `${formatCents(
+                        nuTechCustomerPriceCents(product, customerType, pricingMode)
                       )}/${product.priceUnit}`,
                     }))}
                     ariaLabel="Catalog product"
@@ -697,10 +683,10 @@ export function NuTechOrderWorkspace({
                           {item.quantity} {item.priceUnit}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          {money(item.unitPriceCents / 100)}
+                          {formatCents(item.unitPriceCents)}
                         </td>
                         <td className="px-2 py-2 text-right font-medium">
-                          {money((item.quantity * item.unitPriceCents) / 100)}
+                          {formatCents(item.quantity * item.unitPriceCents)}
                         </td>
                         <td className="px-2 py-2 text-right">
                           <Button
@@ -721,10 +707,10 @@ export function NuTechOrderWorkspace({
                   <tfoot className="border-t">
                     <tr>
                       <td colSpan={3} className="px-2 py-2 text-right text-muted-foreground">
-                        Airlite cost {money(airliteTotalCents / 100)}
+                        Airlite cost {formatCents(airliteTotalCents)}
                       </td>
                       <td className="px-2 py-2 text-right font-semibold">
-                        {money(customerTotalCents / 100)}
+                        {formatCents(customerTotalCents)}
                       </td>
                       <td />
                     </tr>
@@ -860,21 +846,21 @@ export function NuTechOrderWorkspace({
               <dl className="grid grid-cols-2 gap-x-6 gap-y-1 border-t pt-3 text-sm sm:grid-cols-4">
                 <div>
                   <dt className="text-xs text-muted-foreground">Products</dt>
-                  <dd className="tabular-nums">{money(customerTotalCents / 100)}</dd>
+                  <dd className="tabular-nums">{formatCents(customerTotalCents)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Shipping (not taxed)</dt>
-                  <dd className="tabular-nums">{isDelivery ? money(shippingCents / 100) : "Pickup"}</dd>
+                  <dd className="tabular-nums">{isDelivery ? formatCents(shippingCents) : "Pickup"}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">
                     Sales tax{taxDistrict ? ` (${(taxDistrict.rateBasisPoints / 100).toFixed(2)}%)` : ""}
                   </dt>
-                  <dd className="tabular-nums">{taxDistrict ? money(taxCents / 100) : "Choose a district"}</dd>
+                  <dd className="tabular-nums">{taxDistrict ? formatCents(taxCents) : "Choose a district"}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Customer total</dt>
-                  <dd className="font-semibold tabular-nums">{money((customerTotalCents + shippingCents + taxCents) / 100)}</dd>
+                  <dd className="font-semibold tabular-nums">{formatCents(totals.totalCents)}</dd>
                 </div>
               </dl>
               <div className="flex flex-wrap items-center gap-3">
@@ -1006,7 +992,7 @@ export function NuTechOrderWorkspace({
                     ...workspace.purchaseOrders.map((purchaseOrder) => ({
                       value: purchaseOrder.id,
                       label: `${purchaseOrder.number ?? "Unnumbered"} · ${purchaseOrder.title}`,
-                      description: [purchaseOrder.companyName, money(purchaseOrder.amount)]
+                      description: [purchaseOrder.companyName, formatDollars(purchaseOrder.amount, { fallback: "Amount TBD" })]
                         .filter(Boolean)
                         .join(" · "),
                     })),
@@ -1030,7 +1016,7 @@ export function NuTechOrderWorkspace({
               <div className="space-y-2">
                 <Label>PO release recorded</Label>
                 <p className="flex h-9 items-center text-sm text-muted-foreground">
-                  {formatDateTime(order?.purchaseOrderReleasedAt ?? null)}
+                  {formatDateTime(order?.purchaseOrderReleasedAt ?? null, "Not recorded")}
                 </p>
               </div>
               <div className="space-y-2">
@@ -1070,7 +1056,7 @@ export function NuTechOrderWorkspace({
               <div className="space-y-2">
                 <Label>Invoice release recorded</Label>
                 <p className="flex h-9 items-center text-sm text-muted-foreground">
-                  {formatDateTime(order?.vendorInvoiceReleasedAt ?? null)}
+                  {formatDateTime(order?.vendorInvoiceReleasedAt ?? null, "Not recorded")}
                 </p>
               </div>
             </div>
@@ -1082,7 +1068,7 @@ export function NuTechOrderWorkspace({
                     {order.airliteWorkbookStatus === "stale"
                       ? "Order quantities changed; generate a fresh workbook before release."
                       : order.airliteWorkbookGeneratedAt
-                        ? `${order.airliteWorkbookStatus.replaceAll("_", " ")} · ${formatDateTime(order.airliteWorkbookGeneratedAt)}`
+                        ? `${order.airliteWorkbookStatus.replaceAll("_", " ")} · ${formatDateTime(order.airliteWorkbookGeneratedAt, "Not recorded")}`
                         : "Not generated"}
                   </p>
                 </div>
