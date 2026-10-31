@@ -49,13 +49,14 @@ describe("NotificationCenterProvider", () => {
   const renderTree = async (): Promise<void> => {
     await act(async () =>
       root.render(
-        React.createElement(
-          NotificationCenterProvider,
-          { loader },
-          React.createElement(View, { name: "bell-desktop", intervalMs: 15_000 }),
-          React.createElement(View, { name: "bell-mobile", intervalMs: 15_000 }),
-          React.createElement(View, { name: "map", intervalMs: 30_000 }),
-        ),
+        React.createElement(NotificationCenterProvider, {
+          loader,
+          children: [
+            React.createElement(View, { key: "bell-desktop", name: "bell-desktop", intervalMs: 15_000 }),
+            React.createElement(View, { key: "bell-mobile", name: "bell-mobile", intervalMs: 15_000 }),
+            React.createElement(View, { key: "map", name: "map", intervalMs: 30_000 }),
+          ],
+        }),
       ),
     )
   }

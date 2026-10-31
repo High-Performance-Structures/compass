@@ -12,6 +12,12 @@ export type VisibleIntervalOptions = {
    * views that should catch up the moment someone returns to them.
    */
   readonly refreshOnFocus?: boolean
+  /**
+   * Keep ticking in hidden tabs. Only for state that must stay in step while
+   * nobody is looking, such as Listening Room playback in a background tab;
+   * each use needs a comment saying why.
+   */
+  readonly whileHidden?: boolean
 }
 
 function isTabVisible(): boolean {
@@ -43,6 +49,7 @@ export function useVisibleInterval(
   const enabled = options.enabled ?? true
   const immediate = options.immediate ?? true
   const refreshOnFocus = options.refreshOnFocus ?? false
+  const whileHidden = options.whileHidden ?? false
 
   const callbackRef = React.useRef(callback)
   callbackRef.current = callback
@@ -62,7 +69,7 @@ export function useVisibleInterval(
       clear()
       timer = setTimeout(() => {
         timer = null
-        if (!isTabVisible()) return
+        if (!whileHidden && !isTabVisible()) return
         run()
       }, Math.max(0, delay))
     }
@@ -72,6 +79,7 @@ export function useVisibleInterval(
       callbackRef.current()
     }
     const handleVisibility = (): void => {
+      if (whileHidden) return
       if (!isTabVisible()) {
         clear()
         return
@@ -85,7 +93,7 @@ export function useVisibleInterval(
       if (isTabVisible()) run()
     }
 
-    if (isTabVisible()) {
+    if (whileHidden || isTabVisible()) {
       if (immediate) run()
       else schedule(intervalMs)
     } else if (immediate) {
@@ -99,5 +107,5 @@ export function useVisibleInterval(
       document.removeEventListener("visibilitychange", handleVisibility)
       if (refreshOnFocus) window.removeEventListener("focus", handleFocus)
     }
-  }, [enabled, immediate, intervalMs, refreshOnFocus])
+  }, [enabled, immediate, intervalMs, refreshOnFocus, whileHidden])
 }

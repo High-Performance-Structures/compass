@@ -174,7 +174,12 @@ export function ListeningRoom({
   React.useEffect(() => {
     void loadRoom()
   }, [loadRoom])
-  useVisibleInterval(() => void loadRoom(), full ? 30_000 : 60_000, { refreshOnFocus: true })
+  // People listen with the tab in the background; keep the room's playback
+  // state current there too in case the realtime socket drops.
+  useVisibleInterval(() => void loadRoom(), full ? 30_000 : 60_000, {
+    refreshOnFocus: true,
+    whileHidden: true,
+  })
 
   const joined = Boolean(room?.currentUserJoined)
   React.useEffect(() => {

@@ -63,6 +63,18 @@ describe("useVisibleInterval", () => {
     expect(callback).toHaveBeenCalledTimes(4)
   })
 
+  it("keeps ticking in a hidden tab only when whileHidden is set", async () => {
+    const callback = vi.fn()
+    await act(async () =>
+      root.render(React.createElement(OptionsProbe, { callback, options: { whileHidden: true } }))
+    )
+    expect(callback).toHaveBeenCalledTimes(1)
+    act(() => setVisibility("hidden"))
+    act(() => vi.advanceTimersByTime(3_000))
+    expect(callback).toHaveBeenCalledTimes(4)
+    act(() => setVisibility("visible"))
+    expect(callback).toHaveBeenCalledTimes(4)
+  })
   it("does nothing while disabled", async () => {
     const callback = vi.fn()
     await act(async () => root.render(React.createElement(Probe, { callback, enabled: false })))
