@@ -1,12 +1,11 @@
-import { and, eq, ne, notExists } from "drizzle-orm"
+import { and, eq, ne } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
   projectDuplicateDecisions,
-  projectRegistryRemovals,
-  projectRouteAliases,
   projects,
 } from "@/db/schema"
+import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import {
   findProjectDuplicateCandidates,
   projectDuplicatePairKey,
@@ -45,31 +44,7 @@ export async function loadActiveProjectDuplicateIdentities(
       and(
         eq(projects.organizationId, organizationId),
         ne(projects.status, "ARCHIVE"),
-        notExists(
-          db
-            .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
-            .from(projectRouteAliases)
-            .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
-        ),
-        notExists(
-          db
-            .select({ projectId: projectRegistryRemovals.projectId })
-            .from(projectRegistryRemovals)
-            .where(eq(projectRegistryRemovals.projectId, projects.id)),
-        ),
-        notExists(
-          db
-            .select({
-              removedProjectId: projectDuplicateDecisions.removedProjectId,
-            })
-            .from(projectDuplicateDecisions)
-            .where(
-              and(
-                eq(projectDuplicateDecisions.status, "merged"),
-                eq(projectDuplicateDecisions.removedProjectId, projects.id),
-              ),
-            ),
-        ),
+        activeRegistryProject(db),
       ),
     )
 }

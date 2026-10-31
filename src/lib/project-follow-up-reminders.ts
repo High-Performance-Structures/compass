@@ -93,6 +93,7 @@ async function orgSignals(db: Db, organizationId: string, now: Date) {
       name: projects.name,
       projectNumber: projects.projectNumber,
       department: projects.department,
+      createdAt: projects.createdAt,
     })
     .from(projects)
     .where(eq(projects.organizationId, organizationId))

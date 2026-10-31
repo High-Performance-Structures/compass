@@ -650,21 +650,28 @@ export function buildCherishNavigation(
 }
 
 const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
+// Each count scans the company's jobs; clicking around should not rerun it
+// on every page.
+const ALERT_COUNT_NAVIGATION_MIN_MS = 60 * 1000
 
 /**
  * A red-alert count for a sidebar link (stale messages, overdue follow-ups)
- * from a GET endpoint. Refreshes on page changes and every few minutes so the
- * red link appears without a reload; a plain GET never blocks navigation.
+ * from a GET endpoint. Refreshes on page changes (at most once a minute) and
+ * every few minutes while the tab is visible, so the red link appears
+ * without a reload; a plain GET never blocks navigation.
  */
 function useAlertCount(endpoint: string, enabled: boolean, pathname: string): number {
   const [count, setCount] = React.useState(0)
+  const lastLoadedAt = React.useRef(0)
   React.useEffect(() => {
     if (!enabled) {
       setCount(0)
+      lastLoadedAt.current = 0
       return
     }
     let cancelled = false
     const load = (): void => {
+      lastLoadedAt.current = Date.now()
       void fetch(endpoint, { cache: "no-store" })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: unknown) => {
@@ -673,8 +680,10 @@ function useAlertCount(endpoint: string, enabled: boolean, pathname: string): nu
         })
         .catch(() => undefined)
     }
-    load()
-    const timer = window.setInterval(load, STALE_MESSAGE_REFRESH_MS)
+    if (Date.now() - lastLoadedAt.current >= ALERT_COUNT_NAVIGATION_MIN_MS) load()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") load()
+    }, STALE_MESSAGE_REFRESH_MS)
     return () => {
       cancelled = true
       window.clearInterval(timer)
