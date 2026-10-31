@@ -19,5 +19,4 @@ export const RECEIVABLE_ITEM_KINDS = ["pay_application", "invoice"] as const
 export type ReceivableItemKind = (typeof RECEIVABLE_ITEM_KINDS)[number]
 
 /** Paid state of a billed item, derived from its billed amount and active allocations. */
-const RECEIVABLE_PAID_STATES = ["open", "partially_paid", "paid"] as const
-export type ReceivablePaidState = (typeof RECEIVABLE_PAID_STATES)[number]
+export type ReceivablePaidState = "open" | "partially_paid" | "paid"
