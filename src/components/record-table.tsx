@@ -141,21 +141,23 @@ export function RecordTable<T>({
   emptyMessage,
   state = { kind: "ready" },
   focusedRowId = null,
+  rowIdPrefix = "record",
 }: {
   readonly table: TableInstance<T>
   readonly itemLabel: string
   readonly emptyMessage: string
   readonly state?: RecordTableState
   readonly focusedRowId?: string | null
+  readonly rowIdPrefix?: string
 }): React.ReactElement {
   const pageIndex = table.getState().pagination.pageIndex
   const paginationId = React.useId()
   React.useEffect(() => {
     if (!focusedRowId) return
-    const element = document.getElementById(`record-${focusedRowId}`)
+    const element = document.getElementById(`${rowIdPrefix}-${focusedRowId}`)
     element?.scrollIntoView({ block: "center" })
     element?.focus({ preventScroll: true })
-  }, [focusedRowId, pageIndex])
+  }, [focusedRowId, pageIndex, rowIdPrefix])
 
   return (
     <div className="min-w-0 space-y-4" aria-busy={state.kind === "loading"}>
@@ -198,7 +200,8 @@ export function RecordTable<T>({
             table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
-                id={`record-${row.id}`}
+                id={`${rowIdPrefix}-${row.id}`}
+                data-focused={row.id === focusedRowId ? "true" : undefined}
                 tabIndex={row.id === focusedRowId ? -1 : undefined}
                 data-state={row.getIsSelected() ? "selected" : undefined}
                 className={cn(row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring")}

@@ -164,6 +164,7 @@ export function ProjectTodosView({
         itemLabel="to-dos"
         emptyMessage="No to-dos match this view."
         focusedRowId={initialItemId}
+        rowIdPrefix="todo"
       />
       {editingItem &&
         (canManage ? (
