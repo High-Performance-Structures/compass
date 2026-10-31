@@ -2,9 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import { useForm } from "react-hook-form"
-import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -17,173 +15,42 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import {
-  IconCalendar,
-  IconPlus,
-  IconTrash,
-  IconChevronDown,
-  IconChevronRight,
-  IconLoader2,
-  IconTemplate
-} from "@tabler/icons-react"
+import { IconTrash } from "@tabler/icons-react"
 import { format, parseISO } from "date-fns"
-import { Slider } from "@/components/ui/slider"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  SearchableCombobox,
-  type SearchableComboboxOption,
-} from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { createTask, updateTask } from "@/app/actions/schedule"
-import { deleteScheduleTasks } from "@/app/actions/schedule-tasks"
-import { createDependency, updateDependency, deleteDependency } from "@/app/actions/schedule-dependencies"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import {
-  deleteSchedulePhaseOption,
-  getSchedulePhaseOptions,
-  saveSchedulePhaseOption,
-  type ReusableSchedulePhaseOption,
-} from "@/app/actions/schedule-phases"
-import {
-  getScheduleTaskChangeProposal,
-  rejectScheduleTaskChangeProposal,
-  sendScheduleTaskReminder,
-  type ScheduleTaskChangeProposal,
-} from "@/app/actions/schedule-confirmations"
 import { calculateEndDate, workdaysFromEndDate } from "@/lib/schedule/business-days"
-import { normalizeScheduleItemTimes } from "@/lib/schedule/item-time"
-import {
-  RECENT_SCHEDULE_COLORS_KEY,
-  parseRecentScheduleColors,
-  rememberRecentScheduleColor,
-} from "@/lib/schedule/recent-colors"
 import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
-  DependencyType,
   WorkdayExceptionData
 } from "@/lib/schedule/types"
-import { PHASE_ORDER, PHASE_LABELS } from "@/lib/schedule/phase-colors"
-import {
-  DEFAULT_DISPLAY_COLOR,
-  DISPLAY_COLOR_OPTIONS,
-  getScheduleItemDisplayColor,
-} from "@/lib/schedule/appearance"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
-import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { getScheduleTaskTodos } from "@/app/actions/project-todos"
-import type { ProjectTodoItem } from "@/lib/domain/operations/types"
-import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
-import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
-import { ScheduleCommitmentResponses } from "@/components/schedule/schedule-commitment-responses"
-import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
-import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
-import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
-import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
-  clearScheduleTemplateImportOptions,
-  loadScheduleTemplateImportOptions
-} from "@/components/schedule/schedule-template-import-options-client"
-import { projectTodoHref, scheduleItemHref } from "@/lib/work-calendar"
-
-const defaultPhaseOptions: readonly ReusableSchedulePhaseOption[] = PHASE_ORDER.map((value) => ({
-  id: null,
-  value,
-  label: PHASE_LABELS[value],
-  source: "default"
-}))
-
-const CUSTOM_PHASE_VALUE = "__custom_phase__"
-
-// Predecessor options show start date and phase so items with the same title
-// can be told apart.
-function predecessorPickerOptions(
-  tasks: readonly ScheduleTaskData[]
-): readonly SearchableComboboxOption[] {
-  return tasks.map((task) => ({
-    value: task.id,
-    label: task.title,
-    description: [task.startDate, task.phase].filter(Boolean).join(" · "),
-  }))
-}
-
-// Phase picker options: saved and default phases (deduplicated by value), the
-// item's current phase even when it is no longer listed, and the custom entry.
-function schedulePhasePickerOptions(
-  options: readonly ReusableSchedulePhaseOption[],
-  currentValue: string
-): readonly SearchableComboboxOption[] {
-  const seen = new Set<string>()
-  const result: SearchableComboboxOption[] = []
-  for (const option of options) {
-    if (seen.has(option.value)) continue
-    seen.add(option.value)
-    result.push({ value: option.value, label: option.label })
-  }
-  if (currentValue !== "" && !seen.has(currentValue)) {
-    result.push({ value: currentValue, label: currentValue, description: "Current phase" })
-  }
-  result.push({ value: CUSTOM_PHASE_VALUE, label: "+ Add custom phase…", keywords: "new custom" })
-  return result
-}
-
-const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
-  { value: "FS", label: "Finish-to-Start" },
-  { value: "SS", label: "Start-to-Start" },
-  { value: "FF", label: "Finish-to-Finish" },
-  { value: "SF", label: "Start-to-Finish" }
-]
-
-const scheduleItemSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  startDate: z.string().min(1, "Start date is required"),
-  workdays: z.number().min(1, "Must be at least 1 day"),
-  startTime: z.string(),
-  endTime: z.string(),
-  phase: z.string().trim().min(1, "Phase is required"),
-  displayColor: z.string(),
-  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
-  isMilestone: z.boolean(),
-  percentComplete: z.number().min(0).max(100),
-  assignedTo: z.string(),
-  ownerVisible: z.boolean(),
-  subVendorVisible: z.boolean(),
-  confirmationRequired: z.boolean(),
-  notes: z.string(),
-  shiftReason: z.string().max(500, "Reason must be 500 characters or fewer")
-}).superRefine((values, context) => {
-  const times = normalizeScheduleItemTimes(values.startTime, values.endTime)
-  if (!times.success) {
-    context.addIssue({ code: "custom", path: ["endTime"], message: times.error })
-  }
-})
-
-type ScheduleItemFormValues = z.infer<typeof scheduleItemSchema>
+  editingTaskValues,
+  matchingAssigneeOptionId,
+  newScheduleItemValues,
+  scheduleItemSchema,
+  scheduleShiftRequested,
+  type ScheduleItemFormValues,
+} from "./schedule-item-form/form-model"
+import { useTemplateImport } from "./schedule-item-form/use-template-import"
+import { usePhaseOptions } from "./schedule-item-form/use-phase-options"
+import { useRecentColors } from "./schedule-item-form/use-recent-colors"
+import { useChangeProposal } from "./schedule-item-form/use-change-proposal"
+import { usePredecessorEdits } from "./schedule-item-form/use-predecessor-edits"
+import { savePredecessorChanges } from "./schedule-item-form/save-predecessors"
+import { TemplateImportSection } from "./schedule-item-form/template-import-section"
+import { PhaseField } from "./schedule-item-form/phase-field"
+import { DisplayColorFields } from "./schedule-item-form/display-color-fields"
+import { ScheduleDateFields } from "./schedule-item-form/schedule-date-fields"
+import { ScheduleItemDetails } from "./schedule-item-form/schedule-item-details"
+import { RelatedTodosSection } from "./schedule-item-form/related-todos-section"
+import { DeleteScheduleItemDialog } from "./schedule-item-form/delete-schedule-item-dialog"
 
 interface ScheduleItemFormDialogProps {
   open: boolean
@@ -199,12 +66,6 @@ interface ScheduleItemFormDialogProps {
   shiftReasonRequired?: boolean
   /** Called after the item being edited is deleted from this dialog. */
   onDeleted?: (taskId: string) => void
-}
-
-interface PendingPredecessor {
-  taskId: string
-  type: DependencyType
-  lagDays: number
 }
 
 export function ScheduleItemFormDialog({
@@ -224,329 +85,55 @@ export function ScheduleItemFormDialog({
   const isEditing = !!editingTask
   const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [pendingPredecessors, setPendingPredecessors] = useState<PendingPredecessor[]>([])
-  const [existingPredecessorEdits, setExistingPredecessorEdits] = useState<
-    Record<string, PendingPredecessor>
-  >({})
   const [assignedOptionId, setAssignedOptionId] = useState<string | null>(null)
-  const [sendingReminder, setSendingReminder] = useState(false)
-  const [templateGroups, setTemplateGroups] = useState<
-    readonly ScheduleTemplateImportGroup[] | null
-  >(null)
-  const [templateLoading, setTemplateLoading] = useState(false)
-  const [templateLoadError, setTemplateLoadError] = useState(false)
-  const [templateLoadAttempt, setTemplateLoadAttempt] = useState(0)
-  const [selectedTemplateId, setSelectedTemplateId] = useState("")
-  const [selectedTemplateItemId, setSelectedTemplateItemId] = useState("")
-  const [selectedTemplateTodoIds, setSelectedTemplateTodoIds] = useState<readonly string[]>([])
-  const [templateTodosOpen, setTemplateTodosOpen] = useState(false)
-  const [phaseOptions, setPhaseOptions] = useState<
-    readonly ReusableSchedulePhaseOption[]
-  >(defaultPhaseOptions)
-  const [phaseOptionsLoading, setPhaseOptionsLoading] = useState(false)
-  const [customPhaseMode, setCustomPhaseMode] = useState(false)
-  const [customPhaseName, setCustomPhaseName] = useState("")
-  const [saveCustomPhase, setSaveCustomPhase] = useState(true)
-  const [linkedTodos, setLinkedTodos] = useState<
-    readonly ProjectTodoItem[]
-  >([])
-  const [linkedTodosLoading, setLinkedTodosLoading] = useState(false)
-  const [linkedTodosError, setLinkedTodosError] = useState<string | null>(null)
-  const [linkedTodosRefreshKey, setLinkedTodosRefreshKey] = useState(0)
-  const [changeProposal, setChangeProposal] =
-    useState<ScheduleTaskChangeProposal | null>(null)
-  const [proposalLoading, setProposalLoading] = useState(false)
-  const [proposalActionPending, setProposalActionPending] = useState(false)
-  const [acceptProposalOnSave, setAcceptProposalOnSave] = useState(false)
   const [endDateNote, setEndDateNote] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [recentColors, setRecentColors] = useState<readonly string[]>([])
-  const [deleting, setDeleting] = useState(false)
-
-  const existingPredecessors = useMemo(() => {
-    if (!editingTask) return []
-    return dependencies.filter((d) => d.successorId === editingTask.id)
-  }, [editingTask, dependencies])
-
-  const availableTasks = useMemo(() => {
-    return allTasks.filter((t) => t.id !== editingTask?.id)
-  }, [allTasks, editingTask])
 
   const form = useForm<ScheduleItemFormValues>({
     resolver: zodResolver(scheduleItemSchema),
-    defaultValues: {
-      title: "",
-      startDate: new Date().toISOString().split("T")[0],
-      workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
-      startTime: "",
-      endTime: "",
-      phase: "preconstruction",
-      displayColor: DEFAULT_DISPLAY_COLOR,
-      status: "PENDING",
-      isMilestone: false,
-      percentComplete: 0,
-      assignedTo: "",
-      ownerVisible: true,
-      subVendorVisible: false,
-      confirmationRequired: false,
-      notes: "",
-      shiftReason: ""
-    }
+    defaultValues: newScheduleItemValues()
   })
 
-  useEffect(() => {
-    if (!open || isEditing || templateGroups !== null) return
-    let cancelled = false
-    setTemplateLoading(true)
-    setTemplateLoadError(false)
-    void loadScheduleTemplateImportOptions()
-      .then((groups) => {
-        if (!cancelled) setTemplateGroups(groups)
-      })
-      .catch((error: unknown) => {
-        console.error("Unable to load schedule template options", error)
-        if (!cancelled) {
-          setTemplateGroups(null)
-          setTemplateLoadError(true)
-          toast.error("Unable to load published schedule templates.")
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTemplateLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isEditing, open, templateGroups, templateLoadAttempt])
-
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    setPhaseOptionsLoading(true)
-    void getSchedulePhaseOptions(projectId)
-      .then((options) => {
-        if (!cancelled) setPhaseOptions(options)
-      })
-      .catch((error: unknown) => {
-        console.error("Unable to load reusable schedule phases", error)
-        if (!cancelled) {
-          setPhaseOptions(defaultPhaseOptions)
-          toast.error("Unable to load saved phases. Compass defaults are available.")
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setPhaseOptionsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, projectId])
-
-  useEffect(() => {
-    if (!open) return
-    try {
-      setRecentColors(parseRecentScheduleColors(window.localStorage.getItem(RECENT_SCHEDULE_COLORS_KEY)))
-    } catch {
-      // Recent colors are a convenience; without storage the list stays empty.
-    }
-  }, [open])
+  const template = useTemplateImport(open, isEditing, form, setAssignedOptionId)
+  const phase = usePhaseOptions(open, projectId)
+  const { recentColors, rememberColor } = useRecentColors(open)
+  const predecessors = usePredecessorEdits(projectId, editingTask, allTasks, dependencies)
+  const proposalState = useChangeProposal(open, editingTask, form)
+  const { resetTemplateSelection } = template
+  const { resetCustomPhase } = phase
+  const { setPendingPredecessors } = predecessors
+  const { setAcceptProposalOnSave } = proposalState
 
   useEffect(() => {
     if (!open) return
     setEndDateNote(null)
     if (editingTask) {
-      form.reset({
-        title: editingTask.title,
-        startDate: editingTask.startDate,
-        workdays: editingTask.workdays,
-        startTime: editingTask.startTime ?? "",
-        endTime: editingTask.endTime ?? "",
-        phase: editingTask.phase,
-        displayColor: editingTask.displayColor ?? DEFAULT_DISPLAY_COLOR,
-        status: editingTask.status,
-        isMilestone: editingTask.isMilestone,
-        percentComplete: editingTask.percentComplete,
-        assignedTo: editingTask.assignedTo ?? "",
-        ownerVisible: editingTask.ownerVisible ?? true,
-        subVendorVisible: editingTask.subVendorVisible ?? false,
-        confirmationRequired: editingTask.confirmationRequired ?? false,
-        notes: editingTask.notes ?? "",
-        shiftReason: ""
-      })
-      setAssignedOptionId(
-        assigneeOptions.find(
-          (option) =>
-            option.name.trim().toLowerCase() === (editingTask.assignedTo ?? "").trim().toLowerCase()
-        )?.id ?? null
-      )
+      form.reset(editingTaskValues(editingTask))
+      setAssignedOptionId(matchingAssigneeOptionId(assigneeOptions, editingTask.assignedTo))
       // expand details when editing since they likely want to see everything
       setDetailsOpen(true)
     } else {
-      form.reset({
-        title: "",
-        startDate: new Date().toISOString().split("T")[0],
-        workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
-        startTime: "",
-        endTime: "",
-        phase: "preconstruction",
-        displayColor: DEFAULT_DISPLAY_COLOR,
-        status: "PENDING",
-        isMilestone: false,
-        percentComplete: 0,
-        assignedTo: "",
-        ownerVisible: true,
-        subVendorVisible: false,
-        confirmationRequired: false,
-        notes: "",
-        shiftReason: ""
-      })
+      form.reset(newScheduleItemValues())
       setAssignedOptionId(null)
       setDetailsOpen(false)
-      setSelectedTemplateId("")
-      setSelectedTemplateItemId("")
-      setSelectedTemplateTodoIds([])
-      setTemplateTodosOpen(false)
+      resetTemplateSelection()
     }
-    setCustomPhaseMode(false)
-    setCustomPhaseName("")
-    setSaveCustomPhase(true)
+    resetCustomPhase()
     setPendingPredecessors([])
     setAcceptProposalOnSave(false)
-  }, [assigneeOptions, editingTask, form, open])
-
-  useEffect(() => {
-    if (!editingTask) {
-      setExistingPredecessorEdits({})
-      return
-    }
-
-    setExistingPredecessorEdits(
-      Object.fromEntries(
-        dependencies
-          .filter((dependency) => dependency.successorId === editingTask.id)
-          .map((dependency) => [
-            dependency.id,
-            {
-              taskId: dependency.predecessorId,
-              type: dependency.type,
-              lagDays: dependency.lagDays
-            }
-          ])
-      )
-    )
-  }, [dependencies, editingTask])
-
-  useEffect(() => {
-    let cancelled = false
-    if (!open || !editingTask) {
-      setLinkedTodos([])
-      setLinkedTodosLoading(false)
-      setLinkedTodosError(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setLinkedTodosLoading(true)
-    setLinkedTodosError(null)
-    void getScheduleTaskTodos(projectId, editingTask.id)
-      .then((todos) => {
-        if (!cancelled) setLinkedTodos(todos)
-      })
-      .catch((error: unknown) => {
-        console.error("Unable to load linked schedule to-dos", error)
-        if (!cancelled) {
-          setLinkedTodosError("Related to-dos could not be loaded.")
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLinkedTodosLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [editingTask, linkedTodosRefreshKey, open, projectId])
-
-  useEffect(() => {
-    let cancelled = false
-    if (!open || !editingTask) {
-      setChangeProposal(null)
-      setProposalLoading(false)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setProposalLoading(true)
-    void getScheduleTaskChangeProposal(editingTask.id)
-      .then((proposal) => {
-        if (!cancelled) setChangeProposal(proposal)
-      })
-      .catch((error: unknown) => {
-        console.error("Unable to load schedule change proposal", error)
-        if (!cancelled) toast.error("The subcontractor proposal could not be loaded.")
-      })
-      .finally(() => {
-        if (!cancelled) setProposalLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [editingTask, open])
+  }, [
+    assigneeOptions,
+    editingTask,
+    form,
+    open,
+    resetCustomPhase,
+    resetTemplateSelection,
+    setAcceptProposalOnSave,
+    setPendingPredecessors,
+  ])
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
-  const watchedPhase = form.watch("phase")
-  const watchedDisplayColor = form.watch("displayColor")
-  const watchedStatus = form.watch("status")
-  const watchedPercent = form.watch("percentComplete")
-  const selectedTemplateGroup = useMemo(
-    () => templateGroups?.find((group) => group.templateId === selectedTemplateId) ?? null,
-    [selectedTemplateId, templateGroups]
-  )
-
-  function applyTemplateScheduleItem(templateItemId: string): void {
-    setSelectedTemplateItemId(templateItemId)
-    setSelectedTemplateTodoIds([])
-    setTemplateTodosOpen(false)
-    const item = selectedTemplateGroup?.scheduleItems.find(
-      (candidate) => candidate.id === templateItemId
-    )
-    if (!item) return
-    form.setValue("title", item.title, { shouldDirty: true })
-    form.setValue("workdays", item.workdays, { shouldDirty: true })
-    form.setValue("phase", item.phase, { shouldDirty: true })
-    form.setValue("displayColor", item.displayColor, { shouldDirty: true })
-    form.setValue("isMilestone", item.isMilestone, { shouldDirty: true })
-    form.setValue("assignedTo", item.assignedTo ?? "", { shouldDirty: true })
-    form.setValue("ownerVisible", item.ownerVisible, { shouldDirty: true })
-    form.setValue("subVendorVisible", item.subVendorVisible, {
-      shouldDirty: true
-    })
-    setAssignedOptionId(null)
-  }
-
-  function chooseTemplate(templateId: string): void {
-    setSelectedTemplateId(templateId)
-    setSelectedTemplateItemId("")
-    setSelectedTemplateTodoIds([])
-    setTemplateTodosOpen(false)
-    form.setValue("title", "", { shouldDirty: true })
-    form.setValue("workdays", DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS, { shouldDirty: true })
-    form.setValue("phase", "preconstruction", { shouldDirty: true })
-    form.setValue("displayColor", DEFAULT_DISPLAY_COLOR, {
-      shouldDirty: true
-    })
-    form.setValue("isMilestone", false, { shouldDirty: true })
-    form.setValue("assignedTo", "", { shouldDirty: true })
-    form.setValue("ownerVisible", true, { shouldDirty: true })
-    form.setValue("subVendorVisible", false, { shouldDirty: true })
-    setAssignedOptionId(null)
-  }
-
-  const watchedStartTime = form.watch("startTime")
 
   // Picking an end date sets the duration from the same workday calendar
   // that calculates the end, so the two always agree.
@@ -569,53 +156,16 @@ export function ScheduleItemFormDialog({
     return calculateEndDate(watchedStart, watchedWorkdays, exceptions)
   }, [exceptions, watchedStart, watchedWorkdays])
 
-  function toggleTemplateTodo(todoId: string, selected: boolean): void {
-    setSelectedTemplateTodoIds((current) =>
-      selected
-        ? current.includes(todoId)
-          ? current
-          : [...current, todoId]
-        : current.filter((id) => id !== todoId)
-    )
-  }
-
-  // Same action, confirmation and dependency cleanup as the List view delete.
-  async function confirmDelete(): Promise<void> {
-    if (!editingTask) return
-    setDeleting(true)
-    const result = await deleteScheduleTasks(editingTask.projectId, [editingTask.id])
-    setDeleting(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    setConfirmDeleteOpen(false)
-    onOpenChange(false)
-    onDeleted?.(editingTask.id)
-    toast.success("Schedule item deleted.")
-    router.refresh()
-  }
-
   async function onSubmit(values: ScheduleItemFormValues) {
-    const datesChanged =
-      editingTask !== null &&
-      (values.startDate !== editingTask.startDate ||
-        values.workdays !== editingTask.workdays)
-    const existingDependencyChanged = existingPredecessors.some((dependency) => {
-      const edit = existingPredecessorEdits[dependency.id]
-      return Boolean(
-        edit &&
-          (edit.taskId !== dependency.predecessorId ||
-            edit.type !== dependency.type ||
-            edit.lagDays !== dependency.lagDays)
-      )
-    })
-    const dependencyAdded = pendingPredecessors.some(
-      (predecessor) => predecessor.taskId.length > 0
-    )
     const shiftReasonResult = resolveScheduleShiftReason(
       shiftReasonRequired &&
-        (datesChanged || existingDependencyChanged || dependencyAdded),
+        scheduleShiftRequested({
+          editingTask,
+          values,
+          existingPredecessors: predecessors.existingPredecessors,
+          existingPredecessorEdits: predecessors.existingPredecessorEdits,
+          pendingPredecessors: predecessors.pendingPredecessors,
+        }),
       values.shiftReason
     )
     if (shiftReasonResult !== null && !shiftReasonResult.success) {
@@ -623,35 +173,9 @@ export function ScheduleItemFormDialog({
       return
     }
 
-    let submittedPhase = values.phase
-    if (customPhaseMode && saveCustomPhase) {
-      const phaseResult = await saveSchedulePhaseOption({
-        projectId,
-        name: values.phase,
-      })
-      if (!phaseResult.success) {
-        toast.error(phaseResult.error)
-        return
-      }
-      submittedPhase = phaseResult.option.value
-      setPhaseOptions((current) => {
-        const withoutDuplicate = current.filter(
-          (option) =>
-            option.value.trim().toLocaleLowerCase() !==
-            phaseResult.option.value.trim().toLocaleLowerCase()
-        )
-        return [...withoutDuplicate, phaseResult.option]
-      })
-    }
-    const nextRecentColors = rememberRecentScheduleColor(recentColors, values.displayColor)
-    if (nextRecentColors !== recentColors) {
-      setRecentColors(nextRecentColors)
-      try {
-        window.localStorage.setItem(RECENT_SCHEDULE_COLORS_KEY, JSON.stringify(nextRecentColors))
-      } catch {
-        // Saving the item matters; remembering the color is optional.
-      }
-    }
+    const submittedPhase = await phase.submittedPhase(values.phase)
+    if (submittedPhase === null) return
+    rememberColor(values.displayColor)
     const { shiftReason, ...valuesWithoutShiftReason } = values
     const taskValues = {
       ...valuesWithoutShiftReason,
@@ -668,7 +192,7 @@ export function ScheduleItemFormDialog({
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
         assignedOptionId,
-        acceptChangeProposal: acceptProposalOnSave,
+        acceptChangeProposal: proposalState.acceptProposalOnSave,
         shiftReason: shiftReasonResult?.success
           ? shiftReasonResult.reason
           : undefined
@@ -683,8 +207,8 @@ export function ScheduleItemFormDialog({
         ...taskValues,
         assignedTo: taskValues.assignedTo || undefined,
         assignedOptionId,
-        templateScheduleItemId: selectedTemplateItemId || null,
-        templateTodoIds: selectedTemplateTodoIds
+        templateScheduleItemId: template.selectedTemplateItemId || null,
+        templateTodoIds: template.selectedTemplateTodoIds
       })
       if (!result.success) {
         toast.error(result.error)
@@ -694,51 +218,16 @@ export function ScheduleItemFormDialog({
       linkedTodoCount = result.linkedTodoCount
     }
 
-    const dependencyErrors: string[] = []
-    for (const dependency of existingPredecessors) {
-      const edit = existingPredecessorEdits[dependency.id]
-      if (
-        !edit ||
-        (edit.taskId === dependency.predecessorId &&
-          edit.type === dependency.type &&
-          edit.lagDays === dependency.lagDays)
-      ) {
-        continue
-      }
-
-      const dependencyResult = await updateDependency({
-        dependencyId: dependency.id,
-        predecessorId: edit.taskId,
-        successorId: savedTaskId,
-        type: edit.type,
-        lagDays: edit.lagDays,
-        projectId,
-        shiftReason: shiftReasonResult?.success
-          ? shiftReasonResult.reason
-          : values.shiftReason
-      })
-      if (!dependencyResult.success) {
-        dependencyErrors.push(dependencyResult.error)
-      }
-    }
-
-    for (const predecessor of pendingPredecessors) {
-      if (predecessor.taskId) {
-        const dependencyResult = await createDependency({
-          predecessorId: predecessor.taskId,
-          successorId: savedTaskId,
-          type: predecessor.type,
-          lagDays: predecessor.lagDays,
-          projectId,
-          shiftReason: shiftReasonResult?.success
-            ? shiftReasonResult.reason
-            : values.shiftReason
-        })
-        if (!dependencyResult.success) {
-          dependencyErrors.push(dependencyResult.error)
-        }
-      }
-    }
+    const dependencyErrors = await savePredecessorChanges({
+      projectId,
+      savedTaskId,
+      shiftReason: shiftReasonResult?.success
+        ? shiftReasonResult.reason
+        : values.shiftReason,
+      existingPredecessors: predecessors.existingPredecessors,
+      existingPredecessorEdits: predecessors.existingPredecessorEdits,
+      pendingPredecessors: predecessors.pendingPredecessors,
+    })
 
     router.refresh()
     if (dependencyErrors.length > 0) {
@@ -759,119 +248,8 @@ export function ScheduleItemFormDialog({
     onOpenChange(false)
   }
 
-  async function removeSelectedSavedPhase(): Promise<void> {
-    const selected = phaseOptions.find(
-      (option) => option.value === watchedPhase && option.source === "saved"
-    )
-    if (!selected?.id) return
-    if (
-      !window.confirm(
-        `Remove “${selected.label}” from the reusable phase catalog? Existing schedule items and templates will not change.`
-      )
-    ) {
-      return
-    }
-    const result = await deleteSchedulePhaseOption({
-      projectId,
-      optionId: selected.id,
-    })
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    setPhaseOptions((current) =>
-      current.filter((option) => option.id !== selected.id)
-    )
-    toast.success(
-      "Removed from the reusable catalog. It may still appear where it is already in use."
-    )
-  }
-
-  const addPendingPredecessor = () => {
-    setPendingPredecessors((prev) => [...prev, { taskId: "", type: "FS", lagDays: 0 }])
-  }
-
-  const removePendingPredecessor = (index: number) => {
-    setPendingPredecessors((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const updatePendingPredecessor = (
-    index: number,
-    field: keyof PendingPredecessor,
-    value: string | number
-  ) => {
-    setPendingPredecessors((prev) =>
-      prev.map((p, i) => (i === index ? { ...p, [field]: value } : p))
-    )
-  }
-
-  const handleDeleteExistingDep = async (depId: string) => {
-    const result = await deleteDependency(depId, projectId)
-    if (result.success) {
-      router.refresh()
-    } else {
-      toast.error(result.error)
-    }
-  }
-
-  const updateExistingPredecessor = (
-    dependencyId: string,
-    field: keyof PendingPredecessor,
-    value: string | number
-  ): void => {
-    setExistingPredecessorEdits((current) => {
-      const existing = current[dependencyId]
-      if (!existing) return current
-      return {
-        ...current,
-        [dependencyId]: { ...existing, [field]: value }
-      }
-    })
-  }
-
-  const hasPredecessors = existingPredecessors.length > 0 || pendingPredecessors.length > 0
-
-  async function handleSendReminder(): Promise<void> {
-    if (!editingTask) return
-    setSendingReminder(true)
-    const result = await sendScheduleTaskReminder(editingTask.id)
-    setSendingReminder(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Confirmation reminder sent.")
-    router.refresh()
-  }
-
-  function useProposedDates(): void {
-    if (!changeProposal) return
-    form.setValue("startDate", changeProposal.startDate, {
-      shouldDirty: true,
-      shouldValidate: true,
-    })
-    form.setValue("workdays", changeProposal.workdays, {
-      shouldDirty: true,
-      shouldValidate: true,
-    })
-    setAcceptProposalOnSave(true)
-    toast.info("Proposed dates loaded. Review them, then save the schedule item.")
-  }
-
-  async function rejectProposedDates(): Promise<void> {
-    if (!editingTask || !changeProposal) return
-    setProposalActionPending(true)
-    const result = await rejectScheduleTaskChangeProposal(editingTask.id)
-    setProposalActionPending(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    setChangeProposal(null)
-    setAcceptProposalOnSave(false)
-    toast.success("The proposed dates were declined. The assignee can respond again.")
-    router.refresh()
-  }
+  const hasPredecessors =
+    predecessors.existingPredecessors.length > 0 || predecessors.pendingPredecessors.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -888,172 +266,10 @@ export function ScheduleItemFormDialog({
               {/* === ESSENTIAL FIELDS === */}
 
               {!isEditing && (
-                <section className="border-y bg-muted/20 py-3">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs font-medium">
-                      <IconTemplate className="size-4" />
-                      Import from a published template
-                    </div>
-                    {onBulkTemplateImport && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={onBulkTemplateImport}
-                      >
-                        Import several
-                      </Button>
-                    )}
-                  </div>
-                  {templateLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <IconLoader2 className="size-3.5 animate-spin" />
-                      Loading template schedule items…
-                    </div>
-                  ) : templateLoadError ? (
-                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      <span>Compass could not load the published templates.</span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          clearScheduleTemplateImportOptions()
-                          setTemplateLoadError(false)
-                          setTemplateGroups(null)
-                          setTemplateLoadAttempt((attempt) => attempt + 1)
-                        }}
-                      >
-                        Retry
-                      </Button>
-                    </div>
-                  ) : templateGroups?.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No published templates contain reusable schedule items.
-                    </p>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <SearchableCombobox
-                        value={selectedTemplateId}
-                        // Ignore the picker's reset while templates reload so
-                        // a typed title and dates are never cleared.
-                        onValueChange={(templateId) => {
-                          if (templateId !== "") chooseTemplate(templateId)
-                        }}
-                        options={(templateGroups ?? []).map((group) => ({
-                          value: group.templateId,
-                          label: group.templateName,
-                          description: `${group.scheduleItems.length} schedule items`,
-                        }))}
-                        ariaLabel="Choose schedule template"
-                        placeholder="Choose template"
-                        searchPlaceholder="Search templates..."
-                        emptyMessage="No matching templates."
-                      />
-                      <SearchableCombobox
-                        value={selectedTemplateItemId}
-                        onValueChange={(templateItemId) => {
-                          if (templateItemId !== "") applyTemplateScheduleItem(templateItemId)
-                        }}
-                        disabled={!selectedTemplateGroup}
-                        options={(selectedTemplateGroup?.scheduleItems ?? []).map((item) => ({
-                          value: item.id,
-                          label: item.title,
-                        }))}
-                        ariaLabel="Choose template schedule item"
-                        placeholder="Choose schedule item"
-                        searchPlaceholder="Search schedule items..."
-                        emptyMessage="No matching schedule items."
-                      />
-                    </div>
-                  )}
-                  {selectedTemplateGroup && selectedTemplateItemId && (
-                    <div className="mt-3 border-t pt-3">
-                      {selectedTemplateGroup.linkedTodos.length > 0 ? (
-                        <Collapsible open={templateTodosOpen} onOpenChange={setTemplateTodosOpen}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-medium">Optional template to-dos</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {selectedTemplateTodoIds.length} of{" "}
-                                {selectedTemplateGroup.linkedTodos.length} selected · none are added
-                                unless selected
-                              </p>
-                            </div>
-                            <CollapsibleTrigger asChild>
-                              <Button type="button" variant="outline" size="sm" className="h-8">
-                                Choose to-dos
-                                {templateTodosOpen ? (
-                                  <IconChevronDown className="ml-1 size-3.5" />
-                                ) : (
-                                  <IconChevronRight className="ml-1 size-3.5" />
-                                )}
-                              </Button>
-                            </CollapsibleTrigger>
-                          </div>
-                          <CollapsibleContent className="mt-3 border-y">
-                            <div className="flex items-center justify-end gap-1 border-b py-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                onClick={() =>
-                                  setSelectedTemplateTodoIds(
-                                    selectedTemplateGroup.linkedTodos.map((todo) => todo.id)
-                                  )
-                                }
-                              >
-                                Select all
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                disabled={selectedTemplateTodoIds.length === 0}
-                                onClick={() => setSelectedTemplateTodoIds([])}
-                              >
-                                Clear
-                              </Button>
-                            </div>
-                            <div className="max-h-52 divide-y overflow-y-auto">
-                              {selectedTemplateGroup.linkedTodos.map((todo) => (
-                                <label
-                                  key={todo.id}
-                                  className="flex cursor-pointer items-start gap-3 py-2.5"
-                                >
-                                  <Checkbox
-                                    checked={selectedTemplateTodoIds.includes(todo.id)}
-                                    onCheckedChange={(value) =>
-                                      toggleTemplateTodo(todo.id, value === true)
-                                    }
-                                    aria-label={`Include ${todo.title}`}
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block text-xs font-medium">{todo.title}</span>
-                                    {todo.checklistItemCount > 0 && (
-                                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                                        Includes {todo.checklistItemCount} checklist item
-                                        {todo.checklistItemCount === 1 ? "" : "s"}
-                                      </span>
-                                    )}
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          This template does not include any to-dos.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </section>
+                <TemplateImportSection
+                  template={template}
+                  onBulkTemplateImport={onBulkTemplateImport}
+                />
               )}
 
               {/* Title */}
@@ -1075,321 +291,21 @@ export function ScheduleItemFormDialog({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="phase"
-                render={({ field }) => {
-                  const selectedSavedPhase = phaseOptions.find(
-                    (option) =>
-                      option.value === field.value && option.source === "saved"
-                  )
-                  return (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium text-muted-foreground">
-                        Phase
-                      </FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <SearchableCombobox
-                            className="h-9 flex-1"
-                            value={customPhaseMode ? CUSTOM_PHASE_VALUE : field.value}
-                            onValueChange={(value) => {
-                              // An empty value is the picker's own reset; keep the saved phase.
-                              if (value === "") return
-                              if (value === CUSTOM_PHASE_VALUE) {
-                                setCustomPhaseMode(true)
-                                setCustomPhaseName("")
-                                setSaveCustomPhase(true)
-                                field.onChange("")
-                                return
-                              }
-                              setCustomPhaseMode(false)
-                              setCustomPhaseName("")
-                              field.onChange(value)
-                            }}
-                            options={schedulePhasePickerOptions(phaseOptions, field.value)}
-                            ariaLabel="Phase"
-                            placeholder={phaseOptionsLoading ? "Loading phases…" : "Choose phase"}
-                            searchPlaceholder="Search phases..."
-                            emptyMessage="No matching phases."
-                          />
-                        </FormControl>
-                        {selectedSavedPhase?.id && !customPhaseMode && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-9 shrink-0 text-muted-foreground"
-                            title="Remove from reusable phases"
-                            aria-label={`Remove ${selectedSavedPhase.label} from reusable phases`}
-                            onClick={() => void removeSelectedSavedPhase()}
-                          >
-                            <IconTrash className="size-4" />
-                          </Button>
-                        )}
-                      </div>
-                      {customPhaseMode && (
-                        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                          <Input
-                            value={customPhaseName}
-                            maxLength={100}
-                            placeholder="Custom phase name"
-                            autoFocus
-                            onChange={(event) => {
-                              const value = event.currentTarget.value
-                              setCustomPhaseName(value)
-                              field.onChange(value)
-                            }}
-                          />
-                          <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={saveCustomPhase}
-                              onCheckedChange={(checked) =>
-                                setSaveCustomPhase(checked === true)
-                              }
-                            />
-                            <span>
-                              Save to the reusable phase list for future schedules and templates
-                            </span>
-                          </label>
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )
-                }}
+              <PhaseField form={form} phase={phase} />
+
+              <DisplayColorFields
+                form={form}
+                displayColorPalette={displayColorPalette}
+                recentColors={recentColors}
               />
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-medium">Display color</span>
-                <div className="flex items-center gap-1.5" aria-label="Display color">
-                  {DISPLAY_COLOR_OPTIONS.map((color) => {
-                    const selected = watchedDisplayColor === color.value
-                    return (
-                      <button
-                        key={color.value}
-                        type="button"
-                        title={color.label}
-                        aria-label={color.label}
-                        aria-pressed={selected}
-                        className={cn(
-                          "size-5 rounded-full border-2 transition-transform",
-                          selected
-                            ? "border-foreground scale-110"
-                            : "border-transparent hover:scale-110"
-                        )}
-                        style={{ backgroundColor: displayColorPalette[color.value] }}
-                        onClick={() => form.setValue("displayColor", color.value)}
-                      />
-                    )
-                  })}
-                </div>
-                <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
-                  <Input
-                    type="color"
-                    aria-label="Custom schedule item color"
-                    className="h-6 w-8 cursor-pointer border-0 bg-transparent p-0"
-                    value={getScheduleItemDisplayColor(
-                      { displayColor: watchedDisplayColor },
-                      displayColorPalette
-                    )}
-                    onChange={(event) =>
-                      form.setValue("displayColor", event.currentTarget.value, {
-                        shouldDirty: true
-                      })
-                    }
-                  />
-                  Custom
-                </label>
-              </div>
-              {recentColors.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-medium">Recent</span>
-                  <div className="flex items-center gap-1.5" aria-label="Recently used colors">
-                    {recentColors.map((color) => {
-                      const selected = watchedDisplayColor.toLowerCase() === color
-                      return (
-                        <button
-                          key={color}
-                          type="button"
-                          title={color}
-                          aria-label={`Recent color ${color}`}
-                          aria-pressed={selected}
-                          className={cn(
-                            "size-5 rounded-full border-2 transition-transform",
-                            selected
-                              ? "border-foreground scale-110"
-                              : "border-transparent hover:scale-110"
-                          )}
-                          style={{ backgroundColor: color }}
-                          onClick={() =>
-                            form.setValue("displayColor", color, { shouldDirty: true })
-                          }
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Date row: Start | Duration | End */}
-              <div className="grid grid-cols-[1fr_100px_1fr] gap-2 items-end">
-                <FormField
-                  control={form.control}
-                  name="startDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground font-medium">
-                        Start
-                      </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className="w-full h-9 justify-start text-left font-normal text-sm"
-                            >
-                              <IconCalendar className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-                              {field.value
-                                ? format(parseISO(field.value), "MMM d, yyyy")
-                                : "Pick date"}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value ? parseISO(field.value) : undefined}
-                            onSelect={(date) => {
-                              if (date) {
-                                setEndDateNote(null)
-                                field.onChange(format(date, "yyyy-MM-dd"))
-                              }
-                            }}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="workdays"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground font-medium">
-                        Duration
-                      </FormLabel>
-                      <div className="flex items-center gap-1">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={1}
-                            className="h-9 text-center"
-                            value={field.value}
-                            onChange={(e) => {
-                              setEndDateNote(null)
-                              field.onChange(Number(e.target.value) || 0)
-                            }}
-                            onBlur={field.onBlur}
-                            ref={field.ref}
-                            name={field.name}
-                          />
-                        </FormControl>
-                        <span className="text-xs text-muted-foreground shrink-0">d</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormItem>
-                  <FormLabel className="text-xs text-muted-foreground font-medium">
-                    End
-                  </FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-label="End date"
-                        className="w-full h-9 justify-start text-left font-normal text-sm tabular-nums"
-                      >
-                        <IconCalendar className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-                        {calculatedEnd ? format(parseISO(calculatedEnd), "MMM d, yyyy") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar
-                        mode="single"
-                        selected={calculatedEnd ? parseISO(calculatedEnd) : undefined}
-                        disabled={watchedStart ? { before: parseISO(watchedStart) } : undefined}
-                        onSelect={(date) => {
-                          if (date) chooseEndDate(format(date, "yyyy-MM-dd"))
-                        }}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </FormItem>
-              </div>
-              {endDateNote && (
-                <p className="text-xs text-muted-foreground" role="status">{endDateNote}</p>
-              )}
-
-              {/* Optional times; an item with no start time is all day. */}
-              <div className="grid grid-cols-2 gap-2">
-                <FormField
-                  control={form.control}
-                  name="startTime"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground font-medium">
-                        Start time <span className="font-normal">(optional)</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="time"
-                          className="h-9"
-                          value={field.value}
-                          onChange={(event) => {
-                            field.onChange(event.target.value)
-                            if (!event.target.value) form.setValue("endTime", "")
-                          }}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                          name={field.name}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="endTime"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground font-medium">
-                        End time <span className="font-normal">(optional)</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="time"
-                          className="h-9"
-                          disabled={!watchedStartTime}
-                          value={field.value}
-                          onChange={(event) => field.onChange(event.target.value)}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                          name={field.name}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <ScheduleDateFields
+                form={form}
+                calculatedEnd={calculatedEnd}
+                endDateNote={endDateNote}
+                setEndDateNote={setEndDateNote}
+                chooseEndDate={chooseEndDate}
+              />
 
               {shiftReasonRequired && (
               <FormField
@@ -1418,605 +334,26 @@ export function ScheduleItemFormDialog({
               />
               )}
 
-              {/* === DETAILS (collapsible) === */}
-              <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1 w-full"
-                  >
-                    {detailsOpen ? (
-                      <IconChevronDown className="size-3.5" />
-                    ) : (
-                      <IconChevronRight className="size-3.5" />
-                    )}
-                    Details
-                    {!detailsOpen && (isEditing || hasPredecessors) && (
-                      <span className="text-xs text-primary ml-1">(has data)</span>
-                    )}
-                  </button>
-                </CollapsibleTrigger>
-
-                <CollapsibleContent className="space-y-4 pt-3">
-                  {/* Status + Assignee + Milestone row */}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-end">
-                    <FormField
-                      control={form.control}
-                      name="status"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground font-medium">
-                            Status
-                          </FormLabel>
-                          <Select
-                            onValueChange={(status) => {
-                              field.onChange(status)
-                              if (status === "COMPLETE") {
-                                form.setValue("percentComplete", 100, {
-                                  shouldDirty: true
-                                })
-                              } else if (watchedPercent >= 100) {
-                                form.setValue(
-                                  "percentComplete",
-                                  status === "IN_PROGRESS" ? 50 : 0,
-                                  { shouldDirty: true }
-                                )
-                              }
-                            }}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="h-9">
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {STATUS_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="assignedTo"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground font-medium">
-                            Responsible contact
-                          </FormLabel>
-                          <ProjectAssigneePicker
-                            value={field.value}
-                            options={assigneeOptions}
-                            onValueChange={(value, option) => {
-                              field.onChange(value)
-                              setAssignedOptionId(option?.id ?? null)
-                              if (option?.contactType === "owner" || option?.contactType === "subcontractor" || option?.contactType === "supplier") {
-                                form.setValue("confirmationRequired", true, { shouldDirty: true })
-                              }
-                              if (option?.contactType === "owner") {
-                                form.setValue("ownerVisible", true, {
-                                  shouldDirty: true
-                                })
-                              }
-                              if (
-                                option?.contactType === "subcontractor" ||
-                                option?.contactType === "supplier"
-                              ) {
-                                form.setValue("subVendorVisible", true, {
-                                  shouldDirty: true
-                                })
-                              }
-                            }}
-                            placeholder="Choose contact or type a name..."
-                          />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="isMilestone"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center gap-2 pb-0.5">
-                          <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                          </FormControl>
-                          <FormLabel className="!mt-0 text-xs text-muted-foreground font-medium">
-                            Milestone
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  {/* Progress */}
-                  <FormField
-                    control={form.control}
-                    name="percentComplete"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-medium">
-                          Progress
-                        </FormLabel>
-                        <div className="flex items-center gap-3">
-                          <FormControl>
-                            <Slider
-                              min={0}
-                              max={100}
-                              step={5}
-                              value={[field.value]}
-                              onValueChange={([value]) => {
-                                field.onChange(value)
-                                if (value === 100 && watchedStatus !== "COMPLETE") {
-                                  form.setValue("status", "COMPLETE", {
-                                    shouldDirty: true
-                                  })
-                                } else if (value < 100 && watchedStatus === "COMPLETE") {
-                                  form.setValue("status", value > 0 ? "IN_PROGRESS" : "PENDING", {
-                                    shouldDirty: true
-                                  })
-                                }
-                              }}
-                              className="flex-1"
-                            />
-                          </FormControl>
-                          <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">
-                            {watchedPercent}%
-                          </span>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="border-t pt-4">
-                    <p className="text-xs font-medium">Audience &amp; commitment</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Visibility changes reach project workspaces only after the schedule is
-                      published.
-                    </p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <FormField
-                        control={form.control}
-                        name="ownerVisible"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">Owner can view</FormLabel>
-                            <FormControl>
-                              <Switch checked={field.value} onCheckedChange={field.onChange} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="subVendorVisible"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">Subs can view</FormLabel>
-                            <FormControl>
-                              <Switch checked={field.value} onCheckedChange={field.onChange} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="confirmationRequired"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">Require confirmation</FormLabel>
-                            <FormControl>
-                              <Switch checked={field.value} onCheckedChange={field.onChange} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Assign owner-performed work or owner-supplied deliveries to the owner.
-                      Require confirmation and publish to request their commitment.
-                      Use a milestone for a delivery deadline.
-                    </p>
-                    {proposalLoading && (
-                      <p className="mt-3 border bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                        Loading assignment proposal…
-                      </p>
-                    )}
-                    {changeProposal && (
-                      <div className="mt-3 space-y-3 border border-warning/50 bg-warning/5 px-3 py-3">
-                        <div>
-                          <p className="text-xs font-medium">
-                            Assignee proposed new dates
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {format(parseISO(changeProposal.startDate), "MMM d, yyyy")} ·{" "}
-                            {changeProposal.workdays} workday
-                            {changeProposal.workdays === 1 ? "" : "s"}
-                          </p>
-                          {changeProposal.note && (
-                            <p className="mt-2 whitespace-pre-wrap text-xs">
-                              {changeProposal.note}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={proposalActionPending}
-                            onClick={useProposedDates}
-                          >
-                            {acceptProposalOnSave ? "Proposal loaded" : "Use proposed dates"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={proposalActionPending}
-                            onClick={rejectProposedDates}
-                          >
-                            Decline proposal
-                          </Button>
-                        </div>
-                        {acceptProposalOnSave && (
-                          <p className="text-xs text-muted-foreground">
-                            Saving applies these dates through the normal dependency and
-                            related to-do updates. Publish afterward to make them visible
-                            externally.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {isEditing && editingTask.confirmationRequired && (
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="text-muted-foreground">
-                          Status:{" "}
-                          {(editingTask.confirmationStatus ?? "not_requested")
-                            .replace(/_/g, " ")
-                            .replace(/^\w/, (letter) => letter.toUpperCase())}
-                        </span>
-                        {editingTask.proposalNote && editingTask.confirmationStatus !== "proposed" && (
-                          <p className="w-full whitespace-pre-wrap text-muted-foreground">
-                            Response note: {editingTask.proposalNote}
-                          </p>
-                        )}
-                        {editingTask.confirmationStatus !== "confirmed" && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={sendingReminder}
-                            onClick={handleSendReminder}
-                          >
-                            {sendingReminder ? "Sending…" : "Send reminder"}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {isEditing && open && (
-                    <ScheduleCommitmentResponses
-                      taskId={editingTask.id}
-                      onUseProposal={(proposal) => {
-                        if (proposal.startDate !== null) {
-                          form.setValue("startDate", proposal.startDate, { shouldDirty: true, shouldValidate: true })
-                        }
-                        if (proposal.workdays !== null) {
-                          form.setValue("workdays", proposal.workdays, { shouldDirty: true, shouldValidate: true })
-                        }
-                        toast.info("Proposed dates loaded. Review and save, then publish the schedule.")
-                      }}
-                    />
-                  )}
-
-                  {isEditing && <ScheduleItemLinks taskId={editingTask.id} />}
-
-                  {/* Predecessors */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="text-xs font-medium text-muted-foreground">
-                        Predecessors
-                      </h3>
-                      <ContextualHelpBeacon topicId="schedule.predecessors" />
-                    </div>
-
-                    {existingPredecessors.map((dep) => {
-                      const edit = existingPredecessorEdits[dep.id] ?? {
-                        taskId: dep.predecessorId,
-                        type: dep.type,
-                        lagDays: dep.lagDays
-                      }
-                      return (
-                        <div
-                          key={dep.id}
-                          className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
-                        >
-                          <SearchableCombobox
-                            className="h-9 text-xs"
-                            value={edit.taskId}
-                            // Ignore the picker's reset so a saved dependency is never blanked.
-                            onValueChange={(value) => {
-                              if (value !== "") updateExistingPredecessor(dep.id, "taskId", value)
-                            }}
-                            options={predecessorPickerOptions(availableTasks)}
-                            ariaLabel="Saved predecessor schedule item"
-                            placeholder="Select schedule item"
-                            searchPlaceholder="Search schedule items..."
-                            emptyMessage="No matching schedule items."
-                          />
-                          <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
-                            <div className="min-w-0 space-y-1">
-                              <span className="block text-xs text-muted-foreground">
-                                Relationship
-                              </span>
-                              <Select
-                                value={edit.type}
-                                onValueChange={(value) =>
-                                  updateExistingPredecessor(dep.id, "type", value)
-                                }
-                              >
-                                <SelectTrigger
-                                  className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
-                                  aria-label="Saved dependency relationship"
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {DEPENDENCY_TYPES.map((dependencyType) => (
-                                    <SelectItem
-                                      key={dependencyType.value}
-                                      value={dependencyType.value}
-                                    >
-                                      {dependencyType.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="min-w-0 space-y-1">
-                              <span className="block text-xs text-muted-foreground">
-                                Lag / lead days
-                              </span>
-                              <Input
-                                type="number"
-                                className="h-9 min-w-0 text-center text-xs"
-                                value={edit.lagDays}
-                                aria-label="Saved dependency lag or lead in days"
-                                onChange={(event) =>
-                                  updateExistingPredecessor(
-                                    dep.id,
-                                    "lagDays",
-                                    Number(event.target.value) || 0
-                                  )
-                                }
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="mb-0.5 size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteExistingDep(dep.id)}
-                              aria-label="Remove saved predecessor"
-                              title="Remove predecessor"
-                            >
-                              <IconTrash className="size-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                    })}
-
-                    {pendingPredecessors.map((pred, idx) => (
-                      <div
-                        key={idx}
-                        className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
-                      >
-                        <SearchableCombobox
-                          className="h-9 text-xs"
-                          value={pred.taskId}
-                          onValueChange={(val) => {
-                            if (val !== "") updatePendingPredecessor(idx, "taskId", val)
-                          }}
-                          options={predecessorPickerOptions(availableTasks)}
-                          ariaLabel="Predecessor schedule item"
-                          placeholder="Select schedule item"
-                          searchPlaceholder="Search schedule items..."
-                          emptyMessage="No matching schedule items."
-                        />
-                        <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
-                          <div className="min-w-0 space-y-1">
-                            <span className="block text-xs text-muted-foreground">
-                              Relationship
-                            </span>
-                            <Select
-                              value={pred.type}
-                              onValueChange={(val) => updatePendingPredecessor(idx, "type", val)}
-                            >
-                              <SelectTrigger
-                                className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
-                                aria-label="Dependency relationship"
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DEPENDENCY_TYPES.map((d) => (
-                                  <SelectItem key={d.value} value={d.value}>
-                                    {d.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="min-w-0 space-y-1">
-                            <span className="block text-xs text-muted-foreground">
-                              Lag / lead days
-                            </span>
-                            <Input
-                              type="number"
-                              className="h-9 min-w-0 text-center text-xs"
-                              value={pred.lagDays || ""}
-                              aria-label="Lag or lead in days"
-                              onChange={(e) =>
-                                updatePendingPredecessor(
-                                  idx,
-                                  "lagDays",
-                                  Number(e.target.value) || 0
-                                )
-                              }
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="mb-0.5 size-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => removePendingPredecessor(idx)}
-                            aria-label="Remove predecessor"
-                            title="Remove predecessor"
-                          >
-                            <IconTrash className="size-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {availableTasks.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs text-muted-foreground h-7 px-2"
-                        onClick={addPendingPredecessor}
-                      >
-                        <IconPlus className="size-3 mr-1" />
-                        Add
-                      </Button>
-                    )}
-
-                    {availableTasks.length === 0 && existingPredecessors.length === 0 && (
-                      <p className="text-xs text-muted-foreground/60">
-                        No other schedule items to link as predecessors.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Notes */}
-                  <FormField
-                    control={form.control}
-                    name="notes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-medium">
-                          Notes
-                        </FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Add notes..."
-                            className="min-h-[60px] resize-none text-sm"
-                            {...field}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              <ScheduleItemDetails
+                form={form}
+                open={open}
+                detailsOpen={detailsOpen}
+                setDetailsOpen={setDetailsOpen}
+                editingTask={editingTask}
+                hasPredecessors={hasPredecessors}
+                assigneeOptions={assigneeOptions}
+                setAssignedOptionId={setAssignedOptionId}
+                proposalState={proposalState}
+                predecessors={predecessors}
+              />
 
               {editingTask && (
-                <section className="space-y-3 border-t pt-4" aria-label="Related to-dos">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-medium">Related to-dos</h3>
-                        {!linkedTodosLoading && (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
-                            {linkedTodos.length}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        These stay in the existing Compass project to-do list and link back here.
-                      </p>
-                    </div>
-                    <ProjectTaskCreateButton
-                      projectId={projectId}
-                      sourceLabel="Schedule item"
-                      sourceRecordId={editingTask.id}
-                      sourceRecordNumber={null}
-                      sourceHref={scheduleItemHref(projectId, editingTask.id)}
-                      defaultTitle={`Follow up: ${editingTask.title}`}
-                      defaultDescription={`${editingTask.phase} schedule item.`}
-                      defaultAssigneeName={editingTask.assignedTo}
-                      defaultCompanyName={null}
-                      defaultDueDate={editingTask.endDateCalculated}
-                      defaultPriority={editingTask.isCriticalPath ? "high" : "normal"}
-                      defaultTaskType="schedule_task"
-                      assigneeOptions={assigneeOptions}
-                      onCreated={() =>
-                        setLinkedTodosRefreshKey((current) => current + 1)
-                      }
-                    />
-                  </div>
-
-                  {linkedTodosLoading ? (
-                    <p className="border bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                      Loading related to-dos…
-                    </p>
-                  ) : linkedTodosError ? (
-                    <p className="border border-destructive/40 bg-destructive/5 px-3 py-3 text-xs text-destructive">
-                      {linkedTodosError}
-                    </p>
-                  ) : linkedTodos.length === 0 ? (
-                    <p className="border border-dashed px-3 py-3 text-xs text-muted-foreground">
-                      No to-dos are linked to this schedule item yet.
-                    </p>
-                  ) : (
-                    <div className="divide-y border">
-                      {linkedTodos.map((todo) => (
-                        <div
-                          key={todo.id}
-                          className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5"
-                        >
-                          <div className="min-w-0">
-                            <Link
-                              href={projectTodoHref(projectId, todo.id)}
-                              className="block truncate text-sm font-medium hover:underline"
-                            >
-                              {todo.title}
-                            </Link>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {todo.sourceRecordNumber ?? "Compass to-do"}
-                              {todo.assigneeName || todo.companyName
-                                ? ` · ${todo.assigneeName ?? todo.companyName}`
-                                : ""}
-                              {todo.dueDate
-                                ? ` · Due ${format(parseISO(todo.dueDate), "MMM d, yyyy")}`
-                                : " · No due date"}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            {todo.status.replaceAll("_", " ")}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <Link
-                    href={`/dashboard/projects/${encodeURIComponent(projectId)}/todos`}
-                    className="inline-flex text-xs font-medium text-primary hover:underline"
-                  >
-                    Open all project to-dos
-                  </Link>
-                </section>
+                <RelatedTodosSection
+                  open={open}
+                  projectId={projectId}
+                  editingTask={editingTask}
+                  assigneeOptions={assigneeOptions}
+                />
               )}
             </div>
 
@@ -2035,9 +372,9 @@ export function ScheduleItemFormDialog({
                 </Button>
               ) : null}
               <p className="text-xs text-muted-foreground">
-                {!isEditing && selectedTemplateItemId
-                  ? `1 schedule item + ${selectedTemplateTodoIds.length} to-do${
-                      selectedTemplateTodoIds.length === 1 ? "" : "s"
+                {!isEditing && template.selectedTemplateItemId
+                  ? `1 schedule item + ${template.selectedTemplateTodoIds.length} to-do${
+                      template.selectedTemplateTodoIds.length === 1 ? "" : "s"
                     }`
                   : null}
               </p>
@@ -2058,28 +395,15 @@ export function ScheduleItemFormDialog({
           </form>
         </Form>
       </DialogContent>
-      <AlertDialog
+      <DeleteScheduleItemDialog
         open={confirmDeleteOpen}
-        onOpenChange={(next) => {
-          if (!deleting) setConfirmDeleteOpen(next)
+        onOpenChange={setConfirmDeleteOpen}
+        editingTask={editingTask}
+        onDeletedItem={(taskId) => {
+          onOpenChange(false)
+          onDeleted?.(taskId)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this schedule item?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This also removes dependencies connected to the deleted item. This
-              action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Keep item</AlertDialogCancel>
-            <AlertDialogAction disabled={deleting} onClick={confirmDelete}>
-              {deleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </Dialog>
   )
 }
