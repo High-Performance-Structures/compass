@@ -1,5 +1,6 @@
 import "server-only"
 
+import { cache } from "react"
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
@@ -75,6 +76,80 @@ function strongerAccessLevel(
     : current
 }
 
+type PermissionOverrides = {
+  readonly role: ReadonlyMap<string, string>
+  readonly team: ReadonlyMap<string, readonly string[]>
+  readonly user: ReadonlyMap<string, string>
+}
+
+/**
+ * A page can check a dozen features; each check used to cost two or three
+ * sequential D1 reads. Read every override for this person once per request
+ * (one batched round trip) and answer each feature from memory.
+ */
+const loadPermissionOverrides = cache(
+  async (
+    organizationId: string,
+    userId: string,
+    role: string
+  ): Promise<PermissionOverrides | null> => {
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return null
+    const db = getDb(env.DB)
+    const [roleRows, teamRows, userRows] = await db.batch([
+      db
+        .select({
+          featureId: rolePermissionOverrides.featureId,
+          accessLevel: rolePermissionOverrides.accessLevel,
+        })
+        .from(rolePermissionOverrides)
+        .where(
+          and(
+            eq(rolePermissionOverrides.organizationId, organizationId),
+            eq(rolePermissionOverrides.role, role)
+          )
+        ),
+      db
+        .select({
+          featureId: teamPermissionOverrides.featureId,
+          accessLevel: teamPermissionOverrides.accessLevel,
+        })
+        .from(teamPermissionOverrides)
+        .innerJoin(
+          teamMembers,
+          eq(teamPermissionOverrides.teamId, teamMembers.teamId)
+        )
+        .where(
+          and(
+            eq(teamPermissionOverrides.organizationId, organizationId),
+            eq(teamMembers.userId, userId)
+          )
+        ),
+      db
+        .select({
+          featureId: userPermissionOverrides.featureId,
+          accessLevel: userPermissionOverrides.accessLevel,
+        })
+        .from(userPermissionOverrides)
+        .where(
+          and(
+            eq(userPermissionOverrides.organizationId, organizationId),
+            eq(userPermissionOverrides.userId, userId)
+          )
+        ),
+    ])
+    const team = new Map<string, string[]>()
+    for (const row of teamRows) {
+      team.set(row.featureId, [...(team.get(row.featureId) ?? []), row.accessLevel])
+    }
+    return {
+      role: new Map(roleRows.map((row) => [row.featureId, row.accessLevel])),
+      team,
+      user: new Map(userRows.map((row) => [row.featureId, row.accessLevel])),
+    }
+  }
+)
+
 export async function getEffectivePermissionAccessLevel(
   user: AuthUser | null,
   featureId: string
@@ -105,22 +180,14 @@ export async function getEffectivePermissionAccessLevel(
       return "none"
     }
     try {
-      const { env } = await getCloudflareContext()
-      if (!env?.DB) return "none"
-      const db = getDb(env.DB)
-      const grant = await db
-        .select({ accessLevel: userPermissionOverrides.accessLevel })
-        .from(userPermissionOverrides)
-        .where(
-          and(
-            eq(userPermissionOverrides.organizationId, user.organizationId),
-            eq(userPermissionOverrides.userId, user.id),
-            eq(userPermissionOverrides.featureId, featureId)
-          )
-        )
-        .get()
-      if (grant?.accessLevel === "view" || grant?.accessLevel === "approve") {
-        return grant.accessLevel
+      const overrides = await loadPermissionOverrides(
+        user.organizationId,
+        user.id,
+        user.role
+      )
+      const grant = overrides?.user.get(featureId)
+      if (grant === "view" || grant === "approve") {
+        return grant
       }
     } catch {
       // Confidential access must fail closed if storage is unavailable.
@@ -139,65 +206,28 @@ export async function getEffectivePermissionAccessLevel(
   }
 
   try {
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return feature.staffAssignable ? "none" : effectiveLevel
+    const overrides = await loadPermissionOverrides(
+      user.organizationId,
+      user.id,
+      user.role
+    )
+    if (!overrides) return feature.staffAssignable ? "none" : effectiveLevel
 
-    const db = getDb(env.DB)
-
-    const roleOverride = await db
-      .select({ accessLevel: rolePermissionOverrides.accessLevel })
-      .from(rolePermissionOverrides)
-      .where(
-        and(
-          eq(rolePermissionOverrides.organizationId, user.organizationId),
-          eq(rolePermissionOverrides.role, user.role),
-          eq(rolePermissionOverrides.featureId, featureId)
-        )
-      )
-      .get()
-
-    if (roleOverride && isPermissionAccessLevel(roleOverride.accessLevel)) {
-      effectiveLevel = roleOverride.accessLevel
+    const roleOverride = overrides.role.get(featureId)
+    if (roleOverride !== undefined && isPermissionAccessLevel(roleOverride)) {
+      effectiveLevel = roleOverride
     }
 
-    const teamOverrides = await db
-      .select({ accessLevel: teamPermissionOverrides.accessLevel })
-      .from(teamPermissionOverrides)
-      .innerJoin(
-        teamMembers,
-        eq(teamPermissionOverrides.teamId, teamMembers.teamId)
-      )
-      .where(
-        and(
-          eq(teamPermissionOverrides.organizationId, user.organizationId),
-          eq(teamPermissionOverrides.featureId, featureId),
-          eq(teamMembers.userId, user.id)
-        )
-      )
-
-    for (const teamOverride of teamOverrides) {
-      if (!isPermissionAccessLevel(teamOverride.accessLevel)) continue
-      effectiveLevel = strongerAccessLevel(
-        effectiveLevel,
-        teamOverride.accessLevel
-      )
+    for (const teamOverride of overrides.team.get(featureId) ?? []) {
+      if (!isPermissionAccessLevel(teamOverride)) continue
+      effectiveLevel = strongerAccessLevel(effectiveLevel, teamOverride)
     }
 
     if (feature.staffAssignable && user.organizationType === "internal" && isInternalStaffRole(user.role)) {
-      const userOverride = await db
-        .select({ accessLevel: userPermissionOverrides.accessLevel })
-        .from(userPermissionOverrides)
-        .where(
-          and(
-            eq(userPermissionOverrides.organizationId, user.organizationId),
-            eq(userPermissionOverrides.userId, user.id),
-            eq(userPermissionOverrides.featureId, featureId)
-          )
-        )
-        .get()
-      if (userOverride && isPermissionAccessLevel(userOverride.accessLevel)) {
+      const userOverride = overrides.user.get(featureId)
+      if (userOverride !== undefined && isPermissionAccessLevel(userOverride)) {
         // A named staff choice may explicitly deny access despite role/team defaults.
-        effectiveLevel = userOverride.accessLevel
+        effectiveLevel = userOverride
       }
     }
 

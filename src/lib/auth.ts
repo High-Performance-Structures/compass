@@ -140,16 +140,15 @@ async function setActiveOrgCookie(orgId: string): Promise<void> {
   }
 }
 
-async function claimProjectAccessInvitations(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-  email: string,
-  now: string
-): Promise<{ readonly organizationId: string; readonly role: string } | null> {
-  const normalizedEmail = email.trim().toLowerCase()
-  if (!normalizedEmail) return null
+function normalizedEmailAddress(email: string): string {
+  return email.trim().toLowerCase()
+}
 
-  const invitations = await db
+function pendingInvitationsQuery(
+  db: ReturnType<typeof getDb>,
+  normalizedEmail: string
+) {
+  return db
     .select({
       id: projectAccessInvitations.id,
       organizationId: projectAccessInvitations.organizationId,
@@ -173,19 +172,79 @@ async function claimProjectAccessInvitations(
       )
     )
     .orderBy(desc(projectAccessInvitations.invitedAt))
+}
 
-  const currentIdentity = await db
-    .select({ phone: users.phone, address: users.address })
-    .from(users)
-    .where(eq(users.id, userId))
-    .get()
+type PendingInvitation = Awaited<
+  ReturnType<typeof pendingInvitationsQuery>
+>[number]
+
+function organizationMembershipsQuery(
+  db: ReturnType<typeof getDb>,
+  userId: string
+) {
+  return db
+    .select({
+      orgId: organizations.id,
+      orgName: organizations.name,
+      orgType: organizations.type,
+      memberRole: organizationMembers.role,
+    })
+    .from(organizationMembers)
+    .innerJoin(
+      organizations,
+      eq(organizations.id, organizationMembers.organizationId)
+    )
+    .where(eq(organizationMembers.userId, userId))
+}
+
+function firstProjectMembershipQuery(
+  db: ReturnType<typeof getDb>,
+  userId: string
+) {
+  return db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, userId))
+    .limit(1)
+}
+
+/** Looks up and claims an account's pending invitations (sign-in callbacks). */
+async function claimInvitationsForAccount(
+  db: ReturnType<typeof getDb>,
+  account: {
+    readonly id: string
+    readonly email: string
+    readonly phone: string | null
+    readonly address: string | null
+  },
+  now: string
+): Promise<{ readonly organizationId: string; readonly role: string } | null> {
+  const email = normalizedEmailAddress(account.email)
+  if (!email) return null
+  const invitations = await pendingInvitationsQuery(db, email)
+  return claimProjectAccessInvitations(db, account, invitations, now)
+}
+
+async function claimProjectAccessInvitations(
+  db: ReturnType<typeof getDb>,
+  currentIdentity: {
+    readonly id: string
+    readonly phone: string | null
+    readonly address: string | null
+  },
+  invitations: readonly PendingInvitation[],
+  now: string
+): Promise<{ readonly organizationId: string; readonly role: string } | null> {
+  // Nearly every request has nothing pending; skip all further work.
+  if (invitations.length === 0) return null
+  const userId = currentIdentity.id
+
   const identityInvitation = invitations.find(
     (invitation) =>
       (!invitation.workosExpiresAt || invitation.workosExpiresAt > now) &&
       (invitation.contactPhone || invitation.contactAddress)
   )
   if (
-    currentIdentity &&
     identityInvitation &&
     ((!currentIdentity.phone && identityInvitation.contactPhone) ||
       (!currentIdentity.address && identityInvitation.contactAddress))
@@ -409,13 +468,27 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
 
     const db = getDb(env.DB)
 
-    // check if user exists in our database
+    // Every signed-in request needs these four reads; send them in one D1
+    // round trip instead of one after another. They are keyed on the
+    // WorkOS id and email, which match the Compass account for every
+    // established user. First sign-ins and reconciled accounts re-read
+    // whatever the prefetch could not cover below.
+    const workosEmail = normalizedEmailAddress(workosUser.email)
+    const [
+      userRows,
+      prefetchedInvitations,
+      prefetchedMemberships,
+      prefetchedProjectMemberships,
+    ] = await db.batch([
+      db.select().from(users).where(eq(users.id, workosUser.id)).limit(1),
+      pendingInvitationsQuery(db, workosEmail),
+      organizationMembershipsQuery(db, workosUser.id),
+      firstProjectMembershipQuery(db, workosUser.id),
+    ])
+
     let activatedPendingAccount = false
-    let dbUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, workosUser.id))
-      .get()
+    let dbUser: User | undefined = userRows[0]
+    const foundByWorkosId = dbUser !== undefined
 
     if (!dbUser) {
       const emailMatch = await db
@@ -481,10 +554,17 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
 
     // update last login timestamp
     const now = new Date().toISOString()
+    const accountEmail = normalizedEmailAddress(dbUser.email)
+    const invitations =
+      foundByWorkosId && accountEmail === workosEmail
+        ? prefetchedInvitations
+        : accountEmail
+          ? await pendingInvitationsQuery(db, accountEmail)
+          : []
     const claimedInvitation = await claimProjectAccessInvitations(
       db,
-      dbUser.id,
-      dbUser.email,
+      dbUser,
+      invitations,
       now
     )
     if (claimedInvitation) {
@@ -499,20 +579,15 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
         .run()
     }
 
-    // query org memberships
-    const orgMemberships = await db
-      .select({
-        orgId: organizations.id,
-        orgName: organizations.name,
-        orgType: organizations.type,
-        memberRole: organizationMembers.role,
-      })
-      .from(organizationMembers)
-      .innerJoin(
-        organizations,
-        eq(organizations.id, organizationMembers.organizationId)
-      )
-      .where(eq(organizationMembers.userId, dbUser.id))
+    // A claimed invitation or a newly found/created account can change
+    // memberships after the prefetch, so read them again in that case.
+    const membershipsAreCurrent = foundByWorkosId && !claimedInvitation
+    const [orgMemberships, projectMemberships] = membershipsAreCurrent
+      ? [prefetchedMemberships, prefetchedProjectMemberships]
+      : await db.batch([
+          organizationMembershipsQuery(db, dbUser.id),
+          firstProjectMembershipQuery(db, dbUser.id),
+        ])
 
     if (activatedPendingAccount) {
       for (const membership of orgMemberships) {
@@ -547,12 +622,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
-    const projectMembership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, dbUser.id))
-      .limit(1)
-      .get()
+    const projectMembership = projectMemberships[0]
     const hasInternalStaffOrganization = orgMemberships.some(
       (membership) =>
         membership.orgType === "internal" &&
@@ -652,10 +722,9 @@ export async function ensureUserExists(workosUser: {
     // Claim it in the single auth callback request so the first redirected page
     // does not race multiple server-component auth reads to provision access.
     const now = new Date().toISOString()
-    const claimedInvitation = await claimProjectAccessInvitations(
+    const claimedInvitation = await claimInvitationsForAccount(
       db,
-      existing.id,
-      existing.email,
+      existing,
       now
     )
     if (claimedInvitation) {
@@ -712,10 +781,9 @@ export async function ensureUserExists(workosUser: {
       .where(eq(users.id, emailMatch.id))
       .run()
 
-    const claimedInvitation = await claimProjectAccessInvitations(
+    const claimedInvitation = await claimInvitationsForAccount(
       db,
-      emailMatch.id,
-      normalizedEmail,
+      reconciledUser,
       now
     )
     if (claimedInvitation) {
@@ -763,10 +831,9 @@ export async function ensureUserExists(workosUser: {
 
   await db.insert(users).values(newUser).run()
 
-  const claimedInvitation = await claimProjectAccessInvitations(
+  const claimedInvitation = await claimInvitationsForAccount(
     db,
-    workosUser.id,
-    workosUser.email,
+    { id: workosUser.id, email: workosUser.email, phone: null, address: null },
     now
   )
   if (claimedInvitation) {
