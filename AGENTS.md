@@ -178,7 +178,7 @@ each module contributes schema tables, server actions, components, and optionall
 - **financials**: invoices, vendor bills, payments, credit memos. Existing tables include legacy NetSuite sync fields; HPS production financial workflows should be Sage-oriented and approval-gated. see [docs/modules/financials.md](docs/modules/financials.md).
 - **conversations**: slack-like channels and messaging. text/voice/announcement channels, threading, reactions, attachments, @mentions. schema in `src/db/schema-conversations.ts`. components in `src/components/conversations/`.
 - **voice**: discord-style voice controls with user bar, transcription via `/api/transcribe/`. components in `src/components/voice/`, state in `use-voice-state.ts`.
-- **offline sync**: queue-based sync engine in `src/lib/sync/` with conflict resolution. API routes at `/api/sync/` (checkpoint, delta, mutate).
+- **offline sync**: queue-based sync engine in `src/lib/sync/` with conflict resolution. The `/api/sync/` routes (checkpoint, delta, mutate) were retired on 2026-10-30 and answer 410; any revival must go through the domain modules and shared action context.
 - **desktop**: Tauri 2.0 wrapper in `src-tauri/`. keyboard shortcuts in `src/lib/desktop/shortcuts.ts`, window management in `src/lib/desktop/window-manager.ts`. components in `src/components/desktop/`.
 - **mobile**: capacitor webview wrapper. the web app must never break because of native code -- all capacitor imports are dynamic, gated behind `isNative()`. see [docs/modules/mobile.md](docs/modules/mobile.md) and [docs/architecture/native-mobile.md](docs/architecture/native-mobile.md).
 - **mcp**: model context protocol integration. schema in `src/db/schema-mcp.ts`, key management via `src/app/actions/mcp-keys.ts`.
