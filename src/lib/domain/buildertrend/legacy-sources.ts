@@ -1,21 +1,13 @@
-function sqlText(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
-}
-
-/**
- * Builds an idempotent, archive-only bridge from the abandoned 0062 tables to
- * the guarded 0084 Buildertrend staging model. Operational Compass tables are
- * deliberately outside the scope of this reconciliation.
+/*
+ * Read side of the legacy Buildertrend reconciliation: the fail-closed guard
+ * checks (written to a temp table, never to a Compass table) and the SELECT
+ * sources that map the abandoned 0062 tables onto the 0084 staging model.
+ * The store (store.ts) owns the INSERT statements that consume them.
+ * `defaultOrg` is an already-quoted SQL literal.
  */
-export function buildLegacyBuildertrendReconciliationSql(
-  defaultOrganizationId: string
-): string {
-  const organizationId = defaultOrganizationId.trim()
-  if (organizationId.length === 0) {
-    throw new Error("A default organization ID is required")
-  }
 
-  const defaultOrg = sqlText(organizationId)
+/** Temp guard table and the checks that abort the batch before any durable write. */
+export function legacyGuardPreludeSql(defaultOrg: string): string {
   return `-- Fail closed before any durable write. A CHECK violation stops the
 -- batch instead of merely returning an error-looking value to the caller.
 DROP TABLE IF EXISTS temp.buildertrend_reconciliation_guard;
@@ -96,27 +88,12 @@ SELECT 'duplicate file identity is absent', CASE WHEN NOT EXISTS (
       COALESCE(source_file.source_record_id, ''),
       source_file.buildertrend_file_id
     HAVING COUNT(*) > 1
-  ) THEN 1 ELSE 0 END;
+  ) THEN 1 ELSE 0 END;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_runs (
-  id,
-  organization_id,
-  run_key,
-  manifest_fingerprint,
-  source_method,
-  source_label,
-  status,
-  started_by,
-  started_at,
-  completed_at,
-  raw_artifact_drive_file_id,
-  raw_artifact_drive_url,
-  source_notes,
-  summary_json,
-  created_at,
-  updated_at
-)
-WITH run_org AS (
+/** SELECT source for the legacy Runs insert. */
+export function legacyRunsSourceSql(defaultOrg: string): string {
+  return `WITH run_org AS (
   SELECT id AS legacy_run_id, COALESCE(organization_id, ${defaultOrg}) AS organization_id
   FROM buildertrend_import_runs
   UNION
@@ -173,49 +150,12 @@ SELECT
   source_run.created_at,
   source_run.updated_at
 FROM buildertrend_import_runs source_run
-JOIN run_org ON run_org.legacy_run_id = source_run.id;
+JOIN run_org ON run_org.legacy_run_id = source_run.id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_records (
-  id,
-  organization_id,
-  source_key,
-  requested_project_id,
-  project_id,
-  source_scope,
-  source_record_type,
-  buildertrend_job_id,
-  buildertrend_lead_id,
-  buildertrend_record_id,
-  buildertrend_record_number,
-  buildertrend_url,
-  title,
-  record_date,
-  record_status,
-  source_status,
-  department_code,
-  client_name,
-  contact_name,
-  contact_email,
-  amount,
-  searchable_text,
-  normalized_summary,
-  raw_payload_json,
-  source_archive_drive_folder_id,
-  source_archive_drive_file_id,
-  source_archive_drive_url,
-  verified_archive_drive_folder_id,
-  verified_archive_drive_file_id,
-  verified_archive_drive_url,
-  review_status,
-  promotion_status,
-  promoted_record_type,
-  promoted_record_id,
-  sage_reconciliation_status,
-  source_notes,
-  created_at,
-  updated_at
-)
-SELECT
+/** SELECT source for the legacy Records insert. */
+export function legacyRecordsSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-record:' || source_record.id,
   COALESCE(project.organization_id, source_record.organization_id, ${defaultOrg}),
   'legacy-record:' || source_record.id,
@@ -292,45 +232,12 @@ SELECT
   source_record.created_at,
   source_record.updated_at
 FROM buildertrend_source_records source_record
-LEFT JOIN projects project ON project.id = source_record.project_id;
+LEFT JOIN projects project ON project.id = source_record.project_id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_files (
-  id,
-  organization_id,
-  source_key,
-  requested_source_record_key,
-  source_record_id,
-  requested_project_id,
-  project_id,
-  source_scope,
-  source_record_type,
-  buildertrend_job_id,
-  buildertrend_lead_id,
-  buildertrend_file_id,
-  buildertrend_url,
-  file_name,
-  mime_type,
-  file_size,
-  source_drive_folder_id,
-  source_drive_file_id,
-  source_drive_url,
-  source_thumbnail_drive_file_id,
-  source_thumbnail_url,
-  verified_drive_folder_id,
-  verified_drive_file_id,
-  verified_drive_url,
-  verified_thumbnail_drive_file_id,
-  verified_thumbnail_url,
-  source_checksum,
-  verified_checksum,
-  captured_at,
-  visibility,
-  review_status,
-  source_metadata_json,
-  created_at,
-  updated_at
-)
-SELECT
+/** SELECT source for the legacy Files insert. */
+export function legacyFilesSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-file:' || source_file.id,
   COALESCE(
     file_project.organization_id,
@@ -390,35 +297,12 @@ FROM buildertrend_archive_files source_file
 LEFT JOIN projects file_project ON file_project.id = source_file.project_id
 LEFT JOIN buildertrend_source_records source_record
   ON source_record.id = source_file.source_record_id
-LEFT JOIN projects record_project ON record_project.id = source_record.project_id;
+LEFT JOIN projects record_project ON record_project.id = source_record.project_id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_access_candidates (
-  id,
-  organization_id,
-  source_key,
-  requested_source_record_key,
-  source_record_id,
-  requested_project_id,
-  project_id,
-  buildertrend_job_id,
-  buildertrend_lead_id,
-  buildertrend_contact_id,
-  buildertrend_access_role,
-  contact_name,
-  company_name,
-  email,
-  phone,
-  proposed_contact_type,
-  proposed_project_role,
-  match_status,
-  match_confidence,
-  portal_access_status,
-  review_status,
-  source_notes,
-  created_at,
-  updated_at
-)
-SELECT
+/** SELECT source for the legacy AccessCandidates insert. */
+export function legacyAccessCandidatesSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-access:' || source_access.id,
   COALESCE(
     access_project.organization_id,
@@ -458,19 +342,12 @@ FROM buildertrend_access_candidates source_access
 LEFT JOIN projects access_project ON access_project.id = source_access.project_id
 LEFT JOIN buildertrend_source_records source_record
   ON source_record.id = source_access.source_record_id
-LEFT JOIN projects record_project ON record_project.id = source_record.project_id;
+LEFT JOIN projects record_project ON record_project.id = source_record.project_id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_observations (
-  id,
-  import_run_id,
-  organization_id,
-  entity_kind,
-  entity_key,
-  entity_id,
-  observed_payload_json,
-  observed_at
-)
-SELECT
+/** SELECT source for the legacy RecordObservations insert. */
+export function legacyRecordObservationsSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-observation:record:' || source_record.id,
   'legacy-run:' || source_record.import_run_id || ':' ||
     COALESCE(project.organization_id, source_record.organization_id, ${defaultOrg}),
@@ -486,19 +363,12 @@ SELECT
   ),
   source_record.updated_at
 FROM buildertrend_source_records source_record
-LEFT JOIN projects project ON project.id = source_record.project_id;
+LEFT JOIN projects project ON project.id = source_record.project_id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_observations (
-  id,
-  import_run_id,
-  organization_id,
-  entity_kind,
-  entity_key,
-  entity_id,
-  observed_payload_json,
-  observed_at
-)
-SELECT
+/** SELECT source for the legacy FileObservations insert. */
+export function legacyFileObservationsSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-observation:file:' || source_file.id,
   'legacy-run:' || source_file.import_run_id || ':' ||
     COALESCE(
@@ -529,19 +399,12 @@ FROM buildertrend_archive_files source_file
 LEFT JOIN projects file_project ON file_project.id = source_file.project_id
 LEFT JOIN buildertrend_source_records source_record
   ON source_record.id = source_file.source_record_id
-LEFT JOIN projects record_project ON record_project.id = source_record.project_id;
+LEFT JOIN projects record_project ON record_project.id = source_record.project_id;`
+}
 
-INSERT OR IGNORE INTO buildertrend_staging_observations (
-  id,
-  import_run_id,
-  organization_id,
-  entity_kind,
-  entity_key,
-  entity_id,
-  observed_payload_json,
-  observed_at
-)
-SELECT
+/** SELECT source for the legacy AccessObservations insert. */
+export function legacyAccessObservationsSourceSql(defaultOrg: string): string {
+  return `SELECT
   'legacy-observation:access:' || source_access.id,
   'legacy-run:' || source_access.import_run_id || ':' ||
     COALESCE(
@@ -572,8 +435,5 @@ FROM buildertrend_access_candidates source_access
 LEFT JOIN projects access_project ON access_project.id = source_access.project_id
 LEFT JOIN buildertrend_source_records source_record
   ON source_record.id = source_access.source_record_id
-LEFT JOIN projects record_project ON record_project.id = source_record.project_id;
-
-DROP TABLE temp.buildertrend_reconciliation_guard;
-`
+LEFT JOIN projects record_project ON record_project.id = source_record.project_id;`
 }

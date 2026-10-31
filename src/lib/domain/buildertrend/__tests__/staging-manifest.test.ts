@@ -2,10 +2,8 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import {
-  buildBuildertrendStagingSql,
-  parseBuildertrendStagingManifest,
-} from "../staging-manifest"
+import { parseBuildertrendStagingManifest } from "../rules"
+import { buildBuildertrendStagingSql } from "../staging"
 
 const migrationSql = readFileSync(
   resolve(process.cwd(), "drizzle/0084_buildertrend_staging_foundation.sql"),

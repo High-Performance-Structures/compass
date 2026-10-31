@@ -8,10 +8,8 @@ import {
 } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
 
-import {
-  buildBuildertrendStagingSql,
-  parseBuildertrendStagingManifest,
-} from "../src/lib/buildertrend/staging-manifest"
+import { parseBuildertrendStagingManifest } from "../src/lib/domain/buildertrend/rules"
+import { buildBuildertrendStagingSql } from "../src/lib/domain/buildertrend/staging"
 
 function usage() {
   console.error(
