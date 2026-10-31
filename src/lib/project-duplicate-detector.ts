@@ -97,9 +97,10 @@ function tokens(value: string): ReadonlySet<string> {
   return new Set(value.split(" ").filter((token) => token.length > 1))
 }
 
-function tokenSimilarity(first: string, second: string): number {
-  const firstTokens = tokens(first)
-  const secondTokens = tokens(second)
+function tokenSimilarity(
+  firstTokens: ReadonlySet<string>,
+  secondTokens: ReadonlySet<string>,
+): number {
   if (firstTokens.size === 0 || secondTokens.size === 0) return 0
 
   let overlap = 0
@@ -109,26 +110,87 @@ function tokenSimilarity(first: string, second: string): number {
   return (2 * overlap) / (firstTokens.size + secondTokens.size)
 }
 
+/**
+ * Everything the pairwise comparison needs from one project, normalized once.
+ * The registry scan compares every pair of projects (n² / 2), so normalizing
+ * inside the comparison made a 1,100-project scan take seconds.
+ */
+type DuplicateProfile = {
+  readonly id: string
+  readonly projectNumber: string
+  readonly departmentSequence: string | null
+  readonly sageJobId: string
+  readonly sageJobNumber: string
+  readonly googleDriveFolderId: string
+  readonly buildertrendProjectId: string
+  readonly exactName: string
+  readonly clientName: string
+  readonly address: string
+  readonly locationSuffix: string | null
+  readonly name: string
+  readonly nameTokens: ReadonlySet<string>
+}
+
+function duplicateProfile(project: ProjectDuplicateIdentity): DuplicateProfile {
+  const name = normalizedProjectName(project.name)
+  return {
+    id: project.id,
+    projectNumber: normalizedIdentifier(project.projectNumber),
+    departmentSequence: projectNumberDepartmentSequence(
+      project.projectNumber,
+      project.name,
+    ),
+    sageJobId: normalizedIdentifier(project.sageJobId),
+    sageJobNumber: normalizedIdentifier(project.sageJobNumber),
+    googleDriveFolderId: normalizedIdentifier(project.googleDriveFolderId),
+    buildertrendProjectId: normalizedIdentifier(project.buildertrendProjectId),
+    exactName: normalizedText(name),
+    clientName: normalizedText(project.clientName),
+    address: normalizedText(project.address),
+    locationSuffix: projectLocationSuffix(project.projectNumber, project.name),
+    name,
+    nameTokens: tokens(name),
+  }
+}
+
 function exactReason(
   code: ProjectDuplicateReasonCode,
   label: string,
   weight: number,
-  first: string | null,
-  second: string | null,
-  identifier = false,
+  firstValue: string,
+  secondValue: string,
 ): ProjectDuplicateReason | null {
-  const normalize = identifier ? normalizedIdentifier : normalizedText
-  const firstValue = normalize(first)
-  const secondValue = normalize(second)
   if (!firstValue || firstValue !== secondValue) return null
   return { code, label, weight }
 }
 
-export function compareProjectDuplicateIdentity(
-  first: ProjectDuplicateIdentity,
-  second: ProjectDuplicateIdentity,
+function sameValue(first: string | null, second: string | null): boolean {
+  return first !== null && first !== "" && first === second
+}
+
+function sharesAnyValue(first: DuplicateProfile, second: DuplicateProfile): boolean {
+  return (
+    sameValue(first.projectNumber, second.projectNumber) ||
+    sameValue(first.departmentSequence, second.departmentSequence) ||
+    sameValue(first.sageJobId, second.sageJobId) ||
+    sameValue(first.sageJobNumber, second.sageJobNumber) ||
+    sameValue(first.googleDriveFolderId, second.googleDriveFolderId) ||
+    sameValue(first.buildertrendProjectId, second.buildertrendProjectId) ||
+    sameValue(first.exactName, second.exactName) ||
+    sameValue(first.clientName, second.clientName) ||
+    sameValue(first.address, second.address) ||
+    sameValue(first.locationSuffix, second.locationSuffix)
+  )
+}
+
+function compareDuplicateProfiles(
+  first: DuplicateProfile,
+  second: DuplicateProfile,
 ): ProjectDuplicateMatch | null {
   if (first.id === second.id) return null
+  // Without one shared value the only possible reason is a similar name
+  // (35), below the threshold: most pairs stop here without allocating.
+  if (!sharesAnyValue(first, second)) return null
 
   const reasons: ProjectDuplicateReason[] = []
   const exactProjectNumberReason = exactReason(
@@ -137,21 +199,12 @@ export function compareProjectDuplicateIdentity(
     100,
     first.projectNumber,
     second.projectNumber,
-    true,
-  )
-  const firstDepartmentSequence = projectNumberDepartmentSequence(
-    first.projectNumber,
-    first.name,
-  )
-  const secondDepartmentSequence = projectNumberDepartmentSequence(
-    second.projectNumber,
-    second.name,
   )
   const exactReasons = [
     exactProjectNumberReason,
     !exactProjectNumberReason &&
-    firstDepartmentSequence &&
-    firstDepartmentSequence === secondDepartmentSequence
+    first.departmentSequence &&
+    first.departmentSequence === second.departmentSequence
       ? {
           code: "project_department_sequence" as const,
           label: "Same project department and sequence",
@@ -164,7 +217,6 @@ export function compareProjectDuplicateIdentity(
       100,
       first.sageJobId,
       second.sageJobId,
-      true,
     ),
     exactReason(
       "sage_job_number",
@@ -172,7 +224,6 @@ export function compareProjectDuplicateIdentity(
       100,
       first.sageJobNumber,
       second.sageJobNumber,
-      true,
     ),
     exactReason(
       "drive_folder",
@@ -180,7 +231,6 @@ export function compareProjectDuplicateIdentity(
       100,
       first.googleDriveFolderId,
       second.googleDriveFolderId,
-      true,
     ),
     exactReason(
       "buildertrend_project",
@@ -188,14 +238,13 @@ export function compareProjectDuplicateIdentity(
       100,
       first.buildertrendProjectId,
       second.buildertrendProjectId,
-      true,
     ),
     exactReason(
       "project_name",
       "Same project name",
       45,
-      normalizedProjectName(first.name),
-      normalizedProjectName(second.name),
+      first.exactName,
+      second.exactName,
     ),
     exactReason(
       "client_name",
@@ -221,18 +270,10 @@ export function compareProjectDuplicateIdentity(
   const hasExactAddress = reasons.some(
     (reason) => reason.code === "project_address",
   )
-  const firstLocationSuffix = projectLocationSuffix(
-    first.projectNumber,
-    first.name,
-  )
-  const secondLocationSuffix = projectLocationSuffix(
-    second.projectNumber,
-    second.name,
-  )
   if (
     !hasExactAddress &&
-    firstLocationSuffix &&
-    firstLocationSuffix === secondLocationSuffix
+    first.locationSuffix &&
+    first.locationSuffix === second.locationSuffix
   ) {
     reasons.push({
       code: "project_location_suffix",
@@ -242,13 +283,11 @@ export function compareProjectDuplicateIdentity(
   }
 
   const hasExactName = reasons.some((reason) => reason.code === "project_name")
-  const firstName = normalizedProjectName(first.name)
-  const secondName = normalizedProjectName(second.name)
   if (
     !hasExactName &&
-    firstName.length >= 5 &&
-    secondName.length >= 5 &&
-    tokenSimilarity(firstName, secondName) >= 0.8
+    first.name.length >= 5 &&
+    second.name.length >= 5 &&
+    tokenSimilarity(first.nameTokens, second.nameTokens) >= 0.8
   ) {
     reasons.push({
       code: "similar_project_name",
@@ -268,6 +307,14 @@ export function compareProjectDuplicateIdentity(
     confidence: score >= 85 ? "high" : "medium",
     reasons,
   }
+}
+
+export function compareProjectDuplicateIdentity(
+  first: ProjectDuplicateIdentity,
+  second: ProjectDuplicateIdentity,
+): ProjectDuplicateMatch | null {
+  if (first.id === second.id) return null
+  return compareDuplicateProfiles(duplicateProfile(first), duplicateProfile(second))
 }
 
 export function projectDuplicatePairKey(
@@ -316,12 +363,12 @@ function placedOnDifferentDays(first: string, second: string): boolean {
 function isRepeatOrderPair(
   first: ProjectDuplicateIdentity,
   second: ProjectDuplicateIdentity,
+  firstKey: string | null,
+  secondKey: string | null,
   reasons: readonly ProjectDuplicateReason[],
   repeatOrderDepartments: ReadonlySet<string> | undefined,
 ): boolean {
   if (!repeatOrderDepartments || repeatOrderDepartments.size === 0) return false
-  const firstKey = projectNumberDepartmentSequence(first.projectNumber, first.name)
-  const secondKey = projectNumberDepartmentSequence(second.projectNumber, second.name)
   if (!firstKey || !secondKey || firstKey === secondKey) return false
   const firstDepartment = firstKey.charAt(0)
   const secondDepartment = secondKey.charAt(0)
@@ -374,26 +421,35 @@ export function findProjectDuplicateCandidates(
     if (anchor) collisionAnchorByKey.set(key, anchor.id)
   }
 
+  const profiles = projects.map(duplicateProfile)
   for (let firstIndex = 0; firstIndex < projects.length; firstIndex += 1) {
     const first = projects[firstIndex]
-    if (!first) continue
+    const firstProfile = profiles[firstIndex]
+    if (!first || !firstProfile) continue
     for (
       let secondIndex = firstIndex + 1;
       secondIndex < projects.length;
       secondIndex += 1
     ) {
       const second = projects[secondIndex]
-      if (!second) continue
-      const match = compareProjectDuplicateIdentity(first, second)
+      const secondProfile = profiles[secondIndex]
+      if (!second || !secondProfile) continue
+      const match = compareDuplicateProfiles(firstProfile, secondProfile)
       if (!match) continue
-      if (isRepeatOrderPair(first, second, match.reasons, options.repeatOrderDepartments)) {
+      if (
+        isRepeatOrderPair(
+          first,
+          second,
+          firstProfile.departmentSequence,
+          secondProfile.departmentSequence,
+          match.reasons,
+          options.repeatOrderDepartments,
+        )
+      ) {
         continue
       }
 
-      const collisionKey = projectNumberDepartmentSequence(
-        first.projectNumber,
-        first.name,
-      )
+      const collisionKey = firstProfile.departmentSequence
       const anchorId = collisionKey
         ? collisionAnchorByKey.get(collisionKey)
         : undefined
