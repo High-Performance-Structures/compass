@@ -34,7 +34,7 @@ function Harness({
   readonly resetKey?: string
   readonly initialItemId?: string | null
 }): React.ReactElement {
-  current = useRecordTable({
+  const table = useRecordTable({
     data,
     columns,
     getRowId: (row) => row.id,
@@ -42,8 +42,9 @@ function Harness({
     enableSelection: true,
     initialItemId,
   })
+  React.useEffect(() => { current = table }, [table])
   return React.createElement(RecordTable<Item>, {
-    table: current,
+    table,
     itemLabel: "records",
     emptyMessage: "No matching records.",
   })
