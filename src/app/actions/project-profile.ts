@@ -43,14 +43,12 @@ import { retryProjectProfileSyncOperation as runSyncOperation } from "@/lib/doma
  * project-hub permission, project access record in their organization).
  */
 
-export type {
-  ProjectAgingStatusRow,
-  ProjectFollowUpOwner,
-  ProjectFollowUpQueueItem,
-  ProjectInformation,
-  ProjectInteractionFormOptions,
-  ProjectProfileResult,
-}
+// "use server" files may only re-export types straight from their module.
+export type { ProjectAgingStatusRow } from "@/lib/domain/project/job-status"
+export type { ProjectFollowUpOwner, ProjectFollowUpQueueItem } from "@/lib/domain/crm/rules"
+export type { ProjectInformation } from "@/lib/domain/project/information"
+export type { ProjectInteractionFormOptions } from "@/lib/domain/crm/interactions"
+export type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 
 function revalidateProjectProfile(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}`)
