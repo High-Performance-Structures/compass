@@ -240,6 +240,8 @@ export const nuTechOrderWorkflows = sqliteTable(
       table.airlitePurchaseOrderOperationId
     ),
     index("nutech_order_workflows_catalog_idx").on(table.catalogVersionId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("nutech_order_workflows_tax_entity_id_idx").on(table.taxEntityId),
   ]
 )
 

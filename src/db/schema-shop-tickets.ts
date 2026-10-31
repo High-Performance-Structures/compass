@@ -83,6 +83,8 @@ export const shopTicketLines = sqliteTable(
     // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
     // sweep reads max(updated_at) per parent; this makes it one index seek.
     ticketUpdatedIdx: index("shop_ticket_lines_ticket_updated_idx").on(table.ticketId, table.updatedAt),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    rateBookEntryIdRefIdx: index("shop_ticket_lines_rate_book_entry_id_idx").on(table.rateBookEntryId),
   }),
 )
 

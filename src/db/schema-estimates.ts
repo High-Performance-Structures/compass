@@ -232,6 +232,9 @@ export const projectEstimates = sqliteTable(
     index("project_estimates_introduction_template_id_idx").on(table.introductionTemplateId),
     index("project_estimates_template_application_id_idx").on(table.templateApplicationId),
     index("project_estimates_template_version_id_idx").on(table.templateVersionId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimates_change_order_id_idx").on(table.changeOrderId),
+    index("project_estimates_phase_proposal_id_idx").on(table.phaseProposalId),
   ]
 )
 
@@ -266,7 +269,11 @@ export const projectPhaseProposals = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt),
-    index("project_phase_proposals_family_phase_id_idx").on(table.familyPhaseId)]
+    index("project_phase_proposals_family_phase_id_idx").on(table.familyPhaseId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_phase_proposals_deduct_change_order_id_idx").on(table.deductChangeOrderId),
+    index("project_phase_proposals_source_estimate_id_idx").on(table.sourceEstimateId),
+  ]
 )
 
 export const projectEstimatePhaseDescriptions = sqliteTable(
@@ -361,7 +368,10 @@ export const projectEstimateAssemblies = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder)]
+  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimate_assemblies_contract_assembly_id_idx").on(table.contractAssemblyId),
+  ]
 )
 
 /**
@@ -395,6 +405,9 @@ export const projectEstimateAssemblyCopies = sqliteTable(
     index("project_estimate_assembly_copies_source_idx").on(table.sourceEstimateId, table.createdAt),
     index("project_estimate_assembly_copies_target_idx").on(table.targetProjectId, table.createdAt),
     index("project_estimate_assembly_copies_source_project_id_idx").on(table.sourceProjectId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimate_assembly_copies_source_assembly_id_idx").on(table.sourceAssemblyId),
+    index("project_estimate_assembly_copies_target_estimate_id_idx").on(table.targetEstimateId),
   ]
 )
 
@@ -704,6 +717,10 @@ export const projectContractBudgetAdjustments = sqliteTable(
       table.projectId,
       table.changeOrderId
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_contract_budget_adjustments_change_order_id_idx").on(table.changeOrderId),
+    index("project_contract_budget_adjustments_change_order_line_id_idx").on(table.changeOrderLineId),
+    index("project_contract_budget_adjustments_contract_assembly_id_idx").on(table.contractAssemblyId),
   ]
 )
 

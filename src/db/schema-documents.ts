@@ -63,6 +63,8 @@ export const projectDocuments = sqliteTable(
       table.audience,
       table.status
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_documents_supersedes_document_id_idx").on(table.supersedesDocumentId),
   ]
 )
 

@@ -335,6 +335,8 @@ export const sagePayApplicationSyncRuns = sqliteTable(
     uniqueIndex("sage_pay_app_sync_runs_active_project_idx")
       .on(table.projectId)
       .where(sql`${table.status} IN ('queued', 'running', 'processing')`),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("sage_pay_application_sync_runs_snapshot_id_idx").on(table.snapshotId),
   ]
 )
 
