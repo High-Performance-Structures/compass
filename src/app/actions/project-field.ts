@@ -65,11 +65,10 @@ import type {
 import { announceOwnerUpdatePublished } from "@/lib/owner-updates/publish-notice"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
-export type {
-  OwnerProjectUpdateDocument,
-  ProjectFieldSummary,
-  ProjectOwnerUpdateListItem,
-}
+// Type re-exports name their module: a "use server" file's local export
+// list is read as server action exports by the build.
+export type { OwnerProjectUpdateDocument } from "@/lib/domain/field/owner-update-document"
+export type { ProjectFieldSummary, ProjectOwnerUpdateListItem } from "@/lib/domain/field/field-summary"
 export type {
   ProjectDailyLogItem,
   ProjectDailyLogPhoto,
