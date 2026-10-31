@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from "react"
 import { updatePresence } from "@/app/actions/presence"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 type PresenceStatus = "online" | "idle" | "dnd" | "offline"
 
@@ -112,17 +113,10 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // set up heartbeat interval
-  useEffect(() => {
-    const heartbeatTimer = window.setInterval(
-      sendHeartbeat,
-      HEARTBEAT_INTERVAL_MS
-    )
-
-    return () => {
-      window.clearInterval(heartbeatTimer)
-    }
-  }, [sendHeartbeat])
+  // heartbeat every 30 s while the tab is visible
+  useVisibleInterval(() => void sendHeartbeat(), HEARTBEAT_INTERVAL_MS, {
+    immediate: false,
+  })
 
   const handleActivity = useCallback((): void => {
     const now = Date.now()
@@ -188,7 +182,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         } else {
           scheduleIdleTimer()
         }
-        sendHeartbeat()
+        // The visible-tab heartbeat catches up on its own once a beat was missed.
       } else {
         clearIdleTimer()
       }
@@ -199,7 +193,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [clearIdleTimer, scheduleIdleTimer, sendHeartbeat])
+  }, [clearIdleTimer, scheduleIdleTimer])
 
   // send initial presence on mount
   useEffect(() => {

@@ -42,6 +42,7 @@ import {
 } from "./correspondence-workspace-utils"
 import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { removeCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
 import { retryFailedProjectEmail } from "@/app/actions/project-email"
 type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean; readonly initialEmail?: ProjectEmailPrefill | null; readonly initialStatus?: string | null }
@@ -158,10 +159,6 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     if (result.success) setDrafts(result.data)
   }, [projectId])
   React.useEffect(() => { void refreshDrafts() }, [refreshDrafts])
-  React.useEffect(() => {
-    const timer = window.setInterval(() => { void refreshDrafts() }, POLL_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [refreshDrafts])
   const saveCompositionDraft = React.useCallback(async (draft: NewDraft): Promise<boolean> => {
     const queued = compositionSave.current.catch(() => false).then(async (): Promise<boolean> => {
       let result: Awaited<ReturnType<typeof saveProjectComposition>>
@@ -293,13 +290,13 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     }
     void loadDetail(activeId, focusMessageId)
   }, [activeId, focusMessageId, loadDetail])
-  React.useEffect(() => {
-    const timer = window.setInterval(() => {
-      void refreshInbox()
-      if (activeId !== null) void loadDetail(activeId)
-    }, POLL_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [activeId, loadDetail, refreshInbox])
+  // One visible-tab poll for drafts, the inbox, and the open conversation.
+  // The effects above do the first loads, so the poll skips its immediate run.
+  useVisibleInterval(() => {
+    void refreshDrafts()
+    void refreshInbox()
+    if (activeId !== null) void loadDetail(activeId)
+  }, POLL_INTERVAL_MS, { immediate: false })
   React.useEffect(() => {
     if (compose?.kind !== "reply" || activeDetail === null || editingMessage !== null) return
     if (!replyDirty.current) return

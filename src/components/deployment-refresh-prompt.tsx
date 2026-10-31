@@ -10,6 +10,7 @@ import {
   STALE_DEPLOYMENT_EVENT,
 } from "@/lib/deployment/version"
 import { isStaleServerActionError } from "@/lib/purchase-orders/action-errors"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 const VERSION_CHECK_INTERVAL_MS = 60_000
 
@@ -57,14 +58,6 @@ export function DeploymentRefreshPrompt(): React.ReactElement | null {
   }, [])
 
   React.useEffect(() => {
-    function handleVisibilityChange(): void {
-      if (document.visibilityState === "visible") void checkForUpdate()
-    }
-
-    function handleWindowFocus(): void {
-      void checkForUpdate()
-    }
-
     function handleStaleDeployment(): void {
       setUpdateAvailable(true)
     }
@@ -79,26 +72,22 @@ export function DeploymentRefreshPrompt(): React.ReactElement | null {
       }
     }
 
-    void checkForUpdate()
-    const intervalId = window.setInterval(
-      () => void checkForUpdate(),
-      VERSION_CHECK_INTERVAL_MS
-    )
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    window.addEventListener("focus", handleWindowFocus)
     window.addEventListener(STALE_DEPLOYMENT_EVENT, handleStaleDeployment)
     window.addEventListener("unhandledrejection", handleUnhandledRejection)
     window.addEventListener("error", handleWindowError)
 
     return () => {
-      window.clearInterval(intervalId)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      window.removeEventListener("focus", handleWindowFocus)
       window.removeEventListener(STALE_DEPLOYMENT_EVENT, handleStaleDeployment)
       window.removeEventListener("unhandledrejection", handleUnhandledRejection)
       window.removeEventListener("error", handleWindowError)
     }
-  }, [checkForUpdate])
+  }, [])
+
+  // Checks now, every minute while visible, on focus, and once on return to
+  // a tab that missed a check.
+  useVisibleInterval(() => void checkForUpdate(), VERSION_CHECK_INTERVAL_MS, {
+    refreshOnFocus: true,
+  })
 
   if (!updateAvailable) return null
 

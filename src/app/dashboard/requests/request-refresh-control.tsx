@@ -9,6 +9,7 @@ import {
   type FeedbackRequestScope,
 } from "@/app/actions/feedback-requests"
 import { Button } from "@/components/ui/button"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { cn } from "@/lib/utils"
 
 const REFRESH_INTERVAL_MILLISECONDS = 60_000
@@ -34,18 +35,15 @@ export function RequestRefreshControl({
     })
   }, [router, scope])
 
+  // A new scope checks right away; the shared poll covers every minute after,
+  // focus, and a return to a tab that missed a check.
   useEffect(() => {
     refresh()
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh()
-    }, REFRESH_INTERVAL_MILLISECONDS)
-    const handleFocus = () => refresh()
-    window.addEventListener("focus", handleFocus)
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener("focus", handleFocus)
-    }
   }, [refresh])
+  useVisibleInterval(refresh, REFRESH_INTERVAL_MILLISECONDS, {
+    immediate: false,
+    refreshOnFocus: true,
+  })
 
   return (
     <div className="flex items-center gap-3">
