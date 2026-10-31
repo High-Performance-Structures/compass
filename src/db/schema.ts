@@ -1816,6 +1816,11 @@ export const dailyLogPhotos = sqliteTable("daily_log_photos", {
     index("idx_daily_log_photos_project").on(table.projectId),
     // Declared from drizzle/0031_daily_logs_owner_updates.sql.
     index("idx_daily_log_photos_log").on(table.dailyLogId),
+    // An imported file is attached once per daily log (migration 0276); the
+    // same document may sit on several logs.
+    uniqueIndex("daily_log_photos_log_source_unique")
+      .on(table.dailyLogId, table.sourceSystem, table.sourceExternalId)
+      .where(sql`${table.sourceExternalId} IS NOT NULL`),
     // Declared from drizzle/0031_daily_logs_owner_updates.sql.
     index("idx_daily_log_photos_upload").on(table.uploadStatus),
   ])
