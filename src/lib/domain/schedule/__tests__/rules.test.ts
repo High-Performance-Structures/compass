@@ -11,10 +11,12 @@ import {
   dependenciesWithin,
   isDependencyType,
   isTaskStatus,
+  legacyAssignment,
   nextSortOrder,
   ownerSchedulePaths,
   propagateFrom,
   recalculateAll,
+  requestedAssignees,
   scheduleSummary,
   schedulePaths,
   taskEditValues,
@@ -297,5 +299,55 @@ describe("schedule date labels", () => {
 
   it("shows an unreadable value as stored", () => {
     expect(formatDate("not a date", "medium", "not a date")).toBe("not a date")
+  })
+})
+
+describe("assignee requests", () => {
+  it("leaves assignees alone when a request says nothing about them", () => {
+    expect(requestedAssignees({})).toBeUndefined()
+  })
+
+  it("takes the form's list, cleaned, over the legacy single name", () => {
+    expect(
+      requestedAssignees({
+        assignees: [
+          { name: " Ann Lee ", optionId: "team:u-ann" },
+          { name: "ann lee", optionId: null },
+          { name: "Bo Diaz", optionId: null },
+        ],
+        assignedTo: "Ignored",
+      })
+    ).toEqual({
+      inputs: [
+        { name: "Ann Lee", optionId: "team:u-ann" },
+        { name: "Bo Diaz", optionId: null },
+      ],
+    })
+  })
+
+  it("turns a legacy single name, or its clearing, into a list", () => {
+    expect(requestedAssignees({ assignedTo: "Crew A", assignedOptionId: "project:pc-1" })).toEqual({
+      inputs: [{ name: "Crew A", optionId: "project:pc-1" }],
+    })
+    expect(requestedAssignees({ assignedTo: null })).toEqual({ inputs: [] })
+    expect(requestedAssignees({ assignedTo: "" })).toEqual({ inputs: [] })
+  })
+
+  it("refuses more people than one item may hold", () => {
+    const assignees = Array.from({ length: 26 }, (_, index) => ({ name: `Person ${index}`, optionId: null }))
+    expect(requestedAssignees({ assignees })).toEqual({
+      error: "Assign at most 25 people to one schedule item.",
+    })
+  })
+
+  it("keeps every name and the first linked account in the legacy columns", () => {
+    expect(
+      legacyAssignment([
+        { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo" },
+        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
+        { name: "Cy Ross", assignedUserId: "u-cy", projectContactId: null },
+      ])
+    ).toEqual({ assignedTo: "Bo Diaz, Ann Lee, Cy Ross", assignedUserId: "u-ann" })
+    expect(legacyAssignment([])).toEqual({ assignedTo: null, assignedUserId: null })
   })
 })

@@ -20,7 +20,8 @@ import {
   scheduleWriteContext,
 } from "@/lib/domain/schedule/access"
 import { updateProjectsReturningIds, updateProjectsStatement } from "@/lib/domain/project/store"
-import { loadDependenciesForTasks } from "@/lib/domain/schedule/queries"
+import { publishedAssigneeUserIds } from "@/lib/domain/schedule/assignment-notices"
+import { loadDependenciesForTasks, loadTaskPeople } from "@/lib/domain/schedule/queries"
 import { publicationInsertQuery } from "@/lib/domain/schedule/store"
 import type { Db } from "@/lib/server/action-context"
 import {
@@ -30,6 +31,7 @@ import {
   publishedScheduleSnapshotSchema,
 } from "@/lib/schedule/publications"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
+import { addedAssigneeUserIds, scheduleItemAssigneeUserIds } from "@/lib/schedule/assignees"
 import { latestSchedulePublication } from "@/lib/schedule/publication-history"
 
 export type SchedulePublicationStatus = {
@@ -202,9 +204,15 @@ export async function publishSchedule(
       ids.push(row.participantId)
       assigneeIdsByTask.set(row.scheduleTaskId, ids)
     }
-    const dependencies = await loadDependenciesForTasks(
-      db,
-      tasks.map((task) => task.id)
+    const [dependencies, peopleByTask] = await Promise.all([
+      loadDependenciesForTasks(db, tasks.map((task) => task.id)),
+      loadTaskPeople(db, tasks.map((task) => task.id)),
+    ])
+    const assigneeUserIdsByTask = new Map(
+      tasks.map((task) => [
+        task.id,
+        scheduleItemAssigneeUserIds({ ...task, people: peopleByTask.get(task.id) ?? [] }),
+      ])
     )
     const exceptions = await db
       .select()
@@ -216,6 +224,7 @@ export async function publishSchedule(
       tasks: tasks.map((task) => ({
         ...task,
         assigneeParticipantIds: assigneeIdsByTask.get(task.id) ?? [],
+        assigneeUserIds: assigneeUserIdsByTask.get(task.id) ?? [],
       })),
       dependencies,
       exceptions,
@@ -283,17 +292,18 @@ export async function publishSchedule(
         }
         continue
       }
-      const assignmentChanged =
-        task.assignedTo !== null &&
-        (previousTask?.assignedTo !== task.assignedTo ||
-          previousTask.assignedUserId !== task.assignedUserId)
+      // Each person added since the last publication is told once; people
+      // already on the item are not told again.
+      const addedUserIds = addedAssigneeUserIds(
+        previousTask ? publishedAssigneeUserIds(previousTask) : [],
+        assigneeUserIdsByTask.get(task.id) ?? []
+      )
       if (
-        assignmentChanged &&
-        task.assignedUserId &&
+        addedUserIds.length > 0 &&
         !task.confirmationRequired &&
         (!previousPublication || previousSnapshot)
       ) {
-        const notification = await sendPublishedScheduleAssignment(task.id)
+        const notification = await sendPublishedScheduleAssignment(task.id, addedUserIds)
         if (!notification.success) {
           console.error(
             `Unable to send published schedule assignment for ${task.id}:`,

@@ -1113,9 +1113,17 @@ test.describe("usable Compass areas", () => {
     const editDialog = page.getByRole("dialog", {
       name: "Edit Schedule Item",
     })
-    await editDialog.getByRole("button", { name: "Demo User" }).click()
+    // Everyone assigned shows as a removable entry; the picker adds more.
+    await expect(
+      editDialog.getByRole("list", { name: "Assigned people" })
+    ).toContainText("Demo User")
+    await editDialog
+      .getByRole("button", { name: "Add another person..." })
+      .click()
     await expect(page.getByText("No matching contacts.")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Demo User" })).toHaveCount(1)
+    await expect(
+      page.getByRole("button", { name: "Remove Demo User" })
+    ).toHaveCount(1)
   })
 
   test("schedule items expose related records in the existing to-do workspace", async ({

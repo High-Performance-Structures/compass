@@ -18,28 +18,26 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ScheduleAssigneesField } from "./assignees-field"
 import {
   percentForStatusChange,
   statusForPercentChange,
   type ScheduleItemFormValues,
 } from "./form-model"
 
-/** Status, responsible contact, milestone and progress. */
+/** Status, responsible people, milestone and progress. */
 export function StatusProgressFields({
   form,
   assigneeOptions,
-  setAssignedOptionId,
 }: {
   readonly form: UseFormReturn<ScheduleItemFormValues>
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
-  readonly setAssignedOptionId: (id: string | null) => void
 }) {
   const watchedStatus = form.watch("status")
   const watchedPercent = form.watch("percentComplete")
   return (
     <>
-    {/* Status + Assignee + Milestone row */}
+    {/* Status + Assignees + Milestone row */}
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-end">
       <FormField
         control={form.control}
@@ -76,42 +74,7 @@ export function StatusProgressFields({
         )}
       />
 
-      <FormField
-        control={form.control}
-        name="assignedTo"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs text-muted-foreground font-medium">
-              Responsible contact
-            </FormLabel>
-            <ProjectAssigneePicker
-              value={field.value}
-              options={assigneeOptions}
-              onValueChange={(value, option) => {
-                field.onChange(value)
-                setAssignedOptionId(option?.id ?? null)
-                if (option?.contactType === "owner" || option?.contactType === "subcontractor" || option?.contactType === "supplier") {
-                  form.setValue("confirmationRequired", true, { shouldDirty: true })
-                }
-                if (option?.contactType === "owner") {
-                  form.setValue("ownerVisible", true, {
-                    shouldDirty: true
-                  })
-                }
-                if (
-                  option?.contactType === "subcontractor" ||
-                  option?.contactType === "supplier"
-                ) {
-                  form.setValue("subVendorVisible", true, {
-                    shouldDirty: true
-                  })
-                }
-              }}
-              placeholder="Choose contact or type a name..."
-            />
-          </FormItem>
-        )}
-      />
+      <ScheduleAssigneesField form={form} assigneeOptions={assigneeOptions} />
 
       <FormField
         control={form.control}

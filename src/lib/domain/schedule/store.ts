@@ -1,6 +1,7 @@
 /**
  * The only code that inserts, updates, or deletes the schedule tables:
  * schedule_tasks, task_dependencies, schedule_task_assignees,
+ * schedule_task_people,
  * schedule_baselines, schedule_task_links, schedule_publications, and
  * workday_exceptions (architecture standard, section 1). Saved schedule views
  * belong to domain/settings/store.ts with every other saved view. No auth here: callers resolve the action context first.
@@ -19,10 +20,16 @@ import {
   scheduleTasks,
   taskDependencies,
 } from "@/db/schema"
-import { scheduleTaskAssignees } from "@/db/schema-participants"
+import { scheduleTaskAssignees, scheduleTaskPeople } from "@/db/schema-participants"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { linkedTodoDateUpdateStatement } from "@/lib/domain/operations/store"
 import type { Db } from "@/lib/server/action-context"
-import type { ScheduleTaskData, TaskDependencyData, WorkdayExceptionData } from "@/lib/schedule/types"
+import type {
+  ScheduleTaskData,
+  ScheduleTaskPersonData,
+  TaskDependencyData,
+  WorkdayExceptionData,
+} from "@/lib/schedule/types"
 
 import { loadProjectScheduleRows } from "./queries"
 import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
@@ -122,9 +129,9 @@ export async function completeProjectTasks(
 }
 
 /**
- * Sets the legacy scalar assignee on each task and removes its normalized
- * assignees in the same batch, since those rows carry their own response
- * authority.
+ * Sets one assignee (or none) on each task: the people list and the legacy
+ * scalar columns, and removes its normalized assignees in the same batch,
+ * since those rows carry their own response authority.
  */
 export async function assignProjectTasks(
   db: Db,
@@ -136,6 +143,12 @@ export async function assignProjectTasks(
   for (const group of itemGroups(tasks)) {
     const [first, ...rest] = group.flatMap((task): BatchItem<"sqlite">[] => [
       db.delete(scheduleTaskAssignees).where(eq(scheduleTaskAssignees.scheduleTaskId, task.id)),
+      ...replaceTaskPeopleQueries(
+        db,
+        task.id,
+        assignedTo ? [{ name: assignedTo, assignedUserId: null, projectContactId: null }] : [],
+        now
+      ),
       db
         .update(scheduleTasks)
         .set({
@@ -269,7 +282,11 @@ export async function recalcCriticalPath(db: Db, projectId: string): Promise<voi
   }
 }
 
-/** A task created from a schedule template, for a template application batch. */
+/**
+ * A task created from a schedule template, for a template application batch.
+ * Its placeholder name stays in assigned_to only (readers fall back to it), so
+ * the atomic batch does not grow with a statement per item.
+ */
 export function templateTaskInsertStatement(
   database: D1Database,
   projectId: string,
@@ -317,8 +334,49 @@ export function templateTaskInsertStatement(
 }
 
 // ---------------------------------------------------------------------------
-// Task assignees
+// Task people (everyone assigned) and normalized assignees
 // ---------------------------------------------------------------------------
+
+/**
+ * Replaces a task's people with `people`, in order: one delete, then the
+ * inserts. The caller batches them with the task's assigned_to update.
+ */
+export function replaceTaskPeopleQueries(
+  db: Db,
+  taskId: string,
+  people: readonly ScheduleTaskPersonData[],
+  now: string
+): BatchItem<"sqlite">[] {
+  const rows = people.map((person, position) => ({
+    id: crypto.randomUUID(),
+    scheduleTaskId: taskId,
+    position,
+    displayName: person.name,
+    assignedUserId: person.assignedUserId,
+    projectContactId: person.projectContactId,
+    createdAt: now,
+  }))
+  return [
+    db.delete(scheduleTaskPeople).where(eq(scheduleTaskPeople.scheduleTaskId, taskId)),
+    ...chunkD1InsertRows(scheduleTaskPeople, rows).map((chunk) => db.insert(scheduleTaskPeople).values(chunk)),
+  ]
+}
+
+/** Sets a task's single assigned_to and its people list together. */
+export async function setTaskAssignedTo(
+  db: Db,
+  taskId: string,
+  assignedTo: string | null,
+  now: string
+): Promise<void> {
+  const [first, ...rest] = replaceTaskPeopleQueries(
+    db,
+    taskId,
+    assignedTo ? [{ name: assignedTo, assignedUserId: null, projectContactId: null }] : [],
+    now
+  )
+  if (first) await db.batch([first, ...rest])
+}
 
 export function clearTaskAssigneesQuery(db: Db, taskId: string): BatchItem<"sqlite"> {
   return db.delete(scheduleTaskAssignees).where(eq(scheduleTaskAssignees.scheduleTaskId, taskId))

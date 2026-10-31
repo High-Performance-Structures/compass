@@ -31,7 +31,6 @@ export function ScheduleItemDetails({
   editingTask,
   hasPredecessors,
   assigneeOptions,
-  setAssignedOptionId,
   proposalState,
   predecessors,
 }: {
@@ -42,7 +41,6 @@ export function ScheduleItemDetails({
   readonly editingTask: ScheduleTaskData | null
   readonly hasPredecessors: boolean
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
-  readonly setAssignedOptionId: (id: string | null) => void
   readonly proposalState: ChangeProposalState
   readonly predecessors: PredecessorEditsState
 }) {
@@ -70,7 +68,6 @@ export function ScheduleItemDetails({
         <StatusProgressFields
           form={form}
           assigneeOptions={assigneeOptions}
-          setAssignedOptionId={setAssignedOptionId}
         />
 
         <AudienceCommitmentSection

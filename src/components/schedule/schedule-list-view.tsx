@@ -64,6 +64,8 @@ import {
   type ScheduleListColumn,
 } from "@/lib/schedule/saved-views"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ScheduleAssigneeStack } from "@/components/schedule/schedule-assignee-stack"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -118,26 +120,6 @@ function ProgressValue({ percent }: { readonly percent: number }) {
           style={{ width: `${percent}%` }}
         />
       </div>
-    </div>
-  )
-}
-
-function InitialsAvatar({ name }: { name: string }) {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-        {initials}
-      </div>
-      <span className="text-xs text-muted-foreground truncate max-w-[80px]">
-        {name}
-      </span>
     </div>
   )
 }
@@ -342,12 +324,7 @@ export function ScheduleListView({
       {
         id: "assignedTo",
         header: "Responsible",
-        cell: ({ row }) =>
-          row.original.assignedTo ? (
-            <InitialsAvatar name={row.original.assignedTo} />
-          ) : (
-            <span className="text-xs text-muted-foreground">-</span>
-          ),
+        cell: ({ row }) => <ScheduleAssigneeStack names={scheduleItemAssigneeNames(row.original)} />,
       },
       {
         id: "actions",
@@ -365,7 +342,7 @@ export function ScheduleListView({
               )}
               defaultTitle={`Follow up: ${row.original.title}`}
               defaultDescription={`${row.original.phase} schedule item.`}
-              defaultAssigneeName={row.original.assignedTo}
+              defaultAssigneeName={scheduleItemAssigneeNames(row.original)[0] ?? null}
               defaultCompanyName={null}
               defaultDueDate={row.original.endDateCalculated}
               defaultPriority={
@@ -523,7 +500,7 @@ export function ScheduleListView({
     setLocalTasks((current) =>
       current.map((task) =>
         assignedIds.has(task.id)
-          ? { ...task, assignedTo: assignedName || null }
+          ? { ...task, assignedTo: assignedName || null, people: [] }
           : task
       )
     )

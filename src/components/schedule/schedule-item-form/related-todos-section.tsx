@@ -7,6 +7,7 @@ import { getScheduleTaskTodos } from "@/app/actions/project-todos"
 import type { ProjectTodoItem } from "@/lib/domain/operations/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { projectTodoHref, scheduleItemHref } from "@/lib/work-calendar"
 
@@ -85,7 +86,7 @@ export function RelatedTodosSection({
           sourceHref={scheduleItemHref(projectId, editingTask.id)}
           defaultTitle={`Follow up: ${editingTask.title}`}
           defaultDescription={`${editingTask.phase} schedule item.`}
-          defaultAssigneeName={editingTask.assignedTo}
+          defaultAssigneeName={scheduleItemAssigneeNames(editingTask)[0] ?? null}
           defaultCompanyName={null}
           defaultDueDate={editingTask.endDateCalculated}
           defaultPriority={editingTask.isCriticalPath ? "high" : "normal"}
