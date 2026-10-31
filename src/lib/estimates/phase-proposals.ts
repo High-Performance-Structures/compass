@@ -1,12 +1,6 @@
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm"
-import type { BatchItem } from "drizzle-orm/batch"
 
-import {
-  projectChangeOrderHistory,
-  projectChangeOrderLines,
-  projectChangeOrders,
-  projects,
-} from "@/db/schema"
+import { projectChangeOrders, projects } from "@/db/schema"
 import {
   projectEstimateAssemblies,
   projectEstimateLines,
@@ -16,10 +10,20 @@ import {
 import { projectFamilies, projectFamilyPhases } from "@/db/schema-project-families"
 import { changeOrderLinesFromEstimate } from "@/lib/change-orders/estimate-execution"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
-import type { CompassDb } from "@/lib/estimates/access"
+import type { CompassDb } from "@/lib/domain/estimates/access"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { estimateTotalsForLines } from "@/lib/domain/estimates/rules"
+import {
+  deleteEstimateAssembliesStatement,
+  deleteEstimateLinesStatement,
+  insertChangeOrderHistoryStatement,
+  insertChangeOrderLineStatement,
+  insertChangeOrderStatement,
+  updateEstimatesStatement,
+  updatePhaseProposalsStatement,
+  type Statement,
+} from "@/lib/domain/estimates/store"
 import { estimateLinesBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
-import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
 import { projectFamilyProjectNumber } from "@/lib/project-family"
 
 /*
@@ -47,35 +51,9 @@ export function isPhaseProposalContractRemoval(value: string | null): value is P
 }
 
 type EstimateRow = typeof projectEstimates.$inferSelect
-type LineRow = typeof projectEstimateLines.$inferSelect
 
 function sameAssemblyName(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase()
-}
-
-function ledgerLine(row: LineRow): EstimateLedgerLine {
-  return {
-    id: row.id,
-    divisionCode: row.divisionCode,
-    divisionName: row.divisionName,
-    costCode: row.costCode,
-    description: row.description,
-    directCostCents: row.directCostCents,
-    markupCents: row.markupCents,
-    taxCents: row.taxCents,
-    lineTotalCents: row.lineTotalCents,
-    ownerVisible: row.ownerVisible,
-    includeInBuilderFee: row.includeInBuilderFee,
-    sortOrder: row.sortOrder,
-  }
-}
-
-/** An estimate's saved totals for its lines at its builder-fee rates. */
-export function estimateTotalsForLines(
-  estimate: Pick<EstimateRow, "overheadRateBasisPoints" | "marginRateBasisPoints" | "contingencyRateBasisPoints">,
-  rows: readonly LineRow[]
-): ReturnType<typeof calculateEstimateTotals> {
-  return calculateEstimateTotals(rows.map(ledgerLine), estimate)
 }
 
 /** The contract estimate the assembly leaves: a signed one first, else the newest in progress. */
@@ -138,7 +116,7 @@ export async function completePhaseProposal(input: {
       .where(eq(projectFamilyPhases.projectId, project.id))
       .get()
     const familyId = projectPhase?.familyId ?? `family-${crypto.randomUUID()}`
-    const familyStatements: BatchItem<"sqlite">[] = projectPhase
+    const familyStatements: Statement[] = projectPhase
       ? []
       : [
           db.insert(projectFamilies).values({
@@ -214,7 +192,7 @@ export async function completePhaseProposal(input: {
     const assemblyLines = assembly ? contractLines.filter((line) => line.assemblyId === assembly.id) : []
     let contractRemoval: PhaseProposalContractRemoval = "not_in_contract"
     let deductChangeOrderId: string | null = null
-    const removalStatements: BatchItem<"sqlite">[] = []
+    const removalStatements: Statement[] = []
     if (contract && assembly && assemblyLines.length > 0) {
       if (contract.status === "draft" || contract.status === "internal_review") {
         contractRemoval = "removed_from_estimate"
@@ -222,16 +200,17 @@ export async function completePhaseProposal(input: {
         const removedIds = assemblyLines.map((line) => line.id)
         // D1 limits bind parameters per statement; chunk the deletes in the batch.
         for (let offset = 0; offset < removedIds.length; offset += 80) {
-          removalStatements.push(db.delete(projectEstimateLines).where(and(
+          removalStatements.push(deleteEstimateLinesStatement(db, and(
             eq(projectEstimateLines.estimateId, contract.id),
             inArray(projectEstimateLines.id, removedIds.slice(offset, offset + 80)),
           )))
         }
         removalStatements.push(
-          db.delete(projectEstimateAssemblies).where(eq(projectEstimateAssemblies.id, assembly.id)),
-          db.update(projectEstimates)
-            .set({ ...estimateTotalsForLines(contract, remaining), updatedAt: now })
-            .where(eq(projectEstimates.id, contract.id)),
+          deleteEstimateAssembliesStatement(db, eq(projectEstimateAssemblies.id, assembly.id)),
+          updateEstimatesStatement(db, eq(projectEstimates.id, contract.id), {
+            ...estimateTotalsForLines(contract, remaining),
+            updatedAt: now,
+          }),
         )
       } else if (contract.status === "accepted") {
         contractRemoval = "deduct_change_order"
@@ -248,7 +227,7 @@ export async function completePhaseProposal(input: {
         const changeOrderId = crypto.randomUUID()
         deductChangeOrderId = changeOrderId
         removalStatements.push(
-          db.insert(projectChangeOrders).values({
+          insertChangeOrderStatement(db, {
             id: changeOrderId,
             projectId: project.id,
             changeOrderNumber: changeOrderNumber(project.projectNumber, existing.length),
@@ -275,7 +254,7 @@ export async function completePhaseProposal(input: {
             createdAt: now,
             updatedAt: now,
           }),
-          db.insert(projectChangeOrderHistory).values({
+          insertChangeOrderHistoryStatement(db, {
             id: crypto.randomUUID(),
             projectId: project.id,
             changeOrderId,
@@ -292,7 +271,8 @@ export async function completePhaseProposal(input: {
         )
         // Each line binds 12 columns; eight per statement stays under D1's limit.
         for (let index = 0; index < lines.length; index += 8) {
-          removalStatements.push(db.insert(projectChangeOrderLines).values(
+          removalStatements.push(insertChangeOrderLineStatement(
+            db,
             lines.slice(index, index + 8).map((line) => ({
               id: crypto.randomUUID(),
               projectId: project.id,
@@ -331,16 +311,14 @@ export async function completePhaseProposal(input: {
         createdAt: now,
         updatedAt: now,
       })
-    const proposalUpdate = db.update(projectPhaseProposals)
-        .set({
-          status: "accepted",
-          familyPhaseId,
-          contractRemoval,
-          deductChangeOrderId,
-          acceptedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(projectPhaseProposals.id, proposal.id))
+    const proposalUpdate = updatePhaseProposalsStatement(db, eq(projectPhaseProposals.id, proposal.id), {
+      status: "accepted",
+      familyPhaseId,
+      contractRemoval,
+      deductChangeOrderId,
+      acceptedAt: now,
+      updatedAt: now,
+    })
     // The family (when new) goes in before its phase; all of it in one batch.
     const [first, ...rest] = [...familyStatements, phaseInsert, ...removalStatements, proposalUpdate]
     if (first) await db.batch([first, ...rest])

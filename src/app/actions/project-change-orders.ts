@@ -63,6 +63,15 @@ import { projectMemberRole } from "@/lib/project-member-role"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import {
+  deleteChangeOrderDocumentsStatement,
+  deleteChangeOrderLinesStatement,
+  insertChangeOrderDocumentStatement,
+  insertChangeOrderHistoryStatement,
+  insertChangeOrderStatement,
+  updateChangeOrdersStatement,
+} from "@/lib/domain/estimates/store"
+import { cleanText } from "@/lib/shared/guards"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 
 type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
@@ -245,11 +254,6 @@ type ChangeOrderActionResult =
 type ChangeOrderUploadSessionResult =
   | { readonly success: true; readonly uploadUrl: string }
   | { readonly success: false; readonly error: string }
-
-function cleanText(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
-}
 
 function requireText(value: string, label: string, maxLength = 10_000): string {
   const cleaned = cleanText(value)
@@ -1076,14 +1080,14 @@ export async function createProjectChangeOrder(
 
     if (documentRows.length > 0) {
       await context.db.batch([
-        context.db.insert(projectChangeOrders).values(row),
-        context.db.insert(projectChangeOrderDocuments).values(documentRows),
-        context.db.insert(projectChangeOrderHistory).values(historyRow),
+        insertChangeOrderStatement(context.db, row),
+        insertChangeOrderDocumentStatement(context.db, documentRows),
+        insertChangeOrderHistoryStatement(context.db, historyRow),
       ])
     } else {
       await context.db.batch([
-        context.db.insert(projectChangeOrders).values(row),
-        context.db.insert(projectChangeOrderHistory).values(historyRow),
+        insertChangeOrderStatement(context.db, row),
+        insertChangeOrderHistoryStatement(context.db, historyRow),
       ])
     }
     revalidateChangeOrderPaths(projectId)
@@ -1319,9 +1323,13 @@ export async function updateProjectChangeOrder(
         }
       }
     }
-    const updateStatement = context.db
-      .update(projectChangeOrders)
-      .set({
+    const updateStatement = updateChangeOrdersStatement(
+      context.db,
+      and(
+        eq(projectChangeOrders.id, changeOrderId),
+        eq(projectChangeOrders.projectId, projectId)
+      ),
+      {
         title,
         scope,
         reason,
@@ -1360,75 +1368,66 @@ export async function updateProjectChangeOrder(
             ? "pending_manual_sync"
             : existing.sageStatus,
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectChangeOrders.id, changeOrderId),
-          eq(projectChangeOrders.projectId, projectId)
-        )
-      )
-    const historyStatement = context.db
-      .insert(projectChangeOrderHistory)
-      .values({
-        id: crypto.randomUUID(),
-        projectId,
-        changeOrderId,
-        eventType: statusChanged ? "status_transition" : "updated",
-        fromStatus: existing.status,
-        toStatus: input.status,
-        actorUserId: context.user.id,
-        actorName: actorName(context.user),
-        actorRole: context.user.role,
-        note: cleanLimitedText(
-          input.transitionNote,
-          "Transition note",
-          2_000
-        ),
-        metadataJson: JSON.stringify({
-          audience: contentAllowed ? audience : existing.audience,
-          budgetTreatment,
-          baselineEstimateId:
-            budgetTreatment === "baseline_replacement"
-              ? rebaselineSelection?.baseline.id ?? existing.baselineEstimateId
-              : null,
-          replacementEstimateId:
-            budgetTreatment === "baseline_replacement"
-              ? rebaselineSelection?.replacement.id ??
-                existing.replacementEstimateId
-              : null,
-          kind,
-          previousKind: requestedKind !== null ? existingKind : undefined,
-          documentCount: documents?.length ?? null,
-          scheduleImpactDays,
-        }),
-        createdAt: now,
-      })
+      }
+    )
+    const historyStatement = insertChangeOrderHistoryStatement(context.db, {
+      id: crypto.randomUUID(),
+      projectId,
+      changeOrderId,
+      eventType: statusChanged ? "status_transition" : "updated",
+      fromStatus: existing.status,
+      toStatus: input.status,
+      actorUserId: context.user.id,
+      actorName: actorName(context.user),
+      actorRole: context.user.role,
+      note: cleanLimitedText(
+        input.transitionNote,
+        "Transition note",
+        2_000
+      ),
+      metadataJson: JSON.stringify({
+        audience: contentAllowed ? audience : existing.audience,
+        budgetTreatment,
+        baselineEstimateId:
+          budgetTreatment === "baseline_replacement"
+            ? rebaselineSelection?.baseline.id ?? existing.baselineEstimateId
+            : null,
+        replacementEstimateId:
+          budgetTreatment === "baseline_replacement"
+            ? rebaselineSelection?.replacement.id ??
+              existing.replacementEstimateId
+            : null,
+        kind,
+        previousKind: requestedKind !== null ? existingKind : undefined,
+        documentCount: documents?.length ?? null,
+        scheduleImpactDays,
+      }),
+      createdAt: now,
+    })
     // Typed cost lines are retired: converting an older change order to a
     // kind clears them, and its estimate supplies the lines on acceptance.
     const deleteLinesStatements =
       requestedKind !== null
         ? [
-            context.db
-              .delete(projectChangeOrderLines)
-              .where(
-                and(
-                  eq(projectChangeOrderLines.changeOrderId, changeOrderId),
-                  eq(projectChangeOrderLines.projectId, projectId)
-                )
-              ),
+            deleteChangeOrderLinesStatement(
+              context.db,
+              and(
+                eq(projectChangeOrderLines.changeOrderId, changeOrderId),
+                eq(projectChangeOrderLines.projectId, projectId)
+              )
+            ),
           ]
         : []
     if (documents === null) {
       await context.db.batch([updateStatement, ...deleteLinesStatements, historyStatement])
     } else {
-      const deleteDocumentsStatement = context.db
-        .delete(projectChangeOrderDocuments)
-        .where(
-          and(
-            eq(projectChangeOrderDocuments.changeOrderId, changeOrderId),
-            eq(projectChangeOrderDocuments.projectId, projectId)
-          )
+      const deleteDocumentsStatement = deleteChangeOrderDocumentsStatement(
+        context.db,
+        and(
+          eq(projectChangeOrderDocuments.changeOrderId, changeOrderId),
+          eq(projectChangeOrderDocuments.projectId, projectId)
         )
+      )
       const documentRows = documents.map((document) => ({
         id: crypto.randomUUID(),
         projectId,
@@ -1443,7 +1442,7 @@ export async function updateProjectChangeOrder(
         updateStatement,
         deleteDocumentsStatement,
         ...(documentRows.length > 0
-          ? [context.db.insert(projectChangeOrderDocuments).values(documentRows)]
+          ? [insertChangeOrderDocumentStatement(context.db, documentRows)]
           : []),
         ...deleteLinesStatements,
         historyStatement,
@@ -1524,20 +1523,19 @@ export async function replaceExecutedProjectChangeOrderDocument(
     }
     const now = new Date().toISOString()
     await context.db.batch([
-      context.db
-        .update(projectChangeOrders)
-        .set({
+      updateChangeOrdersStatement(
+        context.db,
+        and(
+          eq(projectChangeOrders.id, changeOrderId),
+          eq(projectChangeOrders.projectId, projectId)
+        ),
+        {
           executedDocumentUrl: document.url,
           executedDocumentLabel: document.label,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectChangeOrders.id, changeOrderId),
-            eq(projectChangeOrders.projectId, projectId)
-          )
-        ),
-      context.db.insert(projectChangeOrderHistory).values({
+        }
+      ),
+      insertChangeOrderHistoryStatement(context.db, {
         id: crypto.randomUUID(),
         projectId,
         changeOrderId,

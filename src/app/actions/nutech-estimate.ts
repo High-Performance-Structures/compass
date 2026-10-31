@@ -24,6 +24,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { updateEstimates } from "@/lib/domain/estimates/store"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -152,7 +153,7 @@ export async function createNuTechEstimateFromOrder(
       estimateId = draft.id
       created = true
       if (order.title) {
-        await db.update(projectEstimates).set({ title: order.title }).where(eq(projectEstimates.id, estimateId))
+        await updateEstimates(db, eq(projectEstimates.id, estimateId), { title: order.title })
       }
     }
 
@@ -164,10 +165,11 @@ export async function createNuTechEstimateFromOrder(
         .where(eq(nuTechOrderWorkflows.id, order.id))
     }
     // The order's district becomes the estimate's default, so new lines and the checklist follow it.
-    await db
-      .update(projectEstimates)
-      .set({ defaultTaxEntityId: district.id, defaultTaxRateBasisPoints: district.rateBasisPoints, updatedAt: new Date().toISOString() })
-      .where(eq(projectEstimates.id, estimateId))
+    await updateEstimates(db, eq(projectEstimates.id, estimateId), {
+      defaultTaxEntityId: district.id,
+      defaultTaxRateBasisPoints: district.rateBasisPoints,
+      updatedAt: new Date().toISOString(),
+    })
 
     const base = { assemblyId: null, reportPhaseId: null, markupPercent: 0, ownerVisible: true, includeInBuilderFee: false, insertAfterLineId: null }
     const lines: ProjectEstimateLineInput[] = items.map((item) => ({

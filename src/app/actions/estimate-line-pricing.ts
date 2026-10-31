@@ -5,7 +5,8 @@ import { and, eq, inArray } from "drizzle-orm"
 import { createProjectTask } from "@/app/actions/project-operations"
 import { organizationMembers, projectOperations, users } from "@/db/schema"
 import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/estimates/access"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
+import { updateEstimateLines } from "@/lib/domain/estimates/store"
 import { findPricingSource, pricingSourceChoices, takeoffTodoTitle, type PricingSource } from "@/lib/estimates/pricing-sources"
 import { isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -181,11 +182,10 @@ export async function createEstimateLineTakeoffTodo(
       externalUrl: `/dashboard/projects/${projectId}/estimate`,
     })
     if (!created.success) return { success: false, error: created.error }
-    await access.db
-      .update(projectEstimateLines)
-      .set({ pricingTodoId: created.id, updatedAt: new Date().toISOString() })
-      .where(eq(projectEstimateLines.id, line.id))
-      .run()
+    await updateEstimateLines(access.db, eq(projectEstimateLines.id, line.id), {
+      pricingTodoId: created.id,
+      updatedAt: new Date().toISOString(),
+    })
     revalidateEstimate(projectId)
     return { success: true, data: { id: created.id, number: null, status: "open", assigneeName: estimator.label } }
   } catch (error) {

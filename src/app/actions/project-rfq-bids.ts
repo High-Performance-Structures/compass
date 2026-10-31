@@ -13,6 +13,11 @@ import {
 import { planBidFill } from "@/lib/estimates/bid-fill"
 import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 import {
+  insertEstimateLineFromSelectStatement,
+  updateEstimateLinesStatement,
+  updateEstimatesStatement,
+} from "@/lib/domain/estimates/store"
+import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
   projectRfqBidApprovals,
@@ -594,7 +599,7 @@ export async function importApprovedProjectRfqBid(
           )`
       )
     const estimateLineInserts = lineValues.map((line) =>
-      access.db.insert(projectEstimateLines).select(
+      insertEstimateLineFromSelectStatement(access.db,
         sql`SELECT
           ${line.estimateLine.id}, ${line.estimateLine.projectId},
           ${line.estimateLine.estimateId}, NULL, NULL, NULL,
@@ -619,17 +624,18 @@ export async function importApprovedProjectRfqBid(
     )`
     // Only a line still at $0 is filled, so a price typed in meanwhile wins.
     const lineFillUpdates = lineFills.map((fill) =>
-      access.db
-        .update(projectEstimateLines)
-        .set({
+      updateEstimateLinesStatement(
+        access.db,
+        and(eq(projectEstimateLines.id, fill.target.id), eq(projectEstimateLines.lineTotalCents, 0), importGuard),
+        {
           quantity: 1,
           unit: "LS",
           unitCostCents: fill.amountCents,
           ...fill.calculation,
           specifications: fill.specifications || null,
           updatedAt: now,
-        })
-        .where(and(eq(projectEstimateLines.id, fill.target.id), eq(projectEstimateLines.lineTotalCents, 0), importGuard))
+        }
+      )
     )
     const provenanceInserts = [...lineValues, ...lineFills].map((line) =>
       access.db.insert(projectEstimateRfqBidImportLines).select(
@@ -689,9 +695,17 @@ export async function importApprovedProjectRfqBid(
       ...estimateLineInserts,
       ...lineFillUpdates,
       ...provenanceInserts,
-      access.db
-        .update(projectEstimates)
-        .set({
+      updateEstimatesStatement(
+        access.db,
+        and(
+          eq(projectEstimates.id, estimateId),
+          inArray(projectEstimates.status, ["draft", "internal_review"]),
+          sql`EXISTS (
+            SELECT 1 FROM ${projectEstimateRfqBidImports}
+            WHERE ${projectEstimateRfqBidImports.id} = ${importId}
+          )`
+        ),
+        {
           directCostCents: directCostTotal,
           markupCents: markupTotal,
           taxCents: taxTotal,
@@ -702,17 +716,8 @@ export async function importApprovedProjectRfqBid(
           builderFeeCents: sql`${overheadTotal} + ${marginTotal} + ${contingencyTotal}`,
           estimateTotalCents: sql`${lineTotal} + ${overheadTotal} + ${marginTotal} + ${contingencyTotal}`,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectEstimates.id, estimateId),
-            inArray(projectEstimates.status, ["draft", "internal_review"]),
-            sql`EXISTS (
-              SELECT 1 FROM ${projectEstimateRfqBidImports}
-              WHERE ${projectEstimateRfqBidImports.id} = ${importId}
-            )`
-          )
-        ),
+        }
+      ),
     ])
     const completedImport = await access.db
       .select({ id: projectEstimateRfqBidImports.id })

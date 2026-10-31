@@ -3,7 +3,6 @@ import type { getDb } from "@/db"
 import {
   projectBudgetApplications,
   projectBudgetLines,
-  projectChangeOrderHistory,
   projectChangeOrders,
   projectOperations,
 } from "@/db/schema"
@@ -14,6 +13,11 @@ import {
   projectEstimates,
 } from "@/db/schema-estimates"
 import { preconstructionRebaselineBlockers } from "@/lib/change-orders/rebaseline"
+import {
+  insertChangeOrderHistoryStatement,
+  updateChangeOrdersStatement,
+  updateEstimatesStatement,
+} from "@/lib/domain/estimates/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 
@@ -193,30 +197,33 @@ export async function executeBaselineReplacement(
   const executionToken = crypto.randomUUID()
   const statements: BatchStatement[] = [
     ...(input.leadingStatements ?? []),
-    db
-      .update(projectChangeOrders)
-      .set({ rebaselineExecutionToken: executionToken, updatedAt: now })
-      .where(
-        and(
-          eq(projectChangeOrders.id, changeOrder.id),
-          eq(projectChangeOrders.projectId, projectId),
-          eq(projectChangeOrders.status, "signature_pending"),
-          eq(projectChangeOrders.budgetTreatment, "baseline_replacement")
-        )
+    updateChangeOrdersStatement(
+      db,
+      and(
+        eq(projectChangeOrders.id, changeOrder.id),
+        eq(projectChangeOrders.projectId, projectId),
+        eq(projectChangeOrders.status, "signature_pending"),
+        eq(projectChangeOrders.budgetTreatment, "baseline_replacement")
       ),
-    db
-      .update(projectEstimates)
-      .set({ status: "superseded", updatedAt: now })
-      .where(
-        and(
-          eq(projectEstimates.projectId, projectId),
-          eq(projectEstimates.id, changeOrder.baselineEstimateId),
-          eq(projectEstimates.status, "accepted")
-        )
+      { rebaselineExecutionToken: executionToken, updatedAt: now }
+    ),
+    updateEstimatesStatement(
+      db,
+      and(
+        eq(projectEstimates.projectId, projectId),
+        eq(projectEstimates.id, changeOrder.baselineEstimateId),
+        eq(projectEstimates.status, "accepted")
       ),
-    db
-      .update(projectEstimates)
-      .set({
+      { status: "superseded", updatedAt: now }
+    ),
+    updateEstimatesStatement(
+      db,
+      and(
+        eq(projectEstimates.id, changeOrder.replacementEstimateId),
+        eq(projectEstimates.projectId, projectId),
+        eq(projectEstimates.status, "signature_pending")
+      ),
+      {
         status: "accepted",
         foxitStatus: acceptance.foxitStatus,
         ...(acceptance.evidenceUrl ? { signaturePackageUrl: acceptance.evidenceUrl } : {}),
@@ -229,14 +236,8 @@ export async function executeBaselineReplacement(
         acceptedBy: actor.id,
         sageStatus: "ready",
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectEstimates.id, changeOrder.replacementEstimateId),
-          eq(projectEstimates.projectId, projectId),
-          eq(projectEstimates.status, "signature_pending")
-        )
-      ),
+      }
+    ),
     db
       .update(projectContractBudgetRevisions)
       .set({ status: "superseded" })
@@ -264,9 +265,18 @@ export async function executeBaselineReplacement(
       .update(projectBudgetApplications)
       .set({ status: "budget_current", ownerVisible: true, updatedAt: now })
       .where(eq(projectBudgetApplications.id, projectionId)),
-    db
-      .update(projectChangeOrders)
-      .set({
+    // Migration 0148 guards this status write against financial activity
+    // created after the read-side eligibility check. Any blocker aborts the
+    // entire D1 batch, including estimate and budget activation above.
+    updateChangeOrdersStatement(
+      db,
+      and(
+        eq(projectChangeOrders.id, changeOrder.id),
+        eq(projectChangeOrders.projectId, projectId),
+        eq(projectChangeOrders.status, "signature_pending"),
+        eq(projectChangeOrders.rebaselineExecutionToken, executionToken)
+      ),
+      {
         status: "executed",
         executedAt: acceptance.signedAt,
         rebaselineCompletedAt: now,
@@ -277,19 +287,9 @@ export async function executeBaselineReplacement(
           ? { executedDocumentUrl: acceptance.evidenceUrl, executedDocumentLabel: acceptance.evidenceLabel.slice(0, 200) }
           : {}),
         updatedAt: now,
-      })
-      // Migration 0148 guards this status write against financial activity
-      // created after the read-side eligibility check. Any blocker aborts the
-      // entire D1 batch, including estimate and budget activation above.
-      .where(
-        and(
-          eq(projectChangeOrders.id, changeOrder.id),
-          eq(projectChangeOrders.projectId, projectId),
-          eq(projectChangeOrders.status, "signature_pending"),
-          eq(projectChangeOrders.rebaselineExecutionToken, executionToken)
-        )
-      ),
-    db.insert(projectChangeOrderHistory).values({
+      }
+    ),
+    insertChangeOrderHistoryStatement(db, {
       id: crypto.randomUUID(),
       projectId,
       changeOrderId: changeOrder.id,

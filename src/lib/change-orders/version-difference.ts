@@ -1,4 +1,4 @@
-import type { EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
+import type { EstimateLedgerLine } from "@/lib/domain/estimates/rules"
 
 export type VersionDifferenceKind = "added" | "removed" | "changed"
 

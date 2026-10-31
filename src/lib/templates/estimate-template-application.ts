@@ -2,7 +2,7 @@ import {
   calculateEstimateLine,
   calculateEstimateTotals,
   type EstimateLedgerTotals,
-} from "@/lib/financials/estimate-ledger"
+} from "@/lib/domain/estimates/rules"
 
 export type EstimateTemplateSourceLine = {
   readonly id: string

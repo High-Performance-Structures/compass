@@ -15,12 +15,20 @@ import {
 } from "@/db/schema-estimates"
 import { projectLinks } from "@/db/schema-project-links"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/estimates/access"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/domain/estimates/access"
 import { copyEstimateLines, markupBasisPoints, UNASSIGNED_ITEMS, UNASSIGNED_NAME } from "@/lib/estimates/assembly-copy"
 import { isContractEstimate } from "@/lib/estimates/estimate-family"
 import { readEstimateMode } from "@/lib/estimates/numbering"
-import { estimateTotalsForLines } from "@/lib/estimates/phase-proposals"
-import { estimateCanBeEdited, isEstimateStatus } from "@/lib/financials/estimate-ledger"
+import { estimateCanBeEdited, estimateTotalsForLines, isEstimateStatus } from "@/lib/domain/estimates/rules"
+import {
+  deleteEstimates,
+  insertEstimateAssemblyCopyStatement,
+  insertEstimateAssemblyStatement,
+  insertEstimateLineCostItemStatement,
+  insertEstimateLineStatement,
+  insertEstimateReportPhaseStatement,
+  updateEstimatesStatement,
+} from "@/lib/domain/estimates/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 
 /*
@@ -247,7 +255,7 @@ export async function copyEstimateAssembliesToProject(input: {
       const id = crypto.randomUUID()
       phaseSort += 1
       phaseIdFor.set(phase.id, id)
-      statements.push(db.insert(projectEstimateReportPhases).values({
+      statements.push(insertEstimateReportPhaseStatement(db, {
         id,
         projectId: input.targetProjectId,
         estimateId: targetEstimate.id,
@@ -268,7 +276,7 @@ export async function copyEstimateAssembliesToProject(input: {
       const id = crypto.randomUUID()
       assemblySort += 1
       assemblyIdFor.set(assembly.id, id)
-      statements.push(db.insert(projectEstimateAssemblies).values({
+      statements.push(insertEstimateAssemblyStatement(db, {
         id,
         estimateId: targetEstimate.id,
         name: assembly.name,
@@ -302,9 +310,9 @@ export async function copyEstimateAssembliesToProject(input: {
         updatedAt: now,
       }
       insertedLines.push(row)
-      statements.push(db.insert(projectEstimateLines).values(row))
+      statements.push(insertEstimateLineStatement(db, row))
       for (const item of copy.costItems) {
-        statements.push(db.insert(projectEstimateLineCostItems).values({
+        statements.push(insertEstimateLineCostItemStatement(db, {
           ...item,
           id: crypto.randomUUID(),
           projectId: input.targetProjectId,
@@ -318,10 +326,10 @@ export async function copyEstimateAssembliesToProject(input: {
 
     // Totals at the target estimate's own builder-fee rates.
     const existingLines = await db.select().from(projectEstimateLines).where(eq(projectEstimateLines.estimateId, targetEstimate.id))
-    statements.push(db
-      .update(projectEstimates)
-      .set({ ...estimateTotalsForLines(targetEstimate, [...existingLines, ...insertedLines]), updatedAt: now })
-      .where(eq(projectEstimates.id, targetEstimate.id)))
+    statements.push(updateEstimatesStatement(db, eq(projectEstimates.id, targetEstimate.id), {
+      ...estimateTotalsForLines(targetEstimate, [...existingLines, ...insertedLines]),
+      updatedAt: now,
+    }))
 
     // Where each assembly went, shown on the source estimate.
     const groups: readonly { readonly id: string | null; readonly name: string }[] = [
@@ -329,7 +337,7 @@ export async function copyEstimateAssembliesToProject(input: {
       ...(wantsUnassigned ? [{ id: null, name: UNASSIGNED_NAME }] : []),
     ]
     for (const group of groups) {
-      statements.push(db.insert(projectEstimateAssemblyCopies).values({
+      statements.push(insertEstimateAssemblyCopyStatement(db, {
         id: crypto.randomUUID(),
         organizationId: source.organizationId,
         sourceProjectId: input.sourceProjectId,
@@ -373,7 +381,7 @@ export async function copyEstimateAssembliesToProject(input: {
       await db.batch([first, ...rest])
     } catch (error) {
       // Don't leave an empty draft behind; the batch itself is all or nothing.
-      if (createdDraftId) await db.delete(projectEstimates).where(eq(projectEstimates.id, createdDraftId)).run()
+      if (createdDraftId) await deleteEstimates(db, eq(projectEstimates.id, createdDraftId))
       throw error
     }
 

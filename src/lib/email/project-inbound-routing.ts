@@ -5,12 +5,12 @@ import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read
 
 import type { getDb } from "@/db"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { insertChangeOrderHistoryIfAbsent, insertChangeOrderIfAbsent } from "@/lib/domain/estimates/store"
 import {
   dailyLogs,
   notificationPreferences,
   organizationMembers,
   projectContacts,
-  projectChangeOrderHistory,
   projectChangeOrders,
   projectInteractions,
   projectOperations,
@@ -472,53 +472,47 @@ async function routeChangeOrder(input: {
   const changeOrderNumber =
     `${prefix}-CO-${String(existing.length + 1).padStart(3, "0")}`
 
-  await input.db
-    .insert(projectChangeOrders)
-    .values({
-      id,
-      projectId: input.projectId,
-      changeOrderNumber,
-      title,
-      scope: candidateBody(input.candidate),
-      status: "draft",
-      audience: "internal",
-      // Email-created requests enter as internal drafts until staff confirms
-      // the sender's owner/sub role and chooses an external audience.
-      requesterType: "internal",
-      requesterName: senderLabel(input.candidate),
-      sourceType: `${input.source.sourceSystem}_request`,
-      sourceRecordId: input.candidate.gmailMessageId,
-      internalNotes:
-        `Created from a project ${input.source.label.toLowerCase()}; review before submitting.`,
-      foxitStatus: "not_started",
-      sageStatus: "not_ready",
-      createdBy: null,
-      submittedAt: null,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectChangeOrders.id })
+  await insertChangeOrderIfAbsent(input.db, {
+    id,
+    projectId: input.projectId,
+    changeOrderNumber,
+    title,
+    scope: candidateBody(input.candidate),
+    status: "draft",
+    audience: "internal",
+    // Email-created requests enter as internal drafts until staff confirms
+    // the sender's owner/sub role and chooses an external audience.
+    requesterType: "internal",
+    requesterName: senderLabel(input.candidate),
+    sourceType: `${input.source.sourceSystem}_request`,
+    sourceRecordId: input.candidate.gmailMessageId,
+    internalNotes:
+      `Created from a project ${input.source.label.toLowerCase()}; review before submitting.`,
+    foxitStatus: "not_started",
+    sageStatus: "not_ready",
+    createdBy: null,
+    submittedAt: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
-  await input.db
-    .insert(projectChangeOrderHistory)
-    .values({
-      id: `${input.source.idPrefix}-change-order-history-${input.candidate.gmailMessageId}`,
-      projectId: input.projectId,
-      changeOrderId: id,
-      eventType: "created",
-      fromStatus: null,
-      toStatus: "draft",
-      actorUserId: null,
-      actorName: senderLabel(input.candidate),
-      actorRole: "internal",
-      note: `Created from a project ${input.source.label.toLowerCase()} for staff review.`,
-      metadataJson: JSON.stringify({
-        source: input.source.sourceSystem,
-        gmailMessageId: input.candidate.gmailMessageId,
-      }),
-      createdAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectChangeOrderHistory.id })
+  await insertChangeOrderHistoryIfAbsent(input.db, {
+    id: `${input.source.idPrefix}-change-order-history-${input.candidate.gmailMessageId}`,
+    projectId: input.projectId,
+    changeOrderId: id,
+    eventType: "created",
+    fromStatus: null,
+    toStatus: "draft",
+    actorUserId: null,
+    actorName: senderLabel(input.candidate),
+    actorRole: "internal",
+    note: `Created from a project ${input.source.label.toLowerCase()} for staff review.`,
+    metadataJson: JSON.stringify({
+      source: input.source.sourceSystem,
+      gmailMessageId: input.candidate.gmailMessageId,
+    }),
+    createdAt: input.now,
+  })
 
   return { id, status: "routed_change_order" }
 }

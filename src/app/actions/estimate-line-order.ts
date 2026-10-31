@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm"
 import { z } from "zod/v4"
 import { projectEstimateAssemblies, projectEstimateLines } from "@/db/schema-estimates"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/estimates/access"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
 import {
   compareEstimateLineOrder,
   reorderedEstimateLinePositions,

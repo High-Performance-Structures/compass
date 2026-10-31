@@ -1,21 +1,26 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { estimateCanBeEdited, isEstimateStatus } from "@/lib/financials/estimate-ledger"
+import { estimateCanBeEdited, isEstimateStatus } from "@/lib/domain/estimates/rules"
+import { updateEstimates } from "@/lib/domain/estimates/store"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import { projectDepartment, type ProjectDepartment } from "@/lib/project-branding"
+import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
-export type CompassDb = ReturnType<typeof getDb>
+export type CompassDb = Db
 
 export type EstimateAccess = {
   readonly db: CompassDb
   readonly rawDb: D1Database
+  /** The request's Cloudflare bindings (Browser Run, Foxit and Google settings). */
+  readonly env: CloudflareEnv
   readonly user: AuthUser
   readonly projectNumber: string | null
   readonly projectName: string
@@ -55,6 +60,7 @@ export async function estimateSourceForRecordCopy(
   return {
     db,
     rawDb: env.DB,
+    env,
     projectNumber: project.projectNumber,
     projectName: project.name,
     projectAddress: project.address,
@@ -65,6 +71,16 @@ export async function estimateSourceForRecordCopy(
   }
 }
 
+/**
+ * The estimate access rule:
+ * - the "budget" role permission (read, or update for edits);
+ * - project access through `assertProjectAccess` (the "member" rule);
+ * - edits only by internal staff.
+ * It does not use `orgContext`, which also requires an active organization:
+ * project members (owners, vendors) without one reach estimates today, and
+ * keeping that access unchanged takes priority. Throws with the same
+ * messages as before; callers catch and return them.
+ */
 export async function estimateAccess(
   projectId: string,
   update: boolean
@@ -94,6 +110,7 @@ export async function estimateAccess(
   return {
     db,
     rawDb: env.DB,
+    env,
     user,
     projectNumber: access.projectNumber,
     projectName: project.name,
@@ -119,6 +136,11 @@ export function revalidateEstimate(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
 }
 
+/**
+ * The estimate, when it may still be edited. An edit also cancels a
+ * signature request that was being prepared, so the client never signs
+ * figures that changed after preparation.
+ */
 export async function requireEditableEstimate(
   db: CompassDb,
   projectId: string,
@@ -144,18 +166,13 @@ export async function requireEditableEstimate(
     )
   }
   if (estimate.foxitStatus === "preparing") {
-    await db
-      .update(projectEstimates)
-      .set({
-        foxitStatus: "not_started",
-        foxitEnvelopeId: null,
-        foxitEmbeddedSessionUrl: null,
-        foxitPreparedSourceHash: null,
-        foxitPreparedAt: null,
-      })
-      .where(eq(projectEstimates.id, estimateId))
-      .run()
+    await updateEstimates(db, eq(projectEstimates.id, estimateId), {
+      foxitStatus: "not_started",
+      foxitEnvelopeId: null,
+      foxitEmbeddedSessionUrl: null,
+      foxitPreparedSourceHash: null,
+      foxitPreparedAt: null,
+    })
   }
   return estimate
 }
-
