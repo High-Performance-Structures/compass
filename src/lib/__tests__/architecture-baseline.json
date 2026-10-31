@@ -57,21 +57,13 @@
       "src/lib/buildertrend/staging-manifest.ts"
     ],
     "channelMembers": [
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "channelReadState": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "channels": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "cherishCardFulfillments": [
       "src/app/actions/cherish-cards.ts"
@@ -115,74 +107,49 @@
       "src/app/api/integrations/foxit/webhook/route.ts"
     ],
     "correspondence": [
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceAttachments": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/attachment-storage.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceCompositionDrafts": [
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceDrafts": [
-      "src/app/actions/project-correspondence.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceEmailDeliveries": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceEmailEvents": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceEmailThreads": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceMessages": [
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceOutbox": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceParticipants": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceRecipients": [
-      "src/app/actions/correspondence-inbox.ts",
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceRevisions": [
-      "src/app/actions/project-correspondence.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceSavedDrafts": [
-      "src/app/actions/correspondence-saved-drafts.ts",
-      "src/lib/correspondence/saved-drafts.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceState": [
-      "src/app/actions/correspondence-inbox.ts",
-      "src/app/actions/project-correspondence.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceWriteGuards": [
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/write-guard.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "creditMemos": [
       "src/lib/domain/financials/store.ts"
@@ -230,10 +197,7 @@
       "src/lib/email/mailbox-state.ts"
     ],
     "emailReplyThreads": [
-      "src/app/actions/project-email.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/reply-tracking.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "equipmentLogEntries": [
       "src/app/actions/equipment.ts"
@@ -257,20 +221,13 @@
       "src/app/api/feedback/route.ts"
     ],
     "feedbackDeskItems": [
-      "src/app/actions/feedback-admin.ts",
-      "src/app/api/integrations/jarvis/events/[id]/ack/route.ts",
-      "src/app/api/integrations/jarvis/events/route.ts",
-      "src/lib/jarvis/feedback-desk.ts",
-      "src/lib/jarvis/feedback-github.ts",
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/jarvis/feedback-status-update.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "feedbackMaintenanceRuns": [
-      "src/lib/jarvis/feedback-maintenance.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "feedbackServiceHealth": [
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/sage/square-auth-health.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "googleAuth": [
       "src/app/actions/google-drive.ts"
@@ -294,19 +251,16 @@
       "src/app/actions/google-drive.ts"
     ],
     "gotoInboundEvents": [
-      "src/app/actions/inbound-sms-review.ts",
-      "src/app/api/integrations/goto/inbound/route.ts",
-      "src/lib/goto/message-recovery.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "gotoInboundSettings": [
-      "src/app/api/integrations/goto/setup/route.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "greetingCardRequests": [
       "src/app/actions/greeting-cards.ts"
     ],
     "inboundEmails": [
-      "src/app/actions/inbound-email-review.ts",
-      "src/lib/email/gmail-inbound.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "internalContactPrivateAddresses": [
       "src/lib/sage/contact-canonical.ts"
@@ -331,14 +285,7 @@
       "src/lib/sage/square-receivable.ts"
     ],
     "jarvisBridgeEvents": [
-      "src/app/actions/feedback-admin.ts",
-      "src/app/api/integrations/jarvis/events/[id]/ack/route.ts",
-      "src/app/api/integrations/jarvis/events/route.ts",
-      "src/app/api/integrations/jarvis/replies/route.ts",
-      "src/lib/jarvis/agent-relay.ts",
-      "src/lib/jarvis/feedback-desk.ts",
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/jarvis/feedback-status-update.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "listeningPlaylistItems": [
       "src/app/actions/listening-playlist-items.ts",
@@ -378,19 +325,16 @@
       "src/app/api/bridge/tools/route.ts"
     ],
     "messageAttachments": [
-      "src/app/api/conversations/attachments/upload/route.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messageMentions": [
-      "src/app/actions/chat-messages.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messageReactions": [
-      "src/app/actions/chat-messages.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messages": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/message-search.ts",
-      "src/app/api/integrations/jarvis/replies/route.ts",
-      "src/lib/email/gmail-inbound.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "morningPlanPreferences": [
       "src/app/actions/morning-plan.ts",
@@ -419,32 +363,18 @@
       "src/lib/netsuite/sync/sync-engine.ts"
     ],
     "notificationDeliveries": [
-      "src/app/actions/notifications.ts",
-      "src/lib/notifications/create-event.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "notificationEvents": [
-      "src/app/actions/cherish-stories.ts",
-      "src/app/actions/notifications.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts",
-      "src/lib/notifications/create-event.ts",
-      "src/lib/sage/square-auth-health.ts",
+      "src/lib/domain/notifications/store.ts",
       "src/lib/sage/square-creator-alerts.ts",
       "src/lib/sage/square-receipt-reminders.ts"
     ],
     "notificationPreferences": [
-      "src/app/actions/daily-log-reminder-preference.ts",
-      "src/app/actions/notifications.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "notificationRecipients": [
-      "src/app/actions/notifications.ts",
-      "src/app/api/field/notifications/[recipientId]/open/route.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts",
-      "src/lib/notifications/clear-on-read.ts",
-      "src/lib/notifications/create-event.ts",
-      "src/lib/sage/bridge-health.ts",
-      "src/lib/sage/square-auth-health.ts",
+      "src/lib/domain/notifications/store.ts",
       "src/lib/sage/square-creator-alerts.ts",
       "src/lib/sage/square-payment-notifications.ts",
       "src/lib/sage/square-receipt-reminders.ts"
@@ -1068,11 +998,10 @@
       "src/app/actions/social-posts.ts"
     ],
     "staffMessageEvents": [
-      "src/app/actions/staff-message-desk.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "staffMessageRecords": [
-      "src/app/actions/staff-message-desk.ts",
-      "src/lib/staff-message-desk/stale-reminders.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "syncCheckpoint": [
       "src/lib/sync/engine.ts"
@@ -1193,7 +1122,7 @@
     ]
   },
   "largeFiles": {
-    "src/app/actions/chat-messages.ts": 1376,
+    "src/app/actions/chat-messages.ts": 1333,
     "src/app/actions/cherish-pulse.ts": 919,
     "src/app/actions/contract-packets.ts": 1450,
     "src/app/actions/estimate-templates.ts": 1134,
@@ -1251,11 +1180,11 @@
     "src/lib/agent/render/registry.tsx": 1809,
     "src/lib/auth.ts": 885,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
-    "src/lib/email/gmail-inbound.ts": 851,
+    "src/lib/email/gmail-inbound.ts": 825,
     "src/lib/email/project-inbound-routing.ts": 1050,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
-    "src/lib/notifications/create-event.ts": 844,
+    "src/lib/notifications/create-event.ts": 843,
     "src/lib/notifications/events.ts": 955,
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1350,
@@ -1413,7 +1342,6 @@
     "src/lib/internal-duties/recurring-display.ts": 1,
     "src/lib/jarvis/visual-context.ts": 1,
     "src/lib/morning-plan/plan.ts": 1,
-    "src/lib/notifications/create-event.ts": 2,
     "src/lib/owner-updates/external-projection.ts": 1,
     "src/lib/participant-access.ts": 1,
     "src/lib/print/audience-record-reports.ts": 1,
