@@ -4,13 +4,11 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import {
-  anthropicOauthTokens,
-  userProviderConfig,
-} from "@/db/schema-ai-config"
+import { anthropicOauthTokens } from "@/db/schema-ai-config"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt, decrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
+import { deleteUserProviderConfig, saveAnthropicOAuthProviderConfig } from "@/lib/domain/settings/store"
 import {
   exchangeCode as exchangeOAuthCode_,
   refreshAccessToken as refreshToken_,
@@ -81,28 +79,7 @@ export async function exchangeOAuthCode(
       })
       .run()
 
-    await db
-      .insert(userProviderConfig)
-      .values({
-        userId: user.id,
-        providerType: "anthropic-oauth",
-        apiKey: null,
-        baseUrl: null,
-        modelOverrides: null,
-        isActive: 1,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userProviderConfig.userId,
-        set: {
-          providerType: "anthropic-oauth",
-          apiKey: null,
-          baseUrl: null,
-          isActive: 1,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await saveAnthropicOAuthProviderConfig(db, user.id, now)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -204,10 +181,7 @@ export async function disconnectOAuth(): Promise<{
     .where(eq(anthropicOauthTokens.userId, user.id))
     .run()
 
-  await db
-    .delete(userProviderConfig)
-    .where(eq(userProviderConfig.userId, user.id))
-    .run()
+  await deleteUserProviderConfig(db, user.id)
 
   revalidatePath("/dashboard")
   return { success: true }

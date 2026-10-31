@@ -9,6 +9,11 @@ import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { encrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
+import {
+  deleteUserProviderConfig,
+  saveUserProviderConfig,
+  updateUserModelOverrides as storeModelOverrides,
+} from "@/lib/domain/settings/store"
 
 // --- types ---
 
@@ -127,29 +132,14 @@ export async function setUserProviderConfig(
       ? JSON.stringify(modelOverrides)
       : null
 
-    await db
-      .insert(userProviderConfig)
-      .values({
-        userId: user.id,
-        providerType,
-        apiKey: encryptedApiKey,
-        baseUrl: baseUrl ?? null,
-        modelOverrides: modelOverridesJson,
-        isActive: 1,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userProviderConfig.userId,
-        set: {
-          providerType,
-          apiKey: encryptedApiKey,
-          baseUrl: baseUrl ?? null,
-          modelOverrides: modelOverridesJson,
-          isActive: 1,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await saveUserProviderConfig(db, {
+      userId: user.id,
+      providerType,
+      apiKey: encryptedApiKey,
+      baseUrl: baseUrl ?? null,
+      modelOverrides: modelOverridesJson,
+      updatedAt: now,
+    })
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -198,14 +188,7 @@ export async function updateUserModelOverrides(
 
     const now = new Date().toISOString()
 
-    await db
-      .update(userProviderConfig)
-      .set({
-        modelOverrides: JSON.stringify(modelOverrides),
-        updatedAt: now,
-      })
-      .where(eq(userProviderConfig.userId, user.id))
-      .run()
+    await storeModelOverrides(db, user.id, JSON.stringify(modelOverrides), now)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -240,10 +223,7 @@ export async function clearUserProviderConfig(): Promise<{
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db
-      .delete(userProviderConfig)
-      .where(eq(userProviderConfig.userId, user.id))
-      .run()
+    await deleteUserProviderConfig(db, user.id)
 
     revalidatePath("/dashboard")
     return { success: true }

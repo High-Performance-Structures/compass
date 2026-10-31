@@ -8,6 +8,13 @@ import { projectJobStatuses, projectSavedViews, userViewPreferences, users } fro
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import {
+  deleteOwnedProjectSavedView,
+  deleteUserViewPreference,
+  insertProjectSavedView,
+  saveUserViewPreference,
+  updateOwnedProjectSavedView,
+} from "@/lib/domain/settings/store"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
@@ -85,13 +92,12 @@ export async function setDefaultProjectView(definition: ProjectViewDefinition | 
     const { db, userId, organizationId } = await viewContext()
     const viewKey = projectDefaultViewKey(organizationId)
     if (parsed.data === null) {
-      await db.delete(userViewPreferences).where(and(eq(userViewPreferences.userId, userId), eq(userViewPreferences.viewKey, viewKey))).run()
+      await deleteUserViewPreference(db, userId, viewKey)
     } else {
       if (!await statusExists(db, organizationId, parsed.data)) return { success: false, error: "That job status is no longer available. Choose another status." }
       const value = JSON.stringify(parsed.data)
       const updatedAt = new Date().toISOString()
-      await db.insert(userViewPreferences).values({ userId, viewKey, value, updatedAt })
-        .onConflictDoUpdate({ target: [userViewPreferences.userId, userViewPreferences.viewKey], set: { value, updatedAt } }).run()
+      await saveUserViewPreference(db, { userId, viewKey, value, updatedAt })
     }
     refreshViews()
     return { success: true }
@@ -144,16 +150,15 @@ export async function saveProjectView(input: SaveViewInput): Promise<{ readonly 
     const now = new Date().toISOString()
     const viewId = id ?? crypto.randomUUID()
     if (id !== null) {
-      const updated = await db.update(projectSavedViews).set({ name, visibility, ...(definition === null ? {} : { definition: JSON.stringify(definition) }), updatedAt: now })
-        .where(and(eq(projectSavedViews.id, id), eq(projectSavedViews.ownerUserId, userId), eq(projectSavedViews.organizationId, organizationId)))
-        .returning().get()
+      const updated = await updateOwnedProjectSavedView(db, { id, organizationId, ownerUserId: userId, name, visibility,
+        definition: definition === null ? undefined : JSON.stringify(definition), updatedAt: now })
       if (!updated) return { success: false, error: "Only the owner can edit this view." }
       const stored = parseProjectViewDefinition(updated.definition)
       const displayDefinition = stored && await statusExists(db, organizationId, stored) ? stored : DEFAULT_PROJECT_VIEW
       refreshViews()
       return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: displayDefinition } }
     } else {
-      await db.insert(projectSavedViews).values({ id: viewId, name, visibility, definition: JSON.stringify(definition), organizationId, ownerUserId: userId, createdAt: now, updatedAt: now }).run()
+      await insertProjectSavedView(db, { id: viewId, name, visibility, definition: JSON.stringify(definition), organizationId, ownerUserId: userId, createdAt: now, updatedAt: now })
     }
     refreshViews()
     return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: definition ?? DEFAULT_PROJECT_VIEW } }
@@ -167,8 +172,7 @@ export async function deleteProjectView(id: string): Promise<MutationResult> {
   if (typeof id !== "string" || id.length === 0 || id.length > 200) return { success: false, error: "Choose a saved view." }
   try {
     const { db, userId, organizationId } = await viewContext()
-    const deleted = await db.delete(projectSavedViews).where(and(eq(projectSavedViews.id, id), eq(projectSavedViews.organizationId, organizationId), eq(projectSavedViews.ownerUserId, userId)))
-      .returning({ id: projectSavedViews.id }).get()
+    const deleted = await deleteOwnedProjectSavedView(db, { id, organizationId, ownerUserId: userId })
     if (!deleted) return { success: false, error: "Only the owner can delete this view." }
     // Defaults are snapshots in user preferences; deleting a shared view cannot change them.
     refreshViews()

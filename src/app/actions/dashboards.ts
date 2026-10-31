@@ -3,11 +3,11 @@
 import { eq } from "drizzle-orm"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { customDashboards } from "@/db/schema-dashboards"
 import { projects } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { insertCustomDashboard, updateCustomDashboard } from "@/lib/domain/settings/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 import {
@@ -102,17 +102,14 @@ export async function saveCustomDashboard(
     if (!existing) {
       return { success: false, error: "dashboard not found" }
     }
-    await db
-      .update(customDashboards)
-      .set({
-        name,
-        description,
-        specData,
-        queries,
-        renderPrompt,
-        updatedAt: now,
-      })
-      .where(eq(customDashboards.id, existingId))
+    await updateCustomDashboard(db, existingId, {
+      name,
+      description,
+      specData,
+      queries,
+      renderPrompt,
+      updatedAt: now,
+    })
   } else {
     const count = await db.query.customDashboards.findMany({
       where: (d, { eq: e }) => e(d.userId, user.id),
@@ -124,7 +121,7 @@ export async function saveCustomDashboard(
         error: `Maximum of ${MAX_DASHBOARDS} dashboards reached. Delete one to create a new one.`,
       }
     }
-    await db.insert(customDashboards).values({
+    await insertCustomDashboard(db, {
       id,
       userId: user.id,
       name,
@@ -132,8 +129,7 @@ export async function saveCustomDashboard(
       specData,
       queries,
       renderPrompt,
-      createdAt: now,
-      updatedAt: now,
+      now,
     })
   }
 

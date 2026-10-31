@@ -3,11 +3,12 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { activityEvents, organizationFeatureSettings, projectFieldCostCodes, projects } from "@/db/schema"
+import { activityEvents, projectFieldCostCodes, projects } from "@/db/schema"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { deleteOrganizationFeatureSettingStatement, saveOrganizationFeatureSettingStatement } from "@/lib/domain/settings/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
@@ -97,8 +98,7 @@ export async function saveCompanyFieldCostCodes(raw: unknown): Promise<SaveResul
     const codes = canonicalCodes(raw, (await companyView(ctx)).choices)
     const now = new Date().toISOString()
     await ctx.db.batch([
-      ctx.db.insert(organizationFeatureSettings).values({ organizationId: ctx.organizationId, featureKey: "field-cost-codes", value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now })
-        .onConflictDoUpdate({ target: [organizationFeatureSettings.organizationId, organizationFeatureSettings.featureKey], set: { value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now } }),
+      saveOrganizationFeatureSettingStatement(ctx.db, { organizationId: ctx.organizationId, featureKey: "field-cost-codes", value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now }),
       ctx.db.insert(activityEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, actorUserId: ctx.user.id, actorName: ctx.user.displayName ?? ctx.user.email, actorRole: ctx.user.role, category: "settings", action: "updated", entityType: "field_cost_code_defaults", summary: "Updated Field Mode default cost codes.", metadata: JSON.stringify({ before, after: { defaultCodes: codes } }), createdAt: now }),
     ])
     invalidate()
@@ -112,7 +112,7 @@ export async function resetCompanyFieldCostCodes(): Promise<SaveResult> {
     const before = await readFeatureSettings(ctx.db, ctx.organizationId, "field-cost-codes")
     const now = new Date().toISOString()
     await ctx.db.batch([
-      ctx.db.delete(organizationFeatureSettings).where(and(eq(organizationFeatureSettings.organizationId, ctx.organizationId), eq(organizationFeatureSettings.featureKey, "field-cost-codes"))),
+      deleteOrganizationFeatureSettingStatement(ctx.db, ctx.organizationId, "field-cost-codes"),
       ctx.db.insert(activityEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, actorUserId: ctx.user.id, actorName: ctx.user.displayName ?? ctx.user.email, actorRole: ctx.user.role, category: "settings", action: "reset", entityType: "field_cost_code_defaults", summary: "Reset Field Mode defaults to the configured crew list.", metadata: JSON.stringify({ before, after: { defaultCodes: null } }), createdAt: now }),
     ])
     invalidate()

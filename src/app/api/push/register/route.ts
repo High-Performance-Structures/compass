@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { pushTokens } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { nanoid } from "nanoid"
-import { eq, and, or } from "drizzle-orm"
+import { deleteUserPushTokens, registerPushToken } from "@/lib/domain/settings/store"
 
 export async function POST(request: Request) {
   const user = await getCurrentUser()
@@ -48,27 +47,8 @@ export async function POST(request: Request) {
   const db = getDb(env.DB)
   const now = new Date().toISOString()
 
-  // A device token must follow its current account after logout/account
-  // switching. One batch, so a repeated registration can't race the unique
-  // token index between the delete and the insert.
-  await db.batch([
-    db
-      .delete(pushTokens)
-      .where(
-        or(
-          eq(pushTokens.token, token),
-          and(eq(pushTokens.userId, user.id), eq(pushTokens.platform, platform)),
-        ),
-      ),
-    db.insert(pushTokens).values({
-      id: nanoid(),
-      userId: user.id,
-      token,
-      platform,
-      createdAt: now,
-      updatedAt: now,
-    }),
-  ])
+  // The delete-then-insert stays one batch (see registerPushToken).
+  await registerPushToken(db, { id: nanoid(), userId: user.id, token, platform, now })
 
   return NextResponse.json({ success: true })
 }
@@ -94,21 +74,8 @@ export async function DELETE(request: Request) {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  if (token) {
-    await db
-      .delete(pushTokens)
-      .where(
-        and(
-          eq(pushTokens.userId, user.id),
-          eq(pushTokens.token, token),
-        ),
-      )
-  } else {
-    // remove all tokens for user (sign-out)
-    await db
-      .delete(pushTokens)
-      .where(eq(pushTokens.userId, user.id))
-  }
+  // Without a token, remove all tokens for the user (sign-out).
+  await deleteUserPushTokens(db, user.id, token ?? null)
 
   return NextResponse.json({ success: true })
 }

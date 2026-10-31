@@ -6,6 +6,7 @@ import { userViewPreferences } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { deleteUserViewPreference, saveUserViewPreference } from "@/lib/domain/settings/store"
 import { parseSavedOrder, ROLE_DASHBOARD_VIEW_PREFIX } from "@/lib/view-preferences/order"
 import { isProjectWorkflowRoleId } from "@/lib/project-workflow-roles"
 import { isInternalQueueRoleId } from "@/lib/internal-duties/queues"
@@ -36,17 +37,11 @@ export async function saveRoleDashboardOrder(roleId: string, orderedIds: readonl
     const db = getDb(env.DB)
     const viewKey = `${ROLE_DASHBOARD_VIEW_PREFIX}${roleId}`
     if (order.length === 0) {
-      await db.delete(userViewPreferences).where(and(eq(userViewPreferences.userId, user.id), eq(userViewPreferences.viewKey, viewKey)))
+      await deleteUserViewPreference(db, user.id, viewKey)
       return { success: true }
     }
     const now = new Date().toISOString()
-    await db
-      .insert(userViewPreferences)
-      .values({ userId: user.id, viewKey, value: JSON.stringify(order), updatedAt: now })
-      .onConflictDoUpdate({
-        target: [userViewPreferences.userId, userViewPreferences.viewKey],
-        set: { value: JSON.stringify(order), updatedAt: now },
-      })
+    await saveUserViewPreference(db, { userId: user.id, viewKey, value: JSON.stringify(order), updatedAt: now })
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to save your layout." }

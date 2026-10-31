@@ -20,6 +20,15 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { insertProjectMember } from "@/lib/domain/project/store"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
+import {
+  insertOrganizationMember,
+  insertOrganizationMemberStatement,
+  insertUser,
+  setOrganizationMemberRole,
+  updateUser,
+  updateUserStatement,
+} from "@/lib/domain/identity/store"
+import { isPendingInvitationPlaceholder } from "@/lib/domain/identity/rules"
 import { getProjects } from "@/app/actions/projects"
 import {
   getUserAvailabilityCondition,
@@ -35,14 +44,6 @@ export type UserWithRelations = User & {
   projectCount: number
   organizationCount: number
   accessStatus: "active" | "invited"
-}
-
-function isPendingInvitationPlaceholder(user: User): boolean {
-  return (
-    !user.isActive &&
-    user.lastLoginAt === null &&
-    !user.id.startsWith("user_")
-  )
 }
 
 async function getOrganizationUsers(
@@ -209,17 +210,12 @@ export async function updateUserRole(
       return { success: false, error: "User not found in this organization" }
     }
 
-    await db
-      .update(users)
-      .set({ role: parseResult.data.role, updatedAt: now })
-      .where(eq(users.id, parseResult.data.userId))
-      .run()
+    await updateUser(db, parseResult.data.userId, {
+      role: parseResult.data.role,
+      updatedAt: now,
+    })
 
-    await db
-      .update(organizationMembers)
-      .set({ role: parseResult.data.role })
-      .where(eq(organizationMembers.id, targetMembership.id))
-      .run()
+    await setOrganizationMemberRole(db, targetMembership.id, parseResult.data.role)
 
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/people")
@@ -261,11 +257,7 @@ export async function deactivateUser(
     const db = getDb(env.DB)
     const now = new Date().toISOString()
 
-    await db
-      .update(users)
-      .set({ isActive: false, updatedAt: now })
-      .where(eq(users.id, parseResult.data.userId))
-      .run()
+    await updateUser(db, parseResult.data.userId, { isActive: false, updatedAt: now })
 
     revalidatePath("/dashboard/people")
     return { success: true }
@@ -470,43 +462,32 @@ export async function inviteUser(input: {
                 .join(" ")
             : ""
 
-          await db
-            .update(users)
-            .set({
-              role: validated.role,
-              displayName:
-                validated.displayName ||
-                workosDisplayName ||
-                existing.displayName,
-              firstName: workosUser?.firstName ?? existing.firstName,
-              lastName: workosUser?.lastName ?? existing.lastName,
-              avatarUrl: workosUser?.profilePictureUrl ?? existing.avatarUrl,
-              isActive: workosUser ? true : existing.isActive,
-              lastLoginAt: workosUser?.lastSignInAt ?? existing.lastLoginAt,
-              updatedAt: now,
-            })
-            .where(eq(users.id, existing.id))
-            .run()
+          await updateUser(db, existing.id, {
+            role: validated.role,
+            displayName:
+              validated.displayName ||
+              workosDisplayName ||
+              existing.displayName,
+            firstName: workosUser?.firstName ?? existing.firstName,
+            lastName: workosUser?.lastName ?? existing.lastName,
+            avatarUrl: workosUser?.profilePictureUrl ?? existing.avatarUrl,
+            isActive: workosUser ? true : existing.isActive,
+            lastLoginAt: workosUser?.lastSignInAt ?? existing.lastLoginAt,
+            updatedAt: now,
+          })
           if (existingMembership) {
-            await db
-              .update(organizationMembers)
-              .set({ role: validated.role })
-              .where(eq(organizationMembers.id, existingMembership.id))
-              .run()
+            await setOrganizationMemberRole(db, existingMembership.id, validated.role)
           } else {
             // Legacy imports could create a user without attaching them to an
             // organization. Reclaim only truly orphaned accounts; never cross
             // an existing organization boundary implicitly.
-            await db
-              .insert(organizationMembers)
-              .values({
-                id: crypto.randomUUID(),
-                organizationId: targetOrganizationId,
-                userId: existing.id,
-                role: validated.role,
-                joinedAt: now,
-              })
-              .run()
+            await insertOrganizationMember(db, {
+              id: crypto.randomUUID(),
+              organizationId: targetOrganizationId,
+              userId: existing.id,
+              role: validated.role,
+              joinedAt: now,
+            })
           }
           if (workosUser || existing.isActive) {
             await ensureInternalContactForStaff(db, {
@@ -556,17 +537,14 @@ export async function inviteUser(input: {
             lastLoginAt: workosUser.lastSignInAt,
           }
 
-          await db.insert(users).values(newUser).run()
-          await db
-            .insert(organizationMembers)
-            .values({
-              id: crypto.randomUUID(),
-              organizationId: targetOrganizationId,
-              userId: newUser.id,
-              role: validated.role,
-              joinedAt: now,
-            })
-            .run()
+          await insertUser(db, newUser)
+          await insertOrganizationMember(db, {
+            id: crypto.randomUUID(),
+            organizationId: targetOrganizationId,
+            userId: newUser.id,
+            role: validated.role,
+            joinedAt: now,
+          })
 
           await ensureInternalContactForStaff(db, {
             organizationId: targetOrganizationId,
@@ -598,19 +576,16 @@ export async function inviteUser(input: {
           lastLoginAt: null,
         }
 
-        await db.insert(users).values(newUser).run()
+        await insertUser(db, newUser)
 
         // if organization specified, add to organization
-        await db
-          .insert(organizationMembers)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId: targetOrganizationId,
-            userId: newUser.id,
-            role: validated.role,
-            joinedAt: now,
-          })
-          .run()
+        await insertOrganizationMember(db, {
+          id: crypto.randomUUID(),
+          organizationId: targetOrganizationId,
+          userId: newUser.id,
+          role: validated.role,
+          joinedAt: now,
+        })
 
         revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
@@ -646,15 +621,12 @@ export async function inviteUser(input: {
         }
 
         await db.batch([
-          db
-            .update(users)
-            .set({
-              role: validated.role,
-              displayName: validated.displayName || existing.displayName,
-              updatedAt: now,
-            })
-            .where(eq(users.id, existing.id)),
-          db.insert(organizationMembers).values({
+          updateUserStatement(db, existing.id, {
+            role: validated.role,
+            displayName: validated.displayName || existing.displayName,
+            updatedAt: now,
+          }),
+          insertOrganizationMemberStatement(db, {
             id: crypto.randomUUID(),
             organizationId: targetOrganizationId,
             userId: existing.id,
@@ -694,18 +666,15 @@ export async function inviteUser(input: {
         lastLoginAt: null,
       }
 
-      await db.insert(users).values(newUser).run()
+      await insertUser(db, newUser)
 
-      await db
-        .insert(organizationMembers)
-        .values({
-          id: crypto.randomUUID(),
-          organizationId: targetOrganizationId,
-          userId: newUser.id,
-          role: validated.role,
-          joinedAt: now,
-        })
-        .run()
+      await insertOrganizationMember(db, {
+        id: crypto.randomUUID(),
+        organizationId: targetOrganizationId,
+        userId: newUser.id,
+        role: validated.role,
+        joinedAt: now,
+      })
 
       await ensureInternalContactForStaff(db, {
         organizationId: targetOrganizationId,

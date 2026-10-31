@@ -8,6 +8,7 @@ import { morningPlanPreferences, myCompassCalendars } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { upsertMorningPlanPreferences } from "@/lib/domain/settings/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { TodaysPlan, WeekLoad } from "@/lib/morning-plan/plan"
 import { loadPlanForUser, loadTeamWorkload, type TeamWorkloadRow } from "@/lib/morning-plan/server"
@@ -127,13 +128,12 @@ export async function saveMyMorningPlanPreferences(input: {
       return { success: false, error: "Your company has turned off the daily plan email." }
     }
     const now = new Date().toISOString()
-    await db
-      .insert(morningPlanPreferences)
-      .values({ userId: user.id, organizationId, digestEnabled: input.digestEnabled, digestHour: input.digestHour, createdAt: now, updatedAt: now })
-      .onConflictDoUpdate({
-        target: morningPlanPreferences.userId,
-        set: { digestEnabled: input.digestEnabled, digestHour: input.digestHour, updatedAt: now },
-      })
+    await upsertMorningPlanPreferences(db, {
+      userId: user.id,
+      organizationId,
+      change: { digestEnabled: input.digestEnabled, digestHour: input.digestHour },
+      at: now,
+    })
     revalidatePath("/dashboard/settings")
     return { success: true }
   } catch (error) {

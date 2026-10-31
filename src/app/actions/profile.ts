@@ -3,10 +3,15 @@
 import { getWorkOS, signOut, withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { accountDeletionRequests, users } from "@/db/schema"
+import { accountDeletionRequests } from "@/db/schema"
 import { and, desc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
+import {
+  cancelPendingAccountDeletionRequest,
+  insertAccountDeletionRequest,
+  updateUser,
+} from "@/lib/domain/identity/store"
 import {
   updateProfileSchema,
   changePasswordSchema,
@@ -54,16 +59,12 @@ export async function updateWorkspacePhoto(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await db
-      .update(users)
-      .set({
-        ...(slot === "dashboard"
-          ? { dashboardDeskPhotoUrl: normalized }
-          : { sidebarDeskPhotoUrl: normalized }),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(users.id, currentUser.id))
-      .run()
+    await updateUser(db, currentUser.id, {
+      ...(slot === "dashboard"
+        ? { dashboardDeskPhotoUrl: normalized }
+        : { sidebarDeskPhotoUrl: normalized }),
+      updatedAt: new Date().toISOString(),
+    })
 
     revalidatePath("/dashboard", "layout")
     return { success: true }
@@ -133,17 +134,13 @@ export async function updateProfile(
       const db = getDb(env.DB)
       const now = new Date().toISOString()
       const displayName = `${firstName} ${lastName}`.trim()
-      await db
-        .update(users)
-        .set({
-          firstName,
-          lastName,
-          displayName,
-          email,
-          updatedAt: now,
-        })
-        .where(eq(users.id, currentUser.id))
-        .run()
+      await updateUser(db, currentUser.id, {
+        firstName,
+        lastName,
+        displayName,
+        email,
+        updatedAt: now,
+      })
     }
 
     let verificationEmailSent = !emailChanged
@@ -302,18 +299,15 @@ export async function requestAccountDeletion(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
-    await db
-      .insert(accountDeletionRequests)
-      .values({
-        id: crypto.randomUUID(),
-        userId: currentUser.id,
-        emailSnapshot: currentUser.email,
-        displayNameSnapshot: currentUser.displayName,
-        status: "pending",
-        requestedAt: now,
-        updatedAt: now,
-      })
-      .run()
+    await insertAccountDeletionRequest(db, {
+      id: crypto.randomUUID(),
+      userId: currentUser.id,
+      emailSnapshot: currentUser.email,
+      displayNameSnapshot: currentUser.displayName,
+      status: "pending",
+      requestedAt: now,
+      updatedAt: now,
+    })
 
     revalidatePath("/dashboard/account")
     return {
@@ -358,19 +352,13 @@ export async function cancelAccountDeletionRequest(): Promise<ActionResult> {
     }
 
     const now = new Date().toISOString()
-    const updateResult = await db
-      .update(accountDeletionRequests)
-      .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(accountDeletionRequests.id, request.id),
-          eq(accountDeletionRequests.userId, currentUser.id),
-          eq(accountDeletionRequests.status, "pending")
-        )
-      )
-      .run()
+    const changes = await cancelPendingAccountDeletionRequest(db, {
+      requestId: request.id,
+      userId: currentUser.id,
+      now,
+    })
 
-    if ((updateResult.meta.changes ?? 0) !== 1) {
+    if (changes !== 1) {
       return {
         success: false,
         error: "This request is already being processed or is no longer active.",

@@ -25,6 +25,7 @@ import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import type { FileItem } from "@/lib/files-data"
 import { isDemoUser } from "@/lib/demo"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateUser } from "@/lib/domain/identity/store"
 import {
   describeSenderAddressConflict,
   findSenderAddressConflict,
@@ -1318,14 +1319,10 @@ export async function updateUserGoogleEmail(
       return { success: true }
     }
 
-    await db
-      .update(users)
-      .set({
-        googleEmail: nextGoogleEmail,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(users.id, target.id))
-      .run()
+    await updateUser(db, target.id, {
+      googleEmail: nextGoogleEmail,
+      updatedAt: new Date().toISOString(),
+    })
 
     await recordActivityEvent({
       db,

@@ -1,7 +1,7 @@
 "use server"
 
 import { and, eq, inArray } from "drizzle-orm"
-import { projectAccessInvitations, projectMembers } from "@/db/schema"
+import { projectMembers } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { contactsProjectContext } from "@/lib/domain/contacts/access"
@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain/contacts/save-contact"
 import { deactivateProjectContact, releaseSourceLinksForContact } from "@/lib/domain/contacts/store"
 import { loadProjectContactsSummary } from "@/lib/domain/contacts/summary"
+import { revokeContactInvitations, revokePendingContactInvitations } from "@/lib/domain/identity/store"
 import { deleteProjectMembers } from "@/lib/domain/project/store"
 import type {
   ProjectContactAudience,
@@ -104,17 +105,7 @@ async function revokeInvitationsForEmailChange(
     }
   }
   if (input.pending.length === 0) return {}
-  await db
-    .update(projectAccessInvitations)
-    .set({ status: "revoked", emailStatus: "cancelled", emailNextAttemptAt: null, emailClaimToken: null, emailClaimedAt: null, updatedAt: input.now })
-    .where(
-      and(
-        eq(projectAccessInvitations.projectId, input.projectId),
-        eq(projectAccessInvitations.projectContactId, input.contactId),
-        eq(projectAccessInvitations.status, "sent")
-      )
-    )
-    .run()
+  await revokePendingContactInvitations(db, { projectId: input.projectId, contactId: input.contactId, now: input.now })
   return { warning: "The old pending access invitation was revoked. Send a new invitation to the updated email." }
 }
 
@@ -183,15 +174,7 @@ export async function removeProjectContact(
     const now = new Date().toISOString()
     await deactivateProjectContact(db, { projectId, contactId, now })
     await releaseSourceLinksForContact(db, { projectId, contactId, now })
-    await db
-      .update(projectAccessInvitations)
-      .set({ status: "revoked", emailStatus: "cancelled", emailNextAttemptAt: null, emailClaimToken: null, emailClaimedAt: null, updatedAt: now })
-      .where(
-        and(
-          eq(projectAccessInvitations.projectId, projectId),
-          eq(projectAccessInvitations.projectContactId, contactId)
-        )
-      )
+    await revokeContactInvitations(db, { projectId, contactId, now })
     const removableMemberIds = await removableProjectMemberIds(scope, removal)
     if (removableMemberIds.length > 0) {
       await deleteProjectMembers(

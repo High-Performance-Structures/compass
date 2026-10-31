@@ -6,10 +6,11 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { accountDeletionRequests, organizationMembers } from "@/db/schema"
-import { isWorkOSNotFound, runAccountDeletion } from "@/lib/account-deletion"
+import { isWorkOSNotFound } from "@/lib/account-deletion"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isWorkOSConfigured } from "@/lib/auth-config"
 import { getCloudflareContext } from "@/lib/db"
+import { runAccountDeletion, startAccountDeletionRequestProcessing } from "@/lib/domain/identity/store"
 import { canManageUserAccess } from "@/lib/permissions"
 
 type ActionResult<T = undefined> =
@@ -153,22 +154,12 @@ export async function startAccountDeletionProcessing(
     }
 
     const now = new Date().toISOString()
-    const result = await db
-      .update(accountDeletionRequests)
-      .set({
-        status: "processing",
-        processingStartedAt: now,
-        processingStartedBy: user.id,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(accountDeletionRequests.id, requestId),
-          eq(accountDeletionRequests.status, "pending")
-        )
-      )
-      .run()
-    if ((result.meta.changes ?? 0) !== 1) {
+    const changes = await startAccountDeletionRequestProcessing(db, {
+      requestId,
+      startedBy: user.id,
+      now,
+    })
+    if (changes !== 1) {
       return {
         success: false,
         error: "The request changed while you were viewing it. Refresh and try again.",

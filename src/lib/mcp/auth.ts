@@ -1,6 +1,7 @@
 import { eq, and, gte, sql } from "drizzle-orm"
 import type { DrizzleD1Database } from "drizzle-orm/d1"
 import { mcpApiKeys, mcpUsage } from "@/db/schema-mcp"
+import { touchMcpApiKeyLastUsed } from "@/lib/domain/settings/store"
 
 const KEY_PREFIX = "ck_"
 const KEY_RANDOM_BYTES = 20 // 20 bytes = 40 hex chars
@@ -82,10 +83,7 @@ export async function validateApiKey(
 
   // update last used timestamp (fire-and-forget)
   const now = new Date().toISOString()
-  db.update(mcpApiKeys)
-    .set({ lastUsedAt: now })
-    .where(eq(mcpApiKeys.id, row.id))
-    .run()
+  touchMcpApiKeyLastUsed(db, row.id, now)
     .catch(() => {
       // non-critical: best-effort timestamp update
     })
