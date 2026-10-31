@@ -179,6 +179,10 @@ Use the shared modules for these jobs, and never define a local version:
   components that need the same live data share one provider and one timer.
 - **Heavy libraries load lazily.** Maps, charts, PDF, rich text, and video load
   with `next/dynamic` or `import()` where they are used.
+- **Growing lists are paged tables.** Any record collection that grows uses the
+  shared table foundation from "Record lists" in
+  [ui-standards.md](ui-standards.md). It never renders an unbounded list, and
+  its bulk actions go through the owning domain store.
 
 ## 7. Size limits
 
