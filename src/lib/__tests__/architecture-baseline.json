@@ -371,6 +371,9 @@
     "ownerProjectUpdates": [
       "src/lib/domain/field/store.ts"
     ],
+    "payApplicationPaymentAllocations": [
+      "src/lib/domain/financials/store.ts"
+    ],
     "payments": [
       "src/lib/domain/financials/store.ts"
     ],

@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import { projectBudgetApplications, projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
+import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -136,6 +137,9 @@ export async function undoProjectOwnerPayApplicationBilling(
     }
     if (application.sageInvoiceNumber) {
       throw new Error(`This draw is invoiced in Sage as ${application.sageInvoiceNumber}. Clear the Sage invoice number first.`)
+    }
+    if (await payApplicationHasActivePayments(db, applicationId)) {
+      throw new Error("Payments are recorded against this draw. Void them first.")
     }
     const now = new Date().toISOString()
     await db.batch([

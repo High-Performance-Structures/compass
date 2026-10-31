@@ -67,9 +67,13 @@ describe("InvoicesTable", () => {
   it("renders every column with the same text as before", async () => {
     await act(async () => root.render(React.createElement(InvoicesTable, { ...props, invoices: [invoice(1)] })))
     const headers = [...host.querySelectorAll("thead th")].map((th) => th.textContent)
-    expect(headers).toEqual(["", "Invoice #", "Customer", "Project", "Status", "Issue Date", "Due Date", "Total", "Amount Due", ""])
+    expect(headers).toEqual(["", "Invoice #", "Customer", "Project", "Status", "Issue Date", "Due Date", "Total", "Paid", "Amount Due", "", ""])
     const cells = [...host.querySelectorAll("tbody td")].map((td) => td.textContent)
-    expect(cells.slice(1, 9)).toEqual([
+    // Paid and a link to record a payment on the project's financials were added beside Amount Due.
+    expect(cells[8]).toBe("$0.00")
+    expect(cells[10]).toBe("Record payment")
+    expect(host.querySelector("tbody a")?.getAttribute("href")).toBe("/dashboard/projects/project-1/financials?recordPayment=invoice%3Ainvoice-1")
+    expect([...cells.slice(1, 8), cells[9]]).toEqual([
       "INV-001",
       "Acme Homes",
       "Ridge Remodel",

@@ -3,11 +3,12 @@
  * math and the stored totals derived from it. The invoice, bill and credit
  * memo dialogs preview with these functions and the server recomputes the
  * stored totals with the same ones, so a total sent by the browser is never
- * trusted. Amounts here are dollars (the financial tables store `real`
- * dollar columns), not cents.
+ * trusted. Line and total amounts here are dollars (the financial tables
+ * store `real` dollar columns); received-payment math below is in cents.
  */
 
-import { parseDateOnly } from "@/lib/format"
+import { formatCents, parseDateOnly } from "@/lib/format"
+import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 
 export type LineItem = {
   description: string
@@ -236,4 +237,199 @@ export function contractBudgetRevisionPlan(matchingStatus: string | null | undef
   if (matchingStatus === "current") return "unchanged"
   if (matchingStatus === "building") return "reuse"
   return "build"
+}
+
+// ---------------------------------------------------------------------------
+// Received payments applied to pay applications and invoices. All amounts are
+// integer cents computed on the server from stored values: a pay
+// application's billed amount is its current payment due; an invoice's is its
+// total, and what it shows paid stays authoritative (it keeps amounts staff
+// typed before payments were applied).
+// ---------------------------------------------------------------------------
+
+/** A billed item as stored, with what is already paid on it. */
+export type ReceivableItem = {
+  readonly kind: ReceivableItemKind
+  readonly id: string
+  readonly label: string
+  readonly billedCents: number
+  readonly paidCents: number
+  readonly billingScope: string
+  /** Where the item came from ("compass_contract_budget", "compass", "sage", ...). */
+  readonly sourceSystem: string
+}
+
+export type RequestedAllocation = {
+  readonly kind: ReceivableItemKind
+  readonly id: string
+  readonly cents: number
+}
+
+export type PlannedAllocation = RequestedAllocation & {
+  readonly item: ReceivableItem
+}
+
+export type AllocationPlan =
+  | {
+      readonly ok: true
+      readonly allocations: readonly PlannedAllocation[]
+      readonly appliedCents: number
+      readonly unappliedCents: number
+    }
+  | { readonly ok: false; readonly error: string }
+
+/** Whole cents from stored dollars (the financial tables keep `real` dollars). */
+export function storedDollarsToCents(dollars: number | null | undefined): number {
+  return typeof dollars === "number" && Number.isFinite(dollars) ? Math.round(dollars * 100) : 0
+}
+
+/** What is still owed on an item; never negative. */
+export function receivableOpenCents(item: Pick<ReceivableItem, "billedCents" | "paidCents">): number {
+  return Math.max(item.billedCents - item.paidCents, 0)
+}
+
+/** Open, partially paid or paid, from the billed amount and what is paid. */
+export function receivablePaidState(billedCents: number, paidCents: number): ReceivablePaidState {
+  if (billedCents > 0 && paidCents >= billedCents) return "paid"
+  return paidCents > 0 ? "partially_paid" : "open"
+}
+
+function isPositiveCents(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0
+}
+
+function itemKey(kind: ReceivableItemKind, id: string): string {
+  return `${kind}:${id}`
+}
+
+/**
+ * Checks where a payment goes before anything is written:
+ * - the payment is a positive amount, and each applied amount is positive;
+ * - every item is one of the customer's open items, listed once;
+ * - no item gets more than its open balance;
+ * - the applied amounts never exceed what the payment has unapplied;
+ * - one payment stays on one billing scope (construction or preconstruction).
+ * `alreadyAppliedCents` is what the payment has applied elsewhere (0 for a new payment).
+ */
+export function planPaymentAllocations(input: {
+  readonly paymentCents: number
+  readonly alreadyAppliedCents: number
+  readonly openItems: readonly ReceivableItem[]
+  readonly requested: readonly RequestedAllocation[]
+}): AllocationPlan {
+  if (!isPositiveCents(input.paymentCents)) return { ok: false, error: "Enter a payment amount greater than zero." }
+  const requested = input.requested.filter((entry) => entry.cents !== 0)
+  if (requested.length === 0) return { ok: false, error: "Apply the payment to at least one pay application or invoice." }
+  const items = new Map(input.openItems.map((item) => [itemKey(item.kind, item.id), item]))
+  const seen = new Set<string>()
+  const allocations: PlannedAllocation[] = []
+  let appliedCents = 0
+  for (const entry of requested) {
+    const key = itemKey(entry.kind, entry.id)
+    if (seen.has(key)) return { ok: false, error: "Each pay application or invoice can be listed only once." }
+    seen.add(key)
+    const item = items.get(key)
+    if (!item) return { ok: false, error: "That pay application or invoice is not open for this customer." }
+    if (!isPositiveCents(entry.cents)) return { ok: false, error: `Enter an amount greater than zero for ${item.label}.` }
+    const open = receivableOpenCents(item)
+    if (entry.cents > open) {
+      return { ok: false, error: `${item.label} has only ${formatCents(open)} open. Apply no more than that.` }
+    }
+    appliedCents += entry.cents
+    allocations.push({ ...entry, item })
+  }
+  const scopes = new Set(allocations.map((allocation) => allocation.item.billingScope))
+  if (scopes.size > 1) return { ok: false, error: "Apply one payment to construction or preconstruction billing, not both." }
+  const available = Math.max(input.paymentCents - input.alreadyAppliedCents, 0)
+  if (appliedCents > available) {
+    return {
+      ok: false,
+      error: `The applied amounts total ${formatCents(appliedCents)}, more than the ${formatCents(available)} this payment has unapplied.`,
+    }
+  }
+  return { ok: true, allocations, appliedCents, unappliedCents: available - appliedCents }
+}
+
+/**
+ * The customer a payment is from, and that customer's items on the project.
+ * Pay applications bill the project's client, so they count for that client
+ * (or for any customer while the project has no directory client yet).
+ * Invoices count for their own customer. Returns null when the customer has
+ * nothing billed on the project.
+ */
+export function receivablesForCustomer<T extends { readonly kind: ReceivableItemKind; readonly customerId: string | null }>(
+  items: readonly T[],
+  projectClientId: string | null,
+  customerId: string | null,
+): readonly T[] | null {
+  const forCustomer = items.filter((item) =>
+    item.kind === "pay_application"
+      ? projectClientId === null || projectClientId === customerId
+      : customerId !== null && item.customerId === customerId,
+  )
+  return forCustomer.length > 0 ? forCustomer : null
+}
+
+/** The customer a payment from `focus` is credited to: the item's own, else the project's client. */
+export function focusCustomerId(
+  focus: { readonly kind: ReceivableItemKind; readonly customerId: string | null },
+  projectClientId: string | null,
+): string | null {
+  return focus.kind === "invoice" ? focus.customerId : projectClientId
+}
+
+/** An invoice's stored amount paid, amount due and status once `paidCents` is paid in total. */
+export function invoicePaidValues(input: {
+  readonly totalDollars: number
+  readonly paidCents: number
+  readonly unpaidStatus: string
+}): { readonly amountPaid: number; readonly amountDue: number; readonly status: string } {
+  const totalCents = storedDollarsToCents(input.totalDollars)
+  const paidCents = Math.max(input.paidCents, 0)
+  const state = receivablePaidState(totalCents, paidCents)
+  return {
+    amountPaid: paidCents / 100,
+    amountDue: Math.max(totalCents - paidCents, 0) / 100,
+    status: state === "open" ? input.unpaidStatus : state,
+  }
+}
+
+/** The status an invoice returns to when voiding leaves nothing paid on it. */
+export function invoiceUnpaidStatus(sourceSystem: string): string {
+  return sourceSystem === "sage" ? "open" : "sent"
+}
+
+/** Draft and void invoices cannot take a payment. */
+export function invoiceAcceptsPayments(status: string): boolean {
+  return status !== "draft" && status !== "void"
+}
+
+/** Billed Compass draws take payments; drafts, reviews and imported Sage/Drive draws do not. */
+export function payApplicationAcceptsPayments(application: { readonly sourceSystem: string; readonly status: string }): boolean {
+  return application.sourceSystem === "compass_contract_budget" && application.status === "billed"
+}
+
+/** Why staff may not void a payment in Compass, or null when they may. */
+export function paymentVoidBlocker(payment: { readonly sourceSystem: string; readonly voidedAt: string | null }): string | null {
+  if (payment.voidedAt) return "This payment is already void."
+  if (payment.sourceSystem !== "compass" && payment.sourceSystem !== "manual") {
+    return "This payment came from Square through Sage. Refund or reverse it there."
+  }
+  return null
+}
+
+export const VOID_REASON_MAX = 500
+
+/** The void reason as stored, or an error when it is blank. */
+export function parseVoidReason(raw: string): { readonly ok: true; readonly reason: string } | { readonly ok: false; readonly error: string } {
+  const reason = raw.trim().slice(0, VOID_REASON_MAX)
+  return reason ? { ok: true, reason } : { ok: false, error: "Say why the payment is being voided." }
+}
+
+/**
+ * An invoice's paid cents after releasing `releasedCents` of a voided payment.
+ * Never below zero, so a manually typed amount paid can't go negative.
+ */
+export function paidCentsAfterRelease(paidCents: number, releasedCents: number): number {
+  return Math.max(paidCents - releasedCents, 0)
 }

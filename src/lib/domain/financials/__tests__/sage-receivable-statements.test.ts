@@ -93,14 +93,14 @@ describe("financials store: Square owner receivable", () => {
            COALESCE((
              SELECT SUM(allocation_cents) / 100.0
              FROM invoice_payment_allocations
-             WHERE invoice_id = ?
+             WHERE invoice_id = ? AND released_at IS NULL
            ), 0)
          ),
          amount_due = MAX(
            total - COALESCE((
              SELECT SUM(allocation_cents) / 100.0
              FROM invoice_payment_allocations
-             WHERE invoice_id = ?
+             WHERE invoice_id = ? AND released_at IS NULL
            ), 0),
            0
          ),
@@ -108,12 +108,12 @@ describe("financials store: Square owner receivable", () => {
            WHEN COALESCE((
              SELECT SUM(allocation_cents)
              FROM invoice_payment_allocations
-             WHERE invoice_id = ?
+             WHERE invoice_id = ? AND released_at IS NULL
            ), 0) >= CAST(ROUND(total * 100) AS INTEGER) THEN 'paid'
            WHEN COALESCE((
              SELECT SUM(allocation_cents)
              FROM invoice_payment_allocations
-             WHERE invoice_id = ?
+             WHERE invoice_id = ? AND released_at IS NULL
            ), 0) > 0 THEN 'partially_paid'
            ELSE 'open'
          END,
