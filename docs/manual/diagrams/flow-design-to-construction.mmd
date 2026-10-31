@@ -1,0 +1,12 @@
+flowchart TD
+  A([Design job]) --> B{Construction job}
+  B -->|create new| C[createLinkedProject:<br/>intake, then link]
+  B -->|link existing| D[linkExistingProject:<br/>same company, not linked]
+  C --> E[project_links row<br/>and Activity]
+  D --> E
+  E --> F{Carry-over rule for<br/>this department pair?}
+  F -->|no| F1[Nothing copied]
+  F -->|yes| G[Copy completed workflow<br/>checks, keeping who and when;<br/>audit row]
+  G --> H[Construction job runs<br/>its own contract]
+  H --> I{New version of an<br/>accepted contract?}
+  I -->|yes| J[Recorded by a change order:<br/>replacement or contract_version]

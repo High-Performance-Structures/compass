@@ -1,0 +1,55 @@
+erDiagram
+  direction LR
+  buildertrend_schedule_task_source_links {
+    key id
+    ref source_record_id
+    ref schedule_task_id
+  }
+  buildertrend_staging_access_candidates {
+    key id
+    ref source_record_id
+    ref matched_customer_id
+    ref matched_vendor_id
+  }
+  buildertrend_staging_files {
+    key id
+    ref source_record_id
+  }
+  buildertrend_staging_identity_decisions {
+    key id
+    ref review_run_id
+    ref source_record_id
+    ref customer_provenance_id
+  }
+  buildertrend_staging_identity_relationships {
+    key id
+    ref review_run_id
+    ref from_decision_id
+    ref to_decision_id
+  }
+  buildertrend_staging_identity_review_runs {
+    key id
+  }
+  buildertrend_staging_records {
+    key id
+  }
+  customers {
+    key id
+  }
+  schedule_tasks {
+    key id
+  }
+  vendors {
+    key id
+  }
+  buildertrend_staging_identity_decisions ||--o{ buildertrend_staging_identity_relationships : ""
+  buildertrend_staging_identity_review_runs ||--o{ buildertrend_staging_identity_decisions : ""
+  buildertrend_staging_identity_review_runs ||--o{ buildertrend_staging_identity_relationships : ""
+  buildertrend_staging_records |o--o{ buildertrend_staging_access_candidates : ""
+  buildertrend_staging_records |o--o{ buildertrend_staging_files : ""
+  buildertrend_staging_records ||--o{ buildertrend_schedule_task_source_links : ""
+  buildertrend_staging_records ||--o{ buildertrend_staging_identity_decisions : ""
+  customers |o--o{ buildertrend_staging_access_candidates : ""
+  customers |o--o{ buildertrend_staging_identity_decisions : ""
+  schedule_tasks |o--o{ buildertrend_schedule_task_source_links : ""
+  vendors |o--o{ buildertrend_staging_access_candidates : ""

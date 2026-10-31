@@ -1,0 +1,37 @@
+erDiagram
+  direction LR
+  project_profile_audit_events {
+    key id
+    ref project_id
+  }
+  project_profile_sync_operations {
+    key id
+    ref project_id
+  }
+  project_registry_removals {
+    key id
+    ref project_id
+  }
+  project_route_aliases {
+    key source_project_id
+    ref target_project_id
+  }
+  project_workflow_checks {
+    key id
+    ref project_id
+    ref carried_from_project_id
+  }
+  projects {
+    key id
+    ref client_customer_id
+  }
+  customers {
+    key id
+  }
+  customers |o--o{ projects : ""
+  projects |o--o{ project_workflow_checks : ""
+  projects ||--o{ project_profile_audit_events : ""
+  projects ||--o{ project_profile_sync_operations : ""
+  projects ||--o{ project_registry_removals : ""
+  projects ||--o{ project_route_aliases : ""
+  projects ||--o{ project_workflow_checks : ""

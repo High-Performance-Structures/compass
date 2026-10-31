@@ -1,0 +1,25 @@
+erDiagram
+  direction LR
+  google_calendar_events {
+    key id
+    ref selection_id
+  }
+  google_starred_files {
+    key id
+  }
+  print_snapshots {
+    key id
+  }
+  project_documents {
+    key id
+  }
+  project_links {
+    key id
+  }
+  project_record_drive_files {
+    key id
+  }
+  google_calendar_selections {
+    key id
+  }
+  google_calendar_selections ||--o{ google_calendar_events : ""

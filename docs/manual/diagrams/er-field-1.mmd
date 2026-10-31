@@ -1,0 +1,32 @@
+erDiagram
+  direction LR
+  daily_log_photo_aliases {
+    key source_photo_id
+    ref canonical_photo_id
+  }
+  daily_log_photos {
+    key id
+    ref daily_log_id
+  }
+  daily_log_task_links {
+    key id
+    ref daily_log_id
+    ref schedule_task_id
+  }
+  daily_logs {
+    key id
+  }
+  daily_log_reminders {
+    key user_id
+    key reminder_date
+  }
+  owner_project_updates {
+    key id
+  }
+  schedule_tasks {
+    key id
+  }
+  daily_log_photos ||--o{ daily_log_photo_aliases : ""
+  daily_logs |o--o{ daily_log_photos : ""
+  daily_logs ||--o{ daily_log_task_links : ""
+  schedule_tasks ||--o{ daily_log_task_links : ""

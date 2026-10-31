@@ -1,0 +1,37 @@
+erDiagram
+  direction LR
+  project_budget_applications {
+    key id
+  }
+  project_budget_lines {
+    key id
+    ref application_id
+    ref vendor_id
+  }
+  shop_ticket_labor_claims {
+    key ticket_id
+    key labor_line_id
+  }
+  shop_ticket_lines {
+    key id
+    ref ticket_id
+  }
+  shop_tickets {
+    key id
+    ref budget_application_id
+  }
+  netsuite_sync_log {
+    key id
+  }
+  sage_labor_lines {
+    key id
+  }
+  vendors {
+    key id
+  }
+  project_budget_applications |o--o{ project_budget_lines : ""
+  project_budget_applications |o--o{ shop_tickets : ""
+  sage_labor_lines ||--o{ shop_ticket_labor_claims : ""
+  shop_tickets ||--o{ shop_ticket_labor_claims : ""
+  shop_tickets ||--o{ shop_ticket_lines : ""
+  vendors |o--o{ project_budget_lines : ""

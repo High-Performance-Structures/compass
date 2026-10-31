@@ -1,0 +1,29 @@
+erDiagram
+  direction LR
+  social_post_media {
+    key id
+    ref post_id
+  }
+  social_post_targets {
+    key id
+    ref post_id
+    ref account_id
+  }
+  social_posts {
+    key id
+  }
+  agent_items {
+    key id
+  }
+  anthropic_oauth_tokens {
+    key user_id
+  }
+  custom_dashboards {
+    key id
+  }
+  social_accounts {
+    key id
+  }
+  social_accounts ||--o{ social_post_targets : ""
+  social_posts ||--o{ social_post_media : ""
+  social_posts ||--o{ social_post_targets : ""

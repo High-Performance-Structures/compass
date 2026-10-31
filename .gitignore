@@ -69,3 +69,6 @@ local.db-shm
 
 # Help tutorial video recordings (see docs/development/help-videos.md)
 .help-videos/
+
+# developer manual build output
+/build/manual/

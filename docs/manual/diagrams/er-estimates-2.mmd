@@ -1,0 +1,53 @@
+erDiagram
+  direction LR
+  project_estimate_phase_descriptions {
+    key id
+    ref estimate_id
+  }
+  project_estimate_report_phases {
+    key id
+    ref estimate_id
+  }
+  project_estimates {
+    key id
+    ref client_signer_contact_id
+    ref company_signer_contact_id
+    ref template_version_id
+    ref template_application_id
+    ref default_tax_entity_id
+    ref terms_template_id
+    ref plus_2_more
+  }
+  rate_book_entries {
+    key id
+  }
+  rate_book_entry_history {
+    key id
+    ref entry_id
+  }
+  project_estimate_assembly_copies {
+    key id
+  }
+  estimate_terms_templates {
+    key id
+  }
+  project_contacts {
+    key id
+  }
+  project_template_applications {
+    key id
+  }
+  project_template_versions {
+    key id
+  }
+  sage_tax_entities {
+    key id
+  }
+  estimate_terms_templates |o--o{ project_estimates : ""
+  project_contacts |o--o{ project_estimates : ""
+  project_estimates ||--o{ project_estimate_phase_descriptions : ""
+  project_estimates ||--o{ project_estimate_report_phases : ""
+  project_template_applications |o--o{ project_estimates : ""
+  project_template_versions |o--o{ project_estimates : ""
+  rate_book_entries ||--o{ rate_book_entry_history : ""
+  sage_tax_entities |o--o{ project_estimates : ""

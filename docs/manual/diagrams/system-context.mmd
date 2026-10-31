@@ -1,0 +1,9 @@
+flowchart TD
+  C[Browser, mobile and<br/>desktop shells] --> W
+  CRON[Cron triggers] --> W
+  W[Cloudflare Worker<br/>Next.js via OpenNext]
+  W --> D1[(D1 database)]
+  W --> O[R2, Durable Object,<br/>Browser Rendering, AI]
+  W <--> I[Identity, workspace,<br/>e-sign, payments, SMS,<br/>weather, LLM, push]
+  AG[On-prem accounting<br/>bridge agents] -- signed poll --> W
+  AG <--> ACC[(Accounting<br/>system)]

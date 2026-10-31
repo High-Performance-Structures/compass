@@ -1,0 +1,36 @@
+erDiagram
+  direction LR
+  project_change_order_documents {
+    key id
+    ref change_order_id
+  }
+  project_change_order_history {
+    key id
+    ref change_order_id
+  }
+  project_change_order_lines {
+    key id
+    ref change_order_id
+  }
+  project_change_orders {
+    key id
+  }
+  project_phase_proposals {
+    key id
+    ref family_phase_id
+  }
+  trade_letters {
+    key id
+    ref vendor_id
+  }
+  project_family_phases {
+    key id
+  }
+  vendors {
+    key id
+  }
+  project_change_orders ||--o{ project_change_order_documents : ""
+  project_change_orders ||--o{ project_change_order_history : ""
+  project_change_orders ||--o{ project_change_order_lines : ""
+  project_family_phases |o--o{ project_phase_proposals : ""
+  vendors |o--o{ trade_letters : ""

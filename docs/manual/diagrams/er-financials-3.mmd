@@ -1,0 +1,34 @@
+erDiagram
+  direction LR
+  project_contract_budget_adjustments {
+    key id
+    ref revision_id
+  }
+  project_contract_budget_lines {
+    key id
+    ref revision_id
+    ref source_estimate_line_id
+  }
+  project_contract_budget_revisions {
+    key id
+    ref accepted_estimate_id
+  }
+  netsuite_sync_metadata {
+    key id
+  }
+  project_contract_deposits {
+    key id
+  }
+  project_travel_charge_overrides {
+    key project_id
+  }
+  project_estimate_lines {
+    key id
+  }
+  project_estimates {
+    key id
+  }
+  project_contract_budget_revisions ||--o{ project_contract_budget_adjustments : ""
+  project_contract_budget_revisions ||--o{ project_contract_budget_lines : ""
+  project_estimate_lines |o--o{ project_contract_budget_lines : ""
+  project_estimates ||--o{ project_contract_budget_revisions : ""
