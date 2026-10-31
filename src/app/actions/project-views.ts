@@ -1,15 +1,16 @@
 "use server"
 
-import { and, asc, eq, or } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
-import { projectJobStatuses, projectSavedViews, userViewPreferences, users } from "@/db/schema"
+import { projectJobStatuses } from "@/db/schema"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { listVisibleSavedViews, readSavedViewDefault } from "@/lib/domain/settings/saved-views"
 import {
+  clearSavedViewDefault,
   deleteOwnedProjectSavedView,
-  deleteUserViewPreference,
   insertProjectSavedView,
-  saveUserViewPreference,
+  saveSavedViewDefault,
   updateOwnedProjectSavedView,
 } from "@/lib/domain/settings/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -72,10 +73,9 @@ export async function getProjectViewPreferences(): Promise<ProjectViewPreference
     if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) {
       return { defaultDefinition: null, canSave: false, error: null }
     }
-    const row = await db.select({ value: userViewPreferences.value }).from(userViewPreferences)
-      .where(and(eq(userViewPreferences.userId, user.id), eq(userViewPreferences.viewKey, projectDefaultViewKey(organizationId)))).get()
-    const parsed = row ? parseProjectViewDefinition(row.value) : null
-    const definition = parsed && await statusExists(db, organizationId, parsed) ? parsed : row ? DEFAULT_PROJECT_VIEW : null
+    const value = await readSavedViewDefault(db, { userId: user.id, organizationId, scope: "projects", legacyViewKey: projectDefaultViewKey(organizationId) })
+    const parsed = value === null ? null : parseProjectViewDefinition(value)
+    const definition = parsed && await statusExists(db, organizationId, parsed) ? parsed : value === null ? null : DEFAULT_PROJECT_VIEW
     return { defaultDefinition: definition, canSave: true, error: null }
   } catch (error) {
     console.warn("Unable to load project view preferences", error)
@@ -88,14 +88,12 @@ export async function setDefaultProjectView(definition: ProjectViewDefinition | 
   if (!parsed.success) return { success: false, error: "Choose valid project filters." }
   try {
     const { db, userId, organizationId } = await viewContext()
-    const viewKey = projectDefaultViewKey(organizationId)
+    const key = { userId, organizationId, scope: "projects", legacyViewKey: projectDefaultViewKey(organizationId) } as const
     if (parsed.data === null) {
-      await deleteUserViewPreference(db, userId, viewKey)
+      await clearSavedViewDefault(db, key)
     } else {
       if (!await statusExists(db, organizationId, parsed.data)) return { success: false, error: "That job status is no longer available. Choose another status." }
-      const value = JSON.stringify(parsed.data)
-      const updatedAt = new Date().toISOString()
-      await saveUserViewPreference(db, { userId, viewKey, value, updatedAt })
+      await saveSavedViewDefault(db, { ...key, inlineDefinition: JSON.stringify(parsed.data), updatedAt: new Date().toISOString() })
     }
     refreshViews()
     return { success: true }
@@ -112,11 +110,7 @@ export async function getProjectSavedViews(): Promise<{ readonly views: readonly
     const { user, organizationId, db } = context.data
     if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) return { views: [], error: null }
     const [rows, customStatuses] = await Promise.all([
-      db.select({ view: projectSavedViews, ownerName: users.displayName }).from(projectSavedViews)
-        .innerJoin(users, eq(users.id, projectSavedViews.ownerUserId)).where(and(
-        eq(projectSavedViews.organizationId, organizationId),
-        or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
-      )).orderBy(asc(projectSavedViews.name)),
+      listVisibleSavedViews(db, { organizationId, userId: user.id, scope: "projects" }),
       db.select({ id: projectJobStatuses.id }).from(projectJobStatuses)
         .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true))),
     ])
@@ -124,12 +118,12 @@ export async function getProjectSavedViews(): Promise<{ readonly views: readonly
       ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id),
       ...customStatuses.map((status) => status.id),
     ])
-    return { views: rows.flatMap(({ view: row, ownerName }) => {
+    return { views: rows.flatMap((row) => {
       const parsed = parseProjectViewDefinition(row.definition)
       // Deleted custom statuses fall back just like personal default snapshots.
       const definition = parsed?.status.kind === "job" && !availableStatusIds.has(parsed.status.jobStatusId)
         ? DEFAULT_PROJECT_VIEW : parsed
-      return definition ? [{ id: row.id, name: row.name, ownerName: ownerName ?? "Staff member", visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
+      return definition ? [{ id: row.id, name: row.name, ownerName: row.ownerName ?? "Staff member", visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
     }), error: null }
   } catch (error) {
     console.warn("Unable to load saved project views", error)

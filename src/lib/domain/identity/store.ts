@@ -19,7 +19,7 @@ import {
   type NewUser,
 } from "@/db/schema"
 import { PERSONAL_DATA_TABLES } from "@/lib/account-deletion"
-import { deleteProjectSavedViewsOwnedByStatement } from "@/lib/domain/settings/store"
+import { deleteProjectSavedViewsOwnedByStatements, deleteSavedViewDefaultsForUserStatement } from "@/lib/domain/settings/store"
 import type { Db } from "@/lib/server/action-context"
 
 import { deidentifiedUserValues, externalOrganizationRole } from "./rules"
@@ -381,7 +381,8 @@ export async function runAccountDeletion(
     db.update(users).set(deidentifiedUserValues(userId, now)).where(eq(users.id, userId)),
     // This configuration uses owner_user_id rather than the common user_id key.
     // Remove shared views too; otherwise a deleted account leaves uneditable views.
-    deleteProjectSavedViewsOwnedByStatement(db, userId),
+    ...deleteProjectSavedViewsOwnedByStatements(db, userId),
+    deleteSavedViewDefaultsForUserStatement(db, userId),
     ...deletes,
     db
       .update(accountDeletionRequests)

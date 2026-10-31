@@ -1,11 +1,10 @@
 "use server"
 
-import { and, asc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { scheduleSavedViews } from "@/db/schema"
-import { deleteOwnSavedView, insertSavedView, updateSavedView } from "@/lib/domain/schedule/store"
+import { findOwnScheduleSavedViewId, listVisibleSavedViews } from "@/lib/domain/settings/saved-views"
+import { deleteOwnScheduleSavedView, insertScheduleSavedView, updateScheduleSavedView } from "@/lib/domain/settings/store"
 import { orgContext } from "@/lib/server/action-context"
 import {
   scheduleViewDefinitionSchema,
@@ -34,19 +33,7 @@ export async function getScheduleSavedViews(): Promise<
     if (!context.success) throw new Error(context.error)
     const { db, organizationId, user } = context.data
     if (!isInternalStaffRole(user.role)) return []
-    const rows = await db
-      .select()
-      .from(scheduleSavedViews)
-      .where(
-        and(
-          eq(scheduleSavedViews.organizationId, organizationId),
-          or(
-            eq(scheduleSavedViews.ownerUserId, user.id),
-            eq(scheduleSavedViews.visibility, "shared")
-          )
-        )
-      )
-      .orderBy(asc(scheduleSavedViews.name))
+    const rows = await listVisibleSavedViews(db, { organizationId, userId: user.id, scope: "schedule" })
 
     return rows.flatMap((row) => {
       let rawDefinition: unknown
@@ -57,12 +44,7 @@ export async function getScheduleSavedViews(): Promise<
       }
       const parsedDefinition =
         scheduleViewDefinitionSchema.safeParse(rawDefinition)
-      if (
-        !parsedDefinition.success ||
-        (row.visibility !== "personal" && row.visibility !== "shared")
-      ) {
-        return []
-      }
+      if (!parsedDefinition.success) return []
       return [
         {
           id: row.id,
@@ -102,26 +84,17 @@ export async function saveScheduleView(
       return { success: false, error: "Only internal staff can save views." }
     }
     const now = new Date().toISOString()
-    const existing = await db
-      .select({ id: scheduleSavedViews.id })
-      .from(scheduleSavedViews)
-      .where(
-        and(
-          eq(scheduleSavedViews.ownerUserId, user.id),
-          eq(scheduleSavedViews.name, parsed.data.name)
-        )
-      )
-      .get()
-    const id = existing?.id ?? crypto.randomUUID()
+    const existingId = await findOwnScheduleSavedViewId(db, user.id, parsed.data.name)
+    const id = existingId ?? crypto.randomUUID()
 
-    if (existing) {
-      await updateSavedView(db, id, {
+    if (existingId !== undefined) {
+      await updateScheduleSavedView(db, id, {
         visibility: parsed.data.visibility,
         definition: JSON.stringify(parsed.data.definition),
         updatedAt: now,
       })
     } else {
-      await insertSavedView(db, {
+      await insertScheduleSavedView(db, {
         id,
         organizationId,
         ownerUserId: user.id,
@@ -163,7 +136,7 @@ export async function deleteScheduleView(
     const context = await orgContext()
     if (!context.success) return context
     const { db, organizationId, user } = context.data
-    await deleteOwnSavedView(db, id, organizationId, user.id)
+    await deleteOwnScheduleSavedView(db, { id, organizationId, ownerUserId: user.id })
     revalidatePath("/dashboard/schedule")
     return { success: true }
   } catch (error) {

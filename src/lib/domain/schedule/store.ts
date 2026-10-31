@@ -1,9 +1,9 @@
 /**
  * The only code that inserts, updates, or deletes the schedule tables:
  * schedule_tasks, task_dependencies, schedule_task_assignees,
- * schedule_baselines, schedule_task_links, schedule_saved_views,
- * schedule_publications, and workday_exceptions (architecture standard,
- * section 1). No auth here: callers resolve the action context first.
+ * schedule_baselines, schedule_task_links, schedule_publications, and
+ * workday_exceptions (architecture standard, section 1). Saved schedule views
+ * belong to domain/settings/store.ts with every other saved view. No auth here: callers resolve the action context first.
  *
  * Functions named `...Statement` or `...Query` return an unexecuted
  * statement so a caller can put it in one atomic batch with another
@@ -15,7 +15,6 @@ import type { BatchItem } from "drizzle-orm/batch"
 import {
   scheduleBaselines,
   schedulePublications,
-  scheduleSavedViews,
   scheduleTaskLinks,
   scheduleTasks,
   taskDependencies,
@@ -491,37 +490,6 @@ export async function deleteTaskLink(db: Db, linkId: string, projectId: string):
   await db
     .delete(scheduleTaskLinks)
     .where(and(eq(scheduleTaskLinks.id, linkId), eq(scheduleTaskLinks.projectId, projectId)))
-}
-
-export async function updateSavedView(
-  db: Db,
-  viewId: string,
-  values: Pick<typeof scheduleSavedViews.$inferInsert, "visibility" | "definition" | "updatedAt">
-): Promise<void> {
-  await db.update(scheduleSavedViews).set(values).where(eq(scheduleSavedViews.id, viewId)).run()
-}
-
-export async function insertSavedView(db: Db, row: typeof scheduleSavedViews.$inferInsert): Promise<void> {
-  await db.insert(scheduleSavedViews).values(row).run()
-}
-
-/** Deletes a view only for its owner inside the organization. */
-export async function deleteOwnSavedView(
-  db: Db,
-  viewId: string,
-  organizationId: string,
-  ownerUserId: string
-): Promise<void> {
-  await db
-    .delete(scheduleSavedViews)
-    .where(
-      and(
-        eq(scheduleSavedViews.id, viewId),
-        eq(scheduleSavedViews.organizationId, organizationId),
-        eq(scheduleSavedViews.ownerUserId, ownerUserId)
-      )
-    )
-    .run()
 }
 
 export function publicationInsertQuery(

@@ -2,13 +2,13 @@
  * The only code that writes the settings and per-user preference tables
  * (architecture standard, section 1): company feature settings, AI provider
  * config, themes, custom dashboards, MCP keys, morning-plan preferences,
- * view preferences and saved project views, and push tokens. The desktop
+ * view preferences, saved views and their defaults, and push tokens. The desktop
  * offline mutation queue has its own client-safe store in ./offline-queue.
  * Callers resolve access first; nothing here checks
  * who is asking. Functions named `…Statement` return a statement for the
  * caller's `db.batch`, so writes that must land together stay in one batch.
  */
-import { and, eq, or } from "drizzle-orm"
+import { and, eq, inArray, or, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { DrizzleD1Database } from "drizzle-orm/d1"
 
@@ -17,7 +17,11 @@ import {
   organizationFeatureSettings,
   projectSavedViews,
   pushTokens,
+  savedViewDefaults,
+  savedViews,
+  scheduleSavedViews,
   userViewPreferences,
+  type SavedViewScope,
 } from "@/db/schema"
 import { userProviderConfig } from "@/db/schema-ai-config"
 import { customDashboards } from "@/db/schema-dashboards"
@@ -293,7 +297,7 @@ export async function upsertMorningPlanPreferences(
 }
 
 // ---------------------------------------------------------------------------
-// View preferences and saved project views
+// View preferences and saved views
 // ---------------------------------------------------------------------------
 
 function viewPreferenceDelete(db: Db, userId: string, viewKey: string) {
@@ -321,10 +325,82 @@ export async function deleteUserViewPreference(db: Db, userId: string, viewKey: 
   await viewPreferenceDelete(db, userId, viewKey).run()
 }
 
-type SavedViewRow = typeof projectSavedViews.$inferSelect
+// Saved views live in saved_views (migration 0282). Until the old
+// per-screen tables are retired, every write lands in both, in one batch, and
+// keeps the same id. The `mirror…` statements copy a just-written legacy row
+// into saved_views, so a row the backfill has not reached yet is still kept in
+// step on its first edit.
 
-export async function insertProjectSavedView(db: Db, row: typeof projectSavedViews.$inferInsert): Promise<void> {
-  await db.insert(projectSavedViews).values(row).run()
+type ProjectSavedViewRow = typeof projectSavedViews.$inferSelect
+type SavedViewContent = {
+  readonly id: string
+  readonly organizationId: string
+  readonly ownerUserId: string
+  readonly name: string
+  readonly visibility: "personal" | "shared"
+  readonly definition: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+function savedViewInsert(db: Db, scope: SavedViewScope, row: SavedViewContent) {
+  return db.insert(savedViews).values({ ...row, scope })
+}
+
+const MIRROR_ON_CONFLICT = {
+  target: savedViews.id,
+  set: {
+    name: sql`excluded.name`,
+    visibility: sql`excluded.visibility`,
+    definition: sql`excluded.definition`,
+    updatedAt: sql`excluded.updated_at`,
+  },
+}
+
+function mirrorProjectSavedView(db: Db, id: string) {
+  return db.insert(savedViews).select(
+    db.select({
+      id: projectSavedViews.id,
+      organizationId: projectSavedViews.organizationId,
+      ownerUserId: projectSavedViews.ownerUserId,
+      scope: sql<SavedViewScope>`'projects'`.as("scope"),
+      name: projectSavedViews.name,
+      visibility: projectSavedViews.visibility,
+      definition: projectSavedViews.definition,
+      createdAt: projectSavedViews.createdAt,
+      updatedAt: projectSavedViews.updatedAt,
+    }).from(projectSavedViews).where(eq(projectSavedViews.id, id)),
+  ).onConflictDoUpdate(MIRROR_ON_CONFLICT)
+}
+
+function mirrorScheduleSavedView(db: Db, id: string) {
+  // Legacy schedule visibility is free text; only the two real values are copied.
+  return db.insert(savedViews).select(
+    db.select({
+      id: scheduleSavedViews.id,
+      organizationId: scheduleSavedViews.organizationId,
+      ownerUserId: scheduleSavedViews.ownerUserId,
+      scope: sql<SavedViewScope>`'schedule'`.as("scope"),
+      name: scheduleSavedViews.name,
+      visibility: sql<"personal" | "shared">`${scheduleSavedViews.visibility}`.as("visibility"),
+      definition: scheduleSavedViews.definition,
+      createdAt: scheduleSavedViews.createdAt,
+      updatedAt: scheduleSavedViews.updatedAt,
+    }).from(scheduleSavedViews).where(and(eq(scheduleSavedViews.id, id), inArray(scheduleSavedViews.visibility, ["personal", "shared"]))),
+  ).onConflictDoUpdate(MIRROR_ON_CONFLICT)
+}
+
+function ownedSavedViewDelete(db: Db, scope: SavedViewScope, input: { readonly id: string; readonly organizationId: string; readonly ownerUserId: string }) {
+  return db.delete(savedViews).where(and(
+    eq(savedViews.id, input.id),
+    eq(savedViews.organizationId, input.organizationId),
+    eq(savedViews.ownerUserId, input.ownerUserId),
+    eq(savedViews.scope, scope),
+  ))
+}
+
+export async function insertProjectSavedView(db: Db, row: SavedViewContent): Promise<void> {
+  await db.batch([db.insert(projectSavedViews).values(row), savedViewInsert(db, "projects", row)])
 }
 
 /**
@@ -343,14 +419,17 @@ export async function updateOwnedProjectSavedView(
     readonly definition?: string
     readonly updatedAt: string
   },
-): Promise<SavedViewRow | undefined> {
+): Promise<ProjectSavedViewRow | undefined> {
   const { name, visibility, definition, updatedAt } = input
-  return db
-    .update(projectSavedViews)
-    .set({ name, visibility, ...(definition === undefined ? {} : { definition }), updatedAt })
-    .where(and(eq(projectSavedViews.id, input.id), eq(projectSavedViews.ownerUserId, input.ownerUserId), eq(projectSavedViews.organizationId, input.organizationId)))
-    .returning()
-    .get()
+  const [updated] = await db.batch([
+    db
+      .update(projectSavedViews)
+      .set({ name, visibility, ...(definition === undefined ? {} : { definition }), updatedAt })
+      .where(and(eq(projectSavedViews.id, input.id), eq(projectSavedViews.ownerUserId, input.ownerUserId), eq(projectSavedViews.organizationId, input.organizationId)))
+      .returning(),
+    mirrorProjectSavedView(db, input.id),
+  ])
+  return updated[0]
 }
 
 /** Deletes a view the user owns; returns its id, or undefined when nothing matched. */
@@ -358,16 +437,99 @@ export async function deleteOwnedProjectSavedView(
   db: Db,
   input: { readonly id: string; readonly organizationId: string; readonly ownerUserId: string },
 ): Promise<{ readonly id: string } | undefined> {
-  return db
-    .delete(projectSavedViews)
-    .where(and(eq(projectSavedViews.id, input.id), eq(projectSavedViews.organizationId, input.organizationId), eq(projectSavedViews.ownerUserId, input.ownerUserId)))
-    .returning({ id: projectSavedViews.id })
-    .get()
+  const [deleted] = await db.batch([
+    db
+      .delete(projectSavedViews)
+      .where(and(eq(projectSavedViews.id, input.id), eq(projectSavedViews.organizationId, input.organizationId), eq(projectSavedViews.ownerUserId, input.ownerUserId)))
+      .returning({ id: projectSavedViews.id }),
+    ownedSavedViewDelete(db, "projects", input),
+  ])
+  return deleted[0]
 }
 
-/** Every view a person owns, personal and shared (account deletion). */
-export function deleteProjectSavedViewsOwnedByStatement(db: Db, ownerUserId: string): Statement {
-  return db.delete(projectSavedViews).where(eq(projectSavedViews.ownerUserId, ownerUserId))
+/**
+ * Every project view a person owns, personal and shared, in both tables
+ * (account deletion). Schedule views are left as they always were.
+ */
+export function deleteProjectSavedViewsOwnedByStatements(db: Db, ownerUserId: string): readonly [Statement, Statement] {
+  return [
+    db.delete(projectSavedViews).where(eq(projectSavedViews.ownerUserId, ownerUserId)),
+    db.delete(savedViews).where(and(eq(savedViews.ownerUserId, ownerUserId), eq(savedViews.scope, "projects"))),
+  ]
+}
+
+/** The person's saved defaults (account deletion; their legacy preference rows go with the personal tables). */
+export function deleteSavedViewDefaultsForUserStatement(db: Db, userId: string): Statement {
+  return db.delete(savedViewDefaults).where(eq(savedViewDefaults.userId, userId))
+}
+
+export async function insertScheduleSavedView(db: Db, row: SavedViewContent): Promise<void> {
+  await db.batch([db.insert(scheduleSavedViews).values(row), savedViewInsert(db, "schedule", row)])
+}
+
+/** Callers find the view by its owner first. */
+export async function updateScheduleSavedView(
+  db: Db,
+  viewId: string,
+  values: { readonly visibility: "personal" | "shared"; readonly definition: string; readonly updatedAt: string },
+): Promise<void> {
+  await db.batch([
+    db.update(scheduleSavedViews).set(values).where(eq(scheduleSavedViews.id, viewId)),
+    mirrorScheduleSavedView(db, viewId),
+  ])
+}
+
+/** Deletes a schedule view only for its owner inside the organization. */
+export async function deleteOwnScheduleSavedView(
+  db: Db,
+  input: { readonly id: string; readonly organizationId: string; readonly ownerUserId: string },
+): Promise<void> {
+  await db.batch([
+    db.delete(scheduleSavedViews).where(and(
+      eq(scheduleSavedViews.id, input.id),
+      eq(scheduleSavedViews.organizationId, input.organizationId),
+      eq(scheduleSavedViews.ownerUserId, input.ownerUserId),
+    )),
+    ownedSavedViewDelete(db, "schedule", input),
+  ])
+}
+
+type SavedViewDefaultKey = {
+  readonly userId: string
+  readonly organizationId: string
+  readonly scope: SavedViewScope
+  /** The user_view_preferences key that held this default before 0282. */
+  readonly legacyViewKey: string
+}
+
+/** Saves a person's default filters for one screen as an unnamed snapshot. */
+export async function saveSavedViewDefault(
+  db: Db,
+  input: SavedViewDefaultKey & { readonly inlineDefinition: string; readonly updatedAt: string },
+): Promise<void> {
+  const { userId, organizationId, scope, inlineDefinition, updatedAt } = input
+  await db.batch([
+    viewPreferenceUpsert(db, { userId, viewKey: input.legacyViewKey, value: inlineDefinition, updatedAt }),
+    db
+      .insert(savedViewDefaults)
+      .values({ userId, organizationId, scope, viewId: null, inlineDefinition, updatedAt })
+      .onConflictDoUpdate({
+        target: [savedViewDefaults.userId, savedViewDefaults.organizationId, savedViewDefaults.scope],
+        set: { viewId: null, inlineDefinition, updatedAt },
+      }),
+  ])
+}
+
+/** Clears a person's default so the screen falls back to its built-in view. */
+export async function clearSavedViewDefault(db: Db, input: SavedViewDefaultKey): Promise<void> {
+  await db.batch([
+    viewPreferenceDelete(db, input.userId, input.legacyViewKey),
+    db.delete(savedViewDefaults).where(and(
+      eq(savedViewDefaults.userId, input.userId),
+      eq(savedViewDefaults.organizationId, input.organizationId),
+      eq(savedViewDefaults.scope, input.scope),
+    )),
+  ])
 }
 
 // ---------------------------------------------------------------------------

@@ -701,6 +701,12 @@
     "sageTaxEntities": [
       "src/lib/sage/tax-catalog-ingest.ts"
     ],
+    "savedViewDefaults": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "savedViews": [
+      "src/lib/domain/settings/store.ts"
+    ],
     "scheduleBaselines": [
       "src/lib/domain/schedule/store.ts"
     ],
@@ -711,7 +717,7 @@
       "src/lib/domain/schedule/store.ts"
     ],
     "scheduleSavedViews": [
-      "src/lib/domain/schedule/store.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "scheduleTaskAssignees": [
       "src/lib/domain/schedule/store.ts"
