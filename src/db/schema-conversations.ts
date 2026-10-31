@@ -102,6 +102,7 @@ export const messageReactions = sqliteTable("message_reactions", {
   (table) => [
     index("message_reactions_user_id_idx").on(table.userId),
     index("message_reactions_message_id_idx").on(table.messageId),
+    uniqueIndex("message_reactions_message_user_emoji_unique").on(table.messageId, table.userId, table.emoji),
   ])
 
 // message_mentions - @user, @channel, @here, @agent mentions
