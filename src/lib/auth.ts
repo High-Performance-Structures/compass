@@ -14,6 +14,7 @@ import type { User } from "@/db/schema"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
+import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
@@ -322,22 +323,15 @@ async function claimProjectAccessInvitations(
       .get()
 
     if (!projectMembership) {
-      await db
-        .insert(projectMembers)
-        .values({
-          id: crypto.randomUUID(),
-          projectId: invitation.projectId,
-          userId,
-          role: assignedRole,
-          assignedAt: now,
-        })
-        .run()
+      await insertProjectMember(db, {
+        id: crypto.randomUUID(),
+        projectId: invitation.projectId,
+        userId,
+        role: assignedRole,
+        assignedAt: now,
+      })
     } else {
-      await db
-        .update(projectMembers)
-        .set({ role: assignedRole })
-        .where(eq(projectMembers.id, projectMembership.id))
-        .run()
+      await updateProjectMembers(db, eq(projectMembers.id, projectMembership.id), { role: assignedRole })
     }
 
     const audience =

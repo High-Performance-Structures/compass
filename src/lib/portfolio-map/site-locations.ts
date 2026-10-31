@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
+import { updateProjects } from "@/lib/domain/project/store"
 import { fetchElevationFeet, geocodeProjectAddress, type GeocodeResult } from "@/lib/geo/site-lookup"
 
 /** Few per dashboard load: the public geocoders ask for light, sequential use. */
@@ -88,10 +89,7 @@ export type SiteLocationWriter = (projectId: string, values: SiteLocationWrite) 
 /** Saves site lookups on the organization's projects. */
 export function siteLocationWriter(db: ReturnType<typeof getDb>, organizationId: string): SiteLocationWriter {
   return async (projectId, values) => {
-    await db
-      .update(projects)
-      .set(values)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    await updateProjects(db, and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)), values)
   }
 }
 

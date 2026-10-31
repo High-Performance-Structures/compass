@@ -6,10 +6,12 @@ import { IconCheck, IconPencil, IconPalette } from "@tabler/icons-react"
 
 import {
   updateProjectSelection,
-  type ProjectSelectionItem,
-  type ProjectSelectionOptions,
-  type ProjectSelectionStatus,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionItem,
+  ProjectSelectionOptions,
+  ProjectSelectionStatus,
+} from "@/lib/domain/selections/types"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"

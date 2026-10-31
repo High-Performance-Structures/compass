@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain/contacts/save-contact"
 import { deactivateProjectContact, releaseSourceLinksForContact } from "@/lib/domain/contacts/store"
 import { loadProjectContactsSummary } from "@/lib/domain/contacts/summary"
+import { deleteProjectMembers } from "@/lib/domain/project/store"
 import type {
   ProjectContactAudience,
   ProjectContactDirectoryOption,
@@ -193,14 +194,13 @@ export async function removeProjectContact(
       )
     const removableMemberIds = await removableProjectMemberIds(scope, removal)
     if (removableMemberIds.length > 0) {
-      await db
-        .delete(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            inArray(projectMembers.userId, [...removableMemberIds])
-          )
+      await deleteProjectMembers(
+        db,
+        and(
+          eq(projectMembers.projectId, projectId),
+          inArray(projectMembers.userId, [...removableMemberIds])
         )
+      )
     }
 
     await queueProjectContactTrackerRefresh({ db, organizationId: orgId, projectId })

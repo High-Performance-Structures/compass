@@ -1,782 +1,67 @@
 "use server"
 
-import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
-
-import { selectionDeletionAllowed } from "@/lib/selections/deletion"
-
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
+import { projectFinishSelections, projectOperations, projects } from "@/db/schema"
+import { staffSelectionContext } from "@/lib/domain/selections/access"
 import {
-  projectContacts,
-  projectFinishSelectionRooms,
-  projectFinishSelections,
-  projectOperations,
-  projects,
-} from "@/db/schema"
-import { googleAuth } from "@/db/schema-google"
-import {
-  projectTemplateContentItems,
-  projectTemplates,
-  projectTemplateVersions
-} from "@/db/schema-templates"
-import { requireAuth } from "@/lib/auth"
+  applyFinishScheduleImport,
+  finishScheduleImportAccess,
+  loadFinishSchedule
+} from "@/lib/domain/selections/finish-schedule-import"
 import { insertOperations } from "@/lib/domain/operations/store"
-import { decrypt } from "@/lib/crypto"
-import { getCloudflareContext } from "@/lib/db"
-import { spreadsheetIdFromUrl } from "@/lib/financials/project-totals-import"
-import { SheetsClient } from "@/lib/google/client/sheets-client"
-import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/lib/google/config"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
-  normalizeProjectNumber,
-  parseFinishScheduleWorkbook,
-  type ParsedFinishSchedule
-} from "@/lib/selections/google-finish-schedule-import"
-import { buildProjectTemplateContentApplication } from "@/lib/templates/project-template-content-application"
-import { parseTemplateChoiceOptions } from "@/lib/templates/template-creation-import"
+  changedNumberField,
+  changedTextField,
+  compassSelectionRoomId,
+  finishSchedulePreview,
+  isSelectionStatus,
+  normalizedChoiceOptions,
+  normalizeStatus,
+  parseQuantity,
+  projectTaskNumberFor,
+  requiredText
+} from "@/lib/domain/selections/rules"
+import {
+  deleteFinishSelectionsReturningIds,
+  insertFinishSelection,
+  insertSelectionRoomIfAbsent,
+  updateFinishSelections
+} from "@/lib/domain/selections/store"
+import type {
+  ApplyProjectFinishScheduleImportResult,
+  CreateProjectSelectionInput,
+  ProjectFinishScheduleImportResult,
+  ProjectSelectionOptions,
+  ProjectSelectionsSummary,
+  UpdateProjectSelectionInput
+} from "@/lib/domain/selections/types"
+import {
+  loadProjectSelectionOptions,
+  loadProjectSelections,
+  loadPublishedTemplateSelection
+} from "@/lib/domain/selections/workspace"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { selectionDeletionAllowed } from "@/lib/selections/deletion"
+import { cleanText } from "@/lib/shared/guards"
 
-export type ProjectSelectionStatus =
-  | "needed"
-  | "proposed"
-  | "owner_review"
-  | "approved"
-  | "pricing"
-  | "rfq_sent"
-  | "ordered"
-  | "installed"
-  | "unavailable"
-  | "deferred"
-
-export type ProjectSelectionItem = {
-  readonly id: string
-  readonly projectId: string
-  readonly sourceSystem: string
-  readonly sourceRecordId: string | null
-  readonly sourceWorkbookId: string | null
-  readonly sourceSheetName: string | null
-  readonly roomName: string
-  readonly roomType: string | null
-  readonly category: string
-  readonly name: string
-  readonly description: string | null
-  readonly quantity: number | null
-  readonly manufacturer: string | null
-  readonly model: string | null
-  readonly colorFinish: string | null
-  readonly choiceOptions: readonly string[]
-  readonly parentSelectionId: string | null
-  readonly parentChoiceValue: string | null
-  readonly selectionLevel: number
-  readonly supplierName: string | null
-  readonly productUrl: string | null
-  readonly costCode: string | null
-  readonly phaseCode: string | null
-  readonly status: ProjectSelectionStatus
-  readonly ownerVisible: boolean
-  readonly ownerApproved: boolean
-  readonly rfqOperationId: string | null
-  readonly purchaseOrderOperationId: string | null
-  readonly notes: string | null
-  readonly syncStatus: string
-  readonly updatedAt: string
-}
-
-type ProjectSelectionRoom = {
-  readonly id: string
-  readonly projectId: string
-  readonly sourceSystem: string
-  readonly sourceWorkbookId: string | null
-  readonly sourceSheetId: string | null
-  readonly sourceSheetName: string | null
-  readonly roomName: string
-  readonly roomType: string | null
-  readonly sortOrder: number
-  readonly selectionCount: number
-  readonly selections: readonly ProjectSelectionItem[]
-}
-
-export type ProjectSelectionsSummary = {
-  readonly totalCount: number
-  readonly roomCount: number
-  readonly sourceWorkbookCount: number
-  readonly needsDecisionCount: number
-  readonly approvedCount: number
-  readonly pricingCount: number
-  readonly orderedCount: number
-  readonly rooms: readonly ProjectSelectionRoom[]
-}
-
-type ProjectSelectionOption = {
-  readonly value: string
-  readonly label: string
-}
-
-type ProjectSelectionCostCodeOption = {
-  readonly onBudget?: boolean
-  readonly value: string
-  readonly label: string
-  readonly description: string
-  readonly divisionCode: string
-  readonly divisionLabel: string
-  readonly source: "sage" | "company" | "project_budget" | "selection"
-  readonly needsSageReview: boolean
-}
-
-export type ProjectSelectionOptions = {
-  readonly roomTypes: readonly ProjectSelectionOption[]
-  readonly manufacturers: readonly ProjectSelectionOption[]
-  readonly divisions: readonly ProjectSelectionOption[]
-  readonly costCodes: readonly ProjectSelectionCostCodeOption[]
-}
-
-export type CreateProjectSelectionInput = {
-  readonly roomName: string | null
-  readonly roomType: string | null
-  readonly category: string | null
-  readonly name: string | null
-  readonly description: string | null
-  readonly quantity: string | null
-  readonly manufacturer: string | null
-  readonly model: string | null
-  readonly colorFinish: string | null
-  readonly supplierName: string | null
-  readonly productUrl: string | null
-  readonly costCode: string | null
-  readonly phaseCode: string | null
-  readonly status: string | null
-  readonly notes: string | null
-  readonly templateId?: string | null
-  readonly templateContentItemId?: string | null
-  readonly choiceOptions?: readonly string[]
-}
-
-export type UpdateProjectSelectionInput = CreateProjectSelectionInput & {
-  readonly changeReason: string | null
-}
+/*
+ * Staff finish-selection actions. Access is the staff selections rule in
+ * src/lib/domain/selections/access.ts; reads, import reconciliation and the
+ * rules live in src/lib/domain/selections. Selection writes go through the
+ * selections store. The project_operations follow-up rows written below are
+ * owned by the operations module and are left here as they were.
+ */
 
 type ActionResult =
   | { readonly success: true; readonly id?: string }
   | { readonly success: false; readonly error: string }
 
-export type ProjectFinishScheduleImportPreview = {
-  readonly workbookId: string
-  readonly workbookTitle: string
-  readonly workbookProjectNumber: string | null
-  readonly compassProjectNumber: string | null
-  readonly projectMatch: "match" | "mismatch" | "unknown"
-  readonly roomCount: number
-  readonly selectionCount: number
-  readonly warnings: readonly string[]
-}
-
-export type ProjectFinishScheduleImportResult =
-  | {
-      readonly success: true
-      readonly preview: ProjectFinishScheduleImportPreview
-    }
-  | { readonly success: false; readonly error: string }
-
-export type ApplyProjectFinishScheduleImportResult =
-  | {
-      readonly success: true
-      readonly createdCount: number
-      readonly updatedCount: number
-      readonly removedCount: number
-      readonly conflictCount: number
-      readonly staleCount: number
-      readonly roomCount: number
-    }
-  | { readonly success: false; readonly error: string }
-
-const PROJECT_SELECTION_STATUSES: readonly ProjectSelectionStatus[] = [
-  "needed",
-  "proposed",
-  "owner_review",
-  "approved",
-  "pricing",
-  "rfq_sent",
-  "ordered",
-  "installed",
-  "unavailable",
-  "deferred"
-]
-
-const ROOM_TYPE_OPTIONS: readonly string[] = [
-  "Living Area",
-  "Kitchen",
-  "Dining",
-  "Bedroom",
-  "Bathroom",
-  "Powder Room",
-  "Laundry",
-  "Mudroom",
-  "Pantry",
-  "Closet",
-  "Office / Study",
-  "Library",
-  "Loft",
-  "Rec Room",
-  "Theater Room",
-  "Wine Room",
-  "Exercise Room",
-  "Guest Suite",
-  "Bunk Room",
-  "Mechanical / Utility",
-  "Garage",
-  "Exterior",
-  "Porch / Deck",
-  "Hardscape",
-  "Pool / Spa",
-  "Sauna / Wellness",
-  "Outdoor Kitchen",
-  "Other"
-]
-
-const MANUFACTURER_OPTIONS: readonly string[] = [
-  "Kohler",
-  "Delta",
-  "Moen",
-  "Hansgrohe",
-  "Brizo",
-  "Rohl",
-  "Schlage",
-  "Kwikset",
-  "Emtek",
-  "Sherwin-Williams",
-  "Benjamin Moore",
-  "Daltile",
-  "Marazzi",
-  "Shaw",
-  "Mohawk",
-  "Bruce Hardwood",
-  "Andersen Windows",
-  "Marvin Windows",
-  "James Hardie",
-  "Custom (see notes)"
-]
-
-async function verifyProjectAccess(
-  projectId: string,
-  permission: "read" | "update"
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "finish-selections", permission)
-  const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  return db
-}
-
-type FinishScheduleImportAccess = {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly projectNumber: string | null
-  readonly googleEmail: string
-  readonly client: SheetsClient
-}
-
-async function finishScheduleImportAccess(projectId: string): Promise<FinishScheduleImportAccess> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "finish-selections", "update")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const projectRows = await db
-    .select({ projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-    .limit(1)
-  const project = projectRows[0]
-  if (!project) throw new Error("Project not found")
-
-  const authRows = await db
-    .select()
-    .from(googleAuth)
-    .where(eq(googleAuth.organizationId, organizationId))
-    .limit(1)
-  const auth = authRows[0]
-  if (!auth) throw new Error("Google Workspace service account is not connected.")
-
-  const config = getGoogleConfig(env)
-  const keyJson = await decrypt(
-    auth.serviceAccountKeyEncrypted,
-    config.encryptionKey,
-    getGoogleCryptoSalt()
-  )
-  return {
-    db,
-    organizationId,
-    projectNumber: project.projectNumber,
-    googleEmail: user.googleEmail ?? user.email,
-    client: new SheetsClient(parseServiceAccountKey(keyJson))
-  }
-}
-
-type LoadedFinishSchedule = {
-  readonly workbookId: string
-  readonly workbookTitle: string
-  readonly parsed: ParsedFinishSchedule
-}
-
-function quotedSheetRange(sheetTitle: string, range: string): string {
-  return `'${sheetTitle.replace(/'/g, "''")}'!${range}`
-}
-
-async function loadFinishSchedule(
-  access: FinishScheduleImportAccess,
-  workbookUrl: string
-): Promise<LoadedFinishSchedule> {
-  const workbookId = spreadsheetIdFromUrl(workbookUrl)
-  if (!workbookId) throw new Error("Enter a valid Google Sheets workbook URL.")
-  const metadata = await access.client.getSpreadsheetMetadata(access.googleEmail, workbookId)
-  const coverSheet = metadata.sheets.find(
-    (sheet) => sheet.title.trim().toLowerCase() === "cover page"
-  )
-  const roomMetadata = metadata.sheets.filter((sheet) => {
-    const title = sheet.title.trim().toLowerCase()
-    return !sheet.hidden && title !== "cover page" && title !== "_validation"
-  })
-  const coverPageRows = coverSheet
-    ? await access.client.getValues(access.googleEmail, {
-        spreadsheetId: workbookId,
-        range: quotedSheetRange(coverSheet.title, "A:K"),
-        valueRenderOption: "UNFORMATTED_VALUE"
-      })
-    : []
-  const roomSheets = []
-  for (const sheet of roomMetadata) {
-    const values = await access.client.getValues(access.googleEmail, {
-      spreadsheetId: workbookId,
-      range: quotedSheetRange(sheet.title, "A:G"),
-      valueRenderOption: "UNFORMATTED_VALUE"
-    })
-    roomSheets.push({
-      sheetId: sheet.sheetId,
-      title: sheet.title,
-      index: sheet.index,
-      values
-    })
-  }
-
-  return {
-    workbookId,
-    workbookTitle: metadata.title,
-    parsed: parseFinishScheduleWorkbook({ coverPageRows, roomSheets })
-  }
-}
-
-function finishSchedulePreview(
-  loaded: LoadedFinishSchedule,
-  compassProjectNumber: string | null
-): ProjectFinishScheduleImportPreview {
-  const workbookProjectNumber = loaded.parsed.projectNumber
-  const normalizedWorkbook = normalizeProjectNumber(workbookProjectNumber)
-  const normalizedCompass = normalizeProjectNumber(compassProjectNumber)
-  const projectMatch =
-    !normalizedWorkbook || !normalizedCompass
-      ? "unknown"
-      : normalizedWorkbook === normalizedCompass
-        ? "match"
-        : "mismatch"
-  const warnings = [...loaded.parsed.warnings]
-  if (projectMatch === "mismatch") {
-    warnings.push(
-      `Workbook project ${workbookProjectNumber ?? "unknown"} does not match Compass project ${compassProjectNumber ?? "unknown"}.`
-    )
-  }
-  if (projectMatch === "unknown") {
-    warnings.push("The workbook and Compass project numbers could not both be verified.")
-  }
-  return {
-    workbookId: loaded.workbookId,
-    workbookTitle: loaded.workbookTitle,
-    workbookProjectNumber,
-    compassProjectNumber,
-    projectMatch,
-    roomCount: loaded.parsed.rooms.length,
-    selectionCount: loaded.parsed.selections.length,
-    warnings
-  }
-}
-
-type ImportedSelectionSourceValues = {
-  readonly sourceSheetName: string
-  readonly roomName: string
-  readonly roomType: string | null
-  readonly category: string
-  readonly name: string
-  readonly description: string | null
-  readonly quantity: number | null
-  readonly manufacturer: string | null
-  readonly model: string | null
-  readonly colorFinish: string | null
-  readonly notes: string | null
-  readonly sortOrder: number
-  readonly lastSyncedAt: string
-  readonly updatedAt: string
-}
-
-function importedSelectionIdentity(input: {
-  readonly sourceSheetName: string | null
-  readonly category: string
-  readonly name: string
-}): string {
-  return [input.sourceSheetName ?? "", input.category, input.name]
-    .map((value) =>
-      value
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-    )
-    .join("|")
-}
-
-function importedSourceChanged(
-  existing: typeof projectFinishSelections.$inferSelect,
-  incoming: ImportedSelectionSourceValues
-): boolean {
-  return (
-    existing.roomName !== incoming.roomName ||
-    existing.roomType !== incoming.roomType ||
-    existing.category !== incoming.category ||
-    existing.name !== incoming.name ||
-    existing.description !== incoming.description ||
-    existing.quantity !== incoming.quantity ||
-    existing.manufacturer !== incoming.manufacturer ||
-    existing.model !== incoming.model ||
-    existing.colorFinish !== incoming.colorFinish ||
-    existing.notes !== incoming.notes
-  )
-}
-
-function cleanText(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function requiredText(value: string | null, label: string): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required`)
-  return cleaned
-}
-
-function isSelectionStatus(value: string): value is ProjectSelectionStatus {
-  return PROJECT_SELECTION_STATUSES.some((status) => status === value)
-}
-
-function normalizeStatus(value: string | null): ProjectSelectionStatus {
-  const cleaned = cleanText(value)
-  if (cleaned && isSelectionStatus(cleaned)) return cleaned
-  return "needed"
-}
-
-function parseQuantity(value: string | null): number | null {
-  const cleaned = cleanText(value)
-  if (!cleaned) return null
-  const parsed = Number(cleaned)
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("Quantity must be a positive number.")
-  }
-  return parsed
-}
-
-function normalizedChoiceOptions(values: readonly string[] | undefined): readonly string[] {
-  if (!values) return []
-  const unique = new Set<string>()
-  for (const value of values) {
-    const cleaned = value.trim()
-    if (!cleaned) continue
-    if (cleaned.length > 200) {
-      throw new Error("Template selection choices must be 200 characters or less.")
-    }
-    unique.add(cleaned)
-  }
-  if (unique.size > 200) {
-    throw new Error("A finish selection may have no more than 200 choices.")
-  }
-  return [...unique]
-}
-
-type PublishedTemplateSelection = {
-  readonly templateId: string
-  readonly templateContentItemId: string
-  readonly choiceOptions: readonly string[]
-}
-
-async function loadPublishedTemplateSelection(
-  db: ReturnType<typeof getDb>,
-  organizationId: string,
-  templateId: string,
-  templateContentItemId: string
-): Promise<PublishedTemplateSelection | null> {
-  const matches = await db
-    .select({
-      templateId: projectTemplates.id,
-      versionId: projectTemplateVersions.id,
-      templateContentItemId: projectTemplateContentItems.id
-    })
-    .from(projectTemplateContentItems)
-    .innerJoin(
-      projectTemplateVersions,
-      eq(projectTemplateVersions.id, projectTemplateContentItems.versionId)
-    )
-    .innerJoin(projectTemplates, eq(projectTemplates.id, projectTemplateVersions.templateId))
-    .where(
-      and(
-        eq(projectTemplates.id, templateId),
-        eq(projectTemplates.organizationId, organizationId),
-        eq(projectTemplates.lifecycleStatus, "active"),
-        eq(projectTemplates.reviewStatus, "verified"),
-        eq(projectTemplateVersions.status, "published"),
-        eq(projectTemplateVersions.versionNumber, projectTemplates.currentVersionNumber),
-        eq(projectTemplateContentItems.id, templateContentItemId),
-        eq(projectTemplateContentItems.moduleType, "selections")
-      )
-    )
-    .limit(1)
-  const match = matches[0]
-  if (!match) return null
-
-  const versionItems = await db
-    .select()
-    .from(projectTemplateContentItems)
-    .where(
-      and(
-        eq(projectTemplateContentItems.versionId, match.versionId),
-        eq(projectTemplateContentItems.moduleType, "selections")
-      )
-    )
-    .orderBy(asc(projectTemplateContentItems.sortOrder))
-  let nextId = 0
-  const build = buildProjectTemplateContentApplication({
-    applicationId: `selection-create:${templateContentItemId}`,
-    items: versionItems,
-    nextId: () => `selection-create:${nextId++}`
-  })
-  const selection = build.selections.find(
-    (candidate) => candidate.templateContentItemId === templateContentItemId
-  )
-  if (!selection) return null
-
-  return {
-    templateId: match.templateId,
-    templateContentItemId: match.templateContentItemId,
-    choiceOptions: parseTemplateChoiceOptions(selection.choiceOptionsJson)
-  }
-}
-
-function normalizedNumberText(value: number | null): string {
-  return value === null ? "" : String(value)
-}
-
-function normalizedText(value: string | null): string {
-  return value?.trim() ?? ""
-}
-
-function changedTextField(
-  label: string,
-  before: string | null,
-  after: string | null
-): {
-  readonly field: string
-  readonly before: string
-  readonly after: string
-} | null {
-  const normalizedBefore = normalizedText(before)
-  const normalizedAfter = normalizedText(after)
-  if (normalizedBefore === normalizedAfter) return null
-  return { field: label, before: normalizedBefore, after: normalizedAfter }
-}
-
-function changedNumberField(
-  label: string,
-  before: number | null,
-  after: number | null
-): {
-  readonly field: string
-  readonly before: string
-  readonly after: string
-} | null {
-  const normalizedBefore = normalizedNumberText(before)
-  const normalizedAfter = normalizedNumberText(after)
-  if (normalizedBefore === normalizedAfter) return null
-  return { field: label, before: normalizedBefore, after: normalizedAfter }
-}
-
-function parseChoiceOptions(value: string | null): readonly string[] {
-  if (!value) return []
-  try {
-    const parsed: unknown = JSON.parse(value)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (option): option is string => typeof option === "string" && option.trim().length > 0
-    )
-  } catch {
-    return []
-  }
-}
-
-function toSelectionItem(row: typeof projectFinishSelections.$inferSelect): ProjectSelectionItem {
-  const status = isSelectionStatus(row.status) ? row.status : "needed"
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    sourceSystem: row.sourceSystem,
-    sourceRecordId: row.sourceRecordId,
-    sourceWorkbookId: row.sourceWorkbookId,
-    sourceSheetName: row.sourceSheetName,
-    roomName: row.roomName,
-    roomType: row.roomType,
-    category: row.category,
-    name: row.name,
-    description: row.description,
-    quantity: row.quantity,
-    manufacturer: row.manufacturer,
-    model: row.model,
-    colorFinish: row.colorFinish,
-    choiceOptions: parseChoiceOptions(row.choiceOptionsJson),
-    parentSelectionId: row.parentSelectionId,
-    parentChoiceValue: row.parentChoiceValue,
-    selectionLevel: row.selectionLevel,
-    supplierName: row.supplierName,
-    productUrl: row.productUrl,
-    costCode: row.costCode,
-    phaseCode: row.phaseCode,
-    status,
-    ownerVisible: row.ownerVisible,
-    ownerApproved: row.ownerApproved,
-    rfqOperationId: row.rfqOperationId,
-    purchaseOrderOperationId: row.purchaseOrderOperationId,
-    notes: row.notes,
-    syncStatus: row.syncStatus,
-    updatedAt: row.updatedAt
-  }
-}
-
-function summarizeSelections(
-  roomRows: readonly (typeof projectFinishSelectionRooms.$inferSelect)[],
-  selections: readonly ProjectSelectionItem[]
-): ProjectSelectionsSummary {
-  const roomMap = new Map<
-    string,
-    ProjectSelectionRoom & {
-      readonly selections: ProjectSelectionItem[]
-    }
-  >()
-
-  for (const room of roomRows) {
-    roomMap.set(room.roomName, {
-      id: room.id,
-      projectId: room.projectId,
-      sourceSystem: room.sourceSystem,
-      sourceWorkbookId: room.sourceWorkbookId,
-      sourceSheetId: room.sourceSheetId,
-      sourceSheetName: room.sourceSheetName,
-      roomName: room.roomName,
-      roomType: room.roomType,
-      sortOrder: room.sortOrder,
-      selectionCount: 0,
-      selections: []
-    })
-  }
-
-  for (const selection of selections) {
-    const existing = roomMap.get(selection.roomName)
-    if (existing) {
-      existing.selections.push(selection)
-      continue
-    }
-
-    roomMap.set(selection.roomName, {
-      id: `selection-room-${selection.roomName}`,
-      projectId: selection.projectId,
-      sourceSystem: selection.sourceSystem,
-      sourceWorkbookId: selection.sourceWorkbookId,
-      sourceSheetId: null,
-      sourceSheetName: selection.sourceSheetName,
-      roomName: selection.roomName,
-      roomType: selection.roomType,
-      sortOrder: roomMap.size + 1_000,
-      selectionCount: 0,
-      selections: [selection]
-    })
-  }
-
-  const rooms = Array.from(roomMap.values())
-    .map((room) => ({
-      ...room,
-      selectionCount: room.selections.length
-    }))
-    .sort((left, right) => {
-      if (left.sortOrder !== right.sortOrder) {
-        return left.sortOrder - right.sortOrder
-      }
-      return left.roomName.localeCompare(right.roomName)
-    })
-
-  return {
-    totalCount: selections.length,
-    roomCount: rooms.length,
-    sourceWorkbookCount: new Set(
-      rooms.map((room) => room.sourceWorkbookId).filter((value): value is string => Boolean(value))
-    ).size,
-    needsDecisionCount: selections.filter((selection) =>
-      ["needed", "proposed", "owner_review", "unavailable"].includes(selection.status)
-    ).length,
-    approvedCount: selections.filter((selection) => selection.status === "approved").length,
-    pricingCount: selections.filter((selection) =>
-      ["pricing", "rfq_sent"].includes(selection.status)
-    ).length,
-    orderedCount: selections.filter((selection) =>
-      ["ordered", "installed"].includes(selection.status)
-    ).length,
-    rooms
-  }
-}
-
+/** Throws "Project not found" and the other access errors, as before. */
 export async function getProjectSelections(projectId: string): Promise<ProjectSelectionsSummary> {
-  const db = await verifyProjectAccess(projectId, "read")
-  const [roomRows, selectionRows] = await Promise.all([
-    db
-      .select()
-      .from(projectFinishSelectionRooms)
-      .where(
-        and(
-          eq(projectFinishSelectionRooms.projectId, projectId),
-          eq(projectFinishSelectionRooms.active, true)
-        )
-      )
-      .orderBy(
-        asc(projectFinishSelectionRooms.sortOrder),
-        asc(projectFinishSelectionRooms.roomName)
-      ),
-    db
-      .select()
-      .from(projectFinishSelections)
-      .where(eq(projectFinishSelections.projectId, projectId))
-      .orderBy(
-        asc(projectFinishSelections.roomName),
-        asc(projectFinishSelections.category),
-        asc(projectFinishSelections.sortOrder),
-        asc(projectFinishSelections.name)
-      )
-  ])
-
-  return summarizeSelections(roomRows, selectionRows.map(toSelectionItem))
+  const { db } = await staffSelectionContext(projectId, "read")
+  return loadProjectSelections(db, projectId)
 }
 
 export async function previewProjectFinishScheduleImport(
@@ -784,7 +69,9 @@ export async function previewProjectFinishScheduleImport(
   workbookUrl: string
 ): Promise<ProjectFinishScheduleImportResult> {
   try {
-    const access = await finishScheduleImportAccess(projectId)
+    const access = await finishScheduleImportAccess(
+      await staffSelectionContext(projectId, "update")
+    )
     const loaded = await loadFinishSchedule(access, workbookUrl)
     return {
       success: true,
@@ -804,7 +91,9 @@ export async function importProjectFinishSchedule(
   workbookUrl: string
 ): Promise<ApplyProjectFinishScheduleImportResult> {
   try {
-    const access = await finishScheduleImportAccess(projectId)
+    const access = await finishScheduleImportAccess(
+      await staffSelectionContext(projectId, "update")
+    )
     const loaded = await loadFinishSchedule(access, workbookUrl)
     const preview = finishSchedulePreview(loaded, access.projectNumber)
     if (preview.projectMatch !== "match") {
@@ -818,212 +107,13 @@ export async function importProjectFinishSchedule(
       throw new Error("The workbook contains no finish selections to import.")
     }
 
-    const now = new Date().toISOString()
-    const existingRooms = await access.db
-      .select()
-      .from(projectFinishSelectionRooms)
-      .where(
-        and(
-          eq(projectFinishSelectionRooms.projectId, projectId),
-          eq(projectFinishSelectionRooms.sourceSystem, "google_sheets"),
-          eq(projectFinishSelectionRooms.sourceWorkbookId, loaded.workbookId)
-        )
-      )
-    const roomsBySheetId = new Map(
-      existingRooms
-        .filter((room) => room.sourceSheetId !== null)
-        .map((room) => [room.sourceSheetId, room])
-    )
-    const importedSheetIds = new Set(loaded.parsed.rooms.map((room) => String(room.sheetId)))
-    for (const room of loaded.parsed.rooms) {
-      const sourceSheetId = String(room.sheetId)
-      const existing = roomsBySheetId.get(sourceSheetId)
-      if (existing) {
-        await access.db
-          .update(projectFinishSelectionRooms)
-          .set({
-            sourceSheetName: room.sheetName,
-            roomName: room.roomName,
-            roomType: room.roomType,
-            sortOrder: room.sortOrder,
-            active: true,
-            updatedAt: now
-          })
-          .where(eq(projectFinishSelectionRooms.id, existing.id))
-      } else {
-        await access.db.insert(projectFinishSelectionRooms).values({
-          id: crypto.randomUUID(),
-          projectId,
-          sourceSystem: "google_sheets",
-          sourceWorkbookId: loaded.workbookId,
-          sourceSheetId,
-          sourceSheetName: room.sheetName,
-          roomName: room.roomName,
-          roomType: room.roomType,
-          sortOrder: room.sortOrder,
-          active: true,
-          createdAt: now,
-          updatedAt: now
-        })
-      }
-    }
-    for (const staleRoom of existingRooms) {
-      if (staleRoom.sourceSheetId !== null && importedSheetIds.has(staleRoom.sourceSheetId)) {
-        continue
-      }
-      await access.db
-        .update(projectFinishSelectionRooms)
-        .set({ active: false, updatedAt: now })
-        .where(eq(projectFinishSelectionRooms.id, staleRoom.id))
-    }
-
-    const existingSelections = await access.db
-      .select()
-      .from(projectFinishSelections)
-      .where(
-        and(
-          eq(projectFinishSelections.projectId, projectId),
-          eq(projectFinishSelections.sourceSystem, "google_sheets"),
-          eq(projectFinishSelections.sourceWorkbookId, loaded.workbookId)
-        )
-      )
-    const selectionsBySourceRecordId = new Map(
-      existingSelections
-        .filter((selection) => selection.sourceRecordId !== null)
-        .map((selection) => [selection.sourceRecordId, selection])
-    )
-    const selectionsByIdentity = new Map<string, (typeof projectFinishSelections.$inferSelect)[]>()
-    for (const selection of existingSelections) {
-      const identity = importedSelectionIdentity(selection)
-      const matches = selectionsByIdentity.get(identity) ?? []
-      matches.push(selection)
-      selectionsByIdentity.set(identity, matches)
-    }
-    const incomingSelectionIdentities = new Set(
-      loaded.parsed.selections.map((selection) =>
-        importedSelectionIdentity({
-          sourceSheetName: selection.sheetName,
-          category: selection.category,
-          name: selection.name
-        })
-      )
-    )
-    const usedSelectionIds = new Set<string>()
-    let createdCount = 0
-    let updatedCount = 0
-    let removedCount = 0
-    let conflictCount = 0
-
-    for (const selection of loaded.parsed.selections) {
-      const sourceRecordId = `${loaded.workbookId}:${selection.sheetId}:${selection.sourceRowNumber}`
-      const identity = importedSelectionIdentity({
-        sourceSheetName: selection.sheetName,
-        category: selection.category,
-        name: selection.name
-      })
-      const exactMatch = selectionsBySourceRecordId.get(sourceRecordId)
-      const exactIdentity = exactMatch ? importedSelectionIdentity(exactMatch) : null
-      const stableMatch = (selectionsByIdentity.get(identity) ?? []).find(
-        (candidate) => !usedSelectionIds.has(candidate.id)
-      )
-      const unusedExactMatch =
-        exactMatch && !usedSelectionIds.has(exactMatch.id) ? exactMatch : null
-      // A semantic match at another row indicates an insertion/deletion/reorder.
-      // If no such match exists and the old identity disappeared, this row was renamed in place.
-      const existing =
-        unusedExactMatch && exactIdentity === identity
-          ? unusedExactMatch
-          : (stableMatch ??
-            (unusedExactMatch &&
-            exactIdentity !== null &&
-            !incomingSelectionIdentities.has(exactIdentity)
-              ? unusedExactMatch
-              : null))
-      const sourceValues: ImportedSelectionSourceValues = {
-        sourceSheetName: selection.sheetName,
-        roomName: selection.roomName,
-        roomType: selection.roomType,
-        category: selection.category,
-        name: selection.name,
-        description: selection.description,
-        quantity: selection.quantity,
-        manufacturer: selection.manufacturer,
-        model: selection.model,
-        colorFinish: selection.colorFinish,
-        notes: selection.notes,
-        sortOrder: selection.sortOrder,
-        lastSyncedAt: now,
-        updatedAt: now
-      }
-      if (!existing) {
-        await access.db.insert(projectFinishSelections).values({
-          id: crypto.randomUUID(),
-          projectId,
-          sourceSystem: "google_sheets",
-          sourceRecordId,
-          sourceWorkbookId: loaded.workbookId,
-          ...sourceValues,
-          status: "needed",
-          ownerVisible: false,
-          ownerApproved: false,
-          syncStatus: "imported",
-          createdAt: now
-        })
-        createdCount += 1
-        continue
-      }
-      usedSelectionIds.add(existing.id)
-      if (existing.syncStatus !== "imported") {
-        conflictCount += 1
-        continue
-      }
-      const approvalNeedsReview =
-        (existing.ownerApproved || existing.status === "approved") &&
-        importedSourceChanged(existing, sourceValues)
-      await access.db
-        .update(projectFinishSelections)
-        .set({
-          ...sourceValues,
-          sourceRecordId,
-          status: approvalNeedsReview ? "owner_review" : existing.status,
-          ownerApproved: approvalNeedsReview ? false : existing.ownerApproved,
-          approvedBy: approvalNeedsReview ? null : existing.approvedBy,
-          approvedAt: approvalNeedsReview ? null : existing.approvedAt,
-          syncStatus: approvalNeedsReview ? "selection_change_review" : "imported"
-        })
-        .where(eq(projectFinishSelections.id, existing.id))
-      updatedCount += 1
-      if (approvalNeedsReview) conflictCount += 1
-    }
-
-    const staleSelections = existingSelections.filter(
-      (selection) => !usedSelectionIds.has(selection.id)
-    )
-    for (const stale of staleSelections) {
-      const canRemoveUntouchedSourceRow =
-        stale.syncStatus === "imported" && !stale.ownerApproved && stale.status === "needed"
-      if (!canRemoveUntouchedSourceRow) {
-        conflictCount += 1
-        continue
-      }
-      const removed = await access.db
-        .delete(projectFinishSelections)
-        .where(and(eq(projectFinishSelections.id, stale.id), selectionDeletionAllowed(stale.id)))
-        .returning({ id: projectFinishSelections.id })
-      removedCount += removed.length
-      if (!removed.length) conflictCount += 1
-    }
-    const staleCount = staleSelections.length - removedCount
+    const counts = await applyFinishScheduleImport(access.db, projectId, loaded)
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)
     return {
       success: true,
-      createdCount,
-      updatedCount,
-      removedCount,
-      conflictCount,
-      staleCount,
+      ...counts,
       roomCount: loaded.parsed.rooms.length
     }
   } catch (error) {
@@ -1035,151 +125,12 @@ export async function importProjectFinishSchedule(
   }
 }
 
-function optionFromLabel(label: string): ProjectSelectionOption {
-  return { value: label, label }
-}
-
-function uniqueSortedOptions(values: readonly string[]): ProjectSelectionOption[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right))
-    .map(optionFromLabel)
-}
-
-function divisionLabel(code: string, description: string): string {
-  return code ? `${code} 00 00 ${description}` : description
-}
-
-function costCodeLabel(code: string, description: string): string {
-  return code ? `${code} ${description}` : description
-}
-
-function divisionCodeFromCostCode(code: string): string {
-  return code.trim().slice(0, 2)
-}
-
-function fallbackDivisionLabel(code: string): string {
-  const divisionCode = divisionCodeFromCostCode(code)
-  return divisionCode ? `${divisionCode} 00 00 Unmapped` : "Unmapped"
-}
-
-function fallbackCostCodeDescription(code: string): string {
-  return code ? `CSI workbook cost code ${code}` : "CSI workbook cost code"
-}
-
-function projectTaskNumberFor(existingCount: number): string {
-  return `TASK-${String(existingCount + 1).padStart(3, "0")}`
-}
-
+/** Throws "Project not found" and the other access errors, as before. */
 export async function getProjectSelectionOptions(
   projectId: string
 ): Promise<ProjectSelectionOptions> {
-  const db = await verifyProjectAccess(projectId, "read")
-
-  const [sageRows, contactRows, selectionRows] = await Promise.all([
-    loadProjectCostCodeChoices(db, projectId),
-    db
-      .select({
-        companyName: projectContacts.companyName,
-        displayName: projectContacts.displayName,
-        contactType: projectContacts.contactType,
-        csiDivision: projectContacts.csiDivision,
-        csiDivisionName: projectContacts.csiDivisionName,
-        primaryCostCode: projectContacts.primaryCostCode
-      })
-      .from(projectContacts)
-      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
-      .orderBy(asc(projectContacts.companyName), asc(projectContacts.displayName)),
-    db
-      .select({
-        manufacturer: projectFinishSelections.manufacturer,
-        supplierName: projectFinishSelections.supplierName,
-        costCode: projectFinishSelections.costCode,
-        category: projectFinishSelections.category
-      })
-      .from(projectFinishSelections)
-      .where(eq(projectFinishSelections.projectId, projectId))
-  ])
-
-  const divisionMap = new Map<string, ProjectSelectionOption>()
-  const costCodeMap = new Map<string, ProjectSelectionCostCodeOption>()
-
-  for (const row of sageRows) {
-    if (row.divisionCode && row.divisionDisplayLabel) {
-      divisionMap.set(row.divisionCode, {
-        value: row.divisionCode,
-        label: row.divisionDisplayLabel
-      })
-    }
-
-    costCodeMap.set(row.code, {
-      value: row.code,
-      onBudget: row.onBudget,
-      label: row.displayLabel,
-      description: row.description,
-      divisionCode: row.divisionCode,
-      divisionLabel: row.divisionDisplayLabel,
-      source: row.onBudget && !row.sageMapped ? "project_budget" : row.sageMapped ? "sage" : "company",
-      needsSageReview: !row.sageMapped
-    })
-  }
-
-  for (const row of contactRows) {
-    if (row.csiDivision && row.csiDivisionName) {
-      divisionMap.set(row.csiDivision, {
-        value: row.csiDivision,
-        label: divisionLabel(row.csiDivision, row.csiDivisionName)
-      })
-    }
-  }
-
-  for (const row of selectionRows) {
-    if (!row.costCode) continue
-    const divisionCode = divisionCodeFromCostCode(row.costCode)
-    const existingDivisionLabel =
-      divisionMap.get(divisionCode)?.label ?? fallbackDivisionLabel(row.costCode)
-
-    if (!divisionMap.has(divisionCode)) {
-      divisionMap.set(divisionCode, {
-        value: divisionCode,
-        label: existingDivisionLabel
-      })
-    }
-
-    if (!costCodeMap.has(row.costCode)) {
-      const description = row.category
-        ? `${row.category} selection`
-        : fallbackCostCodeDescription(row.costCode)
-
-      costCodeMap.set(row.costCode, {
-        value: row.costCode,
-        label: costCodeLabel(row.costCode, description),
-        description,
-        divisionCode,
-        divisionLabel: existingDivisionLabel,
-        source: "selection",
-        needsSageReview: true
-      })
-    }
-  }
-
-  const manufacturerValues = [
-    ...MANUFACTURER_OPTIONS,
-    ...contactRows
-      .filter((row) => row.contactType === "supplier")
-      .flatMap((row) => [row.companyName, row.displayName]),
-    ...selectionRows.flatMap((row) => [row.manufacturer, row.supplierName])
-  ].filter((value): value is string => Boolean(value))
-
-  return {
-    roomTypes: ROOM_TYPE_OPTIONS.map(optionFromLabel),
-    manufacturers: uniqueSortedOptions(manufacturerValues),
-    divisions: Array.from(divisionMap.values()).sort((left, right) =>
-      left.label.localeCompare(right.label)
-    ),
-    costCodes: Array.from(costCodeMap.values()).sort((left, right) =>
-      left.label.localeCompare(right.label)
-    )
-  }
+  const { db } = await staffSelectionContext(projectId, "read")
+  return loadProjectSelectionOptions(db, projectId)
 }
 
 export async function requestSelectionCostCodeSageReview(
@@ -1188,7 +139,7 @@ export async function requestSelectionCostCodeSageReview(
 ): Promise<ActionResult> {
   try {
     const cleanedCostCode = requiredText(costCode, "Cost code")
-    const db = await verifyProjectAccess(projectId, "update")
+    const { db } = await staffSelectionContext(projectId, "update")
     const now = new Date().toISOString()
 
     const [existing] = await db
@@ -1231,18 +182,17 @@ export async function requestSelectionCostCodeSageReview(
       })
     }
 
-    await db
-      .update(projectFinishSelections)
-      .set({
+    await updateFinishSelections(
+      db,
+      and(
+        eq(projectFinishSelections.projectId, projectId),
+        eq(projectFinishSelections.costCode, cleanedCostCode)
+      ),
+      {
         syncStatus: "needs_sage_review",
         updatedAt: now
-      })
-      .where(
-        and(
-          eq(projectFinishSelections.projectId, projectId),
-          eq(projectFinishSelections.costCode, cleanedCostCode)
-        )
-      )
+      }
+    )
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -1260,9 +210,7 @@ export async function createProjectSelection(
   input: CreateProjectSelectionInput
 ): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
-    const organizationId = requireOrg(user)
-    const db = await verifyProjectAccess(projectId, "update")
+    const { db, organizationId } = await staffSelectionContext(projectId, "update")
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const roomName = requiredText(input.roomName, "Room")
@@ -1288,24 +236,18 @@ export async function createProjectSelection(
       templateSelection?.choiceOptions ?? input.choiceOptions
     )
 
-    await db
-      .insert(projectFinishSelectionRooms)
-      .values({
-        id: `selection-room-${projectId}-${roomName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")}`,
-        projectId,
-        sourceSystem: "compass",
-        roomName,
-        roomType,
-        sortOrder: 1_000,
-        createdAt: now,
-        updatedAt: now
-      })
-      .onConflictDoNothing()
+    await insertSelectionRoomIfAbsent(db, {
+      id: compassSelectionRoomId(projectId, roomName),
+      projectId,
+      sourceSystem: "compass",
+      roomName,
+      roomType,
+      sortOrder: 1_000,
+      createdAt: now,
+      updatedAt: now
+    })
 
-    await db.insert(projectFinishSelections).values({
+    await insertFinishSelection(db, {
       id,
       projectId,
       sourceSystem: templateSelection ? "compass_template" : "compass",
@@ -1350,7 +292,7 @@ export async function updateProjectSelection(
   input: UpdateProjectSelectionInput
 ): Promise<ActionResult> {
   try {
-    const db = await verifyProjectAccess(projectId, "update")
+    const { db } = await staffSelectionContext(projectId, "update")
     const now = new Date().toISOString()
     const roomName = requiredText(input.roomName, "Room")
     const roomType = cleanText(input.roomType)
@@ -1403,26 +345,24 @@ export async function updateProjectSelection(
     ].filter((change) => change !== null)
     const specificationChanged = changes.some(change => change.field !== "Status" && change.field !== "Notes")
 
-    await db
-      .insert(projectFinishSelectionRooms)
-      .values({
-        id: `selection-room-${projectId}-${roomName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")}`,
-        projectId,
-        sourceSystem: "compass",
-        roomName,
-        roomType,
-        sortOrder: 1_000,
-        createdAt: now,
-        updatedAt: now
-      })
-      .onConflictDoNothing()
+    await insertSelectionRoomIfAbsent(db, {
+      id: compassSelectionRoomId(projectId, roomName),
+      projectId,
+      sourceSystem: "compass",
+      roomName,
+      roomType,
+      sortOrder: 1_000,
+      createdAt: now,
+      updatedAt: now
+    })
 
-    await db
-      .update(projectFinishSelections)
-      .set({
+    await updateFinishSelections(
+      db,
+      and(
+        eq(projectFinishSelections.id, selectionId),
+        eq(projectFinishSelections.projectId, projectId)
+      ),
+      {
         roomName,
         roomType,
         category,
@@ -1449,13 +389,8 @@ export async function updateProjectSelection(
               ? "manual_edit"
               : existing.syncStatus,
         updatedAt: now
-      })
-      .where(
-        and(
-          eq(projectFinishSelections.id, selectionId),
-          eq(projectFinishSelections.projectId, projectId)
-        )
-      )
+      }
+    )
 
     if (existing.status === "approved" && changes.length > 0) {
       const logId = crypto.randomUUID()
@@ -1618,7 +553,7 @@ export async function updateProjectSelectionStatus(
       return { success: false, error: "Unsupported selection status." }
     }
 
-    const db = await verifyProjectAccess(projectId, "update")
+    const { db } = await staffSelectionContext(projectId, "update")
     const now = new Date().toISOString()
     const [existing] = await db
       .select()
@@ -1635,9 +570,13 @@ export async function updateProjectSelectionStatus(
       return { success: false, error: "Selection not found." }
     }
 
-    await db
-      .update(projectFinishSelections)
-      .set({
+    await updateFinishSelections(
+      db,
+      and(
+        eq(projectFinishSelections.id, selectionId),
+        eq(projectFinishSelections.projectId, projectId)
+      ),
+      {
         status,
         // Only the authenticated owner decision action records owner approval.
         ownerApproved: existing.ownerApproved,
@@ -1647,13 +586,8 @@ export async function updateProjectSelectionStatus(
             ? "selection_change_review"
             : existing.syncStatus,
         updatedAt: now
-      })
-      .where(
-        and(
-          eq(projectFinishSelections.id, selectionId),
-          eq(projectFinishSelections.projectId, projectId)
-        )
-      )
+      }
+    )
 
     if (status === "unavailable" && existing.status !== "unavailable") {
       const reviewId = crypto.randomUUID()
@@ -1793,8 +727,8 @@ export async function deleteProjectSelection(
   selectionId: string
 ): Promise<ActionResult> {
   try {
-    const db = await verifyProjectAccess(projectId, "update")
-    await requireFeaturePermission(await requireAuth(), "finish-selections", "delete")
+    const { db, user } = await staffSelectionContext(projectId, "update")
+    await requireFeaturePermission(user, "finish-selections", "delete")
     const [existing] = await db
       .select({
         id: projectFinishSelections.id,
@@ -1822,15 +756,14 @@ export async function deleteProjectSelection(
       }
     }
 
-    const deleted = await db
-      .delete(projectFinishSelections)
-      .where(
-        and(
-          eq(projectFinishSelections.id, selectionId),
-          eq(projectFinishSelections.projectId, projectId),
-          selectionDeletionAllowed(selectionId)
-        )
-      ).returning({id:projectFinishSelections.id})
+    const deleted = await deleteFinishSelectionsReturningIds(
+      db,
+      and(
+        eq(projectFinishSelections.id, selectionId),
+        eq(projectFinishSelections.projectId, projectId),
+        selectionDeletionAllowed(selectionId)
+      )
+    )
     if (!deleted.length) return {success:false,error:"Unpublish the decision and remove procurement links before deleting. Selections with owner approval or request history must be retained."}
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)

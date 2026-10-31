@@ -10,7 +10,9 @@ import {
   IconSparkles,
 } from "@tabler/icons-react"
 
-import type { ProjectSelectionsSummary } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionsSummary,
+} from "@/lib/domain/selections/types"
 import { Button } from "@/components/ui/button"
 import {
   Select,

@@ -2,7 +2,13 @@ import type { SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
-import { projectExternalLinks, projectJobStatuses, projectMembers, projects } from "@/db/schema"
+import {
+  projectExternalLinks,
+  projectJobStatuses,
+  projectMembers,
+  projectProfileSyncOperations,
+  projects,
+} from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -385,4 +391,165 @@ export async function deleteProjectExternalLinksReturningIds(
   where: SQL | undefined,
 ): Promise<readonly { readonly id: string }[]> {
   return db.delete(projectExternalLinks).where(where).returning({ id: projectExternalLinks.id })
+}
+
+// ---- projectProfileSyncOperations (Drive folder rename / tracker row retries)
+
+type ProjectProfileSyncOperationInsert = typeof projectProfileSyncOperations.$inferInsert
+type ProjectProfileSyncOperationPatch = SQLiteUpdateSetSource<typeof projectProfileSyncOperations>
+
+export function insertProjectProfileSyncOperationStatement(
+  db: Db,
+  values: ProjectProfileSyncOperationInsert | readonly ProjectProfileSyncOperationInsert[],
+): Statement {
+  return isRows(values)
+    ? db.insert(projectProfileSyncOperations).values([...values])
+    : db.insert(projectProfileSyncOperations).values(values)
+}
+
+export async function updateProjectProfileSyncOperations(
+  db: Db,
+  where: SQL | undefined,
+  patch: ProjectProfileSyncOperationPatch,
+): Promise<D1Result> {
+  return db.update(projectProfileSyncOperations).set(patch).where(where).run()
+}
+
+// ---- Sage client/project write results
+
+/**
+ * Records the Sage job a confirmed client/project write created, as a
+ * prepared statement for the Sage bridge's raw D1 batch.
+ */
+export function sageJobResultStatement(
+  d1: D1Database,
+  input: {
+    readonly projectId: string
+    readonly sageJobId: SageJobResultValue
+    readonly sageJobNumber: SageJobResultValue
+    readonly sageJobStatusNumber: SageJobResultValue
+    readonly sageJobTypeNumber: SageJobResultValue
+    readonly now: string
+  },
+): D1PreparedStatement {
+  return d1
+    .prepare(
+      `UPDATE projects
+         SET sage_job_id = ?, sage_job_number = ?,
+             sage_job_status_number = ?, sage_job_type_number = ?, updated_at = ?
+         WHERE id = ?`
+    )
+    .bind(
+      input.sageJobId,
+      input.sageJobNumber,
+      input.sageJobStatusNumber,
+      input.sageJobTypeNumber,
+      input.now,
+      input.projectId
+    )
+}
+
+/** A value the Sage bridge reports, bound as is. */
+type SageJobResultValue = string | number | null
+
+// ---- Buildertrend lead/project cutover script
+
+/*
+ * SQL text for the Buildertrend lead/project cutover script
+ * (src/lib/buildertrend/lead-project-cutover.ts). These build the script's
+ * `projects` statements as text for a reviewed migration file; nothing here
+ * runs them.
+ */
+
+export type BuildertrendCutoverProject = {
+  readonly projectId: string
+  readonly projectName: string
+  readonly projectNumber: string | undefined
+  readonly googleDriveProjectFolderId: string | undefined
+  readonly clientName: string | undefined
+}
+
+/** A SQL string literal, or NULL for a missing or empty value. */
+function cutoverSqlText(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "NULL"
+  return `'${value.replaceAll("'", "''")}'`
+}
+
+export function buildertrendCutoverNewProjectSql(
+  organizationId: string,
+  project: BuildertrendCutoverProject,
+  capturedAt: string,
+): string {
+  return `INSERT INTO projects (
+  id, project_number, name, status, client_status, job_status_id, client_name,
+  organization_id, google_drive_folder_id, owner_updates_enabled,
+  owner_update_channel, owner_update_cadence, owner_schedule_view,
+  created_at, updated_at
+) SELECT
+  ${cutoverSqlText(project.projectId)}, ${cutoverSqlText(project.projectNumber)},
+  ${cutoverSqlText(project.projectName)}, 'OPEN', 'lead', 'current',
+  ${cutoverSqlText(project.clientName)}, ${cutoverSqlText(organizationId)},
+  ${cutoverSqlText(project.googleDriveProjectFolderId)}, 0, 'compass', 'weekly', 'items',
+  ${cutoverSqlText(capturedAt)}, ${cutoverSqlText(capturedAt)}
+WHERE EXISTS (
+  SELECT 1 FROM organizations WHERE id = ${cutoverSqlText(organizationId)}
+)
+ON CONFLICT(id) DO UPDATE SET
+  google_drive_folder_id = COALESCE(
+    projects.google_drive_folder_id,
+    excluded.google_drive_folder_id
+  ),
+  updated_at = CASE
+    WHEN projects.organization_id = excluded.organization_id
+      THEN excluded.updated_at
+    ELSE projects.updated_at
+  END
+WHERE projects.organization_id = excluded.organization_id;`
+}
+
+export function buildertrendCutoverProjectCollisionGuardSql(
+  organizationId: string,
+  project: BuildertrendCutoverProject,
+  capturedAt: string,
+): string {
+  const projectNumberConflict = project.projectNumber
+    ? `OR EXISTS (
+    SELECT 1 FROM projects
+    WHERE organization_id = ${cutoverSqlText(organizationId)}
+      AND project_number = ${cutoverSqlText(project.projectNumber)} COLLATE NOCASE
+      AND id <> ${cutoverSqlText(project.projectId)}
+  )`
+    : ""
+  return `-- Fail closed if a new Buildertrend project would reuse an existing identity.
+INSERT INTO projects (id, name, status, organization_id, created_at, updated_at)
+SELECT NULL, 'Buildertrend cutover collision guard', 'OPEN',
+  ${cutoverSqlText(organizationId)}, ${cutoverSqlText(capturedAt)}, ${cutoverSqlText(capturedAt)}
+WHERE EXISTS (
+  SELECT 1 FROM projects
+  WHERE id = ${cutoverSqlText(project.projectId)}
+    AND organization_id <> ${cutoverSqlText(organizationId)}
+)
+OR EXISTS (
+  SELECT 1 FROM projects
+  WHERE organization_id = ${cutoverSqlText(organizationId)}
+    AND google_drive_folder_id = ${cutoverSqlText(project.googleDriveProjectFolderId)}
+    AND id <> ${cutoverSqlText(project.projectId)}
+)
+${projectNumberConflict};`
+}
+
+export function buildertrendCutoverProjectReferenceGuardSql(
+  organizationId: string,
+  project: BuildertrendCutoverProject,
+  capturedAt: string,
+): string {
+  return `-- Fail closed rather than staging a lead against a nonexistent Compass project.
+INSERT INTO projects (id, name, status, organization_id, created_at, updated_at)
+SELECT NULL, 'Buildertrend cutover project reference guard', 'OPEN',
+  ${cutoverSqlText(organizationId)}, ${cutoverSqlText(capturedAt)}, ${cutoverSqlText(capturedAt)}
+WHERE NOT EXISTS (
+  SELECT 1 FROM projects
+  WHERE id = ${cutoverSqlText(project.projectId)}
+    AND organization_id = ${cutoverSqlText(organizationId)}
+);`
 }

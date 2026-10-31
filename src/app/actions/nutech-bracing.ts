@@ -2,7 +2,8 @@
 
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { projectProfileAuditEvents, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { nuTechBracingRentalLines, nuTechBracingRentals } from "@/db/schema-nutech"
 import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
@@ -281,8 +282,7 @@ export async function saveBracingRental(input: BracingRentalInput): Promise<Resu
         values,
         lines,
       }),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      recordProjectAudit(db, {
         organizationId,
         projectId: input.projectId,
         actorUserId: user.id,
@@ -323,8 +323,7 @@ export async function deleteBracingRental(projectId: string, rentalId: string): 
     if (rental.status !== "reserved") return { success: false, error: "Bracing that went out is kept for the record and can't be deleted." }
     await db.batch([
       deleteNuTechBracingRentalStatement(db, rental.id),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      recordProjectAudit(db, {
         organizationId,
         projectId,
         actorUserId: user.id,

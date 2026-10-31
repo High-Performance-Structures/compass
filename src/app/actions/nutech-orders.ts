@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
 import { findNuTechOrder, nextNuTechOrderNumber } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 
-import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectOperations, projects } from "@/db/schema"
 import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
@@ -20,6 +20,8 @@ import {
 import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
+import { updateProjects, updateProjectsStatement } from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { isNuTechJob, nuTechOrgContext, readNuTechProject, type NuTechProject } from "@/lib/domain/nutech/access"
 import {
   nuTechEffectiveTaxEntityId,
@@ -248,22 +250,19 @@ async function syncProjectWithOrder(
   const statusChanged = next.jobStatusId !== null && next.jobStatusId !== current.jobStatusId
   const deliveryChanged = next.deliveryMethod !== null && next.deliveryMethod !== current.deliveryMethod
   if (!statusChanged && !deliveryChanged) return
-  const update = access.db
-    .update(projects)
-    .set({
-      ...(statusChanged && next.jobStatusId !== null ? { jobStatusId: next.jobStatusId } : {}),
-      ...(deliveryChanged && next.deliveryMethod !== null ? { deliveryMethod: next.deliveryMethod } : {}),
-      updatedAt: next.now,
-    })
-    .where(eq(projects.id, access.project.id))
+  const patch = {
+    ...(statusChanged && next.jobStatusId !== null ? { jobStatusId: next.jobStatusId } : {}),
+    ...(deliveryChanged && next.deliveryMethod !== null ? { deliveryMethod: next.deliveryMethod } : {}),
+    updatedAt: next.now,
+  }
+  const where = eq(projects.id, access.project.id)
   if (!statusChanged) {
-    await update
+    await updateProjects(access.db, where, patch)
     return
   }
   await access.db.batch([
-    update,
-    access.db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    updateProjectsStatement(access.db, where, patch),
+    recordProjectAudit(access.db, {
       organizationId: access.organizationId,
       projectId: access.project.id,
       actorUserId: access.user.id,

@@ -19,6 +19,7 @@ import {
   scheduleReadContext,
   scheduleWriteContext,
 } from "@/lib/domain/schedule/access"
+import { updateProjectsReturningIds, updateProjectsStatement } from "@/lib/domain/project/store"
 import { loadDependenciesForTasks } from "@/lib/domain/schedule/queries"
 import { publicationInsertQuery } from "@/lib/domain/schedule/store"
 import type { Db } from "@/lib/server/action-context"
@@ -230,9 +231,11 @@ export async function publishSchedule(
         publishedBy: user.id,
         publishedAt,
       }),
-      db.update(projects)
-        .set({ schedulePublished: true })
-        .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))),
+      updateProjectsStatement(
+        db,
+        and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
+        { schedulePublished: true },
+      ),
     ])
     await recordActivityEvent({
       db,
@@ -340,15 +343,15 @@ export async function moveScheduleToDraft(
     }
     await requireProject(db, projectId, organizationId)
 
-    const changed = await db
-      .update(projects)
-      .set({ schedulePublished: false })
-      .where(and(
+    const changed = await updateProjectsReturningIds(
+      db,
+      and(
         eq(projects.id, projectId),
         eq(projects.organizationId, organizationId),
         eq(projects.schedulePublished, true)
-      ))
-      .returning({ id: projects.id })
+      ),
+      { schedulePublished: false },
+    )
     if (changed.length === 0) {
       return { success: false, error: "This schedule is already a draft." }
     }

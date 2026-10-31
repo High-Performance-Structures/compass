@@ -4,9 +4,20 @@ import { and, desc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectDuplicateDecisions, projectNumberAliases, projectNumberReservations, projectNumberRetirements, projectProfileAuditEvents, projectRegistryRemovals, projectRouteAliases, projects, users } from "@/db/schema"
+import { projectDuplicateDecisions, projectNumberAliases, projectNumberReservations, projectNumberRetirements, projectRegistryRemovals, projectRouteAliases, projects, users } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  deleteProjectNumberRetirementsStatement,
+  deleteProjectRouteAliasesStatement,
+  insertProjectNumberReservationStatement,
+} from "@/lib/domain/project/numbering-store"
+import {
+  deleteProjectDuplicateDecisionsStatement,
+  deleteProjectRegistryRemovalsStatement,
+} from "@/lib/domain/project/registry-store"
+import { deleteProjectsStatement, updateProjectsStatement } from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
 import { projectDeletionDependencyTableNames, type ProjectMergeSchemaRow } from "@/lib/project-merge-impact"
@@ -50,11 +61,11 @@ export async function restoreArchivedRegistryProject(input: { readonly projectId
     }
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projects).set({ projectNumber, status: archived.previousStatus, updatedAt: now }).where(eq(projects.id, archived.id)),
-      ...(parts && projectNumber ? [db.insert(projectNumberReservations).values({ id: crypto.randomUUID(), organizationId, projectId: archived.id, department: parts.department, sequence: Number(parts.sequence), projectNumber, createdAt: now })] : []),
-      db.delete(projectNumberRetirements).where(and(eq(projectNumberRetirements.organizationId, organizationId), eq(projectNumberRetirements.formerProjectId, archived.id))),
-      db.insert(projectProfileAuditEvents).values({ id: crypto.randomUUID(), organizationId, projectId: archived.id, actorUserId: user.id, eventType: "project.registry_restored", entityType: "project", entityId: archived.id, beforeJson: JSON.stringify({ status: archived.currentStatus }), afterJson: JSON.stringify({ status: archived.previousStatus, projectNumber }), createdAt: now }),
-      db.delete(projectRegistryRemovals).where(and(eq(projectRegistryRemovals.organizationId, organizationId), eq(projectRegistryRemovals.projectId, archived.id))),
+      updateProjectsStatement(db, eq(projects.id, archived.id), { projectNumber, status: archived.previousStatus, updatedAt: now }),
+      ...(parts && projectNumber ? [insertProjectNumberReservationStatement(db, { id: crypto.randomUUID(), organizationId, projectId: archived.id, department: parts.department, sequence: Number(parts.sequence), projectNumber, createdAt: now })] : []),
+      deleteProjectNumberRetirementsStatement(db, and(eq(projectNumberRetirements.organizationId, organizationId), eq(projectNumberRetirements.formerProjectId, archived.id))),
+      recordProjectAudit(db, { organizationId, projectId: archived.id, actorUserId: user.id, eventType: "project.registry_restored", entityType: "project", entityId: archived.id, beforeJson: JSON.stringify({ status: archived.currentStatus }), afterJson: JSON.stringify({ status: archived.previousStatus, projectNumber }), createdAt: now }),
+      deleteProjectRegistryRemovalsStatement(db, and(eq(projectRegistryRemovals.organizationId, organizationId), eq(projectRegistryRemovals.projectId, archived.id))),
     ])
     revalidatePath("/dashboard/projects"); revalidatePath("/dashboard/executive-admin/project-archive"); return { success: true }
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Could not restore project." } }
@@ -75,9 +86,9 @@ export async function permanentlyDeleteArchivedRegistryProject(input: { readonly
     const blocking = counts.reduce((sum, result) => sum + (typeof result.results[0]?.record_count === "number" ? result.results[0].record_count : 0), 0)
     if (blocking > 0) return { success: false, error: `Permanent deletion is blocked because ${blocking} linked record${blocking === 1 ? " remains" : "s remain"}. Merge or remove those records first.` }
     await db.batch([
-      db.delete(projectRouteAliases).where(eq(projectRouteAliases.sourceProjectId, archived.id)),
-      db.delete(projectDuplicateDecisions).where(or(eq(projectDuplicateDecisions.projectAId, archived.id), eq(projectDuplicateDecisions.projectBId, archived.id))),
-      db.delete(projects).where(eq(projects.id, archived.id)),
+      deleteProjectRouteAliasesStatement(db, eq(projectRouteAliases.sourceProjectId, archived.id)),
+      deleteProjectDuplicateDecisionsStatement(db, or(eq(projectDuplicateDecisions.projectAId, archived.id), eq(projectDuplicateDecisions.projectBId, archived.id))),
+      deleteProjectsStatement(db, eq(projects.id, archived.id)),
     ])
     revalidatePath("/dashboard/executive-admin/project-archive"); return { success: true }
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Could not permanently delete project." } }

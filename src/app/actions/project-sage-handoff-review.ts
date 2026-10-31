@@ -1,15 +1,13 @@
 "use server"
 
-import { and, eq, exists, sql } from "drizzle-orm"
+import { and, eq, exists } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import {
-  projectOperations,
-  projectProfileAuditEvents,
-  projects,
-} from "@/db/schema"
-import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { projectOperations, projects } from "@/db/schema"
 import { isDemoUser } from "@/lib/demo"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { updateProjectsStatement } from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { orgContext } from "@/lib/server/action-context"
 import { isGooglePhaseHandoffAwaitingClientReview } from "@/lib/sage/project-handoff-review"
 
@@ -120,40 +118,29 @@ export async function reviewProjectHandoffClient(
     // update last so every earlier mutation can require the untouched review
     // version; a concurrent reviewer then makes all three statements no-ops.
     const results = await db.batch([
-      db
-        .update(projects)
-        .set({ clientName, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.organizationId, organizationId),
-            exists(guardedPendingReview),
-          ),
+      updateProjectsStatement(
+        db,
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId),
+          exists(guardedPendingReview),
         ),
-      db.insert(projectProfileAuditEvents).select(
-        db
-          .select({
-            id: sql<string>`${crypto.randomUUID()}`.as("id"),
-            organizationId: projects.organizationId,
-            projectId: projects.id,
-            actorUserId: sql<string>`${user.id}`.as("actorUserId"),
-            eventType: sql<string>`'project.sage_handoff_client_reviewed'`.as(
-              "eventType",
-            ),
-            entityType: sql<string>`'project_operation'`.as("entityType"),
-            entityId: sql<string>`${operationId}`.as("entityId"),
-            beforeJson: sql<string>`${beforeJson}`.as("beforeJson"),
-            afterJson: sql<string>`${afterJson}`.as("afterJson"),
-            createdAt: sql<string>`${now}`.as("createdAt"),
-          })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, organizationId),
-              exists(guardedPendingReview),
-            ),
-          ),
+        { clientName, updatedAt: now },
+      ),
+      recordProjectAudit(
+        db,
+        {
+          organizationId,
+          projectId,
+          actorUserId: user.id,
+          eventType: "project.sage_handoff_client_reviewed",
+          entityType: "project_operation",
+          entityId: operationId,
+          beforeJson,
+          afterJson,
+          createdAt: now,
+        },
+        { onlyIf: exists(guardedPendingReview) },
       ),
       operationUpdateQuery(
         db,

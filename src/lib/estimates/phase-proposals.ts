@@ -7,7 +7,7 @@ import {
   projectEstimates,
   projectPhaseProposals,
 } from "@/db/schema-estimates"
-import { projectFamilies, projectFamilyPhases } from "@/db/schema-project-families"
+import { projectFamilyPhases } from "@/db/schema-project-families"
 import { changeOrderLinesFromEstimate } from "@/lib/change-orders/estimate-execution"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 import type { CompassDb } from "@/lib/domain/estimates/access"
@@ -25,6 +25,10 @@ import {
 } from "@/lib/domain/estimates/store"
 import { estimateLinesBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
 import { projectFamilyProjectNumber } from "@/lib/project-family"
+import {
+  insertProjectFamilyPhaseStatement,
+  insertProjectFamilyStatement,
+} from "@/lib/domain/families/store"
 
 /*
  * A phase proposal offers one assembly of the contract estimate as a later
@@ -119,7 +123,7 @@ export async function completePhaseProposal(input: {
     const familyStatements: Statement[] = projectPhase
       ? []
       : [
-          db.insert(projectFamilies).values({
+          insertProjectFamilyStatement(db, {
             id: familyId,
             organizationId,
             name: project.name,
@@ -132,7 +136,7 @@ export async function completePhaseProposal(input: {
             createdAt: now,
             updatedAt: now,
           }),
-          db.insert(projectFamilyPhases).values({
+          insertProjectFamilyPhaseStatement(db, {
             id: crypto.randomUUID(),
             familyId,
             projectId: project.id,
@@ -294,7 +298,7 @@ export async function completePhaseProposal(input: {
       }
     }
 
-    const phaseInsert = db.insert(projectFamilyPhases).values({
+    const phaseInsert = insertProjectFamilyPhaseStatement(db, {
         id: familyPhaseId,
         familyId,
         projectId: null,

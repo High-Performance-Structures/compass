@@ -3,7 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { activityEvents, organizationFeatureSettings, projectFieldCostCodes, projectProfileAuditEvents, projects } from "@/db/schema"
+import { activityEvents, organizationFeatureSettings, projectFieldCostCodes, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -145,7 +146,7 @@ export async function saveProjectFieldCostCodes(projectId: string, raw: unknown)
       ? ctx.db.insert(projectFieldCostCodes).values({ projectId, organizationId: ctx.organizationId, codesJson: JSON.stringify(codes), updatedAt: now, updatedBy: ctx.user.id })
         .onConflictDoUpdate({ target: projectFieldCostCodes.projectId, set: { codesJson: JSON.stringify(codes), updatedAt: now, updatedBy: ctx.user.id } })
       : ctx.db.delete(projectFieldCostCodes).where(and(eq(projectFieldCostCodes.projectId, projectId), eq(projectFieldCostCodes.organizationId, ctx.organizationId)))
-    await ctx.db.batch([write, ctx.db.insert(projectProfileAuditEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, projectId, actorUserId: ctx.user.id, eventType: codes.length ? "field_cost_codes_updated" : "field_cost_codes_cleared", entityType: "field_cost_codes", entityId: projectId, beforeJson: JSON.stringify(before), afterJson: JSON.stringify(codes), createdAt: now })])
+    await ctx.db.batch([write, recordProjectAudit(ctx.db, { organizationId: ctx.organizationId, projectId, actorUserId: ctx.user.id, eventType: codes.length ? "field_cost_codes_updated" : "field_cost_codes_cleared", entityType: "field_cost_codes", entityId: projectId, beforeJson: JSON.stringify(before), afterJson: JSON.stringify(codes), createdAt: now })])
     invalidate(projectId)
     return { success: true }
   } catch (error) { return { success: false, error: errorMessage(error) } }

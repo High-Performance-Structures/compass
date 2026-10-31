@@ -208,3 +208,19 @@ export async function deleteProjectDuplicateDecisionsReturningIds(
 ): Promise<readonly { readonly id: string }[]> {
   return db.delete(projectDuplicateDecisions).where(where).returning({ id: projectDuplicateDecisions.id })
 }
+
+/**
+ * Upserts one decision and returns its status. An empty result means the
+ * conflict's `setWhere` refused the update (for example an already merged pair).
+ */
+export async function upsertProjectDuplicateDecisionReturningStatus(
+  db: Db,
+  values: ProjectDuplicateDecisionInsert,
+  conflict: Upsert<ProjectDuplicateDecisionPatch>,
+): Promise<readonly { readonly status: string }[]> {
+  return db
+    .insert(projectDuplicateDecisions)
+    .values(values)
+    .onConflictDoUpdate(conflict)
+    .returning({ status: projectDuplicateDecisions.status })
+}

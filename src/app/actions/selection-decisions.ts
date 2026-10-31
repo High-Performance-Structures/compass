@@ -14,7 +14,8 @@ import {
   projectSelectionRequests as requests,
   projectSelectionProcurementLinks as links,
 } from "@/db/schema-selection-decisions"
-import { selectionAccess } from "@/lib/selections/access"
+import { selectionAccess } from "@/lib/domain/selections/access"
+import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
@@ -209,20 +210,19 @@ export async function publishSelectionDecision(
     const result = await db.batch([
       mutation,
       audit,
-      db
-        .update(projectFinishSelections)
-        .set({
+      updateFinishSelectionsStatement(
+        db,
+        and(
+          eq(projectFinishSelections.id, row.id),
+          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${row.id} AND ${decisions.lastMutationId} = ${token})`
+        ),
+        {
           ownerVisible: input.published,
           ownerApproved: false,
           approvedBy: null,
           approvedAt: null,
-        })
-        .where(
-          and(
-            eq(projectFinishSelections.id, row.id),
-            sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${row.id} AND ${decisions.lastMutationId} = ${token})`
-          )
-        ),
+        }
+      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(
@@ -356,22 +356,21 @@ export async function approveSelectionDecision(
           .from(decisions)
           .where(eq(decisions.lastMutationId, token))
       ),
-      db
-        .update(projectFinishSelections)
-        .set({
+      updateFinishSelectionsStatement(
+        db,
+        and(
+          eq(projectFinishSelections.id, selectionId),
+          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
+        ),
+        {
           ownerApproved: true,
           approvedBy: user.id,
           approvedAt: now,
           // Signature collection must not rewind procurement or installation progress.
           status: sql`CASE WHEN ${projectFinishSelections.status} IN ('needed', 'proposed', 'owner_review') THEN 'approved' ELSE ${projectFinishSelections.status} END`,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectFinishSelections.id, selectionId),
-            sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
-          )
-        ),
+        }
+      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(

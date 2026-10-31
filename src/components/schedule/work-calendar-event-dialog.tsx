@@ -15,11 +15,13 @@ import {
   cancelWorkCalendarEvent,
   createWorkCalendarEvent,
   updateWorkCalendarEvent,
-  type ProjectRow,
-  type WorkCalendarEntry,
-  type WorkCalendarEventAttendee,
-  type GoogleCalendarDestination,
 } from "@/app/actions/work-calendar"
+import type {
+  GoogleCalendarDestination,
+  ProjectRow,
+  WorkCalendarEntry,
+  WorkCalendarEventAttendee,
+} from "@/lib/domain/work-calendar/types"
 import {
   AlertDialog,
   AlertDialogAction,

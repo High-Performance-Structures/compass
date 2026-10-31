@@ -13,6 +13,13 @@ import {
 } from "@/db/schema-project-families"
 import { getCloudflareContext } from "@/lib/db"
 import { insertOperations, updateOperationsReturning } from "@/lib/domain/operations/store"
+import { insertProjectFamilyPhase, updateProjectFamilyPhases } from "@/lib/domain/families/store"
+import {
+  insertProject,
+  insertProjectExternalLink,
+  updateProjectExternalLinks,
+  updateProjects,
+} from "@/lib/domain/project/store"
 import {
   baseProjectNumber,
   projectNumberPhaseNumber,
@@ -354,14 +361,11 @@ async function upsertProjectExternalLink(
   }
 
   if (existing) {
-    await db
-      .update(projectExternalLinks)
-      .set(values)
-      .where(eq(projectExternalLinks.id, existing.id))
+    await updateProjectExternalLinks(db, eq(projectExternalLinks.id, existing.id), values)
     return
   }
 
-  await db.insert(projectExternalLinks).values({
+  await insertProjectExternalLink(db, {
     id: crypto.randomUUID(),
     projectId: input.projectId,
     system: input.system,
@@ -516,20 +520,17 @@ async function linkPhasedHandoffToFamily(input: {
   }
 
   if (existing) {
-    await input.db
-      .update(projectFamilyPhases)
-      .set({
-        projectId: input.projectId,
-        projectNumber: input.projectNumber,
-        googleDriveFolderId: input.folderId ?? existing.googleDriveFolderId,
-        name: input.projectName,
-        updatedAt: input.now,
-      })
-      .where(eq(projectFamilyPhases.id, existing.id))
+    await updateProjectFamilyPhases(input.db, eq(projectFamilyPhases.id, existing.id), {
+      projectId: input.projectId,
+      projectNumber: input.projectNumber,
+      googleDriveFolderId: input.folderId ?? existing.googleDriveFolderId,
+      name: input.projectName,
+      updatedAt: input.now,
+    })
     return
   }
 
-  await input.db.insert(projectFamilyPhases).values({
+  await insertProjectFamilyPhase(input.db, {
     id: crypto.randomUUID(),
     familyId: family.id,
     projectId: input.projectId,
@@ -682,7 +683,7 @@ export async function POST(request: Request): Promise<Response> {
     : clientResolution.clientName
 
   if (!existingProject) {
-    await db.insert(projects).values({
+    await insertProject(db, {
       id: projectId,
       organizationId,
       projectNumber: payload.projectNumber,
@@ -723,9 +724,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (existingProject) {
-    await db
-      .update(projects)
-      .set({
+    await updateProjects(db, eq(projects.id, existingProject.id), {
         name: payload.name,
         department: existingProject.department ?? department,
         status: projectStatus,
@@ -738,7 +737,6 @@ export async function POST(request: Request): Promise<Response> {
         updatedAt: now,
         ...(payload.address === null ? {} : { address: payload.address }),
       })
-      .where(eq(projects.id, existingProject.id))
   }
 
   await upsertProjectExternalLink(db, {

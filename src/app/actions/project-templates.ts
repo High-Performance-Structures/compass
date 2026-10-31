@@ -26,6 +26,10 @@ import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
+  templateFinishSelectionStatement,
+  templateSelectionRoomStatement,
+} from "@/lib/domain/selections/store"
+import {
   dependencyInsertStatement,
   recalcCriticalPath,
   templateTaskInsertStatement,
@@ -533,52 +537,36 @@ export async function applyProjectTemplate(input: {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "") || "whole-project"
       statements.push(
-        env.DB.prepare(
-          `INSERT OR IGNORE INTO project_finish_selection_rooms (
-            id, project_id, source_system, room_name, sort_order,
-            created_at, updated_at
-          ) VALUES (?, ?, 'compass_template', ?, 1000, ?, ?)`
-        ).bind(
-          `template-room:${input.projectId}:${roomKey}`,
-          input.projectId,
+        templateSelectionRoomStatement(env.DB, {
+          id: `template-room:${input.projectId}:${roomKey}`,
+          projectId: input.projectId,
           roomName,
           now,
-          now
-        )
+        })
       )
     }
     // Imported selection choices need project-team review before an owner can
     // see them, even when Buildertrend marked a client response as required.
     for (const selection of contentBuild.selections) {
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_finish_selections (
-            id, project_id, source_system, source_record_id, room_name,
-            category, name, description, cost_code, status, owner_visible,
-            owner_approved, notes, choice_options_json, parent_selection_id,
-            parent_choice_value, selection_level, sort_order, sync_status,
-            created_at, updated_at
-          ) VALUES (?, ?, 'compass_template', ?, ?, ?, ?, ?, ?, ?, 0, 0,
-            ?, ?, ?, ?, ?, ?, 'manual', ?, ?)`
-        ).bind(
-          selection.id,
-          input.projectId,
-          selection.sourceRecordId,
-          selection.roomName,
-          selection.category,
-          selection.name,
-          selection.description,
-          selection.costCode,
-          selection.status,
-          selection.notes,
-          selection.choiceOptionsJson,
-          selection.parentSelectionId,
-          selection.parentChoiceValue,
-          selection.selectionLevel,
-          selection.sortOrder,
+        templateFinishSelectionStatement(env.DB, {
+          id: selection.id,
+          projectId: input.projectId,
+          sourceRecordId: selection.sourceRecordId,
+          roomName: selection.roomName,
+          category: selection.category,
+          name: selection.name,
+          description: selection.description,
+          costCode: selection.costCode,
+          status: selection.status,
+          notes: selection.notes,
+          choiceOptionsJson: selection.choiceOptionsJson,
+          parentSelectionId: selection.parentSelectionId,
+          parentChoiceValue: selection.parentChoiceValue,
+          selectionLevel: selection.selectionLevel,
+          sortOrder: selection.sortOrder,
           now,
-          now
-        )
+        })
       )
     }
     for (const bidPackage of contentBuild.bidPackages) {
