@@ -8,6 +8,7 @@ import {
   staffMessageStatus,
   type StaffMessageAgingThresholds,
 } from "@/lib/staff-message-desk/triage"
+import { updateStaffMessageRecords } from "@/lib/domain/feedback/inbound-store"
 
 const STALE_REMINDER_EVENT = "staff_message.stale"
 
@@ -99,10 +100,7 @@ export async function sendStaleMessageReminders(db: Db, now: Date = new Date()):
       reminded += 1
     }
     if (due.length > 0) {
-      await db
-        .update(staffMessageRecords)
-        .set({ staleRemindedAt: nowIso })
-        .where(inArray(staffMessageRecords.id, due.map((row) => row.id)))
+      await updateStaffMessageRecords(db, { staleRemindedAt: nowIso }, inArray(staffMessageRecords.id, due.map((row) => row.id)))
     }
   }
   return { reminded }

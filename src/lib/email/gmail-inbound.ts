@@ -14,9 +14,7 @@ import {
 import { googleAuth } from "@/db/schema-google"
 import {
   channelMembers,
-  channelReadState,
   channels,
-  messages,
 } from "@/db/schema-conversations"
 import {
   COMPASS_GMAIL_READONLY_SCOPE,
@@ -40,6 +38,9 @@ import { isTrackedRecordKind, isVendorLevelKind } from "@/lib/email/tracked-reco
 import { postTradeDocReply } from "@/lib/trade-docs/email-replies"
 import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
+import { updateReplyThread, upsertInboundEmail } from "@/lib/domain/correspondence/email-store"
+import { inboundEmailStatuses } from "@/lib/domain/correspondence/queries"
+import { incrementUnreadForOthers, insertChannel, insertChannelMembers, insertMessageOnce, insertReadStates } from "@/lib/domain/conversations/store"
 
 type Db = ReturnType<typeof getDb>
 
@@ -193,7 +194,7 @@ async function ensureProjectChannel(input: {
 
   const now = new Date().toISOString()
   const channelId = crypto.randomUUID()
-  await input.db.insert(channels).values({
+  await insertChannel(input.db, {
     id: channelId,
     name: projectChannelName(project),
     type: "text",
@@ -231,22 +232,22 @@ async function ensureSystemMembership(input: {
   if (existing) return
 
   const now = new Date().toISOString()
-  await input.db.insert(channelMembers).values({
+  await insertChannelMembers(input.db, [{
     id: crypto.randomUUID(),
     channelId: input.channelId,
     userId: input.systemUserId,
     role: "member",
     notifyLevel: "mentions",
     joinedAt: now,
-  }).onConflictDoNothing()
-  await input.db.insert(channelReadState).values({
+  }], { ignoreConflict: true })
+  await insertReadStates(input.db, [{
     id: crypto.randomUUID(),
     userId: input.systemUserId,
     channelId: input.channelId,
     lastReadMessageId: null,
     lastReadAt: now,
     unreadCount: 0,
-  }).onConflictDoNothing()
+  }], { ignoreConflict: true })
 }
 
 function messageContent(candidate: InboundCandidate): string {
@@ -288,41 +289,29 @@ async function insertInboundAudit(input: {
   readonly postedMessageId: string | null
   readonly importedAt: string
 }): Promise<void> {
-  await input.db
-    .insert(inboundEmails)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      replyThreadId: input.replyThreadId,
-      token: input.candidate.token,
-      gmailMessageId: input.candidate.gmailMessageId,
-      gmailThreadId: input.candidate.gmailThreadId,
-      messageIdHeader: input.candidate.messageIdHeader,
-      inReplyToHeader: input.candidate.inReplyToHeader,
-      referencesHeader: input.candidate.referencesHeader,
-      fromAddress: input.candidate.fromAddress,
-      fromName: input.candidate.fromName,
-      toAddress: input.candidate.toAddress,
-      subject: input.candidate.subject,
-      textBody: input.candidate.textBody,
-      htmlBody: input.candidate.htmlBody,
-      snippet: input.candidate.snippet,
-      matchedStatus: input.matchedStatus,
-      postedMessageId: input.postedMessageId,
-      receivedAt: input.candidate.receivedAt,
-      importedAt: input.importedAt,
-    })
-    .onConflictDoUpdate({
-      target: inboundEmails.gmailMessageId,
-      set: {
-        projectId: input.projectId,
-        replyThreadId: input.replyThreadId,
-        matchedStatus: input.matchedStatus,
-        postedMessageId: input.postedMessageId,
-        importedAt: input.importedAt,
-      },
-    })
+  await upsertInboundEmail(input.db, {
+    id: crypto.randomUUID(),
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    replyThreadId: input.replyThreadId,
+    token: input.candidate.token,
+    gmailMessageId: input.candidate.gmailMessageId,
+    gmailThreadId: input.candidate.gmailThreadId,
+    messageIdHeader: input.candidate.messageIdHeader,
+    inReplyToHeader: input.candidate.inReplyToHeader,
+    referencesHeader: input.candidate.referencesHeader,
+    fromAddress: input.candidate.fromAddress,
+    fromName: input.candidate.fromName,
+    toAddress: input.candidate.toAddress,
+    subject: input.candidate.subject,
+    textBody: input.candidate.textBody,
+    htmlBody: input.candidate.htmlBody,
+    snippet: input.candidate.snippet,
+    matchedStatus: input.matchedStatus,
+    postedMessageId: input.postedMessageId,
+    receivedAt: input.candidate.receivedAt,
+    importedAt: input.importedAt,
+  })
 }
 
 async function importCandidate(input: {
@@ -509,25 +498,21 @@ async function importCandidate(input: {
   })
 
   const messageId = `email-${input.candidate.gmailMessageId}`
-  const insertedMessages = await input.db
-    .insert(messages)
-    .values({
-      id: messageId,
-      channelId,
-      threadId: null,
-      userId: systemUserId,
-      content: messageContent(input.candidate),
-      contentHtml: messageHtml(input.candidate),
-      editedAt: null,
-      deletedAt: null,
-      deletedBy: null,
-      isPinned: false,
-      replyCount: 0,
-      lastReplyAt: null,
-      createdAt: input.candidate.receivedAt,
-    })
-    .onConflictDoNothing({ target: messages.id })
-    .returning({ id: messages.id })
+  const insertedMessages = await insertMessageOnce(input.db, {
+    id: messageId,
+    channelId,
+    threadId: null,
+    userId: systemUserId,
+    content: messageContent(input.candidate),
+    contentHtml: messageHtml(input.candidate),
+    editedAt: null,
+    deletedAt: null,
+    deletedBy: null,
+    isPinned: false,
+    replyCount: 0,
+    lastReplyAt: null,
+    createdAt: input.candidate.receivedAt,
+  })
   if (insertedMessages.length === 0) {
     await insertInboundAudit({
       db: input.db,
@@ -541,25 +526,12 @@ async function importCandidate(input: {
     })
     return "duplicate"
   }
-  await input.db
-    .update(channelReadState)
-    .set({
-      unreadCount: sql`${channelReadState.unreadCount} + 1`,
-    })
-    .where(
-      and(
-        eq(channelReadState.channelId, channelId),
-        sql`${channelReadState.userId} != ${systemUserId}`
-      )
-    )
-  await input.db
-    .update(emailReplyThreads)
-    .set({
-      channelId,
-      lastInboundAt: input.candidate.receivedAt,
-      updatedAt: now,
-    })
-    .where(eq(emailReplyThreads.id, replyThread.id))
+  await incrementUnreadForOthers(input.db, channelId, systemUserId)
+  await updateReplyThread(input.db, replyThread.id, {
+    channelId,
+    lastInboundAt: input.candidate.receivedAt,
+    updatedAt: now,
+  })
   if (replyThread.sourceType === "rfi") {
     const rfi = await input.db
       .select({ status: projectRfis.status })
@@ -732,13 +704,15 @@ async function syncGmailInboundRepliesWithLease(input: {
     }
 
     scanned = messageIds.size
+    // One indexed read per 50 ids instead of one per message. Rows that appear
+    // after this read are still caught by the per-message re-check below.
+    const cachedStatuses = await inboundEmailStatuses(input.db, [...messageIds])
 
     for (const id of messageIds) {
       if (Date.now() >= deadline) break
       try {
-        const cached = await input.db.select({ status: inboundEmails.matchedStatus }).from(inboundEmails)
-          .where(eq(inboundEmails.gmailMessageId, id)).get()
-        if (cached && cached.status !== "ignored_outbound") {
+        const cachedStatus = cachedStatuses.get(id)
+        if (cachedStatus !== undefined && cachedStatus !== "ignored_outbound") {
           skippedDuplicates += 1
           continue
         }

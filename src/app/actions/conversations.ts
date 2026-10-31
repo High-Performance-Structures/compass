@@ -26,6 +26,7 @@ import {
   directChannelId,
   directParticipantIds,
 } from "@/lib/conversations/direct-channel"
+import { insertChannel, insertChannelMembers, insertReadStates } from "@/lib/domain/conversations/store"
 
 async function ensureChannelMember(
   db: ReturnType<typeof getDb>,
@@ -45,14 +46,14 @@ async function ensureChannelMember(
     .get()
 
   if (!existingMember) {
-    await db.insert(channelMembers).values({
+    await insertChannelMembers(db, [{
       id: crypto.randomUUID(),
       channelId,
       userId,
       role: "member",
       notifyLevel: "all",
       joinedAt: now,
-    }).onConflictDoNothing()
+    }], { ignoreConflict: true })
   }
 
   const existingReadState = await db
@@ -67,14 +68,14 @@ async function ensureChannelMember(
     .get()
 
   if (!existingReadState) {
-    await db.insert(channelReadState).values({
+    await insertReadStates(db, [{
       id: crypto.randomUUID(),
       channelId,
       userId,
       lastReadMessageId: null,
       lastReadAt: now,
       unreadCount: 0,
-    }).onConflictDoNothing()
+    }], { ignoreConflict: true })
   }
 }
 
@@ -191,7 +192,7 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
         user.displayName ?? user.email,
         ...targets.map((target) => target.name ?? target.email),
       ].sort((first, second) => first.localeCompare(second))
-      await db.insert(channels).values({
+      await insertChannel(db, {
         id: channelId,
         name: participantNames.join(" · "),
         type: "text",
@@ -439,7 +440,7 @@ export async function createChannel(data: {
       updatedAt: now,
     }
 
-    await db.insert(channels).values(newChannel)
+    await insertChannel(db, newChannel)
 
     // add creator as owner
     const memberId = crypto.randomUUID()
@@ -451,7 +452,7 @@ export async function createChannel(data: {
       notifyLevel: "all",
       joinedAt: now,
     }
-    await db.insert(channelMembers).values(newMember)
+    await insertChannelMembers(db, [newMember])
 
     // initialize read state for creator
     const readStateId = crypto.randomUUID()
@@ -463,7 +464,7 @@ export async function createChannel(data: {
       lastReadAt: now,
       unreadCount: 0,
     }
-    await db.insert(channelReadState).values(newReadState)
+    await insertReadStates(db, [newReadState])
 
     revalidatePath("/dashboard")
     return { success: true, data: { channelId } }

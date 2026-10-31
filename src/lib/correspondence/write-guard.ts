@@ -1,5 +1,5 @@
-import { and, eq, sql, type SQL } from "drizzle-orm"
-import { correspondenceWriteGuards } from "@/db/schema-correspondence"
+import { sql, type SQL } from "drizzle-orm"
+import { writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import type { CorrespondenceContext } from "./access"
 import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondencePerson } from "./types"
@@ -50,12 +50,12 @@ function createGuard(ctx: CorrespondenceContext, input: {
       AND ${ctx.workspace === "owner" ? sql`pc.owner_portal_visible=1` : sql`pc.sub_vendor_portal_visible=1`}))`)
   }
   if (input.extra) checks.push(input.extra)
-  return ctx.db.insert(correspondenceWriteGuards).values({ id: input.id, allowed: sql`CASE WHEN ${sql.join(checks, sql` AND `)} THEN 1 ELSE 0 END` })
+  return writeGuardInsertStatement(ctx.db, input.id, sql`CASE WHEN ${sql.join(checks, sql` AND `)} THEN 1 ELSE 0 END`)
 }
 
 export function clearCorrespondenceWriteGuard(ctx: CorrespondenceContext, id: string): ReturnType<typeof removeGuard> {
   return removeGuard(ctx, id)
 }
 function removeGuard(ctx: CorrespondenceContext, id: string) {
-  return ctx.db.delete(correspondenceWriteGuards).where(and(eq(correspondenceWriteGuards.id, id)))
+  return writeGuardDeleteStatement(ctx.db, id)
 }

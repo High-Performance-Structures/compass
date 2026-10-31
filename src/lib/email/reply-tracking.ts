@@ -1,7 +1,7 @@
 import "server-only"
 
-import { emailReplyThreads } from "@/db/schema"
 import type { getDb } from "@/db"
+import { insertReplyThread } from "@/lib/domain/correspondence/email-store"
 
 const DEFAULT_REPLY_MAILBOX = "jarvis@hps-colorado.com"
 
@@ -93,7 +93,7 @@ export async function createEmailReplyThread(input: {
   const replyToAddress = trackedReplyAddress({ env: input.env, token })
   const now = new Date().toISOString()
 
-  await input.db.insert(emailReplyThreads).values({
+  await insertReplyThread(input.db, {
     id,
     token,
     organizationId: input.organizationId,

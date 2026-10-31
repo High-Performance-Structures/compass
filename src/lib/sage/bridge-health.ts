@@ -8,6 +8,7 @@ import {
   users,
 } from "@/db/schema"
 import { sageBridgeStatus } from "@/db/schema-sage"
+import { dismissNotificationRecipients } from "@/lib/domain/notifications/store"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 export const SAGE_BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
@@ -108,21 +109,7 @@ async function dismissRecoveredNotifications(
     activeIncidents,
     onlineHeartbeats
   )
-  let resolved = 0
-  for (let offset = 0; offset < recipientIds.length; offset += 75) {
-    const chunk = recipientIds.slice(offset, offset + 75)
-    const updated = await db
-      .update(notificationRecipients)
-      .set({ dismissedAt })
-      .where(
-        and(
-          inArray(notificationRecipients.id, chunk),
-          isNull(notificationRecipients.dismissedAt)
-        )
-      )
-      .returning({ id: notificationRecipients.id })
-    resolved += updated.length
-  }
+  const resolved = await dismissNotificationRecipients(db, recipientIds, dismissedAt)
   return resolved
 }
 

@@ -13,7 +13,6 @@ import {
   lt,
   sql,
   like,
-  ne,
   or,
   inArray,
 } from "drizzle-orm"
@@ -29,7 +28,6 @@ import {
   messageReactions,
   channelMembers,
   channelReadState,
-  messageMentions,
   channels,
   userPresence,
   type NewMessage,
@@ -55,6 +53,18 @@ import {
   notifyChannelMessage,
 } from "@/lib/notifications/events"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  incrementUnreadForOthers,
+  insertMessage,
+  insertMessageMentions,
+  insertMessageReaction,
+  markChannelReadForUser,
+  recordThreadReply,
+  removeMessageReaction,
+  touchChannel,
+  updateMessage,
+  upsertChannelReadForUser,
+} from "@/lib/domain/conversations/store"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
@@ -598,14 +608,11 @@ export async function sendMessage(data: {
       createdAt: now,
     }
 
-    await db.insert(messages).values(newMessage)
+    await insertMessage(db, newMessage)
     // Keep conversation lists ordered by actual activity. Direct-message
     // channels are long-lived, so their creation time does not identify the
     // thread containing the newest message.
-    await db
-      .update(channels)
-      .set({ updatedAt: now })
-      .where(eq(channels.id, data.channelId))
+    await touchChannel(db, data.channelId, now)
     await recordActivityEvent({
       db,
       organizationId: activityChannel.organizationId,
@@ -631,7 +638,7 @@ export async function sendMessage(data: {
         targetId: m.targetId,
         createdAt: now,
       }))
-      await db.insert(messageMentions).values(mentionRows)
+      await insertMessageMentions(db, mentionRows)
 
       // Keep notification delivery alive after the server action responds.
       ctx.waitUntil(
@@ -662,13 +669,7 @@ export async function sendMessage(data: {
 
     // if this is a thread reply, update parent message
     if (data.threadId) {
-      await db
-        .update(messages)
-        .set({
-          replyCount: sql`${messages.replyCount} + 1`,
-          lastReplyAt: now,
-        })
-        .where(eq(messages.id, data.threadId))
+      await recordThreadReply(db, data.threadId, now)
     }
 
     const channel = await db
@@ -801,17 +802,7 @@ export async function sendMessage(data: {
       }
     }
 
-    await db
-      .update(channelReadState)
-      .set({
-        unreadCount: sql`${channelReadState.unreadCount} + 1`,
-      })
-      .where(
-        and(
-          eq(channelReadState.channelId, data.channelId),
-          ne(channelReadState.userId, user.id)
-        )
-      )
+    await incrementUnreadForOthers(db, data.channelId, user.id)
 
     if (channel && !isBuildertrendArchive) {
       try {
@@ -840,19 +831,12 @@ export async function sendMessage(data: {
     }
 
     // update read state for sender (mark as read)
-    await db
-      .update(channelReadState)
-      .set({
-        lastReadMessageId: messageId,
-        lastReadAt: now,
-        unreadCount: 0,
-      })
-      .where(
-        and(
-          eq(channelReadState.channelId, data.channelId),
-          eq(channelReadState.userId, user.id)
-        )
-      )
+    await markChannelReadForUser(db, {
+      channelId: data.channelId,
+      userId: user.id,
+      lastReadMessageId: messageId,
+      lastReadAt: now,
+    })
 
     // fetch the created message with user info
     const messageWithUser = await db
@@ -932,13 +916,7 @@ export async function deleteMessage(messageId: string) {
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(messages)
-      .set({
-        deletedAt: now,
-        deletedBy: user.id,
-      })
-      .where(eq(messages.id, messageId))
+    await updateMessage(db, messageId, { deletedAt: now, deletedBy: user.id })
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -1210,7 +1188,7 @@ export async function addReaction(messageId: string, emoji: string) {
       createdAt: now,
     }
 
-    await db.insert(messageReactions).values(newReaction)
+    await insertMessageReaction(db, newReaction)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -1261,15 +1239,7 @@ export async function removeReaction(messageId: string, emoji: string) {
       return { success: false, error: "Not a member of this channel" }
     }
 
-    await db
-      .delete(messageReactions)
-      .where(
-        and(
-          eq(messageReactions.messageId, messageId),
-          eq(messageReactions.userId, user.id),
-          eq(messageReactions.emoji, emoji)
-        )
-      )
+    await removeMessageReaction(db, messageId, user.id, emoji)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -1341,26 +1311,13 @@ export async function markChannelRead(
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
-    if (existing) {
-      await db
-        .update(channelReadState)
-        .set({
-          lastReadMessageId: lastMessageId,
-          lastReadAt: now,
-          unreadCount: 0,
-        })
-        .where(eq(channelReadState.id, existing.id))
-    } else {
-      const readStateId = crypto.randomUUID()
-      await db.insert(channelReadState).values({
-        id: readStateId,
-        userId: user.id,
-        channelId,
-        lastReadMessageId: lastMessageId,
-        lastReadAt: now,
-        unreadCount: 0,
-      }).onConflictDoUpdate({ target: [channelReadState.channelId, channelReadState.userId], set: { lastReadMessageId: lastMessageId, lastReadAt: now, unreadCount: 0 } })
-    }
+    await upsertChannelReadForUser(db, {
+      existingId: existing?.id ?? null,
+      channelId,
+      userId: user.id,
+      lastReadMessageId: lastMessageId,
+      lastReadAt: now,
+    })
 
     // Best effort: the read state above is what matters if this fails.
     await markChannelNotificationsRead(db, user.id, channelId, lastMessage.createdAt)

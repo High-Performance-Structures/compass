@@ -6,7 +6,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getDb } from "@/db"
 import {
   channels,
-  messageAttachments,
   messages,
 } from "@/db/schema-conversations"
 import { googleAuth } from "@/db/schema-google"
@@ -23,6 +22,7 @@ import {
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { insertMessageAttachment } from "@/lib/domain/conversations/store"
 
 
 const MAX_ATTACHMENT_COUNT = 10
@@ -328,7 +328,7 @@ export async function POST(
       })
       const storageUrl = `/api/conversations/attachments/${encodeURIComponent(id)}`
       const fileSize = Number(driveFile.size ?? file.size)
-      await db.insert(messageAttachments).values({
+      await insertMessageAttachment(db, {
         id,
         messageId,
         fileName: driveFile.name,

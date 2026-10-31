@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm"
-import { correspondence, correspondenceAttachments, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
+import { correspondenceAttachments, correspondenceDrafts, correspondenceMessages, correspondenceRecipients } from "@/db/schema-correspondence"
+import { attachToMessageStatement, clearSentCompositionDraftStatement, clearSentReplyDraftStatement, conversationInsertStatement, messageInsertStatement, outboxInsertStatement, participantInsertStatement, recipientInsertStatement, reopenConversationStatement } from "@/lib/domain/correspondence/store"
 import { savedDraftGuard, retireSentComposition } from "./saved-drafts"
 import { privateProjectEmailReplyPeople, projectEmailPrivacy, visibleProjectEmailPeople } from "@/lib/email/project-email-privacy"
 import { projectEmailCampaigns } from "@/db/schema-project-email"
@@ -71,22 +72,17 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   const now = new Date().toISOString()
   const attachmentGuard = input.attachmentIds.length ? sql`(SELECT COUNT(*) FROM correspondence_attachments WHERE id IN (${sql.join(input.attachmentIds.map((id) => sql`${id}`), sql`,`)}) AND organization_id=${ctx.organizationId} AND project_id=${ctx.projectId} AND owner_user_id=${ctx.user.id} AND message_id IS NULL AND retired_at IS NULL AND drive_file_id IS NOT NULL)=${input.attachmentIds.length}` : undefined
   const guard = correspondenceWriteGuard(ctx, { id: guardId, conversationId: input.conversationId, participantVersion: input.participantVersion, people, allowEmailAudience, extra: and(attachmentGuard, savedDraftGuard(ctx, input.draft, {kind:"message",subject:input.subject,body:input.body,recipientUserIds:input.recipientUserIds,attachmentIds:input.attachmentIds,requestId:input.idempotencyKey})) })
-  const insertConversation = ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: ctx.projectId, subject: input.subject.trim(), createdAt: now }).onConflictDoNothing()
-  const insertMessage = ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: own.name, source: "compass", body: input.body, sentAt: now, requestHash })
-  const insertParticipants = people.map((person) => ctx.db.insert(correspondenceParticipants).values([person].map((p) => ({ id: crypto.randomUUID(), conversationId, userId: p.userId, name: p.name, email: p.email, role: p.role }))).onConflictDoNothing())
-  const insertRecipients = people.map((person) => ctx.db.insert(correspondenceRecipients).values([person].map((p): typeof correspondenceRecipients.$inferInsert => ({ id: crypto.randomUUID(), messageId, userId: p.userId, name: p.name, kind: p.userId === ctx.user.id ? "author" : "to", openedAt: p.userId === ctx.user.id ? now : null }))))
-  const insertOutbox = people.filter((p) => p.userId !== ctx.user.id).map((person) => ctx.db.insert(correspondenceOutbox).values([person].map((p) => ({ id: crypto.randomUUID(), messageId, recipientUserId: p.userId, transport: "compass", status: "available", createdAt: now }))))
-  const attach = attachments.map((a) => ctx.db.update(correspondenceAttachments).set({ messageId }).where(and(eq(correspondenceAttachments.id, a.id), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt))))
-  // SQLite's default trim removes only spaces; match JavaScript trim used by the composer.
-  const trimCharacters = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+  const insertConversation = conversationInsertStatement(ctx.db, { id: conversationId, organizationId: ctx.organizationId, projectId: ctx.projectId, subject: input.subject.trim(), createdAt: now }, { ignoreConflict: true })
+  const insertMessage = messageInsertStatement(ctx.db, { id: messageId, conversationId, authorUserId: ctx.user.id, authorName: own.name, source: "compass", body: input.body, sentAt: now, requestHash })
+  const insertParticipants = people.map((person) => participantInsertStatement(ctx.db, [person].map((p) => ({ id: crypto.randomUUID(), conversationId, userId: p.userId, name: p.name, email: p.email, role: p.role })), { ignoreConflict: true }))
+  const insertRecipients = people.map((person) => recipientInsertStatement(ctx.db, [person].map((p): typeof correspondenceRecipients.$inferInsert => ({ id: crypto.randomUUID(), messageId, userId: p.userId, name: p.name, kind: p.userId === ctx.user.id ? "author" : "to", openedAt: p.userId === ctx.user.id ? now : null }))))
+  const insertOutbox = people.filter((p) => p.userId !== ctx.user.id).map((person) => outboxInsertStatement(ctx.db, [person].map((p) => ({ id: crypto.randomUUID(), messageId, recipientUserId: p.userId, transport: "compass", status: "available", createdAt: now }))))
+  const attach = attachments.map((a) => attachToMessageStatement(ctx.db, a.id, messageId))
   const clearSentDraft = input.conversationId
-    ? ctx.db.update(correspondenceDrafts).set({ body: "", attachmentIds: [], version: sql`${correspondenceDrafts.version} + 1`, updatedAt: now })
-      .where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), sql`trim(${correspondenceDrafts.body}, ${trimCharacters})=${input.body.trim()}`))
-    : ctx.db.update(correspondenceCompositionDrafts).set({ body: "", subject: "", recipientUserIds: [], version: sql`${correspondenceCompositionDrafts.version} + 1`, updatedAt: now })
-      .where(and(eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.projectId, ctx.projectId), eq(correspondenceCompositionDrafts.userId, ctx.user.id),
-        sql`trim(${correspondenceCompositionDrafts.body}, ${trimCharacters})=${input.body.trim()}`, sql`trim(${correspondenceCompositionDrafts.subject}, ${trimCharacters})=${input.subject.trim()}`, eq(correspondenceCompositionDrafts.recipientUserIds, [...input.recipientUserIds])))
+    ? clearSentReplyDraftStatement(ctx.db, { conversationId, userId: ctx.user.id, sentBody: input.body, now })
+    : clearSentCompositionDraftStatement(ctx.db, { organizationId: ctx.organizationId, projectId: ctx.projectId, userId: ctx.user.id, sentBody: input.body, sentSubject: input.subject, recipientUserIds: input.recipientUserIds, now })
   try {
-    await ctx.db.batch([guard, insertConversation, ...insertParticipants, insertMessage, ...insertRecipients, ...insertOutbox, ...attach, clearSentDraft, ...(input.draft ? [retireSentComposition(ctx, input.draft)] : []), ctx.db.update(correspondence).set({ closed: false }).where(eq(correspondence.id, conversationId)), clearCorrespondenceWriteGuard(ctx, guardId)])
+    await ctx.db.batch([guard, insertConversation, ...insertParticipants, insertMessage, ...insertRecipients, ...insertOutbox, ...attach, clearSentDraft, ...(input.draft ? [retireSentComposition(ctx, input.draft)] : []), reopenConversationStatement(ctx.db, conversationId), clearCorrespondenceWriteGuard(ctx, guardId)])
   } catch {
     // A simultaneous identical retry may have committed first. Do not re-send its outbox.
     const winner = await ctx.db.select().from(correspondenceMessages).where(eq(correspondenceMessages.id, messageId)).get()

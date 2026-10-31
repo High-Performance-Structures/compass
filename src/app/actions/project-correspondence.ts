@@ -2,7 +2,7 @@
 
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { correspondence, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceRevisions, correspondenceState } from "@/db/schema-correspondence"
+import { correspondence, correspondenceCompositionDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
 import { correspondenceSourceMessages } from "@/db/schema-correspondence-source"
 import { authorizedConversation, correspondenceContacts, correspondenceContext, currentParticipants } from "@/lib/correspondence/access"
 import { releaseRejectedComposition, validateDraftAttachments } from "@/lib/correspondence/saved-drafts"
@@ -11,6 +11,7 @@ import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { markCorrespondenceNotificationsRead } from "@/lib/notifications/clear-on-read"
+import { insertReplyDraft, markMessageOpenedStatement, messageRevisionStatement, resetMessageOpenedStatement, revisionInsertStatement, setConversationClosed, updateReplyDraft, upsertConversationState } from "@/lib/domain/correspondence/store"
 import type { CorrespondenceInboxFilter, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
 function failure(error: unknown): { readonly success: false; readonly error: string } {
@@ -56,7 +57,7 @@ export async function setCorrespondenceState(projectId: string, conversationId: 
     if ([state.saved, state.followUp, state.archived].some((v) => typeof v !== "boolean")) throw new Error("Invalid inbox state.")
     const ctx = await correspondenceContext(projectId)
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.insert(correspondenceState).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, saved: state.saved, followUp: state.followUp, archived: state.archived }).onConflictDoUpdate({ target: [correspondenceState.conversationId, correspondenceState.userId], set: { saved: state.saved, followUp: state.followUp, archived: state.archived } })
+    await upsertConversationState(ctx.db, conversationId, ctx.user.id, { saved: state.saved, followUp: state.followUp, archived: state.archived })
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }
@@ -69,8 +70,8 @@ export async function saveCorrespondenceDraft(projectId: string, conversationId:
     await validateDraftAttachments(ctx, attachmentIds, "message")
     const version = expectedVersion + 1
     const rows = expectedVersion === 0
-      ? await ctx.db.insert(correspondenceDrafts).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, attachmentIds, version, updatedAt: new Date().toISOString() }).onConflictDoNothing().returning({ version: correspondenceDrafts.version })
-      : await ctx.db.update(correspondenceDrafts).set({ body, attachmentIds, version, updatedAt: new Date().toISOString() }).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), eq(correspondenceDrafts.version, expectedVersion))).returning({ version: correspondenceDrafts.version })
+      ? await insertReplyDraft(ctx.db, { id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, attachmentIds: [...attachmentIds], version, updatedAt: new Date().toISOString() })
+      : await updateReplyDraft(ctx.db, { conversationId, userId: ctx.user.id, expectedVersion, body, attachmentIds, version, updatedAt: new Date().toISOString() })
     if (!rows.length) throw new Error("This draft changed on another device. Copy your text before reloading.")
     return { success: true, data: { version } }
   } catch (error) { return failure(error) }
@@ -88,15 +89,11 @@ export async function markCorrespondenceOpened(projectId: string, conversationId
     const now = new Date().toISOString()
     for (const observed of observedMessages) {
       if (typeof observed.id !== "string" || observed.editedAt !== null && typeof observed.editedAt !== "string") throw new Error("Invalid visible message selection.")
-      // Match the revision actually presented; a delayed read request cannot certify an edit.
-      await ctx.db.update(correspondenceRecipients).set({ openedAt: now }).where(and(
-        eq(correspondenceRecipients.userId, ctx.user.id), eq(correspondenceRecipients.messageId, observed.id), isNull(correspondenceRecipients.openedAt),
-        sql`EXISTS(SELECT 1 FROM correspondence_messages m JOIN correspondence_participants p ON p.conversation_id=m.conversation_id
-          WHERE m.id=${observed.id} AND m.conversation_id=${conversationId} AND m.retracted_at IS NULL
-          AND p.user_id=${ctx.user.id} AND p.revoked_at IS NULL
-          AND ${observed.editedAt === null ? sql`m.edited_at IS NULL` : sql`m.edited_at=${observed.editedAt}`})`
-      ))
     }
+    // Match the revision actually presented; a delayed read request cannot certify an edit.
+    const [first, ...rest] = observedMessages.map((observed) =>
+      markMessageOpenedStatement(ctx.db, { userId: ctx.user.id, conversationId, messageId: observed.id, editedAt: observed.editedAt, now }))
+    if (first) await ctx.db.batch([first, ...rest])
     // Opened here means handled in the bell too (only this viewer's rows).
     await markCorrespondenceNotificationsRead(ctx.db, ctx.user.id, observedMessages.map((observed) => observed.id))
       .catch((error: unknown) => console.error("correspondence_notification_clear_failed", error instanceof Error ? error.message : error))
@@ -115,9 +112,9 @@ export async function reviseCorrespondenceMessage(projectId: string, conversatio
     const people = await currentParticipants(ctx, conversationId)
     await ctx.db.batch([
       correspondenceWriteGuard(ctx, { id: guardId, conversationId, participantVersion: conversation.participantVersion, people: people.filter((p) => p.userId === ctx.user.id), extra: sql`EXISTS(SELECT 1 FROM correspondence_messages WHERE id=${messageId} AND body=${message.body} AND retracted_at IS NULL AND ${message.editedAt === null ? sql`edited_at IS NULL` : sql`edited_at=${message.editedAt}`})` }),
-      ctx.db.insert(correspondenceRevisions).values({ id: crypto.randomUUID(), messageId, actorUserId: ctx.user.id, previousBody: message.body, operation: body === null ? "retract" : "edit", createdAt: now }),
-      ctx.db.update(correspondenceMessages).set(body === null ? { retractedAt: now } : { body, editedAt: now }).where(eq(correspondenceMessages.id, messageId)),
-      ctx.db.update(correspondenceRecipients).set({ openedAt: null }).where(eq(correspondenceRecipients.messageId, messageId)),
+      revisionInsertStatement(ctx.db, { id: crypto.randomUUID(), messageId, actorUserId: ctx.user.id, previousBody: message.body, operation: body === null ? "retract" : "edit", createdAt: now }),
+      messageRevisionStatement(ctx.db, messageId, body, now),
+      resetMessageOpenedStatement(ctx.db, messageId),
       clearCorrespondenceWriteGuard(ctx, guardId),
     ])
     refresh(projectId)
@@ -130,7 +127,7 @@ export async function setCorrespondenceClosed(projectId: string, conversationId:
     const ctx = await correspondenceContext(projectId)
     if (ctx.workspace !== "staff") throw new Error("Only project staff can close or reopen a conversation.")
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.update(correspondence).set({ closed }).where(eq(correspondence.id, conversationId))
+    await setConversationClosed(ctx.db, conversationId, closed)
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }
@@ -141,8 +138,7 @@ export async function setCorrespondenceReceiptPreference(projectId: string, conv
     if (typeof share !== "boolean") throw new Error("Invalid receipt preference.")
     const ctx = await correspondenceContext(projectId)
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.insert(correspondenceState).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, shareReadReceipts: share })
-      .onConflictDoUpdate({ target: [correspondenceState.conversationId, correspondenceState.userId], set: { shareReadReceipts: share } })
+    await upsertConversationState(ctx.db, conversationId, ctx.user.id, { shareReadReceipts: share })
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }

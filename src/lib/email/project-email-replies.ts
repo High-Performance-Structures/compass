@@ -3,8 +3,8 @@ import "server-only"
 import { and, eq, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { emailReplyThreads, notificationEvents, notificationRecipients } from "@/db/schema"
-import { correspondence, correspondenceMessages, correspondenceRecipients, correspondenceWriteGuards } from "@/db/schema-correspondence"
+import { emailReplyThreads } from "@/db/schema"
+import { correspondence, correspondenceMessages } from "@/db/schema-correspondence"
 import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { correspondenceHash } from "@/lib/correspondence/send"
 import { stripHtml, type InboundCandidate } from "./gmail-message-parser"
@@ -12,6 +12,9 @@ import { normalizeRecipientEmail } from "./recipient-options"
 import { projectReplyAddressHasToken } from "./project-email-validation"
 import { projectEmailPrivacy } from "./project-email-privacy"
 import { activeProjectEmailParticipants, projectEmailParticipantGuard } from "./project-email-participants"
+import { replyThreadUpdateStatement } from "@/lib/domain/correspondence/email-store"
+import { messageInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
+import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
 
 type Db = ReturnType<typeof getDb>
 
@@ -71,13 +74,13 @@ export async function routeProjectEmailReply(input: {
   const eventId = `notification-${id}`
   try {
     await db.batch([
-      db.insert(correspondenceWriteGuards).values({ id: guardId, allowed: sql`CASE WHEN EXISTS(SELECT 1 FROM email_reply_threads thread WHERE thread.id=${replyThread.id} AND thread.token=${replyThread.token} AND thread.status='active' AND thread.organization_id=${organizationId} AND thread.project_id=${projectId} AND thread.source_id=${conversation.id}) AND EXISTS(SELECT 1 FROM project_email_campaigns campaign JOIN project_email_recipients recipient ON recipient.campaign_id=campaign.id WHERE campaign.id=${campaign.id} AND campaign.organization_id=${organizationId} AND campaign.project_id=${projectId} AND campaign.conversation_id=${conversation.id} AND campaign.status IN ('sent','dispatching','unknown') AND recipient.email=${senderEmail}) AND ${projectEmailParticipantGuard(people, organizationId, projectId, conversation.id)} THEN 1 ELSE 0 END` }),
-      db.insert(correspondenceMessages).values({ id, conversationId: conversation.id, authorUserId: null, authorName, source: "email", sourceKey: id, body, sentAt: candidate.receivedAt, requestHash: id }),
-      ...people.map((person) => db.insert(correspondenceRecipients).values({ id: crypto.randomUUID(), messageId: id, userId: person.userId, name: person.name, kind: "to" })),
-      db.insert(notificationEvents).values({ id: eventId, organizationId, projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project email reply from ${candidate.fromName?.trim() || senderEmail}`, body: replyThread.subject, href: `/dashboard/projects/${encodeURIComponent(projectId)}/messages?conversationId=${encodeURIComponent(conversation.id)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: now }),
-      ...people.map((person) => db.insert(notificationRecipients).values({ id: `${eventId}-${person.userId}`, eventId, userId: person.userId, inApp: person.inApp ?? true, createdAt: now })),
-      db.update(emailReplyThreads).set({ lastInboundAt: candidate.receivedAt, updatedAt: now }).where(eq(emailReplyThreads.id, replyThread.id)),
-      db.delete(correspondenceWriteGuards).where(eq(correspondenceWriteGuards.id, guardId)),
+      writeGuardInsertStatement(db, guardId, sql`CASE WHEN EXISTS(SELECT 1 FROM email_reply_threads thread WHERE thread.id=${replyThread.id} AND thread.token=${replyThread.token} AND thread.status='active' AND thread.organization_id=${organizationId} AND thread.project_id=${projectId} AND thread.source_id=${conversation.id}) AND EXISTS(SELECT 1 FROM project_email_campaigns campaign JOIN project_email_recipients recipient ON recipient.campaign_id=campaign.id WHERE campaign.id=${campaign.id} AND campaign.organization_id=${organizationId} AND campaign.project_id=${projectId} AND campaign.conversation_id=${conversation.id} AND campaign.status IN ('sent','dispatching','unknown') AND recipient.email=${senderEmail}) AND ${projectEmailParticipantGuard(people, organizationId, projectId, conversation.id)} THEN 1 ELSE 0 END`),
+      messageInsertStatement(db, { id, conversationId: conversation.id, authorUserId: null, authorName, source: "email", sourceKey: id, body, sentAt: candidate.receivedAt, requestHash: id }),
+      ...people.map((person) => recipientInsertStatement(db, [{ id: crypto.randomUUID(), messageId: id, userId: person.userId, name: person.name, kind: "to" }])),
+      notificationEventInsertStatement(db, { id: eventId, organizationId, projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project email reply from ${candidate.fromName?.trim() || senderEmail}`, body: replyThread.subject, href: `/dashboard/projects/${encodeURIComponent(projectId)}/messages?conversationId=${encodeURIComponent(conversation.id)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: now }),
+      ...people.map((person) => notificationRecipientInsertStatement(db, { id: `${eventId}-${person.userId}`, eventId, userId: person.userId, inApp: person.inApp ?? true, createdAt: now })),
+      replyThreadUpdateStatement(db, replyThread.id, { lastInboundAt: candidate.receivedAt, updatedAt: now }),
+      writeGuardDeleteStatement(db, guardId),
     ])
   } catch (error) {
     const winner = await db.select({ id: correspondenceMessages.id }).from(correspondenceMessages).where(eq(correspondenceMessages.id, id)).get()

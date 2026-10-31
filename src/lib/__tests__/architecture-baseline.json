@@ -28,21 +28,13 @@
       "src/app/actions/anthropic-oauth.ts"
     ],
     "channelMembers": [
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "channelReadState": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "channels": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/conversations.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/project-audience-conversations.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "cherishCardFulfillments": [
       "src/app/actions/cherish-cards.ts"
@@ -80,77 +72,52 @@
       "src/app/api/integrations/foxit/webhook/route.ts"
     ],
     "correspondence": [
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceAttachments": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/attachment-storage.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceCompositionDrafts": [
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceDrafts": [
-      "src/app/actions/project-correspondence.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceEmailDeliveries": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceEmailEvents": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceEmailThreads": [
-      "src/lib/correspondence/email-adapter.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "correspondenceMessages": [
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceOutbox": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceParticipants": [
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceRecipients": [
-      "src/app/actions/correspondence-inbox.ts",
-      "src/app/actions/project-correspondence.ts",
-      "src/app/actions/project-email.ts",
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/send.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceRevisions": [
-      "src/app/actions/project-correspondence.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceSavedDrafts": [
-      "src/app/actions/correspondence-saved-drafts.ts",
-      "src/lib/correspondence/saved-drafts.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceState": [
-      "src/app/actions/correspondence-inbox.ts",
-      "src/app/actions/project-correspondence.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "correspondenceWriteGuards": [
-      "src/lib/correspondence/email-adapter.ts",
-      "src/lib/correspondence/write-guard.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts"
+      "src/lib/domain/correspondence/store.ts"
     ],
     "creditMemos": [
-      "src/lib/domain/financials/store.ts"
+      "src/app/actions/credit-memos.ts"
     ],
     "customDashboards": [
       "src/app/actions/dashboards.ts",
@@ -167,16 +134,25 @@
       "src/lib/theme/user-themes.ts"
     ],
     "dailyLogPhotos": [
-      "src/lib/domain/field/store.ts"
+      "src/app/actions/daily-log-delete.ts",
+      "src/app/actions/project-field.ts",
+      "src/app/actions/project-photos.ts",
+      "src/app/api/projects/[id]/photos/upload/route.ts",
+      "src/lib/email/project-email-attachments.ts"
     ],
     "dailyLogReminders": [
       "src/lib/daily-logs/reminders-server.ts"
     ],
     "dailyLogs": [
-      "src/lib/domain/field/store.ts"
+      "src/app/actions/daily-log-delete.ts",
+      "src/app/actions/project-field.ts",
+      "src/app/actions/project-videos.ts",
+      "src/app/api/projects/[id]/videos/upload/complete/route.ts",
+      "src/lib/client-meetings/transcripts.ts",
+      "src/lib/email/project-inbound-routing.ts"
     ],
     "dailyLogTaskLinks": [
-      "src/lib/domain/field/store.ts"
+      "src/app/actions/project-field.ts"
     ],
     "driveFolderShareChecks": [
       "src/lib/paper-trail/folders.ts"
@@ -185,10 +161,7 @@
       "src/lib/email/mailbox-state.ts"
     ],
     "emailReplyThreads": [
-      "src/app/actions/project-email.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/reply-tracking.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "equipmentLogEntries": [
       "src/app/actions/equipment.ts"
@@ -212,20 +185,13 @@
       "src/app/api/feedback/route.ts"
     ],
     "feedbackDeskItems": [
-      "src/app/actions/feedback-admin.ts",
-      "src/app/api/integrations/jarvis/events/[id]/ack/route.ts",
-      "src/app/api/integrations/jarvis/events/route.ts",
-      "src/lib/jarvis/feedback-desk.ts",
-      "src/lib/jarvis/feedback-github.ts",
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/jarvis/feedback-status-update.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "feedbackMaintenanceRuns": [
-      "src/lib/jarvis/feedback-maintenance.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "feedbackServiceHealth": [
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/sage/square-auth-health.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "googleAuth": [
       "src/app/actions/google-drive.ts"
@@ -249,19 +215,16 @@
       "src/app/actions/google-drive.ts"
     ],
     "gotoInboundEvents": [
-      "src/app/actions/inbound-sms-review.ts",
-      "src/app/api/integrations/goto/inbound/route.ts",
-      "src/lib/goto/message-recovery.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "gotoInboundSettings": [
-      "src/app/api/integrations/goto/setup/route.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "greetingCardRequests": [
       "src/app/actions/greeting-cards.ts"
     ],
     "inboundEmails": [
-      "src/app/actions/inbound-email-review.ts",
-      "src/lib/email/gmail-inbound.ts"
+      "src/lib/domain/correspondence/email-store.ts"
     ],
     "internalContacts": [
       "src/lib/domain/contacts/store.ts"
@@ -274,17 +237,10 @@
       "src/lib/daily-logs/cost-code-lines.ts"
     ],
     "invoices": [
-      "src/lib/domain/financials/store.ts"
+      "src/app/actions/invoices.ts"
     ],
     "jarvisBridgeEvents": [
-      "src/app/actions/feedback-admin.ts",
-      "src/app/api/integrations/jarvis/events/[id]/ack/route.ts",
-      "src/app/api/integrations/jarvis/events/route.ts",
-      "src/app/api/integrations/jarvis/replies/route.ts",
-      "src/lib/jarvis/agent-relay.ts",
-      "src/lib/jarvis/feedback-desk.ts",
-      "src/lib/jarvis/feedback-maintenance.ts",
-      "src/lib/jarvis/feedback-status-update.ts"
+      "src/lib/domain/feedback/store.ts"
     ],
     "listeningPlaylistItems": [
       "src/app/actions/listening-playlist-items.ts",
@@ -324,19 +280,16 @@
       "src/app/api/bridge/tools/route.ts"
     ],
     "messageAttachments": [
-      "src/app/api/conversations/attachments/upload/route.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messageMentions": [
-      "src/app/actions/chat-messages.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messageReactions": [
-      "src/app/actions/chat-messages.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "messages": [
-      "src/app/actions/chat-messages.ts",
-      "src/app/actions/message-search.ts",
-      "src/app/api/integrations/jarvis/replies/route.ts",
-      "src/lib/email/gmail-inbound.ts"
+      "src/lib/domain/conversations/store.ts"
     ],
     "morningPlanPreferences": [
       "src/app/actions/morning-plan.ts",
@@ -365,51 +318,44 @@
       "src/lib/netsuite/sync/sync-engine.ts"
     ],
     "notificationDeliveries": [
-      "src/app/actions/notifications.ts",
-      "src/lib/notifications/create-event.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "notificationEvents": [
-      "src/app/actions/cherish-stories.ts",
-      "src/app/actions/notifications.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts",
-      "src/lib/notifications/create-event.ts",
-      "src/lib/sage/square-auth-health.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "notificationPreferences": [
-      "src/app/actions/daily-log-reminder-preference.ts",
-      "src/app/actions/notifications.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "notificationRecipients": [
-      "src/app/actions/notifications.ts",
-      "src/app/api/field/notifications/[recipientId]/open/route.ts",
-      "src/lib/email/project-email-replies.ts",
-      "src/lib/email/project-message-routing.ts",
-      "src/lib/notifications/clear-on-read.ts",
-      "src/lib/notifications/create-event.ts",
-      "src/lib/sage/bridge-health.ts",
-      "src/lib/sage/square-auth-health.ts"
+      "src/lib/domain/notifications/store.ts"
     ],
     "nuTechBracingRentalLines": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-bracing.ts"
     ],
     "nuTechBracingRentals": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-bracing.ts"
     ],
     "nuTechCatalogPrices": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-catalog.ts",
+      "src/lib/nutech/freight.ts"
     ],
     "nuTechCatalogVersions": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-catalog.ts"
     ],
     "nuTechOrderItems": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-order-items.ts",
+      "src/app/actions/nutech-orders.ts"
     ],
     "nuTechOrderWorkflows": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-airlite-po.ts",
+      "src/app/actions/nutech-estimate.ts",
+      "src/app/actions/nutech-order-items.ts",
+      "src/app/actions/nutech-orders.ts",
+      "src/lib/nutech/airlite-po-number.ts"
     ],
     "nuTechProducts": [
-      "src/lib/domain/nutech/store.ts"
+      "src/app/actions/nutech-catalog.ts",
+      "src/lib/nutech/freight.ts"
     ],
     "organizationCalendarSettings": [
       "src/app/actions/work-calendar.ts"
@@ -431,10 +377,10 @@
       "src/lib/auth.ts"
     ],
     "ownerProjectUpdates": [
-      "src/lib/domain/field/store.ts"
+      "src/app/actions/project-field.ts"
     ],
     "payments": [
-      "src/lib/domain/financials/store.ts"
+      "src/app/actions/payments.ts"
     ],
     "permissionAuditEvents": [
       "src/app/actions/permission-overrides.ts"
@@ -939,11 +885,10 @@
       "src/app/actions/social-posts.ts"
     ],
     "staffMessageEvents": [
-      "src/app/actions/staff-message-desk.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "staffMessageRecords": [
-      "src/app/actions/staff-message-desk.ts",
-      "src/lib/staff-message-desk/stale-reminders.ts"
+      "src/lib/domain/feedback/inbound-store.ts"
     ],
     "syncCheckpoint": [
       "src/lib/sync/engine.ts"
@@ -994,7 +939,7 @@
       "src/app/actions/view-preferences.ts"
     ],
     "vendorBills": [
-      "src/lib/domain/financials/store.ts"
+      "src/app/actions/vendor-bills.ts"
     ],
     "vendorContacts": [
       "src/lib/domain/contacts/store.ts"
@@ -1053,18 +998,19 @@
     ]
   },
   "largeFiles": {
-    "src/app/actions/chat-messages.ts": 1376,
+    "src/app/actions/chat-messages.ts": 1333,
     "src/app/actions/cherish-pulse.ts": 919,
     "src/app/actions/contract-packets.ts": 1450,
     "src/app/actions/estimate-templates.ts": 1134,
     "src/app/actions/google-drive.ts": 1468,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1123,
-    "src/app/actions/nutech-orders.ts": 983,
+    "src/app/actions/nutech-orders.ts": 1247,
     "src/app/actions/project-audience-preview.ts": 1192,
     "src/app/actions/project-change-orders.ts": 1665,
     "src/app/actions/project-documents.ts": 922,
     "src/app/actions/project-families.ts": 1827,
+    "src/app/actions/project-field.ts": 4410,
     "src/app/actions/project-financial-workflows.ts": 1467,
     "src/app/actions/project-operations.ts": 3266,
     "src/app/actions/project-profile.ts": 2248,
@@ -1085,8 +1031,8 @@
     "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1106,
-    "src/components/nutech/nutech-order-workspace.tsx": 1182,
-    "src/components/projects/owner-update-draft-editor.tsx": 1132,
+    "src/components/nutech/nutech-order-workspace.tsx": 1196,
+    "src/components/projects/owner-update-draft-editor.tsx": 1138,
     "src/components/projects/project-audience-preview.tsx": 923,
     "src/components/projects/project-contact-management.tsx": 1511,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
@@ -1111,11 +1057,11 @@
     "src/lib/agent/render/registry.tsx": 1809,
     "src/lib/auth.ts": 885,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
-    "src/lib/email/gmail-inbound.ts": 851,
-    "src/lib/email/project-inbound-routing.ts": 1050,
+    "src/lib/email/gmail-inbound.ts": 825,
+    "src/lib/email/project-inbound-routing.ts": 1056,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
-    "src/lib/notifications/create-event.ts": 844,
+    "src/lib/notifications/create-event.ts": 843,
     "src/lib/notifications/events.ts": 955,
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1350,
@@ -1130,12 +1076,15 @@
     "src/app/actions/estimate-templates.ts": 1,
     "src/app/actions/greeting-cards.ts": 1,
     "src/app/actions/inbound-sms-review.ts": 1,
+    "src/app/actions/nutech-emails.ts": 1,
+    "src/app/actions/nutech-orders.ts": 1,
     "src/app/actions/project-access-invitations.ts": 1,
     "src/app/actions/project-audience-sub-vendor.ts": 1,
     "src/app/actions/project-contract-deposits.ts": 1,
     "src/app/actions/project-document-folders.ts": 1,
     "src/app/actions/project-documents.ts": 1,
     "src/app/actions/project-families.ts": 1,
+    "src/app/actions/project-field.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 1,
     "src/app/actions/project-operations.ts": 2,
     "src/app/actions/project-rfis.ts": 1,
@@ -1155,13 +1104,14 @@
     "src/app/api/integrations/jarvis/events/[id]/search/route.ts": 1,
     "src/app/api/projects/[id]/pay-applications/[applicationId]/download/route.ts": 2,
     "src/app/api/projects/[id]/photos/[photoId]/route.ts": 2,
-    "src/app/api/projects/[id]/photos/upload/route.ts": 1,
+    "src/app/api/projects/[id]/photos/upload/route.ts": 2,
     "src/app/api/projects/[id]/videos/[videoId]/route.ts": 1,
     "src/app/api/projects/[id]/videos/upload/complete/route.ts": 1,
     "src/app/api/projects/[id]/videos/upload/start/route.ts": 1,
     "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": 1,
     "src/app/api/social/media/[photoId]/route.ts": 1,
     "src/app/dashboard/office-alerts/page.tsx": 1,
+    "src/app/dashboard/projects/[id]/owner-updates/page.tsx": 1,
     "src/app/dashboard/projects/[id]/purchase-orders/page.tsx": 1,
     "src/app/dashboard/projects/[id]/rfis/page.tsx": 1,
     "src/app/dashboard/projects/[id]/rfqs/page.tsx": 1,
@@ -1177,6 +1127,10 @@
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1,
     "src/components/equipment/equipment-workspace.tsx": 1,
     "src/components/feedback/feedback-desk-admin.tsx": 1,
+    "src/components/financials/trade-doc-request-panel.tsx": 1,
+    "src/components/financials/vendor-trade-docs-dialog.tsx": 1,
+    "src/components/nutech/nutech-catalog-workspace.tsx": 2,
+    "src/components/nutech/nutech-order-workspace.tsx": 1,
     "src/components/projects/deposit-request-document.tsx": 2,
     "src/components/projects/duty-log-workspace.tsx": 1,
     "src/components/projects/estimate-client-report.tsx": 1,
@@ -1184,6 +1138,7 @@
     "src/components/projects/estimate-pricing-board.tsx": 1,
     "src/components/projects/estimate-version-acceptance-fields.tsx": 1,
     "src/components/projects/owner-update-actions.tsx": 1,
+    "src/components/projects/owner-update-document.tsx": 1,
     "src/components/projects/pay-application-client-report.tsx": 1,
     "src/components/projects/project-audience-gantt.tsx": 1,
     "src/components/projects/project-audience-photo-gallery.tsx": 1,
@@ -1238,6 +1193,7 @@
     "src/lib/agent/pending-actions.ts": 1,
     "src/lib/agent/render/registry.tsx": 2,
     "src/lib/billing/owner-document-notices.ts": 1,
+    "src/lib/client-meetings/transcripts.ts": 1,
     "src/lib/contact-notes.ts": 1,
     "src/lib/contracts/packet-pdf.ts": 1,
     "src/lib/correspondence/attachment-storage.ts": 2,
@@ -1248,7 +1204,7 @@
     "src/lib/email/internal-email-alias.ts": 2,
     "src/lib/email/invitation-delivery.ts": 1,
     "src/lib/email/project-access-welcome.ts": 1,
-    "src/lib/email/project-email-attachments.ts": 1,
+    "src/lib/email/project-email-attachments.ts": 3,
     "src/lib/email/project-video-attachments.ts": 3,
     "src/lib/email/reply-tracking.ts": 2,
     "src/lib/equipment/model.ts": 1,
@@ -1273,7 +1229,7 @@
     "src/lib/internal-duties/recurring-display.ts": 1,
     "src/lib/jarvis/visual-context.ts": 1,
     "src/lib/morning-plan/plan.ts": 1,
-    "src/lib/notifications/create-event.ts": 2,
+    "src/lib/nutech/bracing.ts": 1,
     "src/lib/owner-updates/external-projection.ts": 1,
     "src/lib/participant-access.ts": 1,
     "src/lib/print/audience-record-reports.ts": 1,
@@ -1324,6 +1280,7 @@
     "src/app/api/conversations/attachments/upload/route.ts": 1,
     "src/app/api/google/download/[fileId]/route.ts": 1,
     "src/app/api/netsuite/callback/route.ts": 1,
+    "src/app/api/projects/[id]/photos/upload/route.ts": 1,
     "src/lib/agent/provider-config.ts": 1,
     "src/lib/github/client.ts": 1
   },
@@ -1384,6 +1341,7 @@
     "src/app/dashboard/files/[...path]/page.tsx": 1,
     "src/app/dashboard/files/folder/[folderId]/page.tsx": 1,
     "src/app/dashboard/files/page.tsx": 1,
+    "src/app/dashboard/financials/page.tsx": 1,
     "src/app/dashboard/people/page.tsx": 1,
     "src/app/dashboard/settings/page.tsx": 1
   },
@@ -1412,8 +1370,10 @@
     "src/app/actions/contract-templates.ts": 2,
     "src/app/actions/conversations-realtime.ts": 2,
     "src/app/actions/conversations.ts": 5,
+    "src/app/actions/credit-memos.ts": 4,
     "src/app/actions/customer-people.ts": 3,
     "src/app/actions/customers.ts": 5,
+    "src/app/actions/daily-log-delete.ts": 1,
     "src/app/actions/daily-log-reminder-preference.ts": 2,
     "src/app/actions/dashboard-overview.ts": 1,
     "src/app/actions/dashboards.ts": 5,
@@ -1438,6 +1398,7 @@
     "src/app/actions/internal-duties.ts": 1,
     "src/app/actions/internal-workspaces.ts": 2,
     "src/app/actions/invites.ts": 5,
+    "src/app/actions/invoices.ts": 4,
     "src/app/actions/job-emails.ts": 1,
     "src/app/actions/job-workflows.ts": 1,
     "src/app/actions/listening-room.ts": 1,
@@ -1448,12 +1409,20 @@
     "src/app/actions/my-contact-records.ts": 1,
     "src/app/actions/netsuite-sync.ts": 8,
     "src/app/actions/notifications.ts": 8,
+    "src/app/actions/nutech-airlite-po.ts": 7,
+    "src/app/actions/nutech-bracing.ts": 1,
+    "src/app/actions/nutech-catalog.ts": 6,
+    "src/app/actions/nutech-emails.ts": 1,
     "src/app/actions/nutech-estimate.ts": 1,
+    "src/app/actions/nutech-order-items.ts": 2,
+    "src/app/actions/nutech-order-overview.ts": 1,
+    "src/app/actions/nutech-orders.ts": 3,
     "src/app/actions/office-alerts.ts": 1,
     "src/app/actions/organizations.ts": 3,
     "src/app/actions/owner-document-notices.ts": 1,
     "src/app/actions/paper-trail.ts": 2,
     "src/app/actions/pay-application-billing.ts": 1,
+    "src/app/actions/payments.ts": 4,
     "src/app/actions/permission-overrides.ts": 4,
     "src/app/actions/plugins.ts": 4,
     "src/app/actions/portfolio-weather.ts": 1,
@@ -1474,6 +1443,7 @@
     "src/app/actions/project-estimate-report-phases.ts": 1,
     "src/app/actions/project-estimates.ts": 1,
     "src/app/actions/project-families.ts": 2,
+    "src/app/actions/project-field.ts": 3,
     "src/app/actions/project-financial-workflows.ts": 3,
     "src/app/actions/project-historical-rfq-history.ts": 1,
     "src/app/actions/project-links.ts": 1,
@@ -1510,6 +1480,7 @@
     "src/app/actions/sage-contact-creates.ts": 3,
     "src/app/actions/sage-contact-links.ts": 3,
     "src/app/actions/sage-pay-applications.ts": 2,
+    "src/app/actions/sage-square-receipts.ts": 1,
     "src/app/actions/schedule-confirmations.ts": 8,
     "src/app/actions/schedule-phases.ts": 1,
     "src/app/actions/schedule-template-export.ts": 2,
@@ -1525,6 +1496,7 @@
     "src/app/actions/travel-charges.ts": 1,
     "src/app/actions/user-schedule-preferences.ts": 1,
     "src/app/actions/users.ts": 5,
+    "src/app/actions/vendor-bills.ts": 4,
     "src/app/actions/vendor-trade-doc-link.ts": 1,
     "src/app/actions/vendors.ts": 6,
     "src/app/actions/view-preferences.ts": 2,
@@ -1610,6 +1582,7 @@
     "src/app/api/projects/[id]/nutech-order-form/route.ts": 1,
     "src/app/api/projects/[id]/pay-applications/[applicationId]/download/route.ts": 1,
     "src/app/api/projects/[id]/photos/[photoId]/route.ts": 1,
+    "src/app/api/projects/[id]/photos/upload/route.ts": 1,
     "src/app/api/projects/[id]/trade-letters/[letterId]/pdf/route.ts": 1,
     "src/app/api/projects/[id]/videos/[videoId]/route.ts": 1,
     "src/app/api/projects/[id]/videos/upload/complete/route.ts": 1,

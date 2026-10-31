@@ -15,6 +15,7 @@ import {
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
 import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
+import { insertFeedbackDeskItems, insertJarvisBridgeEvents, updateJarvisBridgeEvents } from "@/lib/domain/feedback/store"
 
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const MAX_EVENT_BATCH = 50
@@ -143,30 +144,27 @@ export async function GET(request: Request): Promise<Response> {
     const claimStaleIso = new Date(
       claimNow.getTime() - CLAIM_RETRY_MILLISECONDS,
     ).toISOString()
-    const claimed = await db
-      .update(jarvisBridgeEvents)
-      .set({
-        status: "processing",
-        claimToken,
-        claimedAt: claimIso,
-        attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
-        updatedAt: claimIso,
-      })
-      .where(
+    // One compare-and-set per candidate is deliberate: each lease is stamped
+    // just before its own CAS (see above), so this is not batched.
+    const claimed = await updateJarvisBridgeEvents(db, {
+      status: "processing",
+      claimToken,
+      claimedAt: claimIso,
+      attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
+      updatedAt: claimIso,
+    }, and(
+      eq(jarvisBridgeEvents.id, candidate.id),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eventTypeFilter,
+      lte(jarvisBridgeEvents.availableAt, claimIso),
+      or(
+        eq(jarvisBridgeEvents.status, "pending"),
         and(
-          eq(jarvisBridgeEvents.id, candidate.id),
-          eq(jarvisBridgeEvents.direction, "outbound"),
-          eventTypeFilter,
-          lte(jarvisBridgeEvents.availableAt, claimIso),
-          or(
-            eq(jarvisBridgeEvents.status, "pending"),
-            and(
-              eq(jarvisBridgeEvents.status, "processing"),
-              lt(jarvisBridgeEvents.claimedAt, claimStaleIso),
-            ),
-          ),
+          eq(jarvisBridgeEvents.status, "processing"),
+          lt(jarvisBridgeEvents.claimedAt, claimStaleIso),
         ),
-      )
+      ),
+    ))
       .returning({ id: jarvisBridgeEvents.id })
       .get()
     if (claimed) claimTokens.push(claimToken)
@@ -255,9 +253,7 @@ export async function POST(request: Request): Promise<Response> {
   const idempotencyKey =
     `inbound:${event.source}:${event.sourceEventId}`
 
-  await db
-    .insert(feedbackDeskItems)
-    .values({
+  await insertFeedbackDeskItems(db, {
       id: itemId,
       organizationId,
       source: event.source,
@@ -295,9 +291,7 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  await db
-    .insert(jarvisBridgeEvents)
-    .values({
+  await insertJarvisBridgeEvents(db, {
       id: bridgeEventId,
       organizationId,
       direction: "inbound",

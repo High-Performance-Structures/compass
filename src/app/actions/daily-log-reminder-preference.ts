@@ -1,5 +1,6 @@
 "use server"
 
+import { upsertNotificationPreferences } from "@/lib/domain/notifications/store"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -57,10 +58,7 @@ export async function setDailyLogReminderTime(time: string | null): Promise<Resu
     const rules = await readFeatureSettings(db, user.organizationId, "daily-log-reminders")
     if (!rules.staffPickOwnTime) return { success: false, error: "Your company sets the reminder time." }
     const now = new Date().toISOString()
-    await db
-      .insert(notificationPreferences)
-      .values({ userId: user.id, dailyLogReminderTime: time, updatedAt: now })
-      .onConflictDoUpdate({ target: notificationPreferences.userId, set: { dailyLogReminderTime: time, updatedAt: now } })
+    await upsertNotificationPreferences(db, user.id, { dailyLogReminderTime: time, updatedAt: now })
     revalidatePath("/dashboard/settings")
     return { success: true, data: null }
   } catch (error) {

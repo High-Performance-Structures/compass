@@ -6,7 +6,6 @@ import {
   notificationDeliveries,
   notificationEvents,
   notificationPreferences,
-  notificationRecipients,
   organizationMembers,
   projects,
   users,
@@ -18,6 +17,7 @@ import {
   messages,
 } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
+import { chunkD1Values } from "@/lib/d1-query"
 import { getCloudflareContext } from "@/lib/db"
 import {
   gotoSenderNumberForProject,
@@ -27,8 +27,15 @@ import {
   resolveNotificationDelivery,
   type NotificationDelivery,
 } from "@/lib/notifications/delivery"
+import {
+  insertNotificationDelivery,
+  insertNotificationEvent,
+  insertNotificationRecipient,
+} from "@/lib/domain/notifications/store"
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
+import { isRecord } from "@/lib/shared/guards"
+import { envString } from "@/lib/shared/env"
 import {
   isConversationSmsEligibleChannel,
   isProjectActivitySmsEvent,
@@ -122,19 +129,7 @@ type GotoAccessTokenResult =
     }
   | { readonly success: false; readonly error: string }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
-}
-
-function gotoAccountKey(value: Record<string, unknown>): string | null {
+function gotoAccountKey(value: Readonly<Record<string, unknown>>): string | null {
   const field = value.account_key ?? value.accountKey
   if (typeof field === "string" && field.trim().length > 0) {
     return field.trim()
@@ -464,18 +459,19 @@ export async function queueSmsDelivery(
   }
 }
 
-async function getPreferenceForUser(
+async function getPreferencesForUsers(
   db: ReturnType<typeof getDb>,
-  userId: string
-): Promise<NotificationPreferenceState> {
-  const row = await db
-    .select()
-    .from(notificationPreferences)
-    .where(eq(notificationPreferences.userId, userId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
-  return preferenceFromRow(row)
+  userIds: readonly string[]
+): Promise<Map<string, NotificationPreferenceState>> {
+  const byUser = new Map<string, NotificationPreferenceState>()
+  for (const chunk of chunkD1Values(userIds)) {
+    const rows = await db
+      .select()
+      .from(notificationPreferences)
+      .where(inArray(notificationPreferences.userId, chunk))
+    for (const row of rows) byUser.set(row.userId, preferenceFromRow(row))
+  }
+  return byUser
 }
 
 function isMessageSmsEvent(eventType: string): boolean {
@@ -632,7 +628,7 @@ async function persistNotificationEvent(
   const now = occurredAt.toISOString()
   const eventId = crypto.randomUUID()
   try {
-    await db.insert(notificationEvents).values({
+    await insertNotificationEvent(db, {
       id: eventId,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -648,11 +644,14 @@ async function persistNotificationEvent(
       createdAt: now,
     })
 
+    // One read for every recipient's preferences (user_id is the key).
+    const preferencesByUser = await getPreferencesForUsers(
+      db,
+      recipients.map((recipient) => recipient.userId)
+    )
     for (const recipient of recipients) {
-      const preferences = await getPreferenceForUser(
-        db,
-        recipient.userId
-      )
+      const preferences =
+        preferencesByUser.get(recipient.userId) ?? preferenceFromRow(null)
       if (
         !notificationCategoryEnabled(preferences, input.eventType)
       ) {
@@ -695,7 +694,7 @@ async function persistNotificationEvent(
       }
 
       const recipientId = crypto.randomUUID()
-      await db.insert(notificationRecipients).values({
+      await insertNotificationRecipient(db, {
         id: recipientId,
         eventId,
         userId: recipient.userId,
@@ -717,7 +716,7 @@ async function persistNotificationEvent(
           subject: input.title,
           body: notificationEmailBody(env, input),
         })
-        await db.insert(notificationDeliveries).values({
+        await insertNotificationDelivery(db, {
           id: crypto.randomUUID(),
           eventId,
           recipientId,
@@ -741,7 +740,7 @@ async function persistNotificationEvent(
           input.body,
           projectNumber
         )
-        await db.insert(notificationDeliveries).values({
+        await insertNotificationDelivery(db, {
           id: crypto.randomUUID(),
           eventId,
           recipientId,
@@ -789,7 +788,7 @@ async function persistNotificationEvent(
               : "Push delivery failed"
         }
 
-        await db.insert(notificationDeliveries).values({
+        await insertNotificationDelivery(db, {
           id: crypto.randomUUID(),
           eventId,
           recipientId,

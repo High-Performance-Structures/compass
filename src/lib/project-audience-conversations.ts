@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -17,6 +17,14 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
+import {
+  insertChannel,
+  insertChannelMembers,
+  insertReadStates,
+  removeChannelMembers,
+  removeReadStates,
+  setChannelMemberRole,
+} from "@/lib/domain/conversations/store"
 
 type Db = ReturnType<typeof getDb>
 type ConversationMemberRole = "owner" | "moderator" | "member"
@@ -127,74 +135,38 @@ async function ensureMembers(
   })
 
   // Revoke stale access first so a partial reconciliation fails closed.
-  if (reconciliation.removeReadStateUserIds.length > 0) {
-    await db
-      .delete(channelReadState)
-      .where(
-        and(
-          eq(channelReadState.channelId, channelId),
-          inArray(
-            channelReadState.userId,
-            reconciliation.removeReadStateUserIds
-          )
-        )
-      )
-      .run()
-  }
-  if (reconciliation.removeMemberUserIds.length > 0) {
-    await db
-      .delete(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          inArray(channelMembers.userId, reconciliation.removeMemberUserIds)
-        )
-      )
-      .run()
-  }
+  await removeReadStates(db, channelId, reconciliation.removeReadStateUserIds)
+  await removeChannelMembers(db, channelId, reconciliation.removeMemberUserIds)
 
   for (const member of reconciliation.updateMembers) {
-    await db
-      .update(channelMembers)
-      .set({ role: member.role })
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, member.userId)
-        )
-      )
-      .run()
+    await setChannelMemberRole(db, channelId, member.userId, member.role)
   }
 
-  if (reconciliation.addMembers.length > 0) {
-    await db
-      .insert(channelMembers)
-      .values(reconciliation.addMembers.map((member) => ({
-        id: crypto.randomUUID(),
-        channelId,
-        userId: member.userId,
-        role: member.role,
-        notifyLevel: "all",
-        joinedAt: now,
-      })))
-      .onConflictDoNothing()
-      .run()
-  }
+  await insertChannelMembers(
+    db,
+    reconciliation.addMembers.map((member) => ({
+      id: crypto.randomUUID(),
+      channelId,
+      userId: member.userId,
+      role: member.role,
+      notifyLevel: "all",
+      joinedAt: now,
+    })),
+    { ignoreConflict: true }
+  )
 
-  if (reconciliation.addReadStateUserIds.length > 0) {
-    await db
-      .insert(channelReadState)
-      .values(reconciliation.addReadStateUserIds.map((userId) => ({
-        id: crypto.randomUUID(),
-        userId,
-        channelId,
-        lastReadMessageId: null,
-        lastReadAt: now,
-        unreadCount: 0,
-      })))
-      .onConflictDoNothing()
-      .run()
-  }
+  await insertReadStates(
+    db,
+    reconciliation.addReadStateUserIds.map((userId) => ({
+      id: crypto.randomUUID(),
+      userId,
+      channelId,
+      lastReadMessageId: null,
+      lastReadAt: now,
+      unreadCount: 0,
+    })),
+    { ignoreConflict: true }
+  )
 }
 
 async function audienceStaffUserIds(
@@ -323,29 +295,26 @@ export async function ensureProjectAudienceConversation(input: {
     .get()
 
   if (!existing) {
-    await input.db
-      .insert(channels)
-      .values({
-        id: channelId,
-        name: channelName({
-          projectNumber: project.projectNumber,
-          projectName: project.name,
-          audience: input.audience,
-        }),
-        type: "text",
-        description: "Private conversation with the internal project team",
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        categoryId: null,
-        isPrivate: true,
-        audience: projectAudienceChannelAudience(input.audience),
-        createdBy,
-        sortOrder: 0,
-        archivedAt: null,
-        createdAt: input.now,
-        updatedAt: input.now,
-      })
-      .run()
+    await insertChannel(input.db, {
+      id: channelId,
+      name: channelName({
+        projectNumber: project.projectNumber,
+        projectName: project.name,
+        audience: input.audience,
+      }),
+      type: "text",
+      description: "Private conversation with the internal project team",
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      categoryId: null,
+      isPrivate: true,
+      audience: projectAudienceChannelAudience(input.audience),
+      createdBy,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+    })
   }
 
   const desiredMembers: {

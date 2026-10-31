@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -16,6 +16,8 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { insertMessage, recordThreadReply } from "@/lib/domain/conversations/store"
+import { insertJarvisBridgeEvents, updateJarvisBridgeEvents } from "@/lib/domain/feedback/store"
 
 const replySchema = z.object({
   eventId: z.string().min(1).max(128),
@@ -234,7 +236,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const now = new Date().toISOString()
-  await db.insert(messages).values({
+  await insertMessage(db, {
     id: messageId,
     channelId: target.channelId,
     threadId: target.messageId,
@@ -249,17 +251,9 @@ export async function POST(request: Request): Promise<Response> {
     lastReplyAt: null,
     createdAt: now,
   })
-  await db
-    .update(messages)
-    .set({
-      replyCount: sql`${messages.replyCount} + 1`,
-      lastReplyAt: now,
-    })
-    .where(eq(messages.id, target.messageId))
+  await recordThreadReply(db, target.messageId, now)
 
-  await db
-    .insert(jarvisBridgeEvents)
-    .values({
+  await insertJarvisBridgeEvents(db, {
       id: crypto.randomUUID(),
       organizationId: target.organizationId,
       direction: "inbound",
@@ -275,17 +269,14 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  await db
-    .update(jarvisBridgeEvents)
-    .set({
+  await updateJarvisBridgeEvents(db, {
       status: "completed",
       result: JSON.stringify({ messageId }),
       claimToken: null,
       claimedAt: null,
       completedAt: now,
       updatedAt: now,
-    })
-    .where(eq(jarvisBridgeEvents.id, sourceEvent.id))
+    }, eq(jarvisBridgeEvents.id, sourceEvent.id))
 
   revalidatePath("/dashboard/conversations")
   return Response.json({ success: true, messageId })

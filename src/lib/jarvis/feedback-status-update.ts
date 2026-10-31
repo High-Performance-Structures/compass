@@ -4,7 +4,6 @@ import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
 import {
   feedbackDeskItems,
-  jarvisBridgeEvents,
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
 import {
@@ -28,6 +27,7 @@ import {
 } from "@/lib/jarvis/feedback-delivery"
 import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
+import { insertJarvisBridgeEventsFrom, updateFeedbackDeskItems } from "@/lib/domain/feedback/store"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -258,7 +258,7 @@ export async function applyFeedbackLifecycleUpdate(
   // One D1 batch statement writes all outbox rows. Its SELECT is fenced on the
   // checked update's affected-row count, so a lost optimistic update cannot
   // create only a subset of the events.
-  const persistedWrite = db.update(feedbackDeskItems).set({
+  const persistedWrite = updateFeedbackDeskItems(db, {
       status: update.status,
       priority,
       githubIssueUrl: issueUrl,
@@ -283,7 +283,7 @@ export async function applyFeedbackLifecycleUpdate(
       lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
       lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
       updatedAt: now,
-    }).where(and(
+    }, and(
       eq(feedbackDeskItems.id, item.id),
       rowIdentity,
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
@@ -307,7 +307,7 @@ export async function applyFeedbackLifecycleUpdate(
       where changes() = 1
     `
     : sql``
-  const outboxWrite = db.insert(jarvisBridgeEvents).select(sql`
+  const outboxWrite = insertJarvisBridgeEventsFrom(db, sql`
     select
       ${crypto.randomUUID()}, ${item.organizationId}, 'inbound', ${update.actorSource},
       'feedback.status_updated', 'completed', ${update.idempotencyKey}, ${item.id},

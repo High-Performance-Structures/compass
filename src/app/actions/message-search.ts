@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, or, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
+import { eq, and, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
@@ -9,6 +9,7 @@ import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { updateMessage } from "@/lib/domain/conversations/store"
 
 const MAX_QUERY_LENGTH = 100
 
@@ -274,10 +275,7 @@ export async function unpinMessage(
       return { success: false, error: "Message is not pinned" }
     }
 
-    await db
-      .update(messages)
-      .set({ isPinned: false })
-      .where(eq(messages.id, messageId))
+    await updateMessage(db, messageId, { isPinned: false })
 
     revalidatePath("/dashboard")
     return { success: true }
