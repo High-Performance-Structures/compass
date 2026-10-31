@@ -4,10 +4,7 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { getProjectSavedViews } from "@/app/actions/project-views"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
-import {
-  getProjectIntakeAssignees,
-  getProjects,
-} from "@/app/actions/projects"
+import { getProjectIntakeAssignees } from "@/app/actions/projects"
 import { getProjectDuplicateCandidates } from "@/app/actions/project-duplicates"
 import { getApprovedProjectNumberReviewKeys } from "@/app/actions/project-number-reviews"
 import { getDb } from "@/db"
@@ -19,6 +16,7 @@ import {
 import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
+import { projectHubSignals } from "@/components/projects/project-hub-signals"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -82,21 +80,28 @@ export default async function ProjectsPage({
       params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys, internalDepartment, savedViews] = await Promise.all([
-      getProjects(),
-      getDashboardOverview(),
+    // The project list itself comes from the dashboard layout (request-cached
+    // and shared through ProjectListProvider). Job health, the duplicate scan
+    // and number-review exceptions are started now but not awaited: the list
+    // renders first and these stream in. Each loader returns an empty result
+    // instead of rejecting.
+    const signals = getDashboardOverview().then(projectHubSignals)
+    const duplicateCandidates = canCreateOrUpdateProjects
+      ? getProjectDuplicateCandidates()
+      : Promise.resolve([])
+    const approvedProjectNumberReviewKeys = canCreateOrUpdateProjects
+      ? getApprovedProjectNumberReviewKeys()
+      : Promise.resolve([])
+    const [intakeAssignees, internalDepartment, savedViews] = await Promise.all([
       getProjectIntakeAssignees(),
-      canCreateOrUpdateProjects ? getProjectDuplicateCandidates() : Promise.resolve([]),
-      canCreateOrUpdateProjects ? getApprovedProjectNumberReviewKeys() : Promise.resolve([]),
       currentInternalDepartment(),
       getProjectSavedViews(),
     ])
 
     return (
       <ProjectHubLaunchpad
-        projects={projectList}
         savedViews={savedViews}
-        overview={overview}
+        signals={signals}
         canManageProjects={canCreateProject(currentUser)}
         canReviewProjectNumbers={canCreateOrUpdateProjects}
         canUpdateProjectStatus={canUpdateProjectStatus}
