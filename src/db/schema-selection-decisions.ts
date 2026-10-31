@@ -65,6 +65,7 @@ export const projectSelectionRequests = sqliteTable(
   },
   (table) => [
     index("selection_requests_project").on(table.projectId, table.status),
+    index("project_selection_requests_selection_id_idx").on(table.selectionId),
   ]
 )
 
@@ -114,5 +115,7 @@ export const projectSelectionProcurementLinks = sqliteTable(
       table.selectionId,
       table.operationId
     ),
+    index("project_selection_procurement_links_operation_id_idx").on(table.operationId),
+    index("project_selection_procurement_links_project_id_idx").on(table.projectId),
   ]
 )

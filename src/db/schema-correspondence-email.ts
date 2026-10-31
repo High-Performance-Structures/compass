@@ -31,6 +31,7 @@ export const correspondenceEmailThreads = sqliteTable(
       table.organizationId,
       table.projectId
     ),
+    index("correspondence_email_threads_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -70,6 +71,9 @@ export const correspondenceEmailDeliveries = sqliteTable(
       table.status,
       table.queuedAt
     ),
+    index("correspondence_email_deliveries_recipient_user_id_idx").on(table.recipientUserId),
+    index("correspondence_email_deliveries_conversation_id_idx").on(table.conversationId),
+    index("correspondence_email_deliveries_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -99,5 +103,8 @@ export const correspondenceEmailEvents = sqliteTable(
       table.projectId,
       table.createdAt
     ),
+    index("correspondence_email_events_message_id_idx").on(table.messageId),
+    index("correspondence_email_events_conversation_id_idx").on(table.conversationId),
+    index("correspondence_email_events_project_id_idx").on(table.projectId),
   ]
 )

@@ -27,5 +27,6 @@ export const projectWorkflowChecks = sqliteTable(
   (table) => [
     uniqueIndex("project_workflow_checks_project_item_unique").on(table.projectId, table.itemKey),
     index("project_workflow_checks_org_idx").on(table.organizationId),
+    index("project_workflow_checks_carried_from_project_id_idx").on(table.carriedFromProjectId),
   ],
 )

@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { users } from "./schema"
 
 export const customThemes = sqliteTable("custom_themes", {
@@ -11,7 +11,10 @@ export const customThemes = sqliteTable("custom_themes", {
   themeData: text("theme_data").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("custom_themes_user_id_idx").on(table.userId),
+  ])
 
 export const userThemePreference = sqliteTable(
   "user_theme_preference",

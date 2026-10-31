@@ -27,6 +27,8 @@ export const correspondenceSourceMessages = sqliteTable("correspondence_source_m
   index("correspondence_source_messages_scope_idx").on(table.organizationId, table.projectId, table.conversationId),
   check("correspondence_source_messages_sha256_check", sql`length(${table.sourceBodySha256}) = 64 AND ${table.sourceBodySha256} NOT GLOB '*[^0-9A-Fa-f]*'`),
   check("correspondence_source_messages_evidence_json_check", sql`json_valid(${table.sourceEvidenceJson}) = 1`),
+    index("correspondence_source_messages_conversation_id_idx").on(table.conversationId),
+    index("correspondence_source_messages_project_id_idx").on(table.projectId),
 ])
 
 export const correspondenceSourceRecipients = sqliteTable("correspondence_source_recipients", {

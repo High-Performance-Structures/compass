@@ -53,6 +53,7 @@ export const shopTickets = sqliteTable(
   (table) => ({
     numberIdx: uniqueIndex("shop_tickets_org_sequence_idx").on(table.organizationId, table.sequenceNumber),
     projectIdx: index("shop_tickets_project_idx").on(table.projectId, table.status),
+    shopTicketsBudgetApplicationIdIdx: index("shop_tickets_budget_application_id_idx").on(table.budgetApplicationId),
   }),
 )
 
@@ -119,6 +120,7 @@ export const sageLaborRequests = sqliteTable(
   (table) => ({
     statusIdx: index("sage_labor_requests_status_idx").on(table.status, table.requestedAt),
     projectIdx: index("sage_labor_requests_project_idx").on(table.projectId, table.requestedAt),
+    sageLaborRequestsOrganizationIdIdx: index("sage_labor_requests_organization_id_idx").on(table.organizationId),
   }),
 )
 
@@ -148,6 +150,7 @@ export const sageLaborLines = sqliteTable(
   },
   (table) => ({
     projectIdx: index("sage_labor_lines_project_idx").on(table.projectId, table.workDate),
+    sageLaborLinesOrganizationIdIdx: index("sage_labor_lines_organization_id_idx").on(table.organizationId),
   }),
 )
 

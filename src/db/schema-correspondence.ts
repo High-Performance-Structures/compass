@@ -9,7 +9,8 @@ export const correspondence = sqliteTable("project_correspondence", {
   participantVersion: integer("participant_version").notNull().default(1),
   closed: integer("closed", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
-}, (t) => [index("correspondence_project_idx").on(t.organizationId, t.projectId)])
+}, (t) => [index("correspondence_project_idx").on(t.organizationId, t.projectId),
+    index("project_correspondence_project_id_idx").on(t.projectId)])
 
 export const correspondenceParticipants = sqliteTable("correspondence_participants", {
   id: text("id").primaryKey(),
@@ -19,7 +20,8 @@ export const correspondenceParticipants = sqliteTable("correspondence_participan
   email: text("email").notNull(),
   role: text("role", { enum: ["staff", "owner", "sub_vendor"] }).notNull(),
   revokedAt: text("revoked_at"),
-}, (t) => [uniqueIndex("correspondence_participant_unique").on(t.conversationId, t.userId)])
+}, (t) => [uniqueIndex("correspondence_participant_unique").on(t.conversationId, t.userId),
+    index("correspondence_participants_user_id_idx").on(t.userId)])
 
 export const correspondenceMessages = sqliteTable("correspondence_messages", {
   sequence: integer("sequence").primaryKey({ autoIncrement: true }),
@@ -55,7 +57,8 @@ export const correspondenceState = sqliteTable("correspondence_user_state", {
   followUp: integer("follow_up", { mode: "boolean" }).notNull().default(false),
   shareReadReceipts: integer("share_read_receipts", { mode: "boolean" }).notNull().default(true),
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
-}, (t) => [uniqueIndex("correspondence_state_unique").on(t.conversationId, t.userId)])
+}, (t) => [uniqueIndex("correspondence_state_unique").on(t.conversationId, t.userId),
+    index("correspondence_user_state_user_id_idx").on(t.userId)])
 
 export const correspondenceDrafts = sqliteTable("correspondence_drafts", {
   id: text("id").primaryKey(),
@@ -65,7 +68,8 @@ export const correspondenceDrafts = sqliteTable("correspondence_drafts", {
   attachmentIds: text("attachment_ids", { mode: "json" }).$type<readonly string[]>().notNull().default([]),
   version: integer("version").notNull(),
   updatedAt: text("updated_at").notNull(),
-}, (t) => [uniqueIndex("correspondence_draft_unique").on(t.conversationId, t.userId)])
+}, (t) => [uniqueIndex("correspondence_draft_unique").on(t.conversationId, t.userId),
+    index("correspondence_drafts_user_id_idx").on(t.userId)])
 
 export const correspondenceAttachments = sqliteTable("correspondence_attachments", {
   id: text("id").primaryKey(),
@@ -79,7 +83,9 @@ export const correspondenceAttachments = sqliteTable("correspondence_attachments
   driveFileId: text("drive_file_id"),
   retiredAt: text("retired_at"),
   createdAt: text("created_at").notNull(),
-}, (t) => [index("correspondence_attachments_message_idx").on(t.messageId)])
+}, (t) => [index("correspondence_attachments_message_idx").on(t.messageId),
+    index("correspondence_attachments_owner_user_id_idx").on(t.ownerUserId),
+    index("correspondence_attachments_project_id_idx").on(t.projectId)])
 
 export const correspondenceRevisions = sqliteTable("correspondence_revisions", {
   id: text("id").primaryKey(),
@@ -88,7 +94,10 @@ export const correspondenceRevisions = sqliteTable("correspondence_revisions", {
   previousBody: text("previous_body").notNull(),
   operation: text("operation", { enum: ["edit", "retract"] }).notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("correspondence_revisions_message_id_idx").on(table.messageId),
+  ])
 
 export const correspondenceOutbox = sqliteTable("correspondence_outbox", {
   id: text("id").primaryKey(),
@@ -115,7 +124,8 @@ export const correspondenceCompositionDrafts = sqliteTable("correspondence_compo
   recipientUserIds: text("recipient_user_ids", { mode: "json" }).$type<readonly string[]>().notNull(),
   version: integer("version").notNull(),
   updatedAt: text("updated_at").notNull(),
-}, (t) => [uniqueIndex("correspondence_composition_draft_unique").on(t.projectId, t.userId)])
+}, (t) => [uniqueIndex("correspondence_composition_draft_unique").on(t.projectId, t.userId),
+    index("correspondence_composition_drafts_user_id_idx").on(t.userId)])
 
 // Private, independently versioned compositions; tombstones prevent stale autosaves resurrecting drafts.
 export const correspondenceSavedDrafts = sqliteTable("correspondence_saved_drafts", {
@@ -127,4 +137,6 @@ export const correspondenceSavedDrafts = sqliteTable("correspondence_saved_draft
   version: integer("version").notNull(),
   updatedAt: text("updated_at").notNull(),
   retiredAt: text("retired_at"),
-}, (t) => [index("correspondence_saved_drafts_owner_idx").on(t.organizationId, t.projectId, t.userId)])
+}, (t) => [index("correspondence_saved_drafts_owner_idx").on(t.organizationId, t.projectId, t.userId),
+    index("correspondence_saved_drafts_user_id_idx").on(t.userId),
+    index("correspondence_saved_drafts_project_id_idx").on(t.projectId)])

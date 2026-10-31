@@ -86,6 +86,7 @@ export const sageClientProjectWriteOperations = sqliteTable(
       table.customerId,
       table.status
     ),
+    index("sage_client_project_write_operations_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -270,6 +271,8 @@ export const sageContactCreateProposals = sqliteTable(
     index("sage_contact_create_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
     index("sage_contact_create_company_idx")
       .on(table.organizationId, table.kind, table.customerId, table.vendorId, table.status),
+    index("sage_contact_create_proposals_vendor_id_idx").on(table.vendorId),
+    index("sage_contact_create_proposals_customer_id_idx").on(table.customerId),
   ]
 )
 
@@ -483,6 +486,7 @@ export const sageSquarePaymentOperations = sqliteTable(
       table.projectId,
       table.paymentCompletedAt
     ),
+    index("sage_square_payment_operations_project_id_idx").on(table.projectId),
   ]
 )
 

@@ -38,6 +38,8 @@ export const internalDutyEntries = sqliteTable(
     projectDateIdx: index("internal_duty_entries_project_date_idx").on(table.projectId, table.entryDate),
     dailyLogIdx: index("internal_duty_entries_daily_log_idx").on(table.dailyLogId),
     todoIdx: index("internal_duty_entries_todo_idx").on(table.todoId),
+    internalDutyEntriesRelatedProjectIdIdx: index("internal_duty_entries_related_project_id_idx").on(table.relatedProjectId),
+    internalDutyEntriesUserIdIdx: index("internal_duty_entries_user_id_idx").on(table.userId),
   }),
 )
 
@@ -75,6 +77,7 @@ export const recurringDuties = sqliteTable(
   },
   (table) => ({
     projectIdx: index("recurring_duties_project_idx").on(table.projectId, table.sortOrder),
+    recurringDutiesOwnerUserIdIdx: index("recurring_duties_owner_user_id_idx").on(table.ownerUserId),
   }),
 )
 
@@ -97,6 +100,7 @@ export const recurringDutyCompletions = sqliteTable(
   },
   (table) => ({
     periodIdx: uniqueIndex("recurring_duty_completions_period_idx").on(table.recurringDutyId, table.period),
+    recurringDutyCompletionsDutyEntryIdIdx: index("recurring_duty_completions_duty_entry_id_idx").on(table.dutyEntryId),
   }),
 )
 

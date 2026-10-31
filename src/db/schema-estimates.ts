@@ -224,6 +224,14 @@ export const projectEstimates = sqliteTable(
     uniqueIndex("project_estimates_one_accepted_per_number_uq")
       .on(table.projectId, table.estimateNumber)
       .where(sql`${table.status} = 'accepted'`),
+    index("project_estimates_terms_template_id_idx").on(table.termsTemplateId),
+    index("project_estimates_default_tax_entity_id_idx").on(table.defaultTaxEntityId),
+    index("project_estimates_company_signer_contact_id_idx").on(table.companySignerContactId),
+    index("project_estimates_client_signer_contact_id_idx").on(table.clientSignerContactId),
+    index("project_estimates_closing_template_id_idx").on(table.closingTemplateId),
+    index("project_estimates_introduction_template_id_idx").on(table.introductionTemplateId),
+    index("project_estimates_template_application_id_idx").on(table.templateApplicationId),
+    index("project_estimates_template_version_id_idx").on(table.templateVersionId),
   ]
 )
 
@@ -257,7 +265,8 @@ export const projectPhaseProposals = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt)]
+  (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt),
+    index("project_phase_proposals_family_phase_id_idx").on(table.familyPhaseId)]
 )
 
 export const projectEstimatePhaseDescriptions = sqliteTable(
@@ -333,7 +342,8 @@ export const projectEstimateReportPhases = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder)]
+  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder),
+    index("project_estimate_report_phases_project_id_idx").on(table.projectId)]
 )
 
 export const projectEstimateAssemblies = sqliteTable(
@@ -384,6 +394,7 @@ export const projectEstimateAssemblyCopies = sqliteTable(
   (table) => [
     index("project_estimate_assembly_copies_source_idx").on(table.sourceEstimateId, table.createdAt),
     index("project_estimate_assembly_copies_target_idx").on(table.targetProjectId, table.createdAt),
+    index("project_estimate_assembly_copies_source_project_id_idx").on(table.sourceProjectId),
   ]
 )
 
@@ -453,6 +464,10 @@ export const projectEstimateLines = sqliteTable(
       table.costCode
     ),
     index("project_estimate_lines_report_phase_idx").on(table.reportPhaseId),
+    index("project_estimate_lines_tax_entity_id_idx").on(table.taxEntityId),
+    index("project_estimate_lines_pricing_todo_id_idx").on(table.pricingTodoId),
+    index("project_estimate_lines_assembly_id_idx").on(table.assemblyId),
+    index("project_estimate_lines_template_line_id_idx").on(table.templateLineId),
   ]
 )
 
@@ -517,6 +532,9 @@ export const projectEstimateLineCostItems = sqliteTable(
       table.deletedAt,
       table.sortOrder
     ),
+    index("project_estimate_line_cost_items_project_id_idx").on(table.projectId),
+    index("project_estimate_line_cost_items_rate_book_entry_id_idx").on(table.rateBookEntryId),
+    index("project_estimate_line_cost_items_tax_entity_id_idx").on(table.taxEntityId),
   ]
 )
 
@@ -553,6 +571,7 @@ export const projectEstimateBasisDocuments = sqliteTable(
     index("project_estimate_basis_documents_project_document_idx").on(
       table.projectDocumentId
     ),
+    index("project_estimate_basis_documents_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -598,6 +617,7 @@ export const projectContractBudgetRevisions = sqliteTable(
       table.status,
       table.revisionNumber
     ),
+    index("project_contract_budget_revisions_accepted_estimate_id_idx").on(table.acceptedEstimateId),
   ]
 )
 
@@ -645,6 +665,7 @@ export const projectContractBudgetLines = sqliteTable(
       table.projectId,
       table.revisionId
     ),
+    index("project_contract_budget_lines_source_estimate_line_id_idx").on(table.sourceEstimateLineId),
   ]
 )
 

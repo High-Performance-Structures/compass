@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { users, organizations } from "./schema"
 
 export const googleAuth = sqliteTable("google_auth", {
@@ -17,7 +17,10 @@ export const googleAuth = sqliteTable("google_auth", {
     .references(() => users.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("google_auth_organization_id_idx").on(table.organizationId),
+  ])
 
 export const googleStarredFiles = sqliteTable("google_starred_files", {
   id: text("id").primaryKey(),
@@ -26,7 +29,10 @@ export const googleStarredFiles = sqliteTable("google_starred_files", {
     .references(() => users.id, { onDelete: "cascade" }),
   googleFileId: text("google_file_id").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("google_starred_files_user_id_idx").on(table.userId),
+  ])
 
 export type GoogleAuth = typeof googleAuth.$inferSelect
 export type NewGoogleAuth = typeof googleAuth.$inferInsert

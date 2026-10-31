@@ -77,6 +77,8 @@ export const vendorTradeDocLinks = sqliteTable(
   (table) => [
     uniqueIndex("vendor_trade_doc_links_token_uq").on(table.tokenHash),
     index("vendor_trade_doc_links_vendor_idx").on(table.vendorId, table.createdAt),
+    index("vendor_trade_doc_links_parent_link_id_idx").on(table.parentLinkId),
+    index("vendor_trade_doc_links_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -134,6 +136,7 @@ export const tradeLetters = sqliteTable(
     index("trade_letters_estimate_idx").on(table.projectId, table.estimateId, table.rfqOperationId),
     uniqueIndex("trade_letters_envelope_uq").on(table.foxitEnvelopeId).where(sql`${table.foxitEnvelopeId} IS NOT NULL`),
     uniqueIndex("trade_letters_number_uq").on(table.organizationId, table.letterNumber),
+    index("trade_letters_vendor_id_idx").on(table.vendorId),
   ]
 )
 

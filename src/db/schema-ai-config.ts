@@ -1,7 +1,8 @@
 import {
+  index,
+  integer,
   sqliteTable,
   text,
-  integer,
 } from "drizzle-orm/sqlite-core"
 import { users, agentConversations } from "./schema"
 
@@ -77,7 +78,11 @@ export const agentUsage = sqliteTable("agent_usage", {
     .default(0),
   estimatedCost: text("estimated_cost").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("agent_usage_user_id_idx").on(table.userId),
+    index("agent_usage_conversation_id_idx").on(table.conversationId),
+  ])
 
 // per-user Anthropic OAuth tokens (separate from provider config
 // because OAuth needs refresh token + expiry tracking)

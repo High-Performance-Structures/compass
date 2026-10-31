@@ -79,6 +79,10 @@ export const feedbackDeskItems = sqliteTable(
       table.githubIssueUrl,
       table.githubIssueCreationClaimToken,
     ),
+    // Declared from drizzle/0133_feedback_issue_claim_lease.sql.
+    index("feedback_desk_github_claim_expiry_idx").on(table.organizationId, table.githubIssueUrl, table.githubIssueCreationClaimExpiresAt),
+    // Declared from drizzle/0134_feedback_issue_provider_attempt.sql.
+    index("feedback_desk_github_provider_attempt_idx").on(table.organizationId, table.githubIssueUrl, table.githubIssueCreationProviderAttemptedAt),
   ],
 )
 

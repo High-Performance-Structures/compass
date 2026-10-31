@@ -126,7 +126,17 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   publishedAt: text("published_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0039_cherish_pulse.sql.
+    index("idx_cherish_pulse_org_week").on(table.organizationId, table.weekStart),
+    // Declared from drizzle/0039_cherish_pulse.sql.
+    index("idx_cherish_pulse_org_status").on(table.organizationId, table.reviewStatus),
+    // Declared from drizzle/0039_cherish_pulse.sql.
+    index("idx_cherish_pulse_org_visibility").on(table.organizationId, table.visibility),
+    // Declared from drizzle/0039_cherish_pulse.sql.
+    index("idx_cherish_pulse_submitted_by").on(table.submittedBy),
+  ])
 
 export const cherishCardFulfillments = sqliteTable(
   "cherish_card_fulfillments",
@@ -285,6 +295,7 @@ export const cherishPulseStoryStates = sqliteTable(
       table.organizationId,
       table.userId,
     ),
+    index("cherish_pulse_story_states_user_id_idx").on(table.userId),
   ],
 )
 
@@ -317,6 +328,7 @@ export const cherishPulseStoryReplies = sqliteTable(
       table.recipientId,
       table.createdAt,
     ),
+    index("cherish_pulse_story_replies_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -417,7 +429,15 @@ export const notificationEvents = sqliteTable("notification_events", {
     onDelete: "set null",
   }),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0041_notifications.sql.
+    index("idx_notification_events_org_created").on(table.organizationId, table.createdAt),
+    // Declared from drizzle/0041_notifications.sql.
+    index("idx_notification_events_project").on(table.projectId),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("notification_events_org_source_idx").on(table.organizationId, table.sourceType, table.eventType, table.createdAt),
+  ])
 
 export const notificationRecipients = sqliteTable("notification_recipients", {
   id: text("id").primaryKey(),
@@ -434,7 +454,15 @@ export const notificationRecipients = sqliteTable("notification_recipients", {
   readAt: text("read_at"),
   dismissedAt: text("dismissed_at"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0041_notifications.sql.
+    index("idx_notification_recipients_user_created").on(table.userId, table.createdAt),
+    // Declared from drizzle/0041_notifications.sql.
+    index("idx_notification_recipients_user_read").on(table.userId, table.readAt),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("notification_recipients_event_idx").on(table.eventId),
+  ])
 
 export const notificationDeliveries = sqliteTable("notification_deliveries", {
   id: text("id").primaryKey(),
@@ -455,7 +483,13 @@ export const notificationDeliveries = sqliteTable("notification_deliveries", {
   error: text("error"),
   attemptedAt: text("attempted_at"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0041_notifications.sql.
+    index("idx_notification_deliveries_user_channel").on(table.userId, table.channel),
+    index("notification_deliveries_recipient_id_idx").on(table.recipientId),
+    index("notification_deliveries_event_id_idx").on(table.eventId),
+  ])
 
 export const emailReplyThreads = sqliteTable(
   "email_reply_threads",
@@ -489,6 +523,7 @@ export const emailReplyThreads = sqliteTable(
       table.projectId
     ),
     index("email_reply_threads_source_idx").on(table.sourceType, table.sourceId),
+    index("email_reply_threads_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -532,6 +567,7 @@ export const inboundEmails = sqliteTable(
     ),
     index("inbound_emails_reply_thread_idx").on(table.replyThreadId),
     index("inbound_emails_status_idx").on(table.matchedStatus),
+    index("inbound_emails_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -550,7 +586,10 @@ export const organizationInvites = sqliteTable("organization_invites", {
     .references(() => users.id, { onDelete: "cascade" }),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("organization_invites_organization_id_idx").on(table.organizationId),
+  ])
 
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
@@ -560,7 +599,10 @@ export const teams = sqliteTable("teams", {
   name: text("name").notNull(),
   description: text("description"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("teams_organization_id_idx").on(table.organizationId),
+  ])
 
 export const teamMembers = sqliteTable("team_members", {
   id: text("id").primaryKey(),
@@ -571,7 +613,11 @@ export const teamMembers = sqliteTable("team_members", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   joinedAt: text("joined_at").notNull(),
-})
+},
+  (table) => [
+    index("team_members_user_id_idx").on(table.userId),
+    index("team_members_team_id_idx").on(table.teamId),
+  ])
 
 export const rolePermissionOverrides = sqliteTable(
   "role_permission_overrides",
@@ -630,6 +676,7 @@ export const teamPermissionOverrides = sqliteTable(
       table.featureId
     ),
     index("team_permission_overrides_org_idx").on(table.organizationId),
+    index("team_permission_overrides_team_id_idx").on(table.teamId),
   ]
 )
 
@@ -661,6 +708,7 @@ export const userPermissionOverrides = sqliteTable(
       table.featureId
     ),
     index("user_permission_overrides_org_idx").on(table.organizationId),
+    index("user_permission_overrides_user_id_idx").on(table.userId),
   ]
 )
 
@@ -692,6 +740,7 @@ export const permissionAuditEvents = sqliteTable(
       table.organizationId,
       table.createdAt
     ),
+    index("permission_audit_events_team_id_idx").on(table.teamId),
   ]
 )
 
@@ -720,7 +769,10 @@ export const groups = sqliteTable("groups", {
   description: text("description"),
   color: text("color"), // hex color for badges
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("groups_organization_id_idx").on(table.organizationId),
+  ])
 
 export const groupMembers = sqliteTable("group_members", {
   id: text("id").primaryKey(),
@@ -731,7 +783,11 @@ export const groupMembers = sqliteTable("group_members", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   joinedAt: text("joined_at").notNull(),
-})
+},
+  (table) => [
+    index("group_members_user_id_idx").on(table.userId),
+    index("group_members_group_id_idx").on(table.groupId),
+  ])
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
@@ -811,6 +867,8 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at"),
 }, (table) => [
   uniqueIndex("projects_organization_id_unique").on(table.organizationId, table.id),
+    // Declared from drizzle/0105_project_number_namespace.sql (COLLATE NOCASE, so the column is a sql`` expression).
+    uniqueIndex("projects_org_project_number_unique").on(table.organizationId, sql`${table.projectNumber} COLLATE NOCASE`).where(sql`"project_number" IS NOT NULL`),
 ])
 
 /** Zone and mountain charge rates (JSON validated by travelChargeSettingsSchema). */
@@ -876,6 +934,7 @@ export const projectNumberReservations = sqliteTable(
       table.organizationId,
       table.projectNumber
     ),
+    index("project_number_reservations_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -900,6 +959,9 @@ export const projectNumberAliases = sqliteTable(
       table.organizationId,
       table.projectNumber,
     ),
+    // Declared from drizzle/0104_project_number_aliases.sql.
+    index("project_number_aliases_org_number_idx").on(table.organizationId, table.projectNumber),
+    index("project_number_aliases_project_id_idx").on(table.projectId),
   ],
 )
 
@@ -969,6 +1031,8 @@ export const projectDuplicateDecisions = sqliteTable(
       table.status,
       table.updatedAt,
     ),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("project_duplicate_decisions_removed_idx").on(table.removedProjectId, table.status),
   ],
 )
 
@@ -989,6 +1053,7 @@ export const projectNumberReviewDecisions = sqliteTable(
     check("project_number_review_decisions_status_check", sql`${table.status} = 'approved_exception'`),
     uniqueIndex("project_number_review_decisions_org_project_number_unique").on(table.organizationId, table.projectId, table.projectNumber),
     index("project_number_review_decisions_org_status_idx").on(table.organizationId, table.status, table.updatedAt),
+    index("project_number_review_decisions_project_id_idx").on(table.projectId),
   ],
 )
 
@@ -1009,6 +1074,8 @@ export const projectRegistryRemovals = sqliteTable(
   (table) => [
     uniqueIndex("project_registry_removals_org_project_unique").on(table.organizationId, table.projectId),
     index("project_registry_removals_org_removed_idx").on(table.organizationId, table.removedAt),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("project_registry_removals_project_idx").on(table.projectId),
   ],
 )
 
@@ -1157,6 +1224,7 @@ export const projectProfileSyncOperations = sqliteTable(
       table.status,
       table.createdAt,
     ),
+    index("project_profile_sync_operations_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -1176,7 +1244,11 @@ export const projectFollowUps = sqliteTable("project_follow_ups", {
   }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("project_follow_ups_owner_user_id_idx").on(table.ownerUserId),
+    index("project_follow_ups_organization_id_idx").on(table.organizationId),
+  ])
 
 export const activityEvents = sqliteTable(
   "activity_events",
@@ -1305,6 +1377,7 @@ export const staffMessageEvents = sqliteTable(
   },
   (table) => [
     index("staff_message_events_message_idx").on(table.messageId, table.createdAt),
+    index("staff_message_events_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -1350,6 +1423,7 @@ export const gotoInboundEvents = sqliteTable(
       table.organizationId,
       table.conversationId
     ),
+    index("goto_inbound_events_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -1551,7 +1625,10 @@ export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders
     .references(() => organizations.id, { onDelete: "cascade" }),
   recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
   remindedAt: text("reminded_at").notNull(),
-})
+},
+  (table) => [
+    index("project_follow_up_reminders_organization_id_idx").on(table.organizationId),
+  ])
 
 export const projectSavedViews = sqliteTable(
   "project_saved_views",
@@ -1646,7 +1723,13 @@ export const projectExternalLinks = sqliteTable("project_external_links", {
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0030_project_registry.sql.
+    index("project_external_links_project_idx").on(table.projectId),
+    // Declared from drizzle/0030_project_registry.sql.
+    index("project_external_links_system_external_idx").on(table.system, table.externalId),
+  ])
 
 export const dailyLogs = sqliteTable("daily_logs", {
   id: text("id").primaryKey(),
@@ -1677,7 +1760,15 @@ export const dailyLogs = sqliteTable("daily_logs", {
   syncStatus: text("sync_status").notNull().default("synced"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_logs_project_date").on(table.projectId, table.logDate),
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_logs_author").on(table.authorId),
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_logs_sync").on(table.syncStatus),
+  ])
 
 export const dailyLogPhotos = sqliteTable("daily_log_photos", {
   id: text("id").primaryKey(),
@@ -1716,7 +1807,15 @@ export const dailyLogPhotos = sqliteTable("daily_log_photos", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_log_photos_project").on(table.projectId),
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_log_photos_log").on(table.dailyLogId),
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_daily_log_photos_upload").on(table.uploadStatus),
+  ])
 
 // Source chronology survives before/after an import and never overwrites capture
 // metadata or the Compass audit timestamps. Exact source IDs preserve alias dates.
@@ -1776,6 +1875,7 @@ export const dailyLogPhotoAliases = sqliteTable(
       table.contentSha256,
       table.contentSizeBytes,
     ),
+    index("daily_log_photo_aliases_canonical_photo_id_idx").on(table.canonicalPhotoId),
   ],
 )
 
@@ -1804,7 +1904,11 @@ export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
   revision: integer("revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0031_daily_logs_owner_updates.sql.
+    index("idx_owner_project_updates_project_date").on(table.projectId, table.updateDate),
+  ])
 
 export const projectOperations = sqliteTable("project_operations", {
   id: text("id").primaryKey(),
@@ -1847,7 +1951,17 @@ export const projectOperations = sqliteTable("project_operations", {
   awardedRfqId: text("awarded_rfq_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0032_project_operations.sql.
+    index("idx_project_operations_project").on(table.projectId),
+    // Declared from drizzle/0032_project_operations.sql.
+    index("idx_project_operations_source").on(table.sourceSystem, table.sourceRecordType),
+    // Declared from drizzle/0032_project_operations.sql.
+    index("idx_project_operations_due").on(table.projectId, table.dueDate),
+    // Declared from drizzle/0273_purchase_order_awarded_rfq.sql.
+    index("project_operations_awarded_rfq_idx").on(table.awardedRfqId).where(sql`"awarded_rfq_id" IS NOT NULL`),
+  ])
 
 export const organizationCalendarSettings = sqliteTable(
   "organization_calendar_settings",
@@ -1863,6 +1977,9 @@ export const organizationCalendarSettings = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
+  (table) => [
+    index("organization_calendar_settings_default_project_id_idx").on(table.defaultProjectId),
+  ],
 )
 
 export const workCalendarEvents = sqliteTable(
@@ -1971,6 +2088,8 @@ export const projectClientMeetings = sqliteTable(
       table.organizationId,
       table.startsAt,
     ),
+    index("project_client_meetings_daily_log_id_idx").on(table.dailyLogId),
+    index("project_client_meetings_organizer_user_id_idx").on(table.organizerUserId),
   ],
 )
 
@@ -1994,7 +2113,10 @@ export const myCompassCalendars = sqliteTable("my_compass_calendars", {
   lastError: text("last_error"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("my_compass_calendars_organization_id_idx").on(table.organizationId),
+  ])
 
 // Today's plan: each person's daily digest choice, and what was last sent so
 // the digest goes once a day and an overload warning once a week.
@@ -2108,6 +2230,7 @@ export const compassProjectCalendarMembers = sqliteTable(
   },
   (table) => [
     uniqueIndex("compass_project_calendar_members_user").on(table.projectId, table.userId),
+    index("compass_project_calendar_members_user_id_idx").on(table.userId),
   ],
 )
 
@@ -2181,6 +2304,9 @@ export const googleCalendarConnections = sqliteTable(
       table.organizationId,
       table.status,
     ),
+    // Declared from drizzle/0122_google_project_calendars.sql.
+    uniqueIndex("google_calendar_connection_org_owner_unique").on(table.organizationId).where(sql`"is_organization_calendar_owner" = 1`),
+    index("google_calendar_connections_user_id_idx").on(table.userId),
   ],
 )
 
@@ -2294,6 +2420,7 @@ export const googleProjectCalendars = sqliteTable(
       table.organizationId,
       table.status,
     ),
+    index("google_project_calendars_selection_id_idx").on(table.selectionId),
   ],
 )
 
@@ -2343,6 +2470,7 @@ export const googleProjectCalendarSubscriptions = sqliteTable(
       table.projectCalendarId,
       table.userId,
     ),
+    index("google_project_calendar_subscriptions_connection_id_idx").on(table.connectionId),
   ],
 )
 
@@ -2462,7 +2590,13 @@ export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lin
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0042_sage_purchase_order_format.sql.
+    index("idx_project_po_lines_operation").on(table.operationId),
+    // Declared from drizzle/0042_sage_purchase_order_format.sql.
+    index("idx_project_po_lines_project").on(table.projectId),
+  ])
 
 export const projectFinishSelections = sqliteTable("project_finish_selections", {
   id: text("id").primaryKey(),
@@ -2512,7 +2646,23 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0044_project_finish_selections.sql.
+    index("idx_project_finish_selections_project").on(table.projectId),
+    // Declared from drizzle/0044_project_finish_selections.sql.
+    index("idx_project_finish_selections_room").on(table.projectId, table.roomName),
+    // Declared from drizzle/0044_project_finish_selections.sql.
+    index("idx_project_finish_selections_status").on(table.projectId, table.status),
+    // Declared from drizzle/0044_project_finish_selections.sql.
+    index("idx_project_finish_selections_cost_code").on(table.projectId, table.costCode),
+    // Declared from drizzle/0044_project_finish_selections.sql.
+    index("idx_project_finish_selections_source").on(table.sourceSystem, table.sourceRecordId),
+    // Declared from drizzle/0090_finish_selection_hierarchy.sql.
+    index("idx_finish_selections_parent").on(table.projectId, table.parentSelectionId),
+    index("project_finish_selections_purchase_order_operation_id_idx").on(table.purchaseOrderOperationId),
+    index("project_finish_selections_rfq_operation_id_idx").on(table.rfqOperationId),
+  ])
 
 export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {
   id: text("id").primaryKey(),
@@ -2529,7 +2679,13 @@ export const projectFinishSelectionRooms = sqliteTable("project_finish_selection
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0046_project_finish_selection_rooms.sql.
+    index("idx_project_finish_selection_rooms_project").on(table.projectId),
+    // Declared from drizzle/0046_project_finish_selection_rooms.sql.
+    index("idx_project_finish_selection_rooms_source").on(table.sourceSystem, table.sourceWorkbookId, table.sourceSheetId),
+  ])
 
 export const projectBudgetApplications = sqliteTable("project_budget_applications", {
   id: text("id").primaryKey(),
@@ -2574,7 +2730,13 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_applications_project").on(table.projectId),
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_applications_source").on(table.sourceSystem, table.sourceRecordId),
+  ])
 
 /**
  * Deposits on contracts: requested from and received from the client, then
@@ -2607,7 +2769,9 @@ export const projectContractDeposits = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_contract_deposits_project_idx").on(table.projectId, table.status)]
+  (table) => [index("project_contract_deposits_project_idx").on(table.projectId, table.status),
+    // Declared from drizzle/0232_contract_deposits.sql.
+    uniqueIndex("project_contract_deposits_source_idx").on(table.sourceSystem, table.sourceRecordId).where(sql`"source_record_id" IS NOT NULL`)]
 )
 
 export const projectBudgetLines = sqliteTable("project_budget_lines", {
@@ -2657,7 +2821,17 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_lines_project").on(table.projectId),
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_lines_application").on(table.applicationId),
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_lines_csi").on(table.projectId, table.csiDivision),
+    // Declared from drizzle/0035_project_budget.sql.
+    index("idx_project_budget_lines_owner").on(table.projectId, table.ownerVisible),
+  ])
 
 export const projectRfis = sqliteTable("project_rfis", {
   id: text("id").primaryKey(),
@@ -2681,7 +2855,10 @@ export const projectRfis = sqliteTable("project_rfis", {
   answeredAt: text("answered_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("project_rfis_project_id_idx").on(table.projectId),
+  ])
 
 export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
   id: text("id").primaryKey(),
@@ -2700,7 +2877,15 @@ export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
   storageStatus: text("storage_status").notNull().default("uploaded"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0040_project_rfi_attachments.sql.
+    index("idx_project_rfi_attachments_project_id").on(table.projectId),
+    // Declared from drizzle/0040_project_rfi_attachments.sql.
+    index("idx_project_rfi_attachments_rfi_id").on(table.rfiId),
+    // Declared from drizzle/0040_project_rfi_attachments.sql.
+    index("idx_project_rfi_attachments_storage_id").on(table.storageId),
+  ])
 
 export const projectChangeOrders = sqliteTable(
   "project_change_orders",
@@ -2934,6 +3119,19 @@ export const projectContacts = sqliteTable("project_contacts", {
 }, (table) => [
   index("project_contacts_customer_contact_idx").on(table.customerContactId),
   index("project_contacts_internal_contact_idx").on(table.internalContactId),
+    // Declared from drizzle/0036_project_contacts.sql.
+    index("idx_project_contacts_project").on(table.projectId),
+    // Declared from drizzle/0036_project_contacts.sql.
+    index("idx_project_contacts_type").on(table.projectId, table.contactType),
+    // Declared from drizzle/0036_project_contacts.sql.
+    index("idx_project_contacts_csi").on(table.projectId, table.csiDivision),
+    // Declared from drizzle/0036_project_contacts.sql.
+    index("idx_project_contacts_source").on(table.sourceSystem, table.sourceRecordId),
+    // Declared from drizzle/0036_project_contacts.sql.
+    index("idx_project_contacts_visibility").on(table.projectId, table.ownerPortalVisible, table.subVendorPortalVisible, table.internalVisible),
+    index("project_contacts_customer_id_idx").on(table.customerId),
+    index("project_contacts_vendor_contact_id_idx").on(table.vendorContactId),
+    index("project_contacts_vendor_id_idx").on(table.vendorId),
 ])
 
 export const projectNotes = sqliteTable(
@@ -3016,6 +3214,8 @@ export const projectInteractions = sqliteTable(
       table.organizationId,
       table.occurredAt,
     ),
+    index("project_interactions_project_contact_id_idx").on(table.projectContactId),
+    index("project_interactions_daily_log_id_idx").on(table.dailyLogId),
   ],
 )
 
@@ -3039,7 +3239,17 @@ export const projectContactSourceLinks = sqliteTable("project_contact_source_lin
   matchReason: text("match_reason"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0037_project_contact_source_links.sql.
+    index("idx_project_contact_source_links_project").on(table.projectId),
+    // Declared from drizzle/0037_project_contact_source_links.sql.
+    index("idx_project_contact_source_links_contact").on(table.projectContactId),
+    // Declared from drizzle/0037_project_contact_source_links.sql.
+    index("idx_project_contact_source_links_source").on(table.sourceSystem, table.sourceRecordType, table.sourceRecordId),
+    // Declared from drizzle/0037_project_contact_source_links.sql.
+    index("idx_project_contact_source_links_status").on(table.projectId, table.matchStatus),
+  ])
 
 export const projectMembers = sqliteTable("project_members", {
   id: text("id").primaryKey(),
@@ -3122,6 +3332,7 @@ export const projectExternalResourceGrants = sqliteTable(
       table.resourceId,
       table.audience
     ),
+    index("project_external_resource_grants_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -3173,6 +3384,8 @@ export const projectAccessInvitations = sqliteTable(
     index("idx_project_access_invites_email_dispatch").on(table.emailStatus, table.emailNextAttemptAt),
     uniqueIndex("idx_project_access_invites_one_queued_welcome").on(table.projectId, table.projectContactId)
       .where(sql`${table.emailStatus} IN ('queued', 'retrying', 'sending') AND ${table.projectContactId} IS NOT NULL`),
+    index("project_access_invitations_project_contact_id_idx").on(table.projectContactId),
+    index("project_access_invitations_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -3233,7 +3446,13 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("schedule_tasks_project_start_idx").on(table.projectId, table.startDate),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("schedule_tasks_assigned_user_idx").on(table.assignedUserId),
+  ])
 
 export const scheduleTaskLinks = sqliteTable(
   "schedule_task_links",
@@ -3330,7 +3549,11 @@ export const dailyLogTaskLinks = sqliteTable("daily_log_task_links", {
     .references(() => scheduleTasks.id, { onDelete: "cascade" }),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("daily_log_task_links_schedule_task_id_idx").on(table.scheduleTaskId),
+    index("daily_log_task_links_daily_log_id_idx").on(table.dailyLogId),
+  ])
 
 export const taskDependencies = sqliteTable("task_dependencies", {
   id: text("id").primaryKey(),
@@ -3342,7 +3565,11 @@ export const taskDependencies = sqliteTable("task_dependencies", {
     .references(() => scheduleTasks.id, { onDelete: "cascade" }),
   type: text("type").notNull().default("FS"),
   lagDays: integer("lag_days").notNull().default(0),
-})
+},
+  (table) => [
+    index("task_dependencies_successor_id_idx").on(table.successorId),
+    index("task_dependencies_predecessor_id_idx").on(table.predecessorId),
+  ])
 
 export const workdayExceptions = sqliteTable("workday_exceptions", {
   id: text("id").primaryKey(),
@@ -3358,7 +3585,10 @@ export const workdayExceptions = sqliteTable("workday_exceptions", {
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("workday_exceptions_project_id_idx").on(table.projectId),
+  ])
 
 export const scheduleBaselines = sqliteTable("schedule_baselines", {
   id: text("id").primaryKey(),
@@ -3368,7 +3598,10 @@ export const scheduleBaselines = sqliteTable("schedule_baselines", {
   name: text("name").notNull(),
   snapshotData: text("snapshot_data").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("schedule_baselines_project_id_idx").on(table.projectId),
+  ])
 
 export const schedulePublications = sqliteTable(
   "schedule_publications",
@@ -3522,6 +3755,7 @@ export const vendorContacts = sqliteTable(
     uniqueIndex("vendor_contacts_company_user_unique")
       .on(table.vendorId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
+    index("vendor_contacts_user_id_idx").on(table.userId),
   ]
 )
 
@@ -3567,6 +3801,7 @@ export const customerContacts = sqliteTable(
     uniqueIndex("customer_contacts_company_user_unique")
       .on(table.customerId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
+    index("customer_contacts_user_id_idx").on(table.userId),
   ]
 )
 
@@ -3627,6 +3862,7 @@ export const internalContacts = sqliteTable(
     uniqueIndex("internal_contacts_org_sage_employee_number_unique")
       .on(table.organizationId, table.sageEmployeeNumber)
       .where(sql`${table.sageEmployeeNumber} IS NOT NULL AND trim(${table.sageEmployeeNumber}) <> ''`),
+    index("internal_contacts_user_id_idx").on(table.userId),
   ]
 )
 
@@ -3692,7 +3928,15 @@ export const sageCostCodes = sqliteTable("sage_cost_codes", {
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0045_sage_cost_codes.sql.
+    index("idx_sage_cost_codes_code").on(table.code),
+    // Declared from drizzle/0045_sage_cost_codes.sql.
+    index("idx_sage_cost_codes_division").on(table.divisionCode),
+    // Declared from drizzle/0045_sage_cost_codes.sql.
+    index("idx_sage_cost_codes_active").on(table.active),
+  ])
 
 export type Project = typeof projects.$inferSelect
 export type ProjectRouteAlias = typeof projectRouteAliases.$inferSelect
@@ -3875,7 +4119,10 @@ export const agentConversations = sqliteTable("agent_conversations", {
   title: text("title"),
   lastMessageAt: text("last_message_at").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("agent_conversations_user_id_idx").on(table.userId),
+  ])
 
 export const agentMemories = sqliteTable("agent_memories", {
   id: text("id").primaryKey(),
@@ -3890,7 +4137,11 @@ export const agentMemories = sqliteTable("agent_memories", {
   embedding: text("embedding"), // JSON array of floats for vector search
   metadata: text("metadata"), // JSON object for action results, ui specs, etc.
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("agent_memories_user_id_idx").on(table.userId),
+    index("agent_memories_conversation_id_idx").on(table.conversationId),
+  ])
 
 export type AgentConversation = typeof agentConversations.$inferSelect
 export type NewAgentConversation = typeof agentConversations.$inferInsert
@@ -3932,7 +4183,10 @@ export const slabMemories = sqliteTable("slab_memories", {
   accessCount: integer("access_count").notNull().default(0),
   lastAccessedAt: text("last_accessed_at"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("slab_memories_user_id_idx").on(table.userId),
+  ])
 
 export type SlabMemory = typeof slabMemories.$inferSelect
 export type NewSlabMemory = typeof slabMemories.$inferInsert
@@ -3947,7 +4201,10 @@ export const pushTokens = sqliteTable("push_tokens", {
   platform: text("platform").notNull(), // "ios" | "android"
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("push_tokens_user_id_idx").on(table.userId),
+  ])
 
 export type PushToken = typeof pushTokens.$inferSelect
 export type NewPushToken = typeof pushTokens.$inferInsert

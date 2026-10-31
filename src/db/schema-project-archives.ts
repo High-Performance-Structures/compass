@@ -29,12 +29,14 @@ export const projectArchiveDocuments = sqliteTable("project_archive_documents", 
 }, (table) => [
   index("project_archive_project_status_idx").on(table.projectId, table.status),
   uniqueIndex("project_archive_file_audience_uq").on(table.projectId, table.driveFileId, table.audience),
+    index("project_archive_documents_organization_id_idx").on(table.organizationId),
 ])
 
 /** Each named account needs its own grant; company labels never confer access. */
 export const projectArchiveRecipients = sqliteTable("project_archive_recipients", {
   archiveId: text("archive_id").notNull().references(() => projectArchiveDocuments.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-}, (table) => [primaryKey({ columns: [table.archiveId, table.userId] })])
+}, (table) => [primaryKey({ columns: [table.archiveId, table.userId] }),
+    index("project_archive_recipients_user_id_idx").on(table.userId)])
 
 export type ProjectArchiveDocument = typeof projectArchiveDocuments.$inferSelect
