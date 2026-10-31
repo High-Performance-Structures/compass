@@ -957,7 +957,7 @@
     "src/app/actions/project-financial-workflows.ts": 1434,
     "src/app/actions/project-profile.ts": 2248,
     "src/app/actions/project-selections.ts": 1847,
-    "src/app/actions/project-templates.ts": 921,
+    "src/app/actions/project-templates.ts": 901,
     "src/app/actions/projects.ts": 1823,
     "src/app/actions/schedule-confirmations.ts": 1406,
     "src/app/actions/social-posts.ts": 1126,
