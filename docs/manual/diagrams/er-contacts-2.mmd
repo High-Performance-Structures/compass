@@ -1,0 +1,32 @@
+erDiagram
+  direction LR
+  project_interactions {
+    key id
+    ref project_contact_id
+    ref daily_log_id
+  }
+  vendor_contacts {
+    key id
+    ref vendor_id
+  }
+  vendors {
+    key id
+  }
+  contact_account_link_events {
+    key id
+  }
+  contact_merge_events {
+    key id
+  }
+  project_follow_up_reminders {
+    key project_id
+  }
+  daily_logs {
+    key id
+  }
+  project_contacts {
+    key id
+  }
+  daily_logs |o--o{ project_interactions : ""
+  project_contacts |o--o{ project_interactions : ""
+  vendors ||--o{ vendor_contacts : ""

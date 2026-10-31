@@ -1,0 +1,26 @@
+erDiagram
+  direction LR
+  buildertrend_staging_records {
+    key id
+  }
+  buildertrend_module_attestations {
+    key id
+    ref import_run_id
+  }
+  buildertrend_staging_observations {
+    key id
+    ref import_run_id
+  }
+  buildertrend_staging_runs {
+    key id
+  }
+  buildertrend_warranty_claim_staging {
+    key id
+    ref promoted_claim_id
+  }
+  project_warranty_claims {
+    key id
+  }
+  buildertrend_staging_runs |o--o{ buildertrend_module_attestations : ""
+  buildertrend_staging_runs ||--o{ buildertrend_staging_observations : ""
+  project_warranty_claims |o--o{ buildertrend_warranty_claim_staging : ""

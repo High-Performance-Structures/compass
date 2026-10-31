@@ -1,0 +1,28 @@
+erDiagram
+  direction LR
+  agent_conversations {
+    key id
+  }
+  agent_memories {
+    key id
+    ref conversation_id
+  }
+  agent_usage {
+    key id
+    ref conversation_id
+  }
+  goto_inbound_events {
+    key id
+  }
+  staff_message_events {
+    key id
+    ref message_id
+  }
+  staff_message_records {
+    key id
+    ref goto_inbound_event_id
+  }
+  agent_conversations ||--o{ agent_memories : ""
+  agent_conversations ||--o{ agent_usage : ""
+  goto_inbound_events |o--o{ staff_message_records : ""
+  staff_message_records ||--o{ staff_message_events : ""

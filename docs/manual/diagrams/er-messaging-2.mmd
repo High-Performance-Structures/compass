@@ -1,0 +1,40 @@
+erDiagram
+  direction LR
+  correspondence_outbox {
+    key id
+    ref message_id
+  }
+  correspondence_participants {
+    key id
+    ref conversation_id
+  }
+  correspondence_recipients {
+    key id
+    ref message_id
+  }
+  correspondence_revisions {
+    key id
+    ref message_id
+  }
+  correspondence_source_messages {
+    key id
+    ref conversation_id
+    ref message_id
+  }
+  correspondence_source_recipients {
+    key id
+    ref source_message_id
+  }
+  correspondence_messages {
+    key id
+  }
+  project_correspondence {
+    key id
+  }
+  correspondence_messages ||--o{ correspondence_outbox : ""
+  correspondence_messages ||--o{ correspondence_recipients : ""
+  correspondence_messages ||--o{ correspondence_revisions : ""
+  correspondence_messages ||--o{ correspondence_source_messages : ""
+  correspondence_source_messages ||--o{ correspondence_source_recipients : ""
+  project_correspondence ||--o{ correspondence_participants : ""
+  project_correspondence ||--o{ correspondence_source_messages : ""

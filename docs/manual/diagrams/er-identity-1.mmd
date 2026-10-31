@@ -1,0 +1,52 @@
+erDiagram
+  direction LR
+  permission_audit_events {
+    key id
+    ref organization_id
+    ref team_id
+    ref user_id
+    ref changed_by
+  }
+  team_members {
+    key id
+    ref team_id
+    ref user_id
+  }
+  team_permission_overrides {
+    key id
+    ref organization_id
+    ref team_id
+    ref created_by
+    ref updated_by
+  }
+  teams {
+    key id
+    ref organization_id
+  }
+  group_members {
+    key id
+    ref group_id
+    ref user_id
+  }
+  groups {
+    key id
+    ref organization_id
+  }
+  organizations {
+    key id
+  }
+  users {
+    key id
+  }
+  groups ||--o{ group_members : ""
+  organizations ||--o{ groups : ""
+  organizations ||--o{ permission_audit_events : ""
+  organizations ||--o{ team_permission_overrides : ""
+  organizations ||--o{ teams : ""
+  teams |o--o{ permission_audit_events : ""
+  teams ||--o{ team_members : ""
+  teams ||--o{ team_permission_overrides : ""
+  users |o--o{ permission_audit_events : ""
+  users |o--o{ team_permission_overrides : ""
+  users ||--o{ group_members : ""
+  users ||--o{ team_members : ""

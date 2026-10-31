@@ -1,0 +1,58 @@
+erDiagram
+  direction LR
+  account_deletion_requests {
+    key id
+    ref user_id
+    ref processing_started_by
+    ref completed_by
+  }
+  organization_invites {
+    key id
+    ref organization_id
+    ref created_by
+  }
+  organization_members {
+    key id
+    ref organization_id
+    ref user_id
+  }
+  organizations {
+    key id
+  }
+  project_access_invitations {
+    key id
+    ref organization_id
+    ref project_contact_id
+    ref invited_by
+    ref accepted_by
+  }
+  project_external_resource_grants {
+    key id
+    ref organization_id
+    ref source_owner_update_id
+    ref recipient_user_id
+    ref granted_by
+    ref revoked_by
+  }
+  owner_project_updates {
+    key id
+  }
+  project_contacts {
+    key id
+  }
+  users {
+    key id
+  }
+  organizations ||--o{ organization_invites : ""
+  organizations ||--o{ organization_members : ""
+  organizations ||--o{ project_access_invitations : ""
+  organizations ||--o{ project_external_resource_grants : ""
+  owner_project_updates |o--o{ project_external_resource_grants : ""
+  project_contacts |o--o{ project_access_invitations : ""
+  users |o--o{ account_deletion_requests : ""
+  users |o--o{ project_access_invitations : ""
+  users |o--o{ project_external_resource_grants : ""
+  users ||--o{ organization_invites : ""
+  users ||--o{ organization_members : ""
+  users ||--o{ project_access_invitations : ""
+  users ||--o{ project_external_resource_grants : ""

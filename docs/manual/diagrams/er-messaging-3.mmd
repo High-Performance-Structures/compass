@@ -1,0 +1,33 @@
+erDiagram
+  direction LR
+  correspondence_user_state {
+    key id
+    ref conversation_id
+  }
+  project_correspondence {
+    key id
+  }
+  project_email_campaigns {
+    key id
+    ref conversation_id
+    ref message_id
+  }
+  project_email_recipients {
+    key id
+    ref campaign_id
+  }
+  email_reply_threads {
+    key id
+  }
+  inbound_emails {
+    key id
+    ref reply_thread_id
+  }
+  correspondence_messages {
+    key id
+  }
+  correspondence_messages ||--o{ project_email_campaigns : ""
+  email_reply_threads |o--o{ inbound_emails : ""
+  project_correspondence ||--o{ correspondence_user_state : ""
+  project_correspondence ||--o{ project_email_campaigns : ""
+  project_email_campaigns ||--o{ project_email_recipients : ""

@@ -1,0 +1,31 @@
+erDiagram
+  direction LR
+  listening_queue_items {
+    key id
+    ref room_id
+  }
+  listening_room_participants {
+    key id
+    ref room_id
+  }
+  listening_rooms {
+    key id
+    ref channel_id
+  }
+  listening_track_links {
+    key id
+    ref queue_item_id
+  }
+  agent_action_confirmations {
+    key token_id
+  }
+  agent_config {
+    key id
+  }
+  channels {
+    key id
+  }
+  channels ||--o{ listening_rooms : ""
+  listening_queue_items ||--o{ listening_track_links : ""
+  listening_rooms ||--o{ listening_queue_items : ""
+  listening_rooms ||--o{ listening_room_participants : ""

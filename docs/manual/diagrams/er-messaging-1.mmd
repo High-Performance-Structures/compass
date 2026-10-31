@@ -1,0 +1,39 @@
+erDiagram
+  direction LR
+  correspondence_attachments {
+    key id
+    ref message_id
+  }
+  correspondence_drafts {
+    key id
+    ref conversation_id
+  }
+  correspondence_email_deliveries {
+    key id
+    ref conversation_id
+    ref message_id
+  }
+  correspondence_email_events {
+    key id
+    ref conversation_id
+    ref message_id
+  }
+  correspondence_email_threads {
+    key id
+    ref conversation_id
+  }
+  correspondence_messages {
+    key sequence
+    ref conversation_id
+  }
+  project_correspondence {
+    key id
+  }
+  correspondence_messages |o--o{ correspondence_attachments : ""
+  correspondence_messages |o--o{ correspondence_email_events : ""
+  correspondence_messages ||--o{ correspondence_email_deliveries : ""
+  project_correspondence |o--o{ correspondence_email_events : ""
+  project_correspondence ||--o{ correspondence_drafts : ""
+  project_correspondence ||--o{ correspondence_email_deliveries : ""
+  project_correspondence ||--o{ correspondence_email_threads : ""
+  project_correspondence ||--o{ correspondence_messages : ""

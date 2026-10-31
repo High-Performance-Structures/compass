@@ -1,0 +1,46 @@
+erDiagram
+  direction LR
+  credit_memos {
+    key id
+    ref customer_id
+  }
+  invoice_credit_allocations {
+    key id
+    ref organization_id
+    ref project_id
+    ref invoice_id
+    ref credit_memo_id
+  }
+  invoice_payment_allocations {
+    key id
+    ref organization_id
+    ref project_id
+    ref invoice_id
+    ref payment_id
+  }
+  invoices {
+    key id
+    ref customer_id
+  }
+  payments {
+    key id
+    ref customer_id
+    ref vendor_id
+  }
+  netsuite_auth {
+    key id
+  }
+  customers {
+    key id
+  }
+  vendors {
+    key id
+  }
+  credit_memos ||--o{ invoice_credit_allocations : ""
+  customers |o--o{ payments : ""
+  customers ||--o{ credit_memos : ""
+  customers ||--o{ invoices : ""
+  invoices ||--o{ invoice_credit_allocations : ""
+  invoices ||--o{ invoice_payment_allocations : ""
+  payments ||--o{ invoice_payment_allocations : ""
+  vendors |o--o{ payments : ""

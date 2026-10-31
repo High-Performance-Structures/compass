@@ -1,0 +1,26 @@
+erDiagram
+  direction LR
+  mutation_queue {
+    key id
+  }
+  organization_feature_settings {
+    key organization_id
+    key feature_key
+  }
+  project_saved_views {
+    key id
+  }
+  push_tokens {
+    key id
+  }
+  slab_memories {
+    key id
+  }
+  social_project_albums {
+    key id
+    ref account_id
+  }
+  social_accounts {
+    key id
+  }
+  social_accounts ||--o{ social_project_albums : ""

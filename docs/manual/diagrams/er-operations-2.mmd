@@ -1,0 +1,39 @@
+erDiagram
+  direction LR
+  project_rfq_email_deliveries {
+    key id
+    ref rfq_operation_id
+  }
+  project_rfq_manual_response_events {
+    key id
+    ref rfq_operation_id
+  }
+  project_rfq_quote_links {
+    key id
+    ref rfq_operation_id
+  }
+  project_selection_decisions {
+    key selection_id
+  }
+  project_selection_procurement_links {
+    key id
+    ref selection_id
+    ref operation_id
+  }
+  project_selection_requests {
+    key id
+    ref selection_id
+  }
+  project_finish_selections {
+    key id
+  }
+  project_operations {
+    key id
+  }
+  project_finish_selections ||--o{ project_selection_decisions : ""
+  project_finish_selections ||--o{ project_selection_procurement_links : ""
+  project_finish_selections ||--o{ project_selection_requests : ""
+  project_operations ||--o{ project_rfq_email_deliveries : ""
+  project_operations ||--o{ project_rfq_manual_response_events : ""
+  project_operations ||--o{ project_rfq_quote_links : ""
+  project_operations ||--o{ project_selection_procurement_links : ""

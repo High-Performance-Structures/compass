@@ -1,0 +1,24 @@
+{
+  "tables": 314,
+  "groups": {
+    "identity": 15,
+    "projects": 18,
+    "estimates": 18,
+    "financials": 20,
+    "operations": 20,
+    "schedule": 20,
+    "field": 15,
+    "documents": 22,
+    "messaging": 40,
+    "calendars": 18,
+    "contacts": 14,
+    "accounting": 22,
+    "sales": 7,
+    "workspace": 54,
+    "legacy": 11
+  },
+  "tablesWithoutPurpose": 202,
+  "tablesWithoutAnyDescription": 0,
+  "tablesWithMultipleWriters": 1,
+  "tablesWithoutDomainStore": 111
+}

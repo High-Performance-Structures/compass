@@ -1,0 +1,31 @@
+erDiagram
+  direction LR
+  schedule_template_items {
+    key id
+    ref version_id
+  }
+  task_dependencies {
+    key id
+    ref predecessor_id
+    ref successor_id
+  }
+  schedule_baselines {
+    key id
+  }
+  schedule_phase_options {
+    key id
+  }
+  schedule_publications {
+    key id
+  }
+  schedule_saved_views {
+    key id
+  }
+  project_template_versions {
+    key id
+  }
+  schedule_tasks {
+    key id
+  }
+  project_template_versions ||--o{ schedule_template_items : ""
+  schedule_tasks ||--o{ task_dependencies : ""

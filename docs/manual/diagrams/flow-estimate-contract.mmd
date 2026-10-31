@@ -1,0 +1,15 @@
+flowchart TD
+  A([Draft estimate:<br/>lines and pricing]) --> B{Send for<br/>signature}
+  B -->|e-sign| B1[Envelope: priced<br/>lines and date required]
+  B -->|outside Compass| B2[Mark sent<br/>outside Compass]
+  B1 --> C[signature_pending]
+  B2 --> C
+  C --> D{Accepted by}
+  D -->|e-sign webhook| G
+  D -->|manual: attestation<br/>and evidence| E{Contract already<br/>accepted?}
+  E -->|no| G
+  E -->|yes, approver chooses| F[Change order:<br/>contract_version difference<br/>or replacement]
+  F --> G[acceptProjectEstimate:<br/>older versions superseded,<br/>accounting ready]
+  G --> H[Rebuild contract budget:<br/>new current revision]
+  H --> I[Optional contract packet<br/>signed or executed]
+  I --> J([Job status changed<br/>by a person])
