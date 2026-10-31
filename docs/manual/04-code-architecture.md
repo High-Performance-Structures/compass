@@ -99,6 +99,7 @@ After you reduce a violation, regenerate the baseline with `bun scripts/architec
 | `clientPages` | same | `page.tsx` files that start with `"use client"` |
 | `handRolledContext` | same | `getCloudflareContext()` calls in actions and API routes |
 | `typeAssertions`, `nonNullAssertions`, `explicitAny` | same | Counted from the TypeScript AST, per file: `x as T` (not `as const`), `x!` and `any` |
+| `statusColumnsWithoutList` | same | Per schema file, enumerated status, state, kind, type or role columns that are neither typed from a shared list nor exempt (section 4.8, "Status lists") |
 | Schema integrity | `src/db/__tests__/schema-integrity-standard.test.ts` | Every schema file is listed in `drizzle.config.ts`; replaying all migrations matches the Drizzle schema (tables, columns, indexes, both ways; frozen differences in `SCHEMA_DIFFERENCE_BASELINE`); every foreign-key column leads an index; every internal `*_id` / `*_by` column has a foreign key, a validation trigger, or a written exemption, as classified in `src/db/id-integrity.ts` (the needs-review list may only shrink, and every triggered column has its insert and update triggers and an index) |
 | Polling | `src/components/__tests__/polling-standard.test.ts` | No raw `setInterval` outside a reasoned allowlist; no client-side refetch of data that a provider already holds (`getProjects`, `getNotificationCenter`) |
 | Email workflow | `src/lib/email/__tests__/email-workflow-standard.test.ts` | Outside email goes through `sendTrackedEmail`; direct `sendCompassEmail` callers are an explicit list with reasons |
@@ -152,6 +153,11 @@ The canonical document is `docs/development/ui-standards.md`. Its main rules:
   - bulk actions call the owning domain store.
 
   Lists whose order carries meaning (line items, ranked queues, hand-arranged lists) keep that order on purpose.
+- **The shared `RecordTable` component** (`src/components/record-table.tsx`) implements the standard on TanStack Table.
+  - `useRecordTable({ data, columns, getRowId, resetKey, enableSelection, initialItemId })` owns sorting, row selection and pagination (default `DEFAULT_TABLE_PAGE_SIZE`). A data refresh keeps the current page and clamps it after a removal; a change of `resetKey` (a new search, filter or view) returns to page 1 and clears the selection; `initialItemId` moves to the page that holds a deep-linked record.
+  - `recordSelectionColumn(getLabel)` adds the checkbox column with an accessible label per row, used only where a bulk action exists.
+  - `RecordTable` renders the table with `TanstackSortableHeader` headers and `DataTablePagination`.
+  - Project to-dos were the first list to move (section 2.5), with bulk archive, restore and delete through the operations store. The payments-received panel (section 2.6) uses it too. Other lists move in their own pull requests.
 - **Tables and paging.**
   - Keep the current page across edits.
   - Reset to page 1 when the search or filter changes.
@@ -190,6 +196,16 @@ From `docs/development/conventions.md`:
 - import aliases `@/components`, `@/lib`, `@/hooks`.
 
 Every status, type, kind or role column draws its values from an exported `as const` list (Appendix D.2), written in lower case with one spelling per concept (`canceled`, `completed`).
+
+### Status lists
+
+- **One list per concept, in its domain.** Each domain module keeps its enumerated values in `src/lib/domain/<module>/statuses.ts`: pure constants with no imports, so the schema files can import them too. At this edition there are such files for contacts, correspondence, documents, duties, estimates, feedback, field, financials, identity, operations, project, the accounting bridge, schedule, selections, settings, trade letters, warranty, the work calendar and the product sales module. Components, rules and stores import the same arrays instead of repeating values. Older modules keep `export type { X }` re-exports so existing type imports still work.
+- **Typed columns.** A listed column is declared `text("status", { enum: LIST })`. On SQLite, Drizzle's `enum` adds no CHECK constraint, so typing a column needs no migration and the replayed schema is unchanged.
+- **Stored lists and workflow lists.** Where live data holds values that the current workflow never produces, the module exports two lists. The *workflow* list is what screens offer, transitions allow and type guards accept (for example `ESTIMATE_STATUSES`, `USER_ROLES`, `SCHEDULE_LINK_TYPES`). The *stored* list is the workflow list plus the legacy values that may sit in existing rows (`STORED_ESTIMATE_STATUSES` adds `sent`, `STORED_USER_ROLES` adds `integration`, `STORED_SCHEDULE_LINK_TYPES` adds the legacy import link types). The store checks writes against the stored list, so a legacy row can still be rewritten, while pickers, assignment and status checks keep using the workflow list.
+- **Store checks.** `src/lib/shared/statuses.ts` provides `isListValue`, `listValueOr`, `requireListValue`, `assertListFields` and `checkedListFields`. A module exports a column-to-list map (for example `CHANGE_ORDER_LISTS = { status: CHANGE_ORDER_STATUSES, changeOrderKind: CHANGE_ORDER_KINDS }`), and its store checks every insert and update with it, throwing `Unknown <table>.<column> value: "x"` before anything is written. Missing values, nulls and raw `sql` template expressions pass through, so partial patches are unaffected. Readers that defend against unknown stored values keep doing so.
+- **Exemptions.** Values a company configures are data, not lists: custom project-contact roles, finish-selection room types, interaction types and trade-document types (custom job statuses already live in `project_job_statuses`). Postal regions and MIME-type columns are free-form. Each is listed with its reason in `STATUS_COLUMN_EXEMPTIONS` in `scripts/architecture-metrics.mjs`.
+- **The `statusColumnsWithoutList` ratchet** counts, per schema file, the enumerated columns (a name ending in status, state, kind, type or role, or any inline `enum: [...]`) that are neither on a shared list nor exempt. Its baseline was 216 when it was introduced, and it may only shrink. Most of the remainder are legacy-import staging, accounting-bridge, legacy ERP, product-sales workflow, participant and template columns, plus `project_operations.status` (one column shared by to-dos, POs and RFQs, with values per type) and `projects.status` (upper-case registry values). Each needs its writers traced before it can be typed safely.
+- **Values report.** `bun scripts/status-values-report.mjs --local|--remote` reads each listed column with one single-table `SELECT DISTINCT` (eight statements per call, read only). It writes `report.json`, a `normalise.sql` proposal for exact case, whitespace or separator variants and known spellings (`canceled`/`cancelled`, `complete`/`completed`, `archive`/`archived`), which is never applied automatically, and `review.json` for unknown values. Run it before typing a column that live data might contradict.
 
 ## 4.9 How to add a feature correctly
 

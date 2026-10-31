@@ -51,38 +51,72 @@
 | **WorkOS** | The hosted identity provider used for sign-in, SSO and invitations (pluggable behind src/lib/auth.ts). |
 | **Workspace** | A permission-scoped area of the app: a project's staff workspace, the owner portal, the vendor portal, internal (non-project) workspaces such as the office duty log. |
 
-## D.2 Status and type vocabularies (29)
+## D.2 Status and type vocabularies (63)
 
 Shared `as const` lists that status, type, kind and role columns draw their values from (architecture standard section 3). Scanned from `src/lib` and `src/db`.
 
 | Constant | Defined in | Values |
 |---|---|---|
-| `EQUIPMENT_LOG_KINDS` | `src/db/schema-equipment.ts` | hours, fuel, maintenance, repair, other |
-| `EQUIPMENT_LOG_STATUSES` | `src/db/schema-equipment.ts` | pending, approved, rejected |
-| `PAPER_TRAIL_RECORD_TYPES` | `src/db/schema-paper-trail.ts` | purchase_order, estimate, rfi, change_order, shop_ticket |
-| `PAPER_TRAIL_FILE_STATUSES` | `src/db/schema-paper-trail.ts` | pending, synced, failed, Compass Records, held_private, removed, needs_choice, kept_existing |
-| `SHOP_TICKET_STATUSES` | `src/db/schema-shop-tickets.ts` | draft, issued, void |
-| `SHOP_TICKET_RATE_KINDS` | `src/db/schema-shop-tickets.ts` | labor, machine |
-| `SAGE_LABOR_REQUEST_STATUSES` | `src/db/schema-shop-tickets.ts` | queued, running, done, failed |
 | `ALL_HANDLER_TYPES` | `src/lib/agent/chat-adapter.ts` | NAVIGATE_TO, SHOW_TOAST, OPEN_MODAL, CLOSE_MODAL, SCROLL_TO, FOCUS_ELEMENT, GENERATE_UI, SAVE_DASHBOARD, LOAD_DASHBOARD, APPLY_THEME, PREVIEW_THEME |
 | `JARVIS_VISUAL_MEDIA_TYPES` | `src/lib/agent/visual-context.ts` | image/jpeg, image/png, image/webp |
 | `DEFAULT_LABOR_CODE_DEPARTMENTS` | `src/lib/daily-logs/labor-cost-codes.ts` | H, O |
 | `DAILY_LOG_TODO_TYPES` | `src/lib/daily-logs/log-followups.ts` | staff_task, subcontractor_task, supplier_task |
 | `DAILY_LOG_INTERACTION_TYPES` | `src/lib/daily-logs/log-followups.ts` | call, Call, email, Email, sms, Text, meeting, Meeting, site_visit, Site visit, client_send, Document/Submittal to Client |
 | `DIRECTORY_KINDS` | `src/lib/domain/contacts/link-matching.ts` | customer, customer_contact, vendor, vendor_contact, internal_contact |
-| `MACHINE_LOG_KINDS` | `src/lib/equipment/model.ts` | hours, fuel, maintenance, repair, other |
+| `PROJECT_CONTACT_TYPES` | `src/lib/domain/contacts/statuses.ts` | owner, supplier, subcontractor, internal |
+| `CORRESPONDENCE_PARTICIPANT_ROLES` | `src/lib/domain/correspondence/statuses.ts` | staff, owner, sub_vendor |
+| `CORRESPONDENCE_RECIPIENT_KINDS` | `src/lib/domain/correspondence/statuses.ts` | author, to, cc |
+| `CORRESPONDENCE_SOURCE_RECIPIENT_KINDS` | `src/lib/domain/correspondence/statuses.ts` | author, to, cc, bcc |
+| `PROJECT_EMAIL_CAMPAIGN_STATUSES` | `src/lib/domain/correspondence/statuses.ts` | queued, dispatching, sent, failed, unknown |
+| `EMAIL_RECIPIENT_KINDS` | `src/lib/domain/correspondence/statuses.ts` | to, cc, bcc |
+| `PAPER_TRAIL_RECORD_TYPES` | `src/lib/domain/documents/statuses.ts` | purchase_order, estimate, rfi, change_order, shop_ticket |
+| `PAPER_TRAIL_FILE_STATUSES` | `src/lib/domain/documents/statuses.ts` | pending, synced, failed, Compass Records, held_private, removed, needs_choice, kept_existing |
+| `PAPER_TRAIL_SNAPSHOT_STATUSES` | `src/lib/domain/documents/statuses.ts` | pending, saved, failed |
+| `ARCHIVE_DOCUMENT_KINDS` | `src/lib/domain/documents/statuses.ts` | daily_log, message, owner_update, rfi, rfq, other |
+| `ARCHIVE_DOCUMENT_STATUSES` | `src/lib/domain/documents/statuses.ts` | published, revoked |
+| `ESTIMATE_STATUSES` | `src/lib/domain/estimates/statuses.ts` | draft, internal_review, signature_pending, accepted, superseded, void |
+| `CHANGE_ORDER_STATUSES` | `src/lib/domain/estimates/statuses.ts` | draft, submitted, triage, needs_information, pricing, internal_review, approved_for_owner, signature_pending, executed, sage_pending, synced, closed, declined, void |
+| `CHANGE_ORDER_KINDS` | `src/lib/domain/estimates/statuses.ts` | estimate, description, replacement, contract_version |
+| `STORED_ESTIMATE_STATUSES` | `src/lib/domain/estimates/statuses.ts` | sent |
+| `FEEDBACK_DESK_STATUSES` | `src/lib/domain/feedback/statuses.ts` | new, triaged, needs_info, planned, in_progress, testing, deployed, closed |
+| `STAFF_MESSAGE_STATUSES` | `src/lib/domain/feedback/statuses.ts` | new, follow_up_needed, in_progress, waiting_on_contact, closed |
+| `FEEDBACK_TYPES` | `src/lib/domain/feedback/statuses.ts` | bug, feature, question, general |
+| `EQUIPMENT_LOG_KINDS` | `src/lib/domain/field/statuses.ts` | hours, fuel, maintenance, repair, other |
+| `EQUIPMENT_LOG_STATUSES` | `src/lib/domain/field/statuses.ts` | pending, approved, rejected |
+| `RECEIVABLE_ITEM_KINDS` | `src/lib/domain/financials/statuses.ts` | pay_application, invoice |
+| `USER_ROLES` | `src/lib/domain/identity/statuses.ts` | admin, secondary_admin, executive, project_manager, project_administrator, assistant_project_manager, accounting, office_manager, office, field_superintendent, field_crew, architectural_designer, drafter, lead_estimator, assistant_estimator, developer, subcontractor, supplier, client, guest, coordinator, field |
+| `ACCOUNT_DELETION_REQUEST_STATUSES` | `src/lib/domain/identity/statuses.ts` | pending, processing, completed, cancelled |
+| `STORED_USER_ROLES` | `src/lib/domain/identity/statuses.ts` | integration |
+| `BRACING_RENTAL_STATUSES` | `src/lib/domain/{sales}/statuses.ts` | reserved, out, returned |
+| `SHOP_TICKET_STATUSES` | `src/lib/domain/operations/statuses.ts` | draft, issued, void |
+| `SHOP_TICKET_RATE_KINDS` | `src/lib/domain/operations/statuses.ts` | labor, machine |
+| `RATE_BOOK_FUEL_TYPES` | `src/lib/domain/operations/statuses.ts` | none, diesel, regular |
+| `RATE_BOOK_ENTRY_STATUSES` | `src/lib/domain/operations/statuses.ts` | active, retired |
+| `PROJECT_DEPARTMENTS` | `src/lib/domain/project/statuses.ts` | O, H, N, D |
+| `PROJECT_CLIENT_STATUSES` | `src/lib/domain/project/statuses.ts` | lead, customer |
+| `WORKSPACE_KINDS` | `src/lib/domain/project/statuses.ts` | office, executive, field |
+| `SITE_LOCATION_STATUSES` | `src/lib/domain/project/statuses.ts` | found, not_found |
+| `PROJECT_DUPLICATE_DECISION_STATUSES` | `src/lib/domain/project/statuses.ts` | not_duplicate, merged |
+| `PROJECT_NUMBER_REVIEW_STATUSES` | `src/lib/domain/project/statuses.ts` | approved_exception |
+| `SAGE_LABOR_REQUEST_STATUSES` | `src/lib/domain/sage-bridge/statuses.ts` | queued, running, done, failed |
+| `SCHEDULE_LINK_TYPES` | `src/lib/domain/schedule/statuses.ts` | file, rfi, conversation, todo |
+| `SCHEDULE_TASK_STATUSES` | `src/lib/domain/schedule/statuses.ts` | PENDING, IN_PROGRESS, COMPLETE, BLOCKED |
+| `DEPENDENCY_TYPES` | `src/lib/domain/schedule/statuses.ts` | FS, SS, FF, SF |
+| `WORKDAY_EXCEPTION_TYPES` | `src/lib/domain/schedule/statuses.ts` | non_working, working |
+| `STORED_SCHEDULE_LINK_TYPES` | `src/lib/domain/schedule/statuses.ts` | buildertrend, buildertrend_schedule |
+| `PROJECT_SELECTION_STATUSES` | `src/lib/domain/selections/statuses.ts` | needed, proposed, owner_review, approved, pricing, rfq_sent, ordered, installed, unavailable, deferred |
+| `SELECTION_REQUEST_KINDS` | `src/lib/domain/selections/statuses.ts` | pricing, alternative |
+| `SELECTION_REQUEST_STATUSES` | `src/lib/domain/selections/statuses.ts` | open, resolved, withdrawn |
+| `TRADE_LETTER_KINDS` | `src/lib/domain/trade-letters/statuses.ts` | intent, award |
+| `TRADE_LETTER_STATUSES` | `src/lib/domain/trade-letters/statuses.ts` | draft, preparing, sent, signed, declined, cancelled |
+| `WARRANTY_CLAIM_STATUSES` | `src/lib/domain/warranty/statuses.ts` | submitted, acknowledged, visit_scheduled, in_progress, waiting_on_owner, resolved, closed, rejected |
+| `WORK_CALENDAR_EVENT_TYPES` | `src/lib/domain/work-calendar/statuses.ts` | meeting, appointment, inspection, delivery, company_event, absence, other |
 | `SAGE_COST_TYPES` | `src/lib/estimates/pricing-sources.ts` | material, labor, equipment, subcontract, other |
-| `WORKSPACE_KINDS` | `src/lib/internal-duties/model.ts` | office, executive, field |
-| `FEEDBACK_DESK_STATUSES` | `src/lib/jarvis/feedback-lifecycle.ts` | new, triaged, needs_info, planned, in_progress, testing, deployed, closed |
 | `MESSAGE_KINDS` | `src/lib/notifications/message-stacks.ts` | message, mail, rfi, schedule, other |
-| `PROJECT_CLIENT_STATUSES` | `src/lib/project-profile.ts` | lead, customer |
 | `FOLLOW_UP_EXCLUDED_JOB_STATUSES` | `src/lib/project-profile.ts` | complete, closed, bid_refused, inactive |
 | `PROJECT_TIMELINE_KINDS` | `src/lib/project-timeline/model.ts` | log, todo, contact, duty, machine, schedule |
 | `PROJECT_TODO_RECORD_TYPES` | `src/lib/project-todos.ts` | staff_task, subcontractor_task, supplier_task, schedule_task, todo, task |
 | `PROJECT_TODO_SELECTABLE_STATUSES` | `src/lib/project-todos.ts` | open, in_progress, blocked, complete, archived |
 | `PORTAL_PURCHASE_ORDER_VENDOR_STATUSES` | `src/lib/purchase-orders/portal-response.ts` | processing, Processing, The order is being reviewed, prepared, or scheduled., partially_fulfilled, Partially fulfilled, Part of the material or contracted work has been fulfilled., fulfilled, Fulfilled, The material or contracted work has been fulfilled., on_hold, On hold / needs attention, Progress is blocked and the project team needs to respond. |
-| `STAFF_MESSAGE_STATUSES` | `src/lib/staff-message-desk/triage.ts` | new, follow_up_needed, in_progress, waiting_on_contact, closed |
 | `INFO_SHEET_FIELD_KINDS` | `src/lib/trade-docs/settings.ts` | text, long_text, email, phone, choice, yes_no |
-| `USER_ROLES` | `src/lib/user-roles.ts` | admin, secondary_admin, executive, project_manager, project_administrator, assistant_project_manager, accounting, office_manager, office, field_superintendent, field_crew, architectural_designer, drafter, lead_estimator, assistant_estimator, developer, subcontractor, supplier, client, guest, coordinator, field |
-| `WARRANTY_CLAIM_STATUSES` | `src/lib/warranty/status.ts` | submitted, acknowledged, visit_scheduled, in_progress, waiting_on_owner, resolved, closed, rejected |
 | `VENDOR_WARRANTY_STATUSES` | `src/lib/warranty/status.ts` | visit_scheduled, in_progress, resolved |

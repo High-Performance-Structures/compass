@@ -1,10 +1,10 @@
 {
-  "tables": 314,
+  "tables": 318,
   "groups": {
     "identity": 15,
     "projects": 18,
     "estimates": 18,
-    "financials": 20,
+    "financials": 21,
     "operations": 20,
     "schedule": 20,
     "field": 15,
@@ -14,7 +14,7 @@
     "contacts": 14,
     "accounting": 22,
     "sales": 7,
-    "workspace": 54,
+    "workspace": 57,
     "legacy": 11
   },
   "tablesWithoutPurpose": 202,

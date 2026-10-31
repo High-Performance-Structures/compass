@@ -17,14 +17,13 @@ erDiagram
     key id
     ref schedule_task_id
   }
+  schedule_task_people {
+    key id
+    ref schedule_task_id
+    ref project_contact_id
+  }
   schedule_tasks {
     key id
-  }
-  schedule_template_dependencies {
-    key id
-    ref version_id
-    ref predecessor_item_id
-    ref successor_item_id
   }
   project_contacts {
     key id
@@ -32,13 +31,10 @@ erDiagram
   project_source_record_participants {
     key id
   }
-  schedule_template_items {
-    key id
-  }
   project_contacts |o--o{ schedule_task_assignees : ""
+  project_contacts |o--o{ schedule_task_people : ""
   project_source_record_participants ||--o{ schedule_task_assignees : ""
-  project_template_versions ||--o{ schedule_template_dependencies : ""
   project_templates ||--o{ project_template_versions : ""
   schedule_tasks ||--o{ schedule_task_assignees : ""
   schedule_tasks ||--o{ schedule_task_links : ""
-  schedule_template_items ||--o{ schedule_template_dependencies : ""
+  schedule_tasks ||--o{ schedule_task_people : ""

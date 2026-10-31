@@ -6,14 +6,14 @@ Counts measured by `scripts/architecture-metrics.mjs` on this edition's source. 
 
 | Ratchet | Measures | Files | Total |
 |---|---|---|---|
-| `largeFiles` | Files over 800 lines in src/app, src/lib, src/components (total = their line count) | 50 | 55201 |
+| `largeFiles` | Files over 800 lines in src/app, src/lib, src/components (total = their line count) | 48 | 53372 |
 | `localHelpers` | Local copies of shared money/date/guard/text/env helpers | 139 | 159 |
 | `envCasts` | `env as unknown as Record<string, string>` casts | 0 | 0 |
 | `libImportsApp` | `src/lib` files importing from `src/app` | 0 | 0 |
 | `actionImportsActions` | Server actions importing other action files | 13 | 19 |
 | `clientPages` | `page.tsx` files that are client components | 0 | 0 |
 | `handRolledContext` | Actions/routes calling `getCloudflareContext()` directly | 176 | 285 |
-| `typeAssertions` | `as` type assertions (not `as const`) | 107 | 364 |
+| `typeAssertions` | `as` type assertions (not `as const`) | 106 | 363 |
 | `nonNullAssertions` | Non-null `!` assertions | 15 | 43 |
 | `explicitAny` | Explicit `any` | 0 | 0 |
 | `tableWriters` | Tables written by more than one file | 1 | 3 writer files |
@@ -24,4 +24,4 @@ Counts measured by `scripts/architecture-metrics.mjs` on this edition's source. 
 | id integrity | Id columns exempt with a reason (`ID_REFERENCE_EXEMPT`) | — | 66 |
 | polling | Reasoned exceptions to `useVisibleInterval` | — | 12 |
 
-Tables with no domain store yet: **111** of 314. Tables with no schema comment describing their purpose: **202**.
+Tables with no domain store yet: **111** of 318. Tables with no schema comment describing their purpose: **202**.

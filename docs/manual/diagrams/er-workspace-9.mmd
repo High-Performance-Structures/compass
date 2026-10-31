@@ -1,5 +1,15 @@
 erDiagram
   direction LR
+  schedule_saved_views {
+    key id
+  }
+  slab_memories {
+    key id
+  }
+  social_project_albums {
+    key id
+    ref account_id
+  }
   sync_checkpoint {
     key id
   }
@@ -9,13 +19,7 @@ erDiagram
   user_model_preference {
     key user_id
   }
-  user_provider_config {
-    key user_id
+  social_accounts {
+    key id
   }
-  user_theme_preference {
-    key user_id
-  }
-  user_view_preferences {
-    key user_id
-    key view_key
-  }
+  social_accounts ||--o{ social_project_albums : ""

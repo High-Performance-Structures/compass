@@ -4,8 +4,8 @@
 
 - **Engine.** Compass stores everything relational in one Cloudflare D1 database, which is SQLite.
 - **Schema.** The schema is declared with Drizzle ORM across the `src/db/schema*.ts` files, plus `src/lib/sync/schema.ts`. Every one of those files is listed in `drizzle.config.ts`.
-- **Size.** At this edition there are **314 tables**. Appendix A describes every table, column, index and writer.
-- **Migrations.** Migrations are hand-reviewed SQL files in `drizzle/` named `NNNN_description.sql`. There are 273 at this edition, the latest being `0281_id_reference_triggers.sql`. Wrangler applies them in file-name order and records them in its migrations table. A few early numbers were used twice (for example 0108 and 0144), so a new migration takes the next unused number after the highest one.
+- **Size.** At this edition there are **318 tables**. Appendix A describes every table, column, index and writer.
+- **Migrations.** Migrations are hand-reviewed SQL files in `drizzle/` named `NNNN_description.sql`. There are 274 at this edition, the latest being `0285_payment_applications.sql` (0283 was reserved and not used). Wrangler applies them in file-name order and records them in its migrations table. A few early numbers were used twice (for example 0108 and 0144), so a new migration takes the next unused number after the highest one.
 - **Development and test.** Locally, and in E2E runs, the same migrations are applied to a SQLite file (`bun run db:init-local`). `src/lib/domain/__tests__/sqlite-d1.ts` gives store tests a real SQLite database behind the D1 interface.
 
 ## 5.2 Conventions
@@ -39,6 +39,32 @@
 8. **Check production before you `ALTER`.** Production may already have columns from migrations on branches that were never merged. Run `PRAGMA table_info` against production and use `IF NOT EXISTS` where SQLite allows it (section 9.2).
 9. **Never edit an applied migration.** Write a new one.
 
+### Recent additive changes (0280 to 0285)
+
+These migrations are worked examples of the rules above. Each one adds columns, tables, indexes or triggers and changes no existing row; any data movement is a separate, dry-run-by-default script.
+
+| Migration | What it adds | Pattern |
+|---|---|---|
+| `0280_relational_directory_links.sql` | Nullable links from copied party text to the contacts directory: `projects.client_customer_id` → `customers`, `project_operations.vendor_id` and `project_budget_lines.vendor_id` → `vendors`, `project_rfis.assigned_project_contact_id` → `project_contacts`, each `ON DELETE SET NULL` and indexed, plus eight insert and update triggers that keep a link inside the record's own company (the same project for RFIs) | New FK column + guarded backfill (`scripts/relational-links-backfill.mjs`, exact matches only, ambiguous rows sent to review). Reads prefer the link and fall back to the stored text, so a merged or deleted target still shows the old name. The RFQ and PO `company_name` columns are named snapshots of what was sent |
+| `0281_id_reference_triggers.sql` | `BEFORE INSERT` and `BEFORE UPDATE OF <col>` triggers on 72 existing id columns that cannot take a foreign key, plus 38 indexes | Validation trigger. `src/db/id-integrity.ts` classifies every FK-less internal id column as triggered, exempt with a reason or needs review (capped, may only shrink). `scripts/orphan-id-report.mjs` lists orphans first |
+| `0282_saved_views.sql` | `saved_views` and `saved_view_defaults` | Consolidation step 1 (create), with a dual-write and a guarded read switch; see below |
+| `0284_schedule_task_people.sql` | `schedule_task_people`: several equal assignees per schedule item | New child table + dual-write to `schedule_tasks.assigned_to`; readers fall back when the two disagree (section 2.3). Backfill: `scripts/schedule-task-people-backfill.mjs` |
+| `0285_payment_applications.sql` | `payments.voided_at`, `voided_by`, `void_reason` (CHECK: null or non-blank); `invoice_payment_allocations.released_at`, `released_by`; the new `pay_application_payment_allocations` | Void, never delete. Allocation rows are released, not removed, and stay as history (section 2.6) |
+
+**Payment allocations (0285).** `pay_application_payment_allocations` has `organization_id`, `project_id`, `application_id` (→ `project_budget_applications`, `ON DELETE RESTRICT`), `payment_id`, `allocation_cents`, `created_by`, `created_at`, `released_at` and `released_by`.
+
+- `allocation_cents` is an integer between 1 and the largest safe integer (CHECK), the same rule as `invoice_payment_allocations`. The store relies on this CHECK to roll back a batch whose guard failed.
+- A composite foreign key `(organization_id, project_id, payment_id)` → `payments` keeps the payment in the same company and project, and `(organization_id, project_id)` → `projects` scopes the row.
+- Unique on `(application_id, payment_id)`; every foreign key is indexed.
+- `ON DELETE RESTRICT` means a pay application that ever had a payment cannot be hard-deleted.
+- A pay application's paid amount is the sum of its rows where `released_at IS NULL`; it is never copied onto the application. The card-payment bridge's paid-status refresh also ignores released invoice allocations.
+
+**Saved views (0282).** `saved_views` has `id`, `organization_id`, `owner_user_id`, `scope` (`projects` or `schedule`), `name`, `visibility` (`personal` or `shared`), a JSON `definition` and timestamps, unique on `(organization_id, owner_user_id, scope, name)`. `saved_view_defaults` is keyed on `(user_id, organization_id, scope)`, with a nullable `view_id` (`ON DELETE SET NULL`) and a JSON `inline_definition` snapshot.
+
+- **Dual-write.** `src/lib/domain/settings/store.ts` is the only writer of `project_saved_views`, `schedule_saved_views`, `user_view_preferences`, `saved_views` and `saved_view_defaults`. Every create, rename, visibility change, filter change and delete writes the old and new tables in one `db.batch` with the same id. Updates use a mirror statement (`INSERT INTO saved_views SELECT … FROM <legacy> WHERE id = ? ON CONFLICT(id) DO UPDATE`), so a view the backfill has not reached is copied the first time it is edited. Setting or clearing a default writes `user_view_preferences` and `saved_view_defaults` together.
+- **Read fallback** (`src/lib/domain/settings/saved-views.ts`). A list reads both tables for the reader's organization and scope, and uses `saved_views` only when it contains every legacy id the reader can see; otherwise it uses the legacy table. A view created after deploy therefore never hides older views that are not yet backfilled, and if `saved_views` cannot be read the legacy table answers. A default reads a `saved_view_defaults` row first (the inline snapshot, else the named view), then the legacy preference.
+- **Backfill.** `scripts/saved-views-backfill.mjs` is a dry run by default. It reads in keyset pages of 500, inserts with `ON CONFLICT DO NOTHING` in statements of at most 99 bound values, keeps ids, never updates or deletes, and sends ambiguous rows to a review list. The legacy tables stay and are still written; freezing them is the next step (section 12.3).
+
 ## 5.4 How the tables group by domain
 
 Each table belongs to one diagram, chosen from the domain module that writes it. Tables that no domain store writes yet are placed by name. The diagrams show only primary-key and foreign-key columns; every column is in Appendix A.
@@ -48,9 +74,9 @@ Each table belongs to one diagram, chosen from the domain module that writes it.
 | Identity, organizations and permissions | `users`, `organizations`, `organization_members`, `teams`, `team_members`, `groups`, `project_access_invitations`, `*_permission_overrides`, `permission_audit_events` |
 | Projects | `projects`, `project_members`, number reservations, aliases and retirements, `project_job_statuses`, `project_links`, `project_families`, `project_family_phases`, `project_profile_audit_events` |
 | Estimates and change orders | `project_estimates` (+ lines, cost items, assemblies, phase proposals), `project_change_orders` (+ lines, documents, history), `trade_letters`, `rate_book_entries` |
-| Contracts, budgets and financials | `project_contract_budget_revisions` / `_lines`, `project_budget_applications` / `_lines`, `project_contract_deposits`, `invoices`, `payments`, `vendor_bills`, `credit_memos`, `shop_tickets` |
+| Contracts, budgets and financials | `project_contract_budget_revisions` / `_lines`, `project_budget_applications` / `_lines`, `project_contract_deposits`, `invoices`, `payments`, `invoice_payment_allocations`, `pay_application_payment_allocations`, `vendor_bills`, `credit_memos`, `shop_tickets` |
 | Operations | `project_operations` (to-dos, RFQs, POs), `project_purchase_order_lines`, `project_todo_events`, RFQ deliveries, links and approvals, `project_rfis`, selections, warranty claims |
-| Schedule and templates | `schedule_tasks`, `task_dependencies`, `schedule_task_assignees`, baselines, publications, `workday_exceptions`, project, estimate and schedule templates |
+| Schedule and templates | `schedule_tasks`, `task_dependencies`, `schedule_task_people`, `schedule_task_assignees`, baselines, publications, `workday_exceptions`, project, estimate and schedule templates |
 | Field | `daily_logs`, `daily_log_photos`, `daily_log_task_links`, `owner_project_updates`, `weather_*`, equipment logs |
 | Documents | `project_documents`, `project_record_drive_files` / `_snapshots`, `contract_packets`, archives, vendor trade documents, `print_snapshots` |
 | Messaging | `project_correspondence*`, `correspondence_*`, `email_reply_threads`, `inbound_emails`, `channels`, `messages`, `notification_*`, `activity_events` |
@@ -58,7 +84,7 @@ Each table belongs to one diagram, chosen from the domain module that writes it.
 | Contacts | `customers`, `customer_contacts`, `vendors`, `vendor_contacts`, `internal_contacts`, `project_contacts`, follow-ups, interactions, notes |
 | Accounting bridge | `sage_*` queues, snapshots and proposals, `sage_cost_codes`, `project_field_cost_codes` |
 | Product sales | `{sales}_*` catalog, order and rental tables |
-| Workspace | dashboards, themes, preferences, the values board, agent and MCP tables, plugins, the feedback desk, the listening room, social, offline sync |
+| Workspace | dashboards, themes, preferences, saved views (`saved_views`, `saved_view_defaults`), the values board, agent and MCP tables, plugins, the feedback desk, the listening room, social, offline sync |
 | Legacy import | `buildertrend_*` staging and identity-review tables |
 
 The diagrams follow.

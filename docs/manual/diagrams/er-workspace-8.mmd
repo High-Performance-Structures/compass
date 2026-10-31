@@ -1,5 +1,11 @@
 erDiagram
   direction LR
+  mcp_servers {
+    key id
+  }
+  morning_plan_preferences {
+    key user_id
+  }
   mutation_queue {
     key id
   }
@@ -13,14 +19,3 @@ erDiagram
   push_tokens {
     key id
   }
-  slab_memories {
-    key id
-  }
-  social_project_albums {
-    key id
-    ref account_id
-  }
-  social_accounts {
-    key id
-  }
-  social_accounts ||--o{ social_project_albums : ""

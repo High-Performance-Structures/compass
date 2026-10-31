@@ -1,5 +1,11 @@
 erDiagram
   direction LR
+  feedback_maintenance_runs {
+    key id
+  }
+  feedback_service_health {
+    key service_name
+  }
   goto_inbound_settings {
     key id
   }
@@ -11,10 +17,4 @@ erDiagram
   }
   local_sync_metadata {
     key id
-  }
-  mcp_servers {
-    key id
-  }
-  morning_plan_preferences {
-    key user_id
   }
