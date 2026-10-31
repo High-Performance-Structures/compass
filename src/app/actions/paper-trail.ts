@@ -8,12 +8,13 @@ import { projectRecordDriveFiles, type PaperTrailFileStatus, type PaperTrailReco
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { insertRecordDriveFile, updateRecordDriveFile, updateRecordDriveFilesReturningIds } from "@/lib/domain/documents/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { requireOrg } from "@/lib/org-scope"
 import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
+import { projectContext } from "@/lib/server/action-context"
+import { requireOrg } from "@/lib/org-scope"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { projectNumberAndName } from "@/lib/project-display-name"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -47,20 +48,16 @@ const RECORD_FEATURES: Readonly<Record<PaperTrailRecordType, string>> = {
   shop_ticket: "shop-tickets",
 }
 
-async function projectContext(projectId: string, recordType: PaperTrailRecordType, action: "read" | "update") {
+/** Staff of the project's own organization, with the record type's feature permission. */
+async function paperTrailContext(projectId: string, recordType: PaperTrailRecordType, action: "read" | "update") {
   const user = await requireAuth()
+  // Only the demo account is read-only here (not the whole demo company), as before.
   if (action === "update" && isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-  await requireFeaturePermission(user, RECORD_FEATURES[recordType], action)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-    .limit(1)
-  if (!project) throw new Error("Project not found")
-  return { db, organizationId }
+  const context = await projectContext(projectId, { scope: "organization", feature: RECORD_FEATURES[recordType], action })
+  // Callers catch and report the message, as they did before the shared context.
+  if (!context.success) throw new Error(context.error)
+  const { db, organizationId } = context.data
+  return { db, organizationId: organizationId ?? "" }
 }
 
 /** Drive status for every record of one type in a project: one query. */
@@ -69,7 +66,7 @@ export async function getProjectPaperTrail(
   recordType: PaperTrailRecordType,
 ): Promise<PaperTrailProjectView> {
   try {
-    const { db, organizationId } = await projectContext(projectId, recordType, "read")
+    const { db, organizationId } = await paperTrailContext(projectId, recordType, "read")
     const settings = await readFeatureSettings(db, organizationId, "paper-trail")
     if (!paperTrailAllows(settings, recordType, projectId)) return { enabled: false, records: {} }
     const rows = await db
@@ -107,25 +104,23 @@ export async function requestPaperTrailSave(
   recordId: string,
 ): Promise<Result<null>> {
   try {
-    const { db } = await projectContext(projectId, recordType, "update")
+    const { db } = await paperTrailContext(projectId, recordType, "update")
     const now = new Date()
     // changedAt in the past makes the quiet period already over for this row.
     const longAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
-    const updated = await db
-      .update(projectRecordDriveFiles)
-      .set({ status: "pending", dueAt: now.toISOString(), changedAt: longAgo, attempts: 0, lastError: null, updatedAt: now.toISOString() })
-      .where(
-        and(
-          eq(projectRecordDriveFiles.projectId, projectId),
-          eq(projectRecordDriveFiles.recordType, recordType),
-          eq(projectRecordDriveFiles.recordId, recordId),
-        ),
-      )
-      .returning({ id: projectRecordDriveFiles.id })
+    const updated = await updateRecordDriveFilesReturningIds(
+      db,
+      and(
+        eq(projectRecordDriveFiles.projectId, projectId),
+        eq(projectRecordDriveFiles.recordType, recordType),
+        eq(projectRecordDriveFiles.recordId, recordId),
+      ),
+      { status: "pending", dueAt: now.toISOString(), changedAt: longAgo, attempts: 0, lastError: null, updatedAt: now.toISOString() },
+    )
     if (updated.length === 0) {
       const [project] = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).limit(1)
       if (!project?.organizationId) return { success: false, error: "Project not found" }
-      await db.insert(projectRecordDriveFiles).values({
+      await insertRecordDriveFile(db, {
         id: crypto.randomUUID(),
         organizationId: project.organizationId,
         projectId,
@@ -159,7 +154,7 @@ export async function resolvePaperTrailDuplicate(
   choice: PaperTrailDuplicateChoice,
 ): Promise<Result<null>> {
   try {
-    const { db } = await projectContext(projectId, recordType, "update")
+    const { db } = await paperTrailContext(projectId, recordType, "update")
     const [row] = await db
       .select()
       .from(projectRecordDriveFiles)
@@ -178,19 +173,13 @@ export async function resolvePaperTrailDuplicate(
     const longAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
     const due = { dueAt: now.toISOString(), changedAt: longAgo, attempts: 0, lastError: null, updatedAt: now.toISOString() }
     if (choice === "keep_existing") {
-      await db.update(projectRecordDriveFiles).set({ status: "kept_existing", updatedAt: now.toISOString() }).where(eq(projectRecordDriveFiles.id, row.id))
+      await updateRecordDriveFile(db, row.id, { status: "kept_existing", updatedAt: now.toISOString() })
     } else if (choice === "replace") {
       if (!row.existingFileId) return { success: false, error: "The existing file is no longer known. Save to Drive again." }
       // The job updates this file in place, so its link and sharing stay the same.
-      await db
-        .update(projectRecordDriveFiles)
-        .set({ status: "pending", driveFileId: row.existingFileId, fileName: row.existingFileName, ...due })
-        .where(eq(projectRecordDriveFiles.id, row.id))
+      await updateRecordDriveFile(db, row.id, { status: "pending", driveFileId: row.existingFileId, fileName: row.existingFileName, ...due })
     } else {
-      await db
-        .update(projectRecordDriveFiles)
-        .set({ status: "pending", allowDuplicate: true, ...due })
-        .where(eq(projectRecordDriveFiles.id, row.id))
+      await updateRecordDriveFile(db, row.id, { status: "pending", allowDuplicate: true, ...due })
     }
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath("/dashboard/settings")

@@ -1,6 +1,7 @@
-import { and, eq, inArray, lt } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { weatherAreaSnapshots, weatherCells, weatherPoints } from "@/db/schema"
+import { insertWeatherPointsIfAbsent, touchWeatherPointsAndCells } from "@/lib/domain/weather/store"
 import { readAlerts } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { readFires } from "@/lib/weather/fires"
@@ -32,6 +33,34 @@ async function selectPoints(db: Db, keys: readonly string[]) {
 async function selectCells(db: Db, keys: readonly string[]) {
   const rows = await Promise.all(chunks([...new Set(keys)]).map((part) => db.select().from(weatherCells).where(inArray(weatherCells.cellKey, part))))
   return rows.flat()
+}
+
+/** Queues new job sites and keeps their points and cells refreshing. */
+async function markSitesInUse(
+  db: Db,
+  input: {
+    readonly sites: readonly WeatherJobSite[]
+    readonly pointByKey: ReadonlyMap<string, unknown>
+    readonly points: readonly { readonly pointKey: string; readonly requestedAt: string }[]
+    readonly cellKeys: readonly string[]
+    readonly nowMs: number
+  }
+): Promise<void> {
+  const now = new Date(input.nowMs).toISOString()
+  const touchBefore = new Date(input.nowMs - TOUCH_EVERY_MS).toISOString()
+  const newSites = input.sites.filter((site) => !input.pointByKey.has(weatherPointKey(site.lat, site.lon)))
+  await insertWeatherPointsIfAbsent(db, newSites.map((site) => ({
+    pointKey: weatherPointKey(site.lat, site.lon),
+    latitude: Number(site.lat.toFixed(2)),
+    longitude: Number(site.lon.toFixed(2)),
+    requestedAt: now,
+  })))
+  await touchWeatherPointsAndCells(db, {
+    pointKeys: input.points.filter((point) => point.requestedAt < touchBefore).map((point) => point.pointKey),
+    cellKeys: input.cellKeys,
+    now,
+    touchBefore,
+  })
 }
 
 async function snapshot(db: Db, areaKey: string, kind: string) {
@@ -92,34 +121,7 @@ export async function readWeatherLayer(
   }
 
   const alerts = readAlerts(alertRow?.payload ?? null).filter((alert) => alert.kind !== "fire")
-  const markInUse = async (): Promise<void> => {
-    const now = new Date(nowMs).toISOString()
-    const touchBefore = new Date(nowMs - TOUCH_EVERY_MS).toISOString()
-    const newSites = sites.filter((site) => !pointByKey.has(weatherPointKey(site.lat, site.lon)))
-    for (const part of chunks(newSites)) {
-      // Four columns each: stay under D1's parameter limit.
-      for (let i = 0; i < part.length; i += 20) {
-        await db
-          .insert(weatherPoints)
-          .values(part.slice(i, i + 20).map((site) => ({
-            pointKey: weatherPointKey(site.lat, site.lon),
-            latitude: Number(site.lat.toFixed(2)),
-            longitude: Number(site.lon.toFixed(2)),
-            requestedAt: now,
-          })))
-          .onConflictDoNothing()
-      }
-    }
-    for (const part of chunks(points.filter((point) => point.requestedAt < touchBefore).map((point) => point.pointKey))) {
-      await db.update(weatherPoints).set({ requestedAt: now }).where(inArray(weatherPoints.pointKey, part))
-    }
-    for (const part of chunks(cellKeys)) {
-      await db
-        .update(weatherCells)
-        .set({ requestedAt: now })
-        .where(and(inArray(weatherCells.cellKey, part), lt(weatherCells.requestedAt, touchBefore)))
-    }
-  }
+  const markInUse = (): Promise<void> => markSitesInUse(db, { sites, pointByKey, points, cellKeys, nowMs })
 
   return {
     data: {
@@ -182,31 +184,7 @@ export async function readSiteForecasts(
       fetchedAt: cell.fetchedAt,
     })
   }
-  const markInUse = async (): Promise<void> => {
-    const now = new Date(nowMs).toISOString()
-    const touchBefore = new Date(nowMs - TOUCH_EVERY_MS).toISOString()
-    const newSites = sites.filter((site) => !pointByKey.has(weatherPointKey(site.lat, site.lon)))
-    for (let i = 0; i < newSites.length; i += 20) {
-      await db
-        .insert(weatherPoints)
-        .values(newSites.slice(i, i + 20).map((site) => ({
-          pointKey: weatherPointKey(site.lat, site.lon),
-          latitude: Number(site.lat.toFixed(2)),
-          longitude: Number(site.lon.toFixed(2)),
-          requestedAt: now,
-        })))
-        .onConflictDoNothing()
-    }
-    for (const part of chunks(points.filter((point) => point.requestedAt < touchBefore).map((point) => point.pointKey))) {
-      await db.update(weatherPoints).set({ requestedAt: now }).where(inArray(weatherPoints.pointKey, part))
-    }
-    for (const part of chunks(cellKeys)) {
-      await db
-        .update(weatherCells)
-        .set({ requestedAt: now })
-        .where(and(inArray(weatherCells.cellKey, part), lt(weatherCells.requestedAt, touchBefore)))
-    }
-  }
+  const markInUse = (): Promise<void> => markSitesInUse(db, { sites, pointByKey, points, cellKeys, nowMs })
   return { byProject, markInUse }
 }
 

@@ -16,6 +16,7 @@ import {
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { isDemoUser } from "@/lib/demo"
+import { insertMissingMyCompassCalendars, updateMyCompassCalendar } from "@/lib/domain/calendars/store"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { MyCompassCalendarSettings } from "@/lib/feature-settings/registry"
@@ -287,10 +288,7 @@ export async function syncMyCompassCalendar(input: {
     } catch (error) {
       if (error instanceof GoogleCalendarHttpError && (error.status === 404 || error.status === 410)) {
         // They deleted it in Google. Respect that until they turn it back on.
-        await db
-          .update(myCompassCalendars)
-          .set({ status: "removed", googleCalendarId: null, lastError: null, updatedAt: now.toISOString() })
-          .where(eq(myCompassCalendars.userId, user.id))
+        await updateMyCompassCalendar(db, user.id, { status: "removed", googleCalendarId: null, lastError: null, updatedAt: now.toISOString() })
         await db.delete(myCompassCalendarItems).where(eq(myCompassCalendarItems.userId, user.id))
         return counts
       }
@@ -304,10 +302,7 @@ export async function syncMyCompassCalendar(input: {
       timeZone: input.timeZone,
     })
     calendarId = created.id
-    await db
-      .update(myCompassCalendars)
-      .set({ googleCalendarId: calendarId, googleEmail: email, status: "active", updatedAt: now.toISOString() })
-      .where(eq(myCompassCalendars.userId, user.id))
+    await updateMyCompassCalendar(db, user.id, { googleCalendarId: calendarId, googleEmail: email, status: "active", updatedAt: now.toISOString() })
   }
 
   const desired = await desiredItems({
@@ -387,16 +382,13 @@ export async function syncMyCompassCalendar(input: {
     counts.deleted += 1
   }
 
-  await db
-    .update(myCompassCalendars)
-    .set({
-      status: "active",
-      // Leave the time unset while writes remain, so the next run picks this person up first.
-      lastSyncedAt: complete ? now.toISOString() : calendar.lastSyncedAt,
-      lastError: null,
-      updatedAt: now.toISOString(),
-    })
-    .where(eq(myCompassCalendars.userId, user.id))
+  await updateMyCompassCalendar(db, user.id, {
+    status: "active",
+    // Leave the time unset while writes remain, so the next run picks this person up first.
+    lastSyncedAt: complete ? now.toISOString() : calendar.lastSyncedAt,
+    lastError: null,
+    updatedAt: now.toISOString(),
+  })
   return counts
 }
 
@@ -430,10 +422,7 @@ export async function removeMyCompassCalendar(input: {
     }
   }
   await input.db.delete(myCompassCalendarItems).where(eq(myCompassCalendarItems.userId, input.userId))
-  await input.db
-    .update(myCompassCalendars)
-    .set({ googleCalendarId: null, status: input.status, lastSyncedAt: null, lastError: null, updatedAt: new Date().toISOString() })
-    .where(eq(myCompassCalendars.userId, input.userId))
+  await updateMyCompassCalendar(input.db, input.userId, { googleCalendarId: null, status: input.status, lastSyncedAt: null, lastError: null, updatedAt: new Date().toISOString() })
 }
 
 /**
@@ -477,26 +466,22 @@ export async function sweepMyCompassCalendars(db: Db, env: unknown, now = new Da
       .where(eq(myCompassCalendars.organizationId, workspace.organizationId))
     const known = new Set(rows.map((row) => row.userId))
     const stamp = now.toISOString()
-    for (const member of eligible) {
-      if (known.has(member.id)) continue
-      await db
-        .insert(myCompassCalendars)
-        .values({ userId: member.id, organizationId: workspace.organizationId, createdAt: stamp, updatedAt: stamp })
-        .onConflictDoNothing()
-    }
+    await insertMissingMyCompassCalendars(db, {
+      organizationId: workspace.organizationId,
+      userIds: eligible.filter((member) => !known.has(member.id)).map((member) => member.id),
+      now: stamp,
+    })
 
     // People no longer included (setting turned off, left the test group,
-    // or left the company) have their calendar removed from Google.
+    // or left the company) have their calendar removed from Google, one
+    // Google delete at a time (rate-limited outside API), so the loop is intentional.
     for (const row of rows) {
       if (eligibleIds.has(row.userId) || !row.googleCalendarId) continue
       try {
         await removeMyCompassCalendar({ db, env, userId: row.userId, status: "pending" })
       } catch (error) {
         summary.failed += 1
-        await db
-          .update(myCompassCalendars)
-          .set({ lastError: errorText(error), updatedAt: stamp })
-          .where(eq(myCompassCalendars.userId, row.userId))
+        await updateMyCompassCalendar(db, row.userId, { lastError: errorText(error), updatedAt: stamp })
       }
     }
     if (eligible.length === 0) continue
@@ -536,10 +521,7 @@ export async function sweepMyCompassCalendars(db: Db, env: unknown, now = new Da
         summary.deleted += counts.deleted
       } catch (error) {
         summary.failed += 1
-        await db
-          .update(myCompassCalendars)
-          .set({ status: "error", lastError: errorText(error), lastSyncedAt: now.toISOString(), updatedAt: now.toISOString() })
-          .where(eq(myCompassCalendars.userId, userId))
+        await updateMyCompassCalendar(db, userId, { status: "error", lastError: errorText(error), lastSyncedAt: now.toISOString(), updatedAt: now.toISOString() })
       }
     }
   }

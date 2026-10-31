@@ -7,6 +7,12 @@ import {
   type ProjectRecordDriveFile,
 } from "@/db/schema-paper-trail"
 import { parseFeatureSettings, type PaperTrailSettings } from "@/lib/feature-settings/registry"
+import {
+  updateRecordDriveFile,
+  updateRecordDriveFilesReturningIds,
+  updateRecordDriveSnapshot,
+  updateRecordDriveSnapshotsReturningIds,
+} from "@/lib/domain/documents/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { findExistingCopy } from "@/lib/paper-trail/duplicates"
@@ -101,24 +107,18 @@ async function orgContext(
 }
 
 async function deferRow(db: Db, id: string, dueAt: Date): Promise<void> {
-  await db
-    .update(projectRecordDriveFiles)
-    .set({ dueAt: dueAt.toISOString() })
-    .where(eq(projectRecordDriveFiles.id, id))
+  await updateRecordDriveFile(db, id, { dueAt: dueAt.toISOString() })
 }
 
 async function failRow(db: Db, row: ProjectRecordDriveFile, error: string, now: Date): Promise<void> {
   const attempts = row.attempts + 1
-  await db
-    .update(projectRecordDriveFiles)
-    .set({
-      status: "failed",
-      attempts,
-      lastError: error,
-      dueAt: new Date(now.getTime() + backoffMs(attempts)).toISOString(),
-      updatedAt: now.toISOString(),
-    })
-    .where(eq(projectRecordDriveFiles.id, row.id))
+  await updateRecordDriveFile(db, row.id, {
+    status: "failed",
+    attempts,
+    lastError: error,
+    dueAt: new Date(now.getTime() + backoffMs(attempts)).toISOString(),
+    updatedAt: now.toISOString(),
+  })
 }
 
 async function projectFolderId(db: Db, projectId: string): Promise<string | null> {
@@ -135,11 +135,11 @@ async function projectFolderId(db: Db, projectId: string): Promise<string | null
  * lease. Returns false when another run already took it.
  */
 async function claimRow(db: Db, row: ProjectRecordDriveFile, now: Date): Promise<boolean> {
-  const claimed = await db
-    .update(projectRecordDriveFiles)
-    .set({ dueAt: new Date(now.getTime() + CLAIM_LEASE_MS).toISOString() })
-    .where(and(eq(projectRecordDriveFiles.id, row.id), eq(projectRecordDriveFiles.dueAt, row.dueAt), eq(projectRecordDriveFiles.status, row.status)))
-    .returning({ id: projectRecordDriveFiles.id })
+  const claimed = await updateRecordDriveFilesReturningIds(
+    db,
+    and(eq(projectRecordDriveFiles.id, row.id), eq(projectRecordDriveFiles.dueAt, row.dueAt), eq(projectRecordDriveFiles.status, row.status)),
+    { dueAt: new Date(now.getTime() + CLAIM_LEASE_MS).toISOString() },
+  )
   return claimed.length > 0
 }
 
@@ -164,17 +164,11 @@ async function syncRecord(
     const record = await definition.load(db, row.recordId)
     if (!record) {
       // Deleted in Compass: keep the last Drive copy, stop refreshing.
-      await db
-        .update(projectRecordDriveFiles)
-        .set({ status: "removed", updatedAt: now.toISOString() })
-        .where(eq(projectRecordDriveFiles.id, row.id))
+      await updateRecordDriveFile(db, row.id, { status: "removed", updatedAt: now.toISOString() })
       return "unchanged"
     }
     if (row.driveFileId && row.contentVersion === record.version) {
-      await db
-        .update(projectRecordDriveFiles)
-        .set({ status: row.inPrivateFolder ? "held_private" : "synced", attempts: 0, lastError: null, updatedAt: now.toISOString() })
-        .where(eq(projectRecordDriveFiles.id, row.id))
+      await updateRecordDriveFile(db, row.id, { status: row.inPrivateFolder ? "held_private" : "synced", attempts: 0, lastError: null, updatedAt: now.toISOString() })
       return "unchanged"
     }
     const rootId = await projectFolderId(db, row.projectId)
@@ -208,19 +202,16 @@ async function syncRecord(
       const compassIds = new Set(compassRows.flatMap((item) => (item.fileId ? [item.fileId] : [])))
       const existing = findExistingCopy(files, record.duplicateKeys, compassIds)
       if (existing) {
-        await db
-          .update(projectRecordDriveFiles)
-          .set({
-            status: "needs_choice",
-            existingFileId: existing.id,
-            existingFileName: existing.name,
-            driveFolderId: folder.folderId,
-            inPrivateFolder: folder.heldPrivate,
-            attempts: 0,
-            lastError: null,
-            updatedAt: now.toISOString(),
-          })
-          .where(eq(projectRecordDriveFiles.id, row.id))
+        await updateRecordDriveFile(db, row.id, {
+          status: "needs_choice",
+          existingFileId: existing.id,
+          existingFileName: existing.name,
+          driveFolderId: folder.folderId,
+          inPrivateFolder: folder.heldPrivate,
+          attempts: 0,
+          lastError: null,
+          updatedAt: now.toISOString(),
+        })
         return "unchanged"
       }
     }
@@ -243,21 +234,18 @@ async function syncRecord(
       })
       fileId = created.id
     }
-    await db
-      .update(projectRecordDriveFiles)
-      .set({
-        status: folder.heldPrivate ? "held_private" : "synced",
-        driveFileId: fileId,
-        driveFolderId: folder.folderId,
-        inPrivateFolder: folder.heldPrivate,
-        fileName: name,
-        contentVersion: record.version,
-        lastSyncedAt: now.toISOString(),
-        attempts: 0,
-        lastError: null,
-        updatedAt: now.toISOString(),
-      })
-      .where(eq(projectRecordDriveFiles.id, row.id))
+    await updateRecordDriveFile(db, row.id, {
+      status: folder.heldPrivate ? "held_private" : "synced",
+      driveFileId: fileId,
+      driveFolderId: folder.folderId,
+      inPrivateFolder: folder.heldPrivate,
+      fileName: name,
+      contentVersion: record.version,
+      lastSyncedAt: now.toISOString(),
+      attempts: 0,
+      lastError: null,
+      updatedAt: now.toISOString(),
+    })
     return "saved"
   } catch (error) {
     await failRow(db, row, errorMessage(error), now)
@@ -289,22 +277,20 @@ async function runSnapshots(
     const definition = PAPER_TRAIL_RECORDS[snapshot.recordType]
     if (!definition.load || !org.drive) continue
     // Claim it: only the run that moves attempts forward prints this copy.
-    const claimed = await db
-      .update(projectRecordDriveSnapshots)
-      .set({ attempts: snapshot.attempts + 1 })
-      .where(
-        and(
-          eq(projectRecordDriveSnapshots.id, snapshot.id),
-          eq(projectRecordDriveSnapshots.attempts, snapshot.attempts),
-          inArray(projectRecordDriveSnapshots.status, ["pending", "failed"]),
-        ),
-      )
-      .returning({ id: projectRecordDriveSnapshots.id })
+    const claimed = await updateRecordDriveSnapshotsReturningIds(
+      db,
+      and(
+        eq(projectRecordDriveSnapshots.id, snapshot.id),
+        eq(projectRecordDriveSnapshots.attempts, snapshot.attempts),
+        inArray(projectRecordDriveSnapshots.status, ["pending", "failed"]),
+      ),
+      { attempts: snapshot.attempts + 1 },
+    )
     if (claimed.length === 0) continue
     try {
       const record = await definition.load(db, snapshot.recordId)
       if (!record) {
-        await db.update(projectRecordDriveSnapshots).set({ status: "failed", attempts: MAX_SNAPSHOT_ATTEMPTS, lastError: "The record no longer exists." }).where(eq(projectRecordDriveSnapshots.id, snapshot.id))
+        await updateRecordDriveSnapshot(db, snapshot.id, { status: "failed", attempts: MAX_SNAPSHOT_ATTEMPTS, lastError: "The record no longer exists." })
         continue
       }
       const rootId = await projectFolderId(db, snapshot.projectId)
@@ -331,16 +317,10 @@ async function runSnapshots(
         data: new Blob([pdf], { type: "application/pdf" }),
         appProperties: { compassRecordType: snapshot.recordType, compassRecordId: snapshot.recordId, compassMilestone: snapshot.milestone },
       })
-      await db
-        .update(projectRecordDriveSnapshots)
-        .set({ status: "saved", savedAt: now.toISOString(), driveFileId: created.id, fileName: name, lastError: null })
-        .where(eq(projectRecordDriveSnapshots.id, snapshot.id))
+      await updateRecordDriveSnapshot(db, snapshot.id, { status: "saved", savedAt: now.toISOString(), driveFileId: created.id, fileName: name, lastError: null })
       saved += 1
     } catch (error) {
-      await db
-        .update(projectRecordDriveSnapshots)
-        .set({ status: "failed", lastError: errorMessage(error) })
-        .where(eq(projectRecordDriveSnapshots.id, snapshot.id))
+      await updateRecordDriveSnapshot(db, snapshot.id, { status: "failed", lastError: errorMessage(error) })
     }
   }
   return saved

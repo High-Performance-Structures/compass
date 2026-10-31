@@ -1,6 +1,10 @@
-import { sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import type { PaperTrailRecordType } from "@/db/schema-paper-trail"
+import {
+  insertRecordDriveSnapshotDue,
+  markRecordDriveFileRemoved,
+  upsertRecordDriveFileDue,
+} from "@/lib/domain/documents/store"
 
 export type PaperTrailMilestone = "sent" | "signed" | "approved" | "answered"
 
@@ -23,29 +27,9 @@ export async function markPaperTrailDue(
 ): Promise<void> {
   const now = new Date().toISOString()
   try {
-    await db.run(sql`
-      INSERT INTO project_record_drive_files
-        (id, organization_id, project_id, record_type, record_id, status, due_at, changed_at, attempts, created_at, updated_at)
-      SELECT ${crypto.randomUUID()}, p.organization_id, p.id, ${input.recordType}, ${input.recordId}, 'pending', ${now}, ${now}, 0, ${now}, ${now}
-      FROM projects p
-      WHERE p.id = ${input.projectId} AND p.organization_id IS NOT NULL AND p.workspace_kind IS NULL
-      ON CONFLICT (record_type, record_id) DO UPDATE SET
-        status = CASE WHEN status IN ('removed', 'needs_choice', 'kept_existing') THEN status ELSE 'pending' END,
-        due_at = excluded.due_at,
-        changed_at = excluded.changed_at,
-        attempts = 0,
-        last_error = NULL,
-        updated_at = excluded.updated_at
-    `)
+    await upsertRecordDriveFileDue(db, { ...input, now })
     if (input.milestone) {
-      await db.run(sql`
-        INSERT INTO project_record_drive_snapshots
-          (id, organization_id, project_id, record_type, record_id, milestone, milestone_at, status, requested_at, attempts)
-        SELECT ${crypto.randomUUID()}, p.organization_id, p.id, ${input.recordType}, ${input.recordId}, ${input.milestone}, ${now}, 'pending', ${now}, 0
-        FROM projects p
-        WHERE p.id = ${input.projectId} AND p.organization_id IS NOT NULL
-        ON CONFLICT DO NOTHING
-      `)
+      await insertRecordDriveSnapshotDue(db, { ...input, milestone: input.milestone, now })
     }
   } catch (error) {
     console.error(
@@ -60,11 +44,7 @@ export async function markPaperTrailRemoved(
   input: { readonly recordType: PaperTrailRecordType; readonly recordId: string },
 ): Promise<void> {
   try {
-    await db.run(sql`
-      UPDATE project_record_drive_files
-      SET status = 'removed', updated_at = ${new Date().toISOString()}
-      WHERE record_type = ${input.recordType} AND record_id = ${input.recordId}
-    `)
+    await markRecordDriveFileRemoved(db, { ...input, now: new Date().toISOString() })
   } catch (error) {
     console.error(`[paper-trail] could not mark ${input.recordType} removed: ${error instanceof Error ? error.name : "unknown"}`)
   }

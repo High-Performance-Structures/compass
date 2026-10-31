@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { projectArchiveDocuments } from "@/db/schema-project-archives"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateArchiveDocuments } from "@/lib/domain/documents/store"
 import { requireArchiveStaff } from "@/lib/project-archive-context"
 import type { ArchiveSummary } from "@/lib/project-archives"
 import { archivePublicationSchema, archiveSummary, publishArchiveRecord, visibleArchiveRecords } from "@/lib/project-archives"
@@ -54,7 +55,7 @@ export async function setProjectArchiveVisibility(projectId: string, archiveId: 
       if (pdf.sha256 !== row.sha256 || pdf.byteSize !== row.byteSize || pdf.pageCount !== row.pageCount) throw new Error("The PDF changed. Publish a separately reviewed edition.")
     }
     const now = new Date().toISOString()
-    await ctx.db.update(projectArchiveDocuments).set(input.status === "revoked" ? { status: "revoked", revokedBy: ctx.user.id, revokedAt: now, revokeReason: input.reason.trim() } : { status: "published", restoredBy: ctx.user.id, restoredAt: now }).where(and(eq(projectArchiveDocuments.id, archiveId), eq(projectArchiveDocuments.projectId, ctx.projectId), eq(projectArchiveDocuments.organizationId, ctx.organizationId)))
+    await updateArchiveDocuments(ctx.db, and(eq(projectArchiveDocuments.id, archiveId), eq(projectArchiveDocuments.projectId, ctx.projectId), eq(projectArchiveDocuments.organizationId, ctx.organizationId)), input.status === "revoked" ? { status: "revoked", revokedBy: ctx.user.id, revokedAt: now, revokeReason: input.reason.trim() } : { status: "published", restoredBy: ctx.user.id, restoredAt: now })
     await recordActivityEvent({ ...ctx, actor: ctx.user, category: "file", action: input.status === "revoked" ? "archive.revoke" : "archive.restore", entityType: "project_archive", entityId: archiveId, summary: input.status === "revoked" ? "Removed a Buildertrend archive from recipient workspaces" : "Restored a Buildertrend archive to its original recipients", metadata: { reason: input.reason.trim() } })
     refresh(ctx.projectId)
     return { success: true }

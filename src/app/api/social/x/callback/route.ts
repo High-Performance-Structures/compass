@@ -6,6 +6,7 @@ import { socialAccounts } from "@/db/schema-social"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { socialAccountUpsertStatement } from "@/lib/domain/media/store"
 import { can } from "@/lib/permissions"
 import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
 import { sharedXDepartments } from "@/lib/social/x-account-sharing"
@@ -118,32 +119,28 @@ export async function GET(request: NextRequest): Promise<Response> {
       }
     }))
     const statements = credentialValues.map((value) =>
-      db.insert(socialAccounts).values({
-        id: value.existing?.id ?? crypto.randomUUID(),
-        organizationId,
-        department: value.targetDepartment,
-        platform: "x",
-        externalAccountId: identity.id,
-        parentExternalAccountId: null,
-        accountName: `@${identity.username}`,
-        accessTokenEncrypted: value.accessTokenEncrypted,
-        refreshTokenEncrypted: value.refreshTokenEncrypted,
-        tokenExpiresAt,
-        grantedScopes: [...grant.scopes].sort().join(" "),
-        status: "connected",
-        connectedBy: user.id,
-        connectedAt: now.toISOString(),
-        lastPublishedAt: value.existing?.lastPublishedAt ?? null,
-        lastError: null,
-        createdAt: value.existing?.createdAt ?? now.toISOString(),
-        updatedAt: now.toISOString(),
-      }).onConflictDoUpdate({
-        target: [
-          socialAccounts.organizationId,
-          socialAccounts.department,
-          socialAccounts.platform,
-        ],
-        set: {
+      socialAccountUpsertStatement(db, {
+        values: {
+          id: value.existing?.id ?? crypto.randomUUID(),
+          organizationId,
+          department: value.targetDepartment,
+          platform: "x",
+          externalAccountId: identity.id,
+          parentExternalAccountId: null,
+          accountName: `@${identity.username}`,
+          accessTokenEncrypted: value.accessTokenEncrypted,
+          refreshTokenEncrypted: value.refreshTokenEncrypted,
+          tokenExpiresAt,
+          grantedScopes: [...grant.scopes].sort().join(" "),
+          status: "connected",
+          connectedBy: user.id,
+          connectedAt: now.toISOString(),
+          lastPublishedAt: value.existing?.lastPublishedAt ?? null,
+          lastError: null,
+          createdAt: value.existing?.createdAt ?? now.toISOString(),
+          updatedAt: now.toISOString(),
+        },
+        update: {
           externalAccountId: identity.id,
           accountName: `@${identity.username}`,
           accessTokenEncrypted: value.accessTokenEncrypted,

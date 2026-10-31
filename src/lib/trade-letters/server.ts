@@ -18,6 +18,7 @@ import { driveFileIdFromInput, type TradeDocSettings } from "@/lib/trade-docs/se
 import { summarizeTradeDocs, type TradeDocSummary } from "@/lib/trade-docs/status"
 import { buildTradeLetterPdf, type PreparedTradeLetterPdf } from "@/lib/trade-letters/letter-pdf"
 import { fillLetterText, joinWithAnd, longDate, parseScope, parseStringList, type TradeLetterKind } from "@/lib/trade-letters/letter"
+import { insertTradeDocumentStatement, updateTradeDocumentsStatement } from "@/lib/domain/documents/store"
 
 type Db = ReturnType<typeof getDb>
 
@@ -220,7 +221,7 @@ export async function fileSignedTradeLetter(input: { readonly db: Db; readonly e
       .from(vendorTradeDocuments)
       .where(and(eq(vendorTradeDocuments.vendorId, vendor.id), eq(vendorTradeDocuments.docType, agreementType), isNull(vendorTradeDocuments.supersededAt)))
     await db.batch([
-      db.insert(vendorTradeDocuments).values({
+      insertTradeDocumentStatement(db, {
         id: crypto.randomUUID(),
         organizationId: letter.organizationId,
         vendorId: vendor.id,
@@ -241,7 +242,7 @@ export async function fileSignedTradeLetter(input: { readonly db: Db; readonly e
         updatedAt: input.now,
       }),
       ...current.map((row) =>
-        db.update(vendorTradeDocuments).set({ supersededAt: input.now, updatedAt: input.now }).where(eq(vendorTradeDocuments.id, row.id)),
+        updateTradeDocumentsStatement(db, eq(vendorTradeDocuments.id, row.id), { supersededAt: input.now, updatedAt: input.now }),
       ),
     ])
   }

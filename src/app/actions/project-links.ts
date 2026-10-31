@@ -3,23 +3,21 @@
 import { and, asc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectContacts, projectJobStatuses, projects } from "@/db/schema"
 import { projectLinks } from "@/db/schema-project-links"
 import { createProjectIntake, type CreateProjectIntakeInput, type CreateProjectIntakeResult } from "@/app/actions/projects"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { deleteProjectLink, insertProjectLink } from "@/lib/domain/documents/store"
 import { isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { LinkedJobShortcut } from "@/lib/feature-settings/registry"
-import { requireOrg } from "@/lib/org-scope"
 import { can } from "@/lib/permissions"
 import { assertProjectAccess, getProjectAccessRecord } from "@/lib/project-access"
 import { splitAddress } from "@/lib/projects/address-parts"
 import { projectDepartment } from "@/lib/project-branding"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { carryOverBetweenLinkedJobs } from "@/lib/job-workflows/carryover"
+import { orgContext } from "@/lib/server/action-context"
 
 type LinkedJob = {
   readonly linkId: string
@@ -62,11 +60,12 @@ export type ProjectLinksView = {
 
 type SimpleResult = { readonly success: true } | { readonly success: false; readonly error: string }
 
+/** Staff of the active organization; failures throw with the shared context's message, as before. */
 async function context() {
-  const user = await requireAuth()
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  return { user, organizationId, db: getDb(env.DB) }
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  const { user, organizationId, db } = context.data
+  return { user, organizationId, db }
 }
 
 // A job created as a linked job gets its link moments after it is created;
@@ -203,9 +202,9 @@ export async function createLinkedProject(
   if (!source || source.organizationId !== organizationId) return { success: false, error: "The job to link from was not found." }
   const result = await createProjectIntake(input)
   if (!result.success) return result
-  await db
-    .insert(projectLinks)
-    .values({
+  await insertProjectLink(
+    db,
+    {
       id: crypto.randomUUID(),
       organizationId,
       projectId: sourceProjectId,
@@ -213,8 +212,9 @@ export async function createLinkedProject(
       label: label?.trim().slice(0, 80) || null,
       createdBy: user.id,
       createdAt: new Date().toISOString(),
-    })
-    .onConflictDoNothing()
+    },
+    { ignoreDuplicate: true },
+  )
   await carryOverAfterLink(db, { organizationId, projectId: sourceProjectId, otherProjectId: result.id, actorUserId: user.id })
   revalidatePath(`/dashboard/projects/${sourceProjectId}`)
   return result
@@ -275,7 +275,7 @@ export async function linkExistingProject(
       .get()
     if (existing) return { success: false, error: `${jobLabel(other)} is already linked to this job.` }
     const linkId = crypto.randomUUID()
-    await db.insert(projectLinks).values({
+    await insertProjectLink(db, {
       id: linkId,
       organizationId,
       projectId,
@@ -320,7 +320,7 @@ export async function removeProjectLink(projectId: string, linkId: string): Prom
     if (!link || (link.projectId !== projectId && link.linkedProjectId !== projectId)) {
       return { success: false, error: "That link is no longer on this job." }
     }
-    await db.delete(projectLinks).where(eq(projectLinks.id, link.id))
+    await deleteProjectLink(db, link.id)
     const jobs = await db
       .select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name })
       .from(projects)

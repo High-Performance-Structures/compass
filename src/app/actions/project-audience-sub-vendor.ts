@@ -1,7 +1,7 @@
 "use server"
 
 import { checkRfqVendorAnswer } from "@/lib/rfqs/vendor-response"
-import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import { insertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
 import { and, eq, inArray } from "drizzle-orm"
@@ -230,7 +230,7 @@ export async function createSubVendorRfi(
     }
     await context.db.batch([
       rfiInsertStatement(context.db, inserted),
-      context.db.insert(projectSourceRecordParticipants).values({
+      insertSourceRecordParticipantStatement(context.db, {
         id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
         participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),
@@ -495,7 +495,7 @@ export async function respondToSubVendorPurchaseOrder(
     }
     await context.db.batch([
       rfiInsertStatement(context.db, inserted),
-      context.db.insert(projectSourceRecordParticipants).values({
+      insertSourceRecordParticipantStatement(context.db, {
         id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
         participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),

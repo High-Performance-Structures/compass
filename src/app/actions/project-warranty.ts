@@ -24,6 +24,15 @@ import { projectMemberRole } from "@/lib/project-member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolveWarrantyAssignee } from "@/lib/warranty/assignee"
+import { cleanText } from "@/lib/shared/guards"
+import { staffClaimTimestamps, warrantyActorName, warrantyClaimNumber } from "@/lib/domain/warranty/rules"
+import {
+  countProjectWarrantyClaims,
+  deleteWarrantyClaim,
+  insertWarrantyClaim,
+  insertWarrantyClaimEvent,
+  updateWarrantyClaim,
+} from "@/lib/domain/warranty/store"
 import {
   notifyWarrantyClaimCreated,
   notifyWarrantyClaimUpdated,
@@ -135,19 +144,10 @@ type WarrantyContext = {
   }
 }
 
-function cleanText(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
-}
-
 function requireText(value: string, label: string): string {
   const trimmed = value.trim()
   if (!trimmed) throw new Error(`${label} is required.`)
   return trimmed
-}
-
-function viewerName(user: AuthUser): string {
-  return user.displayName?.trim() || user.email
 }
 
 async function warrantyContext(projectId: string): Promise<WarrantyContext> {
@@ -196,16 +196,6 @@ async function warrantyContext(projectId: string): Promise<WarrantyContext> {
   }
 }
 
-function claimNumberFor(
-  projectNumber: string | null,
-  existingCount: number
-): string {
-  const sequence = String(existingCount + 1).padStart(3, "0")
-  return projectNumber
-    ? `${projectNumber}-W-${sequence}`
-    : `WARRANTY-${sequence}`
-}
-
 function claimRevalidationPaths(projectId: string): readonly string[] {
   return [
     `/dashboard/projects/${projectId}`,
@@ -231,13 +221,13 @@ async function appendClaimEvent(input: {
   readonly ownerVisible: boolean
   readonly createdAt: string
 }): Promise<void> {
-  await input.context.db.insert(projectWarrantyClaimEvents).values({
+  await insertWarrantyClaimEvent(input.context.db, {
     id: crypto.randomUUID(),
     organizationId: input.context.organizationId,
     projectId: input.context.project.id,
     claimId: input.claimId,
     actorUserId: input.context.user.id,
-    actorName: viewerName(input.context.user),
+    actorName: warrantyActorName(input.context.user),
     actorRole: input.context.user.role,
     eventType: input.eventType,
     fromStatus: input.fromStatus,
@@ -384,23 +374,19 @@ export async function createProjectWarrantyClaim(
       return { success: false, error: "Choose a valid warranty priority." }
     }
 
-    const count = await context.db
-      .select({ id: projectWarrantyClaims.id })
-      .from(projectWarrantyClaims)
-      .where(eq(projectWarrantyClaims.projectId, projectId))
-      .then((rows) => rows.length)
+    const count = await countProjectWarrantyClaims(context.db, projectId)
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const title = requireText(input.title, "Title")
     const claimantName = context.viewerIsInternal
-      ? cleanText(input.claimantName) ?? viewerName(context.user)
-      : viewerName(context.user)
+      ? cleanText(input.claimantName) ?? warrantyActorName(context.user)
+      : warrantyActorName(context.user)
 
-    await context.db.insert(projectWarrantyClaims).values({
+    await insertWarrantyClaim(context.db, {
       id,
       organizationId: context.organizationId,
       projectId,
-      claimNumber: claimNumberFor(context.project.projectNumber, count),
+      claimNumber: warrantyClaimNumber(context.project.projectNumber, count),
       title,
       location: cleanText(input.location),
       category: requireText(input.category, "Category"),
@@ -443,7 +429,7 @@ export async function createProjectWarrantyClaim(
         organizationId: context.organizationId,
         projectId,
         claimId: id,
-        claimNumber: claimNumberFor(context.project.projectNumber, count),
+        claimNumber: warrantyClaimNumber(context.project.projectNumber, count),
         title,
         priority,
         createdBy: context.user,
@@ -502,33 +488,18 @@ export async function updateProjectWarrantyClaim(
     if ("error" in assignee) return { success: false, error: assignee.error }
 
     const now = new Date().toISOString()
-    await context.db
-      .update(projectWarrantyClaims)
-      .set({
-        status,
-        priority,
-        assignedName: assignee.assignedName,
-        assignedProjectContactId: assignee.assignedProjectContactId,
-        assignedVendorId: assignee.assignedVendorId,
-        scheduledFor: cleanText(input.scheduledFor),
-        resolutionSummary: cleanText(input.resolutionSummary),
-        internalNotes: cleanText(input.internalNotes),
-        acknowledgedAt:
-          status !== "submitted" ? existing.acknowledgedAt ?? now : null,
-        workStartedAt:
-          status === "in_progress" ? existing.workStartedAt ?? now : existing.workStartedAt,
-        resolvedAt:
-          status === "resolved" || status === "closed"
-            ? existing.resolvedAt ?? now
-            : null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectWarrantyClaims.id, claimId),
-          eq(projectWarrantyClaims.projectId, projectId)
-        )
-      )
+    await updateWarrantyClaim(context.db, { claimId, projectId }, {
+      status,
+      priority,
+      assignedName: assignee.assignedName,
+      assignedProjectContactId: assignee.assignedProjectContactId,
+      assignedVendorId: assignee.assignedVendorId,
+      scheduledFor: cleanText(input.scheduledFor),
+      resolutionSummary: cleanText(input.resolutionSummary),
+      internalNotes: cleanText(input.internalNotes),
+      ...staffClaimTimestamps(status, existing, now),
+      updatedAt: now,
+    })
 
     const statusChanged = existing.status !== status
     await appendClaimEvent({
@@ -610,15 +581,7 @@ export async function confirmProjectWarrantyResolution(
       return { success: false, error: "This claim is not ready for confirmation." }
     }
     const now = new Date().toISOString()
-    await context.db
-      .update(projectWarrantyClaims)
-      .set({ status: "closed", ownerConfirmedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(projectWarrantyClaims.id, claimId),
-          eq(projectWarrantyClaims.projectId, projectId)
-        )
-      )
+    await updateWarrantyClaim(context.db, { claimId, projectId }, { status: "closed", ownerConfirmedAt: now, updatedAt: now })
     await appendClaimEvent({
       context,
       claimId,
@@ -688,14 +651,7 @@ export async function deleteProjectWarrantyClaim(
       await requireFeaturePermission(context.user, "warranty-claims", "delete")
     }
 
-    await context.db
-      .delete(projectWarrantyClaims)
-      .where(
-        and(
-          eq(projectWarrantyClaims.id, claimId),
-          eq(projectWarrantyClaims.projectId, projectId)
-        )
-      )
+    await deleteWarrantyClaim(context.db, { claimId, projectId })
     await recordActivityEvent({
       db: context.db,
       organizationId: context.organizationId,

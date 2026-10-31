@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gt, gte, isNull, lt, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, gte, isNull, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -25,6 +25,24 @@ import {
   type ListeningPlaybackState,
   type MusicProvider,
 } from "@/lib/listening-room"
+import {
+  deleteListeningParticipant,
+  deleteListeningQueueItem,
+  deleteListeningRoom,
+  insertListeningParticipantIfAbsent,
+  insertListeningQueueItems,
+  insertListeningRoomIfAbsent,
+  insertListeningTrackLinkIfAbsent,
+  insertListeningTrackLinks,
+  reorderListeningQueueItems,
+  replaceListeningTrackLink,
+  resetListeningQueuePlayed,
+  setListeningQueueItemPlayedAt,
+  touchListeningParticipant,
+  updateListeningRoom,
+  updateListeningRoomIfCurrent,
+  upsertListeningParticipant,
+} from "@/lib/domain/listening/store"
 import { can } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
@@ -204,19 +222,12 @@ async function recordListeningPresence(context: ListeningContext): Promise<void>
   const room = await roomForChannel(context.db, context.channel.id)
   if (!room) return
   const now = new Date()
-  await context.db
-    .update(listeningRoomParticipants)
-    .set({ updatedAt: now.toISOString() })
-    .where(
-      and(
-        eq(listeningRoomParticipants.roomId, room.id),
-        eq(listeningRoomParticipants.userId, context.user.id),
-        lt(
-          listeningRoomParticipants.updatedAt,
-          new Date(now.getTime() - LISTENING_PRESENCE_WRITE_INTERVAL_MS).toISOString()
-        )
-      )
-    )
+  await touchListeningParticipant(context.db, {
+    roomId: room.id,
+    userId: context.user.id,
+    now: now.toISOString(),
+    staleBefore: new Date(now.getTime() - LISTENING_PRESENCE_WRITE_INTERVAL_MS).toISOString(),
+  })
 }
 
 async function canControlPlayback(
@@ -470,39 +481,31 @@ export async function startListeningRoom(
     })
     const now = new Date().toISOString()
     const roomId = crypto.randomUUID()
-    await context.db
-      .insert(listeningRooms)
-      .values({
-        id: roomId,
-        channelId: context.channel.id,
-        hostUserId: context.user.id,
-        playbackState: "paused",
-        currentTrackId: null,
-        anchorPositionMs: 0,
-        playbackStartedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing({ target: listeningRooms.channelId })
+    await insertListeningRoomIfAbsent(context.db, {
+      id: roomId,
+      channelId: context.channel.id,
+      hostUserId: context.user.id,
+      playbackState: "paused",
+      currentTrackId: null,
+      anchorPositionMs: 0,
+      playbackStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
     const room = await roomForChannel(context.db, context.channel.id)
     if (!room) return { success: false, error: "Failed to start listening room" }
-    await context.db
-      .insert(listeningRoomParticipants)
-      .values({
+    await upsertListeningParticipant(
+      context.db,
+      {
         id: crypto.randomUUID(),
         roomId: room.id,
         userId: context.user.id,
         preferredProvider: null,
         joinedAt: now,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          listeningRoomParticipants.roomId,
-          listeningRoomParticipants.userId,
-        ],
-        set: { updatedAt: now },
-      })
+      },
+      { updatedAt: now }
+    )
     revalidateListeningRoom(context.channel.id)
     return requiredRoomSnapshot(context)
   } catch (error) {
@@ -526,26 +529,19 @@ export async function joinListeningRoom(input: {
     const room = await roomForChannel(context.db, context.channel.id)
     if (!room) return { success: false, error: "Listening room not found" }
     const now = new Date().toISOString()
-    await context.db
-      .insert(listeningRoomParticipants)
-      .values({
+    const preferredProvider = provider === null ? null : provider.data
+    await upsertListeningParticipant(
+      context.db,
+      {
         id: crypto.randomUUID(),
         roomId: room.id,
         userId: context.user.id,
-        preferredProvider: provider === null ? null : provider.data,
+        preferredProvider,
         joinedAt: now,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          listeningRoomParticipants.roomId,
-          listeningRoomParticipants.userId,
-        ],
-        set: {
-          preferredProvider: provider === null ? null : provider.data,
-          updatedAt: now,
-        },
-      })
+      },
+      { preferredProvider, updatedAt: now }
+    )
     return requiredRoomSnapshot(context)
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to join listening room") }
@@ -561,14 +557,7 @@ export async function leaveListeningRoom(
     const context = await listeningContext(parsed.data, { write: true })
     const room = await roomForChannel(context.db, context.channel.id)
     if (!room) return { success: true, data: { room: null } }
-    await context.db
-      .delete(listeningRoomParticipants)
-      .where(
-        and(
-          eq(listeningRoomParticipants.roomId, room.id),
-          eq(listeningRoomParticipants.userId, context.user.id)
-        )
-      )
+    await deleteListeningParticipant(context.db, { roomId: room.id, userId: context.user.id })
     return { success: true, data: { room: await roomSnapshot(context) } }
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to leave listening room") }
@@ -600,7 +589,7 @@ export async function addListeningTrack(input: {
       .get()
     const now = new Date().toISOString()
     const queueItemId = crypto.randomUUID()
-    await context.db.insert(listeningQueueItems).values({
+    await insertListeningQueueItems(context.db, [{
       id: queueItemId,
       roomId: room.id,
       title: parsed.data.title,
@@ -610,33 +599,27 @@ export async function addListeningTrack(input: {
       addedBy: context.user.id,
       playedAt: null,
       createdAt: now,
-    })
+    }])
     if (normalizedUrl && provider) {
-      await context.db.insert(listeningTrackLinks).values({
+      await insertListeningTrackLinks(context.db, [{
         id: crypto.randomUUID(),
         queueItemId,
         provider,
         url: normalizedUrl,
         addedBy: context.user.id,
         createdAt: now,
-      })
+      }])
     }
-    await context.db
-      .insert(listeningRoomParticipants)
-      .values({
-        id: crypto.randomUUID(),
-        roomId: room.id,
-        userId: context.user.id,
-        preferredProvider: provider,
-        joinedAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
+    await insertListeningParticipantIfAbsent(context.db, {
+      id: crypto.randomUUID(),
+      roomId: room.id,
+      userId: context.user.id,
+      preferredProvider: provider,
+      joinedAt: now,
+      updatedAt: now,
+    })
     if (!room.currentTrackId) {
-      await context.db
-        .update(listeningRooms)
-        .set({ currentTrackId: queueItemId, updatedAt: now })
-        .where(eq(listeningRooms.id, room.id))
+      await updateListeningRoom(context.db, room.id, { currentTrackId: queueItemId, updatedAt: now })
     }
     revalidateListeningRoom(context.channel.id)
     return requiredRoomSnapshot(context)
@@ -718,22 +701,20 @@ export async function addListeningTrackLink(input: {
     }
     const now = new Date().toISOString()
     if (existingLink) {
-      await context.db
-        .update(listeningTrackLinks)
-        .set({ url: normalizedUrl, addedBy: context.user.id, createdAt: now })
-        .where(eq(listeningTrackLinks.id, existingLink.id))
+      await replaceListeningTrackLink(context.db, existingLink.id, {
+        url: normalizedUrl,
+        addedBy: context.user.id,
+        createdAt: now,
+      })
     } else {
       const linkId = crypto.randomUUID()
-      await context.db.insert(listeningTrackLinks).values({
+      await insertListeningTrackLinkIfAbsent(context.db, {
         id: linkId,
         queueItemId: item.id,
         provider,
         url: normalizedUrl,
         addedBy: context.user.id,
         createdAt: now,
-      })
-      .onConflictDoNothing({
-        target: [listeningTrackLinks.queueItemId, listeningTrackLinks.provider],
       })
       const inserted = await context.db
         .select({ id: listeningTrackLinks.id })
@@ -814,22 +795,16 @@ export async function setListeningPlayback(
         .get()
       if (!target) return { success: false, error: "Song not found" }
       if (room.currentTrackId && room.currentTrackId !== target.id) {
-        await context.db
-          .update(listeningQueueItems)
-          .set({ playedAt: now })
-          .where(eq(listeningQueueItems.id, room.currentTrackId))
+        await setListeningQueueItemPlayedAt(context.db, room.currentTrackId, now)
       }
-      await context.db
-        .update(listeningQueueItems)
-        .set({ playedAt: null })
-        .where(eq(listeningQueueItems.id, target.id))
-      await context.db.update(listeningRooms).set({
+      await setListeningQueueItemPlayedAt(context.db, target.id, null)
+      await updateListeningRoom(context.db, room.id, {
         currentTrackId: target.id,
         playbackState: "playing",
         anchorPositionMs: 0,
         playbackStartedAt: scheduledStart,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      })
     } else if (parsed.data.command === "pause") {
       const positionMs = listeningPlaybackPositionMs({
         state: playbackState(room.playbackState),
@@ -837,19 +812,19 @@ export async function setListeningPlayback(
         playbackStartedAt: room.playbackStartedAt,
         nowMs: Date.parse(now),
       })
-      await context.db.update(listeningRooms).set({
+      await updateListeningRoom(context.db, room.id, {
         playbackState: "paused",
         anchorPositionMs: positionMs,
         playbackStartedAt: null,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      })
     } else if (parsed.data.command === "restart") {
-      await context.db.update(listeningRooms).set({
+      await updateListeningRoom(context.db, room.id, {
         anchorPositionMs: 0,
         playbackStartedAt:
           room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      })
     } else if (parsed.data.command === "skip" || parsed.data.command === "advance") {
       const current = room.currentTrackId
         ? await context.db
@@ -868,10 +843,7 @@ export async function setListeningPlayback(
             .get()
         : null
       if (room.currentTrackId) {
-        await context.db
-          .update(listeningQueueItems)
-          .set({ playedAt: now })
-          .where(eq(listeningQueueItems.id, room.currentTrackId))
+        await setListeningQueueItemPlayedAt(context.db, room.currentTrackId, now)
       }
       const next = await context.db
         .select({ id: listeningQueueItems.id })
@@ -904,21 +876,18 @@ export async function setListeningPlayback(
         .get()
       // Conditional on the song we read, so two listeners finishing (or
       // double-clicking Skip) at the same moment skip only one song.
-      await context.db.update(listeningRooms).set({
-        currentTrackId: next?.id ?? null,
-        playbackState: next ? room.playbackState : "paused",
-        anchorPositionMs: 0,
-        playbackStartedAt:
-          next && room.playbackState === "playing" ? scheduledStart : null,
-        updatedAt: now,
-      }).where(
-        and(
-          eq(listeningRooms.id, room.id),
-          room.currentTrackId
-            ? eq(listeningRooms.currentTrackId, room.currentTrackId)
-            : isNull(listeningRooms.currentTrackId)
-        )
-      )
+      await updateListeningRoomIfCurrent(context.db, {
+        roomId: room.id,
+        expectedTrackId: room.currentTrackId,
+        values: {
+          currentTrackId: next?.id ?? null,
+          playbackState: next ? room.playbackState : "paused",
+          anchorPositionMs: 0,
+          playbackStartedAt:
+            next && room.playbackState === "playing" ? scheduledStart : null,
+          updatedAt: now,
+        },
+      })
     } else {
       let currentTrackId = room.currentTrackId
       let selectedFreshTrack = false
@@ -952,23 +921,20 @@ export async function setListeningPlayback(
           if (first) {
             // An exhausted queue is restartable; clear its played markers when
             // the host presses Play after the final track.
-            await context.db
-              .update(listeningQueueItems)
-              .set({ playedAt: null })
-              .where(eq(listeningQueueItems.roomId, room.id))
+            await resetListeningQueuePlayed(context.db, room.id)
           }
         }
         currentTrackId = first?.id ?? null
         selectedFreshTrack = currentTrackId !== null
       }
       if (!currentTrackId) return { success: false, error: "Add a track first" }
-      await context.db.update(listeningRooms).set({
+      await updateListeningRoom(context.db, room.id, {
         currentTrackId,
         playbackState: "playing",
         anchorPositionMs: selectedFreshTrack ? 0 : room.anchorPositionMs,
         playbackStartedAt: scheduledStart,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      })
     }
     revalidateListeningRoom(context.channel.id)
     return requiredRoomSnapshot(context)
@@ -1026,18 +992,16 @@ export async function removeListeningTrack(input: {
       const scheduledStart = new Date(
         nowMs + LISTENING_ROOM_START_DELAY_MS
       ).toISOString()
-      await context.db.update(listeningRooms).set({
+      await updateListeningRoom(context.db, room.id, {
         currentTrackId: next?.id ?? null,
         playbackState: next ? room.playbackState : "paused",
         anchorPositionMs: 0,
         playbackStartedAt:
           next && room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      })
     }
-    await context.db
-      .delete(listeningQueueItems)
-      .where(eq(listeningQueueItems.id, item.id))
+    await deleteListeningQueueItem(context.db, item.id)
     revalidateListeningRoom(context.channel.id)
     return requiredRoomSnapshot(context)
   } catch (error) {
@@ -1080,17 +1044,15 @@ export async function reorderListeningQueue(input: {
     }
     const playedIds = new Set(rows.filter((row) => row.playedAt !== null).map((row) => row.id))
     const currentIndex = room.currentTrackId ? ids.indexOf(room.currentTrackId) : -1
-    const [first, ...rest] = ids.map((id, index) =>
-      context.db
-        .update(listeningQueueItems)
-        .set(
-          currentIndex >= 0 && index > currentIndex && playedIds.has(id)
-            ? { sortOrder: index, playedAt: null }
-            : { sortOrder: index }
-        )
-        .where(and(eq(listeningQueueItems.id, id), eq(listeningQueueItems.roomId, room.id)))
+    await reorderListeningQueueItems(
+      context.db,
+      room.id,
+      ids.map((id, index) => ({
+        id,
+        sortOrder: index,
+        replay: currentIndex >= 0 && index > currentIndex && playedIds.has(id),
+      }))
     )
-    if (first) await context.db.batch([first, ...rest])
     revalidateListeningRoom(context.channel.id)
     return requiredRoomSnapshot(context)
   } catch (error) {
@@ -1113,7 +1075,7 @@ export async function endListeningRoom(
     ) {
       return { success: false, error: "Only the room host can close this room" }
     }
-    await context.db.delete(listeningRooms).where(eq(listeningRooms.id, room.id))
+    await deleteListeningRoom(context.db, room.id)
     revalidateListeningRoom(context.channel.id)
     return { success: true, data: { ended: true } }
   } catch (error) {

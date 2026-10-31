@@ -11,6 +11,11 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { decrypt, encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  deleteSocialConnectionDraft,
+  updateSocialAccount,
+  upsertSocialAccount,
+} from "@/lib/domain/media/store"
 import { requireOrg } from "@/lib/org-scope"
 import { can } from "@/lib/permissions"
 import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
@@ -232,38 +237,34 @@ export async function finalizeMetaConnection(input: {
         eq(socialAccounts.department, department),
         eq(socialAccounts.platform, platform),
       )).get()
-      await db.insert(socialAccounts).values({
-        id: existing?.id ?? crypto.randomUUID(),
-        organizationId,
-        department,
-        platform,
-        externalAccountId,
-        parentExternalAccountId: platform === "instagram" ? candidate.pageId : null,
-        accountName: platform === "instagram"
-          ? `@${candidate.instagramUsername ?? candidate.pageName}`
-          : candidate.pageName,
-        accessTokenEncrypted: await encrypt(
-          candidate.pageAccessToken,
-          config.tokenEncryptionKey,
-          salt,
-        ),
-        refreshTokenEncrypted: null,
-        tokenExpiresAt: null,
-        grantedScopes: scopes,
-        status: "connected",
-        connectedBy: user.id,
-        connectedAt: now,
-        lastPublishedAt: existing?.lastPublishedAt ?? null,
-        lastError: null,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      }).onConflictDoUpdate({
-        target: [
-          socialAccounts.organizationId,
-          socialAccounts.department,
-          socialAccounts.platform,
-        ],
-        set: {
+      await upsertSocialAccount(db, {
+        values: {
+          id: existing?.id ?? crypto.randomUUID(),
+          organizationId,
+          department,
+          platform,
+          externalAccountId,
+          parentExternalAccountId: platform === "instagram" ? candidate.pageId : null,
+          accountName: platform === "instagram"
+            ? `@${candidate.instagramUsername ?? candidate.pageName}`
+            : candidate.pageName,
+          accessTokenEncrypted: await encrypt(
+            candidate.pageAccessToken,
+            config.tokenEncryptionKey,
+            salt,
+          ),
+          refreshTokenEncrypted: null,
+          tokenExpiresAt: null,
+          grantedScopes: scopes,
+          status: "connected",
+          connectedBy: user.id,
+          connectedAt: now,
+          lastPublishedAt: existing?.lastPublishedAt ?? null,
+          lastError: null,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        },
+        update: {
           externalAccountId,
           parentExternalAccountId: platform === "instagram" ? candidate.pageId : null,
           accountName: platform === "instagram"
@@ -281,11 +282,9 @@ export async function finalizeMetaConnection(input: {
           lastError: null,
           updatedAt: now,
         },
-      }).run()
+      })
     }
-    await db.delete(socialConnectionDrafts).where(
-      eq(socialConnectionDrafts.id, draft.id),
-    ).run()
+    await deleteSocialConnectionDraft(db, draft.id)
     revalidatePath("/dashboard/settings")
     return { success: true }
   } catch (error) {
@@ -305,7 +304,7 @@ export async function disconnectSocialAccount(accountId: string): Promise<Connec
     )).get()
     if (!account) return { success: false, error: "Social account not found." }
     const now = new Date().toISOString()
-    await db.update(socialAccounts).set({
+    await updateSocialAccount(db, account.id, {
       accessTokenEncrypted: await encrypt(
         "disconnected",
         config.tokenEncryptionKey,
@@ -320,7 +319,7 @@ export async function disconnectSocialAccount(accountId: string): Promise<Connec
       status: "disconnected",
       lastError: null,
       updatedAt: now,
-    }).where(eq(socialAccounts.id, account.id)).run()
+    })
     revalidatePath("/dashboard/settings")
     return { success: true }
   } catch (error) {

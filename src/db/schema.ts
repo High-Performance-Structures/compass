@@ -2602,6 +2602,9 @@ export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lin
   (table) => [
     // Declared from drizzle/0042_sage_purchase_order_format.sql.
     index("idx_project_po_lines_operation").on(table.operationId),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("idx_project_po_lines_operation_updated").on(table.operationId, table.updatedAt),
     // Declared from drizzle/0042_sage_purchase_order_format.sql.
     index("idx_project_po_lines_project").on(table.projectId),
   ])
@@ -2894,6 +2897,9 @@ export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
     index("idx_project_rfi_attachments_project_id").on(table.projectId),
     // Declared from drizzle/0040_project_rfi_attachments.sql.
     index("idx_project_rfi_attachments_rfi_id").on(table.rfiId),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("idx_project_rfi_attachments_rfi_updated").on(table.rfiId, table.updatedAt),
     // Declared from drizzle/0040_project_rfi_attachments.sql.
     index("idx_project_rfi_attachments_storage_id").on(table.storageId),
   ])
@@ -3008,6 +3014,9 @@ export const projectChangeOrderLines = sqliteTable(
       table.lineNumber
     ),
     index("project_change_order_lines_project_idx").on(table.projectId),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("project_change_order_lines_order_updated_idx").on(table.changeOrderId, table.updatedAt),
     index("project_change_order_lines_cost_code_idx").on(
       table.projectId,
       table.costCode
@@ -3035,6 +3044,9 @@ export const projectChangeOrderDocuments = sqliteTable(
   },
   (table) => [
     index("project_change_order_documents_order_idx").on(table.changeOrderId),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("project_change_order_documents_order_created_idx").on(table.changeOrderId, table.createdAt),
     index("project_change_order_documents_project_idx").on(table.projectId),
   ]
 )

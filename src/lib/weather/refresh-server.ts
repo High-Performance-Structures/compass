@@ -1,6 +1,13 @@
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { weatherAreaSnapshots, weatherCells, weatherPoints, weatherZoneShapes } from "@/db/schema"
+import {
+  insertWeatherPointsIfAbsent,
+  markWeatherPointFound,
+  markWeatherPointOutside,
+  recordWeatherCellFailure,
+  saveWeatherCellForecast,
+} from "@/lib/domain/weather/store"
 import { parseAlerts, withZoneShapes, zonesNeedingShapes, ALERT_TOLERANCE_DEG, type WeatherAlert } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { weatherAreasInUse } from "@/lib/weather/areas-server"
@@ -62,10 +69,7 @@ async function seedAreaPoints(db: Db, area: WeatherArea, now: string): Promise<v
     longitude: Number(point.lon.toFixed(2)),
     requestedAt: now,
   }))
-  // D1 caps bound parameters per statement; 4 columns × 20 rows stays well under.
-  for (let i = 0; i < rows.length; i += 20) {
-    await db.insert(weatherPoints).values(rows.slice(i, i + 20)).onConflictDoNothing()
-  }
+  await insertWeatherPointsIfAbsent(db, rows)
 }
 
 async function snapshotAge(db: Db, areaKey: string, kind: string, nowMs: number): Promise<number> {
@@ -197,6 +201,8 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
     .limit(POINTS_PER_RUN)
   let resolved = 0
   let failures = 0
+  // One NWS /points call per point, in sequence: the NWS API is rate limited
+  // and the run stops at its time budget.
   for (const point of pending) {
     if (Date.now() > deadline) break
     const now = new Date().toISOString()
@@ -207,7 +213,7 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
       })
       if (response.status === 404) {
         // Outside NWS coverage (offshore, outside the US).
-        await db.update(weatherPoints).set({ status: "outside", resolvedAt: now }).where(eq(weatherPoints.pointKey, point.pointKey))
+        await markWeatherPointOutside(db, point.pointKey, now)
         continue
       }
       if (!response.ok) throw new Error(`points ${response.status}`)
@@ -217,11 +223,11 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
       const y = nested(body, "properties", "gridY")
       if (typeof office !== "string" || typeof x !== "number" || typeof y !== "number") throw new Error("points shape")
       const cellKey = `${office}/${x},${y}`
-      await db
-        .insert(weatherCells)
-        .values({ cellKey, latitude: point.latitude, longitude: point.longitude, requestedAt: point.requestedAt })
-        .onConflictDoNothing()
-      await db.update(weatherPoints).set({ status: "found", cellKey, resolvedAt: now }).where(eq(weatherPoints.pointKey, point.pointKey))
+      await markWeatherPointFound(db, {
+        pointKey: point.pointKey,
+        cell: { cellKey, latitude: point.latitude, longitude: point.longitude, requestedAt: point.requestedAt },
+        now,
+      })
       resolved += 1
     } catch {
       failures += 1
@@ -249,6 +255,8 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
     .limit(limit)
   let refreshed = 0
   let failures = 0
+  // One NWS gridpoints call per cell, in sequence: the NWS API is rate
+  // limited and the run stops at its time budget.
   for (const cell of due) {
     if (Date.now() > deadline) break
     const [office, xy] = cell.cellKey.split("/")
@@ -258,25 +266,22 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
       const series = parseGridSeries(properties, Date.now())
       if (!series) throw new Error("grid shape")
       const elevation = nested(properties, "elevation", "value")
-      await db
-        .update(weatherCells)
-        .set({
-          series: JSON.stringify(series),
-          elevationM: typeof elevation === "number" ? Math.round(elevation) : null,
-          fetchedAt: new Date().toISOString(),
-          failureCount: 0,
-          nextAttemptAt: null,
-        })
-        .where(eq(weatherCells.cellKey, cell.cellKey))
+      await saveWeatherCellForecast(db, {
+        cellKey: cell.cellKey,
+        series: JSON.stringify(series),
+        elevationM: typeof elevation === "number" ? Math.round(elevation) : null,
+        fetchedAt: new Date().toISOString(),
+      })
       refreshed += 1
     } catch {
       failures += 1
       // Back off: 10 minutes, doubling, at most 6 hours.
       const delay = Math.min(6 * 60, 10 * 2 ** cell.failureCount) * MINUTE
-      await db
-        .update(weatherCells)
-        .set({ failureCount: cell.failureCount + 1, nextAttemptAt: new Date(Date.now() + delay).toISOString() })
-        .where(eq(weatherCells.cellKey, cell.cellKey))
+      await recordWeatherCellFailure(db, {
+        cellKey: cell.cellKey,
+        failureCount: cell.failureCount + 1,
+        nextAttemptAt: new Date(Date.now() + delay).toISOString(),
+      })
     }
   }
   return { refreshed, failures }

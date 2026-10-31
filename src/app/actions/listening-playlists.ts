@@ -19,6 +19,18 @@ import {
   LISTENING_ROOM_START_DELAY_MS,
   type MusicProvider,
 } from "@/lib/listening-room"
+import {
+  insertListeningPlaylist,
+  insertListeningPlaylistItems,
+  insertListeningPlaylistTrackLinks,
+  insertListeningQueueItems,
+  insertListeningTrackLinks,
+  markListeningQueueItemsPlayed,
+  resetListeningQueuePlayed,
+  swapListeningPlaylist,
+  updateListeningPlaylist,
+  updateListeningRoom,
+} from "@/lib/domain/listening/store"
 import { can } from "@/lib/permissions"
 import {
   activePlaylist,
@@ -154,7 +166,7 @@ async function copyTemplateToPlaylist(
       createdAt: now,
     }
   })
-  await context.db.insert(listeningPlaylistItems).values(itemValues)
+  await insertListeningPlaylistItems(context.db, itemValues)
 
   const linkValues = template.links.flatMap((link) => {
     const playlistItemId = itemIds.get(link.queueItemId)
@@ -169,7 +181,7 @@ async function copyTemplateToPlaylist(
     }]
   })
   if (linkValues.length > 0) {
-    await context.db.insert(listeningPlaylistTrackLinks).values(linkValues)
+    await insertListeningPlaylistTrackLinks(context.db, linkValues)
   }
 }
 
@@ -306,7 +318,7 @@ export async function createListeningPlaylist(input: {
     const template = await currentQueueTemplate(context)
     const now = new Date().toISOString()
     const playlistId = crypto.randomUUID()
-    await context.db.insert(listeningPlaylists).values({
+    await insertListeningPlaylist(context.db, {
       id: playlistId,
       organizationId: context.channel.organizationId,
       name: name.data,
@@ -318,10 +330,7 @@ export async function createListeningPlaylist(input: {
       updatedAt: now,
     })
     await copyTemplateToPlaylist(context, playlistId, template, now)
-    await context.db
-      .update(listeningPlaylists)
-      .set({ deletedAt: null, deletedBy: null })
-      .where(eq(listeningPlaylists.id, playlistId))
+    await updateListeningPlaylist(context.db, playlistId, { deletedAt: null, deletedBy: null })
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { playlistId } }
   } catch (error) {
@@ -347,14 +356,11 @@ export async function renameListeningPlaylist(input: {
     if (!canEditPlaylist(context, playlist.createdBy)) {
       return { success: false, error: "You cannot edit this playlist" }
     }
-    await context.db
-      .update(listeningPlaylists)
-      .set({
-        name: name.data,
-        updatedBy: context.user.id,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(listeningPlaylists.id, playlist.id))
+    await updateListeningPlaylist(context.db, playlist.id, {
+      name: name.data,
+      updatedBy: context.user.id,
+      updatedAt: new Date().toISOString(),
+    })
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { renamed: true } }
   } catch (error) {
@@ -381,7 +387,7 @@ export async function replaceListeningPlaylistFromQueue(input: {
     const template = await currentQueueTemplate(context)
     const now = new Date().toISOString()
     const replacementId = crypto.randomUUID()
-    await context.db.insert(listeningPlaylists).values({
+    await insertListeningPlaylist(context.db, {
       id: replacementId,
       organizationId: playlist.organizationId,
       name: playlist.name,
@@ -393,16 +399,12 @@ export async function replaceListeningPlaylistFromQueue(input: {
       updatedAt: now,
     })
     await copyTemplateToPlaylist(context, replacementId, template, now)
-    await context.db.batch([
-      context.db
-        .update(listeningPlaylists)
-        .set({ deletedAt: now, deletedBy: context.user.id, updatedAt: now })
-        .where(eq(listeningPlaylists.id, playlist.id)),
-      context.db
-        .update(listeningPlaylists)
-        .set({ deletedAt: null, deletedBy: null })
-        .where(eq(listeningPlaylists.id, replacementId)),
-    ])
+    await swapListeningPlaylist(context.db, {
+      retiredId: playlist.id,
+      replacementId,
+      userId: context.user.id,
+      now,
+    })
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { playlistId: replacementId } }
   } catch (error) {
@@ -427,15 +429,12 @@ export async function deleteListeningPlaylist(input: {
       return { success: false, error: "You cannot delete this playlist" }
     }
     const now = new Date().toISOString()
-    await context.db
-      .update(listeningPlaylists)
-      .set({
-        deletedAt: now,
-        deletedBy: context.user.id,
-        updatedBy: context.user.id,
-        updatedAt: now,
-      })
-      .where(eq(listeningPlaylists.id, playlist.id))
+    await updateListeningPlaylist(context.db, playlist.id, {
+      deletedAt: now,
+      deletedBy: context.user.id,
+      updatedBy: context.user.id,
+      updatedAt: now,
+    })
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { deleted: true } }
   } catch (error) {
@@ -587,9 +586,7 @@ export async function addListeningPlaylistToRoom(input: {
         createdAt: now,
       }
     }) : []
-    if (queueValues.length > 0) {
-      await context.db.insert(listeningQueueItems).values(queueValues)
-    }
+    await insertListeningQueueItems(context.db, queueValues)
     const queueLinkValues = links.flatMap((link) => {
       const queueItemId = queueIds.get(link.playlistItemId)
       if (!queueItemId || !isMusicProvider(link.provider)) return []
@@ -602,9 +599,7 @@ export async function addListeningPlaylistToRoom(input: {
         createdAt: now,
       }]
     })
-    if (queueLinkValues.length > 0) {
-      await context.db.insert(listeningTrackLinks).values(queueLinkValues)
-    }
+    await insertListeningTrackLinks(context.db, queueLinkValues)
     const selectedQueueItemId = selectedItem
       ? matchingQueueItemId ?? queueIds.get(selectedItem.id) ?? null
       : null
@@ -617,37 +612,26 @@ export async function addListeningPlaylistToRoom(input: {
       const selectedIndex = orderedQueue.findIndex(
         (item) => item.id === selectedQueueItemId
       )
-      await context.db
-        .update(listeningQueueItems)
-        .set({ playedAt: null })
-        .where(eq(listeningQueueItems.roomId, room.id))
+      await resetListeningQueuePlayed(context.db, room.id)
       const precedingIds = orderedQueue
         .slice(0, Math.max(0, selectedIndex))
         .map((item) => item.id)
-      if (precedingIds.length > 0) {
-        await context.db
-          .update(listeningQueueItems)
-          .set({ playedAt: now })
-          .where(inArray(listeningQueueItems.id, precedingIds))
-      }
+      await markListeningQueueItemsPlayed(context.db, precedingIds, now)
       const scheduledStart = new Date(
         Date.now() + LISTENING_ROOM_START_DELAY_MS
       ).toISOString()
-      await context.db
-        .update(listeningRooms)
-        .set({
-          currentTrackId: selectedQueueItemId,
-          playbackState: "playing",
-          anchorPositionMs: 0,
-          playbackStartedAt: scheduledStart,
-          updatedAt: now,
-        })
-        .where(eq(listeningRooms.id, room.id))
+      await updateListeningRoom(context.db, room.id, {
+        currentTrackId: selectedQueueItemId,
+        playbackState: "playing",
+        anchorPositionMs: 0,
+        playbackStartedAt: scheduledStart,
+        updatedAt: now,
+      })
     } else if (!room.currentTrackId) {
-      await context.db
-        .update(listeningRooms)
-        .set({ currentTrackId: queueValues[0]?.id ?? null, updatedAt: now })
-        .where(eq(listeningRooms.id, room.id))
+      await updateListeningRoom(context.db, room.id, {
+        currentTrackId: queueValues[0]?.id ?? null,
+        updatedAt: now,
+      })
     }
     revalidatePlaylistPaths(context.channel.id)
     return {

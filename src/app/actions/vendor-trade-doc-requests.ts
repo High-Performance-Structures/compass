@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { activityEvents, vendorContacts, vendors } from "@/db/schema"
 import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { updateTradeDocLink } from "@/lib/domain/documents/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import type { EmailRecipientOption } from "@/lib/email/recipient-options"
@@ -231,10 +232,7 @@ export async function turnOffTradeDocLink(linkId: string): Promise<Result<null>>
       .where(and(eq(vendorTradeDocLinks.id, linkId), eq(vendorTradeDocLinks.organizationId, access.organizationId), isNull(vendorTradeDocLinks.revokedAt)))
       .get()
     if (!link) return { success: false, error: "That link is already off." }
-    await access.db
-      .update(vendorTradeDocLinks)
-      .set({ revokedAt: new Date().toISOString(), revokedBy: access.user.id })
-      .where(eq(vendorTradeDocLinks.id, link.id))
+    await updateTradeDocLink(access.db, link.id, { revokedAt: new Date().toISOString(), revokedBy: access.user.id })
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,

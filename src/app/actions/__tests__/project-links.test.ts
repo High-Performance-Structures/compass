@@ -28,7 +28,12 @@ vi.mock("@/lib/project-access", () => ({
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))
 vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: mocks.readFeatureSettings }))
 vi.mock("@/app/actions/projects", () => ({ createProjectIntake: vi.fn() }))
-vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: null } })) }))
+vi.mock("@/lib/server/action-context", () => ({
+  orgContext: async () => ({
+    success: true,
+    data: { user: await mocks.requireAuth(), organizationId: "org", db: mocks.getDb(), env: {} },
+  }),
+}))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { linkExistingProject, removeProjectLink } from "@/app/actions/project-links"
@@ -63,7 +68,13 @@ beforeEach(() => {
     { id: "build", name: "Mitchell Residence", projectNumber: "O-210-33", organizationId: "org", createdAt: "t", updatedAt: "t" },
     { id: "elsewhere", name: "Other company job", projectNumber: "O-1-1", organizationId: "other-org", createdAt: "t", updatedAt: "t" },
   ]).run()
-  mocks.getDb.mockReturnValue({ select: db.select.bind(db), insert: db.insert.bind(db), delete: db.delete.bind(db) })
+  // better-sqlite3 has no batch; run the statements in order like D1 would.
+  const batch = async (statements: readonly PromiseLike<unknown>[]): Promise<unknown[]> => {
+    const results: unknown[] = []
+    for (const statement of statements) results.push(await statement)
+    return results
+  }
+  mocks.getDb.mockReturnValue({ select: db.select.bind(db), insert: db.insert.bind(db), delete: db.delete.bind(db), batch })
   mocks.requireAuth.mockResolvedValue({ id: "user", role: "admin" })
   mocks.can.mockReturnValue(true)
   mocks.assertProjectAccess.mockResolvedValue(undefined)

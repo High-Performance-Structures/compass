@@ -17,7 +17,13 @@ import {
   workCalendarEvents,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
+import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
+import {
+  insertMissingProjectCalendars,
+  updateProjectCalendar,
+  updateProjectCalendars,
+} from "@/lib/domain/calendars/store"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { ProjectCalendarSettings } from "@/lib/feature-settings/registry"
@@ -347,10 +353,7 @@ export async function syncProjectCalendar(input: {
     // Anything tracked belonged to an earlier calendar that's gone now.
     await db.delete(compassProjectCalendarEvents).where(eq(compassProjectCalendarEvents.projectId, project.id))
     await db.delete(compassProjectCalendarMembers).where(eq(compassProjectCalendarMembers.projectId, project.id))
-    await db
-      .update(compassProjectCalendars)
-      .set({ googleCalendarId: calendarId, ownerEmail: owner.email, calendarName: name, status: "active", updatedAt: now.toISOString() })
-      .where(eq(compassProjectCalendars.projectId, project.id))
+    await updateProjectCalendar(db, project.id, { googleCalendarId: calendarId, ownerEmail: owner.email, calendarName: name, status: "active", updatedAt: now.toISOString() })
   } else if (row.calendarName !== name) {
     try {
       await calendarFetch(owner.accessToken, `/calendars/${encodeURIComponent(calendarId)}`, {
@@ -362,10 +365,7 @@ export async function syncProjectCalendar(input: {
       throw error
     }
     counts.writes += 1
-    await db
-      .update(compassProjectCalendars)
-      .set({ calendarName: name, updatedAt: now.toISOString() })
-      .where(eq(compassProjectCalendars.projectId, project.id))
+    await updateProjectCalendar(db, project.id, { calendarName: name, updatedAt: now.toISOString() })
   }
   const calendarPath = `/calendars/${encodeURIComponent(calendarId)}`
   let complete = true
@@ -530,16 +530,13 @@ export async function syncProjectCalendar(input: {
     counts.deleted += 1
   }
 
-  await db
-    .update(compassProjectCalendars)
-    .set({
-      status: "active",
-      // Leave the time unset while writes remain, so the next run picks this project up first.
-      lastSyncedAt: complete ? now.toISOString() : row.lastSyncedAt,
-      lastError: null,
-      updatedAt: now.toISOString(),
-    })
-    .where(eq(compassProjectCalendars.projectId, project.id))
+  await updateProjectCalendar(db, project.id, {
+    status: "active",
+    // Leave the time unset while writes remain, so the next run picks this project up first.
+    lastSyncedAt: complete ? now.toISOString() : row.lastSyncedAt,
+    lastError: null,
+    updatedAt: now.toISOString(),
+  })
   return counts
 }
 
@@ -548,10 +545,7 @@ async function recreate(
   input: { readonly db: Db; readonly project: { readonly id: string } },
   counts: Counts
 ): Promise<Counts> {
-  await input.db
-    .update(compassProjectCalendars)
-    .set({ googleCalendarId: null, calendarName: null, status: "pending", lastSyncedAt: null, updatedAt: new Date().toISOString() })
-    .where(eq(compassProjectCalendars.projectId, input.project.id))
+  await updateProjectCalendar(input.db, input.project.id, { googleCalendarId: null, calendarName: null, status: "pending", lastSyncedAt: null, updatedAt: new Date().toISOString() })
   return counts
 }
 
@@ -573,10 +567,7 @@ export async function removeProjectCalendar(input: {
   }
   await db.delete(compassProjectCalendarEvents).where(eq(compassProjectCalendarEvents.projectId, row.projectId))
   await db.delete(compassProjectCalendarMembers).where(eq(compassProjectCalendarMembers.projectId, row.projectId))
-  await db
-    .update(compassProjectCalendars)
-    .set({ googleCalendarId: null, calendarName: null, status: "pending", lastSyncedAt: null, lastError: null, updatedAt: new Date().toISOString() })
-    .where(eq(compassProjectCalendars.projectId, row.projectId))
+  await updateProjectCalendar(db, row.projectId, { googleCalendarId: null, calendarName: null, status: "pending", lastSyncedAt: null, lastError: null, updatedAt: new Date().toISOString() })
 }
 
 export async function organizationTimeZone(db: Db, organizationId: string): Promise<string> {
@@ -626,31 +617,32 @@ export async function sweepProjectCalendars(db: Db, env: unknown, now = new Date
         .map((project) => project.id)
     )
     // Rows for staff-chosen jobs that aren't open still count in "open" mode.
-    for (const row of rows) {
-      if (row.enabled === true && settings.mode !== "off" && !projectById.has(row.projectId)) {
-        const [project] = await db
-          .select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber, status: projects.status })
-          .from(projects)
-          .where(eq(projects.id, row.projectId))
-          .limit(1)
-        if (project) {
-          projectById.set(project.id, project)
-          included.add(project.id)
-        }
+    // One chunked read for all of them rather than one query per row.
+    const chosenIds = rows
+      .filter((row) => row.enabled === true && settings.mode !== "off" && !projectById.has(row.projectId))
+      .map((row) => row.projectId)
+    for (const chunk of chunkD1Values(chosenIds)) {
+      const chosen = await db
+        .select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber, status: projects.status })
+        .from(projects)
+        .where(inArray(projects.id, chunk))
+      for (const project of chosen) {
+        projectById.set(project.id, project)
+        included.add(project.id)
       }
     }
 
     const stamp = now.toISOString()
-    for (const projectId of included) {
-      if (rowByProject.has(projectId)) continue
-      await db
-        .insert(compassProjectCalendars)
-        .values({ projectId, organizationId, createdAt: stamp, updatedAt: stamp })
-        .onConflictDoNothing()
-    }
+    await insertMissingProjectCalendars(db, {
+      organizationId,
+      projectIds: [...included].filter((projectId) => !rowByProject.has(projectId)),
+      now: stamp,
+    })
 
     // Jobs no longer included (closed, turned off, or the feature is off)
     // have their calendar deleted from Google.
+    // One Google calendar delete at a time, within the run's write budget
+    // (rate-limited outside API), so this loop is intentional.
     for (const row of rows) {
       if (included.has(row.projectId) || !row.googleCalendarId) continue
       if (writeBudget <= 0) break
@@ -660,10 +652,7 @@ export async function sweepProjectCalendars(db: Db, env: unknown, now = new Date
         summary.removed += 1
       } catch (error) {
         summary.failed += 1
-        await db
-          .update(compassProjectCalendars)
-          .set({ status: "error", lastError: errorText(error), updatedAt: stamp })
-          .where(eq(compassProjectCalendars.projectId, row.projectId))
+        await updateProjectCalendar(db, row.projectId, { status: "error", lastError: errorText(error), updatedAt: stamp })
       }
     }
     if (included.size === 0 || writeBudget <= 0) continue
@@ -687,12 +676,11 @@ export async function sweepProjectCalendars(db: Db, env: unknown, now = new Date
       defaultOwner = await ownerToken(db, env, organizationId)
     } catch (error) {
       summary.failed += 1
-      for (const { projectId } of due) {
-        await db
-          .update(compassProjectCalendars)
-          .set({ status: "error", lastError: errorText(error), lastSyncedAt: stamp, updatedAt: stamp })
-          .where(eq(compassProjectCalendars.projectId, projectId))
-      }
+      await updateProjectCalendars(
+        db,
+        due.map((row) => row.projectId),
+        { status: "error", lastError: errorText(error), lastSyncedAt: stamp, updatedAt: stamp }
+      )
       continue
     }
     owners.set(defaultOwner.email, defaultOwner)
@@ -730,10 +718,7 @@ export async function sweepProjectCalendars(db: Db, env: unknown, now = new Date
         summary.unshared += counts.unshared
       } catch (error) {
         summary.failed += 1
-        await db
-          .update(compassProjectCalendars)
-          .set({ status: "error", lastError: errorText(error), lastSyncedAt: stamp, updatedAt: stamp })
-          .where(eq(compassProjectCalendars.projectId, projectId))
+        await updateProjectCalendar(db, projectId, { status: "error", lastError: errorText(error), lastSyncedAt: stamp, updatedAt: stamp })
       }
     }
   }

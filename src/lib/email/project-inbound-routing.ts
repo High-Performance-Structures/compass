@@ -37,6 +37,7 @@ import {
 } from "@/lib/email/internal-email-alias"
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
 import { dailyLogInsertIfAbsentStatement, insertDailyLogIfAbsent } from "@/lib/domain/field/store"
+import { projectVideoImportStatement } from "@/lib/domain/media/store"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 import { projectDepartment } from "@/lib/project-branding"
@@ -610,7 +611,7 @@ async function routeVideo(input: {
     projectEmailTitle(input.candidate.subject) ||
     attachment.fileName.replace(/\.[^.]+$/, "") ||
     "Project video"
-  const videoInsert = input.db.insert(projectVideos).values({
+  const videoInsert = projectVideoImportStatement(input.db, {
     id,
     organizationId: input.organizationId,
     projectId: input.projectId,
@@ -646,8 +647,6 @@ async function routeVideo(input: {
     deletedAt: null,
     createdAt: input.now,
     updatedAt: input.now,
-  }).onConflictDoNothing({
-    target: [projectVideos.sourceSystem, projectVideos.sourceExternalId],
   })
 
   const dailyLogInsert = dailyLogInsertIfAbsentStatement(input.db, {
