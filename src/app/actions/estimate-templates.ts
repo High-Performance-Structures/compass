@@ -1,11 +1,9 @@
 "use server"
 
-import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
-import { projects, sageCostCodes } from "@/db/schema"
+import { sageCostCodes } from "@/db/schema"
 import { sageTaxEntities } from "@/db/schema-estimates"
 import {
   estimateTemplateDefaults,
@@ -15,100 +13,51 @@ import {
   projectTemplateVersions,
 } from "@/db/schema-templates"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { estimateTitleForDepartment } from "@/lib/estimates/client-report"
+import { createEstimateFromTemplate } from "@/lib/domain/templates/estimate-template-apply"
+import {
+  editableTemplateVersion,
+  findEstimateTemplate,
+  latestTemplateVersion,
+  loadEstimateTemplateEditor,
+  loadPublishedEstimateTemplateOptions,
+} from "@/lib/domain/templates/estimate-template-reads"
+import { nonNegative, requiredText } from "@/lib/domain/templates/rules"
+import {
+  deleteEstimateTemplateLines,
+  estimateTemplateDraftStatements,
+  estimateTemplateRevisionStatements,
+  insertEstimateTemplateLine,
+  updateEstimateTemplateDefaultsStatement,
+  updateEstimateTemplateLines,
+  updateTemplateModules,
+  updateTemplateModulesStatement,
+  updateTemplates,
+  updateTemplatesStatement,
+  updateTemplateVersionsStatement,
+} from "@/lib/domain/templates/store"
+import type {
+  EstimateTemplateEditor,
+  EstimateTemplateLineInput,
+  EstimateTemplateOption,
+} from "@/lib/domain/templates/types"
 import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
-import { requireOrg } from "@/lib/org-scope"
 import { can, requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
-import { projectDepartment } from "@/lib/project-branding"
-import {
-  buildEstimateTemplateApplication,
-  type EstimateTemplateSourceLine,
-} from "@/lib/templates/estimate-template-application"
+import { orgContext, type OrgContext } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
-type CompassDb = ReturnType<typeof getDb>
-
-export type EstimateTemplateOption = {
-  readonly id: string
-  readonly name: string
-  readonly description: string | null
-  readonly versionNumber: number
-  readonly lineCount: number
-  readonly requiresProjectTaxEntity: boolean
-}
-
-export type EstimateTemplateEditorLine = {
-  readonly id: string
-  readonly divisionCode: string
-  readonly divisionName: string
-  readonly costCode: string
-  readonly costCodeName: string
-  readonly description: string
-  readonly specifications: string | null
-  readonly quantity: number
-  readonly unit: string
-  readonly unitCostCents: number
-  readonly markupRateBasisPoints: number
-  readonly taxable: boolean
-  readonly taxCode: string | null
-  readonly ownerVisible: boolean
-  readonly sortOrder: number
-}
-
-export type EstimateTemplateEditor = {
-  readonly canEdit: boolean
-  readonly id: string
-  readonly name: string
-  readonly description: string | null
-  readonly lifecycleStatus: string
-  readonly reviewStatus: string
-  readonly versionId: string
-  readonly versionNumber: number
-  readonly versionStatus: string
-  readonly documentTitle: string
-  readonly contractTerms: string | null
-  readonly defaultMarkupRateBasisPoints: number
-  readonly lines: readonly EstimateTemplateEditorLine[]
-  readonly costCodes: readonly {
-    readonly value: string
-    readonly label: string
-    readonly divisionCode: string
-    readonly divisionName: string
-  }[]
-  readonly taxCodes: readonly {
-    readonly value: string
-    readonly label: string
-    readonly rateBasisPoints: number
-  }[]
-}
-
-export type EstimateTemplateLineInput = {
-  readonly costCode: string | null
-  readonly description: string | null
-  readonly specifications: string | null
-  readonly quantity: number | null
-  readonly unit: string | null
-  readonly unitCost: number | null
-  readonly markupPercent: number | null
-  readonly taxable: boolean
-  readonly taxCode: string | null
-  readonly ownerVisible: boolean
-}
+export type {
+  EstimateTemplateEditor,
+  EstimateTemplateEditorLine,
+  EstimateTemplateLineInput,
+  EstimateTemplateOption,
+} from "@/lib/domain/templates/types"
 
 type ActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
-
-type TemplateAccess = {
-  readonly db: CompassDb
-  readonly env: CloudflareEnv
-  readonly organizationId: string
-  readonly user: Awaited<ReturnType<typeof requireAuth>>
-}
 
 function ensureInternal(role: string): void {
   if (!isInternalStaffRole(role)) {
@@ -116,70 +65,21 @@ function ensureInternal(role: string): void {
   }
 }
 
-function cleanText(value: string | null): string | null {
-  const cleaned = value?.trim() ?? ""
-  return cleaned.length > 0 ? cleaned : null
-}
-
-function requiredText(value: string | null, label: string): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required.`)
-  return cleaned
-}
-
-function nonNegative(value: number | null, fallback: number): number {
-  const resolved = value ?? fallback
-  if (!Number.isFinite(resolved) || resolved < 0) {
-    throw new Error("Quantity, cost, and markup cannot be negative.")
-  }
-  return resolved
-}
-
-async function templateAccess(
-  action: "read" | "update"
-): Promise<TemplateAccess> {
-  const user = await requireAuth()
+/**
+ * The shared org context plus the rules this area always had: budget
+ * permission, internal staff only, and no demo-user writes. Failures are
+ * thrown with the same messages for the callers' catch blocks.
+ */
+async function templateAccess(action: "read" | "update"): Promise<OrgContext> {
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  const { user } = context.data
   requirePermission(user, "budget", action)
   ensureInternal(user.role)
   if (action === "update" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  return { db: getDb(env.DB), env, organizationId, user }
-}
-
-async function editableTemplateVersion(
-  access: TemplateAccess,
-  templateId: string
-): Promise<{
-  readonly template: typeof projectTemplates.$inferSelect
-  readonly version: typeof projectTemplateVersions.$inferSelect
-}> {
-  const template = await access.db
-    .select()
-    .from(projectTemplates)
-    .where(
-      and(
-        eq(projectTemplates.id, templateId),
-        eq(projectTemplates.organizationId, access.organizationId),
-        eq(projectTemplates.templateKind, "estimate")
-      )
-    )
-    .get()
-  if (!template) throw new Error("Estimate template not found.")
-  const version = await access.db
-    .select()
-    .from(projectTemplateVersions)
-    .where(eq(projectTemplateVersions.templateId, template.id))
-    .orderBy(desc(projectTemplateVersions.versionNumber))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-  if (!version) throw new Error("Estimate template version not found.")
-  if (version.status !== "draft") {
-    throw new Error("Create a new revision before editing this published template.")
-  }
-  return { template, version }
+  return context.data
 }
 
 function revalidateTemplates(templateId?: string): void {
@@ -191,180 +91,19 @@ export async function getPublishedEstimateTemplateOptions(): Promise<
   readonly EstimateTemplateOption[]
 > {
   const access = await templateAccess("read")
-  const templates = await access.db
-    .select()
-    .from(projectTemplates)
-    .where(
-      and(
-        eq(projectTemplates.organizationId, access.organizationId),
-        eq(projectTemplates.templateKind, "estimate"),
-        eq(projectTemplates.lifecycleStatus, "active"),
-        eq(projectTemplates.reviewStatus, "verified")
-      )
-    )
-    .orderBy(asc(projectTemplates.name))
-  const versionNumbers = templates.flatMap((template) =>
-    template.currentVersionNumber === null
-      ? []
-      : [{ templateId: template.id, versionNumber: template.currentVersionNumber }]
-  )
-  if (versionNumbers.length === 0) return []
-  const versions = await access.db
-    .select()
-    .from(projectTemplateVersions)
-    .where(
-      inArray(
-        projectTemplateVersions.templateId,
-        versionNumbers.map((item) => item.templateId)
-      )
-    )
-  const published = versions.filter((version) =>
-    versionNumbers.some(
-      (item) =>
-        item.templateId === version.templateId &&
-        item.versionNumber === version.versionNumber &&
-        version.status === "published"
-    )
-  )
-  const lines = published.length
-    ? await access.db
-        .select({
-          versionId: estimateTemplateLines.versionId,
-          taxable: estimateTemplateLines.taxable,
-          taxCode: estimateTemplateLines.taxCode,
-        })
-        .from(estimateTemplateLines)
-        .where(
-          inArray(
-            estimateTemplateLines.versionId,
-            published.map((version) => version.id)
-          )
-        )
-    : []
-
-  return templates.flatMap((template) => {
-    const version = published.find(
-      (candidate) => candidate.templateId === template.id
-    )
-    if (!version) return []
-    return [
-      {
-        id: template.id,
-        name: template.name,
-        description: template.description,
-        versionNumber: version.versionNumber,
-        lineCount: lines.filter((line) => line.versionId === version.id).length,
-        requiresProjectTaxEntity: lines.some(
-          (line) =>
-            line.versionId === version.id && line.taxable && !line.taxCode
-        ),
-      },
-    ]
-  })
+  return loadPublishedEstimateTemplateOptions(access.db, access.organizationId)
 }
 
 export async function getEstimateTemplateEditor(
   templateId: string
 ): Promise<EstimateTemplateEditor | null> {
   const access = await templateAccess("read")
-  const template = await access.db
-    .select()
-    .from(projectTemplates)
-    .where(
-      and(
-        eq(projectTemplates.id, templateId),
-        eq(projectTemplates.organizationId, access.organizationId),
-        eq(projectTemplates.templateKind, "estimate")
-      )
-    )
-    .get()
-  if (!template) return null
-  const version = await access.db
-    .select()
-    .from(projectTemplateVersions)
-    .where(eq(projectTemplateVersions.templateId, template.id))
-    .orderBy(desc(projectTemplateVersions.versionNumber))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-  if (!version) return null
-
-  const [defaults, lines, costCodes, taxCodes] = await Promise.all([
-    access.db
-      .select()
-      .from(estimateTemplateDefaults)
-      .where(eq(estimateTemplateDefaults.versionId, version.id))
-      .get(),
-    access.db
-      .select()
-      .from(estimateTemplateLines)
-      .where(eq(estimateTemplateLines.versionId, version.id))
-      .orderBy(
-        asc(estimateTemplateLines.divisionCode),
-        asc(estimateTemplateLines.sortOrder)
-      ),
-    access.db
-      .select()
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
-    access.db
-      .select()
-      .from(sageTaxEntities)
-      .where(eq(sageTaxEntities.active, true))
-      .orderBy(asc(sageTaxEntities.name)),
-  ])
-  if (!defaults) return null
-
-  return {
-    canEdit: can(access.user, "budget", "update"),
-    id: template.id,
-    name: template.name,
-    description: template.description,
-    lifecycleStatus: template.lifecycleStatus,
-    reviewStatus: template.reviewStatus,
-    versionId: version.id,
-    versionNumber: version.versionNumber,
-    versionStatus: version.status,
-    documentTitle: defaults.documentTitle,
-    contractTerms: defaults.contractTerms,
-    defaultMarkupRateBasisPoints: defaults.defaultMarkupRateBasisPoints,
-    lines: lines.map((line) => ({
-      id: line.id,
-      divisionCode: line.divisionCode,
-      divisionName: line.divisionName,
-      costCode: line.costCode,
-      costCodeName: line.costCodeName,
-      description: line.description,
-      specifications: line.specifications,
-      quantity: line.quantity,
-      unit: line.unit,
-      unitCostCents: line.unitCostCents,
-      markupRateBasisPoints: line.markupRateBasisPoints,
-      taxable: line.taxable,
-      taxCode: line.taxCode,
-      ownerVisible: line.ownerVisible,
-      sortOrder: line.sortOrder,
-    })),
-    costCodes: [
-      ...costCodes.map((costCode) => ({
-        value: costCode.code,
-        label: costCode.displayLabel,
-        divisionCode: costCode.divisionCode,
-        divisionName: costCode.divisionDescription,
-      })),
-      ...CONTRACT_ADJUSTMENT_COST_CODES.map((costCode) => ({
-        value: costCode.value,
-        label: `${costCode.value} · ${costCode.description}`,
-        divisionCode: "99",
-        divisionName: "Contract Adjustments",
-      })),
-    ],
-    taxCodes: taxCodes.map((taxCode) => ({
-      value: taxCode.code,
-      label: `${taxCode.code} · ${taxCode.name}`,
-      rateBasisPoints: taxCode.rateBasisPoints,
-    })),
-  }
+  return loadEstimateTemplateEditor(
+    access.db,
+    access.organizationId,
+    templateId,
+    can(access.user, "budget", "update")
+  )
 }
 
 export async function createEstimateTemplateDraft(input: {
@@ -376,40 +115,18 @@ export async function createEstimateTemplateDraft(input: {
     const id = crypto.randomUUID()
     const versionId = crypto.randomUUID()
     const now = new Date().toISOString()
-    const results = await access.env.DB.batch([
-      access.env.DB.prepare(
-        `INSERT INTO project_templates (
-          id, organization_id, source_system, source_key, name, description,
-          template_kind, trade_category, lifecycle_status,
-          review_status, current_version_number, created_by, created_at, updated_at
-        ) VALUES (?, ?, 'compass', ?, ?, ?, 'estimate', 'Estimating',
-          'draft', 'content_captured', 1, ?, ?, ?)`
-      ).bind(
+    const results = await access.env.DB.batch(
+      estimateTemplateDraftStatements(access.env.DB, {
         id,
-        access.organizationId,
-        `compass:${id}`,
-        requiredText(input.name, "Template name"),
-        cleanText(input.description),
-        access.user.id,
+        versionId,
+        moduleId: crypto.randomUUID(),
+        organizationId: access.organizationId,
+        name: requiredText(input.name, "Template name"),
+        description: cleanText(input.description),
+        createdBy: access.user.id,
         now,
-        now
-      ),
-      access.env.DB.prepare(
-        `INSERT INTO project_template_versions (
-          id, template_id, version_number, status, notes, created_by, created_at
-        ) VALUES (?, ?, 1, 'draft', 'Created in Compass', ?, ?)`
-      ).bind(versionId, id, access.user.id, now),
-      access.env.DB.prepare(
-        `INSERT INTO project_template_modules (
-          id, version_id, module_type, source_item_count, normalization_status
-        ) VALUES (?, ?, 'estimate', 0, 'draft')`
-      ).bind(crypto.randomUUID(), versionId),
-      access.env.DB.prepare(
-        `INSERT INTO estimate_template_defaults (
-          version_id, document_title, default_markup_rate_basis_points
-        ) VALUES (?, 'CA22 Construction Estimate', 0)`
-      ).bind(versionId),
-    ])
+      })
+    )
     if (results.some((result) => !result.success)) {
       throw new Error("Estimate template creation failed.")
     }
@@ -436,26 +153,20 @@ export async function updateEstimateTemplateDraft(input: {
 }): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
-    const { version } = await editableTemplateVersion(access, input.templateId)
+    const { version } = await editableTemplateVersion(access.db, access.organizationId, input.templateId)
     const markupPercent = nonNegative(input.defaultMarkupPercent, 0)
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db
-        .update(projectTemplates)
-        .set({
-          name: requiredText(input.name, "Template name"),
-          description: cleanText(input.description),
-          updatedAt: now,
-        })
-        .where(eq(projectTemplates.id, input.templateId)),
-      access.db
-        .update(estimateTemplateDefaults)
-        .set({
-          documentTitle: requiredText(input.documentTitle, "Document title"),
-          contractTerms: cleanText(input.contractTerms),
-          defaultMarkupRateBasisPoints: Math.round(markupPercent * 100),
-        })
-        .where(eq(estimateTemplateDefaults.versionId, version.id)),
+      updateTemplatesStatement(access.db, eq(projectTemplates.id, input.templateId), {
+        name: requiredText(input.name, "Template name"),
+        description: cleanText(input.description),
+        updatedAt: now,
+      }),
+      updateEstimateTemplateDefaultsStatement(access.db, eq(estimateTemplateDefaults.versionId, version.id), {
+        documentTitle: requiredText(input.documentTitle, "Document title"),
+        contractTerms: cleanText(input.contractTerms),
+        defaultMarkupRateBasisPoints: Math.round(markupPercent * 100),
+      }),
     ])
     revalidateTemplates(input.templateId)
     return { success: true, id: input.templateId }
@@ -477,7 +188,7 @@ export async function saveEstimateTemplateLine(
 ): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
-    const { version } = await editableTemplateVersion(access, templateId)
+    const { version } = await editableTemplateVersion(access.db, access.organizationId, templateId)
     const costCode = requiredText(input.costCode, "Cost code")
     const adjustment = CONTRACT_ADJUSTMENT_COST_CODES.find(
       (candidate) => candidate.value === costCode
@@ -558,30 +269,23 @@ export async function saveEstimateTemplateLine(
       sortOrder: existing?.sortOrder ?? (last?.sortOrder ?? -1) + 1,
     }
     if (existing) {
-      await access.db
-        .update(estimateTemplateLines)
-        .set(values)
-        .where(eq(estimateTemplateLines.id, existing.id))
+      await updateEstimateTemplateLines(access.db, eq(estimateTemplateLines.id, existing.id), values)
     } else {
-      await access.db.insert(estimateTemplateLines).values({ id, ...values })
+      await insertEstimateTemplateLine(access.db, { id, ...values })
     }
     const count = await access.db
       .select({ id: estimateTemplateLines.id })
       .from(estimateTemplateLines)
       .where(eq(estimateTemplateLines.versionId, version.id))
-    await access.db
-      .update(projectTemplateModules)
-      .set({ sourceItemCount: count.length, normalizationStatus: "draft" })
-      .where(
-        and(
-          eq(projectTemplateModules.versionId, version.id),
-          eq(projectTemplateModules.moduleType, "estimate")
-        )
-      )
-    await access.db
-      .update(projectTemplates)
-      .set({ updatedAt: now })
-      .where(eq(projectTemplates.id, templateId))
+    await updateTemplateModules(
+      access.db,
+      and(
+        eq(projectTemplateModules.versionId, version.id),
+        eq(projectTemplateModules.moduleType, "estimate")
+      ),
+      { sourceItemCount: count.length, normalizationStatus: "draft" }
+    )
+    await updateTemplates(access.db, eq(projectTemplates.id, templateId), { updatedAt: now })
     revalidateTemplates(templateId)
     return { success: true, id }
   } catch (error) {
@@ -601,28 +305,26 @@ export async function deleteEstimateTemplateLine(
 ): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
-    const { version } = await editableTemplateVersion(access, templateId)
-    await access.db
-      .delete(estimateTemplateLines)
-      .where(
-        and(
-          eq(estimateTemplateLines.id, lineId),
-          eq(estimateTemplateLines.versionId, version.id)
-        )
+    const { version } = await editableTemplateVersion(access.db, access.organizationId, templateId)
+    await deleteEstimateTemplateLines(
+      access.db,
+      and(
+        eq(estimateTemplateLines.id, lineId),
+        eq(estimateTemplateLines.versionId, version.id)
       )
+    )
     const count = await access.db
       .select({ id: estimateTemplateLines.id })
       .from(estimateTemplateLines)
       .where(eq(estimateTemplateLines.versionId, version.id))
-    await access.db
-      .update(projectTemplateModules)
-      .set({ sourceItemCount: count.length })
-      .where(
-        and(
-          eq(projectTemplateModules.versionId, version.id),
-          eq(projectTemplateModules.moduleType, "estimate")
-        )
-      )
+    await updateTemplateModules(
+      access.db,
+      and(
+        eq(projectTemplateModules.versionId, version.id),
+        eq(projectTemplateModules.moduleType, "estimate")
+      ),
+      { sourceItemCount: count.length }
+    )
     revalidateTemplates(templateId)
     return { success: true, id: lineId }
   } catch (error) {
@@ -641,7 +343,7 @@ export async function publishEstimateTemplate(
 ): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
-    const { version } = await editableTemplateVersion(access, templateId)
+    const { version } = await editableTemplateVersion(access.db, access.organizationId, templateId)
     const lines = await access.db
       .select()
       .from(estimateTemplateLines)
@@ -704,31 +406,23 @@ export async function publishEstimateTemplate(
     }
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db
-        .update(projectTemplateVersions)
-        .set({ status: "published" })
-        .where(eq(projectTemplateVersions.id, version.id)),
-      access.db
-        .update(projectTemplateModules)
-        .set({
-          sourceItemCount: lines.length,
-          normalizationStatus: "published",
-        })
-        .where(
-          and(
-            eq(projectTemplateModules.versionId, version.id),
-            eq(projectTemplateModules.moduleType, "estimate")
-          )
+      updateTemplateVersionsStatement(access.db, eq(projectTemplateVersions.id, version.id), {
+        status: "published",
+      }),
+      updateTemplateModulesStatement(
+        access.db,
+        and(
+          eq(projectTemplateModules.versionId, version.id),
+          eq(projectTemplateModules.moduleType, "estimate")
         ),
-      access.db
-        .update(projectTemplates)
-        .set({
-          lifecycleStatus: "active",
-          reviewStatus: "verified",
-          currentVersionNumber: version.versionNumber,
-          updatedAt: now,
-        })
-        .where(eq(projectTemplates.id, templateId)),
+        { sourceItemCount: lines.length, normalizationStatus: "published" }
+      ),
+      updateTemplatesStatement(access.db, eq(projectTemplates.id, templateId), {
+        lifecycleStatus: "active",
+        reviewStatus: "verified",
+        currentVersionNumber: version.versionNumber,
+        updatedAt: now,
+      }),
     ])
     revalidateTemplates(templateId)
     return { success: true, id: templateId }
@@ -748,25 +442,9 @@ export async function createEstimateTemplateRevision(
 ): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
-    const template = await access.db
-      .select()
-      .from(projectTemplates)
-      .where(
-        and(
-          eq(projectTemplates.id, templateId),
-          eq(projectTemplates.organizationId, access.organizationId),
-          eq(projectTemplates.templateKind, "estimate")
-        )
-      )
-      .get()
+    const template = await findEstimateTemplate(access.db, access.organizationId, templateId)
     if (!template) throw new Error("Estimate template not found.")
-    const latest = await access.db
-      .select()
-      .from(projectTemplateVersions)
-      .where(eq(projectTemplateVersions.templateId, templateId))
-      .orderBy(desc(projectTemplateVersions.versionNumber))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
+    const latest = await latestTemplateVersion(access.db, templateId)
     if (!latest) throw new Error("Estimate template version not found.")
     if (latest.status === "draft") {
       throw new Error("This template already has an editable draft revision.")
@@ -785,67 +463,20 @@ export async function createEstimateTemplateRevision(
     if (!defaults) throw new Error("Estimate template defaults are missing.")
     const versionId = crypto.randomUUID()
     const now = new Date().toISOString()
-    const statements: D1PreparedStatement[] = [
-      access.env.DB.prepare(
-        `INSERT INTO project_template_versions (
-          id, template_id, version_number, status, notes, created_by, created_at
-        ) VALUES (?, ?, ?, 'draft', ?, ?, ?)`
-      ).bind(
-        versionId,
+    const moduleId = crypto.randomUUID()
+    const results = await access.env.DB.batch(
+      estimateTemplateRevisionStatements(access.env.DB, {
         templateId,
-        latest.versionNumber + 1,
-        `Revision of version ${latest.versionNumber}`,
-        access.user.id,
-        now
-      ),
-      access.env.DB.prepare(
-        `INSERT INTO project_template_modules (
-          id, version_id, module_type, source_item_count, normalization_status
-        ) VALUES (?, ?, 'estimate', ?, 'draft')`
-      ).bind(crypto.randomUUID(), versionId, lines.length),
-      access.env.DB.prepare(
-        `INSERT INTO estimate_template_defaults (
-          version_id, document_title, contract_terms,
-          default_markup_rate_basis_points
-        ) VALUES (?, ?, ?, ?)`
-      ).bind(
         versionId,
-        defaults.documentTitle,
-        defaults.contractTerms,
-        defaults.defaultMarkupRateBasisPoints
-      ),
-    ]
-    for (const line of lines) {
-      statements.push(
-        access.env.DB.prepare(
-          `INSERT INTO estimate_template_lines (
-            id, version_id, item_key, division_code, division_name, cost_code,
-            cost_code_name, description, specifications, quantity, unit,
-            unit_cost_cents, markup_rate_basis_points, taxable, tax_code,
-            owner_visible, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          crypto.randomUUID(),
-          versionId,
-          line.itemKey,
-          line.divisionCode,
-          line.divisionName,
-          line.costCode,
-          line.costCodeName,
-          line.description,
-          line.specifications,
-          line.quantity,
-          line.unit,
-          line.unitCostCents,
-          line.markupRateBasisPoints,
-          line.taxable ? 1 : 0,
-          line.taxCode,
-          line.ownerVisible ? 1 : 0,
-          line.sortOrder
-        )
-      )
-    }
-    const results = await access.env.DB.batch(statements)
+        moduleId,
+        versionNumber: latest.versionNumber + 1,
+        notes: `Revision of version ${latest.versionNumber}`,
+        createdBy: access.user.id,
+        now,
+        defaults,
+        lines: lines.map((line) => ({ ...line, id: crypto.randomUUID() })),
+      })
+    )
     if (results.some((result) => !result.success)) {
       throw new Error("Estimate template revision creation failed.")
     }
@@ -870,237 +501,15 @@ export async function createProjectEstimateFromTemplate(input: {
   try {
     const access = await templateAccess("update")
     await assertProjectAccess(access.db, access.user, input.projectId)
-    const project = await access.db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        organizationId: projects.organizationId,
-      })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, input.projectId),
-          eq(projects.organizationId, access.organizationId)
-        )
-      )
-      .get()
-    if (!project) throw new Error("Project not found or access denied.")
-    const template = await access.db
-      .select()
-      .from(projectTemplates)
-      .where(
-        and(
-          eq(projectTemplates.id, input.templateId),
-          eq(projectTemplates.organizationId, access.organizationId),
-          eq(projectTemplates.templateKind, "estimate"),
-          eq(projectTemplates.lifecycleStatus, "active"),
-          eq(projectTemplates.reviewStatus, "verified")
-        )
-      )
-      .get()
-    if (!template || template.currentVersionNumber === null) {
-      throw new Error("Choose a published estimate template.")
-    }
-    const version = await access.db
-      .select()
-      .from(projectTemplateVersions)
-      .where(
-        and(
-          eq(projectTemplateVersions.templateId, template.id),
-          eq(
-            projectTemplateVersions.versionNumber,
-            template.currentVersionNumber
-          ),
-          eq(projectTemplateVersions.status, "published")
-        )
-      )
-      .get()
-    if (!version) throw new Error("The estimate template is not published.")
-    const [defaults, sourceLines, taxEntities] =
-      await Promise.all([
-        access.db
-          .select()
-          .from(estimateTemplateDefaults)
-          .where(eq(estimateTemplateDefaults.versionId, version.id))
-          .get(),
-        access.db
-          .select()
-          .from(estimateTemplateLines)
-          .where(eq(estimateTemplateLines.versionId, version.id))
-          .orderBy(
-            asc(estimateTemplateLines.divisionCode),
-            asc(estimateTemplateLines.sortOrder)
-          ),
-        access.db
-          .select()
-          .from(sageTaxEntities)
-          .where(eq(sageTaxEntities.active, true)),
-      ])
-    if (!defaults) throw new Error("The estimate template defaults are missing.")
-    const defaultTax = cleanText(input.defaultTaxEntityId)
-      ? taxEntities.find((tax) => tax.id === input.defaultTaxEntityId) ?? null
-      : null
-    if (input.defaultTaxEntityId && !defaultTax) {
-      throw new Error("Choose an active Sage tax entity.")
-    }
-    const application = buildEstimateTemplateApplication({
-      lines: sourceLines.map(
-        (line): EstimateTemplateSourceLine => ({
-          id: line.id,
-          divisionCode: line.divisionCode,
-          divisionName: line.divisionName,
-          costCode: line.costCode,
-          costCodeName: line.costCodeName,
-          description: line.description,
-          specifications: line.specifications,
-          quantity: line.quantity,
-          unit: line.unit,
-          unitCostCents: line.unitCostCents,
-          markupRateBasisPoints: line.markupRateBasisPoints,
-          taxable: line.taxable,
-          taxCode: line.taxCode,
-          ownerVisible: line.ownerVisible,
-          sortOrder: line.sortOrder,
-        })
-      ),
-      taxEntities: taxEntities.map((tax) => ({
-        id: tax.id,
-        code: tax.code,
-        name: tax.name,
-        rateBasisPoints: tax.rateBasisPoints,
-      })),
-      defaultTaxEntityId: defaultTax?.id ?? null,
-    })
-    if (!application.success) throw new Error(application.error)
-
-    const estimateId = crypto.randomUUID()
-    const applicationId = crypto.randomUUID()
-    const now = new Date().toISOString()
-    const estimateDate = now.slice(0, 10)
-    const department = projectDepartment({
-      projectId: project.id,
-      projectNumber: project.projectNumber,
-    })
-    // A department with several estimates per job starts a new estimate
-    // number; otherwise this is the job's next version.
-    const numbering = await numberNewEstimate(access.db, {
-      projectId: input.projectId,
-      projectNumber: project.projectNumber,
-      mode: await readEstimateMode(access.db, access.organizationId, department),
-    })
-    const estimateVersion = numbering.versionNumber
-    const documentTitle = estimateTitleForDepartment({
-      department,
-      requestedTitle: defaults.documentTitle,
-    })
-    const statements: D1PreparedStatement[] = [
-      access.env.DB.prepare(
-        `INSERT INTO project_template_applications (
-          id, organization_id, project_id, template_id, version_id,
-          anchor_date, status, applied_by, item_count, dependency_count,
-          options_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'applying', ?, ?, 0, ?, ?)`
-      ).bind(
-        applicationId,
-        access.organizationId,
-        input.projectId,
-        template.id,
-        version.id,
-        estimateDate,
-        access.user.id,
-        application.data.lines.length,
-        JSON.stringify({ moduleType: "estimate" }),
-        now
-      ),
-      access.env.DB.prepare(
-        `INSERT INTO project_estimates (
-          id, project_id, estimate_number, version_number, title, status,
-          estimate_date, source_system, source_revision, template_version_id,
-          template_application_id, default_tax_entity_id, default_tax_code,
-          default_tax_name, default_tax_rate_basis_points, contract_terms,
-          direct_cost_cents, markup_cents, tax_cents,
-          builder_fee_base_cents, estimate_total_cents,
-          created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'draft', ?, 'compass_template', ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        estimateId,
-        input.projectId,
-        numbering.estimateNumber,
-        estimateVersion,
-        documentTitle,
-        estimateDate,
-        `${template.name} v${version.versionNumber}`,
-        version.id,
-        applicationId,
-        defaultTax?.id ?? null,
-        defaultTax?.code ?? null,
-        defaultTax?.name ?? null,
-        defaultTax?.rateBasisPoints ?? 0,
-        defaults.contractTerms,
-        application.data.totals.directCostCents,
-        application.data.totals.markupCents,
-        application.data.totals.taxCents,
-        application.data.totals.builderFeeBaseCents,
-        application.data.totals.estimateTotalCents,
-        access.user.id,
-        now,
-        now
-      ),
-    ]
-    for (const line of application.data.lines) {
-      statements.push(
-        access.env.DB.prepare(
-          `INSERT INTO project_estimate_lines (
-            id, project_id, estimate_id, template_line_id, division_code,
-            division_name, cost_code, cost_code_name, description,
-            specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
-            markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
-            tax_code, tax_name, tax_rate_basis_points, tax_cents,
-            line_total_cents, owner_visible, sort_order, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          crypto.randomUUID(),
-          input.projectId,
-          estimateId,
-          line.templateLineId,
-          line.divisionCode,
-          line.divisionName,
-          line.costCode,
-          line.costCodeName,
-          line.description,
-          line.specifications,
-          line.quantity,
-          line.unit,
-          line.unitCostCents,
-          line.directCostCents,
-          line.markupRateBasisPoints,
-          line.markupCents,
-          line.taxable ? 1 : 0,
-          line.taxEntityId,
-          line.taxCode,
-          line.taxName,
-          line.taxRateBasisPoints,
-          line.taxCents,
-          line.lineTotalCents,
-          line.ownerVisible ? 1 : 0,
-          line.sortOrder,
-          now,
-          now
-        )
-      )
-    }
-    statements.push(
-      access.env.DB.prepare(
-        `UPDATE project_template_applications
-         SET status = 'applied', completed_at = ? WHERE id = ?`
-      ).bind(now, applicationId)
+    const created = await createEstimateFromTemplate(
+      {
+        db: access.db,
+        rawDb: access.env.DB,
+        organizationId: access.organizationId,
+        userId: access.user.id,
+      },
+      input
     )
-    const results = await access.env.DB.batch(statements)
-    if (results.some((result) => !result.success)) {
-      throw new Error("Estimate template application failed.")
-    }
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -1109,18 +518,18 @@ export async function createProjectEstimateFromTemplate(input: {
       category: "financial",
       action: "estimate.template_applied",
       entityType: "project_estimate",
-      entityId: estimateId,
-      summary: `Created an estimate from template “${template.name}”.`,
+      entityId: created.estimateId,
+      summary: `Created an estimate from template “${created.templateName}”.`,
       metadata: {
-        templateId: template.id,
-        templateVersion: version.versionNumber,
-        lineCount: application.data.lines.length,
+        templateId: created.templateId,
+        templateVersion: created.versionNumber,
+        lineCount: created.lineCount,
       },
     })
     revalidatePath(`/dashboard/projects/${input.projectId}/estimate`)
     revalidatePath(`/dashboard/projects/${input.projectId}/financials`)
-    revalidateTemplates(template.id)
-    return { success: true, id: estimateId }
+    revalidateTemplates(created.templateId)
+    return { success: true, id: created.estimateId }
   } catch (error) {
     return {
       success: false,

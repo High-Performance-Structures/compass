@@ -26,6 +26,10 @@ import {
 } from "@/lib/domain/schedule/store"
 import { loadScheduleTemplateTodos } from "@/lib/domain/schedule/template-items"
 import { templateTodoInsertStatement } from "@/lib/domain/operations/store"
+import {
+  insertAppliedScheduleItemsApplicationStatement,
+  insertTemplateApplicationItemStatement
+} from "@/lib/domain/templates/store"
 import { buildScheduleTemplateApplication } from "@/lib/templates/schedule-template-application"
 import {
   normalizeBulkScheduleTemplateOffsets,
@@ -35,10 +39,10 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 /*
- * Imports selected items of a published schedule template. The application,
- * application-item, and linked to-do rows (other modules' tables) are written
- * in the same atomic D1 batch as the schedule rows, with their SQL unchanged.
- * The linked to-dos are built by the operations store.
+ * Imports selected items of a published schedule template. The application
+ * and application-item rows (templates store) and the linked to-do rows
+ * (operations store) are written in the same atomic D1 batch as the schedule
+ * rows, with their SQL unchanged.
  */
 export async function importScheduleTemplateItems(
   projectId: string,
@@ -203,46 +207,35 @@ export async function importScheduleTemplateItems(
       })
     })
     const statements: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `INSERT INTO project_template_applications (
-          id, organization_id, project_id, template_id, version_id,
-          anchor_date, status, applied_by, item_count, dependency_count,
-          options_json, created_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'applied', ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        applicationId,
+      insertAppliedScheduleItemsApplicationStatement(env.DB, {
+        id: applicationId,
         organizationId,
         projectId,
-        templateVersion.templateId,
-        templateVersion.versionId,
-        data.anchorDate,
-        user.id,
-        build.data.tasks.length + linkedTodoRows.length,
-        build.data.dependencies.length,
-        JSON.stringify({
+        templateId: templateVersion.templateId,
+        versionId: templateVersion.versionId,
+        anchorDate: data.anchorDate,
+        appliedBy: user.id,
+        itemCount: build.data.tasks.length + linkedTodoRows.length,
+        dependencyCount: build.data.dependencies.length,
+        optionsJson: JSON.stringify({
           mode: "selected_schedule_items",
           scheduleItemCount: build.data.tasks.length,
           linkedTodoCount: linkedTodoRows.length,
           selectedTemplateItemIds: selection.data.itemIds
         }),
-        now,
         now
-      )
+      })
     ]
 
     for (const task of build.data.tasks) {
       statements.push(
         templateTaskInsertStatement(env.DB, projectId, task, now, task.notes),
-        env.DB.prepare(
-          `INSERT INTO project_template_application_items (
-            id, application_id, template_item_id, schedule_task_id
-          ) VALUES (?, ?, ?, ?)`
-        ).bind(
-          crypto.randomUUID(),
+        insertTemplateApplicationItemStatement(env.DB, {
+          id: crypto.randomUUID(),
           applicationId,
-          task.templateItemId,
-          task.id
-        )
+          templateItemId: task.templateItemId,
+          scheduleTaskId: task.id
+        })
       )
     }
     for (const dependency of build.data.dependencies) {

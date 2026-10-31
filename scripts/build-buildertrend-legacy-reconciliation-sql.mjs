@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 
-import { buildLegacyBuildertrendReconciliationSql } from "../src/lib/buildertrend/legacy-reconciliation.ts"
+import { buildLegacyBuildertrendReconciliationSql } from "../src/lib/domain/buildertrend/legacy-reconciliation.ts"
 
 const args = process.argv.slice(2)
 const organizationFlagIndex = args.indexOf("--organization-id")

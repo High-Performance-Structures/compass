@@ -1,9 +1,7 @@
 import { z } from "zod/v4"
 
-import {
-  buildBuildertrendStagingSql,
-  type BuildertrendStagingManifest,
-} from "./staging-manifest"
+import type { BuildertrendStagingManifest } from "@/lib/domain/buildertrend/rules"
+import { buildBuildertrendStagingSql } from "@/lib/domain/buildertrend/staging"
 import {
   buildBuildertrendInventoryManifest,
   isTrustedBuildertrendUrl,

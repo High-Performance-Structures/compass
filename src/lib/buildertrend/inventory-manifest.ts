@@ -3,7 +3,7 @@ import { z } from "zod/v4"
 import {
   type BuildertrendStagingManifest,
   parseBuildertrendStagingManifest,
-} from "./staging-manifest"
+} from "@/lib/domain/buildertrend/rules"
 
 const optionalText = z
   .union([z.string(), z.null()])

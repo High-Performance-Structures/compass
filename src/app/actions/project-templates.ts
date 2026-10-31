@@ -1,10 +1,8 @@
 "use server"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
 import {
   projects,
   scheduleTasks,
@@ -19,8 +17,6 @@ import {
   scheduleTemplateDependencies,
   scheduleTemplateItems,
 } from "@/db/schema-templates"
-import { requireAuth } from "@/lib/auth"
-import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -34,62 +30,35 @@ import {
   recalcCriticalPath,
   templateTaskInsertStatement,
 } from "@/lib/domain/schedule/store"
+import {
+  loadProjectTemplateContentItems,
+  loadProjectTemplateLibrary,
+  loadProjectTemplatePreview,
+} from "@/lib/domain/templates/project-template-reads"
+import { exceptionData, isIsoDate } from "@/lib/domain/templates/rules"
+import {
+  completeTemplateApplicationStatement,
+  deleteTemplates,
+  insertProjectTemplateApplicationStatement,
+  insertTemplateApplicationItemStatement,
+  publishCapturedTemplateStatements,
+  updateTemplates,
+} from "@/lib/domain/templates/store"
 import type {
-  ExceptionCategory,
-  ExceptionRecurrence,
-  WorkdayExceptionData,
-  WorkdayExceptionType,
-} from "@/lib/schedule/types"
+  ProjectTemplateContentItem,
+  ProjectTemplateLibraryItem,
+  ProjectTemplatePreview,
+} from "@/lib/domain/templates/types"
+import { orgContext, type OrgContext } from "@/lib/server/action-context"
 import { buildProjectTemplateContentApplication } from "@/lib/templates/project-template-content-application"
 import { buildScheduleTemplateApplication } from "@/lib/templates/schedule-template-application"
 import { templateBidPackageInsertStatement, templateStaffTodoInsertStatement } from "@/lib/domain/operations/store"
 
-export type ProjectTemplateLibraryItem = {
-  readonly id: string
-  readonly name: string
-  readonly description: string | null
-  readonly sourceSystem: string
-  readonly templateKind: string
-  readonly departmentCode: string | null
-  readonly tradeCategory: string | null
-  readonly lifecycleStatus: string
-  readonly reviewStatus: string
-  readonly currentVersionNumber: number | null
-  readonly currentVersionId: string | null
-  readonly currentVersionStatus: string | null
-  readonly scheduleItemCount: number
-  readonly dependencyCount: number
-  readonly modules: readonly ProjectTemplateModuleSummary[]
-}
-
-export type ProjectTemplateContentItem = {
-  readonly id: string
-  readonly moduleType: string
-  readonly sourceItemId: string | null
-  readonly parentSourceItemId: string | null
-  readonly title: string
-  readonly category: string | null
-  readonly description: string | null
-  readonly sortOrder: number
-  readonly payloadJson: string | null
-}
-
-type ProjectTemplateModuleSummary = {
-  readonly moduleType: string
-  readonly sourceItemCount: number
-  readonly normalizationStatus: string
-}
-
-export type ProjectTemplatePreview = ProjectTemplateLibraryItem & {
-  readonly scheduleItems: readonly {
-    readonly title: string
-    readonly workdays: number
-    readonly startOffsetWorkdays: number
-    readonly phase: string
-    readonly assigneePlaceholder: string | null
-  }[]
-  readonly assigneePlaceholders: readonly string[]
-}
+export type {
+  ProjectTemplateContentItem,
+  ProjectTemplateLibraryItem,
+  ProjectTemplatePreview,
+} from "@/lib/domain/templates/types"
 
 type ActionResult =
   | { readonly success: true }
@@ -101,205 +70,50 @@ function ensureInternalUser(role: string): void {
   }
 }
 
-
-function exceptionType(value: string): WorkdayExceptionType {
-  return value === "working" ? "working" : "non_working"
+/** The shared org context; a failure is thrown with its message, as before. */
+async function templateContext(): Promise<OrgContext> {
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  return context.data
 }
 
-function exceptionCategory(value: string): ExceptionCategory {
-  switch (value) {
-    case "national_holiday":
-    case "state_holiday":
-    case "vacation_day":
-    case "company_holiday":
-    case "weather_day":
-    case "extra_workday":
-      return value
-    default:
-      return "company_holiday"
-  }
-}
-
-function exceptionRecurrence(value: string): ExceptionRecurrence {
-  return value === "yearly" ? "yearly" : "one_time"
-}
-
-function exceptionData(
-  row: typeof workdayExceptions.$inferSelect
-): WorkdayExceptionData {
+async function readableLibrary(): Promise<{
+  readonly context: OrgContext
+  readonly library: readonly ProjectTemplateLibraryItem[]
+}> {
+  const context = await templateContext()
+  requirePermission(context.user, "schedule", "read")
+  ensureInternalUser(context.user.role)
   return {
-    ...row,
-    type: exceptionType(row.type),
-    category: exceptionCategory(row.category),
-    recurrence: exceptionRecurrence(row.recurrence),
+    context,
+    library: await loadProjectTemplateLibrary(context.db, context.organizationId),
   }
-}
-
-function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const parsed = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 export async function getProjectTemplateLibrary(): Promise<
   readonly ProjectTemplateLibraryItem[]
 > {
-  const user = await requireAuth()
-  requirePermission(user, "schedule", "read")
-  ensureInternalUser(user.role)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const templates = await db
-    .select()
-    .from(projectTemplates)
-    .where(eq(projectTemplates.organizationId, organizationId))
-    .orderBy(asc(projectTemplates.tradeCategory), asc(projectTemplates.name))
-  if (templates.length === 0) return []
-
-  const templateIds = templates.map((template) => template.id)
-  const versions = await db
-    .select()
-    .from(projectTemplateVersions)
-    .where(inArray(projectTemplateVersions.templateId, templateIds))
-  const versionByTemplateAndNumber = new Map(
-    versions.map((version) => [
-      `${version.templateId}:${version.versionNumber}`,
-      version,
-    ])
-  )
-  const currentVersionIds = templates.flatMap((template) => {
-    if (template.currentVersionNumber === null) return []
-    const version = versionByTemplateAndNumber.get(
-      `${template.id}:${template.currentVersionNumber}`
-    )
-    return version ? [version.id] : []
-  })
-  const items = currentVersionIds.length
-    ? await db
-        .select()
-        .from(scheduleTemplateItems)
-        .where(inArray(scheduleTemplateItems.versionId, currentVersionIds))
-    : []
-  const dependencies = currentVersionIds.length
-    ? await db
-        .select()
-        .from(scheduleTemplateDependencies)
-        .where(
-          inArray(scheduleTemplateDependencies.versionId, currentVersionIds)
-        )
-    : []
-  const modules = currentVersionIds.length
-    ? await db
-        .select()
-        .from(projectTemplateModules)
-        .where(inArray(projectTemplateModules.versionId, currentVersionIds))
-    : []
-
-  return templates.map((template): ProjectTemplateLibraryItem => {
-    const version =
-      template.currentVersionNumber === null
-        ? null
-        : versionByTemplateAndNumber.get(
-            `${template.id}:${template.currentVersionNumber}`
-          ) ?? null
-    return {
-      id: template.id,
-      name: template.name,
-      description: template.description,
-      sourceSystem: template.sourceSystem,
-      templateKind: template.templateKind,
-      departmentCode: template.departmentCode,
-      tradeCategory: template.tradeCategory,
-      lifecycleStatus: template.lifecycleStatus,
-      reviewStatus: template.reviewStatus,
-      currentVersionNumber: template.currentVersionNumber,
-      currentVersionId: version?.id ?? null,
-      currentVersionStatus: version?.status ?? null,
-      scheduleItemCount: version
-        ? items.filter((item) => item.versionId === version.id).length
-        : 0,
-      dependencyCount: version
-        ? dependencies.filter(
-            (dependency) => dependency.versionId === version.id
-          ).length
-        : 0,
-      modules: version
-        ? modules
-            .filter((module) => module.versionId === version.id)
-            .map((module) => ({
-              moduleType: module.moduleType,
-              sourceItemCount: module.sourceItemCount,
-              normalizationStatus: module.normalizationStatus,
-            }))
-        : [],
-    }
-  })
+  return (await readableLibrary()).library
 }
 
 export async function getProjectTemplateContent(
   templateId: string
 ): Promise<readonly ProjectTemplateContentItem[]> {
-  const library = await getProjectTemplateLibrary()
+  const { context, library } = await readableLibrary()
   const template = library.find((candidate) => candidate.id === templateId)
   if (!template?.currentVersionId) return []
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  return db
-    .select({
-      id: projectTemplateContentItems.id,
-      moduleType: projectTemplateContentItems.moduleType,
-      sourceItemId: projectTemplateContentItems.sourceItemId,
-      parentSourceItemId: projectTemplateContentItems.parentSourceItemId,
-      title: projectTemplateContentItems.title,
-      category: projectTemplateContentItems.category,
-      description: projectTemplateContentItems.description,
-      sortOrder: projectTemplateContentItems.sortOrder,
-      payloadJson: projectTemplateContentItems.payloadJson,
-    })
-    .from(projectTemplateContentItems)
-    .where(eq(projectTemplateContentItems.versionId, template.currentVersionId))
-    .orderBy(
-      asc(projectTemplateContentItems.moduleType),
-      asc(projectTemplateContentItems.sortOrder)
-    )
+  return loadProjectTemplateContentItems(context.db, template.currentVersionId)
 }
 
 export async function getProjectTemplatePreview(
   templateId: string
 ): Promise<ProjectTemplatePreview | null> {
-  const library = await getProjectTemplateLibrary()
+  const { context, library } = await readableLibrary()
   const template = library.find((candidate) => candidate.id === templateId)
-  if (!template?.currentVersionId) return template ? { ...template, scheduleItems: [], assigneePlaceholders: [] } : null
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const scheduleItems = await db
-    .select()
-    .from(scheduleTemplateItems)
-    .where(eq(scheduleTemplateItems.versionId, template.currentVersionId))
-    .orderBy(asc(scheduleTemplateItems.sortOrder))
-  const assigneePlaceholders = [
-    ...new Set(
-      scheduleItems.flatMap((item) =>
-        item.assigneePlaceholder ? [item.assigneePlaceholder] : []
-      )
-    ),
-  ].sort((left, right) => left.localeCompare(right))
-
-  return {
-    ...template,
-    scheduleItems: scheduleItems.map((item) => ({
-      title: item.title,
-      workdays: item.workdays,
-      startOffsetWorkdays: item.startOffsetWorkdays,
-      phase: item.phase,
-      assigneePlaceholder: item.assigneePlaceholder,
-    })),
-    assigneePlaceholders,
-  }
+  if (!template) return null
+  const { currentVersionId } = template
+  if (!currentVersionId) return { ...template, scheduleItems: [], assigneePlaceholders: [] }
+  return loadProjectTemplatePreview(context.db, { ...template, currentVersionId })
 }
 
 export async function applyProjectTemplate(input: {
@@ -320,19 +134,16 @@ export async function applyProjectTemplate(input: {
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, organizationId, db, env } = await templateContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
     ensureInternalUser(user.role)
-    const organizationId = requireOrg(user)
     if (!isIsoDate(input.anchorDate)) {
       return { success: false, error: "Choose a valid template start date." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db
       .select({ id: projects.id })
       .from(projects)
@@ -468,47 +279,37 @@ export async function applyProjectTemplate(input: {
     // Keep every project record in the same D1 batch so a malformed module
     // cannot leave a partially applied setup behind.
     const statements: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `INSERT INTO project_template_applications (
-          id, organization_id, project_id, template_id, version_id,
-          anchor_date, status, applied_by, item_count, dependency_count,
-          options_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'applying', ?, ?, ?, ?, ?)`
-      ).bind(
-        applicationId,
+      insertProjectTemplateApplicationStatement(env.DB, {
+        id: applicationId,
         organizationId,
-        input.projectId,
-        template.id,
-        version.id,
-        input.anchorDate,
-        user.id,
-        totalItemCount,
-        build.data.dependencies.length,
-        JSON.stringify({
+        projectId: input.projectId,
+        templateId: template.id,
+        versionId: version.id,
+        anchorDate: input.anchorDate,
+        appliedBy: user.id,
+        itemCount: totalItemCount,
+        dependencyCount: build.data.dependencies.length,
+        optionsJson: JSON.stringify({
           assignmentMode: "preserve_placeholders",
           scheduleItemCount: build.data.tasks.length,
           taskCount: contentBuild.todos.length,
           selectionCount: contentBuild.selections.length,
           bidPackageCount: contentBuild.bidPackages.length,
         }),
-        now
-      ),
+        now,
+      }),
     ]
 
     for (const task of build.data.tasks) {
       // Template applications have always left item notes empty.
       statements.push(templateTaskInsertStatement(env.DB, input.projectId, task, now, null))
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_template_application_items (
-            id, application_id, template_item_id, schedule_task_id
-          ) VALUES (?, ?, ?, ?)`
-        ).bind(
-          crypto.randomUUID(),
+        insertTemplateApplicationItemStatement(env.DB, {
+          id: crypto.randomUUID(),
           applicationId,
-          task.templateItemId,
-          task.id
-        )
+          templateItemId: task.templateItemId,
+          scheduleTaskId: task.id,
+        })
       )
     }
 
@@ -583,13 +384,7 @@ export async function applyProjectTemplate(input: {
         })
       )
     }
-    statements.push(
-      env.DB.prepare(
-        `UPDATE project_template_applications
-         SET status = 'applied', completed_at = ?
-         WHERE id = ?`
-      ).bind(now, applicationId)
-    )
+    statements.push(completeTemplateApplicationStatement(env.DB, applicationId, now))
 
     const results = await env.DB.batch(statements)
     if (results.some((result) => !result.success)) {
@@ -651,13 +446,10 @@ export async function publishCapturedProjectTemplate(input: {
   readonly templateId: string
 }): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
+    const { user, organizationId, db, env } = await templateContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     ensureInternalUser(user.role)
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const template = await db
       .select()
       .from(projectTemplates)
@@ -741,20 +533,14 @@ export async function publishCapturedProjectTemplate(input: {
     }
 
     const now = new Date().toISOString()
-    const results = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE project_template_versions SET status='published', notes=? ` +
-          `WHERE id=? AND status='draft'`
-      ).bind(
-        "Captured content reviewed in Compass and published by internal staff.",
-        version.id
-      ),
-      env.DB.prepare(
-        `UPDATE project_templates SET lifecycle_status='active', ` +
-          `review_status='verified', updated_at=? ` +
-          `WHERE id=? AND organization_id=? AND review_status='content_captured'`
-      ).bind(now, template.id, organizationId),
-    ])
+    const results = await env.DB.batch(
+      publishCapturedTemplateStatements(env.DB, {
+        templateId: template.id,
+        versionId: version.id,
+        organizationId,
+        now,
+      })
+    )
     if (results.some((result) => !result.success)) {
       return { success: false, error: "Unable to publish the reviewed template." }
     }
@@ -791,18 +577,15 @@ export async function updateProjectTemplateCategory(input: {
   readonly category: string
 }): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
+    const { user, organizationId, db } = await templateContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     ensureInternalUser(user.role)
-    const organizationId = requireOrg(user)
     const category = input.category.trim()
     if (!category || category.length > 80) {
       return { success: false, error: "Choose a valid template category." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const template = await db
       .select({ id: projectTemplates.id })
       .from(projectTemplates)
@@ -815,13 +598,10 @@ export async function updateProjectTemplateCategory(input: {
       .get()
     if (!template) return { success: false, error: "Template not found." }
 
-    await db
-      .update(projectTemplates)
-      .set({
-        tradeCategory: category,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(projectTemplates.id, template.id))
+    await updateTemplates(db, eq(projectTemplates.id, template.id), {
+      tradeCategory: category,
+      updatedAt: new Date().toISOString(),
+    })
     revalidatePath("/dashboard/templates")
     revalidatePath(`/dashboard/templates/${template.id}`)
     return { success: true }
@@ -835,13 +615,10 @@ export async function deleteProjectTemplate(input: {
   readonly templateId: string
 }): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
+    const { user, organizationId, db } = await templateContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     ensureInternalUser(user.role)
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const template = await db
       .select({ id: projectTemplates.id, name: projectTemplates.name })
       .from(projectTemplates)
@@ -868,7 +645,7 @@ export async function deleteProjectTemplate(input: {
       }
     }
 
-    await db.delete(projectTemplates).where(eq(projectTemplates.id, template.id))
+    await deleteTemplates(db, eq(projectTemplates.id, template.id))
     await recordActivityEvent({
       db,
       organizationId,
