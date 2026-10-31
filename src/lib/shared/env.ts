@@ -2,9 +2,8 @@ import { cleanText, field } from "@/lib/shared/guards"
 
 /**
  * Reads a configured string from the Worker environment, then from
- * process.env (local development and tests). Use this instead of
- * `env as unknown as Record<string, string>` (architecture standard,
- * section 4).
+ * process.env (local development and tests). Use this instead of casting
+ * the Worker env to a string record (architecture standard, section 4).
  */
 export function envString(env: unknown, key: string): string | null {
   return cleanText(field(env, key)) ?? cleanText(process.env[key])
