@@ -97,7 +97,7 @@ export type ProjectTemplateContentItem = {
   readonly payloadJson: string | null
 }
 
-export type ProjectTemplateModuleSummary = {
+type ProjectTemplateModuleSummary = {
   readonly moduleType: string
   readonly sourceItemCount: number
   readonly normalizationStatus: string
