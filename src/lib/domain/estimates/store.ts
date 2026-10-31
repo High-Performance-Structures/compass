@@ -445,3 +445,9 @@ export async function deleteChangeOrderHistory(db: Db, where: SQL | undefined): 
 function isRows<T>(values: T | readonly T[]): values is readonly T[] {
   return Array.isArray(values)
 }
+
+// ==== Named operations: estimates (workspace, drafts, imports, lines, acceptance)
+
+// ==== Named operations: change orders and phase proposals
+
+// ==== Named operations: assemblies, copies, report phases, contract packets, e-sign
