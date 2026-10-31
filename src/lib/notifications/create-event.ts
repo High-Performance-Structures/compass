@@ -36,6 +36,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
 import { isRecord } from "@/lib/shared/guards"
 import { envString } from "@/lib/shared/env"
+import { notificationSourceHref } from "@/lib/notifications/source-href"
 import {
   isConversationSmsEligibleChannel,
   isProjectActivitySmsEvent,
@@ -586,9 +587,8 @@ async function hasExistingSmsDeliveryForSource(
     .then((rows) => rows.length > 0)
 }
 
-async function persistNotificationEvent(
-  input: CreateNotificationInput
-): Promise<void> {
+async function persistNotificationEvent(rawInput: CreateNotificationInput): Promise<void> {
+  const input = { ...rawInput, href: notificationSourceHref(rawInput) }
   const requestedRecipientIds = Array.from(
     new Set(input.recipients.map((recipient) => recipient.userId))
   )
