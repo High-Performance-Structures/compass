@@ -42,9 +42,10 @@ import { projectContext, type ProjectContext } from "@/lib/server/action-context
  * Staff record a payment received from a customer against a billed pay
  * application or invoice, and may split it across that customer's other open
  * items on the same project. Voiding (with a reason) releases what it applied.
- * Compass never posts these receipts to Sage: the receipt is entered in Sage
- * by accounting, and only Square card payments reach Sage through the Square
- * bridge's own approval-gated flow.
+ * Compass never posts these receipts to Sage: accounting enters each receipt
+ * in Sage by hand. Payments read from Sage (Square card receipts) are already
+ * there. Imported Sage/Drive draws take payments here too (rules.ts
+ * `drawPaymentTarget`); recording one changes nothing in Sage.
  */
 
 const FEATURE = "financials"
@@ -143,8 +144,10 @@ async function customerItems(
   select: { readonly focus: ReceivableFocus } | { readonly customerId: string | null },
 ): Promise<{ readonly customerId: string | null; readonly customerName: string | null; readonly items: readonly ReceivableRow[] } | null> {
   const scope = { organizationId: context.organizationId, projectId }
-  const [client, all] = await Promise.all([readProjectClient(context.db, scope), readProjectReceivables(context.db, scope)])
+  const [client, listed] = await Promise.all([readProjectClient(context.db, scope), readProjectReceivables(context.db, scope)])
   if (!client) return null
+  // Imported draws without a usable billed amount are listed for staff but never take payments.
+  const all = listed.filter((item) => item.paymentBlocker === null)
   let customerId: string | null
   if ("focus" in select) {
     const focused = all.find((item) => item.kind === select.focus.kind && item.id === select.focus.id)

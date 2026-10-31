@@ -16,6 +16,11 @@ import {
   projectContractBudgetLines,
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
+import {
+  BUDGET_PROJECTION_SOURCE,
+  COMPASS_DRAW_SOURCE,
+  IMPORTED_DRAW_UNBILLED_STATUSES,
+} from "@/lib/domain/financials/rules"
 import type { Db } from "@/lib/server/action-context"
 
 /**
@@ -295,6 +300,23 @@ const PAYMENT_GUARD = `(SELECT COUNT(*) FROM payments WHERE id = ? AND voided_at
      + COALESCE((SELECT SUM(allocation_cents) FROM invoice_payment_allocations
                  WHERE payment_id = ? AND released_at IS NULL), 0)) = ?`
 
+const SQL_LIST = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(", ")
+
+/**
+ * The draw can take payments (same rule as rules.ts `drawPaymentTarget`): a
+ * billed Compass draw, or an imported Sage/Drive draw that is not a draft,
+ * budget view or void and has a positive current payment due. The applied
+ * total must also stay within the draw's billed amount. Binds: application
+ * id, project id, expected paid cents, allocation cents.
+ */
+const PAYABLE_DRAW_GUARD = `(SELECT COUNT(*) FROM project_budget_applications
+    WHERE id = ? AND project_id = ?
+      AND ((source_system = '${COMPASS_DRAW_SOURCE}' AND status = 'billed')
+        OR (source_system NOT IN (${SQL_LIST([COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE])})
+          AND status NOT IN (${SQL_LIST(IMPORTED_DRAW_UNBILLED_STATUSES)})
+          AND current_payment_due > 0))
+      AND CAST(ROUND(current_payment_due * 100) AS INTEGER) >= ? + ?) = 1`
+
 const INVOICE_PAID_CENTS = `(SELECT CAST(ROUND(amount_paid * 100) AS INTEGER) FROM invoices
   WHERE id = ? AND organization_id = ? AND project_id = ?)`
 
@@ -353,15 +375,15 @@ function allocationStatements(
         .prepare(`INSERT INTO pay_application_payment_allocations (
             id, organization_id, project_id, application_id, payment_id, allocation_cents, created_by, created_at
           ) SELECT ?, ?, ?, ?, ?, CASE WHEN
-              (SELECT COUNT(*) FROM project_budget_applications
-                WHERE id = ? AND project_id = ? AND source_system = 'compass_contract_budget' AND status = 'billed') = 1
+              ${PAYABLE_DRAW_GUARD}
               AND COALESCE((SELECT SUM(allocation_cents) FROM pay_application_payment_allocations
                 WHERE application_id = ? AND released_at IS NULL), 0) = ?
               AND ${PAYMENT_GUARD}
             THEN ? ELSE 0 END, ?, ?`)
         .bind(
           allocation.allocationId, organizationId, projectId, allocation.applicationId, paymentId,
-          allocation.applicationId, projectId, allocation.applicationId, allocation.expectedPaidCents,
+          allocation.applicationId, projectId, allocation.expectedPaidCents, allocation.cents,
+          allocation.applicationId, allocation.expectedPaidCents,
           ...paymentBinds, allocation.cents, actorId, now,
         ),
     ]

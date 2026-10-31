@@ -404,9 +404,77 @@ export function invoiceAcceptsPayments(status: string): boolean {
   return status !== "draft" && status !== "void"
 }
 
-/** Billed Compass draws take payments; drafts, reviews and imported Sage/Drive draws do not. */
-export function payApplicationAcceptsPayments(application: { readonly sourceSystem: string; readonly status: string }): boolean {
-  return application.sourceSystem === "compass_contract_budget" && application.status === "billed"
+// ---------------------------------------------------------------------------
+// Which draws (pay applications) can take a received payment. A Compass draw
+// takes payments once staff approve it for billing (status "billed"). An
+// imported draw (a historical pay application read from Sage or Google Drive)
+// was billed outside Compass, so it takes payments whenever it carries a
+// usable billed amount: its current payment due. Without one it is listed
+// with the reason it can't take payments; Compass never guesses an amount.
+// ---------------------------------------------------------------------------
+
+/** Draws built and billed in Compass. */
+export const COMPASS_DRAW_SOURCE = "compass_contract_budget"
+
+/** Rows that share the draws table but are not draws: each contract budget revision's budget view. */
+export const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
+
+/**
+ * Statuses of an imported draw that mean it is not a billed item: a draw still
+ * being written, a budget view, or one that was voided or replaced.
+ */
+export const IMPORTED_DRAW_UNBILLED_STATUSES = ["building", "budget_current", "budget_superseded", "void", "superseded"] as const
+
+type DrawRow = {
+  readonly sourceSystem: string
+  readonly status: string
+  /** Stored dollars (G702 line 8, current payment due). */
+  readonly currentPaymentDue: number | null | undefined
+}
+
+/** Whether a draw came from Sage, Google Drive or another import rather than being built in Compass. */
+export function isImportedDraw(application: Pick<DrawRow, "sourceSystem">): boolean {
+  return application.sourceSystem !== COMPASS_DRAW_SOURCE && application.sourceSystem !== BUDGET_PROJECTION_SOURCE
+}
+
+/** Where an imported draw came from, for staff ("Imported from Sage"); null for a Compass draw. */
+export function importedDrawSourceLabel(sourceSystem: string): string | null {
+  if (!isImportedDraw({ sourceSystem })) return null
+  if (sourceSystem.startsWith("sage")) return "Imported from Sage"
+  if (sourceSystem.startsWith("google_drive")) return "Imported from Drive"
+  return "Imported"
+}
+
+export type DrawPaymentTarget =
+  /** Not a billed draw (a draft, review, budget view or void): not listed with billed items. */
+  | { readonly listed: false }
+  /** A billed draw: `blocker` says why it can't take payments, or is null when it can. */
+  | { readonly listed: true; readonly billedCents: number; readonly blocker: string | null }
+
+/** Whether a draw is listed with the billed items, its billed amount, and whether it can take payments. */
+export function drawPaymentTarget(application: DrawRow): DrawPaymentTarget {
+  const due = application.currentPaymentDue
+  const billedCents = storedDollarsToCents(due)
+  if (!isImportedDraw(application)) {
+    return application.sourceSystem === COMPASS_DRAW_SOURCE && application.status === "billed"
+      ? { listed: true, billedCents, blocker: null }
+      : { listed: false }
+  }
+  if (IMPORTED_DRAW_UNBILLED_STATUSES.some((status) => status === application.status)) return { listed: false }
+  if (typeof due !== "number" || !Number.isFinite(due)) {
+    return { listed: true, billedCents: 0, blocker: "No current payment due was imported with this draw, so payments can't be applied to it." }
+  }
+  if (billedCents < 0) {
+    return {
+      listed: true,
+      billedCents,
+      blocker: `This draw was imported with a negative current payment due (${formatCents(billedCents)}), so payments can't be applied to it.`,
+    }
+  }
+  if (billedCents === 0) {
+    return { listed: true, billedCents, blocker: "This draw was imported with no current payment due, so there is nothing to apply a payment to." }
+  }
+  return { listed: true, billedCents, blocker: null }
 }
 
 /** Why staff may not void a payment in Compass, or null when they may. */

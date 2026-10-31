@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  drawPaymentTarget,
   focusCustomerId,
+  importedDrawSourceLabel,
   invoiceAcceptsPayments,
+  isImportedDraw,
   invoicePaidValues,
   invoiceUnpaidStatus,
   paidCentsAfterRelease,
   parseVoidReason,
-  payApplicationAcceptsPayments,
   paymentVoidBlocker,
   planPaymentAllocations,
   receivableOpenCents,
@@ -157,13 +159,75 @@ describe("invoice paid values", () => {
     expect(invoiceUnpaidStatus("compass")).toBe("sent")
   })
 
-  it("only takes payments on sent invoices and billed Compass draws", () => {
+  it("only takes payments on sent invoices, billed Compass draws and imported draws with an amount due", () => {
     expect(invoiceAcceptsPayments("draft")).toBe(false)
     expect(invoiceAcceptsPayments("void")).toBe(false)
     expect(invoiceAcceptsPayments("sent")).toBe(true)
-    expect(payApplicationAcceptsPayments({ sourceSystem: "compass_contract_budget", status: "billed" })).toBe(true)
-    expect(payApplicationAcceptsPayments({ sourceSystem: "compass_contract_budget", status: "internal_review" })).toBe(false)
-    expect(payApplicationAcceptsPayments({ sourceSystem: "sage", status: "billed" })).toBe(false)
+    const due = { currentPaymentDue: 100 }
+    const payApplicationAcceptsPayments = (draw: Parameters<typeof drawPaymentTarget>[0]): boolean => {
+      const target = drawPaymentTarget(draw)
+      return target.listed && target.blocker === null
+    }
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "compass_contract_budget", status: "billed" })).toBe(true)
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "compass_contract_budget", status: "internal_review" })).toBe(false)
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "sage", status: "current" })).toBe(true)
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "google_drive_g702_g703", status: "paid_in_full" })).toBe(true)
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "sage_read_snapshot", status: "imported_draft" })).toBe(true)
+    expect(payApplicationAcceptsPayments({ currentPaymentDue: 0, sourceSystem: "sage", status: "current" })).toBe(false)
+  })
+})
+
+describe("imported draws", () => {
+  it("tells imported draws from Compass draws and budget views", () => {
+    expect(isImportedDraw({ sourceSystem: "compass_contract_budget" })).toBe(false)
+    expect(isImportedDraw({ sourceSystem: "compass_contract_budget_projection" })).toBe(false)
+    expect(isImportedDraw({ sourceSystem: "sage" })).toBe(true)
+    expect(isImportedDraw({ sourceSystem: "google_drive_g702_g703" })).toBe(true)
+    expect(importedDrawSourceLabel("sage_read_snapshot")).toBe("Imported from Sage")
+    expect(importedDrawSourceLabel("google_drive_g702_g703")).toBe("Imported from Drive")
+    expect(importedDrawSourceLabel("spreadsheet")).toBe("Imported")
+    expect(importedDrawSourceLabel("compass_contract_budget")).toBeNull()
+  })
+
+  it("lists only billed Compass draws, and leaves out drafts, budget views and void imports", () => {
+    expect(drawPaymentTarget({ sourceSystem: "compass_contract_budget", status: "billed", currentPaymentDue: 50 }))
+      .toEqual({ listed: true, billedCents: 5000, blocker: null })
+    for (const status of ["building", "internal_review", "draft"]) {
+      expect(drawPaymentTarget({ sourceSystem: "compass_contract_budget", status, currentPaymentDue: 50 })).toEqual({ listed: false })
+    }
+    expect(drawPaymentTarget({ sourceSystem: "compass_contract_budget_projection", status: "budget_current", currentPaymentDue: 50 }))
+      .toEqual({ listed: false })
+    for (const status of ["void", "superseded", "building", "budget_current", "budget_superseded"]) {
+      expect(drawPaymentTarget({ sourceSystem: "sage", status, currentPaymentDue: 50 })).toEqual({ listed: false })
+    }
+  })
+
+  it("takes the current payment due as an imported draw's billed amount", () => {
+    expect(drawPaymentTarget({ sourceSystem: "google_drive_g702_g703", status: "current", currentPaymentDue: 1234.565 }))
+      .toEqual({ listed: true, billedCents: 123_457, blocker: null })
+  })
+
+  it("lists an imported draw without a usable billed amount, with the reason, rather than guessing", () => {
+    const zero = drawPaymentTarget({ sourceSystem: "google_drive_g702_g703", status: "paid_in_full", currentPaymentDue: 0 })
+    expect(zero).toMatchObject({ listed: true, billedCents: 0, blocker: expect.stringMatching(/no current payment due/) })
+    const negative = drawPaymentTarget({ sourceSystem: "sage", status: "current", currentPaymentDue: -12.5 })
+    expect(negative).toMatchObject({ listed: true, blocker: expect.stringMatching(/negative current payment due/) })
+    const missing = drawPaymentTarget({ sourceSystem: "sage", status: "current", currentPaymentDue: null })
+    expect(missing).toMatchObject({ listed: true, billedCents: 0, blocker: expect.stringMatching(/No current payment due was imported/) })
+    expect(drawPaymentTarget({ sourceSystem: "sage", status: "current", currentPaymentDue: Number.NaN }))
+      .toMatchObject({ blocker: expect.stringMatching(/No current payment due was imported/) })
+  })
+
+  it("keeps the same guards: an imported draw is the project client's construction billing", () => {
+    const imported: ReceivableItem = { ...draw, id: "imp", label: "Pay application 5", sourceSystem: "google_drive_g702_g703" }
+    expect(receivablesForCustomer([{ ...imported, customerId: null }], "client-1", "someone-else")).toBeNull()
+    const plan = planPaymentAllocations({
+      paymentCents: 2_000_000,
+      alreadyAppliedCents: 0,
+      openItems: [imported],
+      requested: [{ kind: "pay_application", id: "imp", cents: imported.billedCents + 1 }],
+    })
+    expect(plan).toMatchObject({ ok: false, error: expect.stringMatching(/has only/) })
   })
 })
 

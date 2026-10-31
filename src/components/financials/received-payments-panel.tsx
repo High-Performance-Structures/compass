@@ -57,7 +57,7 @@ function paymentState(payment: ReceivedPaymentView): string {
 
 /** Compass never posts receipts to Sage; say where the receipt stands instead. */
 function sageStatus(payment: ReceivedPaymentView): string {
-  if (payment.sourceSystem === "sage") return "Posted by the Square bridge"
+  if (payment.sourceSystem === "sage") return "Read from Sage"
   if (payment.voidedAt) return "Reverse in Sage if entered"
   return "Enter in Sage"
 }
@@ -66,8 +66,15 @@ function appliedTo(payment: ReceivedPaymentView): string {
   return payment.allocations.map((allocation) => `${allocation.itemLabel} ${formatCents(allocation.cents)}`).join(", ") || "-"
 }
 
+/** Compass draws open their pay application page; imported draws and invoices have none. */
 function itemHref(projectId: string, item: ReceivableRow): string | null {
-  return item.kind === "pay_application" ? `/dashboard/projects/${projectId}/financials/pay-applications/${item.id}` : null
+  return item.kind === "pay_application" && item.sourceLabel === null
+    ? `/dashboard/projects/${projectId}/financials/pay-applications/${item.id}`
+    : null
+}
+
+function itemStatusLabel(item: ReceivableRow): string {
+  return item.paymentBlocker ? "Can't take payments" : PAID_LABELS[item.paidState]
 }
 
 function linkedTarget(data: ProjectReceivablesData, link: string | null): RecordPaymentTarget | null {
@@ -124,7 +131,7 @@ function BilledItemsList({
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const visible = React.useMemo(
-    () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, PAID_LABELS[item.paidState]])),
+    () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, item.sourceLabel, itemStatusLabel(item)])),
     [items, query],
   )
   const columns = React.useMemo<ColumnDef<ReceivableRow>[]>(() => [
@@ -138,6 +145,8 @@ function BilledItemsList({
           <div className="min-w-0">
             {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
             {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
+            {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
+            {row.original.paymentBlocker && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
           </div>
         )
       },
@@ -149,8 +158,10 @@ function BilledItemsList({
     {
       id: "status",
       header: "Status",
-      accessorFn: (item) => PAID_LABELS[item.paidState],
-      cell: ({ row }) => <Badge variant={paidVariant(row.original.paidState)}>{PAID_LABELS[row.original.paidState]}</Badge>,
+      accessorFn: itemStatusLabel,
+      cell: ({ row }) => (
+        <Badge variant={row.original.paymentBlocker ? "outline" : paidVariant(row.original.paidState)}>{itemStatusLabel(row.original)}</Badge>
+      ),
     },
     {
       id: "actions",

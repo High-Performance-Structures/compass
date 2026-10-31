@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { d1Over, sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
 import {
   readActivePaymentAllocations,
+  readOwnerPayApplicationBalances,
   readProjectReceivables,
   readProjectReceivedPayments,
 } from "@/lib/domain/financials/receivables"
@@ -32,7 +33,7 @@ CREATE TABLE project_budget_applications (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
   source_system TEXT NOT NULL, application_number TEXT NOT NULL, period_to TEXT,
   status TEXT NOT NULL, current_payment_due REAL NOT NULL DEFAULT 0, billed_at TEXT,
-  sage_invoice_number TEXT, created_at TEXT NOT NULL
+  sage_invoice_number TEXT, created_at TEXT NOT NULL, owner_visible INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE invoices (
   id TEXT PRIMARY KEY, organization_id TEXT, customer_id TEXT NOT NULL, project_id TEXT,
@@ -65,8 +66,8 @@ INSERT INTO users VALUES ('user-1', 'Ana Staff');
 INSERT INTO customers VALUES ('client-1', 'Pat Owner');
 INSERT INTO projects VALUES ('p1', 'org-1', 'Ridge House', NULL, 'client-1');
 INSERT INTO project_budget_applications VALUES
-  ('app-1', 'p1', 'compass_contract_budget', '3', '2026-10-25', 'billed', 10000, '2026-10-26T00:00:00Z', NULL, '2026-10-26'),
-  ('app-2', 'p1', 'compass_contract_budget', '4', '2026-11-25', 'internal_review', 9000, NULL, NULL, '2026-11-26');
+  ('app-1', 'p1', 'compass_contract_budget', '3', '2026-10-25', 'billed', 10000, '2026-10-26T00:00:00Z', NULL, '2026-10-26', 1),
+  ('app-2', 'p1', 'compass_contract_budget', '4', '2026-11-25', 'internal_review', 9000, NULL, NULL, '2026-11-26', 0);
 INSERT INTO invoices VALUES
   ('inv-1', 'org-1', 'client-1', 'p1', 'compass', '1001', 'sent', '2026-10-01', 500, 0, 500, 'construction', 'x', 'x');
 `
@@ -88,10 +89,12 @@ function isD1(value: unknown): value is D1Database {
 
 let db: Db
 let d1: D1Database
+let sqlite: ReturnType<typeof sqliteDb>["sqlite"]
 
 beforeEach(() => {
   const created = sqliteDb(BASE)
   for (const statement of migration.split("--> statement-breakpoint")) created.sqlite.exec(statement)
+  sqlite = created.sqlite
   db = created.db
   const binding = d1Over(created.sqlite)
   if (!isD1(binding)) throw new Error("no D1 binding")
@@ -177,5 +180,66 @@ describe("received payment store", () => {
   it("keeps released allocation history from being deleted with the payment", async () => {
     await recordSplit("pay-1")
     await expect(d1.prepare("DELETE FROM payments WHERE id = 'pay-1'").run()).rejects.toThrow(/FOREIGN KEY/)
+  })
+})
+
+// Imported (historical) draws as the Sage read ingest and the Drive G702/G703 import store them.
+const IMPORTED = `
+INSERT INTO project_budget_applications
+  (id, project_id, source_system, application_number, period_to, status, current_payment_due, created_at, owner_visible) VALUES
+  ('imp-sage', 'p1', 'sage_read_snapshot', 'S-2', '2026-07-31', 'imported_draft', 4000, '2026-10-20', 0),
+  ('imp-drive', 'p1', 'google_drive_g702_g703', '5', '2026-08-31', 'current', 2500.5, '2026-10-20', 1),
+  ('imp-final', 'p1', 'google_drive_g702_g703', '6', '2026-09-30', 'paid_in_full', 0, '2026-10-20', 1),
+  ('imp-void', 'p1', 'sage', '1', '2026-06-30', 'void', 1000, '2026-10-20', 1),
+  ('budget-view', 'p1', 'compass_contract_budget_projection', 'Contract Budget R1', NULL, 'budget_current', 50000, '2026-10-20', 1);
+`
+
+function payDraw(paymentId: string, applicationId: string, cents: number, expectedPaidCents = 0): Promise<string> {
+  return applyReceivedPayment(d1, {
+    ...scope, paymentId, actorId: "user-1", now,
+    newPayment: newPayment(cents),
+    expectedAppliedCents: 0,
+    allocations: [{ kind: "pay_application", allocationId: `${paymentId}-a`, applicationId, cents, expectedPaidCents }],
+  })
+}
+
+describe("imported draws", () => {
+  beforeEach(() => {
+    sqlite.exec(IMPORTED)
+  })
+
+  it("lists imported draws with their source, and says why one can't take payments", async () => {
+    const draws = (await readProjectReceivables(db, scope)).filter((item) => item.kind === "pay_application")
+    expect(draws.map((item) => [item.id, item.billedCents, item.openCents, item.sourceLabel, item.paymentBlocker !== null])).toEqual([
+      ["imp-sage", 400_000, 400_000, "Imported from Sage", false],
+      ["imp-drive", 250_050, 250_050, "Imported from Drive", false],
+      ["imp-final", 0, 0, "Imported from Drive", true],
+      ["app-1", 1_000_000, 1_000_000, null, false],
+    ])
+    expect(draws.find((item) => item.id === "imp-final")?.paymentBlocker).toMatch(/no current payment due/)
+  })
+
+  it("takes a payment on an imported draw, up to its billed amount", async () => {
+    expect(await payDraw("pay-d", "imp-drive", 250_000)).toBe("saved")
+    const drive = (await readProjectReceivables(db, scope)).find((item) => item.id === "imp-drive")
+    expect(drive).toMatchObject({ paidCents: 250_000, openCents: 50, paidState: "partially_paid" })
+    // More than the 50 cents still open is refused by the store itself.
+    expect(await payDraw("pay-e", "imp-drive", 51, 250_000)).toBe("stale")
+    expect(await payDraw("pay-f", "imp-drive", 50, 250_000)).toBe("saved")
+  })
+
+  it("refuses imported draws with no billed amount, void draws and budget views", async () => {
+    expect(await payDraw("pay-g", "imp-final", 100)).toBe("stale")
+    expect(await payDraw("pay-h", "imp-void", 100)).toBe("stale")
+    expect(await payDraw("pay-i", "budget-view", 100)).toBe("stale")
+  })
+
+  it("shows the owner paid amounts on owner-visible imported draws that take payments", async () => {
+    expect(await payDraw("pay-d", "imp-drive", 100_000)).toBe("saved")
+    const balances = await readOwnerPayApplicationBalances(db, "p1")
+    expect(balances.map((entry) => [entry.applicationId, entry.paidCents, entry.openCents, entry.paidState]).sort()).toEqual([
+      ["app-1", 0, 1_000_000, "open"],
+      ["imp-drive", 100_000, 150_050, "partially_paid"],
+    ])
   })
 })
