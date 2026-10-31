@@ -19,7 +19,7 @@ import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { profileOrgContext, projectProfileContext } from "@/lib/domain/project/profile-access"
 import type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature } from "@/lib/permission-enforcement"
 import { isEligibleFollowUpOwner } from "@/lib/project-profile"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
@@ -55,9 +55,9 @@ export async function loadOrganizationFollowUpOwners(): Promise<readonly Project
 
 export async function loadProjectFollowUpQueue(): Promise<readonly ProjectFollowUpQueueItem[]> {
   const { db, organizationId, user } = await profileOrgContext()
-  // Not awaited, exactly as before this move; see the PR notes.
-  requireFeaturePermission(user, "project-hub", "read")
-  if (!isInternalStaffRole(user.role)) return []
+  // The Project Hub permission was once called without await, so it never
+  // blocked; a denied override now hides the queue like a non-staff viewer.
+  if (!isInternalStaffRole(user.role) || !(await canFeature(user, "project-hub", "read"))) return []
   const [rows, customStatuses, agingSettings] = await Promise.all([
     db
       .select({
