@@ -11,17 +11,8 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import {
-  cancelWorkCalendarEvent,
-  createWorkCalendarEvent,
-  updateWorkCalendarEvent,
-} from "@/app/actions/work-calendar"
-import type {
-  GoogleCalendarDestination,
-  ProjectRow,
-  WorkCalendarEntry,
-  WorkCalendarEventAttendee,
-} from "@/lib/domain/work-calendar/types"
+import { cancelWorkCalendarEvent, createWorkCalendarEvent, updateWorkCalendarEvent } from "@/app/actions/work-calendar"
+import type { GoogleCalendarDestination, ProjectRow, WorkCalendarEntry, WorkCalendarEventAttendee } from "@/lib/domain/work-calendar/types"
 import {
   AlertDialog,
   AlertDialogAction,
