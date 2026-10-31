@@ -404,9 +404,167 @@ export function invoiceAcceptsPayments(status: string): boolean {
   return status !== "draft" && status !== "void"
 }
 
-/** Billed Compass draws take payments; drafts, reviews and imported Sage/Drive draws do not. */
-export function payApplicationAcceptsPayments(application: { readonly sourceSystem: string; readonly status: string }): boolean {
-  return application.sourceSystem === "compass_contract_budget" && application.status === "billed"
+// ---------------------------------------------------------------------------
+// Which draws (pay applications) can take a received payment. A Compass draw
+// takes payments once staff approve it for billing (status "billed"). An
+// imported draw (a historical pay application read from Sage or Google Drive)
+// was billed outside Compass, so it takes payments whenever it carries a
+// usable billed amount: its current payment due. Without one it is listed
+// with the reason it can't take payments; Compass never guesses an amount.
+// ---------------------------------------------------------------------------
+
+/** Draws built and billed in Compass. */
+export const COMPASS_DRAW_SOURCE = "compass_contract_budget"
+
+/** Rows that share the draws table but are not draws: each contract budget revision's budget view. */
+export const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
+
+/**
+ * Statuses of an imported draw that mean it is not a billed item: a draw still
+ * being written, a budget view, or one that was voided or replaced.
+ */
+export const IMPORTED_DRAW_UNBILLED_STATUSES = ["building", "budget_current", "budget_superseded", "void", "superseded"] as const
+
+type DrawRow = {
+  readonly sourceSystem: string
+  readonly status: string
+  /** Stored dollars (G702 line 8, current payment due). */
+  readonly currentPaymentDue: number | null | undefined
+}
+
+/** Whether a draw came from Sage, Google Drive or another import rather than being built in Compass. */
+export function isImportedDraw(application: Pick<DrawRow, "sourceSystem">): boolean {
+  return application.sourceSystem !== COMPASS_DRAW_SOURCE && application.sourceSystem !== BUDGET_PROJECTION_SOURCE
+}
+
+/** Where an imported draw came from, for staff ("Imported from Sage"); null for a Compass draw. */
+export function importedDrawSourceLabel(sourceSystem: string): string | null {
+  if (!isImportedDraw({ sourceSystem })) return null
+  if (sourceSystem.startsWith("sage")) return "Imported from Sage"
+  if (sourceSystem.startsWith("google_drive")) return "Imported from Drive"
+  return "Imported"
+}
+
+export type DrawPaymentTarget =
+  /** Not a billed draw (a draft, review, budget view or void): not listed with billed items. */
+  | { readonly listed: false }
+  /** A billed draw: `blocker` says why it can't take payments, or is null when it can. */
+  | { readonly listed: true; readonly billedCents: number; readonly blocker: string | null }
+
+/** Whether a draw is listed with the billed items, its billed amount, and whether it can take payments. */
+export function drawPaymentTarget(application: DrawRow): DrawPaymentTarget {
+  const due = application.currentPaymentDue
+  const billedCents = storedDollarsToCents(due)
+  if (!isImportedDraw(application)) {
+    return application.sourceSystem === COMPASS_DRAW_SOURCE && application.status === "billed"
+      ? { listed: true, billedCents, blocker: null }
+      : { listed: false }
+  }
+  if (IMPORTED_DRAW_UNBILLED_STATUSES.some((status) => status === application.status)) return { listed: false }
+  if (typeof due !== "number" || !Number.isFinite(due)) {
+    return { listed: true, billedCents: 0, blocker: "No current payment due was imported with this draw, so payments can't be applied to it." }
+  }
+  if (billedCents < 0) {
+    return {
+      listed: true,
+      billedCents,
+      blocker: `This draw was imported with a negative current payment due (${formatCents(billedCents)}), so payments can't be applied to it.`,
+    }
+  }
+  if (billedCents === 0) {
+    return { listed: true, billedCents, blocker: "This draw was imported with no current payment due, so there is nothing to apply a payment to." }
+  }
+  return { listed: true, billedCents, blocker: null }
+}
+
+// ---------------------------------------------------------------------------
+// Settling imported draws. An imported draw's paid status is unknown until
+// staff settle it: by recording a payment against it in Compass, or by
+// marking it "Paid before Compass" (settled outside Compass, no payment
+// details). Owners see no paid or outstanding balance on an imported draw
+// until it is settled.
+// ---------------------------------------------------------------------------
+
+/** An active "Paid before Compass" mark on an imported draw. */
+export type PrepaidMark = {
+  readonly markedAt: string
+  readonly markedByName: string | null
+  readonly note: string | null
+}
+
+type SettlementInput = {
+  /** Whether the draw is imported (Sage or Drive). */
+  readonly imported: boolean
+  /** Cents applied by active (not voided) Compass payments. */
+  readonly paidCents: number
+  /** The active "Paid before Compass" mark (or just whether there is one). */
+  readonly prepaid: PrepaidMark | boolean | null
+}
+
+/** Whether staff have settled a draw's paid status. Compass draws are always settled. */
+export function drawSettled(input: SettlementInput): boolean {
+  return !input.imported || input.paidCents > 0 || Boolean(input.prepaid)
+}
+
+/** The status staff see on a billed item. */
+export type ReceivableStaffStatus = ReceivablePaidState | "prepaid" | "unconfirmed"
+
+export function receivableStaffStatus(input: SettlementInput & { readonly paidState: ReceivablePaidState }): ReceivableStaffStatus {
+  if (input.prepaid) return "prepaid"
+  if (!drawSettled(input)) return "unconfirmed"
+  return input.paidState
+}
+
+/** Why staff may not mark a draw "Paid before Compass", or null when they may. */
+export function prepaidMarkBlocker(input: SettlementInput): string | null {
+  if (!input.imported) return "Only an imported draw can be marked paid before Compass."
+  if (input.prepaid) return "This draw is already marked paid before Compass."
+  if (input.paidCents > 0) return "Payments are already applied to this draw in Compass, so it can't be marked paid before Compass."
+  return null
+}
+
+/** Why staff may not undo a "Paid before Compass" mark, or null when they may. */
+export function prepaidUndoBlocker(input: SettlementInput): string | null {
+  if (!input.prepaid) return "This draw is not marked paid before Compass."
+  if (input.paidCents > 0) return "Payments are applied to this draw in Compass. Void them before undoing the mark."
+  return null
+}
+
+export const PREPAID_NOTE_MAX = 500
+
+/** The optional note on a "Paid before Compass" mark, as stored. */
+export function parsePrepaidNote(raw: string): string | null {
+  return raw.trim().slice(0, PREPAID_NOTE_MAX) || null
+}
+
+/** The reason for undoing a "Paid before Compass" mark, or an error when it is blank. */
+export function parsePrepaidUndoReason(raw: string): { readonly ok: true; readonly reason: string } | { readonly ok: false; readonly error: string } {
+  const reason = raw.trim().slice(0, VOID_REASON_MAX)
+  return reason ? { ok: true, reason } : { ok: false, error: "Say why the mark is being undone." }
+}
+
+/**
+ * For each item, the label of a billed item of the other kind (draw vs
+ * invoice) carrying the same Sage invoice number: the two may be the same
+ * billing, so staff should apply a payment to only one. Keyed "kind:id".
+ */
+export function sharedSageInvoiceLinks(
+  items: readonly { readonly kind: ReceivableItemKind; readonly id: string; readonly label: string; readonly sageInvoiceNumber: string | null }[],
+): ReadonlyMap<string, string> {
+  const byNumber = new Map<string, { kind: ReceivableItemKind; label: string }[]>()
+  for (const item of items) {
+    const number = item.sageInvoiceNumber?.trim().toUpperCase()
+    if (!number) continue
+    byNumber.set(number, [...(byNumber.get(number) ?? []), { kind: item.kind, label: item.label }])
+  }
+  const links = new Map<string, string>()
+  for (const item of items) {
+    const number = item.sageInvoiceNumber?.trim().toUpperCase()
+    if (!number) continue
+    const other = byNumber.get(number)?.find((entry) => entry.kind !== item.kind)
+    if (other) links.set(`${item.kind}:${item.id}`, other.label)
+  }
+  return links
 }
 
 /** Why staff may not void a payment in Compass, or null when they may. */

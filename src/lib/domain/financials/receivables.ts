@@ -1,19 +1,30 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, notInArray, or, sql, type SQL } from "drizzle-orm"
 
 import { customers, projectBudgetApplications, projects, users } from "@/db/schema"
 import {
   invoicePaymentAllocations,
   invoices,
   payApplicationPaymentAllocations,
+  payApplicationPrepaidMarks,
   payments,
 } from "@/db/schema-netsuite"
 import {
+  BUDGET_PROJECTION_SOURCE,
+  COMPASS_DRAW_SOURCE,
+  IMPORTED_DRAW_UNBILLED_STATUSES,
+  drawPaymentTarget,
+  drawSettled,
+  importedDrawSourceLabel,
   invoiceAcceptsPayments,
-  payApplicationAcceptsPayments,
+  isImportedDraw,
   receivableOpenCents,
   receivablePaidState,
+  receivableStaffStatus,
+  sharedSageInvoiceLinks,
   storedDollarsToCents,
+  type PrepaidMark,
   type ReceivableItem,
+  type ReceivableStaffStatus,
 } from "@/lib/domain/financials/rules"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -32,6 +43,18 @@ export type ReceivableRow = ReceivableItem & {
   /** Accounting reference: the Sage invoice number, when entered. */
   readonly sageInvoiceNumber: string | null
   readonly customerId: string | null
+  /** Why this item can't take a payment (an imported draw with no usable billed amount), or null. */
+  readonly paymentBlocker: string | null
+  /** "Imported from Sage" or "Imported from Drive" for a historical draw; null otherwise. */
+  readonly sourceLabel: string | null
+  /** Whether this is an imported (Sage or Drive) draw. */
+  readonly imported: boolean
+  /** The active "Paid before Compass" mark on an imported draw, or null. */
+  readonly prepaid: PrepaidMark | null
+  /** What staff see: the paid state, "prepaid", or "unconfirmed" for an unsettled imported draw. */
+  readonly staffStatus: ReceivableStaffStatus
+  /** A billed item of the other kind with the same Sage invoice number (may be the same billing), or null. */
+  readonly sharedSageInvoiceWith: string | null
 }
 
 export type ProjectReceivableScope = {
@@ -63,18 +86,62 @@ export async function readProjectClient(db: Db, scope: ProjectReceivableScope): 
 }
 
 function row(
-  base: Omit<ReceivableRow, "openCents" | "paidState">,
+  base: Omit<ReceivableRow, "openCents" | "paidState" | "staffStatus" | "sharedSageInvoiceWith">,
 ): ReceivableRow {
+  // A draw marked paid before Compass is paid; it and an item that can't take
+  // payments have nothing open to apply a payment to.
+  const paidState = base.prepaid ? "paid" : receivablePaidState(base.billedCents, base.paidCents)
   return {
     ...base,
-    openCents: receivableOpenCents(base),
-    paidState: receivablePaidState(base.billedCents, base.paidCents),
+    openCents: base.paymentBlocker === null && base.prepaid === null ? receivableOpenCents(base) : 0,
+    paidState,
+    staffStatus: receivableStaffStatus({ ...base, paidState }),
+    sharedSageInvoiceWith: null,
   }
 }
 
+/** Active "Paid before Compass" marks on the project's draws, by draw id. */
+async function readActivePrepaidMarks(db: Db, scope: ProjectReceivableScope): Promise<ReadonlyMap<string, PrepaidMark>> {
+  const marks = await db
+    .select({
+      applicationId: payApplicationPrepaidMarks.applicationId,
+      markedAt: payApplicationPrepaidMarks.markedAt,
+      markedByName: users.displayName,
+      note: payApplicationPrepaidMarks.note,
+    })
+    .from(payApplicationPrepaidMarks)
+    .leftJoin(users, eq(users.id, payApplicationPrepaidMarks.markedBy))
+    .where(and(
+      eq(payApplicationPrepaidMarks.organizationId, scope.organizationId),
+      eq(payApplicationPrepaidMarks.projectId, scope.projectId),
+      isNull(payApplicationPrepaidMarks.releasedAt),
+    ))
+  return new Map(marks.map(({ applicationId, ...mark }) => [applicationId, mark]))
+}
+
 /**
- * Billed Compass pay applications and payable invoices on the project, with
- * billed, paid and open cents. Pay applications are billed to the project's
+ * Draws that are billed items, in SQL: Compass draws approved for billing,
+ * and imported (Sage or Drive) draws that are not drafts, budget views or
+ * void. rules.ts `drawPaymentTarget` makes the final call on each row.
+ */
+function billedDrawCondition(): SQL | undefined {
+  return or(
+    and(
+      eq(projectBudgetApplications.sourceSystem, COMPASS_DRAW_SOURCE),
+      eq(projectBudgetApplications.status, "billed"),
+    ),
+    and(
+      notInArray(projectBudgetApplications.sourceSystem, [COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE]),
+      notInArray(projectBudgetApplications.status, [...IMPORTED_DRAW_UNBILLED_STATUSES]),
+    ),
+  )
+}
+
+/**
+ * Billed pay applications (Compass draws approved for billing and imported
+ * Sage/Drive draws) and payable invoices on the project, with billed, paid
+ * and open cents. An imported draw without a usable billed amount is listed
+ * with `paymentBlocker` set. Pay applications are billed to the project's
  * client; invoices are filtered to `customerId` when it is given.
  */
 export async function readProjectReceivables(
@@ -82,7 +149,7 @@ export async function readProjectReceivables(
   scope: ProjectReceivableScope,
   options: { readonly customerId?: string | null } = {},
 ): Promise<ReceivableRow[]> {
-  const [applications, invoiceRows] = await Promise.all([
+  const [applications, invoiceRows, prepaidMarks] = await Promise.all([
     db
       .select({
         id: projectBudgetApplications.id,
@@ -106,10 +173,9 @@ export async function readProjectReceivables(
       .where(and(
         eq(projectBudgetApplications.projectId, scope.projectId),
         eq(projects.organizationId, scope.organizationId),
-        eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
-        eq(projectBudgetApplications.status, "billed"),
+        billedDrawCondition(),
       ))
-      .orderBy(asc(projectBudgetApplications.createdAt)),
+      .orderBy(asc(projectBudgetApplications.periodTo), asc(projectBudgetApplications.createdAt)),
     db
       .select({
         id: invoices.id,
@@ -129,22 +195,28 @@ export async function readProjectReceivables(
         options.customerId ? eq(invoices.customerId, options.customerId) : undefined,
       ))
       .orderBy(asc(invoices.issueDate)),
+    readActivePrepaidMarks(db, scope),
   ])
   const rows: ReceivableRow[] = []
   for (const application of applications) {
-    if (!payApplicationAcceptsPayments(application)) continue
+    const target = drawPaymentTarget(application)
+    if (!target.listed) continue
     rows.push(row({
       kind: "pay_application",
       id: application.id,
       label: `Pay application ${application.applicationNumber}`,
       number: application.applicationNumber,
       date: application.billedAt ? application.billedAt.slice(0, 10) : application.periodTo,
-      billedCents: storedDollarsToCents(application.currentPaymentDue),
+      billedCents: target.billedCents,
       paidCents: Number(application.paidCents) || 0,
       billingScope: "construction",
       sourceSystem: application.sourceSystem,
       sageInvoiceNumber: application.sageInvoiceNumber,
       customerId: application.clientCustomerId,
+      paymentBlocker: target.blocker,
+      sourceLabel: importedDrawSourceLabel(application.sourceSystem),
+      imported: isImportedDraw(application),
+      prepaid: isImportedDraw(application) ? (prepaidMarks.get(application.id) ?? null) : null,
     }))
   }
   for (const invoice of invoiceRows) {
@@ -162,9 +234,14 @@ export async function readProjectReceivables(
       sourceSystem: invoice.sourceSystem,
       sageInvoiceNumber: invoice.sourceSystem === "sage" ? invoice.invoiceNumber : null,
       customerId: invoice.customerId,
+      paymentBlocker: null,
+      sourceLabel: null,
+      imported: false,
+      prepaid: null,
     }))
   }
-  return rows
+  const shared = sharedSageInvoiceLinks(rows)
+  return rows.map((item) => ({ ...item, sharedSageInvoiceWith: shared.get(`${item.kind}:${item.id}`) ?? null }))
 }
 
 type PaymentAllocationView = {
@@ -396,7 +473,12 @@ export async function paymentHasAllocations(db: Db, paymentId: string): Promise<
   return Boolean(application ?? invoice)
 }
 
-/** Paid and open cents of the project's billed pay applications that the owner can see. */
+/**
+ * Paid and open cents of the project's payable pay applications that the
+ * owner can see. An imported draw is included only once staff have settled
+ * it (a Compass payment applied, or marked paid before Compass); until then
+ * the owner sees it with no balance, as before.
+ */
 export async function readOwnerPayApplicationBalances(db: Db, projectId: string): Promise<{
   readonly applicationId: string
   readonly paidCents: number
@@ -406,8 +488,15 @@ export async function readOwnerPayApplicationBalances(db: Db, projectId: string)
   const rows = await db
     .select({
       applicationId: projectBudgetApplications.id,
+      sourceSystem: projectBudgetApplications.sourceSystem,
+      status: projectBudgetApplications.status,
       currentPaymentDue: projectBudgetApplications.currentPaymentDue,
       paidCents: sql<number>`COALESCE(SUM(${payApplicationPaymentAllocations.allocationCents}), 0)`,
+      prepaid: sql<number>`EXISTS (
+        SELECT 1 FROM ${payApplicationPrepaidMarks}
+        WHERE ${payApplicationPrepaidMarks.applicationId} = ${projectBudgetApplications.id}
+          AND ${payApplicationPrepaidMarks.releasedAt} IS NULL
+      )`,
     })
     .from(projectBudgetApplications)
     .leftJoin(payApplicationPaymentAllocations, and(
@@ -417,19 +506,26 @@ export async function readOwnerPayApplicationBalances(db: Db, projectId: string)
     .where(and(
       eq(projectBudgetApplications.projectId, projectId),
       eq(projectBudgetApplications.ownerVisible, true),
-      eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
-      inArray(projectBudgetApplications.status, ["billed"]),
+      billedDrawCondition(),
     ))
     .groupBy(projectBudgetApplications.id)
-  return rows.map((entry) => {
-    const billedCents = storedDollarsToCents(entry.currentPaymentDue)
+  return rows.flatMap((entry) => {
+    const target = drawPaymentTarget(entry)
+    if (!target.listed) return []
+    const imported = isImportedDraw(entry)
     const paidCents = Number(entry.paidCents) || 0
-    return {
+    const prepaid = imported && Boolean(Number(entry.prepaid))
+    if (!drawSettled({ imported, paidCents, prepaid })) return []
+    // Marked paid before Compass: paid, with no payment amounts to show.
+    if (prepaid) return [{ applicationId: entry.applicationId, paidCents: 0, openCents: 0, paidState: "paid" as const }]
+    if (target.blocker !== null) return []
+    const billedCents = target.billedCents
+    return [{
       applicationId: entry.applicationId,
       paidCents,
       openCents: receivableOpenCents({ billedCents, paidCents }),
       paidState: receivablePaidState(billedCents, paidCents),
-    }
+    }]
   })
 }
 
