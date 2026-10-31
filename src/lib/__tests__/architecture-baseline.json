@@ -27,6 +27,35 @@
     "anthropicOauthTokens": [
       "src/app/actions/anthropic-oauth.ts"
     ],
+    "buildertrendAccessCandidates": [
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
+    ],
+    "buildertrendArchiveFiles": [
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
+    ],
+    "buildertrendIdentityDecisions": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendIdentityRelationships": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendIdentityReviewRuns": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendImportObservations": [
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
+    ],
+    "buildertrendImportRuns": [
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
+    ],
+    "buildertrendSourceRecords": [
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
+    ],
     "channelMembers": [
       "src/lib/domain/conversations/store.ts"
     ],
@@ -57,6 +86,12 @@
     "compassProjectCalendars": [
       "src/app/actions/project-calendars.ts",
       "src/lib/project-calendars/sync.ts"
+    ],
+    "contactAccountLinkEvents": [
+      "src/app/actions/contact-account-links.ts"
+    ],
+    "contactMergeEvents": [
+      "src/app/actions/contact-duplicates.ts"
     ],
     "contractDocumentTemplates": [
       "src/app/actions/contract-templates.ts"
@@ -124,10 +159,20 @@
       "src/lib/dashboards/user-dashboards.ts"
     ],
     "customerContacts": [
-      "src/lib/domain/contacts/store.ts"
+      "src/app/actions/contact-account-links.ts",
+      "src/app/actions/contact-duplicates.ts",
+      "src/app/actions/sage-contact-links.ts",
+      "src/lib/domain/contacts/store.ts",
+      "src/lib/sage/contact-canonical.ts",
+      "src/lib/sage/contact-create-result.ts"
     ],
     "customers": [
-      "src/lib/domain/contacts/store.ts"
+      "src/app/actions/contact-duplicates.ts",
+      "src/app/actions/sage-contact-links.ts",
+      "src/app/api/integrations/sage/client-project-writes/results/route.ts",
+      "src/lib/domain/contacts/store.ts",
+      "src/lib/sage/client-directory-import.ts",
+      "src/lib/sage/contact-canonical.ts"
     ],
     "customThemes": [
       "src/app/actions/themes.ts",
@@ -217,14 +262,23 @@
     "inboundEmails": [
       "src/lib/domain/correspondence/email-store.ts"
     ],
+    "internalContactPrivateAddresses": [
+      "src/lib/sage/contact-canonical.ts"
+    ],
     "internalContacts": [
-      "src/lib/domain/contacts/store.ts"
+      "src/app/actions/sage-contact-links.ts",
+      "src/lib/domain/contacts/store.ts",
+      "src/lib/sage/contact-canonical.ts"
     ],
     "internalDutyEntries": [
       "src/lib/domain/duties/store.ts"
     ],
+    "invoicePaymentAllocations": [
+      "src/lib/sage/square-receivable.ts"
+    ],
     "invoices": [
-      "src/lib/domain/financials/store.ts"
+      "src/lib/domain/financials/store.ts",
+      "src/lib/sage/square-receivable.ts"
     ],
     "jarvisBridgeEvents": [
       "src/lib/domain/feedback/store.ts"
@@ -308,13 +362,18 @@
       "src/lib/domain/notifications/store.ts"
     ],
     "notificationEvents": [
-      "src/lib/domain/notifications/store.ts"
+      "src/lib/domain/notifications/store.ts",
+      "src/lib/sage/square-creator-alerts.ts",
+      "src/lib/sage/square-receipt-reminders.ts"
     ],
     "notificationPreferences": [
       "src/lib/domain/notifications/store.ts"
     ],
     "notificationRecipients": [
-      "src/lib/domain/notifications/store.ts"
+      "src/lib/domain/notifications/store.ts",
+      "src/lib/sage/square-creator-alerts.ts",
+      "src/lib/sage/square-payment-notifications.ts",
+      "src/lib/sage/square-receipt-reminders.ts"
     ],
     "nuTechBracingRentalLines": [
       "src/lib/domain/nutech/store.ts"
@@ -360,7 +419,8 @@
       "src/lib/domain/field/store.ts"
     ],
     "payments": [
-      "src/lib/domain/financials/store.ts"
+      "src/lib/domain/financials/store.ts",
+      "src/lib/sage/square-receivable.ts"
     ],
     "permissionAuditEvents": [
       "src/app/actions/permission-overrides.ts"
@@ -413,6 +473,7 @@
       "src/lib/client-meetings/transcripts.ts"
     ],
     "projectContacts": [
+      "src/app/actions/contact-duplicates.ts",
       "src/lib/domain/contacts/store.ts"
     ],
     "projectContactSourceLinks": [
@@ -462,6 +523,8 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectEstimateLines": [
+      "src/app/actions/estimate-line-order.ts",
+      "src/app/actions/estimate-templates.ts",
       "src/lib/domain/estimates/store.ts"
     ],
     "projectEstimatePhaseDescriptions": [
@@ -477,6 +540,8 @@
       "src/lib/domain/operations/store.ts"
     ],
     "projectEstimates": [
+      "src/app/actions/estimate-line-order.ts",
+      "src/app/actions/estimate-templates.ts",
       "src/lib/domain/estimates/store.ts"
     ],
     "projectExternalLinks": [
@@ -503,10 +568,12 @@
       "src/app/actions/field-cost-codes.ts"
     ],
     "projectFinishSelectionRooms": [
-      "src/app/actions/project-selections.ts"
+      "src/app/actions/project-selections.ts",
+      "src/app/actions/project-templates.ts"
     ],
     "projectFinishSelections": [
       "src/app/actions/project-selections.ts",
+      "src/app/actions/project-templates.ts",
       "src/app/actions/selection-decisions.ts"
     ],
     "projectFollowUpReminders": [
@@ -592,10 +659,14 @@
     ],
     "projectRecordDriveFiles": [
       "src/app/actions/paper-trail.ts",
-      "src/lib/paper-trail/processor.ts"
+      "src/lib/paper-trail/enqueue.ts",
+      "src/lib/paper-trail/processor.ts",
+      "src/lib/paper-trail/sweep.ts"
     ],
     "projectRecordDriveSnapshots": [
-      "src/lib/paper-trail/processor.ts"
+      "src/lib/paper-trail/enqueue.ts",
+      "src/lib/paper-trail/processor.ts",
+      "src/lib/paper-trail/sweep.ts"
     ],
     "projectRegistryRemovals": [
       "src/app/actions/project-duplicates.ts",
@@ -638,6 +709,8 @@
       "src/app/actions/schedule-publications.ts",
       "src/app/actions/schedule.ts",
       "src/app/api/google/project-manager-handoff/route.ts",
+      "src/app/api/integrations/sage/client-project-writes/results/route.ts",
+      "src/lib/buildertrend/lead-project-cutover.ts",
       "src/lib/portfolio-map/site-locations.ts"
     ],
     "projectSavedViews": [
@@ -652,15 +725,32 @@
       "src/app/actions/project-rfis.ts",
       "src/lib/rfis/vendor-assignment.ts"
     ],
+    "projectTemplateApplicationItems": [
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-import.ts"
+    ],
+    "projectTemplateApplications": [
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-import.ts"
+    ],
     "projectTemplateModules": [
-      "src/app/actions/estimate-templates.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "projectTemplates": [
       "src/app/actions/estimate-templates.ts",
-      "src/app/actions/project-templates.ts"
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts",
+      "src/lib/templates/buildertrend-template-inventory.ts"
     ],
     "projectTemplateVersions": [
-      "src/app/actions/estimate-templates.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "projectTodoEvents": [
       "src/lib/domain/operations/store.ts"
@@ -717,6 +807,16 @@
       "src/app/api/integrations/sage/pay-applications/requests/route.ts",
       "src/app/api/integrations/sage/square-payments/requests/route.ts"
     ],
+    "sageBridgeStatus": [
+      "src/app/api/integrations/sage/client-project-writes/requests/route.ts",
+      "src/app/api/integrations/sage/labor-hours/requests/route.ts",
+      "src/app/api/integrations/sage/pay-applications/requests/route.ts",
+      "src/app/api/integrations/sage/square-payments/requests/route.ts",
+      "src/lib/sage/tax-catalog-ingest.ts"
+    ],
+    "sageClientDirectoryEntries": [
+      "src/app/api/integrations/sage/client-directory/route.ts"
+    ],
     "sageClientDirectoryRefreshes": [
       "src/app/actions/sage-client-directory.ts",
       "src/app/api/integrations/sage/client-directory/route.ts"
@@ -739,14 +839,17 @@
     ],
     "sageContactCreateEvents": [
       "src/app/actions/sage-contact-creates.ts",
-      "src/app/api/integrations/sage/contact-changes/requests/route.ts"
+      "src/app/api/integrations/sage/contact-changes/requests/route.ts",
+      "src/lib/sage/contact-create-result.ts"
     ],
     "sageContactCreateProposals": [
       "src/app/actions/sage-contact-creates.ts",
-      "src/app/api/integrations/sage/contact-changes/requests/route.ts"
+      "src/app/api/integrations/sage/contact-changes/requests/route.ts",
+      "src/lib/sage/contact-create-result.ts"
     ],
     "sageContactLinkEvents": [
-      "src/app/actions/sage-contact-links.ts"
+      "src/app/actions/sage-contact-links.ts",
+      "src/app/api/integrations/sage/contact-changes/results/route.ts"
     ],
     "sageContactReadRequests": [
       "src/app/actions/sage-contact-changes.ts",
@@ -755,7 +858,8 @@
       "src/app/api/integrations/sage/contact-changes/results/route.ts"
     ],
     "sageContactSnapshots": [
-      "src/app/api/integrations/sage/contact-changes/results/route.ts"
+      "src/app/api/integrations/sage/contact-changes/results/route.ts",
+      "src/lib/sage/contact-create-result.ts"
     ],
     "sageLaborLines": [
       "src/lib/shop-tickets/sage-labor-ingest.ts"
@@ -765,6 +869,9 @@
       "src/app/api/integrations/sage/labor-hours/requests/route.ts",
       "src/lib/shop-tickets/sage-labor-ingest.ts"
     ],
+    "sagePayApplicationSnapshots": [
+      "src/lib/sage/pay-application-ingest.ts"
+    ],
     "sagePayApplicationSyncRuns": [
       "src/app/actions/sage-pay-applications.ts",
       "src/app/api/integrations/sage/pay-applications/requests/route.ts",
@@ -773,7 +880,15 @@
     "sageSquarePaymentOperations": [
       "src/app/api/integrations/sage/square-payments/requests/route.ts",
       "src/app/api/integrations/sage/square-payments/results/route.ts",
+      "src/lib/sage/square-creator-alerts.ts",
+      "src/lib/sage/square-payment.ts",
+      "src/lib/sage/square-receipt-reminders.ts"
+    ],
+    "sageSquareWebhookEvents": [
       "src/lib/sage/square-payment.ts"
+    ],
+    "sageTaxEntities": [
+      "src/lib/sage/tax-catalog-ingest.ts"
     ],
     "scheduleBaselines": [
       "src/lib/domain/schedule/store.ts"
@@ -795,6 +910,14 @@
     ],
     "scheduleTasks": [
       "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleTemplateDependencies": [
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
+    ],
+    "scheduleTemplateItems": [
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "shopTicketLaborClaims": [
       "src/app/actions/shop-tickets.ts"
@@ -886,10 +1009,18 @@
       "src/lib/domain/financials/store.ts"
     ],
     "vendorContacts": [
-      "src/lib/domain/contacts/store.ts"
+      "src/app/actions/contact-account-links.ts",
+      "src/app/actions/contact-duplicates.ts",
+      "src/app/actions/sage-contact-links.ts",
+      "src/lib/domain/contacts/store.ts",
+      "src/lib/sage/contact-canonical.ts",
+      "src/lib/sage/contact-create-result.ts"
     ],
     "vendors": [
-      "src/lib/domain/contacts/store.ts"
+      "src/app/actions/contact-duplicates.ts",
+      "src/app/actions/sage-contact-links.ts",
+      "src/lib/domain/contacts/store.ts",
+      "src/lib/sage/contact-canonical.ts"
     ],
     "vendorTradeDocLinks": [
       "src/app/actions/vendor-trade-doc-link.ts",
@@ -935,6 +1066,9 @@
     "workCalendarEvents": [
       "src/app/actions/work-calendar.ts",
       "src/lib/google/calendar/sync.ts"
+    ],
+    "workdayExceptions": [
+      "src/lib/domain/schedule/store.ts"
     ],
     "youtubeChannelConnections": [
       "src/app/actions/project-videos.ts",
