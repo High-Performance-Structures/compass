@@ -282,8 +282,7 @@
       "src/app/actions/users.ts"
     ],
     "groups": [
-      "src/app/actions/groups.ts",
-      "src/app/api/sync/mutate/route.ts"
+      "src/app/actions/groups.ts"
     ],
     "inboundEmails": [
       "src/app/actions/inbound-email-review.ts",
@@ -341,7 +340,6 @@
       "src/app/actions/listening-room.ts"
     ],
     "localSyncMetadata": [
-      "src/app/api/sync/mutate/route.ts",
       "src/lib/sync/engine.ts"
     ],
     "mcpApiKeys": [
@@ -467,7 +465,6 @@
     ],
     "organizations": [
       "src/app/actions/organizations.ts",
-      "src/app/api/sync/mutate/route.ts",
       "src/lib/auth.ts"
     ],
     "ownerProjectUpdates": [
@@ -830,7 +827,6 @@
       "src/app/actions/schedule-publications.ts",
       "src/app/actions/schedule.ts",
       "src/app/api/google/project-manager-handoff/route.ts",
-      "src/app/api/sync/mutate/route.ts",
       "src/lib/portfolio-map/site-locations.ts"
     ],
     "projectSavedViews": [
@@ -991,8 +987,7 @@
       "src/app/actions/project-templates.ts",
       "src/app/actions/schedule-confirmations.ts",
       "src/app/actions/schedule.ts",
-      "src/app/api/compass/schedule/route.ts",
-      "src/app/api/sync/mutate/route.ts"
+      "src/app/api/compass/schedule/route.ts"
     ],
     "shopTicketLaborClaims": [
       "src/app/actions/shop-tickets.ts"
@@ -1036,7 +1031,6 @@
       "src/lib/staff-message-desk/stale-reminders.ts"
     ],
     "syncCheckpoint": [
-      "src/app/api/sync/checkpoint/route.ts",
       "src/lib/sync/engine.ts"
     ],
     "syncTombstone": [
@@ -1044,8 +1038,7 @@
     ],
     "taskDependencies": [
       "src/app/actions/schedule.ts",
-      "src/app/api/compass/schedule/route.ts",
-      "src/app/api/sync/mutate/route.ts"
+      "src/app/api/compass/schedule/route.ts"
     ],
     "teamMembers": [
       "src/app/actions/users.ts"
@@ -1054,8 +1047,7 @@
       "src/app/actions/permission-overrides.ts"
     ],
     "teams": [
-      "src/app/actions/teams.ts",
-      "src/app/api/sync/mutate/route.ts"
+      "src/app/actions/teams.ts"
     ],
     "tradeLetters": [
       "src/app/actions/trade-letters.ts",
@@ -1086,7 +1078,6 @@
       "src/app/actions/profile.ts",
       "src/app/actions/project-access-invitations.ts",
       "src/app/actions/users.ts",
-      "src/app/api/sync/mutate/route.ts",
       "src/lib/account-deletion.ts",
       "src/lib/auth.ts"
     ],
@@ -1195,7 +1186,6 @@
     "src/app/actions/work-calendar.ts": 2267,
     "src/app/api/compass/schedule/route.ts": 878,
     "src/app/api/google/project-manager-handoff/route.ts": 822,
-    "src/app/api/sync/mutate/route.ts": 931,
     "src/app/dashboard/contacts/page.tsx": 993,
     "src/app/page.tsx": 1149,
     "src/components/agent/chat-view.tsx": 1047,
@@ -1803,9 +1793,6 @@
     "src/app/api/social/meta/connect/route.ts": 1,
     "src/app/api/social/x/callback/route.ts": 1,
     "src/app/api/social/x/connect/route.ts": 1,
-    "src/app/api/sync/checkpoint/route.ts": 2,
-    "src/app/api/sync/delta/route.ts": 1,
-    "src/app/api/sync/mutate/route.ts": 1,
     "src/app/api/transcribe/route.ts": 1
   }
 }
