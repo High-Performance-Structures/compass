@@ -803,7 +803,11 @@ export const projects = sqliteTable("projects", {
   mailingAddress: text("mailing_address"),
   clientStatus: text("client_status").notNull().default("customer"),
   jobStatusId: text("job_status_id").notNull().default("current"),
+  // Fallback copy, not a snapshot: the client name as typed or imported. Reads
+  // prefer the linked directory client (clientCustomerId) and fall back to it.
   clientName: text("client_name"),
+  /** The directory client this job is for (0280); null until picked or backfilled. */
+  clientCustomerId: text("client_customer_id").references(() => customers.id, { onDelete: "set null" }),
   /**
    * Internal workspaces are not client jobs: "office" for administrative duty
    * logs (H-Office), "executive" for the owner's office (Woodland Park Home
@@ -870,6 +874,8 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at"),
 }, (table) => [
   uniqueIndex("projects_organization_id_unique").on(table.organizationId, table.id),
+  // Declared from drizzle/0280_relational_directory_links.sql.
+  index("projects_client_customer_id_idx").on(table.clientCustomerId),
     // Declared from drizzle/0105_project_number_namespace.sql (COLLATE NOCASE, so the column is a sql`` expression).
     uniqueIndex("projects_org_project_number_unique").on(table.organizationId, sql`${table.projectNumber} COLLATE NOCASE`).where(sql`"project_number" IS NOT NULL`),
 ])
@@ -1934,6 +1940,8 @@ export const projectOperations = sqliteTable("project_operations", {
   assigneeType: text("assignee_type"),
   assigneeName: text("assignee_name"),
   siteContactPhone: text("site_contact_phone"),
+  // snapshot: for an RFQ or PO, the company it was requested from or ordered
+  // from as sent (also sageVendorName). vendorId links the directory vendor.
   companyName: text("company_name"),
   costCode: text("cost_code"),
   startDate: text("start_date"),
@@ -1957,6 +1965,8 @@ export const projectOperations = sqliteTable("project_operations", {
   lastSyncedAt: text("last_synced_at"),
   /** For a supplier PO: the RFQ whose accepted quote it orders against. */
   awardedRfqId: text("awarded_rfq_id"),
+  /** The directory vendor an RFQ or purchase order is with (0280); null when typed or unlinked. */
+  vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 },
@@ -1969,6 +1979,8 @@ export const projectOperations = sqliteTable("project_operations", {
     index("idx_project_operations_due").on(table.projectId, table.dueDate),
     // Declared from drizzle/0273_purchase_order_awarded_rfq.sql.
     index("project_operations_awarded_rfq_idx").on(table.awardedRfqId).where(sql`"awarded_rfq_id" IS NOT NULL`),
+    // Declared from drizzle/0280_relational_directory_links.sql.
+    index("project_operations_vendor_id_idx").on(table.vendorId),
   ])
 
 export const organizationCalendarSettings = sqliteTable(
@@ -2821,7 +2833,10 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
   percentComplete: real("percent_complete").notNull().default(0),
   balanceToFinish: real("balance_to_finish").notNull().default(0),
   retainageHeld: real("retainage_held").notNull().default(0),
+  // Fallback copy, not a snapshot: reads prefer the linked vendor (vendorId).
   vendorName: text("vendor_name"),
+  /** The directory vendor for this budget line (0280); null until linked. */
+  vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   ownerLabel: text("owner_label"),
   ownerVisible: integer("owner_visible", { mode: "boolean" })
     .notNull()
@@ -2842,6 +2857,8 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
     index("idx_project_budget_lines_csi").on(table.projectId, table.csiDivision),
     // Declared from drizzle/0035_project_budget.sql.
     index("idx_project_budget_lines_owner").on(table.projectId, table.ownerVisible),
+    // Declared from drizzle/0280_relational_directory_links.sql.
+    index("project_budget_lines_vendor_id_idx").on(table.vendorId),
   ])
 
 export const projectRfis = sqliteTable("project_rfis", {
@@ -2859,8 +2876,12 @@ export const projectRfis = sqliteTable("project_rfis", {
   priority: text("priority").notNull().default("normal"),
   audience: text("audience").notNull().default("internal"),
   requesterName: text("requester_name"),
+  // Fallback copies, not snapshots: reads prefer the linked project contact
+  // (assignedProjectContactId), which itself reads the directory.
   assignedToName: text("assigned_to_name"),
   companyName: text("company_name"),
+  /** The project contact the RFI is assigned to (0280); null when typed or unlinked. */
+  assignedProjectContactId: text("assigned_project_contact_id").references(() => projectContacts.id, { onDelete: "set null" }),
   dueDate: text("due_date"),
   submittedAt: text("submitted_at").notNull(),
   answeredAt: text("answered_at"),
@@ -2869,6 +2890,8 @@ export const projectRfis = sqliteTable("project_rfis", {
 },
   (table) => [
     index("project_rfis_project_id_idx").on(table.projectId),
+    // Declared from drizzle/0280_relational_directory_links.sql.
+    index("project_rfis_assigned_project_contact_id_idx").on(table.assignedProjectContactId),
     uniqueIndex("project_rfis_source_record_unique")
       .on(table.sourceSystem, table.sourceRecordId)
       .where(sql`${table.sourceRecordId} IS NOT NULL`),

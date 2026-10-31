@@ -885,7 +885,7 @@
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-hub-launchpad.tsx": 961,
-    "src/components/projects/project-purchase-order-create-form.tsx": 1051,
+    "src/components/projects/project-purchase-order-create-form.tsx": 1043,
     "src/components/projects/project-rfq-edit-form.tsx": 1069,
     "src/components/projects/projects-hub.tsx": 1670,
     "src/components/schedule/schedule-list-view.tsx": 814,

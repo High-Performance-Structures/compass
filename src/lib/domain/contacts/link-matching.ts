@@ -58,7 +58,10 @@ export function directoryKindsForContactType(contactType: string): readonly Dire
   }
 }
 
-function decide(rule: LinkRule, matches: readonly DirectoryCandidate[]): LinkProposal | null {
+function decide(rule: LinkRule, found: readonly DirectoryCandidate[]): LinkProposal | null {
+  // The same record can arrive twice (a vendor, and its person's email folded
+  // onto the vendor); that is one match, not an ambiguity.
+  const matches = [...new Map(found.map((candidate) => [`${candidate.kind}:${candidate.id}`, candidate])).values()]
   const [first, ...rest] = matches
   if (!first) return null
   return rest.length === 0 ? { outcome: "exact", rule, candidate: first } : { outcome: "ambiguous", rule, candidates: matches }

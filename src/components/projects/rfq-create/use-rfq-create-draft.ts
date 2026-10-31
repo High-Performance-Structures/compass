@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 
 import { createRfqRequest } from "@/app/actions/project-operations"
 import type { ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
+import { directoryVendorPick } from "@/lib/domain/contacts/rules"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type {
   ProjectSelectionItem,
@@ -433,6 +434,7 @@ export function useRfqCreateDraft({
       responseDueDate: cleanText(
         String(formData.get("responseDueDate") ?? "")
       ),
+      vendorPick: directoryVendorPick(baseRecipient.selectedRecipient),
       priority,
       scope: cleanText(String(formData.get("scope") ?? "")),
       scopeItems: rows.lines.map(toScopeInput),

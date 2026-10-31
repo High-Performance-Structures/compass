@@ -12,6 +12,8 @@ import {
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
+import { linkedProjectContactNames, projectContactOnProject } from "@/lib/domain/contacts/directory-links"
+import { preferLinkedText } from "@/lib/domain/contacts/rules"
 import { rfiReadContext, rfiWriteContext } from "@/lib/domain/rfis/access"
 import {
   groupAttachmentsByRfi,
@@ -106,7 +108,7 @@ export async function getProjectRfiSummary(
     .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
-  return summarizeRfis(rows.map((row) => toRfiItem(row, [])))
+  return summarizeRfis((await withLinkedAssignees(db, projectId, rows)).map((row) => toRfiItem(row, [])))
 }
 
 export async function getProjectRfis(
@@ -150,7 +152,29 @@ export async function getProjectRfis(
     ? await loadRfiVendorAssignments(db, { organizationId: requireOrg(user), projectId })
     : new Map<string, RfiVendorAssignment>()
 
-  return rows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? [], assignments.get(row.id) ?? null))
+  const linkedRows = await withLinkedAssignees(db, projectId, rows)
+  return linkedRows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? [], assignments.get(row.id) ?? null))
+}
+
+/**
+ * Reads prefer the linked project contact's current (directory) name for
+ * "Assigned to" and fall back to the stored text. The company text is left
+ * as entered: it may name a trade rather than the contact's company.
+ */
+async function withLinkedAssignees<T extends typeof projectRfis.$inferSelect>(
+  db: Db,
+  projectId: string,
+  rows: readonly T[]
+): Promise<readonly T[]> {
+  const names = await linkedProjectContactNames(db, projectId, rows.map((row) => row.assignedProjectContactId))
+  if (names.size === 0) return rows
+  return rows.map((row) => ({
+    ...row,
+    assignedToName: preferLinkedText(
+      row.assignedProjectContactId ? names.get(row.assignedProjectContactId) : null,
+      row.assignedToName
+    ),
+  }))
 }
 
 /** Active subcontractor/supplier contacts staff can assign an RFI to. */
@@ -233,6 +257,15 @@ export async function createProjectRfi(
     const vendorContact = vendorContactId
       ? await resolveRfiVendorContact(db, projectId, vendorContactId)
       : null
+    const typedAssignee = cleanText(input.assignedToName)
+    const pickedAssigneeId = cleanText(input.assignedProjectContactId ?? null)
+    // The link follows the assignee text: a picked project contact, or the
+    // vendor contact when its name fills an empty "Assigned to".
+    const assignedProjectContactId = pickedAssigneeId
+      ? await projectContactOnProject(db, projectId, pickedAssigneeId)
+      : typedAssignee
+        ? null
+        : vendorContact?.id ?? null
     if (vendorContactId && !vendorContact) {
       return { success: false, error: "Choose an active subcontractor or supplier on this project." }
     }
@@ -246,8 +279,9 @@ export async function createProjectRfi(
       priority,
       audience,
       requesterName: cleanText(input.requesterName),
-      assignedToName: cleanText(input.assignedToName) ?? vendorContact?.displayName ?? null,
+      assignedToName: typedAssignee ?? vendorContact?.displayName ?? null,
       companyName: cleanText(input.companyName) ?? vendorContact?.companyName ?? null,
+      assignedProjectContactId,
       dueDate: cleanText(input.dueDate),
       submittedAt: now,
       createdAt: now,
@@ -426,6 +460,7 @@ export async function setProjectRfiVendorAssignment(
         rfiUpdateStatement(db, projectId, rfiId, {
           assignedToName: contact.displayName,
           companyName: contact.companyName,
+          assignedProjectContactId: contact.id,
           updatedAt: now,
         }),
       ])

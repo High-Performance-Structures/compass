@@ -8,11 +8,14 @@ export type RfiContactOption = {
   readonly value: string
   readonly label: string
   readonly group: RfiContactGroup
+  /** The project contact behind this name, so the RFI can link to it. */
+  readonly projectContactId: string | null
 }
 
 type RfiContactCandidate = {
   readonly label: string
   readonly contactType: string
+  readonly projectContactId?: string | null
 }
 
 export const RFI_CONTACT_GROUPS: readonly {
@@ -47,6 +50,7 @@ export function buildRfiContactOptions(
       value: label,
       label,
       group: rfiContactGroup(candidate.contactType),
+      projectContactId: candidate.projectContactId ?? null,
     })
   }
 

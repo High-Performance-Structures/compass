@@ -423,8 +423,9 @@ export function intakeRecordStatements(
   const { ids, organizationId, projectNumber, department, customerValues, customerMatch, now } = input
   const { projectId } = ids
   const { assignedTo, assignee, assigneeDirectory, assigneeDirectoryId, projectManagerName } = input.assignee
-  return [
-    insertProjectStatement(db, {
+  // A new client is written before the project, because the project links to
+  // it by foreign key (projects.client_customer_id).
+  const projectInsert = insertProjectStatement(db, {
       id: projectId,
       organizationId,
       projectNumber,
@@ -433,6 +434,7 @@ export function intakeRecordStatements(
       status: "OPEN",
       address: input.address,
       clientName: customerValues.name,
+      clientCustomerId: customerValues.id,
       clientStatus: "customer",
       jobStatusId: input.jobStatus.id,
       sageJobStatusName: input.jobStatus.label,
@@ -443,7 +445,12 @@ export function intakeRecordStatements(
       ownerUpdateCadence: "weekly",
       createdAt: now,
       updatedAt: now,
-    }),
+    })
+  const head: readonly [Statement, ...Statement[]] = customerMatch
+    ? [projectInsert]
+    : [insertCustomerStatement(db, customerValues), projectInsert]
+  return [
+    ...head,
     ...(assignee && assigneeDirectoryId && !assigneeDirectory
       ? [insertInternalContactStatement(db, {
           id: assigneeDirectoryId,
@@ -460,11 +467,9 @@ export function intakeRecordStatements(
           updatedAt: now,
         })]
       : []),
-    ...(!customerMatch
-      ? [insertCustomerStatement(db, customerValues)]
-      : customerNeedsSageStatus(customerMatch)
-        ? [updateCustomerByIdStatement(db, { customerId: customerValues.id, values: { sageClientStatusId: customerValues.sageClientStatusId, updatedAt: now } })]
-        : []),
+    ...(customerMatch && customerNeedsSageStatus(customerMatch)
+      ? [updateCustomerByIdStatement(db, { customerId: customerValues.id, values: { sageClientStatusId: customerValues.sageClientStatusId, updatedAt: now } })]
+      : []),
     insertProjectContactStatement(db, {
       id: ids.ownerContactId,
       projectId,

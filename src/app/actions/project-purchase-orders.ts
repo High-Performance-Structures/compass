@@ -7,6 +7,8 @@ import { projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { errorMessage } from "@/lib/action-result"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { resolveVendorLink } from "@/lib/domain/contacts/directory-links"
+import { nextVendorLink } from "@/lib/domain/contacts/rules"
 import { operationsContext } from "@/lib/domain/operations/access"
 import {
   countProjectOperations,
@@ -126,10 +128,11 @@ export async function createPurchaseOrderRequest(
   input: CreatePurchaseOrderRequestInput,
 ): Promise<ProjectOperationActionResult> {
   try {
-    const { db } = await operationsContext(projectId, "purchase-orders", true)
-    const [project, purchaseOrderCount] = await Promise.all([
+    const { db, organizationId } = await operationsContext(projectId, "purchase-orders", true)
+    const [project, purchaseOrderCount, pickedVendorId] = await Promise.all([
       loadProjectSageNumbers(db, projectId),
       countProjectOperations(db, projectId, ["purchase_order"]),
+      resolveVendorLink(db, { organizationId, projectId }, input.vendorPick),
     ])
 
     const now = new Date().toISOString()
@@ -178,6 +181,7 @@ export async function createPurchaseOrderRequest(
         assigneeName: cleanText(input.assigneeName),
         siteContactPhone: cleanText(input.siteContactPhone),
         companyName,
+        vendorId: companyName ? pickedVendorId : null,
         costCode: header.costCode,
         dueDate,
         amount: purchaseOrderTotal(lines),
@@ -215,8 +219,11 @@ export async function updatePurchaseOrderRequest(
   input: UpdatePurchaseOrderRequestInput,
 ): Promise<ProjectOperationActionResult> {
   try {
-    const { db } = await operationsContext(projectId, "purchase-orders", true)
-    const existing = await loadProjectOperation(db, projectId, purchaseOrderId, "purchase_order")
+    const { db, organizationId } = await operationsContext(projectId, "purchase-orders", true)
+    const [existing, pickedVendorId] = await Promise.all([
+      loadProjectOperation(db, projectId, purchaseOrderId, "purchase_order"),
+      resolveVendorLink(db, { organizationId, projectId }, input.vendorPick),
+    ])
     if (!existing) throw new Error("Purchase order not found")
     if (!canEditPurchaseOrderDraft(existing)) {
       throw new Error("This purchase order can no longer be edited because it was sent or queued for Sage.")
@@ -265,6 +272,12 @@ export async function updatePurchaseOrderRequest(
           assigneeName: cleanText(input.assigneeName),
           siteContactPhone: cleanText(input.siteContactPhone),
           companyName,
+          vendorId: nextVendorLink({
+            pickedVendorId: companyName ? pickedVendorId : null,
+            existingVendorId: existing.vendorId,
+            existingName: existing.companyName,
+            nextName: companyName,
+          }),
           costCode: header.costCode,
           dueDate,
           amount: purchaseOrderTotal(lines),
