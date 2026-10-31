@@ -88,7 +88,8 @@ describe("contact types", () => {
 describe("toContactItem", () => {
   it("drops internal addresses and defaults unknown types to internal", () => {
     expect(toContactItem(row({ contactType: "internal", address: "Home" })).address).toBeNull()
-    expect(toContactItem(row({ contactType: "staff" })).contactType).toBe("internal")
+    // A legacy stored value outside the list still reads as internal.
+    expect(toContactItem(Object.assign(row(), { contactType: "staff" })).contactType).toBe("internal")
   })
 
   it("marks directory-linked contacts as managed by the directory", () => {

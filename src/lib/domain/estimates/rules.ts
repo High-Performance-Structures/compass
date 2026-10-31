@@ -5,17 +5,11 @@
  * stored total with these, and the browser previews with the same ones.
  */
 
+import { ESTIMATE_STATUSES, type EstimateStatus } from "@/lib/domain/estimates/statuses"
 import { cleanText } from "@/lib/shared/guards"
-const ESTIMATE_STATUSES = [
-  "draft",
-  "internal_review",
-  "signature_pending",
-  "accepted",
-  "superseded",
-  "void",
-] as const
+import { isListValue } from "@/lib/shared/statuses"
 
-export type EstimateStatus = (typeof ESTIMATE_STATUSES)[number]
+export type { EstimateStatus }
 
 export type EstimateLineCalculationInput = {
   readonly quantity: number
@@ -242,7 +236,7 @@ export function calculateEstimateTotals(
 }
 
 export function isEstimateStatus(value: string): value is EstimateStatus {
-  return ESTIMATE_STATUSES.some((status) => status === value)
+  return isListValue(ESTIMATE_STATUSES, value)
 }
 
 export function estimateCanBeEdited(status: EstimateStatus): boolean {

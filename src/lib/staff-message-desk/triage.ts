@@ -4,9 +4,10 @@
  * open messages with no activity are flagged as they age so nothing sits
  * unanswered without anyone noticing.
  */
+import { STAFF_MESSAGE_STATUSES, type StaffMessageStatus } from "@/lib/domain/feedback/statuses"
+export type { StaffMessageStatus }
+
 // Matches the CHECK constraint from migration 0111_staff_message_statuses.
-export const STAFF_MESSAGE_STATUSES = ["new", "follow_up_needed", "in_progress", "waiting_on_contact", "closed"] as const
-export type StaffMessageStatus = (typeof STAFF_MESSAGE_STATUSES)[number]
 
 export const STAFF_MESSAGE_STATUS_LABEL: Readonly<Record<StaffMessageStatus, string>> = {
   new: "New",

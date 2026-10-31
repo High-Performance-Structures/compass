@@ -5,6 +5,8 @@
  * and the agent API share exactly the same decisions.
  */
 import type { scheduleTasks } from "@/db/schema"
+import { DEPENDENCY_TYPES, SCHEDULE_TASK_STATUSES } from "@/lib/domain/schedule/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import {
   wouldCreateCycle,
@@ -41,16 +43,11 @@ export const DEPENDENCY_ERRORS = {
 } as const
 
 export function isTaskStatus(value: unknown): value is TaskStatus {
-  return (
-    value === "PENDING" ||
-    value === "IN_PROGRESS" ||
-    value === "COMPLETE" ||
-    value === "BLOCKED"
-  )
+  return isListValue(SCHEDULE_TASK_STATUSES, value)
 }
 
 export function isDependencyType(value: unknown): value is DependencyType {
-  return value === "FS" || value === "SS" || value === "FF" || value === "SF"
+  return isListValue(DEPENDENCY_TYPES, value)
 }
 
 type TaskRow = Omit<ScheduleTaskData, "status" | "assignees"> & { readonly status: string }

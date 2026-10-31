@@ -1,16 +1,8 @@
 /** Finish selection read models and action inputs, shared by the actions, the domain module and components. */
 
-export type ProjectSelectionStatus =
-  | "needed"
-  | "proposed"
-  | "owner_review"
-  | "approved"
-  | "pricing"
-  | "rfq_sent"
-  | "ordered"
-  | "installed"
-  | "unavailable"
-  | "deferred"
+import type { ProjectSelectionStatus } from "./statuses"
+
+export type { ProjectSelectionStatus }
 
 export type ProjectSelectionItem = {
   readonly id: string

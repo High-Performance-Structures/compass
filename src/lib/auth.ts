@@ -735,7 +735,7 @@ export async function ensureUserExists(workosUser: {
     .limit(1)
     .get()
 
-  const newUser = {
+  const newUser: typeof users.$inferInsert = {
     id: workosUser.id,
     email: workosUser.email,
     firstName: workosUser.firstName ?? null,

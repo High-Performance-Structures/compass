@@ -1,12 +1,12 @@
+import { WORKSPACE_KINDS, type WorkspaceKind } from "@/lib/domain/project/statuses"
 import type { InternalDutySettings } from "@/lib/feature-settings/registry"
 import type { RecurringDutyView } from "@/lib/internal-duties/recurring-data"
+import { isListValue } from "@/lib/shared/statuses"
 
-export const WORKSPACE_KINDS = ["office", "executive", "field"] as const
-
-export type WorkspaceKind = (typeof WORKSPACE_KINDS)[number]
+export type { WorkspaceKind }
 
 export function isWorkspaceKind(value: string): value is WorkspaceKind {
-  return WORKSPACE_KINDS.some((kind) => kind === value)
+  return isListValue(WORKSPACE_KINDS, value)
 }
 
 /** What each kind of internal workspace is for, as people pick it. */

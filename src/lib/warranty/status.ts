@@ -1,3 +1,6 @@
+import { WARRANTY_CLAIM_STATUSES, type WarrantyClaimStatus } from "@/lib/domain/warranty/statuses"
+export type { WarrantyClaimStatus }
+
 export const WARRANTY_CLAIM_PRIORITIES = [
   "low",
   "normal",
@@ -7,19 +10,6 @@ export const WARRANTY_CLAIM_PRIORITIES = [
 
 export type WarrantyClaimPriority =
   (typeof WARRANTY_CLAIM_PRIORITIES)[number]
-
-export const WARRANTY_CLAIM_STATUSES = [
-  "submitted",
-  "acknowledged",
-  "visit_scheduled",
-  "in_progress",
-  "waiting_on_owner",
-  "resolved",
-  "closed",
-  "rejected",
-] as const
-
-export type WarrantyClaimStatus = (typeof WARRANTY_CLAIM_STATUSES)[number]
 
 export function warrantyClaimPriority(
   value: string

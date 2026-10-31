@@ -46,7 +46,7 @@ import {
   updateProjectContact,
   writeProjectIdentityToDirectory,
 } from "./store"
-import type { ProjectContactMutationInput } from "./types"
+import type { ProjectContactMutationInput, ProjectContactType } from "./types"
 
 type LinkState = {
   readonly sourceSystem: string
@@ -71,7 +71,7 @@ type Selection = {
 }
 
 type ContactValues = {
-  readonly contactType: string
+  readonly contactType: ProjectContactType
   readonly displayName: string
   readonly companyName: string | null
   readonly role: string | null

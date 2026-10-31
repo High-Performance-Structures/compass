@@ -1,19 +1,6 @@
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { organizations, users } from "./schema"
-
-export const RATE_BOOK_CATEGORIES = [
-  "labor",
-  "machine",
-  "delivery",
-  "fuel",
-  "travel",
-  "lodging",
-  "rental",
-  "material",
-  "subcontract",
-  "other",
-] as const
-export type RateBookCategory = (typeof RATE_BOOK_CATEGORIES)[number]
+import { RATE_BOOK_CATEGORIES, RATE_BOOK_ENTRY_STATUSES, RATE_BOOK_FUEL_TYPES } from "../lib/domain/operations/statuses"
 
 /** Accepted rates estimators pick from. Edits bump `version` and write history. */
 export const rateBookEntries = sqliteTable(
@@ -32,10 +19,10 @@ export const rateBookEntries = sqliteTable(
     divisionName: text("division_name"),
     costCode: text("cost_code"),
     costCodeName: text("cost_code_name"),
-    fuelType: text("fuel_type", { enum: ["none", "diesel", "regular"] }).notNull().default("none"),
+    fuelType: text("fuel_type", { enum: RATE_BOOK_FUEL_TYPES }).notNull().default("none"),
     fuelGallonsPerUnit: real("fuel_gallons_per_unit"),
     notes: text("notes"),
-    status: text("status", { enum: ["active", "retired"] }).notNull().default("active"),
+    status: text("status", { enum: RATE_BOOK_ENTRY_STATUSES }).notNull().default("active"),
     version: integer("version").notNull().default(1),
     createdAt: text("created_at").notNull(),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),

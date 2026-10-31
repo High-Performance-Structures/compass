@@ -4,7 +4,9 @@
  * matching. No database or network access.
  */
 import type { projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
+import { PROJECT_SELECTION_STATUSES } from "@/lib/domain/selections/statuses"
 import { cleanText } from "@/lib/shared/guards"
+import { isListValue } from "@/lib/shared/statuses"
 import type { ParsedFinishSchedule } from "@/lib/selections/google-finish-schedule-import"
 import { normalizeProjectNumber } from "@/lib/selections/google-finish-schedule-import"
 
@@ -22,18 +24,6 @@ import type {
 type SelectionRow = typeof projectFinishSelections.$inferSelect
 type SelectionRoomRow = typeof projectFinishSelectionRooms.$inferSelect
 
-const PROJECT_SELECTION_STATUSES: readonly ProjectSelectionStatus[] = [
-  "needed",
-  "proposed",
-  "owner_review",
-  "approved",
-  "pricing",
-  "rfq_sent",
-  "ordered",
-  "installed",
-  "unavailable",
-  "deferred"
-]
 
 const ROOM_TYPE_OPTIONS: readonly string[] = [
   "Living Area",
@@ -98,7 +88,7 @@ export function requiredText(value: string | null, label: string): string {
 }
 
 export function isSelectionStatus(value: string): value is ProjectSelectionStatus {
-  return PROJECT_SELECTION_STATUSES.some((status) => status === value)
+  return isListValue(PROJECT_SELECTION_STATUSES, value)
 }
 
 export function normalizeStatus(value: string | null): ProjectSelectionStatus {

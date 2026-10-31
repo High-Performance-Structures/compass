@@ -27,6 +27,8 @@ import {
 } from "@/db/schema"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
+import { checkedListFields } from "@/lib/shared/statuses"
+import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 
 type Statement = BatchItem<"sqlite">
 
@@ -247,11 +249,11 @@ export async function resolvedProjectContacts(
 // ---------------------------------------------------------------------------
 
 export function insertProjectContactStatement(db: Db, values: ProjectContactInsert): Statement {
-  return db.insert(projectContacts).values(values)
+  return db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS))
 }
 
 export async function insertProjectContact(db: Db, values: ProjectContactInsert): Promise<void> {
-  await db.insert(projectContacts).values(values)
+  await db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS))
 }
 
 /**
@@ -264,7 +266,7 @@ export async function insertProjectContactsIfMissing(
   values: readonly ProjectContactInsert[]
 ): Promise<readonly { readonly id: string }[]> {
   const [first, ...rest] = chunkD1InsertRows(projectContacts, values).map((rows) =>
-    db.insert(projectContacts).values(rows).onConflictDoNothing().returning({ id: projectContacts.id })
+    db.insert(projectContacts).values(checkedListFields("project_contacts", rows, PROJECT_CONTACT_LISTS)).onConflictDoNothing().returning({ id: projectContacts.id })
   )
   if (!first) return []
   const results = await db.batch([first, ...rest])
@@ -274,7 +276,7 @@ export async function insertProjectContactsIfMissing(
 /** Only one primary contact per type on a project. */
 export async function clearProjectPrimaryContact(
   db: Db,
-  input: { readonly projectId: string; readonly contactType: string; readonly now: string }
+  input: { readonly projectId: string; readonly contactType: ProjectContactType; readonly now: string }
 ): Promise<void> {
   await db
     .update(projectContacts)
@@ -288,7 +290,7 @@ export async function updateProjectContact(
 ): Promise<void> {
   await db
     .update(projectContacts)
-    .set(input.values)
+    .set(checkedListFields("project_contacts", input.values, PROJECT_CONTACT_LISTS))
     .where(and(eq(projectContacts.id, input.contactId), eq(projectContacts.projectId, input.projectId)))
 }
 
@@ -316,7 +318,7 @@ export async function updateProjectContactById(
   db: Db,
   input: { readonly contactId: string; readonly values: ProjectContactPatch }
 ): Promise<void> {
-  await db.update(projectContacts).set(input.values).where(eq(projectContacts.id, input.contactId)).run()
+  await db.update(projectContacts).set(checkedListFields("project_contacts", input.values, PROJECT_CONTACT_LISTS)).where(eq(projectContacts.id, input.contactId)).run()
 }
 
 /**

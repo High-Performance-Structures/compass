@@ -1,6 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { organizations, projectContacts, projects, users, vendors } from "./schema"
+import { WARRANTY_CLAIM_STATUSES } from "../lib/domain/warranty/statuses"
 
 export const projectWarrantyClaims = sqliteTable(
   "project_warranty_claims",
@@ -20,7 +21,7 @@ export const projectWarrantyClaims = sqliteTable(
     category: text("category").notNull(),
     description: text("description").notNull(),
     priority: text("priority").notNull().default("normal"),
-    status: text("status").notNull().default("submitted"),
+    status: text("status", { enum: WARRANTY_CLAIM_STATUSES }).notNull().default("submitted"),
     audience: text("audience").notNull().default("owner"),
     promotionState: text("promotion_state").notNull().default("actionable"),
     claimantUserId: text("claimant_user_id").references(() => users.id, {
@@ -135,8 +136,8 @@ export const projectWarrantyClaimEvents = sqliteTable(
     actorName: text("actor_name").notNull(),
     actorRole: text("actor_role").notNull(),
     eventType: text("event_type").notNull(),
-    fromStatus: text("from_status"),
-    toStatus: text("to_status"),
+    fromStatus: text("from_status", { enum: WARRANTY_CLAIM_STATUSES }),
+    toStatus: text("to_status", { enum: WARRANTY_CLAIM_STATUSES }),
     note: text("note"),
     ownerVisible: integer("owner_visible", { mode: "boolean" })
       .notNull()

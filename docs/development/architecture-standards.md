@@ -111,10 +111,22 @@ The database is the source of truth, and each fact is stored once.
   list of child records in a text column. Use a child table. JSON columns are
   for raw provider payloads and named snapshots only, and they carry a
   `// json:` comment saying which.
-- **Status and type values come from one list.** Each status, type, kind, or
-  role column uses `enum:` from an exported `as const` array that the code
-  shares. Values are lowercase, and the same concept has one spelling
-  (`canceled`, `completed`).
+- **Status and type values come from one list.** Each status, state, type,
+  kind, or role column uses `enum:` from an exported `as const` array in its
+  domain module (`src/lib/domain/<module>/statuses.ts`), and the code imports
+  that list instead of repeating the values. The owning store checks writes
+  with `assertListFields` from `src/lib/shared/statuses.ts`, so an unknown
+  value is rejected before it reaches the database. Values a company
+  configures (custom job statuses, trade document types, room names, custom
+  roles and interaction types) are data, not lists; they and other free-form
+  columns (postal states, MIME types) are listed with a reason in
+  `STATUS_COLUMN_EXEMPTIONS` in `scripts/architecture-metrics.mjs`. The
+  `statusColumnsWithoutList` ratchet counts the columns still missing a list.
+  `bun scripts/status-values-report.mjs --local|--remote` reads the stored
+  values (read only), writes proposed normalisation SQL for exact case,
+  whitespace or spelling variants, and lists unknown values for review. New
+  values are lowercase, and the same concept has one spelling (`canceled`,
+  `completed`).
 - **One concept, one table.** Before adding a table, check whether the concept
   already has a home (calendars, reply threads, saved views, event history,
   external-system links). Extend it instead of creating a parallel store.

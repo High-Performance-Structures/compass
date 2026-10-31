@@ -23,6 +23,9 @@ import {
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import type { EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
+
+import { CHANGE_ORDER_HISTORY_LISTS, CHANGE_ORDER_LISTS, ESTIMATE_LISTS } from "./statuses"
 
 /*
  * The estimates domain store: the only code that inserts, updates or deletes
@@ -44,18 +47,22 @@ type EstimateInsert = typeof projectEstimates.$inferInsert
 type EstimatePatch = SQLiteUpdateSetSource<typeof projectEstimates>
 
 export function insertEstimateStatement(db: Db, values: EstimateInsert | readonly EstimateInsert[]): Statement {
+  assertListFields("project_estimates", values, ESTIMATE_LISTS)
   return isRows(values) ? db.insert(projectEstimates).values([...values]) : db.insert(projectEstimates).values(values)
 }
 
 export async function insertEstimate(db: Db, values: EstimateInsert | readonly EstimateInsert[]): Promise<D1Result> {
+  assertListFields("project_estimates", values, ESTIMATE_LISTS)
   return isRows(values) ? db.insert(projectEstimates).values([...values]).run() : db.insert(projectEstimates).values(values).run()
 }
 
 export function updateEstimatesStatement(db: Db, where: SQL | undefined, patch: EstimatePatch): Statement {
+  assertListFields("project_estimates", patch, ESTIMATE_LISTS)
   return db.update(projectEstimates).set(patch).where(where)
 }
 
 export async function updateEstimates(db: Db, where: SQL | undefined, patch: EstimatePatch): Promise<D1Result> {
+  assertListFields("project_estimates", patch, ESTIMATE_LISTS)
   return db.update(projectEstimates).set(patch).where(where).run()
 }
 
@@ -206,10 +213,12 @@ type ChangeOrderInsert = typeof projectChangeOrders.$inferInsert
 type ChangeOrderPatch = SQLiteUpdateSetSource<typeof projectChangeOrders>
 
 export function insertChangeOrderStatement(db: Db, values: ChangeOrderInsert | readonly ChangeOrderInsert[]): Statement {
+  assertListFields("project_change_orders", values, CHANGE_ORDER_LISTS)
   return isRows(values) ? db.insert(projectChangeOrders).values([...values]) : db.insert(projectChangeOrders).values(values)
 }
 
 export function updateChangeOrdersStatement(db: Db, where: SQL | undefined, patch: ChangeOrderPatch): Statement {
+  assertListFields("project_change_orders", patch, CHANGE_ORDER_LISTS)
   return db.update(projectChangeOrders).set(patch).where(where)
 }
 
@@ -242,6 +251,7 @@ export function deleteChangeOrderDocumentsStatement(db: Db, where: SQL | undefin
 type ChangeOrderHistoryInsert = typeof projectChangeOrderHistory.$inferInsert
 
 export function insertChangeOrderHistoryStatement(db: Db, values: ChangeOrderHistoryInsert | readonly ChangeOrderHistoryInsert[]): Statement {
+  assertListFields("project_change_order_history", values, CHANGE_ORDER_HISTORY_LISTS)
   return isRows(values) ? db.insert(projectChangeOrderHistory).values([...values]) : db.insert(projectChangeOrderHistory).values(values)
 }
 
@@ -613,6 +623,7 @@ export async function copyAssemblyAsPhaseEstimate(
  * routing is replayed safely with deterministic ids).
  */
 export async function insertChangeOrderIfAbsent(db: Db, values: ChangeOrderInsert): Promise<void> {
+  assertListFields("project_change_orders", values, CHANGE_ORDER_LISTS)
   await db
     .insert(projectChangeOrders)
     .values(values)
@@ -621,6 +632,7 @@ export async function insertChangeOrderIfAbsent(db: Db, values: ChangeOrderInser
 
 /** Inserts a change-order history row unless one with the same id exists. */
 export async function insertChangeOrderHistoryIfAbsent(db: Db, values: ChangeOrderHistoryInsert): Promise<void> {
+  assertListFields("project_change_order_history", values, CHANGE_ORDER_HISTORY_LISTS)
   await db
     .insert(projectChangeOrderHistory)
     .values(values)

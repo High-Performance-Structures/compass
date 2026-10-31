@@ -11,7 +11,13 @@ import {
   projectWarrantyClaimEvents,
   projectWarrantyClaims,
 } from "@/db/schema-warranty"
+import { WARRANTY_CLAIM_STATUSES } from "@/lib/domain/warranty/statuses"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
+
+// Enumerated columns are checked against their shared lists before every write.
+const CLAIM_LISTS = { status: WARRANTY_CLAIM_STATUSES }
+const EVENT_LISTS = { fromStatus: WARRANTY_CLAIM_STATUSES, toStatus: WARRANTY_CLAIM_STATUSES }
 
 type NewWarrantyClaim = typeof projectWarrantyClaims.$inferInsert
 type NewWarrantyClaimEvent = typeof projectWarrantyClaimEvents.$inferInsert
@@ -34,6 +40,7 @@ export async function countProjectWarrantyClaims(db: Db, projectId: string): Pro
 }
 
 export async function insertWarrantyClaim(db: Db, values: NewWarrantyClaim): Promise<void> {
+  assertListFields("project_warranty_claims", values, CLAIM_LISTS)
   await db.insert(projectWarrantyClaims).values(values)
 }
 
@@ -42,6 +49,7 @@ export async function updateWarrantyClaim(
   key: ClaimKey,
   values: Partial<Omit<NewWarrantyClaim, "id" | "projectId" | "organizationId">>
 ): Promise<void> {
+  assertListFields("project_warranty_claims", values, CLAIM_LISTS)
   await db.update(projectWarrantyClaims).set(values).where(claimWhere(key))
 }
 
@@ -50,6 +58,7 @@ export async function deleteWarrantyClaim(db: Db, key: ClaimKey): Promise<void> 
 }
 
 export async function insertWarrantyClaimEvent(db: Db, values: NewWarrantyClaimEvent): Promise<void> {
+  assertListFields("project_warranty_claim_events", values, EVENT_LISTS)
   await db.insert(projectWarrantyClaimEvents).values(values)
 }
 

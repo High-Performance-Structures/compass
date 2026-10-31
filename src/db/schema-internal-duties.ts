@@ -1,5 +1,6 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { dailyLogs, organizations, projectOperations, projects, users } from "./schema"
+import { RECURRING_DUTY_CADENCES } from "../lib/domain/duties/statuses"
 
 /**
  * One block of work: who, when, which duty or cost code, how long. Internal
@@ -44,8 +45,6 @@ export const internalDutyEntries = sqliteTable(
 )
 
 export type InternalDutyEntry = typeof internalDutyEntries.$inferSelect
-
-export const RECURRING_DUTY_CADENCES = ["monthly", "quarterly", "yearly"] as const
 
 /**
  * Work that comes around on a schedule (a bank reconciliation each month,

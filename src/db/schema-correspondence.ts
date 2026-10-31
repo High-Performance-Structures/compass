@@ -1,5 +1,11 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { projects, users } from "./schema"
+import {
+  CORRESPONDENCE_PARTICIPANT_ROLES,
+  CORRESPONDENCE_RECIPIENT_KINDS,
+  CORRESPONDENCE_REVISION_OPERATIONS,
+  CORRESPONDENCE_SOURCES,
+} from "../lib/domain/correspondence/statuses"
 
 export const correspondence = sqliteTable("project_correspondence", {
   id: text("id").primaryKey(),
@@ -18,7 +24,7 @@ export const correspondenceParticipants = sqliteTable("correspondence_participan
   userId: text("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   email: text("email").notNull(),
-  role: text("role", { enum: ["staff", "owner", "sub_vendor"] }).notNull(),
+  role: text("role", { enum: CORRESPONDENCE_PARTICIPANT_ROLES }).notNull(),
   revokedAt: text("revoked_at"),
 }, (t) => [uniqueIndex("correspondence_participant_unique").on(t.conversationId, t.userId),
     index("correspondence_participants_user_id_idx").on(t.userId)])
@@ -29,7 +35,7 @@ export const correspondenceMessages = sqliteTable("correspondence_messages", {
   conversationId: text("conversation_id").notNull().references(() => correspondence.id),
   authorUserId: text("author_user_id").references(() => users.id),
   authorName: text("author_name").notNull(),
-  source: text("source", { enum: ["compass", "buildertrend", "email", "sms"] }).notNull(),
+  source: text("source", { enum: CORRESPONDENCE_SOURCES }).notNull(),
   sourceKey: text("source_key").unique(),
   body: text("body").notNull(),
   sentAt: text("sent_at").notNull(),
@@ -44,7 +50,7 @@ export const correspondenceRecipients = sqliteTable("correspondence_recipients",
   messageId: text("message_id").notNull().references(() => correspondenceMessages.id),
   userId: text("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
-  kind: text("kind", { enum: ["author", "to", "cc"] }).notNull(),
+  kind: text("kind", { enum: CORRESPONDENCE_RECIPIENT_KINDS }).notNull(),
   openedAt: text("opened_at"),
   baseline: integer("baseline", { mode: "boolean" }).notNull().default(false),
 }, (t) => [uniqueIndex("correspondence_recipient_unique").on(t.messageId, t.userId), index("correspondence_recipient_user_idx").on(t.userId, t.messageId)])
@@ -92,7 +98,7 @@ export const correspondenceRevisions = sqliteTable("correspondence_revisions", {
   messageId: text("message_id").notNull().references(() => correspondenceMessages.id),
   actorUserId: text("actor_user_id").notNull(),
   previousBody: text("previous_body").notNull(),
-  operation: text("operation", { enum: ["edit", "retract"] }).notNull(),
+  operation: text("operation", { enum: CORRESPONDENCE_REVISION_OPERATIONS }).notNull(),
   createdAt: text("created_at").notNull(),
 },
   (table) => [

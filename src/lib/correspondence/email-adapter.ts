@@ -29,7 +29,8 @@ import {
 } from "@/lib/domain/correspondence/store"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { isReplyMessage } from "@/lib/email/reply-detection"
-import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 import { decideCorrespondenceInbound } from "./transport-policy"
 

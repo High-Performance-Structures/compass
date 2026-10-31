@@ -10,18 +10,17 @@ import { isWorkOSNotFound } from "@/lib/account-deletion"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isWorkOSConfigured } from "@/lib/auth-config"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  ACCOUNT_DELETION_REQUEST_STATUSES,
+  type AccountDeletionRequestStatus,
+} from "@/lib/domain/identity/statuses"
 import { runAccountDeletion, startAccountDeletionRequestProcessing } from "@/lib/domain/identity/store"
 import { canManageUserAccess } from "@/lib/permissions"
+import { listValueOr } from "@/lib/shared/statuses"
 
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
-
-type AccountDeletionRequestStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "cancelled"
 
 export type AdminAccountDeletionRequest = {
   readonly id: string
@@ -35,15 +34,8 @@ export type AdminAccountDeletionRequest = {
   readonly cancelledAt: string | null
 }
 
-const STATUSES: readonly AccountDeletionRequestStatus[] = [
-  "pending",
-  "processing",
-  "completed",
-  "cancelled",
-]
-
 function toStatus(value: string): AccountDeletionRequestStatus {
-  return STATUSES.find((status) => status === value) ?? "pending"
+  return listValueOr(ACCOUNT_DELETION_REQUEST_STATUSES, value, "pending")
 }
 
 type AdminContext = {

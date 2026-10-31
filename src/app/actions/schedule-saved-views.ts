@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
+import { SAVED_VIEW_VISIBILITIES, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
+
 import { findOwnScheduleSavedViewId, listVisibleSavedViews } from "@/lib/domain/settings/saved-views"
 import { deleteOwnScheduleSavedView, insertScheduleSavedView, updateScheduleSavedView } from "@/lib/domain/settings/store"
 import { orgContext } from "@/lib/server/action-context"
@@ -15,13 +17,13 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 const saveViewSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  visibility: z.enum(["personal", "shared"]),
+  visibility: z.enum(SAVED_VIEW_VISIBILITIES),
   definition: scheduleViewDefinitionSchema,
 })
 
 type SaveScheduleViewInput = {
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly definition: ScheduleViewDefinition
 }
 

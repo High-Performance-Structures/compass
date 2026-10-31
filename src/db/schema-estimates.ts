@@ -16,6 +16,7 @@ import {
 } from "./schema-templates"
 import { projectDocuments } from "./schema-documents"
 import { projectFamilyPhases } from "./schema-project-families"
+import { STORED_ESTIMATE_STATUSES } from "../lib/domain/estimates/statuses"
 
 export const sageTaxEntities = sqliteTable(
   "sage_tax_entities",
@@ -97,7 +98,7 @@ export const projectEstimates = sqliteTable(
     estimateNumber: text("estimate_number").notNull(),
     versionNumber: integer("version_number").notNull().default(1),
     title: text("title").notNull().default("CA22 Construction Estimate"),
-    status: text("status").notNull().default("draft"),
+    status: text("status", { enum: STORED_ESTIMATE_STATUSES }).notNull().default("draft"),
     estimateDate: text("estimate_date"),
     clientName: text("client_name"),
     clientMailingAddress: text("client_mailing_address"),

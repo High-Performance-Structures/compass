@@ -20,16 +20,20 @@ import {
   feedbackServiceHealth,
   jarvisBridgeEvents,
 } from "@/db/schema-jarvis"
+import { FEEDBACK_DESK_STATUSES } from "@/lib/domain/feedback/statuses"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
 
 // ---------------------------------------------------------------------------
 // feedbackDeskItems: Feedback Desk items
 // ---------------------------------------------------------------------------
 
 function feedbackDeskItemsInsert(db: Db, values: SQLiteInsertValue<typeof feedbackDeskItems>) {
+  assertListFields("feedback_desk_items", values, { status: FEEDBACK_DESK_STATUSES })
   return db.insert(feedbackDeskItems).values(values)
 }
 function feedbackDeskItemsUpdate(db: Db, changes: SQLiteUpdateSetSource<typeof feedbackDeskItems>, where: SQL | undefined) {
+  assertListFields("feedback_desk_items", changes, { status: FEEDBACK_DESK_STATUSES })
   return db.update(feedbackDeskItems).set(changes).where(where)
 }
 

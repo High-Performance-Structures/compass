@@ -1,6 +1,6 @@
+import type { ProjectClientStatus } from "@/lib/domain/project/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
-export const PROJECT_CLIENT_STATUSES = ["lead", "customer"] as const
 
 export type ProjectInteractionTypeOption = {
   readonly id: string
@@ -105,7 +105,7 @@ export function isEligibleFollowUpOwner(input: {
   return input.active && isInternalStaffRole(input.role)
 }
 
-export type ProjectClientStatus = (typeof PROJECT_CLIENT_STATUSES)[number]
+export type { ProjectClientStatus }
 
 export function legacyProjectStatusAfterClientUpdate(input: {
   readonly currentStatus: string

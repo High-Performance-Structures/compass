@@ -43,6 +43,7 @@ import {
   isWarrantyProjectStage,
   warrantyClaimPriority,
   warrantyClaimStatus,
+  type WarrantyClaimStatus,
 } from "@/lib/warranty/status"
 import type { WarrantyClaimItem } from "@/lib/domain/warranty/types"
 
@@ -169,8 +170,8 @@ async function appendClaimEvent(input: {
   readonly context: WarrantyContext
   readonly claimId: string
   readonly eventType: string
-  readonly fromStatus: string | null
-  readonly toStatus: string | null
+  readonly fromStatus: WarrantyClaimStatus | null
+  readonly toStatus: WarrantyClaimStatus | null
   readonly note: string | null
   readonly ownerVisible: boolean
   readonly createdAt: string

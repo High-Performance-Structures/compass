@@ -67,6 +67,7 @@ const COUNT_RULES = [
   "typeAssertions",
   "nonNullAssertions",
   "explicitAny",
+  "statusColumnsWithoutList",
 ] as const
 
 describe("architecture standard", () => {

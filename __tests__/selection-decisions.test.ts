@@ -633,7 +633,7 @@ it("allows only the request's owner to edit or withdraw it", async () => {
   })
 })
 
-it.each(["ordered", "installed", "rfq_sent", "deferred"])(
+it.each(["ordered", "installed", "rfq_sent", "deferred"] as const)(
   "owner approval preserves %s progress",
   async (status) => {
     await testDb.db.update(projectFinishSelections).set({ status })

@@ -8,6 +8,7 @@ import {
   users,
 } from "./schema"
 import { projectEstimates } from "./schema-estimates"
+import { BRACING_RENTAL_STATUSES } from "../lib/domain/nutech/statuses"
 
 export const nuTechCatalogVersions = sqliteTable(
   "nutech_catalog_versions",
@@ -298,7 +299,7 @@ export const nuTechBracingRentals = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     /** reserved | out | returned */
-    status: text("status").notNull().default("reserved"),
+    status: text("status", { enum: BRACING_RENTAL_STATUSES }).notNull().default("reserved"),
     signedOutOn: text("signed_out_on"),
     expectedReturnOn: text("expected_return_on"),
     returnedOn: text("returned_on"),

@@ -13,15 +13,15 @@ import {
   scheduleSavedViews,
   userViewPreferences,
   users,
-  type SavedViewScope,
 } from "@/db/schema"
 import { savedViewDefaultValue, savedViewReadSource } from "@/lib/domain/settings/rules"
+import type { SavedViewScope, SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 export type VisibleSavedView = {
   readonly id: string
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly ownerUserId: string
   /** Null only for legacy schedule rows, which never joined the owner. */
   readonly ownerName: string | null

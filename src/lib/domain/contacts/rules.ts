@@ -11,6 +11,9 @@ import type {
 } from "@/lib/project-contact-access-status"
 import { isCanonicalDirectoryAssignment } from "@/lib/project-contact-directory-identity"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
+import { isListValue } from "@/lib/shared/statuses"
+
+import { PROJECT_CONTACT_TYPES } from "./statuses"
 
 import type {
   ProjectContactCsiGroup,
@@ -24,12 +27,6 @@ import type {
 type ProjectContactRow = typeof projectContacts.$inferSelect
 type SourceLinkRow = typeof projectContactSourceLinks.$inferSelect
 
-const CONTACT_TYPES: readonly ProjectContactType[] = [
-  "owner",
-  "supplier",
-  "subcontractor",
-  "internal",
-]
 
 function contactTypeLabel(type: ProjectContactType): string {
   switch (type) {
@@ -61,7 +58,7 @@ export function toWritableContactType(value: string): ProjectContactType {
 }
 
 export function validContactType(value: string): value is ProjectContactType {
-  return CONTACT_TYPES.some((contactType) => contactType === value)
+  return isListValue(PROJECT_CONTACT_TYPES, value)
 }
 
 /** The role label the review queue writes for a contact type. */
@@ -163,7 +160,7 @@ export function buildCsiGroups(
 export function buildGroups(
   contacts: readonly ProjectContactItem[]
 ): readonly ProjectContactGroup[] {
-  return CONTACT_TYPES.map((contactType) => {
+  return PROJECT_CONTACT_TYPES.map((contactType) => {
     const items = contacts.filter((contact) => contact.contactType === contactType)
     return {
       contactType,

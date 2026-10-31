@@ -3,6 +3,7 @@ import type { SQLiteInsert } from "drizzle-orm/sqlite-core"
 import type { getDb } from "@/db"
 import { projectContacts, projectRfis } from "@/db/schema"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import type { ProjectContactType } from "@/lib/domain/contacts/statuses"
 import { upsertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { canViewRfi, PARTICIPANT_CAPABILITIES } from "@/lib/participant-access"
 
@@ -14,7 +15,7 @@ export const RFI_VENDOR_ASSIGNEE_ROLE = "assignee"
 export const RFI_REQUESTER_ROLE = "requester"
 // One staff-managed company assignment per RFI; re-assigning updates this row.
 export const VENDOR_ASSIGNEE_PARTICIPANT_ID = "compass-vendor-assignee"
-const VENDOR_CONTACT_TYPES: readonly string[] = ["subcontractor", "supplier"]
+const VENDOR_CONTACT_TYPES: readonly ProjectContactType[] = ["subcontractor", "supplier"]
 
 export type RfiVendorContact = {
   readonly id: string

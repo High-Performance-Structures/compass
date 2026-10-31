@@ -1,4 +1,6 @@
+import { DELIVERY_METHODS, type DeliveryMethod } from "@/lib/domain/project/statuses"
 import type { ProjectDepartment } from "@/lib/project-branding"
+import { isListValue } from "@/lib/shared/statuses"
 
 /**
  * Sales pipeline for material-sales departments (Nu-Tech): one column per
@@ -50,10 +52,8 @@ export function salesStageForJobStatus(jobStatusId: string): SalesStageId | null
 export function salesStageColor(stage: SalesStageId): string {
   return `var(${SALES_STAGE_COLOR_TOKEN[stage]})`
 }
-export type DeliveryMethod =
-  | "delivery"
-  | "pickup"
+export type { DeliveryMethod }
 
 export function isDeliveryMethod(value: unknown): value is DeliveryMethod {
-  return value === "delivery" || value === "pickup"
+  return isListValue(DELIVERY_METHODS, value)
 }
