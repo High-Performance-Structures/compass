@@ -884,7 +884,7 @@
     "src/components/conversations/message-composer.tsx": 1014,
     "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,
-    "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1106,
+    "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
     "src/components/nutech/nutech-order-workspace.tsx": 1182,
     "src/components/projects/owner-update-draft-editor.tsx": 1132,
     "src/components/projects/project-audience-preview.tsx": 923,

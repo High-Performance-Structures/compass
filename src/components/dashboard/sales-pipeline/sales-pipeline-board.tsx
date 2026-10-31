@@ -20,6 +20,8 @@ import {
 import { FollowUpChip, FollowUpSection } from "@/components/projects/project-follow-up-aging"
 import { needsFollowUp } from "@/lib/project-follow-up"
 import { cn } from "@/lib/utils"
+import { PortfolioNotificationIndicator } from "@/components/dashboard/portfolio-map/portfolio-notification-indicator"
+import type { PortfolioMessagesForJob } from "@/components/dashboard/portfolio-map/use-portfolio-messages"
 
 const STAGE_MOVE_GROUPS: readonly StatusMoveGroup[] = SALES_STAGES.map((stage) => ({
   id: stage.id,
@@ -122,7 +124,10 @@ export function useSalesPipeline(pipeline: SalesPipeline | null): SalesPipelineS
 }
 
 /** One column per sales stage; selecting a job opens it in the panel. */
-export function SalesPipelineColumns({ state }: { readonly state: SalesPipelineState }): React.ReactElement {
+export function SalesPipelineColumns({ state, messagesForJob }: {
+  readonly state: SalesPipelineState
+  readonly messagesForJob?: PortfolioMessagesForJob
+}): React.ReactElement {
   const { jobs, selected, select } = state
   const selectedId = selected?.id ?? null
   return (
@@ -159,6 +164,11 @@ export function SalesPipelineColumns({ state }: { readonly state: SalesPipelineS
                         <FollowUpChip signal={job.followUp} />
                       </span>
                     </button>
+                    <PortfolioNotificationIndicator
+                      messages={messagesForJob?.(job.id) ?? null}
+                      jobName={job.name}
+                      onOpen={() => select(job.id)}
+                    />
                   </li>
                 ))}
               </ul>

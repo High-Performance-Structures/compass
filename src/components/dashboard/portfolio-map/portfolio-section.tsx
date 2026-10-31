@@ -30,10 +30,8 @@ import type { WeatherSublayers } from "@/components/dashboard/portfolio-map/port
 import { usePortfolioFires, usePortfolioWeather } from "@/components/dashboard/portfolio-map/use-portfolio-weather"
 import { jobWeatherRows, type PortfolioWeatherPanelData } from "@/components/dashboard/portfolio-map/portfolio-weather-panel"
 import { DEFAULT_WEATHER_LIMITS } from "@/lib/weather/layer"
-import type { PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
-import { useNotificationInbox } from "@/hooks/use-notification-inbox"
-import { groupInbox } from "@/lib/notifications/inbox"
-import { messageStacksFrom } from "@/lib/notifications/message-stacks"
+import { PortfolioJobMessageList } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
+import { usePortfolioMessages } from "@/components/dashboard/portfolio-map/use-portfolio-messages"
 import {
   SalesJobPanel,
   SalesPipelineColumns,
@@ -208,23 +206,11 @@ export function PortfolioSection({
   }, [])
   // Messages layer: the viewer's bell items, stacked per job on the map.
   const messagesOn = layerState.messages && travel !== null && view === "map" && !mapUnavailable
-  const inbox = useNotificationInbox(messagesOn)
-  const messageStacks = React.useMemo(
-    () => (messagesOn ? messageStacksFrom(inbox.items) : null),
-    [inbox.items, messagesOn],
-  )
-  const selectedJobId = selection.kind === "job" ? selection.jobId : null
-  const { markRead: markInboxRead, done: markInboxDone } = inbox
-  const jobMessages = React.useMemo<PortfolioJobMessages | null>(() => {
-    if (!messagesOn || !selectedJobId) return null
-    const sections = groupInbox(inbox.items.filter((item) => item.projectId === selectedJobId))
-    return {
-      rows: sections.flatMap((section) => section.rows.filter((row) => row.unreadCount > 0)),
-      loaded: inbox.loaded,
-      onMarkRead: (row) => void markInboxRead(row),
-      onDone: (row) => void markInboxDone(row),
-    }
-  }, [inbox.items, inbox.loaded, markInboxDone, markInboxRead, messagesOn, selectedJobId])
+  const { messagesForJob, stacks, openNotification } = usePortfolioMessages(nearViewport)
+  const messageStacks = messagesOn ? stacks : null
+  const selectedJobId = internalActive ? internalSelected : activeSales
+    ? sales.selected?.id ?? null : selection.kind === "job" ? selection.jobId : null
+  const jobMessages = selectedJobId ? messagesForJob(selectedJobId) : null
 
   const travelSettings = travel?.settings
   const layers = React.useMemo(
@@ -384,6 +370,7 @@ export function PortfolioSection({
                 jobs={mapJobs}
                 highlight={highlight}
                 onSelectJob={internalActive ? setInternalSelected : activeSales ? sales.select : selectJob}
+                onSelectNotification={openNotification}
                 markerKey={markerKey}
                 onHoverJob={setHoveredJobId}
                 onUnavailable={handleUnavailable}
@@ -395,9 +382,9 @@ export function PortfolioSection({
               <div className="h-full" />
             )
           ) : internalActive ? (
-            <InternalWorkspaceList jobs={internal} selectedId={internalSelected} onSelect={setInternalSelected} />
+            <InternalWorkspaceList jobs={internal} selectedId={internalSelected} onSelect={setInternalSelected} messagesForJob={messagesForJob} />
           ) : activeSales ? (
-            <SalesPipelineColumns state={sales} />
+            <SalesPipelineColumns state={sales} messagesForJob={messagesForJob} />
           ) : (
             <PortfolioPipeline
               jobs={jobs}
@@ -406,6 +393,7 @@ export function PortfolioSection({
               onSelectJob={selectJob}
               onSelectPhase={selectPhase}
               canOpenFiles={canOpenFiles}
+              messagesForJob={messagesForJob}
             />
           )}
         </div>
@@ -430,6 +418,9 @@ export function PortfolioSection({
               weather={weatherPanel}
             />
           )}
+          {(internalActive || activeSales) && jobMessages ? (
+            <div className="px-5 pb-5"><PortfolioJobMessageList messages={jobMessages} /></div>
+          ) : null}
         </aside>
       </div>
     </section>

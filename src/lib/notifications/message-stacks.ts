@@ -11,7 +11,11 @@ export const MESSAGE_KIND_LABEL: Readonly<Record<MessageKind, string>> = {
 }
 
 /** Unread item kinds per project id. */
-export type MessageStacks = ReadonlyMap<string, readonly MessageKind[]>
+export type MessageStackEntry = MessageKind | {
+  readonly kind: MessageKind
+  readonly notificationId: string
+}
+export type MessageStacks = ReadonlyMap<string, readonly MessageStackEntry[]>
 
 type StackItem = {
   readonly sourceType: string
@@ -31,12 +35,13 @@ export function messageKind(item: Pick<StackItem, "sourceType" | "eventType">): 
 }
 
 /** Groups the viewer's unread bell items by project; items without a project are left out. */
-export function messageStacksFrom(items: readonly StackItem[]): MessageStacks {
-  const stacks = new Map<string, MessageKind[]>()
+export function messageStacksFrom<T extends StackItem>(items: readonly T[]): MessageStacks {
+  const stacks = new Map<string, MessageStackEntry[]>()
   for (const item of items) {
     if (item.readAt !== null || item.projectId === null) continue
     const kinds = stacks.get(item.projectId) ?? []
-    kinds.push(messageKind(item))
+    const kind = messageKind(item)
+    kinds.push("id" in item && typeof item.id === "string" ? { kind, notificationId: item.id } : kind)
     stacks.set(item.projectId, kinds)
   }
   return stacks

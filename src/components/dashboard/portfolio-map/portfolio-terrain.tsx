@@ -70,6 +70,7 @@ type PortfolioTerrainProps = {
   readonly jobs: readonly PortfolioMapJob[]
   readonly highlight: SceneHighlight
   readonly onSelectJob: (jobId: string | null) => void
+  readonly onSelectNotification?: (notificationId: string) => void
   readonly onHoverJob: (jobId: string | null) => void
   readonly onUnavailable: () => void
   /** Open zoomed to the selected job instead of the statewide view. */
@@ -110,6 +111,7 @@ export default function PortfolioTerrain({
   jobs,
   highlight,
   onSelectJob,
+  onSelectNotification,
   onHoverJob,
   onUnavailable,
   focusSelectedOnLoad = false,
@@ -125,8 +127,8 @@ export default function PortfolioTerrain({
   const sceneRef = React.useRef<PortfolioScene | null>(null)
   const [labels, setLabels] = React.useState<readonly SceneLabel[]>([])
   const [ready, setReady] = React.useState(false)
-  const callbacks = React.useRef({ onSelectJob, onHoverJob, onUnavailable })
-  callbacks.current = { onSelectJob, onHoverJob, onUnavailable }
+  const callbacks = React.useRef({ onSelectJob, onSelectNotification, onHoverJob, onUnavailable })
+  callbacks.current = { onSelectJob, onSelectNotification, onHoverJob, onUnavailable }
   // Read once when the scene starts.
   const focusOnLoad = React.useRef(focusSelectedOnLoad)
   // Bumped to rebuild the scene on a fresh canvas after the browser takes the
@@ -144,7 +146,10 @@ export default function PortfolioTerrain({
     let scene: PortfolioScene
     try {
       scene = new PortfolioScene(canvas, container, {
-        onSelect: (jobId) => callbacks.current.onSelectJob(jobId),
+        onSelect: (jobId, notificationId) => {
+          callbacks.current.onSelectJob(jobId)
+          if (notificationId) callbacks.current.onSelectNotification?.(notificationId)
+        },
         onHover: (jobId) => callbacks.current.onHoverJob(jobId),
         onLabels: setLabels,
         onReady: () => setReady(true),
