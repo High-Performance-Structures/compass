@@ -9,10 +9,12 @@ import {
   projectBudgetLines,
   projectContacts,
   projectOperations,
+  projectTodoEvents,
   projectPurchaseOrderLines,
   projects,
   scheduleTasks,
   vendors,
+  users,
 } from "@/db/schema"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { chunkD1Values } from "@/lib/d1-query"
@@ -208,7 +210,16 @@ export async function loadProjectTodos(db: Db, projectId: string): Promise<reado
     ),
   )
   const scheduleTaskIds = new Set(groups.flat().map((row) => row.id))
-  return operations.map((operation) => toTodoItem(operation, scheduleTaskIds))
+  const authors = await db.select({ todoId: projectTodoEvents.todoId, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName })
+    .from(projectTodoEvents)
+    .leftJoin(users, eq(projectTodoEvents.actorId, users.id))
+    .where(and(eq(projectTodoEvents.projectId, projectId), eq(projectTodoEvents.kind, "created")))
+    .orderBy(asc(projectTodoEvents.createdAt), asc(projectTodoEvents.id))
+  const authorByTodo = new Map<string, string | null>()
+  for (const author of authors) {
+    if (!authorByTodo.has(author.todoId)) authorByTodo.set(author.todoId, author.displayName?.trim() || [author.firstName, author.lastName].filter(Boolean).join(" ") || null)
+  }
+  return operations.map((operation) => ({ ...toTodoItem(operation, scheduleTaskIds), authorName: authorByTodo.get(operation.id) ?? null }))
 }
 
 export async function loadScheduleTaskTodos(

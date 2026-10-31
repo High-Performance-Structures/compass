@@ -1,181 +1,40 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import {
-  IconArchive,
-  IconEdit,
-  IconSearch,
-  IconTimeline,
-} from "@tabler/icons-react"
-
+import { IconSearch } from "@tabler/icons-react"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { setProjectTodoStatus } from "@/app/actions/project-todos"
 import type { ProjectTodoItem } from "@/lib/domain/operations/types"
+import {
+  todoFilterForItem,
+  todoMatchesFilter,
+  todoMatchesSearch,
+  type TodoFilter,
+} from "@/lib/project-todo-list"
+import { projectTodoStatusLabel } from "@/lib/project-todos"
+import { formatDate } from "@/lib/format"
+import { RecordTable, useRecordTable } from "@/components/record-table"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-dialog"
+import { ProjectTodoBulkActions } from "@/components/projects/project-todo-bulk-actions"
+import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
 import {
-  isArchivedProjectTodoStatus,
-  isCompletedProjectTodoStatus,
-  isSelectableProjectTodoStatus,
-  normalizeProjectTodoStatus,
-  PROJECT_TODO_SELECTABLE_STATUSES,
-  projectTodoStatusLabel,
-  projectTodoTypeLabel,
-  type ProjectTodoStatus,
-} from "@/lib/project-todos"
-import {
-  normalizeWorkCalendarSearch,
-  scheduleItemHref,
-} from "@/lib/work-calendar"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { PageHeader } from "@/components/page-header"
-import { formatDate } from "@/lib/format"
 
-type TodoFilter = "active" | "completed" | "archived" | "all"
-
-/** A due date as "Oct 30, 2026", or "No due date". */
-function dueDate(value: string | null): string {
-  return formatDate(value, "medium", "No due date")
-}
-
-function sourceLabel(item: ProjectTodoItem): string {
-  if (item.sourceSystem === "buildertrend") return "Buildertrend import"
-  if (item.sourceSystem === "compass") return "Compass"
-  if (item.sourceSystem === "sage") return "Sage"
-  return item.sourceSystem
-}
-
-function todoMatches(
-  item: ProjectTodoItem,
-  query: string,
-  includeInternalDetails: boolean
-): boolean {
-  const normalizedQuery = normalizeWorkCalendarSearch(query)
-  if (!normalizedQuery) return true
-
-  return normalizeWorkCalendarSearch(
-    [
-      item.title,
-      item.description,
-      item.sourceRecordNumber,
-      item.assigneeName,
-      item.companyName,
-      item.status,
-      item.priority,
-      projectTodoTypeLabel(item.sourceRecordType),
-      includeInternalDetails ? sourceLabel(item) : null,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" ")
-  ).includes(normalizedQuery)
-}
-
-function itemMatchesFilter(
-  item: ProjectTodoItem,
-  filter: TodoFilter
-): boolean {
-  if (filter === "all") return true
-  if (filter === "archived") {
-    return isArchivedProjectTodoStatus(item.status)
-  }
-  if (filter === "completed") {
-    return (
-      !isArchivedProjectTodoStatus(item.status) &&
-      isCompletedProjectTodoStatus(item.status)
-    )
-  }
-  return (
-    !isArchivedProjectTodoStatus(item.status) &&
-    !isCompletedProjectTodoStatus(item.status)
-  )
-}
-
-function initialFilterForItem(
-  item: ProjectTodoItem | null
-): TodoFilter {
-  if (!item) return "active"
-  if (isArchivedProjectTodoStatus(item.status)) return "archived"
-  if (isCompletedProjectTodoStatus(item.status)) return "completed"
-  return "active"
-}
-
-function StatusControl({
-  projectId,
-  item,
-}: {
-  readonly projectId: string
-  readonly item: ProjectTodoItem
-}): React.ReactElement {
-  const router = useRouter()
-  const [pending, startTransition] = React.useTransition()
-  const [error, setError] = React.useState<string | null>(null)
-  const status = normalizeProjectTodoStatus(item.status)
-
-  function changeStatus(nextStatus: ProjectTodoStatus): void {
-    setError(null)
-    startTransition(async () => {
-      const result = await setProjectTodoStatus(
-        projectId,
-        item.id,
-        nextStatus,
-        item.updatedAt
-      )
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
-    })
-  }
-
-  return (
-    <div>
-      <label className="sr-only" htmlFor={`todo-status-control-${item.id}`}>
-        Status for {item.title}
-      </label>
-      <Select
-        value={status}
-        disabled={pending}
-        onValueChange={(value) => {
-          if (isSelectableProjectTodoStatus(value)) {
-            changeStatus(value)
-          }
-        }}
-      >
-        <SelectTrigger
-          id={`todo-status-control-${item.id}`}
-          size="sm"
-          className="h-8 px-2 text-xs"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
-            <SelectItem key={selectableStatus} value={selectableStatus}>
-              {projectTodoStatusLabel(selectableStatus)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error && (
-        <p className="mt-1 max-w-56 text-xs text-destructive">{error}</p>
-      )}
-    </div>
-  )
-}
+const filters: readonly { readonly value: TodoFilter; readonly label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "completed", label: "Completed" },
+  { value: "archived", label: "Archived" },
+  { value: "all", label: "All" },
+]
 
 export function ProjectTodosView({
   projectId,
@@ -184,6 +43,7 @@ export function ProjectTodosView({
   initialItemId,
   assigneeOptions,
   canManage,
+  canDelete = false,
   initialCreateOpen = false,
 }: {
   readonly projectId: string
@@ -192,215 +52,161 @@ export function ProjectTodosView({
   readonly initialItemId: string | null
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly canManage: boolean
+  readonly canDelete?: boolean
   readonly initialCreateOpen?: boolean
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
-  const initialItem =
-    items.find((item) => item.id === initialItemId) ?? null
+  const initialItem = items.find((item) => item.id === initialItemId) ?? null
   const [query, setQuery] = React.useState("")
-  const [filter, setFilter] = React.useState<TodoFilter>(
-    initialFilterForItem(initialItem)
+  const [filter, setFilter] = React.useState<TodoFilter>(() => todoFilterForItem(initialItem))
+  const [editingItem, setEditingItem] = React.useState<ProjectTodoItem | null>(null)
+  const visibleItems = React.useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          todoMatchesFilter(item, filter) && todoMatchesSearch(item, query, developerModeEnabled),
+      ),
+    [items, filter, query, developerModeEnabled],
   )
-  const [editingItem, setEditingItem] =
-    React.useState<ProjectTodoItem | null>(null)
-  const counts = React.useMemo(
-    () => ({
-      active: items.filter((item) => itemMatchesFilter(item, "active")).length,
-      completed: items.filter((item) => itemMatchesFilter(item, "completed"))
-        .length,
-      archived: items.filter((item) => itemMatchesFilter(item, "archived"))
-        .length,
-      all: items.length,
-    }),
-    [items]
+  const columns = React.useMemo(
+    () =>
+      projectTodoColumns({ projectId, canManage, developerModeEnabled, onOpen: setEditingItem }),
+    [projectId, canManage, developerModeEnabled],
   )
-  const visibleItems = items.filter(
-    (item) =>
-      itemMatchesFilter(item, filter) &&
-      todoMatches(item, query, developerModeEnabled)
-  )
+  const table = useRecordTable({
+    data: visibleItems,
+    columns,
+    getRowId: (item) => item.id,
+    resetKey: `${filter}:${query}`,
+    initialItemId,
+    enableSelection: canManage,
+  })
 
   React.useEffect(() => {
-    if (!initialItemId) return
-    const element = document.getElementById(`todo-${initialItemId}`)
-    if (!element) return
-    element.scrollIntoView({ behavior: "smooth", block: "center" })
-    element.focus({ preventScroll: true })
-  }, [initialItemId, filter])
+    if (initialItemId) {
+      const item = items.find((candidate) => candidate.id === initialItemId)
+      if (item) setFilter(todoFilterForItem(item))
+    }
+    // URL navigation reveals a linked row, while refreshes keep the chosen view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialItemId])
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
+    <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 p-4 md:p-6">
       <PageHeader
         className="mb-0"
         eyebrow={projectLabel}
         title="To-dos"
         actions={
           canManage ? (
-          <ProjectTaskCreateButton
-            projectId={projectId}
-            sourceLabel="Project"
-            sourceRecordId={null}
-            sourceRecordNumber={null}
-            sourceHref={null}
-            defaultTitle=""
-            defaultDescription={null}
-            defaultAssigneeName={null}
-            defaultCompanyName={null}
-            defaultDueDate={null}
-            defaultPriority="normal"
-            assigneeOptions={assigneeOptions}
-            defaultOpen={initialCreateOpen}
-            quickAddEnabled
-          />
+            <ProjectTaskCreateButton
+              projectId={projectId}
+              sourceLabel="Project"
+              sourceRecordId={null}
+              sourceRecordNumber={null}
+              sourceHref={null}
+              defaultTitle=""
+              defaultDescription={null}
+              defaultAssigneeName={null}
+              defaultCompanyName={null}
+              defaultDueDate={null}
+              defaultPriority="normal"
+              assigneeOptions={assigneeOptions}
+              defaultOpen={initialCreateOpen}
+              quickAddEnabled
+            />
           ) : null
         }
       />
-
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full lg:max-w-xl">
-          <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <IconSearch
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             value={query}
+            aria-label="Search to-dos"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              developerModeEnabled
-                ? "Search title, assignee, company, status, or source…"
-                : "Search title, assignee, company, or status…"
-            }
+            placeholder="Search name, description, assignee, or author…"
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ["active", "Active"],
-              ["completed", "Completed"],
-              ["archived", "Archived"],
-              ["all", "All"],
-            ] as const
-          ).map(([value, label]) => (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="To-do view">
+          {filters.map(({ value, label }) => (
             <Button
               key={value}
               type="button"
               size="sm"
+              aria-pressed={filter === value}
               variant={filter === value ? "default" : "outline"}
               onClick={() => setFilter(value)}
             >
-              {label} {counts[value]}
+              {label} ({items.filter((item) => todoMatchesFilter(item, value)).length})
             </Button>
           ))}
         </div>
       </div>
-
       {initialItemId && !initialItem && (
-        <p className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">
+        <p
+          role="alert"
+          className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive"
+        >
           The linked to-do was not found in this project.
         </p>
       )}
-
-      <section className="divide-y border-y">
-        {visibleItems.length > 0 ? (
-          visibleItems.map((item) => {
-            const focused = item.id === initialItemId
-            const archived = item.actions.canRestore
-            return (
-              <article
-                id={`todo-${item.id}`}
-                key={item.id}
-                tabIndex={-1}
-                data-focused={focused ? "true" : "false"}
-                className={cn(
-                  "grid gap-3 px-2 py-4 outline-none transition-colors sm:grid-cols-[minmax(0,1fr)_auto]",
-                  focused &&
-                    "border-l-4 border-l-primary bg-primary/5 ring-2 ring-inset ring-primary/20"
-                )}
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-medium">{item.title}</h2>
-                    <Badge variant="outline">
-                      {projectTodoTypeLabel(item.sourceRecordType)}
-                    </Badge>
-                    <Badge variant="secondary">
-                      {projectTodoStatusLabel(item.status)}
-                    </Badge>
-                    {developerModeEnabled && (
-                      <span className="text-xs text-muted-foreground">
-                        {sourceLabel(item)}
-                      </span>
-                    )}
-                  </div>
-                  {item.description && (
-                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
-                      {item.description}
-                    </p>
-                  )}
-                  {item.linkedScheduleTaskId && (
-                    <Link
-                      href={scheduleItemHref(
-                        projectId,
-                        item.linkedScheduleTaskId
-                      )}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      <IconTimeline className="size-3.5" />
-                      View linked schedule item
-                    </Link>
-                  )}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {developerModeEnabled
-                      ? item.sourceRecordNumber ?? "Compass to-do"
-                      : projectTodoTypeLabel(item.sourceRecordType)}
-                    {item.assigneeName ? ` · ${item.assigneeName}` : ""}
-                    {item.companyName ? ` · ${item.companyName}` : ""}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <div className="mr-2 text-sm text-muted-foreground sm:text-right">
-                    <p>{dueDate(item.dueDate ?? item.startDate)}</p>
-                    <p className="mt-1 capitalize">{item.priority} priority</p>
-                  </div>
-                  {canManage && !archived && (
-                    <StatusControl projectId={projectId} item={item} />
-                  )}
-                  {canManage && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditingItem(item)}
-                    >
-                      {archived ? (
-                        <IconArchive className="size-4" />
-                      ) : (
-                        <IconEdit className="size-4" />
-                      )}
-                      {archived ? "Review" : "Edit"}
-                    </Button>
-                  )}
-                </div>
-              </article>
-            )
-          })
-        ) : (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            No to-dos match this view.
-          </p>
-        )}
-      </section>
-
-      {editingItem && canManage && (
-        <ProjectTodoEditDialog
-          key={`${editingItem.id}-${editingItem.updatedAt}`}
-          projectId={projectId}
-          item={editingItem}
-          assigneeOptions={assigneeOptions}
-          open
-          onOpenChange={(open) => {
-            if (!open) setEditingItem(null)
-          }}
-        />
+      {canManage && (
+        <ProjectTodoBulkActions projectId={projectId} table={table} canDelete={canDelete} />
       )}
+      <RecordTable
+        table={table}
+        itemLabel="to-dos"
+        emptyMessage="No to-dos match this view."
+        focusedRowId={initialItemId}
+      />
+      {editingItem &&
+        (canManage ? (
+          <ProjectTodoEditDialog
+            key={`${editingItem.id}-${editingItem.updatedAt}`}
+            projectId={projectId}
+            item={editingItem}
+            assigneeOptions={assigneeOptions}
+            canDelete={canDelete}
+            open
+            onOpenChange={(open) => {
+              if (!open) setEditingItem(null)
+            }}
+          />
+        ) : (
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setEditingItem(null)
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingItem.title}</DialogTitle>
+                <DialogDescription>
+                  {editingItem.sourceRecordNumber ?? "Project to-do"}
+                </DialogDescription>
+              </DialogHeader>
+              <p className="whitespace-pre-wrap break-words text-sm">
+                {editingItem.description || "No description."}
+              </p>
+              <dl className="grid grid-cols-2 gap-2 text-sm">
+                <dt>Status</dt>
+                <dd>{projectTodoStatusLabel(editingItem.status)}</dd>
+                <dt>Assigned to</dt>
+                <dd>{editingItem.assigneeName ?? editingItem.companyName ?? "Unassigned"}</dd>
+                <dt>Due date</dt>
+                <dd>{formatDate(editingItem.dueDate, "medium", "No due date")}</dd>
+                <dt>Author</dt>
+                <dd>{editingItem.authorName ?? "Not recorded"}</dd>
+              </dl>
+            </DialogContent>
+          </Dialog>
+        ))}
     </div>
   )
 }

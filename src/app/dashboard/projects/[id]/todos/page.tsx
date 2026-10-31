@@ -42,6 +42,7 @@ export default async function ProjectTodosPage({
     typeof query.quickAdd === "string" ? query.quickAdd : query.quickAdd?.[0]
   const canManage =
     !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
+  const canDelete = canManage && (await canFeature(user, "tasks", "delete"))
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   if (canManage) {
     const assigneeData = await getProjectTaskAssigneeOptions(id)
@@ -59,6 +60,7 @@ export default async function ProjectTodosPage({
       initialItemId={initialItemId}
       assigneeOptions={assigneeOptions}
       canManage={canManage}
+      canDelete={canDelete}
       initialCreateOpen={quickAdd === "todo"}
     />
   )

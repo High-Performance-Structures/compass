@@ -9,6 +9,7 @@ import {
   projectContacts,
   vendors,
   projectOperations,
+  projectTodoEvents,
   projectPurchaseOrderLines,
   scheduleTasks,
 } from "@/db/schema"
@@ -47,7 +48,7 @@ beforeEach(() => {
   testDb = openCorrespondenceTestDatabase()
   // The shared harness creates a reduced contacts table; use the full schema here.
   testDb.sqlite.exec("DROP TABLE project_contacts")
-  for (const table of [projectContacts, vendors, projectOperations, projectPurchaseOrderLines, scheduleTasks]) {
+  for (const table of [projectContacts, vendors, projectOperations, projectTodoEvents, projectPurchaseOrderLines, scheduleTasks]) {
     createTable(table)
   }
   const insertTask = testDb.sqlite.prepare(

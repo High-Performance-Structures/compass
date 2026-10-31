@@ -41,6 +41,26 @@ type RfqQuoteLinkUpdate = Partial<RfqQuoteLinkInsert>
 
 export type OperationVersion = { readonly id: string; readonly updatedAt: string }
 
+/** Batch guarded writes: concurrent edits are left untouched and reported. */
+export async function changeTodosReturning(
+  db: Db,
+  projectId: string,
+  rows: readonly OperationRow[],
+  mode: "archive" | "restore" | "delete",
+  updatedAt: string,
+): Promise<string[]> {
+  const queries = rows.map((row) => {
+    const where = and(eq(projectOperations.projectId, projectId), eq(projectOperations.id, row.id), eq(projectOperations.updatedAt, row.updatedAt), eq(projectOperations.status, row.status), eq(projectOperations.sourceRecordType, row.sourceRecordType))
+    return mode === "delete"
+      ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
+      : db.update(projectOperations).set({ status: mode === "archive" ? "archived" : "open", updatedAt }).where(where).returning({ id: projectOperations.id })
+  })
+  const [first, ...rest] = queries
+  if (!first) return []
+  const results = await db.batch([first, ...rest])
+  return results.flat().map((row) => row.id)
+}
+
 // ---------------------------------------------------------------------------
 // project_operations
 // ---------------------------------------------------------------------------
