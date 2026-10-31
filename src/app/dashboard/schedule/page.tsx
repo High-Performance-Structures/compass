@@ -8,7 +8,6 @@ import {
 } from "@/app/actions/schedule"
 import {
   WorkCalendar,
-  type WorkCalendarKindFilter,
   type WorkCalendarView,
 } from "@/components/schedule/work-calendar"
 import { ScheduleView } from "@/components/schedule/schedule-view"
@@ -43,23 +42,7 @@ import { isDemoUser } from "@/lib/demo"
 import { ClientRedirect } from "@/components/client-redirect"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { NO_CONFLICT_SETTINGS } from "@/lib/schedule/conflicts"
-
-function kindFilter(
-  value: string | readonly string[] | undefined
-): WorkCalendarKindFilter {
-  const selected = typeof value === "string" ? value : value?.[0]
-
-  switch (selected) {
-    case "schedule":
-    case "event":
-    case "task":
-    case "rfi":
-    case "purchase_order":
-      return selected
-    default:
-      return "all"
-  }
-}
+import { workCalendarFilter } from "@/lib/work-calendar-navigation"
 
 function calendarView(
   value: string | readonly string[] | undefined
@@ -290,7 +273,7 @@ export default async function SchedulePage({
   return (
     <WorkCalendar
       data={data}
-      initialKind={kindFilter(query.kind)}
+      initialKind={workCalendarFilter(query.kind, initialItemId)}
       initialItemId={initialItemId}
       initialView={calendarView(query.view)}
       initialDate={initialDate}
