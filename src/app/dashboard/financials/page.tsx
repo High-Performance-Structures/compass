@@ -9,7 +9,8 @@ import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import { getCustomers } from "@/app/actions/customers"
 import { getVendors } from "@/app/actions/vendors"
-import { getProjects, type ProjectListItem } from "@/app/actions/projects"
+import { useProjectList } from "@/components/project-list-provider"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import {
   getInvoices,
   createInvoice,
@@ -95,7 +96,8 @@ function FinancialsContent() {
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<Vendor[]>([])
-  const [projectsList, setProjectsList] = React.useState<ProjectListItem[]>([])
+  // The dashboard layout already loaded the viewer's projects.
+  const projectsList = useProjectList()
 
   const [invoicesList, setInvoicesList] = React.useState<Invoice[]>([])
   const [billsList, setBillsList] = React.useState<VendorBill[]>([])
@@ -123,10 +125,9 @@ function FinancialsContent() {
 
   const loadAll = async () => {
     try {
-      const [c, v, p, inv, bills, pay, cm, receipts] = await Promise.all([
+      const [c, v, inv, bills, pay, cm, receipts] = await Promise.all([
         getCustomers(),
         getVendors(),
-        getProjects(),
         getInvoices(),
         getVendorBills(),
         getPayments(),
@@ -135,7 +136,6 @@ function FinancialsContent() {
       ])
       setCustomersList(c)
       setVendorsList(v)
-      setProjectsList(p)
       setInvoicesList(inv)
       setBillsList(bills)
       setPaymentsList(pay)
@@ -150,16 +150,15 @@ function FinancialsContent() {
 
   React.useEffect(() => { loadAll() }, [])
 
-  React.useEffect(() => {
-    if (tab !== "payments") return
-    const refresh = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return
+  useVisibleInterval(
+    () => {
       void getSageSquareReceipts()
         .then(setSquareReceipts)
         .catch(() => undefined)
-    }, 15_000)
-    return () => window.clearInterval(refresh)
-  }, [tab])
+    },
+    15_000,
+    { enabled: tab === "payments", immediate: false },
+  )
 
   const openInvoice = React.useCallback(() => {
     setEditingInvoice(null)

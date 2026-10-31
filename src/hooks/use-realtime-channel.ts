@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { z } from "zod/v4"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 type TypingUser = {
   id: string
@@ -35,12 +36,10 @@ type RealtimeUpdate = {
 }
 
 type PollingOptions = {
-  visibleInterval?: number
-  hiddenInterval?: number
+  readonly visibleInterval?: number
 }
 
-const DEFAULT_VISIBLE_POLL_INTERVAL = 2500 // 2.5 seconds when tab is visible
-const DEFAULT_HIDDEN_POLL_INTERVAL = 10000 // 10 seconds when tab is hidden
+const DEFAULT_VISIBLE_POLL_INTERVAL = 2500 // 2.5 seconds while the tab is visible
 
 const realtimeUpdateSchema = z.object({
   success: z.literal(true),
@@ -84,12 +83,9 @@ export function useRealtimeChannel(
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [isPolling, setIsPolling] = useState(false)
 
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isVisibleRef = useRef(true)
   const lastMessageIdRef = useRef(lastMessageId)
 
   const visibleInterval = options?.visibleInterval ?? DEFAULT_VISIBLE_POLL_INTERVAL
-  const hiddenInterval = options?.hiddenInterval ?? DEFAULT_HIDDEN_POLL_INTERVAL
 
   // keep lastMessageId ref in sync
   useEffect(() => {
@@ -138,60 +134,17 @@ export function useRealtimeChannel(
     }
   }, [channelId])
 
-  // handle visibility changes
+  // Poll right away for a new channel or a new newest message (after a send
+  // or an arrival). Hidden tabs wait; the visible poll catches up on return.
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      isVisibleRef.current = document.visibilityState === "visible"
+    if (document.visibilityState === "hidden") return
+    void poll()
+  }, [lastMessageId, poll])
 
-      // restart polling with correct interval when visibility changes
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-
-      const interval = isVisibleRef.current
-        ? visibleInterval
-        : hiddenInterval
-
-      pollingRef.current = setInterval(poll, interval)
-      // also poll immediately when becoming visible
-      if (isVisibleRef.current) {
-        poll()
-      }
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-    }
-  }, [poll, visibleInterval, hiddenInterval])
-
-  // main polling setup
-  useEffect(() => {
-    // clear any existing interval
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
-
-    const interval = isVisibleRef.current
-      ? visibleInterval
-      : hiddenInterval
-
-    // initial poll
-    poll()
-
-    // set up interval
-    pollingRef.current = setInterval(poll, interval)
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-    }
-  }, [channelId, lastMessageId, poll, visibleInterval, hiddenInterval])
+  // Nothing reads messages in a hidden tab: marking read waits for the tab to
+  // be visible and alerts come from the bell and push. So hidden tabs stop
+  // polling instead of slowing down.
+  useVisibleInterval(() => void poll(), visibleInterval, { immediate: false })
 
   return {
     newMessages,
