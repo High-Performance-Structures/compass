@@ -1,3 +1,5 @@
+import { sageClientDirectoryCandidateInsertSql } from "@/lib/domain/contacts/store"
+
 export type SageClientDirectoryRecord = {
   readonly clientNumber: string
   readonly name: string
@@ -82,35 +84,5 @@ WITH sage_clients(client_number, name) AS (
   VALUES
     ${values}
 )
-INSERT OR IGNORE INTO customers (
-  id, name, company, email, phone, address, notes, netsuite_id,
-  sage_client_id, sage_client_number, sage_client_status_id,
-  buildertrend_contact_id, relationship_type,
-  organization_id, created_at, updated_at
-)
-SELECT
-  'sage-customer-' || ${organization} || '-' || sc.client_number,
-  sc.name,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  'Unverified Sage-number candidate. Reconcile the exact Sage ID and Compass customer before use; this import grants no portal access.',
-  NULL,
-  NULL,
-  sc.client_number,
-  NULL,
-  NULL,
-  'client',
-  ${organization},
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-FROM sage_clients sc
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM customers c
-  WHERE c.organization_id = ${organization}
-    AND c.sage_client_number = sc.client_number
-);
-`
+${sageClientDirectoryCandidateInsertSql(organization)}`
 }

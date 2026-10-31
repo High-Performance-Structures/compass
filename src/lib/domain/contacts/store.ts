@@ -636,3 +636,162 @@ export function insertInternalContactStatement(db: Db, values: InternalContactIn
 export async function insertInternalContactIfMissing(db: Db, values: InternalContactInsert): Promise<void> {
   await db.insert(internalContacts).values(values).onConflictDoNothing().run()
 }
+
+// --- Raw D1 writes (Sage bridge, merges, account links): bound statements for the caller's fenced batch.
+type SageDirectoryKind = "client_company" | "vendor_company" | "client_person" | "vendor_person" | "employee"
+/** Where each Sage-linked directory kind lives; people are scoped through their parent company. */
+const SAGE_DIRECTORY: Readonly<Record<SageDirectoryKind, {
+  readonly table: string; readonly sageId: string; readonly number: string; readonly synced: boolean; readonly parent?: string
+}>> = {
+  client_company: { table: "customers", sageId: "sage_client_id", number: "sage_client_number", synced: false },
+  vendor_company: { table: "vendors", sageId: "sage_vendor_id", number: "sage_vendor_number", synced: true },
+  employee: { table: "internal_contacts", sageId: "sage_employee_id", number: "sage_employee_number", synced: true },
+  client_person: { table: "customer_contacts", sageId: "sage_contact_id", number: "sage_line_number", synced: true,
+    parent: "customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)" },
+  vendor_person: { table: "vendor_contacts", sageId: "sage_contact_id", number: "sage_line_number", synced: false,
+    parent: "vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)" },
+}
+
+/** Writes the Sage client identity the Windows writer returned for a customer. */
+export function sageClientWriteResultCustomerStatement(database: D1Database, input: {
+  readonly customerId: string; readonly sageClientId: string; readonly sageClientNumber: string
+  readonly sageClientStatusId: number; readonly now: string
+}): D1PreparedStatement {
+  return database.prepare(`UPDATE customers SET sage_client_id = ?, sage_client_number = ?,
+    sage_client_status_id = ?, updated_at = ? WHERE id = ?`)
+    .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId)
+}
+
+/** Applies a verified Sage snapshot's `assignments` to the still-linked directory row; `binds` follow the SQL. */
+export function sageSnapshotDirectoryUpdateStatement(
+  database: D1Database, kind: SageDirectoryKind, assignments: string, binds: readonly unknown[]
+): D1PreparedStatement {
+  const target = SAGE_DIRECTORY[kind]
+  const synced = target.synced ? ", sync_status = 'synced', last_synced_at = ?" : ""
+  const scope = target.parent ? `${target.sageId} = ? AND ${target.parent}` : `organization_id = ? AND ${target.sageId} = ?`
+  return database.prepare(`UPDATE ${target.table} SET ${assignments}${synced} WHERE id = ? AND ${scope}`).bind(...binds)
+}
+
+/** Links a reviewed Sage identity to a still-unlinked directory row while `guard` holds. */
+export function sageIdentityLinkStatement(
+  database: D1Database, kind: SageDirectoryKind, guard: string, binds: readonly unknown[]
+): D1PreparedStatement {
+  const { table, sageId, number, parent } = SAGE_DIRECTORY[kind]
+  return database.prepare(`UPDATE ${table} SET ${sageId} = ?, ${number} = ? WHERE id = ?${parent ? "" : " AND organization_id = ?"}
+    AND ${sageId} IS NULL AND (${number} IS NULL OR ${number} = ?)${parent ? ` AND ${parent}` : ""} AND ${guard}`).bind(...binds)
+}
+
+/** Upserts the Sage-sourced private address columns of one staff contact. */
+export function upsertInternalContactPrivateAddressStatement(database: D1Database, input: {
+  readonly internalContactId: string; readonly columns: readonly string[]
+  readonly values: readonly (string | null)[]; readonly now: string
+}): D1PreparedStatement {
+  const columns = input.columns.map((column) => `\`${column}\``).join(", ")
+  const placeholders = input.columns.map(() => "?").join(", ")
+  const updates = input.columns.map((column) => `\`${column}\` = excluded.\`${column}\``).join(", ")
+  return database.prepare(`INSERT INTO internal_contact_private_addresses
+    (internal_contact_id, ${columns}, updated_at) VALUES (?, ${placeholders}, ?)
+    ON CONFLICT(internal_contact_id) DO UPDATE SET ${updates}, updated_at = excluded.updated_at`)
+    .bind(input.internalContactId, ...input.values, input.now)
+}
+
+/** Inserts the person Sage just added, only while the parent link and Add claim hold. */
+export function insertSageCreatedPersonStatement(
+  database: D1Database, kind: "client_person" | "vendor_person", binds: readonly unknown[]
+): D1PreparedStatement {
+  // Only client people carry sync columns; only vendors must still be active.
+  const [people, parent, syncColumns, syncValues, parentFilter] = kind === "client_person"
+    ? ["customer_contacts", "customer", " sync_status, last_synced_at,", " 'synced', ?,", "customers WHERE id = ? AND organization_id = ? AND sage_client_id = ?"]
+    : ["vendor_contacts", "vendor", "", "", "vendors WHERE id = ? AND organization_id = ? AND sage_vendor_id = ? AND directory_status = 'active'"]
+  return database.prepare(`INSERT INTO ${people} (id, ${parent}_id, name, title, email, phone, phone_extension, cell_phone,
+      sage_contact_id, sage_line_number, is_primary, active, source_system,${syncColumns} created_at, updated_at)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN EXISTS (SELECT 1 FROM ${people} WHERE ${parent}_id = ? AND active = 1) THEN 0 ELSE 1 END,
+      1, 'sage',${syncValues} ?, ? WHERE EXISTS (SELECT 1 FROM ${parentFilter})
+      AND EXISTS (SELECT 1 FROM sage_contact_create_proposals WHERE id = ? AND status = 'running' AND claim_token = ?)`).bind(...binds)
+}
+
+/**
+ * The INSERT of the offline Sage client-directory import script (number-only,
+ * unverified candidates). `organization` is an already-quoted SQL literal.
+ */
+export function sageClientDirectoryCandidateInsertSql(organization: string): string {
+  return `INSERT OR IGNORE INTO customers (
+  id, name, company, email, phone, address, notes, netsuite_id,
+  sage_client_id, sage_client_number, sage_client_status_id,
+  buildertrend_contact_id, relationship_type,
+  organization_id, created_at, updated_at
+)
+SELECT
+  'sage-customer-' || ${organization} || '-' || sc.client_number,
+  sc.name,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'Unverified Sage-number candidate. Reconcile the exact Sage ID and Compass customer before use; this import grants no portal access.',
+  NULL,
+  NULL,
+  sc.client_number,
+  NULL,
+  NULL,
+  'client',
+  ${organization},
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM sage_clients sc
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM customers c
+  WHERE c.organization_id = ${organization}
+    AND c.sage_client_number = sc.client_number
+);
+`
+}
+
+/** What a duplicate merge records and moves; `kind` names the directory side and level. */
+export type ContactMergeWrite = {
+  readonly kind: "customer_company" | "vendor_company" | "customer_person" | "vendor_person"; readonly organizationId: string
+  readonly sourceId: string; readonly destinationId: string; readonly sourceSnapshot: string; readonly destinationSnapshot: string
+  readonly peopleCount: number; readonly projectContactCount: number; readonly userId: string; readonly now: string
+}
+
+/** One atomic batch: the audit event, then children before parents (the project-contact scope trigger checks the child's current parent). */
+export function contactMergeStatements(database: D1Database, input: ContactMergeWrite): D1PreparedStatement[] {
+  const customer = input.kind.startsWith("customer")
+  const people = customer ? "customer_contacts" : "vendor_contacts"
+  const parent = customer ? "customer" : "vendor"
+  const moveProjectContacts = (column: string, type: string): D1PreparedStatement =>
+    database.prepare(`UPDATE project_contacts SET ${column} = ?, source_entity_id = CASE WHEN source_entity_type = '${type}' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = '${type}' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE ${column} = ? OR (source_entity_type = '${type}' AND source_entity_id = ?)`)
+      .bind(input.destinationId, input.sourceId, input.destinationId, input.sourceId, input.destinationId, input.now, input.sourceId, input.sourceId)
+  const event = database.prepare(`INSERT INTO contact_merge_events (id, organization_id, kind, source_id, destination_id, source_snapshot_json,
+    destination_snapshot_json, moved_people_count, moved_project_contacts_count, merged_by_user_id, merged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), input.organizationId, input.kind, input.sourceId, input.destinationId,
+      input.sourceSnapshot, input.destinationSnapshot, input.peopleCount, input.projectContactCount, input.userId, input.now)
+  if (input.kind.endsWith("company")) return [event,
+    database.prepare(`UPDATE ${people} SET ${parent}_id = ?, updated_at = ? WHERE ${parent}_id = ?`).bind(input.destinationId, input.now, input.sourceId),
+    moveProjectContacts(`${parent}_id`, parent),
+    database.prepare(customer
+      ? "UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL"
+      : "UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL")
+      .bind(input.destinationId, input.now, input.sourceId, input.organizationId)]
+  return [event, moveProjectContacts(`${parent}_contact_id`, `${parent}_contact`),
+    database.prepare(`UPDATE ${people} SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM ${people} WHERE id = ? AND is_primary = 1)`)
+      .bind(input.now, input.destinationId, input.sourceId),
+    database.prepare(`UPDATE ${people} SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL`)
+      .bind(input.destinationId, input.now, input.sourceId)]
+}
+
+/** Compare-and-set of a person's portal account, then its audit row only when that update changed one row. */
+export function contactAccountLinkStatements(database: D1Database, input: {
+  readonly kind: "client_person" | "vendor_person"; readonly organizationId: string; readonly personId: string
+  readonly previousUserId: string | null; readonly nextUserId: string | null; readonly changedByUserId: string; readonly now: string
+}): D1PreparedStatement[] {
+  const [people, parent] = input.kind === "client_person" ? ["customer_contacts", "customer"] : ["vendor_contacts", "vendor"]
+  return [database.prepare(`UPDATE ${people} SET user_id = ?, updated_at = ?
+      WHERE id = ? AND user_id IS ? AND ${parent}_id IN (SELECT id FROM ${parent}s WHERE organization_id = ?)`)
+      .bind(input.nextUserId, input.now, input.personId, input.previousUserId, input.organizationId),
+    database.prepare(`INSERT INTO contact_account_link_events (id, organization_id, person_kind, person_id, previous_user_id,
+      next_user_id, changed_by_user_id, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`)
+      .bind(crypto.randomUUID(), input.organizationId, input.kind, input.personId,
+        input.previousUserId, input.nextUserId, input.changedByUserId, input.now)]
+}

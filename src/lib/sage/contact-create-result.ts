@@ -6,6 +6,14 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
 import { sageContactCreateProposals } from "@/db/schema-sage"
+import { insertSageCreatedPersonStatement } from "@/lib/domain/contacts/store"
+import {
+  sageContactCreateFailedStatement,
+  sageContactCreateOutcomeEventStatement,
+  sageContactCreateSucceededStatement,
+  sageContactCreateUncertainStatement,
+  sageCreatedPersonSnapshotStatement,
+} from "@/lib/domain/sage-bridge/contact-store"
 import { readbackConfirmsCreateFields, sageContactCreateResultSchema, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, sageContactProposalFields } from "@/lib/sage/contact-change-proposal"
 
@@ -27,22 +35,11 @@ async function finishUncertain(
   sageContactId: string | null = null,
   sageLineNumber: number | null = null
 ): Promise<Response> {
+  const claim = { proposalId: proposal.id, organizationId: proposal.organizationId, claimToken, now }
   const results = await database.batch([
-    database.prepare(
-      `UPDATE sage_contact_create_proposals SET status = 'needs_reconciliation',
-       error_message = ?, sage_contact_id = ?, sage_line_number = ?,
-       completed_at = ?, updated_at = ? WHERE id = ? AND organization_id = ?
-         AND status = 'running' AND claim_token = ?`
-    ).bind(reason, sageContactId, sageLineNumber, now, now,
-      proposal.id, proposal.organizationId, claimToken),
-    database.prepare(
-      `INSERT INTO sage_contact_create_events
-       (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-       SELECT ?, id, organization_id, NULL, 'needs_reconciliation', ?, ?
-       FROM sage_contact_create_proposals WHERE id = ? AND organization_id = ?
-         AND status = 'needs_reconciliation' AND claim_token = ? AND completed_at = ?`
-    ).bind(crypto.randomUUID(), JSON.stringify({ reason, sageContactId, sageLineNumber }), now,
-      proposal.id, proposal.organizationId, claimToken, now),
+    sageContactCreateUncertainStatement(database, claim, { reason, sageContactId, sageLineNumber }),
+    sageContactCreateOutcomeEventStatement(database, claim, "needs_reconciliation",
+      JSON.stringify({ reason, sageContactId, sageLineNumber })),
   ])
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
     return Response.json({ error: "Sage Add claim changed concurrently" }, { status: 409 })
@@ -70,20 +67,10 @@ export async function handleSageContactCreateResult(
       return finishUncertain(database, proposal, result.claimToken, now,
         `Sage Add may have committed: ${result.error}`.slice(0, 1000))
     }
+    const claim = { proposalId: proposal.id, organizationId: proposal.organizationId, claimToken: result.claimToken, now }
     const updated = await database.batch([
-      database.prepare(
-        `UPDATE sage_contact_create_proposals SET status = 'failed', error_message = ?,
-         completed_at = ?, updated_at = ? WHERE id = ? AND organization_id = ?
-           AND status = 'running' AND claim_token = ?`
-      ).bind(result.error, now, now, proposal.id, proposal.organizationId, result.claimToken),
-      database.prepare(
-        `INSERT INTO sage_contact_create_events
-         (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-         SELECT ?, id, organization_id, NULL, 'failed', ?, ?
-         FROM sage_contact_create_proposals WHERE id = ? AND organization_id = ?
-           AND status = 'failed' AND claim_token = ? AND completed_at = ?`
-      ).bind(crypto.randomUUID(), JSON.stringify({ error: result.error }), now,
-        proposal.id, proposal.organizationId, result.claimToken, now),
+      sageContactCreateFailedStatement(database, claim, result.error),
+      sageContactCreateOutcomeEventStatement(database, claim, "failed", JSON.stringify({ error: result.error })),
     ])
     if (updated[0]?.meta.changes !== 1 || updated[1]?.meta.changes !== 1) {
       return Response.json({ error: "Sage Add claim changed concurrently" }, { status: 409 })
@@ -130,70 +117,32 @@ export async function handleSageContactCreateResult(
   }
 
   const canonicalInsert = kind.data === "client_person"
-    ? database.prepare(
-        `INSERT INTO customer_contacts
-         (id, customer_id, name, title, email, phone, phone_extension, cell_phone,
-          sage_contact_id, sage_line_number, is_primary, active, source_system,
-          sync_status, last_synced_at, created_at, updated_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-           CASE WHEN EXISTS (SELECT 1 FROM customer_contacts WHERE customer_id = ? AND active = 1) THEN 0 ELSE 1 END,
-           1, 'sage', 'synced', ?, ?, ?
-         WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND organization_id = ? AND sage_client_id = ?)
-           AND EXISTS (SELECT 1 FROM sage_contact_create_proposals
-             WHERE id = ? AND status = 'running' AND claim_token = ?)`
-      ).bind(proposal.id, proposal.customerId, snapshot.fields.name,
+    ? insertSageCreatedPersonStatement(database, kind.data, [proposal.id, proposal.customerId, snapshot.fields.name,
         snapshot.fields.title, snapshot.fields.email, snapshot.fields.phone,
         snapshot.fields.phoneExtension, snapshot.fields.cellPhone,
         snapshot.sageRecordId, lineNumber, proposal.customerId, now, now, now,
         proposal.customerId, proposal.organizationId, proposal.parentSageRecordId,
-        proposal.id, result.claimToken)
-    : database.prepare(
-        `INSERT INTO vendor_contacts
-         (id, vendor_id, name, title, email, phone, phone_extension, cell_phone,
-          sage_contact_id, sage_line_number, is_primary, active, source_system,
-          created_at, updated_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-           CASE WHEN EXISTS (SELECT 1 FROM vendor_contacts WHERE vendor_id = ? AND active = 1) THEN 0 ELSE 1 END,
-           1, 'sage', ?, ?
-         WHERE EXISTS (SELECT 1 FROM vendors WHERE id = ? AND organization_id = ?
-           AND sage_vendor_id = ? AND directory_status = 'active')
-           AND EXISTS (SELECT 1 FROM sage_contact_create_proposals
-             WHERE id = ? AND status = 'running' AND claim_token = ?)`
-      ).bind(proposal.id, proposal.vendorId, snapshot.fields.name,
+        proposal.id, result.claimToken])
+    : insertSageCreatedPersonStatement(database, kind.data, [proposal.id, proposal.vendorId, snapshot.fields.name,
         snapshot.fields.title, snapshot.fields.email, snapshot.fields.phone,
         snapshot.fields.phoneExtension, snapshot.fields.cellPhone,
         snapshot.sageRecordId, lineNumber, proposal.vendorId, now, now,
         proposal.vendorId, proposal.organizationId, proposal.parentSageRecordId,
-        proposal.id, result.claimToken)
+        proposal.id, result.claimToken])
   const canonicalTable = kind.data === "client_person" ? "customer_contacts" : "vendor_contacts"
+  const claim = { proposalId: proposal.id, organizationId: proposal.organizationId, claimToken: result.claimToken, now }
   const applied = await database.batch([
     canonicalInsert,
-    database.prepare(
-      `INSERT INTO sage_contact_snapshots
-       (id, organization_id, kind, entity_id, sage_record_id, parent_sage_record_id,
-        revision, fields_json, captured_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM ${canonicalTable}
-       WHERE id = ? AND sage_contact_id = ?`
-    ).bind(crypto.randomUUID(), proposal.organizationId, kind.data, proposal.id,
-      snapshot.sageRecordId, proposal.parentSageRecordId,
-      snapshot.revision, JSON.stringify(snapshot.fields), now,
-      proposal.id, snapshot.sageRecordId),
-    database.prepare(
-      `UPDATE sage_contact_create_proposals SET status = 'succeeded',
-       sage_contact_id = ?, sage_line_number = ?, completed_at = ?, updated_at = ?
-       WHERE id = ? AND organization_id = ? AND status = 'running' AND claim_token = ?
-         AND EXISTS (SELECT 1 FROM ${canonicalTable} WHERE id = ? AND sage_contact_id = ?)`
-    ).bind(snapshot.sageRecordId, lineNumber, now, now, proposal.id, proposal.organizationId,
-      result.claimToken, proposal.id, snapshot.sageRecordId),
-    database.prepare(
-      `INSERT INTO sage_contact_create_events
-       (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-       SELECT ?, id, organization_id, NULL, 'succeeded', ?, ?
-       FROM sage_contact_create_proposals WHERE id = ? AND organization_id = ?
-         AND status = 'succeeded' AND claim_token = ? AND completed_at = ?`
-    ).bind(crypto.randomUUID(), JSON.stringify({ sageContactId: snapshot.sageRecordId,
-      sageLineNumber: lineNumber }), now, proposal.id, proposal.organizationId,
-      result.claimToken, now),
+    sageCreatedPersonSnapshotStatement(database, {
+      canonicalTable, organizationId: proposal.organizationId, kind: kind.data, personId: proposal.id,
+      sageRecordId: snapshot.sageRecordId, parentSageRecordId: proposal.parentSageRecordId,
+      revision: snapshot.revision, fieldsJson: JSON.stringify(snapshot.fields), now,
+    }),
+    sageContactCreateSucceededStatement(database, claim, {
+      canonicalTable, sageContactId: snapshot.sageRecordId, sageLineNumber: lineNumber,
+    }),
+    sageContactCreateOutcomeEventStatement(database, claim, "succeeded", JSON.stringify({ sageContactId: snapshot.sageRecordId,
+      sageLineNumber: lineNumber })),
   ])
   if (applied.some((item) => item.meta.changes !== 1)) {
     return finishUncertain(database, proposal, result.claimToken, now,

@@ -5,9 +5,20 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
-import { sageContactLinkEvents, sageContactReadRequests } from "@/db/schema-sage"
+import { sageContactReadRequests } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { sageIdentityLinkStatement } from "@/lib/domain/contacts/store"
+import {
+  confirmSageLinkStatement,
+  insertSageContactLinkEvent,
+  insertSageContactReadRequest,
+  refreshSageLinkLookupStatements,
+  rejectSageLinkReviewStatements,
+  sageLinkedEventStatement,
+  startSageLinkStatement,
+  updateSageContactReadRequests,
+} from "@/lib/domain/sage-bridge/contact-store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
@@ -138,25 +149,9 @@ export async function requestSageContactLinkCandidate(
 
       const refreshedAt = new Date().toISOString()
       // Reset only the completed read-back; keep the requester and immutable audit history.
-      const results = await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE sage_contact_read_requests SET status = 'queued', claim_token = NULL,
-           claimed_at = NULL, candidate_snapshot_json = NULL, completed_at = NULL,
-           error_message = NULL, requested_at = ?
-           WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
-             AND status = 'awaiting_review' AND sage_record_number = ?`
-        ).bind(refreshedAt, existing.id, orgId, number),
-        env.DB.prepare(
-          `INSERT INTO sage_contact_link_events
-           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-           SELECT ?, id, organization_id, ?, 'refreshed', ?, ?
-           FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
-             AND status = 'queued' AND requested_at = ?
-             AND NOT EXISTS (SELECT 1 FROM sage_contact_link_events
-               WHERE request_id = ? AND event_type = 'refreshed' AND created_at = ?)`
-        ).bind(crypto.randomUUID(), user.id, JSON.stringify({ number, reason }), refreshedAt,
-          existing.id, orgId, refreshedAt, existing.id, refreshedAt),
-      ])
+      const results = await env.DB.batch(refreshSageLinkLookupStatements(env.DB, {
+        requestId: existing.id, organizationId: orgId, actorUserId: user.id, number, reason, refreshedAt,
+      }))
       if (results[0]?.meta.changes === 0) {
         const current = await activeLookup()
         if (current?.sageRecordNumber === number &&
@@ -176,14 +171,14 @@ export async function requestSageContactLinkCandidate(
     const id = crypto.randomUUID()
     try {
       await db.batch([
-        db.insert(sageContactReadRequests).values({
+        insertSageContactReadRequest(db, {
           id, organizationId: orgId, kind: kind.data, entityId,
           sageRecordId: null, sageRecordNumber: number,
           parentSageRecordId: identity.parentSageRecordId,
           purpose: "link_candidate", status: "queued",
           requestedByUserId: user.id, requestedAt: now,
         }),
-        db.insert(sageContactLinkEvents).values({
+        insertSageContactLinkEvent(db, {
           id: crypto.randomUUID(), requestId: id, organizationId: orgId,
           actorUserId: user.id, eventType: "requested",
           detailJson: JSON.stringify({ number }), createdAt: now,
@@ -287,22 +282,10 @@ export async function reviewSageContactLinkCandidate(
     if (kind.data === "employee") await requireFeaturePermission(user, "employee-contact-private", "approve")
     const now = new Date().toISOString()
     const reviewNote = note.trim().slice(0, 1000)
+    const review = { requestId, organizationId: orgId, reviewerUserId: user.id, reviewNote: reviewNote || null, now }
     if (decision === "reject") {
-      const results = await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE sage_contact_read_requests SET status = 'rejected', reviewed_by_user_id = ?,
-           reviewed_at = ?, review_note = ? WHERE id = ? AND organization_id = ?
-           AND purpose = 'link_candidate' AND status = 'awaiting_review'`
-        ).bind(user.id, now, reviewNote || null, requestId, orgId),
-        env.DB.prepare(
-          `INSERT INTO sage_contact_link_events
-           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-           SELECT ?, id, organization_id, ?, 'rejected', ?, ?
-           FROM sage_contact_read_requests WHERE id = ? AND status = 'rejected'
-             AND reviewed_by_user_id = ? AND reviewed_at = ?`
-        ).bind(crypto.randomUUID(), user.id, JSON.stringify({ note: reviewNote }), now,
-          requestId, user.id, now),
-      ])
+      const results = await env.DB.batch(rejectSageLinkReviewStatements(env.DB, review,
+        JSON.stringify({ note: reviewNote })))
       if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
         return { success: false, error: "Candidate changed during review." }
       }
@@ -345,34 +328,11 @@ export async function reviewSageContactLinkCandidate(
     const parent = row.parentSageRecordId
     const guard = `EXISTS (SELECT 1 FROM sage_contact_read_requests
       WHERE id = ? AND organization_id = ? AND status = 'linking' AND claim_token = ?)`
-    const linkSql = kind.data === "client_company"
-      ? `UPDATE customers SET sage_client_id = ?, sage_client_number = ?
-         WHERE id = ? AND organization_id = ? AND sage_client_id IS NULL
-           AND (sage_client_number IS NULL OR sage_client_number = ?) AND ${guard}`
-      : kind.data === "vendor_company"
-        ? `UPDATE vendors SET sage_vendor_id = ?, sage_vendor_number = ?
-           WHERE id = ? AND organization_id = ? AND sage_vendor_id IS NULL
-             AND (sage_vendor_number IS NULL OR sage_vendor_number = ?) AND ${guard}`
-        : kind.data === "employee"
-          ? `UPDATE internal_contacts SET sage_employee_id = ?, sage_employee_number = ?
-             WHERE id = ? AND organization_id = ? AND sage_employee_id IS NULL
-               AND (sage_employee_number IS NULL OR sage_employee_number = ?) AND ${guard}`
-          : kind.data === "client_person"
-            ? `UPDATE customer_contacts SET sage_contact_id = ?, sage_line_number = ?
-               WHERE id = ? AND sage_contact_id IS NULL
-                 AND (sage_line_number IS NULL OR sage_line_number = ?)
-                 AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)
-                 AND ${guard}`
-            : `UPDATE vendor_contacts SET sage_contact_id = ?, sage_line_number = ?
-               WHERE id = ? AND sage_contact_id IS NULL
-                 AND (sage_line_number IS NULL OR sage_line_number = ?)
-                 AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)
-                 AND ${guard}`
     const linkStatement = kind.data === "client_person" || kind.data === "vendor_person"
-      ? env.DB.prepare(linkSql).bind(id, Number(number), row.entityId, Number(number), orgId,
-          parent, requestId, orgId, reviewToken)
-      : env.DB.prepare(linkSql).bind(id, number, row.entityId, orgId, number,
-          requestId, orgId, reviewToken)
+      ? sageIdentityLinkStatement(env.DB, kind.data, guard, [id, Number(number), row.entityId, Number(number), orgId,
+          parent, requestId, orgId, reviewToken])
+      : sageIdentityLinkStatement(env.DB, kind.data, guard, [id, number, row.entityId, orgId, number,
+          requestId, orgId, reviewToken])
     const confirmedTable = kind.data === "client_company" ? "customers"
       : kind.data === "vendor_company" ? "vendors"
         : kind.data === "employee" ? "internal_contacts"
@@ -385,42 +345,27 @@ export async function reviewSageContactLinkCandidate(
       : kind.data === "vendor_person"
         ? ` AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)`
         : ` AND organization_id = ?`
-    const confirmedStatement = env.DB.prepare(
-      `UPDATE sage_contact_read_requests SET status = 'linked' WHERE id = ?
-       AND organization_id = ? AND status = 'linking' AND claim_token = ?
-       AND EXISTS (SELECT 1 FROM ${confirmedTable} WHERE id = ? AND ${confirmedColumn} = ?${confirmation})`
-    )
     const confirmationArgs = kind.data === "client_person" || kind.data === "vendor_person"
       ? [requestId, orgId, reviewToken, row.entityId, id, orgId, parent]
       : [requestId, orgId, reviewToken, row.entityId, id, orgId]
     const results = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE sage_contact_read_requests SET status = 'linking', claim_token = ?,
-         reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?
-         WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
-           AND status = 'awaiting_review' AND candidate_snapshot_json = ?`
-      ).bind(reviewToken, user.id, now, reviewNote || null, requestId, orgId, row.candidateSnapshotJson),
+      startSageLinkStatement(env.DB, review, { reviewToken, candidateSnapshotJson: row.candidateSnapshotJson }),
       linkStatement,
-      confirmedStatement.bind(...confirmationArgs),
-      env.DB.prepare(
-        `INSERT INTO sage_contact_link_events
-         (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-         SELECT ?, id, organization_id, ?, 'linked', ?, ? FROM sage_contact_read_requests
-         WHERE id = ? AND organization_id = ? AND status = 'linked'
-           AND reviewed_by_user_id = ? AND reviewed_at = ? AND claim_token = ?`
-      ).bind(crypto.randomUUID(), user.id,
-        JSON.stringify({ sageRecordId: id, sageRecordNumber: number,
+      confirmSageLinkStatement(env.DB, { confirmedTable, confirmedColumn, confirmation, binds: confirmationArgs }),
+      sageLinkedEventStatement(env.DB, review, {
+        reviewToken,
+        detailJson: JSON.stringify({ sageRecordId: id, sageRecordNumber: number,
           differentEmployeeNameConfirmed: kind.data === "employee" && Boolean(name) &&
-            !sageEmployeeNamesMatch(name ?? "", snapshot.identityName), note: reviewNote }), now,
-        requestId, orgId, user.id, now, reviewToken),
+            !sageEmployeeNamesMatch(name ?? "", snapshot.identityName), note: reviewNote }),
+      }),
     ])
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1 ||
       results[2]?.meta.changes !== 1 || results[3]?.meta.changes !== 1) {
       if (results[0]?.meta.changes === 1 && results[1]?.meta.changes !== 1) {
         await db.batch([
-          db.update(sageContactReadRequests).set({ status: "conflict", errorMessage: "Directory link changed during review." })
-            .where(and(eq(sageContactReadRequests.id, requestId), eq(sageContactReadRequests.claimToken, reviewToken))),
-          db.insert(sageContactLinkEvents).values({
+          updateSageContactReadRequests(db, { status: "conflict", errorMessage: "Directory link changed during review." },
+            and(eq(sageContactReadRequests.id, requestId), eq(sageContactReadRequests.claimToken, reviewToken))),
+          insertSageContactLinkEvent(db, {
             id: crypto.randomUUID(), requestId, organizationId: orgId,
             actorUserId: user.id, eventType: "conflict", detailJson: "{}", createdAt: now,
           }),
@@ -428,7 +373,7 @@ export async function reviewSageContactLinkCandidate(
       }
       return { success: false, error: "Candidate changed during review. Inspect the Sage link before retrying." }
     }
-    await db.insert(sageContactReadRequests).values({
+    await insertSageContactReadRequest(db, {
       id: crypto.randomUUID(), organizationId: orgId, kind: kind.data,
       entityId: row.entityId, sageRecordId: id,
       sageRecordNumber: number, parentSageRecordId: parent,

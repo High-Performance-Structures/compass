@@ -7,6 +7,7 @@ import { customers } from "@/db/schema"
 import { sageClientDirectoryEntries, sageClientDirectoryRefreshes } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { insertSageClientDirectoryRefresh } from "@/lib/domain/sage-bridge/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
@@ -119,7 +120,7 @@ export async function requestSageClientDirectoryRefresh(): Promise<
       return { success: false, error: "Please wait a minute before requesting another Sage directory refresh." }
     }
     try {
-      await db.insert(sageClientDirectoryRefreshes).values({
+      await insertSageClientDirectoryRefresh(db, {
         id: crypto.randomUUID(), organizationId: orgId, status: "queued",
         requestedByUserId: user.id, requestedAt: new Date().toISOString(),
       })

@@ -21,6 +21,7 @@ import {
 } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { contactMergeStatements } from "@/lib/domain/contacts/store"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -284,44 +285,11 @@ export async function mergeDuplicateContacts(raw: MergeInput): Promise<MergeResu
     const { preview, sourceSnapshot, destinationSnapshot, affectedProjectIds } = await inspect(input)
     if (preview.blockers.length > 0) return { success: false, error: preview.blockers.join(" ") }
     const now = new Date().toISOString()
-    const company = input.kind.endsWith("company")
-    const customer = input.kind.startsWith("customer")
-    const statements: D1PreparedStatement[] = [
-      d1.prepare(`INSERT INTO contact_merge_events
-        (id, organization_id, kind, source_id, destination_id, source_snapshot_json,
-         destination_snapshot_json, moved_people_count, moved_project_contacts_count,
-         merged_by_user_id, merged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), orgId, input.kind, input.sourceId, input.destinationId,
-          sourceSnapshot, destinationSnapshot, preview.peopleCount, preview.projectContactCount, user.id, now),
-    ]
-    if (company) {
-      // Move children first: the project-contact scope trigger checks the child's current parent.
-      statements.push(d1.prepare(customer
-        ? "UPDATE customer_contacts SET customer_id = ?, updated_at = ? WHERE customer_id = ?"
-        : "UPDATE vendor_contacts SET vendor_id = ?, updated_at = ? WHERE vendor_id = ?")
-        .bind(input.destinationId, now, input.sourceId))
-      statements.push(d1.prepare(customer
-        ? "UPDATE project_contacts SET customer_id = ?, source_entity_id = CASE WHEN source_entity_type = 'customer' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'customer' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE customer_id = ? OR (source_entity_type = 'customer' AND source_entity_id = ?)"
-        : "UPDATE project_contacts SET vendor_id = ?, source_entity_id = CASE WHEN source_entity_type = 'vendor' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'vendor' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE vendor_id = ? OR (source_entity_type = 'vendor' AND source_entity_id = ?)")
-        .bind(input.destinationId, input.sourceId, input.destinationId, input.sourceId, input.destinationId, now, input.sourceId, input.sourceId))
-      statements.push(d1.prepare(customer
-        ? "UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL"
-        : "UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL")
-        .bind(input.destinationId, now, input.sourceId, orgId))
-    } else {
-      statements.push(d1.prepare(customer
-        ? "UPDATE project_contacts SET customer_contact_id = ?, source_entity_id = CASE WHEN source_entity_type = 'customer_contact' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'customer_contact' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE customer_contact_id = ? OR (source_entity_type = 'customer_contact' AND source_entity_id = ?)"
-        : "UPDATE project_contacts SET vendor_contact_id = ?, source_entity_id = CASE WHEN source_entity_type = 'vendor_contact' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'vendor_contact' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE vendor_contact_id = ? OR (source_entity_type = 'vendor_contact' AND source_entity_id = ?)")
-        .bind(input.destinationId, input.sourceId, input.destinationId, input.sourceId, input.destinationId, now, input.sourceId, input.sourceId))
-      statements.push(d1.prepare(customer
-        ? "UPDATE customer_contacts SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM customer_contacts WHERE id = ? AND is_primary = 1)"
-        : "UPDATE vendor_contacts SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM vendor_contacts WHERE id = ? AND is_primary = 1)")
-        .bind(now, input.destinationId, input.sourceId))
-      statements.push(d1.prepare(customer
-        ? "UPDATE customer_contacts SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL"
-        : "UPDATE vendor_contacts SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL")
-        .bind(input.destinationId, now, input.sourceId))
-    }
+    const statements = contactMergeStatements(d1, {
+      kind: input.kind, organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId,
+      sourceSnapshot, destinationSnapshot, peopleCount: preview.peopleCount,
+      projectContactCount: preview.projectContactCount, userId: user.id, now,
+    })
     await d1.batch(statements)
     const db = getDb(d1)
     let trackerWarning = false

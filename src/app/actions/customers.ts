@@ -4,7 +4,6 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and, or, sql, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { customers } from "@/db/schema"
-import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -32,6 +31,7 @@ import {
 import {
   changesSageLinkedCustomerIdentity,
 } from "@/lib/sage/contact-edit-gate"
+import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
 
 export type CreateCustomerInput = {
   readonly name: string
@@ -148,7 +148,7 @@ export async function createCustomer(
 
     await db.batch([
       insertCustomerStatement(db, customerValues),
-      db.insert(sageClientProjectWriteOperations).values({
+      insertSageClientProjectWriteOperation(db, {
         id: operationId,
         organizationId: orgId,
         customerId: id,
