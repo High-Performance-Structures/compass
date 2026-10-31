@@ -13,18 +13,17 @@ import {
   projectMembers,
   projectNumberReservations,
   projectOperations,
-  projectRegistryRemovals,
   projectNumberRetirements,
-  projectRouteAliases,
   projects,
   users,
 } from "@/db/schema"
+import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import {
   projectFamilies,
   projectFamilyPhases,
 } from "@/db/schema-project-families"
-import { and, asc, eq, isNull, notExists, or, sql } from "drizzle-orm"
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -1612,27 +1611,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         .where(
           and(
             eq(projects.organizationId, user.organizationId),
-            notExists(
-              db
-                .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
-                .from(projectRouteAliases)
-                .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
-            ),
-            notExists(db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id))),
-            notExists(
-              db
-                .select({
-                  removedProjectId:
-                    projectDuplicateDecisions.removedProjectId,
-                })
-                .from(projectDuplicateDecisions)
-                .where(
-                  and(
-                    eq(projectDuplicateDecisions.status, "merged"),
-                    eq(projectDuplicateDecisions.removedProjectId, projects.id),
-                  ),
-                ),
-            ),
+            activeRegistryProject(db),
           ),
         )
         .orderBy(asc(projects.projectNumber), asc(projects.name))
@@ -1665,26 +1644,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
       .where(
         and(
           eq(projectMembers.userId, user.id),
-          notExists(
-            db
-              .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
-              .from(projectRouteAliases)
-              .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
-          ),
-          notExists(db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id))),
-          notExists(
-            db
-              .select({
-                removedProjectId: projectDuplicateDecisions.removedProjectId,
-              })
-              .from(projectDuplicateDecisions)
-              .where(
-                and(
-                  eq(projectDuplicateDecisions.status, "merged"),
-                  eq(projectDuplicateDecisions.removedProjectId, projects.id),
-                ),
-              ),
-          ),
+          activeRegistryProject(db),
         ),
       )
       .orderBy(asc(projects.projectNumber), asc(projects.name))

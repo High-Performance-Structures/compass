@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { and, asc, eq, inArray, notExists } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { getProjectSavedViews } from "@/app/actions/project-views"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
@@ -13,12 +13,10 @@ import { getApprovedProjectNumberReviewKeys } from "@/app/actions/project-number
 import { getDb } from "@/db"
 import {
   projectExternalLinks,
-  projectDuplicateDecisions,
   projectJobStatuses,
-  projectRegistryRemovals,
-  projectRouteAliases,
   projects,
 } from "@/db/schema"
+import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
@@ -153,30 +151,7 @@ export default async function ProjectsPage({
       )
       .orderBy(asc(projects.projectNumber), asc(projects.name))
 
-    const isActiveRegistryProject = and(
-      notExists(
-        db
-          .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
-          .from(projectRouteAliases)
-          .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
-      ),
-      notExists(
-        db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id)),
-      ),
-      notExists(
-        db
-          .select({
-            removedProjectId: projectDuplicateDecisions.removedProjectId,
-          })
-          .from(projectDuplicateDecisions)
-          .where(
-            and(
-              eq(projectDuplicateDecisions.status, "merged"),
-              eq(projectDuplicateDecisions.removedProjectId, projects.id),
-            ),
-          ),
-      ),
-    )
+    const isActiveRegistryProject = activeRegistryProject(db)
     const loadedProjects = organizationId
       ? await query.where(
           and(

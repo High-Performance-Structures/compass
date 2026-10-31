@@ -54,8 +54,13 @@ function createD1(
     values: readonly unknown[] = []
   ): D1Statement {
     const statement = sqlite.prepare(query)
-    const rows = (): unknown[] =>
-      statement.reader ? statement.all(...values) : []
+    // Writes sent through all() (drizzle batches) return no rows.
+    const returnsRows = /^\s*(select|with)\b/i.test(query) || /\breturning\b/i.test(query)
+    const rows = (): unknown[] => {
+      if (returnsRows) return statement.all(...values)
+      statement.run(...values)
+      return []
+    }
     return {
       bind: (...nextValues) => prepared(query, nextValues),
       async all() {
