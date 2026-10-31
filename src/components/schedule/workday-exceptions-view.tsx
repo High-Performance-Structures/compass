@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { addDays, format, isWeekend, parseISO } from "date-fns"
 import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
+import { formatDate } from "@/lib/format"
 
 interface WorkdayExceptionsViewProps {
   projectId: string
@@ -36,12 +37,9 @@ interface WorkdayExceptionsViewProps {
   shiftReasonRequired?: boolean
 }
 
-function formatDate(dateStr: string): string {
-  try {
-    return format(parseISO(dateStr), "MMM d, yyyy")
-  } catch {
-    return dateStr
-  }
+/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
+function dateLabel(value: string): string {
+  return formatDate(value, "medium", value)
 }
 
 function calcDuration(start: string, end: string): number {
@@ -263,10 +261,10 @@ export function WorkdayExceptionsView({
                     {ex.title}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                    {formatDate(ex.startDate)}
+                    {dateLabel(ex.startDate)}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                    {formatDate(ex.endDate)}
+                    {dateLabel(ex.endDate)}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-xs">
                     {calcDuration(ex.startDate, ex.endDate)} days

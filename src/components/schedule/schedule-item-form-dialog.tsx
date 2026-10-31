@@ -45,14 +45,9 @@ import {
   type SearchableComboboxOption,
 } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import {
-  createTask,
-  updateTask,
-  createDependency,
-  updateDependency,
-  deleteDependency,
-  deleteScheduleTasks
-} from "@/app/actions/schedule"
+import { createTask, updateTask } from "@/app/actions/schedule"
+import { deleteScheduleTasks } from "@/app/actions/schedule-tasks"
+import { createDependency, updateDependency, deleteDependency } from "@/app/actions/schedule-dependencies"
 import {
   AlertDialog,
   AlertDialogAction,

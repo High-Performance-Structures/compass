@@ -1,44 +1,30 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
-import {
-  scheduleBaselines,
-  scheduleTasks,
-  taskDependencies,
-  projects,
-} from "@/db/schema"
-import { eq, asc, and } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { requireAuth } from "@/lib/auth"
-import { requireOrg } from "@/lib/org-scope"
-import { isDemoUser } from "@/lib/demo"
-import { requirePermission } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+
+import { scheduleBaselines } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  canViewWorkingSchedule,
+  scheduleReadContext,
+  scheduleWriteContext,
+} from "@/lib/domain/schedule/access"
+import {
+  isOrganizationProject,
+  loadDependenciesForTasks,
+  loadProjectTasks,
+} from "@/lib/domain/schedule/queries"
+import { deleteBaseline as deleteBaselineRow, insertBaseline } from "@/lib/domain/schedule/store"
 import type { ScheduleBaselineData } from "@/lib/schedule/types"
 
 export async function getBaselines(
   projectId: string
 ): Promise<ScheduleBaselineData[]> {
-  const user = await requireAuth()
-  requirePermission(user, "schedule", "read")
-  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
-    return []
-  }
-  const orgId = requireOrg(user)
+  const { db, organizationId, user } = await scheduleReadContext()
+  if (!canViewWorkingSchedule(user.role)) return []
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // verify project belongs to user's org
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!project) {
+  if (!(await isOrganizationProject(db, organizationId, projectId))) {
     throw new Error("Project not found or access denied")
   }
 
@@ -53,43 +39,23 @@ export async function createBaseline(
   name: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId: orgId, user } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
+    if (!(await isOrganizationProject(db, orgId, projectId))) {
       return { success: false, error: "Project not found or access denied" }
     }
 
-    const tasks = await db
-      .select()
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.projectId, projectId))
-      .orderBy(asc(scheduleTasks.sortOrder))
-
-    const deps = await db.select().from(taskDependencies)
-    const taskIds = new Set(tasks.map((t) => t.id))
-    const projectDeps = deps.filter(
-      (d) => taskIds.has(d.predecessorId) && taskIds.has(d.successorId)
+    const tasks = await loadProjectTasks(db, projectId)
+    const projectDeps = await loadDependenciesForTasks(
+      db,
+      tasks.map((task) => task.id)
     )
-
     const snapshot = JSON.stringify({ tasks, dependencies: projectDeps })
 
     const baselineId = crypto.randomUUID()
-    await db.insert(scheduleBaselines).values({
+    await insertBaseline(db, {
       id: baselineId,
       projectId,
       name,
@@ -121,38 +87,24 @@ export async function deleteBaseline(
   baselineId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId: orgId, user } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const [existing] = await db
+    const existing = await db
       .select()
       .from(scheduleBaselines)
       .where(eq(scheduleBaselines.id, baselineId))
       .limit(1)
+      .get()
 
     if (!existing) return { success: false, error: "Baseline not found" }
 
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
+    if (!(await isOrganizationProject(db, orgId, existing.projectId))) {
       return { success: false, error: "Access denied" }
     }
 
-    await db
-      .delete(scheduleBaselines)
-      .where(eq(scheduleBaselines.id, baselineId))
+    await deleteBaselineRow(db, baselineId)
 
     await recordActivityEvent({
       db,

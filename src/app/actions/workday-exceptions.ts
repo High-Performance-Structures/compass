@@ -1,22 +1,24 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
-import {
-  workdayExceptions,
-  projects,
-  scheduleTasks,
-  taskDependencies,
-} from "@/db/schema"
-import { eq, and } from "drizzle-orm"
+import type { workdayExceptions } from "@/db/schema"
 import { revalidatePath } from "next/cache"
-import { requireAuth } from "@/lib/auth"
-import { requireOrg } from "@/lib/org-scope"
-import { isDemoUser } from "@/lib/demo"
-import { requirePermission } from "@/lib/permissions"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
-import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { scheduleWriteContext } from "@/lib/domain/schedule/access"
+import {
+  findException,
+  isOrganizationProject,
+  loadProjectExceptionRows,
+  loadProjectScheduleRows,
+  loadProjectTasksUnordered,
+} from "@/lib/domain/schedule/queries"
+import { dependencyData, recalculateAll, schedulePaths, taskWithStatus, type DateUpdates } from "@/lib/domain/schedule/rules"
+import {
+  exceptionDeleteStatement,
+  exceptionInsertStatement,
+  exceptionUpdateStatement,
+  runWithDateUpdates,
+} from "@/lib/domain/schedule/store"
+import type { Db } from "@/lib/server/action-context"
 import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
 import {
@@ -24,8 +26,6 @@ import {
   resolveScheduleShiftReason,
 } from "@/lib/schedule/shift-tracking"
 import type {
-  DependencyType,
-  TaskStatus,
   WorkdayExceptionData,
   ExceptionCategory,
   ExceptionRecurrence,
@@ -33,36 +33,12 @@ import type {
 } from "@/lib/schedule/types"
 
 async function recalculateProjectDates(
-  db: ReturnType<typeof getDb>,
+  db: Db,
   projectId: string,
   exceptions: readonly WorkdayExceptionData[]
-): Promise<ReadonlyMap<string, {
-  readonly startDate: string
-  readonly endDateCalculated: string
-}>> {
-  const tasks = await db
-    .select()
-    .from(scheduleTasks)
-    .where(eq(scheduleTasks.projectId, projectId))
-  const taskIds = new Set(tasks.map((task) => task.id))
-  const dependencies = (await db.select().from(taskDependencies)).filter(
-    (dependency) =>
-      taskIds.has(dependency.predecessorId) &&
-      taskIds.has(dependency.successorId)
-  )
-  const { updatedTasks } = recalculateScheduleDates(
-    tasks.map((task) => ({
-      ...task,
-      status: task.status as TaskStatus,
-    })),
-    dependencies.map((dependency) => ({
-      ...dependency,
-      type: dependency.type as DependencyType,
-    })),
-    exceptions
-  )
-
-  return updatedTasks
+): Promise<DateUpdates> {
+  const { tasks, dependencies } = await loadProjectScheduleRows(db, projectId)
+  return recalculateAll(tasks.map(taskWithStatus), dependencies.map(dependencyData), exceptions)
 }
 
 function exceptionType(value: string): WorkdayExceptionType {
@@ -98,45 +74,8 @@ function exceptionData(
   }
 }
 
-async function runExceptionScheduleBatch(
-  database: D1Database,
-  mutation: D1PreparedStatement,
-  projectId: string,
-  updatedAt: string,
-  updatedTasks: ReadonlyMap<string, {
-    readonly startDate: string
-    readonly endDateCalculated: string
-  }>
-): Promise<void> {
-  const statements: D1PreparedStatement[] = [mutation]
-  for (const [taskId, dates] of updatedTasks) {
-    statements.push(
-      linkedTodoDateUpdateStatement(database, {
-        scheduleTaskId: taskId,
-        nextStartDate: dates.startDate,
-        nextEndDate: dates.endDateCalculated,
-        updatedAt,
-      }),
-      database
-        .prepare(
-          `UPDATE schedule_tasks
-           SET start_date = ?, end_date_calculated = ?, updated_at = ?
-           WHERE id = ? AND project_id = ?`
-        )
-        .bind(
-          dates.startDate,
-          dates.endDateCalculated,
-          updatedAt,
-          taskId,
-          projectId
-        )
-    )
-  }
-
-  const results = await database.batch(statements)
-  if (results.some((result) => !result.success)) {
-    throw new Error("Workday exception schedule batch failed")
-  }
+function revalidateExceptionPaths(projectId: string): void {
+  for (const path of schedulePaths(projectId)) revalidatePath(path)
 }
 
 export async function createWorkdayException(
@@ -153,24 +92,11 @@ export async function createWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, env, organizationId: orgId, user } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
+    if (!(await isOrganizationProject(db, orgId, projectId))) {
       return { success: false, error: "Project not found or access denied" }
     }
     const shiftReasonResult = resolveScheduleShiftReason(
@@ -183,15 +109,9 @@ export async function createWorkdayException(
 
     const now = new Date().toISOString()
     const exceptionId = crypto.randomUUID()
-    const existingExceptions = await db
-      .select()
-      .from(workdayExceptions)
-      .where(eq(workdayExceptions.projectId, projectId))
+    const existingExceptions = await loadProjectExceptionRows(db, projectId)
       .then((rows) => rows.map(exceptionData))
-    const tasksBefore = await db
-      .select()
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.projectId, projectId))
+    const tasksBefore = await loadProjectTasksUnordered(db, projectId)
     const newException: WorkdayExceptionData = {
       id: exceptionId,
       projectId,
@@ -210,31 +130,13 @@ export async function createWorkdayException(
       newException,
     ])
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
-    await runExceptionScheduleBatch(
+    await runWithDateUpdates(
       env.DB,
-      env.DB
-        .prepare(
-          `INSERT INTO workday_exceptions (
-             id, project_id, title, start_date, end_date, type, category,
-             recurrence, notes, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .bind(
-          newException.id,
-          newException.projectId,
-          newException.title,
-          newException.startDate,
-          newException.endDate,
-          newException.type,
-          newException.category,
-          newException.recurrence,
-          newException.notes,
-          newException.createdAt,
-          newException.updatedAt
-        ),
+      exceptionInsertStatement(env.DB, newException),
       projectId,
+      updatedTasks,
       now,
-      updatedTasks
+      "Workday exception schedule batch failed"
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
@@ -261,10 +163,7 @@ export async function createWorkdayException(
       summary: `Added workday exception “${data.title}”.`,
       metadata: { affectedItemCount: updatedTasks.size },
     })
-    revalidatePath(`/dashboard/projects/${projectId}/schedule`)
-    revalidatePath(`/dashboard/projects/${projectId}/todos`)
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/schedule")
+    revalidateExceptionPaths(projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to create workday exception:", error)
@@ -286,32 +185,15 @@ export async function updateWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, env, organizationId: orgId, user } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const [existing] = await db
-      .select()
-      .from(workdayExceptions)
-      .where(eq(workdayExceptions.id, exceptionId))
-      .limit(1)
+    const existing = await findException(db, exceptionId)
 
     if (!existing) return { success: false, error: "Exception not found" }
 
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
+    if (!(await isOrganizationProject(db, orgId, existing.projectId))) {
       return { success: false, error: "Access denied" }
     }
     const shiftReasonResult = resolveScheduleShiftReason(
@@ -335,15 +217,9 @@ export async function updateWorkdayException(
       notes: data.notes === undefined ? existing.notes : data.notes,
       updatedAt,
     }
-    const currentExceptions = await db
-      .select()
-      .from(workdayExceptions)
-      .where(eq(workdayExceptions.projectId, existing.projectId))
+    const currentExceptions = await loadProjectExceptionRows(db, existing.projectId)
       .then((rows) => rows.map(exceptionData))
-    const tasksBefore = await db
-      .select()
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.projectId, existing.projectId))
+    const tasksBefore = await loadProjectTasksUnordered(db, existing.projectId)
     const updatedTasks = await recalculateProjectDates(
       db,
       existing.projectId,
@@ -352,30 +228,13 @@ export async function updateWorkdayException(
       )
     )
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
-    await runExceptionScheduleBatch(
+    await runWithDateUpdates(
       env.DB,
-      env.DB
-        .prepare(
-          `UPDATE workday_exceptions
-           SET title = ?, start_date = ?, end_date = ?, type = ?, category = ?,
-               recurrence = ?, notes = ?, updated_at = ?
-           WHERE id = ? AND project_id = ?`
-        )
-        .bind(
-          updatedException.title,
-          updatedException.startDate,
-          updatedException.endDate,
-          updatedException.type,
-          updatedException.category,
-          updatedException.recurrence,
-          updatedException.notes,
-          updatedAt,
-          exceptionId,
-          existing.projectId
-        ),
+      exceptionUpdateStatement(env.DB, updatedException),
       existing.projectId,
+      updatedTasks,
       updatedAt,
-      updatedTasks
+      "Workday exception schedule batch failed"
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
@@ -402,12 +261,7 @@ export async function updateWorkdayException(
       summary: `Updated workday exception “${updatedException.title}”.`,
       metadata: { affectedItemCount: updatedTasks.size },
     })
-    revalidatePath(
-      `/dashboard/projects/${existing.projectId}/schedule`
-    )
-    revalidatePath(`/dashboard/projects/${existing.projectId}/todos`)
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/schedule")
+    revalidateExceptionPaths(existing.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to update workday exception:", error)
@@ -420,32 +274,15 @@ export async function deleteWorkdayException(
   shiftReason: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, env, organizationId: orgId, user } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const [existing] = await db
-      .select()
-      .from(workdayExceptions)
-      .where(eq(workdayExceptions.id, exceptionId))
-      .limit(1)
+    const existing = await findException(db, exceptionId)
 
     if (!existing) return { success: false, error: "Exception not found" }
 
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
+    if (!(await isOrganizationProject(db, orgId, existing.projectId))) {
       return { success: false, error: "Access denied" }
     }
     const shiftReasonResult = resolveScheduleShiftReason(
@@ -457,35 +294,26 @@ export async function deleteWorkdayException(
     }
 
     const updatedAt = new Date().toISOString()
-    const remainingExceptions = await db
-      .select()
-      .from(workdayExceptions)
-      .where(eq(workdayExceptions.projectId, existing.projectId))
+    const remainingExceptions = await loadProjectExceptionRows(db, existing.projectId)
       .then((rows) =>
         rows
           .filter((exception) => exception.id !== exceptionId)
           .map(exceptionData)
       )
-    const tasksBefore = await db
-      .select()
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.projectId, existing.projectId))
+    const tasksBefore = await loadProjectTasksUnordered(db, existing.projectId)
     const updatedTasks = await recalculateProjectDates(
       db,
       existing.projectId,
       remainingExceptions
     )
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
-    await runExceptionScheduleBatch(
+    await runWithDateUpdates(
       env.DB,
-      env.DB
-        .prepare(
-          "DELETE FROM workday_exceptions WHERE id = ? AND project_id = ?"
-        )
-        .bind(exceptionId, existing.projectId),
+      exceptionDeleteStatement(env.DB, exceptionId, existing.projectId),
       existing.projectId,
+      updatedTasks,
       updatedAt,
-      updatedTasks
+      "Workday exception schedule batch failed"
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
@@ -512,12 +340,7 @@ export async function deleteWorkdayException(
       summary: `Deleted workday exception “${existing.title}”.`,
       metadata: { affectedItemCount: updatedTasks.size },
     })
-    revalidatePath(
-      `/dashboard/projects/${existing.projectId}/schedule`
-    )
-    revalidatePath(`/dashboard/projects/${existing.projectId}/todos`)
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/schedule")
+    revalidateExceptionPaths(existing.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to delete workday exception:", error)

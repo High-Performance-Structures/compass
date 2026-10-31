@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconLoader2, IconTemplate } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { importScheduleTemplateItems } from "@/app/actions/schedule"
+import { importScheduleTemplateItems } from "@/app/actions/schedule-template-import"
 import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
   clearScheduleTemplateImportOptions,

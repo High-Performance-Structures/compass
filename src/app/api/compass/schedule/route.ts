@@ -1,26 +1,48 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
-import { isInternalStaffRole } from "@/lib/user-roles"
-import { projects, scheduleTasks, taskDependencies, workdayExceptions } from "@/db/schema"
-import { eq, asc, and } from "drizzle-orm"
-import { calculateEndDate } from "@/lib/schedule/business-days"
-import { findCriticalPath } from "@/lib/schedule/critical-path"
-import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
-import { propagateDates } from "@/lib/schedule/propagate-dates"
-import {
-  effectivePercentComplete,
-  normalizeScheduleProgress,
-} from "@/lib/schedule/progress"
 import { revalidatePath } from "next/cache"
-import type {
-  TaskStatus,
-  DependencyType,
-  ExceptionCategory,
-  ExceptionRecurrence,
-  WorkdayExceptionType,
-  WorkdayExceptionData,
-} from "@/lib/schedule/types"
+import {
+  isOrganizationProject,
+  findTask,
+  loadProjectExceptions,
+  loadProjectScheduleRows,
+  nextProjectSortOrder,
+} from "@/lib/domain/schedule/queries"
+import {
+  canViewWorkingSchedule,
+} from "@/lib/domain/schedule/access"
+import {
+  dependencyData,
+  isDependencyType,
+  isTaskStatus,
+  propagateFrom,
+  scheduleSummary,
+  taskWithProgress,
+  taskWithStatus,
+  validateDependency,
+} from "@/lib/domain/schedule/rules"
+import {
+  deleteDependency,
+  deleteTask,
+  insertDependency,
+  insertTask,
+  recalcCriticalPath,
+  updateTask,
+  updateTaskDates,
+} from "@/lib/domain/schedule/store"
+import { calculateEndDate } from "@/lib/schedule/business-days"
+import { normalizeScheduleProgress } from "@/lib/schedule/progress"
+import type { TaskStatus } from "@/lib/schedule/types"
+import { field } from "@/lib/shared/guards"
+import type { Db } from "@/lib/server/action-context"
+
+/*
+ * The agent's schedule API. It authenticates with the agent token, then
+ * calls the same schedule domain module (store, queries, rules) as the
+ * server actions. It keeps its own narrower behavior: it does not shift
+ * linked to-dos or reset assignee responses when dates move.
+ */
 
 type ScheduleAction =
   | "getSchedule"
@@ -32,115 +54,243 @@ type ScheduleAction =
   | "addException"
   | "removeException"
 
-function isTaskStatus(value: unknown): value is TaskStatus {
-  return (
-    value === "PENDING" ||
-    value === "IN_PROGRESS" ||
-    value === "COMPLETE" ||
-    value === "BLOCKED"
-  )
+type Body = { action: ScheduleAction; [key: string]: unknown }
+
+function json(body: unknown, status?: number): Response {
+  return new Response(JSON.stringify(body), {
+    ...(status === undefined ? {} : { status }),
+    headers: { "Content-Type": "application/json" },
+  })
 }
 
-function isDependencyType(value: unknown): value is DependencyType {
-  return value === "FS" || value === "SS" || value === "FF" || value === "SF"
+const DEMO_READ_ONLY = (): Response => json({ error: "DEMO_READ_ONLY" }, 403)
+
+function revalidateSchedule(projectId: string): void {
+  revalidatePath(`/dashboard/projects/${projectId}/schedule`)
 }
 
-async function fetchProjectExceptions(
-  db: ReturnType<typeof getDb>,
-  projectId: string,
-): Promise<WorkdayExceptionData[]> {
-  const rows = await db
-    .select()
-    .from(workdayExceptions)
-    .where(eq(workdayExceptions.projectId, projectId))
-  return rows.map((r) => ({
-    ...r,
-    type: r.type as WorkdayExceptionType,
-    category: r.category as ExceptionCategory,
-    recurrence: r.recurrence as ExceptionRecurrence,
-  }))
+/** A project's tasks (as the schedule shows them) and dependencies. */
+async function projectSchedule(db: Db, projectId: string) {
+  const { tasks, dependencies } = await loadProjectScheduleRows(db, projectId)
+  return { tasks: tasks.map(taskWithProgress), deps: dependencies.map(dependencyData) }
 }
 
-async function fetchProjectDeps(
-  db: ReturnType<typeof getDb>,
-  projectId: string,
-) {
-  const tasks = await db
-    .select()
-    .from(scheduleTasks)
-    .where(eq(scheduleTasks.projectId, projectId))
-  const allDeps = await db.select().from(taskDependencies)
-  const taskIdSet = new Set(tasks.map((t) => t.id))
-  const deps = allDeps.filter(
-    (d) =>
-      taskIdSet.has(d.predecessorId) && taskIdSet.has(d.successorId),
-  )
-  return {
-    tasks: tasks.map((t) => {
-      const status = t.status as TaskStatus
-      return {
-        ...t,
-        status,
-        percentComplete: effectivePercentComplete(status, t.percentComplete),
-      }
-    }),
-    deps: deps.map((d) => ({
-      ...d,
-      type: d.type as DependencyType,
-    })),
+async function getSchedule(db: Db, orgId: string, body: Body): Promise<Response> {
+  const projectId = body.projectId as string
+  if (!projectId) return json({ error: "projectId required" }, 400)
+  if (!(await isOrganizationProject(db, orgId, projectId))) {
+    return json({ error: "Project not found" }, 404)
   }
+
+  const { tasks, deps } = await projectSchedule(db, projectId)
+  const exceptions = await loadProjectExceptions(db, projectId)
+  return json({ tasks, dependencies: deps, exceptions, summary: scheduleSummary(tasks) })
 }
 
-async function recalcCriticalPathDirect(
-  db: ReturnType<typeof getDb>,
-  projectId: string,
-): Promise<void> {
-  const tasks = await db
-    .select()
-    .from(scheduleTasks)
-    .where(eq(scheduleTasks.projectId, projectId))
+async function createTask(db: Db, orgId: string, body: Body): Promise<Response> {
+  const projectId = body.projectId as string
+  const title = body.title as string
+  const startDate = body.startDate as string
+  const workdays = body.workdays as number
+  const phase = body.phase as string
+  const requestedStatus = isTaskStatus(body.status) ? body.status : "PENDING"
+  const isMilestone = (body.isMilestone as boolean) ?? false
+  const percentComplete = (body.percentComplete as number) ?? 0
+  const assignedTo = (body.assignedTo as string | undefined) ?? null
 
-  const allDeps = await db.select().from(taskDependencies)
-  const taskIdSet = new Set(tasks.map((t) => t.id))
-  const projectDeps = allDeps.filter(
-    (d) =>
-      taskIdSet.has(d.predecessorId) && taskIdSet.has(d.successorId),
-  )
+  if (!projectId || !title || !startDate || workdays === undefined || !phase) {
+    return json({ error: "Missing required fields" }, 400)
+  }
+  if (!(await isOrganizationProject(db, orgId, projectId))) {
+    return json({ error: "Project not found" }, 404)
+  }
 
-  const criticalSet = findCriticalPath(
-    tasks.map((t) => ({
-      ...t,
-      status: t.status as TaskStatus,
-    })),
-    projectDeps.map((d) => ({
-      ...d,
-      type: d.type as DependencyType,
-    })),
-  )
+  const exceptions = await loadProjectExceptions(db, projectId)
+  const endDate = calculateEndDate(startDate, workdays, exceptions)
+  const now = new Date().toISOString()
+  const progress = normalizeScheduleProgress(requestedStatus, percentComplete)
+  await insertTask(db, {
+    id: crypto.randomUUID(),
+    projectId,
+    title,
+    startDate,
+    workdays,
+    endDateCalculated: endDate,
+    phase,
+    status: progress.status,
+    isCriticalPath: false,
+    isMilestone,
+    percentComplete: progress.percentComplete,
+    assignedTo,
+    sortOrder: await nextProjectSortOrder(db, projectId),
+    createdAt: now,
+    updatedAt: now,
+  })
 
-  for (const task of tasks) {
-    const isCritical = criticalSet.has(task.id)
-    if (task.isCriticalPath !== isCritical) {
-      await db
-        .update(scheduleTasks)
-        .set({ isCriticalPath: isCritical })
-        .where(eq(scheduleTasks.id, task.id))
+  await recalcCriticalPath(db, projectId)
+  revalidateSchedule(projectId)
+  return json({ success: true, message: `Task "${title}" created` })
+}
+
+/** The project of an organization's task, or null when it is not theirs. */
+async function organizationTask(db: Db, orgId: string, taskId: string) {
+  const task = await findTask(db, taskId)
+  if (!task || !(await isOrganizationProject(db, orgId, task.projectId))) return null
+  return task
+}
+
+async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Response> {
+  const taskId = body.taskId as string
+  if (!taskId) return json({ error: "taskId required" }, 400)
+  const task = await organizationTask(db, orgId, taskId)
+  if (!task) return json({ error: "Task not found" }, 404)
+
+  const status = body.status
+  const fields: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(body)) {
+    if (key !== "action" && key !== "taskId" && key !== "status") {
+      fields[key] = value
     }
   }
+  const hasFields = Object.keys(fields).length > 0
+  if (status !== undefined && !isTaskStatus(status)) {
+    return json({ error: "Invalid status" }, 400)
+  }
+  const requestedStatus = isTaskStatus(status) ? status : (task.status as TaskStatus)
+  const requestedPercent =
+    fields.percentComplete !== undefined ? (fields.percentComplete as number) : task.percentComplete
+  const progress = normalizeScheduleProgress(requestedStatus, requestedPercent)
+
+  if (hasFields) {
+    const exceptions = await loadProjectExceptions(db, task.projectId)
+    const startDate = (fields.startDate as string) ?? task.startDate
+    const workdays = (fields.workdays as number) ?? task.workdays
+    const endDate = calculateEndDate(startDate, workdays, exceptions)
+
+    await updateTask(db, taskId, {
+      ...(fields.title ? { title: fields.title as string } : {}),
+      startDate,
+      workdays,
+      endDateCalculated: endDate,
+      ...(fields.phase ? { phase: fields.phase as string } : {}),
+      status: progress.status,
+      ...(fields.isMilestone !== undefined ? { isMilestone: fields.isMilestone as boolean } : {}),
+      percentComplete: progress.percentComplete,
+      ...(fields.assignedTo !== undefined ? { assignedTo: fields.assignedTo as string | null } : {}),
+      updatedAt: new Date().toISOString(),
+    })
+
+    // propagate date changes
+    const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)
+    const updatedTask = {
+      ...task,
+      status: progress.status,
+      percentComplete: progress.percentComplete,
+      startDate,
+      workdays,
+      endDateCalculated: endDate,
+    }
+    const updates = propagateFrom(
+      taskId,
+      tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
+      dependencies.map(dependencyData),
+      exceptions
+    )
+    await updateTaskDates(db, updates, new Date().toISOString())
+  }
+
+  if (status) {
+    await updateTask(db, taskId, {
+      status: progress.status,
+      percentComplete: progress.percentComplete,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (!hasFields && !status) {
+    return json({ error: "No fields provided to update" }, 400)
+  }
+
+  await recalcCriticalPath(db, task.projectId)
+  revalidateSchedule(task.projectId)
+  return json({ success: true, message: "Task updated" })
+}
+
+async function deleteTaskAction(db: Db, orgId: string, body: Body): Promise<Response> {
+  const taskId = body.taskId as string
+  if (!taskId) return json({ error: "taskId required" }, 400)
+  const task = await organizationTask(db, orgId, taskId)
+  if (!task) return json({ error: "Task not found" }, 404)
+
+  await deleteTask(db, taskId)
+  await recalcCriticalPath(db, task.projectId)
+  revalidateSchedule(task.projectId)
+  return json({ success: true, message: "Task deleted" })
+}
+
+async function createDependency(db: Db, orgId: string, body: Body): Promise<Response> {
+  const projectId = body.projectId as string
+  const predecessorId = body.predecessorId as string
+  const successorId = body.successorId as string
+  const type = body.type
+  const lagDays = (body.lagDays as number) ?? 0
+
+  if (!projectId || !predecessorId || !successorId || !isDependencyType(type)) {
+    return json({ error: "Missing required fields" }, 400)
+  }
+  if (!(await isOrganizationProject(db, orgId, projectId))) {
+    return json({ error: "Project not found" }, 404)
+  }
+
+  const { tasks: projectTasks, deps: existingDeps } = await projectSchedule(db, projectId)
+  const invalid = validateDependency({
+    predecessorId,
+    successorId,
+    projectTaskIds: new Set(projectTasks.map((task) => task.id)),
+    dependencies: existingDeps,
+  })
+  if (invalid) return json({ error: invalid }, 400)
+
+  const dependency = { id: crypto.randomUUID(), predecessorId, successorId, type, lagDays }
+  await insertDependency(db, dependency)
+
+  const exceptions = await loadProjectExceptions(db, projectId)
+  const { tasks } = await projectSchedule(db, projectId)
+  const updates = propagateFrom(predecessorId, tasks, [...existingDeps, dependency], exceptions)
+  await updateTaskDates(db, updates, new Date().toISOString())
+
+  await recalcCriticalPath(db, projectId)
+  revalidateSchedule(projectId)
+  return json({ success: true, message: "Dependency created" })
+}
+
+async function deleteDependencyAction(db: Db, orgId: string, body: Body): Promise<Response> {
+  const dependencyId = body.dependencyId as string
+  const projectId = body.projectId as string
+  if (!dependencyId || !projectId) {
+    return json({ error: "dependencyId and projectId required" }, 400)
+  }
+  if (!(await isOrganizationProject(db, orgId, projectId))) {
+    return json({ error: "Project not found" }, 404)
+  }
+
+  const { deps } = await projectSchedule(db, projectId)
+  if (!deps.some((dependency) => dependency.id === dependencyId)) {
+    return json({ error: "Dependency not found for this project" }, 404)
+  }
+
+  await deleteDependency(db, dependencyId)
+  await recalcCriticalPath(db, projectId)
+  revalidateSchedule(projectId)
+  return json({ success: true, message: "Dependency removed" })
 }
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
-  const envRecord = env as unknown as Record<string, string>
-
-  const auth = await validateAgentAuth(req, envRecord)
-  if (!auth.valid) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    })
-  }
-  if (!isInternalStaffRole(auth.role) && auth.role !== "developer") {
+  const secret = field(env, "AGENT_AUTH_SECRET")
+  const auth = await validateAgentAuth(req, typeof secret === "string" ? { AGENT_AUTH_SECRET: secret } : {})
+  if (!auth.valid) return json({ error: "Unauthorized" }, 401)
+  if (!canViewWorkingSchedule(auth.role)) {
     return Response.json(
       { error: "Working schedule access is available to internal staff only" },
       { status: 403 }
@@ -149,729 +299,32 @@ export async function POST(req: Request): Promise<Response> {
 
   const db = getDb(env.DB)
 
-  let body: { action: ScheduleAction; [key: string]: unknown }
+  let body: Body
   try {
     body = await req.json()
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    })
+    return json({ error: "Invalid JSON body" }, 400)
   }
 
   try {
     switch (body.action) {
-      case "getSchedule": {
-        const projectId = body.projectId as string
-        if (!projectId) {
-          return new Response(
-            JSON.stringify({ error: "projectId required" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-
-        if (!project) {
-          return new Response(
-            JSON.stringify({ error: "Project not found" }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const { tasks: typedTasks, deps: typedDeps } =
-          await fetchProjectDeps(db, projectId)
-        const exceptions = await fetchProjectExceptions(db, projectId)
-
-        const total = typedTasks.length
-        const completed = typedTasks.filter(
-          (t) => t.status === "COMPLETE",
-        ).length
-        const inProgress = typedTasks.filter(
-          (t) => t.status === "IN_PROGRESS",
-        ).length
-        const blocked = typedTasks.filter(
-          (t) => t.status === "BLOCKED",
-        ).length
-        const overallPercent =
-          total > 0
-            ? Math.round(
-                typedTasks.reduce(
-                  (sum, t) => sum + t.percentComplete,
-                  0,
-                ) / total,
-              )
-            : 0
-        const criticalPath = typedTasks
-          .filter((t) => t.isCriticalPath)
-          .map((t) => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            startDate: t.startDate,
-            endDate: t.endDateCalculated,
-          }))
-
-        return new Response(
-          JSON.stringify({
-            tasks: typedTasks,
-            dependencies: typedDeps,
-            exceptions,
-            summary: {
-              total,
-              completed,
-              inProgress,
-              blocked,
-              pending: total - completed - inProgress - blocked,
-              overallPercent,
-              criticalPath,
-            },
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
-      case "createTask": {
-        if (auth.isDemoUser) {
-          return new Response(
-            JSON.stringify({ error: "DEMO_READ_ONLY" }),
-            {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const projectId = body.projectId as string
-        const title = body.title as string
-        const startDate = body.startDate as string
-        const workdays = body.workdays as number
-        const phase = body.phase as string
-        const requestedStatus = isTaskStatus(body.status)
-          ? body.status
-          : "PENDING"
-        const isMilestone = (body.isMilestone as boolean) ?? false
-        const percentComplete = (body.percentComplete as number) ?? 0
-        const assignedTo = (body.assignedTo as string | undefined) ?? null
-
-        if (!projectId || !title || !startDate || workdays === undefined || !phase) {
-          return new Response(
-            JSON.stringify({ error: "Missing required fields" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-
-        if (!project) {
-          return new Response(
-            JSON.stringify({ error: "Project not found" }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const exceptions = await fetchProjectExceptions(db, projectId)
-        const endDate = calculateEndDate(startDate, workdays, exceptions)
-        const now = new Date().toISOString()
-
-        const existing = await db
-          .select({ sortOrder: scheduleTasks.sortOrder })
-          .from(scheduleTasks)
-          .where(eq(scheduleTasks.projectId, projectId))
-          .orderBy(asc(scheduleTasks.sortOrder))
-
-        const nextOrder =
-          existing.length > 0
-            ? existing[existing.length - 1].sortOrder + 1
-            : 0
-
-        const id = crypto.randomUUID()
-        const progress = normalizeScheduleProgress(
-          requestedStatus,
-          percentComplete
-        )
-        await db.insert(scheduleTasks).values({
-          id,
-          projectId,
-          title,
-          startDate,
-          workdays,
-          endDateCalculated: endDate,
-          phase,
-          status: progress.status,
-          isCriticalPath: false,
-          isMilestone,
-          percentComplete: progress.percentComplete,
-          assignedTo,
-          sortOrder: nextOrder,
-          createdAt: now,
-          updatedAt: now,
-        })
-
-        await recalcCriticalPathDirect(db, projectId)
-        revalidatePath(`/dashboard/projects/${projectId}/schedule`)
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: `Task "${title}" created`,
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
-      case "updateTask": {
-        if (auth.isDemoUser) {
-          return new Response(
-            JSON.stringify({ error: "DEMO_READ_ONLY" }),
-            {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const taskId = body.taskId as string
-        if (!taskId) {
-          return new Response(
-            JSON.stringify({ error: "taskId required" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [task] = await db
-          .select()
-          .from(scheduleTasks)
-          .where(eq(scheduleTasks.id, taskId))
-          .limit(1)
-
-        if (!task) {
-          return new Response(
-            JSON.stringify({ error: "Task not found" }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, task.projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-        if (!project) {
-          return new Response(JSON.stringify({ error: "Task not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-
-        const status = body.status
-        const fields: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(body)) {
-          if (key !== "action" && key !== "taskId" && key !== "status") {
-            fields[key] = value
-          }
-        }
-        const hasFields = Object.keys(fields).length > 0
-        if (status !== undefined && !isTaskStatus(status)) {
-          return new Response(JSON.stringify({ error: "Invalid status" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-        const requestedStatus = isTaskStatus(status)
-          ? status
-          : (task.status as TaskStatus)
-        const requestedPercent =
-          fields.percentComplete !== undefined
-            ? (fields.percentComplete as number)
-            : task.percentComplete
-        const progress = normalizeScheduleProgress(
-          requestedStatus,
-          requestedPercent
-        )
-
-        if (hasFields) {
-          const exceptions = await fetchProjectExceptions(db, task.projectId)
-
-          const startDate = (fields.startDate as string) ?? task.startDate
-          const workdays = (fields.workdays as number) ?? task.workdays
-          const endDate = calculateEndDate(startDate, workdays, exceptions)
-
-          await db
-            .update(scheduleTasks)
-            .set({
-              ...(fields.title ? { title: fields.title as string } : {}),
-              startDate,
-              workdays,
-              endDateCalculated: endDate,
-              ...(fields.phase ? { phase: fields.phase as string } : {}),
-              status: progress.status,
-              ...(fields.isMilestone !== undefined
-                ? { isMilestone: fields.isMilestone as boolean }
-                : {}),
-              percentComplete: progress.percentComplete,
-              ...(fields.assignedTo !== undefined
-                ? { assignedTo: fields.assignedTo as string | null }
-                : {}),
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(scheduleTasks.id, taskId))
-
-          // propagate date changes
-          const allTasks = await db
-            .select()
-            .from(scheduleTasks)
-            .where(eq(scheduleTasks.projectId, task.projectId))
-          const allDeps = await db.select().from(taskDependencies)
-          const taskIdSet = new Set(allTasks.map((t) => t.id))
-          const projectDeps = allDeps
-            .filter(
-              (d) =>
-                taskIdSet.has(d.predecessorId) &&
-                taskIdSet.has(d.successorId),
-            )
-            .map((d) => ({
-              ...d,
-              type: d.type as DependencyType,
-            }))
-
-          const updatedTask = {
-            ...task,
-            status: progress.status,
-            percentComplete: progress.percentComplete,
-            startDate,
-            workdays,
-            endDateCalculated: endDate,
-          }
-          const typedAll = allTasks.map((t) =>
-            t.id === taskId
-              ? updatedTask
-              : { ...t, status: t.status as TaskStatus },
-          )
-          const { updatedTasks } = propagateDates(
-            taskId,
-            typedAll,
-            projectDeps,
-            exceptions,
-          )
-
-          for (const [id, dates] of updatedTasks) {
-            await db
-              .update(scheduleTasks)
-              .set({
-                startDate: dates.startDate,
-                endDateCalculated: dates.endDateCalculated,
-                updatedAt: new Date().toISOString(),
-              })
-              .where(eq(scheduleTasks.id, id))
-          }
-        }
-
-        if (status) {
-          await db
-            .update(scheduleTasks)
-            .set({
-              status: progress.status,
-              percentComplete: progress.percentComplete,
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(scheduleTasks.id, taskId))
-        }
-
-        if (!hasFields && !status) {
-          return new Response(
-            JSON.stringify({ error: "No fields provided to update" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        await recalcCriticalPathDirect(db, task.projectId)
-        revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Task updated",
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
-      case "deleteTask": {
-        if (auth.isDemoUser) {
-          return new Response(
-            JSON.stringify({ error: "DEMO_READ_ONLY" }),
-            {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const taskId = body.taskId as string
-        if (!taskId) {
-          return new Response(
-            JSON.stringify({ error: "taskId required" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [task] = await db
-          .select()
-          .from(scheduleTasks)
-          .where(eq(scheduleTasks.id, taskId))
-          .limit(1)
-
-        if (!task) {
-          return new Response(
-            JSON.stringify({ error: "Task not found" }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, task.projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-        if (!project) {
-          return new Response(JSON.stringify({ error: "Task not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-
-        await db
-          .delete(scheduleTasks)
-          .where(eq(scheduleTasks.id, taskId))
-        await recalcCriticalPathDirect(db, task.projectId)
-        revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Task deleted",
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
-      case "createDependency": {
-        if (auth.isDemoUser) {
-          return new Response(
-            JSON.stringify({ error: "DEMO_READ_ONLY" }),
-            {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const projectId = body.projectId as string
-        const predecessorId = body.predecessorId as string
-        const successorId = body.successorId as string
-        const type = body.type
-        const lagDays = (body.lagDays as number) ?? 0
-
-        if (
-          !projectId ||
-          !predecessorId ||
-          !successorId ||
-          !isDependencyType(type)
-        ) {
-          return new Response(
-            JSON.stringify({ error: "Missing required fields" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-        if (!project) {
-          return new Response(JSON.stringify({ error: "Project not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-
-        const {
-          tasks: projectTasks,
-          deps: existingDeps,
-        } = await fetchProjectDeps(db, projectId)
-        const projectTaskIds = new Set(projectTasks.map((task) => task.id))
-
-        if (
-          predecessorId === successorId ||
-          !projectTaskIds.has(predecessorId) ||
-          !projectTaskIds.has(successorId)
-        ) {
-          return new Response(
-            JSON.stringify({
-              error:
-                predecessorId === successorId
-                  ? "A schedule item cannot depend on itself"
-                  : "Both schedule items must belong to this project",
-            }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        if (
-          existingDeps.some(
-            (dependency) =>
-              dependency.predecessorId === predecessorId &&
-              dependency.successorId === successorId
-          )
-        ) {
-          return new Response(
-            JSON.stringify({ error: "That dependency already exists" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        if (
-          wouldCreateCycle(existingDeps, predecessorId, successorId)
-        ) {
-          return new Response(
-            JSON.stringify({
-              error: "This dependency would create a cycle",
-            }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const depId = crypto.randomUUID()
-        await db.insert(taskDependencies).values({
-          id: depId,
-          predecessorId,
-          successorId,
-          type,
-          lagDays,
-        })
-
-        const exceptions = await fetchProjectExceptions(db, projectId)
-        const { tasks: typedTasks } = await fetchProjectDeps(db, projectId)
-
-        const updatedDeps = [
-          ...existingDeps,
-          {
-            id: depId,
-            predecessorId,
-            successorId,
-            type,
-            lagDays,
-          },
-        ]
-        const { updatedTasks } = propagateDates(
-          predecessorId,
-          typedTasks,
-          updatedDeps,
-          exceptions,
-        )
-
-        for (const [id, dates] of updatedTasks) {
-          await db
-            .update(scheduleTasks)
-            .set({
-              startDate: dates.startDate,
-              endDateCalculated: dates.endDateCalculated,
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(scheduleTasks.id, id))
-        }
-
-        await recalcCriticalPathDirect(db, projectId)
-        revalidatePath(`/dashboard/projects/${projectId}/schedule`)
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Dependency created",
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
-      case "deleteDependency": {
-        if (auth.isDemoUser) {
-          return new Response(
-            JSON.stringify({ error: "DEMO_READ_ONLY" }),
-            {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const dependencyId = body.dependencyId as string
-        const projectId = body.projectId as string
-
-        if (!dependencyId || !projectId) {
-          return new Response(
-            JSON.stringify({ error: "dependencyId and projectId required" }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        const [project] = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, auth.orgId)
-            )
-          )
-          .limit(1)
-        if (!project) {
-          return new Response(JSON.stringify({ error: "Project not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-
-        const { deps: projectDependencies } = await fetchProjectDeps(
-          db,
-          projectId
-        )
-        if (
-          !projectDependencies.some(
-            (dependency) => dependency.id === dependencyId
-          )
-        ) {
-          return new Response(
-            JSON.stringify({ error: "Dependency not found for this project" }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
-
-        await db
-          .delete(taskDependencies)
-          .where(eq(taskDependencies.id, dependencyId))
-        await recalcCriticalPathDirect(db, projectId)
-        revalidatePath(`/dashboard/projects/${projectId}/schedule`)
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Dependency removed",
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      }
-
+      case "getSchedule":
+        return await getSchedule(db, auth.orgId, body)
+      case "createTask":
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await createTask(db, auth.orgId, body)
+      case "updateTask":
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await updateTaskAction(db, auth.orgId, body)
+      case "deleteTask":
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteTaskAction(db, auth.orgId, body)
+      case "createDependency":
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await createDependency(db, auth.orgId, body)
+      case "deleteDependency":
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteDependencyAction(db, auth.orgId, body)
       default:
-        return new Response(
-          JSON.stringify({ error: "Unknown action" }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          }
-        )
+        return json({ error: "Unknown action" }, 400)
     }
   } catch (error) {
     console.error("Schedule endpoint error:", error)
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Internal error",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    )
+    return json({ error: error instanceof Error ? error.message : "Internal error" }, 500)
   }
 }

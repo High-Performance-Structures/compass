@@ -42,6 +42,9 @@ vi.mock("@/lib/work-calendar", () => ({
 vi.mock("@/app/actions/schedule", () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
+}))
+
+vi.mock("@/app/actions/schedule-dependencies", () => ({
   createDependency: vi.fn(),
   updateDependency: vi.fn(),
   deleteDependency: vi.fn(),

@@ -949,29 +949,25 @@
       "src/lib/sage/square-payment.ts"
     ],
     "scheduleBaselines": [
-      "src/app/actions/baselines.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "schedulePhaseOptions": [
       "src/app/actions/schedule-phases.ts"
     ],
     "schedulePublications": [
-      "src/app/actions/schedule-publications.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "scheduleSavedViews": [
-      "src/app/actions/schedule-saved-views.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "scheduleTaskAssignees": [
-      "src/app/actions/schedule-confirmations.ts",
-      "src/app/actions/schedule.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "scheduleTaskLinks": [
-      "src/app/actions/schedule-links.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "scheduleTasks": [
-      "src/app/actions/project-templates.ts",
-      "src/app/actions/schedule-confirmations.ts",
-      "src/app/actions/schedule.ts",
-      "src/app/api/compass/schedule/route.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "shopTicketLaborClaims": [
       "src/app/actions/shop-tickets.ts"
@@ -1020,8 +1016,7 @@
       "src/lib/sync/engine.ts"
     ],
     "taskDependencies": [
-      "src/app/actions/schedule.ts",
-      "src/app/api/compass/schedule/route.ts"
+      "src/lib/domain/schedule/store.ts"
     ],
     "teamPermissionOverrides": [
       "src/app/actions/permission-overrides.ts"
@@ -1146,14 +1141,12 @@
     "src/app/actions/project-operations.ts": 3266,
     "src/app/actions/project-profile.ts": 2250,
     "src/app/actions/project-selections.ts": 1847,
-    "src/app/actions/project-templates.ts": 1012,
+    "src/app/actions/project-templates.ts": 921,
     "src/app/actions/projects.ts": 1837,
-    "src/app/actions/schedule-confirmations.ts": 1430,
-    "src/app/actions/schedule.ts": 2208,
+    "src/app/actions/schedule-confirmations.ts": 1406,
     "src/app/actions/social-posts.ts": 1126,
     "src/app/actions/voice-sessions.ts": 986,
     "src/app/actions/work-calendar.ts": 2267,
-    "src/app/api/compass/schedule/route.ts": 878,
     "src/app/api/google/project-manager-handoff/route.ts": 822,
     "src/app/dashboard/contacts/page.tsx": 993,
     "src/app/page.tsx": 1149,
@@ -1179,8 +1172,8 @@
     "src/components/projects/project-rfq-edit-form.tsx": 1074,
     "src/components/projects/projects-hub.tsx": 1670,
     "src/components/schedule/schedule-gantt-view.tsx": 1308,
-    "src/components/schedule/schedule-item-form-dialog.tsx": 2093,
-    "src/components/schedule/schedule-list-view.tsx": 817,
+    "src/components/schedule/schedule-item-form-dialog.tsx": 2088,
+    "src/components/schedule/schedule-list-view.tsx": 814,
     "src/components/schedule/schedule-view.tsx": 1698,
     "src/components/schedule/work-calendar-event-dialog.tsx": 822,
     "src/components/schedule/work-calendar.tsx": 830,
@@ -1322,10 +1315,6 @@
     "src/components/projects/trade-purchase-orders.tsx": 1,
     "src/components/rate-book/rate-book-fill-picker.tsx": 1,
     "src/components/rfqs/quote-link-form.tsx": 1,
-    "src/components/schedule/schedule-baseline-view.tsx": 1,
-    "src/components/schedule/schedule-list-view.tsx": 1,
-    "src/components/schedule/schedule-print-document.tsx": 1,
-    "src/components/schedule/workday-exceptions-view.tsx": 1,
     "src/components/settings/account-deletion-requests-card.tsx": 1,
     "src/components/templates/estimate-template-editor.tsx": 1,
     "src/components/voice/realtimekit-meeting-window.tsx": 1,
@@ -1417,7 +1406,6 @@
     "src/app/api/compass/messages/route.ts": 1,
     "src/app/api/compass/provider/route.ts": 3,
     "src/app/api/compass/query/route.ts": 1,
-    "src/app/api/compass/schedule/route.ts": 1,
     "src/app/api/compass/skills/route.ts": 1,
     "src/app/api/compass/themes/route.ts": 1,
     "src/app/api/conversations/attachments/upload/route.ts": 1,
@@ -1474,7 +1462,6 @@
     "src/app/actions/project-site-weather.ts": 1,
     "src/app/actions/rate-book.ts": 1,
     "src/app/actions/schedule-publications.ts": 1,
-    "src/app/actions/schedule.ts": 1,
     "src/app/actions/selection-decisions-read.ts": 1,
     "src/app/actions/trade-letters.ts": 1,
     "src/app/actions/users.ts": 1
@@ -1499,7 +1486,6 @@
     "src/app/actions/agent.ts": 1,
     "src/app/actions/ai-config.ts": 5,
     "src/app/actions/anthropic-oauth.ts": 4,
-    "src/app/actions/baselines.ts": 3,
     "src/app/actions/buildertrend-cutover-coverage.ts": 1,
     "src/app/actions/channel-categories.ts": 1,
     "src/app/actions/chat-messages.ts": 9,
@@ -1629,12 +1615,8 @@
     "src/app/actions/sage-pay-applications.ts": 2,
     "src/app/actions/sage-square-receipts.ts": 1,
     "src/app/actions/schedule-confirmations.ts": 8,
-    "src/app/actions/schedule-links.ts": 3,
     "src/app/actions/schedule-phases.ts": 1,
-    "src/app/actions/schedule-publications.ts": 3,
-    "src/app/actions/schedule-saved-views.ts": 3,
     "src/app/actions/schedule-template-export.ts": 2,
-    "src/app/actions/schedule.ts": 14,
     "src/app/actions/shop-ticket-billing.ts": 1,
     "src/app/actions/shop-ticket-sage-labor.ts": 1,
     "src/app/actions/shop-tickets.ts": 1,
@@ -1653,7 +1635,6 @@
     "src/app/actions/view-preferences.ts": 2,
     "src/app/actions/voice-sessions.ts": 6,
     "src/app/actions/work-calendar.ts": 4,
-    "src/app/actions/workday-exceptions.ts": 3,
     "src/app/api/agent/render/route.ts": 1,
     "src/app/api/agent/route.ts": 1,
     "src/app/api/bridge/context/route.ts": 1,

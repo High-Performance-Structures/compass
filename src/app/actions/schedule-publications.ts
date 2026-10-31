@@ -3,12 +3,9 @@
 import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   projects,
-  schedulePublications,
   scheduleTasks,
-  taskDependencies,
   workdayExceptions,
 } from "@/db/schema"
 import { scheduleTaskAssignees } from "@/db/schema-participants"
@@ -17,12 +14,14 @@ import {
   sendPublishedScheduleAssignment,
   sendScheduleTaskReminder,
 } from "@/app/actions/schedule-confirmations"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  canViewWorkingSchedule,
+  scheduleReadContext,
+  scheduleWriteContext,
+} from "@/lib/domain/schedule/access"
+import { loadDependenciesForTasks } from "@/lib/domain/schedule/queries"
+import { publicationInsertQuery } from "@/lib/domain/schedule/store"
+import type { Db } from "@/lib/server/action-context"
 import {
   getPublicationChangeReasonError,
   hasScheduleDraftChanges,
@@ -43,7 +42,7 @@ export type SchedulePublicationStatus = {
 }
 
 async function requireProject(
-  db: ReturnType<typeof getDb>,
+  db: Db,
   projectId: string,
   organizationId: string
 ): Promise<{ readonly id: string; readonly schedulePublished: boolean }> {
@@ -74,14 +73,10 @@ function revalidateSchedulePublicationPaths(projectId: string): void {
 export async function getSchedulePublicationStatus(
   projectId: string
 ): Promise<SchedulePublicationStatus> {
-  const user = await requireAuth()
-  requirePermission(user, "schedule", "read")
-  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+  const { db, organizationId, user } = await scheduleReadContext()
+  if (!canViewWorkingSchedule(user.role)) {
     throw new Error("Only internal project staff can view draft schedule status.")
   }
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const project = await requireProject(db, projectId, organizationId)
 
   const latest = await latestSchedulePublication(db, projectId)
@@ -121,10 +116,9 @@ export async function getSchedulePublicationStatus(
     ids.push(row.participantId)
     assigneeIdsByTask.set(row.scheduleTaskId, ids)
   }
-  const taskIds = new Set(tasks.map((task) => task.id))
-  const dependencies = (await db.select().from(taskDependencies)).filter(
-    (dependency) =>
-      taskIds.has(dependency.predecessorId) && taskIds.has(dependency.successorId)
+  const dependencies = await loadDependenciesForTasks(
+    db,
+    tasks.map((task) => task.id)
   )
   const exceptions = await db
     .select()
@@ -161,19 +155,14 @@ export async function publishSchedule(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    if (!canViewWorkingSchedule(user.role)) {
       return { success: false, error: "Only internal project staff can publish a schedule." }
     }
-    const organizationId = requireOrg(user)
     const changeReason = rawReason.trim()
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     await requireProject(db, projectId, organizationId)
 
     const previousPublication = await latestSchedulePublication(db, projectId)
@@ -212,11 +201,9 @@ export async function publishSchedule(
       ids.push(row.participantId)
       assigneeIdsByTask.set(row.scheduleTaskId, ids)
     }
-    const taskIds = new Set(tasks.map((task) => task.id))
-    const dependencies = (await db.select().from(taskDependencies)).filter(
-      (dependency) =>
-        taskIds.has(dependency.predecessorId) &&
-        taskIds.has(dependency.successorId)
+    const dependencies = await loadDependenciesForTasks(
+      db,
+      tasks.map((task) => task.id)
     )
     const exceptions = await db
       .select()
@@ -235,7 +222,7 @@ export async function publishSchedule(
     const publishedAt = new Date().toISOString()
 
     await db.batch([
-      db.insert(schedulePublications).values({
+      publicationInsertQuery(db, {
         id: crypto.randomUUID(),
         projectId,
         snapshotData: JSON.stringify(snapshot),
@@ -345,15 +332,12 @@ export async function moveScheduleToDraft(
   projectId: string
 ): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "schedule", "update")
-    if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    if (!canViewWorkingSchedule(user.role)) {
       return { success: false, error: "Only internal project staff can change schedule visibility." }
     }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     await requireProject(db, projectId, organizationId)
 
     const changed = await db
