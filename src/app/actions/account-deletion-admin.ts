@@ -16,7 +16,7 @@ type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
 
-export type AccountDeletionRequestStatus =
+type AccountDeletionRequestStatus =
   | "pending"
   | "processing"
   | "completed"

@@ -6,7 +6,7 @@ export type ScheduleChangeProposalInput = {
   readonly note?: string
 }
 
-export type ValidScheduleChangeProposal = {
+type ValidScheduleChangeProposal = {
   readonly startDate: string
   readonly workdays: number
   readonly note: string | null

@@ -23,7 +23,7 @@ const ALERTS_EVERY_MS = 10 * MINUTE
 const FIRES_EVERY_MS = 15 * MINUTE
 const CELL_EVERY_MS = 60 * MINUTE
 /** Cells and points nobody has read for this long stop refreshing. */
-export const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
+const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
 const ZONE_SHAPE_MAX_AGE_MS = 30 * 24 * 60 * MINUTE
 const POINTS_PER_RUN = 10
 // Per area shown on some company's map, up to the cap; the time budget still applies.

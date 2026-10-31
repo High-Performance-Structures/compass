@@ -23,8 +23,8 @@ export const UNASSIGNED_NAME = "Items not in an assembly"
 type LineRow = typeof projectEstimateLines.$inferSelect
 type CostItemRow = typeof projectEstimateLineCostItems.$inferSelect
 
-export type CopiedLine = Omit<LineRow, "id" | "projectId" | "estimateId" | "assemblyId" | "reportPhaseId" | "createdAt" | "updatedAt">
-export type CopiedCostItem = Omit<
+type CopiedLine = Omit<LineRow, "id" | "projectId" | "estimateId" | "assemblyId" | "reportPhaseId" | "createdAt" | "updatedAt">
+type CopiedCostItem = Omit<
   CostItemRow,
   "id" | "projectId" | "estimateId" | "estimateLineId" | "createdAt" | "updatedAt" | "deletedAt" | "deletedByUserId"
 >

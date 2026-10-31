@@ -43,7 +43,7 @@ export type MyFeedbackRequest = {
   readonly updatedAt: string
 }
 
-export type MyFeedbackRequestDetail = MyFeedbackRequest & {
+type MyFeedbackRequestDetail = MyFeedbackRequest & {
   readonly timeline: readonly FeedbackTimelineEntry[]
 }
 

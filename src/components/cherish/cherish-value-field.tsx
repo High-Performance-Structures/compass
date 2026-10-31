@@ -3,7 +3,7 @@
 import type { CherishValue } from "@/app/actions/cherish-pulse"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 
-export const CHERISH_VALUE_OPTIONS: readonly CherishValue[] = [
+const CHERISH_VALUE_OPTIONS: readonly CherishValue[] = [
   "Camaraderie",
   "Honor",
   "Excellence",

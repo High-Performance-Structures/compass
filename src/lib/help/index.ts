@@ -15,23 +15,10 @@ export type {
   HelpAccessContext,
   HelpGuide,
   HelpGuideSection,
-  HelpPermission,
   HelpSearchOptions,
   HelpSearchResult,
   HelpTopic,
 } from "@/lib/help/types"
-
-export { HELP_AUDIENCES } from "@/lib/help/types"
-
-export const HELP_GUIDE_CATEGORIES = [
-  "Start Here",
-  "Field & Project Work",
-  "Client Communication",
-  "Project Operations",
-  "Communication",
-  "Financial Workflows",
-  "Support",
-] as const
 
 const HELP_SEARCH_STOP_WORDS = new Set([
   "a",
@@ -187,8 +174,3 @@ export function searchHelpGuides(
   return results.slice(0, options.limit ?? 20)
 }
 
-// Compatibility aliases for the first help-library implementation.
-export const STAFF_GUIDES = HELP_GUIDES
-export const STAFF_GUIDE_CATEGORIES = HELP_GUIDE_CATEGORIES
-export const getStaffGuides = getHelpGuides
-export const getStaffGuide = getHelpGuide

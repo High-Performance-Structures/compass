@@ -21,14 +21,6 @@ export function isNative(): boolean {
   return getCapacitor()?.isNativePlatform() ?? false
 }
 
-export function isIOS(): boolean {
-  return getCapacitor()?.getPlatform() === "ios"
-}
-
-export function isAndroid(): boolean {
-  return getCapacitor()?.getPlatform() === "android"
-}
-
 export function isElectron(): boolean {
   return !!getDesktopBridge()
 }
@@ -36,8 +28,6 @@ export function isElectron(): boolean {
 export function isDesktop(): boolean {
   return isElectron()
 }
-
-export type Platform = "ios" | "android" | "windows" | "macos" | "linux" | "web"
 export type MobilePlatform = "ios" | "android" | "web"
 const NATIVE_PLATFORM_SESSION_KEY = "compass_native_platform"
 
@@ -69,32 +59,6 @@ export function inferMobileBrowserPlatform(
 
   // Modern iPadOS can identify itself as macOS in Safari.
   if (navigatorPlatform === "MacIntel" && maxTouchPoints > 1) return "ios"
-  return "web"
-}
-
-function detectDesktopOS(): "windows" | "macos" | "linux" {
-  const desktop = getDesktopBridge()
-  if (desktop) return desktop.platform.os
-
-  if (typeof navigator === "undefined") return "linux"
-
-  const ua = navigator.userAgent.toLowerCase()
-  if (ua.includes("win")) return "windows"
-  if (ua.includes("mac")) return "macos"
-  return "linux"
-}
-
-export function getPlatform(): Platform {
-  if (isElectron()) {
-    return detectDesktopOS()
-  }
-  // Then check Capacitor mobile
-  const cap = getCapacitor()
-  if (cap?.isNativePlatform()) {
-    const p = cap.getPlatform()
-    if (p === "ios") return "ios"
-    if (p === "android") return "android"
-  }
   return "web"
 }
 
@@ -141,11 +105,6 @@ export function getMobilePlatform(): MobilePlatform {
     storedPlatform,
     browserPlatform,
   )
-}
-
-// Returns true for any native platform (Capacitor mobile or Electron desktop)
-export function isAnyNative(): boolean {
-  return isNative() || isElectron()
 }
 
 // Open an external URL in the system browser.

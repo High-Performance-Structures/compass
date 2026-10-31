@@ -54,7 +54,7 @@ export type NuTechAirliteOrderHeader = {
 }
 
 /** Compares item numbers ignoring case, spaces and hyphens ("Fox Spray Foam" = "FOX-SPRAYFOAM"). */
-export function normalizeAirliteSku(sku: string): string {
+function normalizeAirliteSku(sku: string): string {
   return sku.toUpperCase().replace(/[^A-Z0-9]/g, "")
 }
 

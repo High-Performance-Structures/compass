@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useNative, useNativePlatform } from "./use-native"
 
-export function useNativePush() {
+function useNativePush() {
   const native = useNative()
   const platform = useNativePlatform()
   const router = useRouter()

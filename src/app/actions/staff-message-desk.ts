@@ -73,7 +73,7 @@ export type StaffMessageDeskRecordDto = Readonly<{
   readonly history: readonly StaffMessageEventDto[]
 }>
 
-export type StaffMessageEventDto = Readonly<{
+type StaffMessageEventDto = Readonly<{
   readonly id: string
   readonly actorName: string
   readonly eventType: string
@@ -89,7 +89,7 @@ export type StaffMessageAssigneeDto = Readonly<{
   readonly email: string
 }>
 
-export type StaffMessageInboundTextDto = Readonly<{
+type StaffMessageInboundTextDto = Readonly<{
   readonly id: string
   readonly senderPhone: string
   readonly messageBody: string | null
@@ -503,7 +503,7 @@ async function insertStaffMessage(input: {
   return id
 }
 
-export async function createStaffMessage(
+async function createStaffMessage(
   formData: FormData
 ): Promise<ActionResult<{ readonly id: string }>> {
   try {
@@ -535,7 +535,7 @@ export async function createStaffMessage(
   }
 }
 
-export async function routeGotoTextToMessageDesk(
+async function routeGotoTextToMessageDesk(
   formData: FormData
 ): Promise<ActionResult<{ readonly id: string }>> {
   try {

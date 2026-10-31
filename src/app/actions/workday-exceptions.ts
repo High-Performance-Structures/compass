@@ -14,7 +14,6 @@ import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { requirePermission } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
@@ -138,38 +137,6 @@ async function runExceptionScheduleBatch(
   if (results.some((result) => !result.success)) {
     throw new Error("Workday exception schedule batch failed")
   }
-}
-
-export async function getWorkdayExceptions(
-  projectId: string
-): Promise<WorkdayExceptionData[]> {
-  const user = await requireAuth()
-  requirePermission(user, "schedule", "read")
-  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
-    return []
-  }
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // verify project belongs to user's org
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!project) {
-    throw new Error("Project not found or access denied")
-  }
-
-  const rows = await db
-    .select()
-    .from(workdayExceptions)
-    .where(eq(workdayExceptions.projectId, projectId))
-
-  return rows.map(exceptionData)
 }
 
 export async function createWorkdayException(

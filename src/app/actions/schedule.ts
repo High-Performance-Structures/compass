@@ -39,11 +39,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import { projectDepartment } from "@/lib/project-branding"
-import {
-  projectScheduleColor,
-  schedulePortfolioProjects,
-  scheduleProjectSwitcherProjects,
-} from "@/lib/schedule/project-scope"
+import { projectScheduleColor, scheduleProjectSwitcherProjects } from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -626,10 +622,6 @@ export async function getScopedSchedule(
       recurrence: exception.recurrence as ExceptionRecurrence
     }))
   }
-}
-
-export async function getScheduleProjects(): Promise<ProjectListItem[]> {
-  return schedulePortfolioProjects(await getProjects())
 }
 
 export async function getScheduleProjectSwitcherProjects(
@@ -1798,92 +1790,6 @@ export async function deleteScheduleTasks(
   }
 }
 
-export async function reorderTasks(
-  projectId: string,
-  items: { id: string; sortOrder: number }[]
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
-      return { success: false, error: "Project not found or access denied" }
-    }
-
-    const uniqueItems = [
-      ...new Map(
-        items.filter((item) => item.id.trim().length > 0).map((item) => [item.id, item])
-      ).values()
-    ]
-    if (uniqueItems.length === 0) {
-      return { success: false, error: "Select schedule items to reorder" }
-    }
-    if (uniqueItems.length > 500) {
-      return {
-        success: false,
-        error: "Reorder no more than 500 schedule items at a time"
-      }
-    }
-    const matchingTasks = await db
-      .select({ id: scheduleTasks.id })
-      .from(scheduleTasks)
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(
-            scheduleTasks.id,
-            uniqueItems.map((item) => item.id)
-          )
-        )
-      )
-    if (matchingTasks.length !== uniqueItems.length) {
-      return {
-        success: false,
-        error: "One or more schedule items do not belong to this project"
-      }
-    }
-
-    for (const item of uniqueItems) {
-      await db
-        .update(scheduleTasks)
-        .set({ sortOrder: item.sortOrder })
-        .where(and(eq(scheduleTasks.id, item.id), eq(scheduleTasks.projectId, projectId)))
-    }
-
-    await recordActivityEvent({
-      db,
-      organizationId: orgId,
-      projectId,
-      actor: user,
-      category: "schedule",
-      action: "schedule.items_reordered",
-      entityType: "project_schedule",
-      entityId: projectId,
-      summary: `Reordered ${uniqueItems.length} schedule ${uniqueItems.length === 1 ? "item" : "items"}.`,
-      metadata: { itemCount: uniqueItems.length }
-    })
-    revalidateSchedulePaths(projectId)
-    return { success: true }
-  } catch (error) {
-    console.error("Failed to reorder tasks:", error)
-    return { success: false, error: "Failed to reorder schedule items" }
-  }
-}
-
 export async function createDependency(data: {
   predecessorId: string
   successorId: string
@@ -2273,69 +2179,6 @@ export async function deleteDependency(
   } catch (error) {
     console.error("Failed to delete dependency:", error)
     return { success: false, error: "Failed to delete dependency" }
-  }
-}
-
-export async function updateTaskStatus(
-  taskId: string,
-  status: TaskStatus
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "schedule", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const [task] = await db
-      .select()
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.id, taskId))
-      .limit(1)
-
-    if (!task) return { success: false, error: "Schedule item not found" }
-
-    // verify project belongs to user's org
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, task.projectId), eq(projects.organizationId, orgId)))
-      .limit(1)
-
-    if (!project) {
-      return { success: false, error: "Access denied" }
-    }
-
-    await db
-      .update(scheduleTasks)
-      .set({
-        status,
-        percentComplete: effectivePercentComplete(status, task.percentComplete),
-        updatedAt: new Date().toISOString()
-      })
-      .where(eq(scheduleTasks.id, taskId))
-
-    await recordActivityEvent({
-      db,
-      organizationId: orgId,
-      projectId: task.projectId,
-      actor: user,
-      category: "schedule",
-      action: "schedule.item_status_changed",
-      entityType: "schedule_item",
-      entityId: taskId,
-      summary: `Changed “${task.title}” to ${status.toLowerCase().replace("_", " ")}.`,
-      metadata: { status }
-    })
-    revalidateSchedulePaths(task.projectId)
-    return { success: true }
-  } catch (error) {
-    console.error("Failed to update task status:", error)
-    return { success: false, error: "Failed to update status" }
   }
 }
 

@@ -37,13 +37,13 @@ type PlaylistActionResult<T> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: string }
 
-export type ListeningPlaylistLinkData = {
+type ListeningPlaylistLinkData = {
   readonly id: string
   readonly provider: MusicProvider
   readonly url: string
 }
 
-export type ListeningPlaylistItemData = {
+type ListeningPlaylistItemData = {
   readonly id: string
   readonly title: string
   readonly artist: string | null

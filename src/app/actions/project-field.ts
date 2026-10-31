@@ -253,7 +253,7 @@ export type ProjectDailyLogPhoto = {
   readonly publicShareable: boolean
 }
 
-export type ProjectDailyLogScheduleItem = {
+type ProjectDailyLogScheduleItem = {
   readonly id: string
   readonly title: string
   readonly startDate: string
@@ -262,7 +262,7 @@ export type ProjectDailyLogScheduleItem = {
   readonly notes: string | null
 }
 
-export type ProjectDailyLogTodo = {
+type ProjectDailyLogTodo = {
   readonly id: string
   readonly title: string
   /** Notes, which name the log line the to-do was made from. */
@@ -362,7 +362,7 @@ type CreateDailyLogInput = {
   readonly followUps?: DailyLogFollowUps
 }
 
-export type ProjectWeatherSnapshot = {
+type ProjectWeatherSnapshot = {
   readonly tempF: number | null
   readonly conditions: string
   readonly precipitation: string | null

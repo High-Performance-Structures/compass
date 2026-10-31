@@ -4,7 +4,7 @@
 const LONG_MESSAGE_CHARACTERS = 320
 const LONG_MESSAGE_LINES = 6
 
-export function escapeFieldHtml(value: string): string {
+function escapeFieldHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => {
     const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }
     return entities[character] ?? character

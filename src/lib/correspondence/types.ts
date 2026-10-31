@@ -72,7 +72,7 @@ export type CorrespondenceDetail = {
   readonly hasEarlier: boolean
   readonly draft: { readonly body: string; readonly version: number; readonly attachments?: readonly CorrespondenceAttachment[] } | null
 }
-export type CorrespondenceCompositionDraft = {
+type CorrespondenceCompositionDraft = {
   readonly subject: string
   readonly body: string
   readonly recipientUserIds: readonly string[]

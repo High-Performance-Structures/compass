@@ -252,7 +252,7 @@ export type ProjectEstimateLineCostItem = {
   readonly rateBookVersion: number | null
 }
 
-export type ProjectEstimateBasisItem = {
+type ProjectEstimateBasisItem = {
   readonly id: string
   readonly projectDocumentId: string | null
   readonly documentType: string
@@ -264,7 +264,7 @@ export type ProjectEstimateBasisItem = {
   readonly sortOrder: number
 }
 
-export type ProjectEstimateDocumentOption = {
+type ProjectEstimateDocumentOption = {
   readonly id: string
   readonly category: string
   readonly title: string
@@ -301,12 +301,12 @@ export type ProjectEstimateTermsOption = {
   readonly sourceUrl: string | null
 }
 
-export type ProjectEstimatePhaseDescriptionItem = {
+type ProjectEstimatePhaseDescriptionItem = {
   readonly divisionCode: string
   readonly description: string
 }
 
-export type ProjectEstimateAcknowledgementItem = {
+type ProjectEstimateAcknowledgementItem = {
   readonly id: string
   readonly templateId: string
   readonly title: string
@@ -503,7 +503,7 @@ export type ProjectEstimateImportActionResult =
     }
   | { readonly success: false; readonly error: string }
 
-export type ProjectEstimatePlanSwiftImportLine = {
+type ProjectEstimatePlanSwiftImportLine = {
   readonly rowNumber: number
   readonly costCode: string
   readonly description: string
@@ -4911,28 +4911,6 @@ export async function getProjectEstimateAcceptanceUploadSessionUrl(
         error instanceof Error
           ? error.message
           : "Unable to start the signed document upload.",
-    }
-  }
-}
-
-export async function rebuildCurrentProjectContractBudget(
-  projectId: string
-): Promise<ProjectEstimateActionResult> {
-  try {
-    const access = await estimateAccess(projectId, true)
-    const result = await rebuildProjectContractBudget({
-      db: access.db,
-      projectId,
-      actorUserId: access.user.id,
-    })
-    if (!result.success) return result
-    revalidateEstimate(projectId)
-    return { success: true, id: result.revisionId }
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to rebuild budget.",
     }
   }
 }

@@ -80,23 +80,6 @@ export async function getCustomers() {
   return db.select().from(customers).where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
 }
 
-export async function getCustomer(id: string) {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "customers", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const rows = await db
-    .select()
-    .from(customers)
-    .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createCustomer(
   data: CreateCustomerInput
 ) {

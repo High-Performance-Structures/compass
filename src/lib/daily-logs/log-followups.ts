@@ -20,10 +20,6 @@ export const DAILY_LOG_TODO_TYPE_LABELS: { readonly [K in DailyLogTodoType]: str
   supplier_task: "Supplier to-do",
 }
 
-export function isDailyLogTodoType(value: string): value is DailyLogTodoType {
-  return DAILY_LOG_TODO_TYPES.some((type) => type === value)
-}
-
 /** How issue and next-step lines become to-dos. */
 export const DAILY_LOG_TODO_MODES = ["ask", "auto", "off"] as const
 
@@ -94,7 +90,7 @@ export const DAILY_LOG_INTERACTION_TYPES = [
 
 export type DailyLogInteractionType = (typeof DAILY_LOG_INTERACTION_TYPES)[number]["id"]
 
-export function isDailyLogInteractionType(value: string): value is DailyLogInteractionType {
+function isDailyLogInteractionType(value: string): value is DailyLogInteractionType {
   return DAILY_LOG_INTERACTION_TYPES.some((type) => type.id === value)
 }
 
@@ -107,13 +103,13 @@ export type DailyLogNewTodoDraft = {
   readonly costCode: string
 }
 
-export type DailyLogTodoUpdateDraft = {
+type DailyLogTodoUpdateDraft = {
   readonly todoId: string
   readonly worked: boolean
   readonly blocked: "still" | "cleared" | null
 }
 
-export type DailyLogClientContactDraft = {
+type DailyLogClientContactDraft = {
   readonly contactId: string
   readonly interactionType: string
   readonly direction: "inbound" | "outbound"
@@ -204,7 +200,7 @@ export function clientContactsNamedIn(text: string, contacts: readonly DailyLogC
 }
 
 /** The cost code line a ticked to-do adds: its code and title, hours left for the crew. */
-export function workLineForTodo(todo: Pick<DailyLogOpenTodo, "id" | "title" | "costCode">): DailyLogWorkLineDraft {
+function workLineForTodo(todo: Pick<DailyLogOpenTodo, "id" | "title" | "costCode">): DailyLogWorkLineDraft {
   return { costCode: todo.costCode ?? "", hours: "", description: todo.title.slice(0, 500), todoId: todo.id }
 }
 
@@ -316,7 +312,7 @@ export function isLineFlagged(draft: DailyLogFollowUpDraft, mode: DailyLogTodoMo
   return key in draft.lineTodos
 }
 
-export function defaultLineChoice(rules: Pick<DailyLogFollowUpRules, "todoTypes">): DailyLogLineTodoChoice {
+function defaultLineChoice(rules: Pick<DailyLogFollowUpRules, "todoTypes">): DailyLogLineTodoChoice {
   return { recordType: rules.todoTypes[0] ?? "staff_task", assigneeName: "", costCode: "" }
 }
 

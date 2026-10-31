@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { suggestCherishValue } from "@/lib/cherish/value-suggestion"
 import { cn } from "@/lib/utils"
 
-export const CHERISH_RESPONSE_TYPES: readonly {
+const CHERISH_RESPONSE_TYPES: readonly {
   readonly value: CherishPulseResponseType
   readonly label: string
 }[] = [

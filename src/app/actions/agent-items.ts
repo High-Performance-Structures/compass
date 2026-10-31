@@ -145,30 +145,3 @@ export async function toggleAgentItem(
 
   return { success: true }
 }
-
-export async function getAgentItems(
-  userId: string,
-  conversationId?: string,
-): Promise<ReadonlyArray<typeof agentItems.$inferSelect>> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  if (conversationId) {
-    return db
-      .select()
-      .from(agentItems)
-      .where(
-        and(
-          eq(agentItems.userId, userId),
-          eq(agentItems.conversationId, conversationId)
-        )
-      )
-      .all()
-  }
-
-  return db
-    .select()
-    .from(agentItems)
-    .where(eq(agentItems.userId, userId))
-    .all()
-}

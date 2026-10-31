@@ -47,7 +47,7 @@ export type HelpAssistantContextInput = Readonly<{
   allowedGuideIds: readonly string[]
 }>
 
-export type HelpAssistantCitation = Readonly<{
+type HelpAssistantCitation = Readonly<{
   topicId: string
   title: string
   href: string

@@ -105,7 +105,7 @@ export type WorkCalendarEventAttendee = {
   readonly email: string
 }
 
-export type WorkCalendarEventDetails = {
+type WorkCalendarEventDetails = {
   readonly masterEventId: string
   readonly eventType: WorkCalendarEventType
   readonly visibility: WorkCalendarEventVisibility
@@ -154,7 +154,7 @@ export type WorkCalendarData = {
   readonly googleDestinations: readonly GoogleCalendarDestination[]
 }
 
-export type GoogleCalendarPerson = {
+type GoogleCalendarPerson = {
   readonly userId: string
   readonly name: string
 }

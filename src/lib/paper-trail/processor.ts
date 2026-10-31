@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, lte } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { organizationFeatureSettings, projects } from "@/db/schema"
 import {
@@ -407,31 +407,4 @@ export async function runPaperTrail(db: Db, env: CloudflareEnv, now = new Date()
   }
   const snapshots = await runSnapshots(db, env, orgs, now)
   return { saved, unchanged, deferred, failed, snapshots }
-}
-
-/** Counts for the project status line. */
-export async function paperTrailProjectCounts(db: Db, projectId: string): Promise<{
-  readonly saved: number
-  readonly waiting: number
-  readonly failed: number
-  readonly heldPrivate: number
-  readonly lastSavedAt: string | null
-}> {
-  const [row] = await db
-    .select({
-      saved: sql<number>`sum(case when ${projectRecordDriveFiles.status} = 'synced' then 1 else 0 end)`,
-      waiting: sql<number>`sum(case when ${projectRecordDriveFiles.status} = 'pending' then 1 else 0 end)`,
-      failed: sql<number>`sum(case when ${projectRecordDriveFiles.status} = 'failed' then 1 else 0 end)`,
-      heldPrivate: sql<number>`sum(case when ${projectRecordDriveFiles.status} = 'held_private' then 1 else 0 end)`,
-      lastSavedAt: sql<string | null>`max(${projectRecordDriveFiles.lastSyncedAt})`,
-    })
-    .from(projectRecordDriveFiles)
-    .where(eq(projectRecordDriveFiles.projectId, projectId))
-  return {
-    saved: Number(row?.saved ?? 0),
-    waiting: Number(row?.waiting ?? 0),
-    failed: Number(row?.failed ?? 0),
-    heldPrivate: Number(row?.heldPrivate ?? 0),
-    lastSavedAt: row?.lastSavedAt ?? null,
-  }
 }

@@ -56,7 +56,7 @@ export type BuildertrendLeadProjectCutoverInput = z.infer<
   typeof inputSchema
 >
 
-export type BuildertrendLeadProjectCutoverSummary = {
+type BuildertrendLeadProjectCutoverSummary = {
   readonly runKey: string
   readonly leadCount: number
   readonly projectCount: number

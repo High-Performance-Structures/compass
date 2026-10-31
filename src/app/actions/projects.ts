@@ -78,15 +78,6 @@ export type ProjectStatusValue =
   | "ARCHIVE"
   | "OTHER"
 
-const PROJECT_STATUS_VALUES: readonly ProjectStatusValue[] = [
-  "OPEN",
-  "WARRANTY",
-  "COMPLETE",
-  "INACTIVE",
-  "ARCHIVE",
-  "OTHER",
-]
-
 export type { ProjectListItem } from "@/lib/projects/project-list"
 
 export type CreateProjectShellInput = {
@@ -113,10 +104,6 @@ type CreateProjectShellResult =
       readonly duplicateWarning: true
       readonly candidates: readonly ProjectDuplicateCandidate[]
     }
-  | { readonly success: false; readonly error: string }
-
-type UpdateProjectStatusResult =
-  | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
 export type ProjectIntakeAssignee = {
@@ -280,10 +267,6 @@ function normalizedIntakeDepartment(
     return normalized
   }
   return null
-}
-
-function isProjectStatusValue(value: string): value is ProjectStatusValue {
-  return PROJECT_STATUS_VALUES.some((status) => status === value)
 }
 
 function quotedSheetRange(sheetTitle: string, range: string): string {
@@ -1848,55 +1831,6 @@ export async function createProjectShell(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create project",
-    }
-  }
-}
-
-export async function updateProjectStatus(
-  projectId: string,
-  status: string
-): Promise<UpdateProjectStatusResult> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "project", "update")
-    const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return { success: false, error: "D1 not available" }
-
-    if (!isProjectStatusValue(status)) {
-      return { success: false, error: "Unsupported project status." }
-    }
-
-    const db = getDb(env.DB)
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
-
-    await db
-      .update(projects)
-      .set({
-        status,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(projects.id, projectId))
-
-    revalidatePath("/dashboard/projects")
-    revalidatePath(`/dashboard/projects/${projectId}`)
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to update project status",
     }
   }
 }

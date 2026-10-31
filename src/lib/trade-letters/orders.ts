@@ -3,7 +3,7 @@
  * what's still left to order on each accepted cost code.
  */
 
-export type TradeOrderLine = {
+type TradeOrderLine = {
   readonly costCode: string | null
   readonly amountCents: number
 }

@@ -4,7 +4,7 @@
  * owner has signed. Pure helpers shared by the server and the composer.
  */
 
-export const TRADE_LETTER_KINDS = ["intent", "award"] as const
+const TRADE_LETTER_KINDS = ["intent", "award"] as const
 export type TradeLetterKind = (typeof TRADE_LETTER_KINDS)[number]
 
 export const TRADE_LETTER_KIND_LABELS: Readonly<Record<TradeLetterKind, string>> = {
@@ -12,7 +12,7 @@ export const TRADE_LETTER_KIND_LABELS: Readonly<Record<TradeLetterKind, string>>
   award: "Award letter",
 }
 
-export const TRADE_LETTER_STATUSES = ["draft", "preparing", "sent", "signed", "declined", "cancelled"] as const
+const TRADE_LETTER_STATUSES = ["draft", "preparing", "sent", "signed", "declined", "cancelled"] as const
 export type TradeLetterStatus = (typeof TRADE_LETTER_STATUSES)[number]
 
 export const TRADE_LETTER_STATUS_LABELS: Readonly<Record<TradeLetterStatus, string>> = {

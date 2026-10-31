@@ -1,4 +1,4 @@
-export type ProjectTotalsImportLine = {
+type ProjectTotalsImportLine = {
   readonly costCode: string
   readonly divisionCode: string
   readonly divisionName: string

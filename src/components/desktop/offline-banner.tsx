@@ -81,28 +81,3 @@ export function DesktopOfflineBanner({ className }: OfflineBannerProps) {
     </div>
   )
 }
-
-// Minimal version showing just a status bar
-export function OfflineStatusBar({ className }: OfflineBannerProps) {
-  const isDesktop = useDesktop()
-  const { status, pendingCount } = useSyncStatus()
-
-  if (!isDesktop || status !== "offline") return null
-
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-center gap-1.5 bg-warning/80 px-2 py-0.5 text-xs font-medium text-warning-foreground",
-        className,
-      )}
-    >
-      <WifiOff className="h-3 w-3" />
-      <span>Offline</span>
-      {pendingCount > 0 && (
-        <span className="ml-1 rounded-sm bg-white/20 px-1.5">
-          {pendingCount}
-        </span>
-      )}
-    </div>
-  )
-}

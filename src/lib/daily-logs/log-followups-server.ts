@@ -42,7 +42,7 @@ type Db = ReturnType<typeof getDb>
 const OPEN_STATUSES = ["open", "in_progress", "blocked"] as const
 
 /** Someone a new to-do from a log can be assigned to. */
-export type DailyLogAssigneeOption = {
+type DailyLogAssigneeOption = {
   readonly name: string
   readonly kind: DailyLogTodoType
 }
@@ -55,7 +55,7 @@ export type DailyLogFollowUpSetup = {
   readonly assignees: readonly DailyLogAssigneeOption[]
 }
 
-export async function dailyLogFollowUpRules(db: Db, organizationId: string): Promise<DailyLogFollowUpRules> {
+async function dailyLogFollowUpRules(db: Db, organizationId: string): Promise<DailyLogFollowUpRules> {
   const [settings, interactions] = await Promise.all([
     readFeatureSettings(db, organizationId, "daily-log-followups"),
     readFeatureSettings(db, organizationId, "client-interactions"),
@@ -128,7 +128,7 @@ export async function loadOpenDailyLogTodos(db: Db, projectId: string): Promise<
 }
 
 /** Active client (owner) contacts on the project. */
-export async function loadDailyLogClientContacts(db: Db, projectId: string): Promise<readonly DailyLogClientContactOption[]> {
+async function loadDailyLogClientContacts(db: Db, projectId: string): Promise<readonly DailyLogClientContactOption[]> {
   const rows = await db
     .select({ id: projectContacts.id, name: projectContacts.displayName, role: projectContacts.role })
     .from(projectContacts)
@@ -141,7 +141,7 @@ export async function loadDailyLogClientContacts(db: Db, projectId: string): Pro
  * Who a to-do from a log can go to: the company's staff, and the project's
  * subcontractor and supplier contacts.
  */
-export async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: string): Promise<readonly DailyLogAssigneeOption[]> {
+async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: string): Promise<readonly DailyLogAssigneeOption[]> {
   const [staff, contacts] = await Promise.all([
     db
       .select({ role: organizationMembers.role, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email })

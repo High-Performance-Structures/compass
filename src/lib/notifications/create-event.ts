@@ -264,10 +264,7 @@ export function notificationLink(env: unknown, href: string): string {
   return `${base}${href.startsWith("/") ? href : `/${href}`}`
 }
 
-export {
-  resolveNotificationDelivery,
-  type NotificationDelivery,
-} from "@/lib/notifications/delivery"
+
 
 /** Notification emails go out through the company's Google Workspace, like project email. */
 async function sendNotificationEmail(input: {

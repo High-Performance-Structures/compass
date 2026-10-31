@@ -15,7 +15,7 @@ export async function correspondenceHash(value: string): Promise<string> {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
-export function validateCorrespondenceSend(input: SendCorrespondenceInput): string | null {
+function validateCorrespondenceSend(input: SendCorrespondenceInput): string | null {
   if (!input.body.trim() || input.body.length > 50000) return "Write a message of at most 50,000 characters."
   if (!input.subject.trim() || input.subject.trim().length > 200) return "Enter a subject of at most 200 characters."
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(input.idempotencyKey)) return "Invalid send request. Reload and try again."

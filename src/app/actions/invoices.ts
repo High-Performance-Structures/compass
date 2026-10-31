@@ -69,47 +69,6 @@ export async function getInvoices(projectId?: string) {
     .where(eq(projects.organizationId, orgId))
 }
 
-export async function getInvoice(id: string) {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // join through project to verify org
-  const rows = await db
-    .select({
-      id: invoices.id,
-      netsuiteId: invoices.netsuiteId,
-      organizationId: invoices.organizationId,
-      customerId: invoices.customerId,
-      projectId: invoices.projectId,
-      sourceSystem: invoices.sourceSystem,
-      sourceExternalId: invoices.sourceExternalId,
-      invoiceNumber: invoices.invoiceNumber,
-      status: invoices.status,
-      issueDate: invoices.issueDate,
-      dueDate: invoices.dueDate,
-      subtotal: invoices.subtotal,
-      tax: invoices.tax,
-      total: invoices.total,
-      amountPaid: invoices.amountPaid,
-      amountDue: invoices.amountDue,
-      memo: invoices.memo,
-      lineItems: invoices.lineItems,
-      billingScope: invoices.billingScope,
-      createdAt: invoices.createdAt,
-      updatedAt: invoices.updatedAt,
-    })
-    .from(invoices)
-    .innerJoin(projects, eq(invoices.projectId, projects.id))
-    .where(and(eq(invoices.id, id), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createInvoice(
   data: Omit<NewInvoice, "id" | "createdAt" | "updatedAt">
 ) {

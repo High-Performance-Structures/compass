@@ -26,7 +26,7 @@ export type PortalRfqVendorResponse = {
   readonly submittedAt: string
 }
 
-export type PortalRfqVendorResponseLine = {
+type PortalRfqVendorResponseLine = {
   readonly lineNumber: number
   readonly amount: number
   readonly notes: string | null

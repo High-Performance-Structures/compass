@@ -53,7 +53,7 @@ const WEATHER_LEGEND: readonly { readonly label: string; readonly token: string 
 ]
 
 /** Parts of the Weather layer people can turn off. */
-export const WEATHER_SUBLAYERS: readonly { readonly id: keyof WeatherSublayers; readonly label: string }[] = [
+const WEATHER_SUBLAYERS: readonly { readonly id: keyof WeatherSublayers; readonly label: string }[] = [
   { id: "rain", label: "Rain" },
   { id: "snow", label: "Snow" },
   { id: "wind", label: "Strong wind" },

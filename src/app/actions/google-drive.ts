@@ -1238,36 +1238,6 @@ export async function toggleStarFile(
   }
 }
 
-export async function getStarredFileIds(): Promise<
-  | { success: true; fileIds: string[] }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const rows = await db
-      .select({ googleFileId: googleStarredFiles.googleFileId })
-      .from(googleStarredFiles)
-      .where(eq(googleStarredFiles.userId, user.id))
-
-    return {
-      success: true,
-      fileIds: rows.map(r => r.googleFileId),
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to get starred files",
-    }
-  }
-}
-
 /**
  * Set or clear a user's Google Workspace address. Compass impersonates this
  * address for Drive and sends mail as it, so the target must be an active

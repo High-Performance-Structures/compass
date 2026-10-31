@@ -18,7 +18,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 const ACTIVE_SYNC_STATUSES = ["queued", "running", "processing"] as const
 const BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
 
-export type SagePayApplicationSyncStatus =
+type SagePayApplicationSyncStatus =
   | "queued"
   | "running"
   | "processing"
@@ -26,7 +26,7 @@ export type SagePayApplicationSyncStatus =
   | "completed"
   | "failed"
 
-export type SagePayApplicationSyncItem = {
+type SagePayApplicationSyncItem = {
   readonly id: string
   readonly status: SagePayApplicationSyncStatus
   readonly sageJobId: string | null

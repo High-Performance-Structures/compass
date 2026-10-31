@@ -34,7 +34,7 @@ export type RfiVendorOption = {
   readonly label: string
 }
 
-export function rfiVendorLabel(contact: { readonly displayName: string; readonly companyName: string | null }): string {
+function rfiVendorLabel(contact: { readonly displayName: string; readonly companyName: string | null }): string {
   const company = contact.companyName?.trim()
   return company && company !== contact.displayName ? `${company} · ${contact.displayName}` : contact.displayName
 }

@@ -26,8 +26,8 @@ export type CherishValue =
   | "Humility"
 
 export type CherishPulseResponseType = "shoutout" | "concern" | "win"
-export type CherishPulseVisibility = "team" | "private"
-export type CherishPulseSource =
+type CherishPulseVisibility = "team" | "private"
+type CherishPulseSource =
   | "compass_dashboard"
   | "compass_mobile"
   | "telegram"
@@ -37,8 +37,8 @@ export type CherishPulseReviewStatus =
   | "needs_review"
   | "approved"
   | "archived"
-export type CherishPulseReviewDecision = "approve" | "archive"
-export type CherishPulseAudience =
+type CherishPulseReviewDecision = "approve" | "archive"
+type CherishPulseAudience =
   | { readonly scope: "company" }
   | { readonly scope: "user"; readonly recipientId: string }
 

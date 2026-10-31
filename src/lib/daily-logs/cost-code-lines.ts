@@ -29,10 +29,10 @@ export type DailyLogWorkLineView = {
   readonly todoId: string | null
 }
 
-export { ON_BUDGET_GROUP, ALL_CODES_GROUP, INTERNAL_CODES_GROUP } from "./cost-code-groups"
+export { ON_BUDGET_GROUP } from "./cost-code-groups"
 
 /** All job logs use the company catalog; internal workspaces use duties. */
-export type DailyLogCostCodeSource = "labor" | "duties" | "company"
+type DailyLogCostCodeSource = "labor" | "duties" | "company"
 
 /**
  * A project's cost codes, and the part of them Field Mode downloads. Phones
@@ -121,7 +121,7 @@ export async function dailyLogCostCodeList(
   }
 }
 
-export async function dailyLogRequirements(db: Db, organizationId: string): Promise<DailyLogRequirements> {
+async function dailyLogRequirements(db: Db, organizationId: string): Promise<DailyLogRequirements> {
   const settings = await readFeatureSettings(db, organizationId, "daily-logs")
   return { requireCostCodeTime: settings.requireCostCodeTime, requiredFields: settings.requiredFields }
 }

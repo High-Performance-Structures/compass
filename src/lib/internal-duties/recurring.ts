@@ -33,7 +33,7 @@ export function periodEndIndex(period: string): number | null {
   return null
 }
 
-export function periodFromEndIndex(endIndex: number, cadence: DutyCadence): string {
+function periodFromEndIndex(endIndex: number, cadence: DutyCadence): string {
   const { year, month } = fromIndex(endIndex)
   if (cadence === "monthly") return `${year}-${String(month).padStart(2, "0")}`
   if (cadence === "quarterly") return `${year}-Q${Math.ceil(month / 3)}`

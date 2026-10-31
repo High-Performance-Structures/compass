@@ -33,7 +33,7 @@ function isLocalRenderablePhotoUrl(value: string): boolean {
   )
 }
 
-export function googleDriveDownloadUrl(fileId: string): string {
+function googleDriveDownloadUrl(fileId: string): string {
   return `/api/google/download/${encodeURIComponent(fileId)}`
 }
 
@@ -63,7 +63,7 @@ export function projectInternalPhotoUrl(
   return `/api/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}`
 }
 
-export function isLegacyExternalPhotoUrl(value: string): boolean {
+function isLegacyExternalPhotoUrl(value: string): boolean {
   if (!isHttpUrl(value)) return false
 
   try {

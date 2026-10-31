@@ -11,7 +11,7 @@ import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { warrantySourceEvidence, type WarrantySourceEvidence } from "@/lib/warranty/source-review"
 
-export type WarrantySourceReviewRecord = {
+type WarrantySourceReviewRecord = {
   readonly id: string
   readonly claimNumber: string | null
   readonly title: string

@@ -10,7 +10,7 @@ import { alignSeries, readCellSeries, stepStart } from "@/lib/weather/series"
 type Db = ReturnType<typeof getDb>
 
 /** Steps sent per forecast: the time bar plus a day of look-ahead for job flags. */
-export const SENT_STEPS = LAYER_STEPS + FLAG_WINDOW_STEPS - 1
+const SENT_STEPS = LAYER_STEPS + FLAG_WINDOW_STEPS - 1
 // Re-stamp a cell or point as in use at most this often.
 const TOUCH_EVERY_MS = 60 * 60 * 1000
 // D1 allows 100 bound parameters per statement.

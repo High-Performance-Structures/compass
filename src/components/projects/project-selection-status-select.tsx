@@ -24,12 +24,6 @@ const STATUS_OPTIONS: readonly {
   { value: "deferred", label: "Deferred" },
 ]
 
-export function selectionStatusLabel(status: ProjectSelectionStatus): string {
-  return (
-    STATUS_OPTIONS.find((option) => option.value === status)?.label ?? "Needed"
-  )
-}
-
 export function ProjectSelectionStatusSelect({
   projectId,
   selectionId,

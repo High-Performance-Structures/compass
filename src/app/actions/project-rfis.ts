@@ -41,7 +41,7 @@ import {
   validRfiStatus,
 } from "@/lib/rfis/status"
 
-export type ProjectRfiAttachmentItem = {
+type ProjectRfiAttachmentItem = {
   readonly id: string
   readonly fileName: string
   readonly mimeType: string | null

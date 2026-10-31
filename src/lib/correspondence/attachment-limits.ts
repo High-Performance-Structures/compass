@@ -1,6 +1,5 @@
 export const MAX_CORRESPONDENCE_ATTACHMENTS = 10
 export const MAX_CORRESPONDENCE_FILE_BYTES = 25 * 1024 * 1024
-export const MAX_CORRESPONDENCE_TOTAL_BYTES = 50 * 1024 * 1024
 // Leave room for MIME encoding and the message body within mail-provider limits.
 export const MAX_PROJECT_EMAIL_ATTACHMENT_BYTES = 18 * 1024 * 1024
 

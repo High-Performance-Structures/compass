@@ -21,7 +21,7 @@ import { projectDepartment } from "@/lib/project-branding"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { carryOverBetweenLinkedJobs } from "@/lib/job-workflows/carryover"
 
-export type LinkedJob = {
+type LinkedJob = {
   readonly linkId: string
   readonly projectId: string
   readonly projectNumber: string | null
@@ -37,7 +37,7 @@ export type LinkedJob = {
 }
 
 /** What the New Project form starts with for a linked job: this job's customer and site. */
-export type LinkedJobPrefill = {
+type LinkedJobPrefill = {
   readonly sourceProjectId: string
   readonly sourceProjectNumber: string | null
   readonly projectName: string

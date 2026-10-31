@@ -139,7 +139,7 @@ async function companyExceptions(db: Db, organizationId: string): Promise<readon
   }))
 }
 
-export async function loadOrgPlanRows(db: Db, organizationId: string, today: string, timeZone: string): Promise<OrgPlanRows> {
+async function loadOrgPlanRows(db: Db, organizationId: string, today: string, timeZone: string): Promise<OrgPlanRows> {
   const from = shiftDate(today, -OVERDUE_DAYS)
   const { start: weekStart, end: weekEnd } = weekBounds(today)
   const earliest = from < weekStart ? from : weekStart

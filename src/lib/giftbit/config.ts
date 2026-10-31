@@ -1,8 +1,8 @@
 import "server-only"
 
-export type GiftbitEnvironment = "testbed" | "production"
+type GiftbitEnvironment = "testbed" | "production"
 
-export type GiftbitConfig = {
+type GiftbitConfig = {
   readonly apiKey: string
   readonly environment: GiftbitEnvironment
   readonly baseUrl: string

@@ -51,47 +51,6 @@ export async function getPayments() {
     .where(eq(projects.organizationId, orgId))
 }
 
-export async function getPayment(id: string) {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // join through project to verify org
-  const rows = await db
-    .select({
-      id: payments.id,
-      netsuiteId: payments.netsuiteId,
-      organizationId: payments.organizationId,
-      customerId: payments.customerId,
-      vendorId: payments.vendorId,
-      projectId: payments.projectId,
-      sourceSystem: payments.sourceSystem,
-      sourceExternalId: payments.sourceExternalId,
-      paymentType: payments.paymentType,
-      amount: payments.amount,
-      grossAmountCents: payments.grossAmountCents,
-      processingFeeCents: payments.processingFeeCents,
-      netAmountCents: payments.netAmountCents,
-      cashReceipt: payments.cashReceipt,
-      paymentDate: payments.paymentDate,
-      paymentMethod: payments.paymentMethod,
-      referenceNumber: payments.referenceNumber,
-      memo: payments.memo,
-      billingScope: payments.billingScope,
-      createdAt: payments.createdAt,
-      updatedAt: payments.updatedAt,
-    })
-    .from(payments)
-    .innerJoin(projects, eq(payments.projectId, projects.id))
-    .where(and(eq(payments.id, id), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createPayment(
   data: Omit<NewPayment, "id" | "createdAt" | "updatedAt">
 ) {

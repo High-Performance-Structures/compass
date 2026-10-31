@@ -1,4 +1,4 @@
-export const CHANGE_ORDER_STATUSES = [
+const CHANGE_ORDER_STATUSES = [
   "draft",
   "submitted",
   "triage",

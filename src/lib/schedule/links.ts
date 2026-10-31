@@ -1,4 +1,4 @@
-export const SCHEDULE_LINK_TYPES = [
+const SCHEDULE_LINK_TYPES = [
   "file",
   "rfi",
   "conversation",

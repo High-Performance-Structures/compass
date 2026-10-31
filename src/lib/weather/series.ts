@@ -37,7 +37,7 @@ type HourValues = Map<number, number>
  * Spreads one gridpoint property over hours. Amounts (precipitation, snow)
  * are divided across the interval; levels (temperature, wind) repeat.
  */
-export function hourlyValues(property: unknown, mode: "level" | "amount"): HourValues {
+function hourlyValues(property: unknown, mode: "level" | "amount"): HourValues {
   const hours: HourValues = new Map()
   if (typeof property !== "object" || property === null || !("values" in property)) return hours
   const values = property.values

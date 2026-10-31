@@ -36,7 +36,7 @@ import {
   warrantyClaimStatus,
 } from "@/lib/warranty/status"
 
-export type WarrantyClaimAttachmentItem = {
+type WarrantyClaimAttachmentItem = {
   readonly id: string
   readonly fileName: string
   readonly mimeType: string | null
@@ -45,7 +45,7 @@ export type WarrantyClaimAttachmentItem = {
   readonly downloadHref: string
 }
 
-export type WarrantyClaimEventItem = {
+type WarrantyClaimEventItem = {
   readonly id: string
   readonly actorName: string
   readonly eventType: string

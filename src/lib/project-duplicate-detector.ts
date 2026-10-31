@@ -16,7 +16,7 @@ export type ProjectDuplicateIdentity = {
   readonly createdAt: string
 }
 
-export type ProjectDuplicateReasonCode =
+type ProjectDuplicateReasonCode =
   | "manual_registry_selection"
   | "project_number"
   | "project_department_sequence"
@@ -30,7 +30,7 @@ export type ProjectDuplicateReasonCode =
   | "project_address"
   | "project_location_suffix"
 
-export type ProjectDuplicateReason = {
+type ProjectDuplicateReason = {
   readonly code: ProjectDuplicateReasonCode
   readonly label: string
   readonly weight: number
@@ -313,7 +313,7 @@ function placedOnDifferentDays(first: string, second: string): boolean {
  * Sage job, Drive folder or Buildertrend project still counts as a possible
  * duplicate.
  */
-export function isRepeatOrderPair(
+function isRepeatOrderPair(
   first: ProjectDuplicateIdentity,
   second: ProjectDuplicateIdentity,
   reasons: readonly ProjectDuplicateReason[],

@@ -24,7 +24,7 @@ import { assertProjectAccess } from "@/lib/project-access"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
-export type ProjectContractDepositStatus = "requested" | "received" | "void"
+type ProjectContractDepositStatus = "requested" | "received" | "void"
 
 export type ProjectContractDepositItem = {
   readonly id: string

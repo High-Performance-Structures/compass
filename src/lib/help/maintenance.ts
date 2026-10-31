@@ -1,7 +1,7 @@
 import { HELP_GUIDES } from "@/lib/help"
 import type { HelpGuide } from "@/lib/help/types"
 
-export const HELP_REVIEW_MAX_AGE_DAYS = 180
+const HELP_REVIEW_MAX_AGE_DAYS = 180
 
 /**
  * High-risk or multi-step product areas that must always have a maintained

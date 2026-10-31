@@ -23,13 +23,13 @@ import {
 } from "@/lib/templates/template-creation-import"
 import { SAVED_SCHEDULE_TEMPLATE_KIND } from "@/lib/templates/schedule-template-capture"
 
-export type ScheduleTemplateImportTodo = {
+type ScheduleTemplateImportTodo = {
   readonly id: string
   readonly title: string
   readonly checklistItemCount: number
 }
 
-export type ScheduleTemplateImportItem = {
+type ScheduleTemplateImportItem = {
   readonly id: string
   readonly title: string
   readonly startOffsetWorkdays: number
@@ -53,7 +53,7 @@ export type ScheduleTemplateImportGroup = {
   readonly linkedTodos: readonly ScheduleTemplateImportTodo[]
 }
 
-export type FinishSelectionTemplateImportItem = {
+type FinishSelectionTemplateImportItem = {
   readonly id: string
   readonly title: string
   readonly roomName: string

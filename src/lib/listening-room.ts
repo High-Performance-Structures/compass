@@ -19,7 +19,7 @@ export type ListeningPlaybackState = "playing" | "paused"
 
 export const LISTENING_ROOM_START_DELAY_MS = 1_500
 
-export const SYNCHRONIZED_MUSIC_PROVIDERS = ["youtube", "soundcloud"] as const
+const SYNCHRONIZED_MUSIC_PROVIDERS = ["youtube", "soundcloud"] as const
 export type SynchronizedMusicProvider =
   (typeof SYNCHRONIZED_MUSIC_PROVIDERS)[number]
 

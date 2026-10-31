@@ -38,7 +38,7 @@ import {
 
 export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
 /** "category_percent" shows divisions by percent complete with no amounts. */
-export type ProjectBudgetDetailMode =
+type ProjectBudgetDetailMode =
   | "cost_code"
   | "category"
   | "category_percent"
@@ -107,7 +107,7 @@ export type ProjectBudgetDivision = {
   readonly lines: readonly ProjectBudgetLineItem[]
 }
 
-export type ProjectBudgetTotals = {
+type ProjectBudgetTotals = {
   readonly originalEstimate: number
   readonly totalChanges: number
   readonly adjustedEstimate: number

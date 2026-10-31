@@ -25,7 +25,7 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
-export type TradeDocLinkSummary = {
+type TradeDocLinkSummary = {
   readonly id: string
   readonly audience: "vendor" | "agent"
   readonly recipientEmail: string
@@ -37,7 +37,7 @@ export type TradeDocLinkSummary = {
   readonly live: boolean
 }
 
-export type TradeDocReply = {
+type TradeDocReply = {
   readonly id: string
   readonly from: string
   readonly receivedAt: string

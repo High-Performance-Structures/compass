@@ -63,7 +63,7 @@ export type MachineLogValues = {
   readonly notes: string | null
 }
 
-export type MachineLogErrorKey = keyof MachineLogDraft | "hours"
+type MachineLogErrorKey = keyof MachineLogDraft | "hours"
 export type MachineLogError = { readonly key: MachineLogErrorKey; readonly message: string }
 
 export function emptyMachineLogDraft(kind: MachineLogKind, entryDate: string): MachineLogDraft {
@@ -212,8 +212,8 @@ export type ServiceDue = {
 }
 
 /** Within this many hours or days, a service shows as coming up. */
-export const SERVICE_SOON_HOURS = 10
-export const SERVICE_SOON_DAYS = 7
+const SERVICE_SOON_HOURS = 10
+const SERVICE_SOON_DAYS = 7
 
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000)

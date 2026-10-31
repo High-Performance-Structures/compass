@@ -1,11 +1,7 @@
-/*
- * Telling the owner about a billed pay application or a deposit request:
- * the wording of the project email staff start from and of the owner
- * notification. Both point to the owner's portal budget page.
- */
 
-export const OWNER_DOCUMENT_KINDS = ["pay-application", "deposit-request"] as const
-export type OwnerDocumentKind = (typeof OWNER_DOCUMENT_KINDS)[number]
+export type OwnerDocumentKind =
+  | "pay-application"
+  | "deposit-request"
 
 export function isOwnerDocumentKind(value: unknown): value is OwnerDocumentKind {
   return value === "pay-application" || value === "deposit-request"

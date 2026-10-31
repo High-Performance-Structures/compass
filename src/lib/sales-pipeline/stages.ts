@@ -50,9 +50,9 @@ export function salesStageForJobStatus(jobStatusId: string): SalesStageId | null
 export function salesStageColor(stage: SalesStageId): string {
   return `var(${SALES_STAGE_COLOR_TOKEN[stage]})`
 }
-
-export const DELIVERY_METHODS = ["delivery", "pickup"] as const
-export type DeliveryMethod = (typeof DELIVERY_METHODS)[number]
+export type DeliveryMethod =
+  | "delivery"
+  | "pickup"
 
 export function isDeliveryMethod(value: unknown): value is DeliveryMethod {
   return value === "delivery" || value === "pickup"

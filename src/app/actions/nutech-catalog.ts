@@ -26,7 +26,7 @@ import {
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
 
-export type NuTechCatalogVersionSummary = {
+type NuTechCatalogVersionSummary = {
   readonly id: string
   readonly name: string
   readonly effectiveDate: string
@@ -36,7 +36,7 @@ export type NuTechCatalogVersionSummary = {
   readonly activatedAt: string | null
 }
 
-export type NuTechCatalogProductItem = {
+type NuTechCatalogProductItem = {
   readonly id: string
   readonly manufacturerSku: string
   readonly name: string

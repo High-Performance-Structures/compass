@@ -26,7 +26,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
-export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
+type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
 export type ProjectVideoItem = {
   readonly id: string

@@ -3,7 +3,7 @@ import { scheduleItemTimedWindow, scheduleItemTimeLabel } from "@/lib/schedule/i
 import { scheduleItemHref } from "@/lib/work-calendar"
 
 /** When an event happens: all day across dates, or at set times. */
-export type ProjectCalendarTiming =
+type ProjectCalendarTiming =
   | {
       readonly kind: "date"
       /** Inclusive first day, YYYY-MM-DD. */

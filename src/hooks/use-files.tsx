@@ -40,7 +40,7 @@ export type FileView =
   | "trash"
 
 export type SortField = "name" | "modified" | "size" | "type"
-export type SortDirection = "asc" | "desc"
+type SortDirection = "asc" | "desc"
 export type ViewMode = "grid" | "list"
 
 type FilesState = {

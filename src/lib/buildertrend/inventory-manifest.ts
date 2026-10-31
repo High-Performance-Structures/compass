@@ -86,7 +86,7 @@ export const buildertrendInventoryKinds = [
   "lead_opportunities",
 ] as const
 
-export type BuildertrendInventoryKind =
+type BuildertrendInventoryKind =
   (typeof buildertrendInventoryKinds)[number]
 
 export type BuildertrendInventoryManifestOptions = {
@@ -102,7 +102,7 @@ export type BuildertrendInventoryManifestOptions = {
   readonly expectedRowCount?: number
 }
 
-export type BuildertrendInventoryManifestSummary = {
+type BuildertrendInventoryManifestSummary = {
   readonly kind: BuildertrendInventoryKind
   readonly recordCount: number
   readonly accessCandidateCount: number

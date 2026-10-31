@@ -7,13 +7,13 @@ const taxDistrictSchema = z.object({
   ratePercent: z.number().finite().min(0).max(100),
 })
 
-export const sageTaxCatalogSchema = z.object({
+const sageTaxCatalogSchema = z.object({
   capturedAt: z.iso.datetime({ offset: true }),
   complete: z.literal(true),
   taxDistricts: z.array(taxDistrictSchema).min(1).max(1_000),
 })
 
-export type NormalizedSageTaxDistrict = {
+type NormalizedSageTaxDistrict = {
   readonly sourceRecordId: string
   readonly code: string
   readonly name: string

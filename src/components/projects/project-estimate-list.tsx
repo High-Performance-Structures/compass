@@ -18,7 +18,7 @@ function money(cents: number): string {
 }
 
 /** The newest version of each estimate number on the job, in number order. */
-export function latestEstimatePerNumber(estimates: readonly ProjectEstimateSummary[]): readonly ProjectEstimateSummary[] {
+function latestEstimatePerNumber(estimates: readonly ProjectEstimateSummary[]): readonly ProjectEstimateSummary[] {
   const latest = new Map<string, ProjectEstimateSummary>()
   for (const estimate of estimates) {
     const current = latest.get(estimate.estimateNumber)

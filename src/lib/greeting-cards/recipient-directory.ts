@@ -3,7 +3,7 @@ import type {
   GreetingCardRecipientType,
 } from "@/lib/greeting-cards/workflow"
 
-export type GreetingCardRecipientSource =
+type GreetingCardRecipientSource =
   | "customer"
   | "customer_contact"
   | "vendor"

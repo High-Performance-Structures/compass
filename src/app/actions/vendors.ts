@@ -258,23 +258,6 @@ export async function getInternalDirectoryContacts(): Promise<
   return contacts.sort((left, right) => left.name.localeCompare(right.name))
 }
 
-export async function getVendor(id: string) {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "vendors", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const rows = await db
-    .select()
-    .from(vendors)
-    .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createVendor(
   data: VendorCompanyMutationInput
 ): Promise<VendorMutationResult> {

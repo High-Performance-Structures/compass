@@ -250,7 +250,7 @@ function textFromNumber(value: number): string {
  * Starts a new PO from an accepted supplier quote: the supplier, the accepted
  * cost codes still left to order, and the running total against that price.
  */
-export type PurchaseOrderPrefill = {
+type PurchaseOrderPrefill = {
   readonly title: string
   readonly companyName: string
   readonly sageVendorId: string | null

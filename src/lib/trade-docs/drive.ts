@@ -18,7 +18,7 @@ export type TradeDocsDrive = {
 }
 
 /** A Drive folder name for a vendor; Drive allows most characters, but not '/'. */
-export function vendorFolderName(vendorName: string): string {
+function vendorFolderName(vendorName: string): string {
   return vendorName.replace(/[\\/]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "Vendor"
 }
 

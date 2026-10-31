@@ -59,7 +59,7 @@ export type TeamAvailabilityRow = {
   readonly updatedAt: string | null
 }
 
-export const TEAM_IDLE_AFTER_MS = 60 * 60 * 1000
+const TEAM_IDLE_AFTER_MS = 60 * 60 * 1000
 
 function availabilityName(row: TeamAvailabilityRow): string {
   const displayName = row.displayName?.trim()

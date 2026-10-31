@@ -45,7 +45,7 @@ const ACL_SCOPE = "https://www.googleapis.com/auth/calendar.acls"
 const CALENDAR_LIST_SCOPE = "https://www.googleapis.com/auth/calendar.calendarlist"
 export const PROJECT_CALENDAR_OWNER_SCOPES = [APP_CREATED_SCOPE, ACL_SCOPE] as const
 
-export const OPEN_PROJECT_STATUSES = ["OPEN", "WARRANTY"] as const
+const OPEN_PROJECT_STATUSES = ["OPEN", "WARRANTY"] as const
 /** Projects synced per run, and Google writes per run and per project. */
 const PROJECTS_PER_RUN = 20
 const WRITES_PER_RUN = 400
@@ -101,7 +101,7 @@ function eventOverlaps(
 }
 
 /** Everything that belongs on the project's calendar right now. */
-export async function desiredProjectItems(input: {
+async function desiredProjectItems(input: {
   readonly db: Db
   readonly projectId: string
   readonly settings: ProjectCalendarSettings
@@ -185,7 +185,7 @@ export async function desiredProjectItems(input: {
 }
 
 /** Staff who should see this project's calendar, by Google address. */
-export async function desiredProjectMembers(input: {
+async function desiredProjectMembers(input: {
   readonly db: Db
   readonly organizationId: string
   readonly projectId: string

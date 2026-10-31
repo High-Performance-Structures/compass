@@ -10,7 +10,7 @@
  * by a cent from Buildertrend's on some lines.
  */
 
-export const BUILDERTREND_ESTIMATE_REQUIRED_COLUMNS = [
+const BUILDERTREND_ESTIMATE_REQUIRED_COLUMNS = [
   "Cost Code",
   "Title",
   "Parent Group",

@@ -440,7 +440,7 @@ export async function syncGoogleCalendarSelection(
   }
 }
 
-export async function googleCalendarAccessToken(
+async function googleCalendarAccessToken(
   db: Database,
   env: object,
   selectionId: string,

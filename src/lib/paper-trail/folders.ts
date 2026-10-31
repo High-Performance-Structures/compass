@@ -14,7 +14,7 @@ const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const SHARE_CHECK_TTL_MS = 60 * 60 * 1000
 
 /** Private folder used when a record's usual subfolder is shared outside the company. */
-export const PRIVATE_RECORDS_FOLDER_NAME = "Compass Records (internal)"
+const PRIVATE_RECORDS_FOLDER_NAME = "Compass Records (internal)"
 
 export type PaperTrailDrive = {
   readonly client: DriveClient

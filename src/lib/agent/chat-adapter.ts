@@ -18,18 +18,18 @@ export function getTextFromParts(
 
 // --- Action handler registry ---
 
-export interface AgentAction {
+interface AgentAction {
   readonly type: string
   readonly payload?: Record<string, unknown>
 }
 
-export type ActionHandler = (
+type ActionHandler = (
   payload?: Record<string, unknown>
 ) => void | Promise<void>
 
 const actionHandlers = new Map<string, ActionHandler>()
 
-export function registerActionHandler(
+function registerActionHandler(
   type: string,
   handler: ActionHandler
 ): void {
@@ -42,7 +42,7 @@ export function unregisterActionHandler(
   actionHandlers.delete(type)
 }
 
-export async function executeAction(
+async function executeAction(
   action: AgentAction
 ): Promise<void> {
   const handler = actionHandlers.get(action.type)

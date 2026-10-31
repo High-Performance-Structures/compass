@@ -24,7 +24,7 @@ import { mcpApiKeys, mcpUsage } from "@/db/schema-mcp"
 
 type Db = ReturnType<typeof getDb>
 
-export const DELETED_USER_DISPLAY_NAME = "Deleted user"
+const DELETED_USER_DISPLAY_NAME = "Deleted user"
 
 /**
  * Rows that belong only to the person and serve no one else once the
@@ -54,7 +54,7 @@ export const PERSONAL_DATA_TABLES = [
  * at it. Everything that identifies the person is cleared, and the email
  * becomes a unique placeholder so the address can sign up again later.
  */
-export type DeidentifiedUserValues = {
+type DeidentifiedUserValues = {
   readonly email: string
   readonly firstName: null
   readonly lastName: null
@@ -69,7 +69,7 @@ export type DeidentifiedUserValues = {
   readonly updatedAt: string
 }
 
-export function deidentifiedUserValues(
+function deidentifiedUserValues(
   userId: string,
   now: string
 ): DeidentifiedUserValues {

@@ -4,7 +4,7 @@ import type { DriveFileForImport } from "@/lib/trade-docs/import-match"
 
 const FOLDER_MIME = "application/vnd.google-apps.folder"
 /** Enough for years of certificates; the scan says when it stopped short. */
-export const SCAN_FILE_LIMIT = 3000
+const SCAN_FILE_LIMIT = 3000
 const SCAN_DEPTH = 3
 
 export type TradeDocFolderScan = {

@@ -15,10 +15,10 @@ type Db = ReturnType<typeof getDb>
 
 const DEFAULT_TIME_ZONE = "America/Denver"
 /** Items starting within this many days are checked (the forecast is good for about a week). */
-export const RISK_HORIZON_DAYS = 5
+const RISK_HORIZON_DAYS = 5
 const SWEEP_PROJECTS_PER_RUN = 60
 
-export async function organizationTimeZone(db: Db, organizationId: string): Promise<string> {
+async function organizationTimeZone(db: Db, organizationId: string): Promise<string> {
   const row = await db
     .select({ timeZone: organizationCalendarSettings.timeZone })
     .from(organizationCalendarSettings)

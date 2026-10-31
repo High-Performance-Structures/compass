@@ -546,7 +546,3 @@ export async function publishInstagramPhotos(input: {
   }
   return { id, url: permalink }
 }
-
-export function requiredMetaScopes(): readonly string[] {
-  return META_SCOPES
-}

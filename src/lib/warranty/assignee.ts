@@ -17,7 +17,7 @@ const UNASSIGNED: WarrantyAssignee = {
 }
 
 /** Keeps an older, text-only assignment exactly as it was. */
-export const NAME_ONLY_PREFIX = "name:"
+const NAME_ONLY_PREFIX = "name:"
 
 /**
  * Turns the staff picker's choice into a stored assignment, looked up again on

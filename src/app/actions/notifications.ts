@@ -16,7 +16,7 @@ import {
   projectRfis,
   projects,
 } from "@/db/schema"
-import { getCurrentUser, requireAuth, type AuthUser } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
 import { recipientNotificationHref } from "@/lib/conversations/notification-route"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -146,18 +146,6 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   scheduleEnabled: true,
   poEnabled: true,
   timeZone: "America/Denver",
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
 }
 
 function preferenceFromRow(
@@ -739,17 +727,5 @@ export async function dismissReadNotifications(
       success: false,
       error: error instanceof Error ? error.message : "Failed to clear notifications",
     }
-  }
-}
-
-export async function getNotificationDebugStatus(): Promise<{
-  readonly signedIn: boolean
-  readonly configuredEmail: boolean
-}> {
-  const user = await getCurrentUser()
-  const { env } = await getCloudflareContext()
-  return {
-    signedIn: user !== null,
-    configuredEmail: envString(env, "RESEND_API_KEY") !== null,
   }
 }

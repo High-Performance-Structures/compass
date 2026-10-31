@@ -3,7 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { agentConversations, agentMemories } from "@/db/schema"
-import { and, eq, desc } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 
@@ -101,137 +101,6 @@ export async function saveConversation(
     return {
       success: false,
       error: "Failed to save conversation",
-    }
-  }
-}
-
-export async function loadConversations(): Promise<{
-  success: boolean
-  data?: ReadonlyArray<{
-    id: string
-    title: string | null
-    lastMessageAt: string
-    createdAt: string
-  }>
-  error?: string
-}> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const rows = await db
-      .select({
-        id: agentConversations.id,
-        title: agentConversations.title,
-        lastMessageAt: agentConversations.lastMessageAt,
-        createdAt: agentConversations.createdAt,
-      })
-      .from(agentConversations)
-      .where(eq(agentConversations.userId, user.id))
-      .orderBy(desc(agentConversations.lastMessageAt))
-      .limit(20)
-      .all()
-
-    return { success: true, data: rows }
-  } catch (error) {
-    console.error("Failed to load conversations:", error)
-    return {
-      success: false,
-      error: "Failed to load conversations",
-    }
-  }
-}
-
-export async function loadConversation(
-  conversationId: string
-): Promise<{
-  success: boolean
-  data?: ReadonlyArray<SerializedMessage>
-  error?: string
-}> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const conversation =
-      await db.query.agentConversations.findFirst({
-        where: (c, { and: a, eq: e }) =>
-          a(
-            e(c.id, conversationId),
-            e(c.userId, user.id),
-          ),
-      })
-    if (!conversation) {
-      return { success: true, data: [] }
-    }
-
-    const rows = await db
-      .select()
-      .from(agentMemories)
-      .where(
-        and(
-          eq(agentMemories.conversationId, conversationId),
-          eq(agentMemories.userId, user.id),
-        ),
-      )
-      .orderBy(agentMemories.createdAt)
-      .all()
-
-    const messages: SerializedMessage[] = rows.map((r) => ({
-      id: r.id,
-      role: r.role,
-      content: r.content,
-      parts: r.metadata ? JSON.parse(r.metadata) : undefined,
-      createdAt: r.createdAt,
-    }))
-
-    return { success: true, data: messages }
-  } catch (error) {
-    console.error("Failed to load conversation:", error)
-    return {
-      success: false,
-      error: "Failed to load conversation",
-    }
-  }
-}
-
-export async function deleteConversation(
-  conversationId: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
-
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // cascade delete handles memories
-    await db
-      .delete(agentConversations)
-      .where(
-        and(
-          eq(agentConversations.id, conversationId),
-          eq(agentConversations.userId, user.id),
-        ),
-      )
-      .run()
-
-    return { success: true }
-  } catch (error) {
-    console.error("Failed to delete conversation:", error)
-    return {
-      success: false,
-      error: "Failed to delete conversation",
     }
   }
 }
