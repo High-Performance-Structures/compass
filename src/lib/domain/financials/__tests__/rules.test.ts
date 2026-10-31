@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import {
   billTotals,
@@ -6,6 +6,7 @@ import {
   deriveBillTotals,
   deriveCreditMemoTotals,
   INVALID_LINE_ITEMS,
+  localeDateText,
   lineAmount,
   lineItemsSubtotal,
   parseLineItems,
@@ -110,5 +111,27 @@ describe("server-derived totals", () => {
   it("refuses malformed line items", () => {
     expect(deriveBillTotals({ lineItems: "nope" }, null)).toEqual({ ok: false, error: INVALID_LINE_ITEMS })
     expect(deriveCreditMemoTotals({ lineItems: "{}" }, null)).toEqual({ ok: false, error: INVALID_LINE_ITEMS })
+  })
+})
+
+describe("localeDateText", () => {
+  // Pin a zone west of UTC (CI runs in UTC, where the old bug was invisible).
+  const originalTimeZone = process.env.TZ
+  beforeAll(() => {
+    process.env.TZ = "America/Denver"
+  })
+  afterAll(() => {
+    process.env.TZ = originalTimeZone
+  })
+
+  it("shows date-only values on their calendar day in any time zone", () => {
+    // The old new Date("2026-09-01") was UTC midnight: Aug 31 in Colorado.
+    expect(localeDateText("2026-09-01")).toBe(new Date(2026, 8, 1).toLocaleDateString())
+  })
+
+  it("still formats timestamps and keeps unreadable values as written", () => {
+    const stamp = "2026-09-01T18:00:00.000Z"
+    expect(localeDateText(stamp)).toBe(new Date(stamp).toLocaleDateString())
+    expect(localeDateText("not a date")).toBe("not a date")
   })
 })
