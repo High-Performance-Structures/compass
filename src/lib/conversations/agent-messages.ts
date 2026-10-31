@@ -50,7 +50,7 @@ const MAX_SEARCH_CHARACTERS = 100
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 50
 
-export function conversationHref(channelId: string): string {
+function conversationHref(channelId: string): string {
   return `/dashboard/conversations/${encodeURIComponent(channelId)}`
 }
 

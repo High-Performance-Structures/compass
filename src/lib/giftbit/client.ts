@@ -1,6 +1,6 @@
 const REQUEST_TIMEOUT_MS = 15_000
 
-export type GiftbitResult<T> =
+type GiftbitResult<T> =
   | { readonly success: true; readonly data: T }
   | {
       readonly success: false
@@ -8,13 +8,13 @@ export type GiftbitResult<T> =
       readonly retrySafety: "safe" | "unknown"
     }
 
-export type GiftbitDirectLink = {
+type GiftbitDirectLink = {
   readonly campaignUuid: string
   readonly claimUrl: string
   readonly campaignStatus: string
 }
 
-export type GiftbitReward = {
+type GiftbitReward = {
   readonly uuid: string
   readonly campaignUuid: string
   readonly status: string

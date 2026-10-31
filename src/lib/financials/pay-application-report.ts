@@ -32,12 +32,12 @@ export type PayApplicationReportAmounts = {
   readonly balance: number
 }
 
-export type PayApplicationReportRow = PayApplicationReportAmounts & {
+type PayApplicationReportRow = PayApplicationReportAmounts & {
   readonly key: string
   readonly label: string
 }
 
-export type PayApplicationReportGroup = PayApplicationReportRow & {
+type PayApplicationReportGroup = PayApplicationReportRow & {
   /** Cost code rows under the group; empty when the group prints as one row. */
   readonly rows: readonly PayApplicationReportRow[]
 }

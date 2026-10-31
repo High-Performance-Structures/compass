@@ -22,7 +22,7 @@ export type ProjectDuplicateScan = {
   readonly previouslyReviewedCount: number
 }
 
-export async function loadActiveProjectDuplicateIdentities(
+async function loadActiveProjectDuplicateIdentities(
   db: Db,
   organizationId: string,
 ): Promise<readonly ProjectDuplicateIdentity[]> {

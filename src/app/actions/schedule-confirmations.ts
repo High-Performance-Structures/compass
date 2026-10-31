@@ -3,8 +3,7 @@
 import { assertAudiencePreviewWriteAllowed, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 
-import { and, desc, eq, notInArray } from "drizzle-orm"
-import type { BatchItem } from "drizzle-orm/batch"
+import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -1001,7 +1000,7 @@ export async function rejectScheduleTaskChangeProposal(
   }
 }
 
-export type ScheduleTaskAssigneeInput = {
+type ScheduleTaskAssigneeInput = {
   readonly participantId?: string
   readonly assignedUserId?: string | null
   readonly projectContactId?: string | null
@@ -1235,193 +1234,6 @@ export async function getScheduleTaskAssignees(
   )
 }
 
-export async function setScheduleTaskAssignees(
-  taskId: string,
-  inputs: readonly (ScheduleTaskAssigneeInput | string)[],
-): Promise<ScheduleConfirmationResult> {
-  try {
-    await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "schedule", "update")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    if (inputs.length > 50) {
-      return {
-        success: false,
-        error: "A schedule item may have at most 50 assignees.",
-      }
-    }
-    const task = await db
-      .select()
-      .from(scheduleTasks)
-      .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
-      .where(
-        and(
-          eq(scheduleTasks.id, taskId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .get()
-    if (!task) return { success: false, error: "Schedule item not found." }
-    const targets: AssignmentTarget[] = []
-    const seen = new Set<string>()
-    for (const input of inputs) {
-      const assignmentInput: ScheduleTaskAssigneeInput =
-        typeof input === "string" ? { participantId: input } : input
-      const target = await resolveReviewedAssignmentTarget(
-        db,
-        organizationId,
-        task.schedule_tasks.projectId,
-        assignmentInput,
-      )
-      if (!target) {
-        return {
-          success: false,
-          error: "Every assignee must be a reviewed project participant with active access.",
-        }
-      }
-      const key = target.assignedUserId
-        ? `user:${target.assignedUserId}`
-        : `contact:${target.projectContactId ?? target.participantId}`
-      if (seen.has(key)) {
-        return { success: false, error: "An assignee may only be selected once." }
-      }
-      seen.add(key)
-      targets.push(target)
-    }
-    const now = new Date().toISOString()
-    const existingRows = await db
-      .select()
-      .from(scheduleTaskAssignees)
-      .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId))
-    const existingByParticipant = new Map(
-      existingRows.map((row) => [row.participantId, row]),
-    )
-    const assignmentStatements: BatchItem<"sqlite">[] = []
-    for (const [index, target] of targets.entries()) {
-      const existing = existingByParticipant.get(target.participantId)
-      const participantRole =
-        (typeof inputs[index] === "string"
-          ? undefined
-          : inputs[index]?.participantRole) ?? "assignee"
-      if (!existing) {
-        assignmentStatements.push(
-          db.insert(scheduleTaskAssignees).values({
-            id: crypto.randomUUID(),
-            scheduleTaskId: taskId,
-            participantId: target.participantId,
-            assignedUserId: target.assignedUserId,
-            projectContactId: target.projectContactId,
-            participantRole,
-            sourceStartDate: task.schedule_tasks.startDate,
-            sourceWorkdays: task.schedule_tasks.workdays,
-            sourceEndDate: task.schedule_tasks.endDateCalculated,
-            responseStatus: "pending",
-            dateResponseStatus: "pending",
-            durationResponseStatus: "pending",
-            assignedAt: now,
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-        continue
-      }
-
-      const sourceChanged =
-        existing.sourceStartDate !== task.schedule_tasks.startDate ||
-        existing.sourceWorkdays !== task.schedule_tasks.workdays ||
-        existing.sourceEndDate !== task.schedule_tasks.endDateCalculated
-      const targetChanged =
-        existing.assignedUserId !== target.assignedUserId ||
-        existing.projectContactId !== target.projectContactId
-      assignmentStatements.push(
-        db
-          .update(scheduleTaskAssignees)
-          .set(
-            sourceChanged || targetChanged
-              ? {
-                  assignedUserId: target.assignedUserId,
-                  projectContactId: target.projectContactId,
-                  participantRole,
-                  sourceStartDate: task.schedule_tasks.startDate,
-                  sourceWorkdays: task.schedule_tasks.workdays,
-                  sourceEndDate: task.schedule_tasks.endDateCalculated,
-                  responseStatus: "pending",
-                  dateResponseStatus: "pending",
-                  durationResponseStatus: "pending",
-                  proposedStartDate: null,
-                  proposedWorkdays: null,
-                  proposedEndDate: null,
-                  responseMessage: null,
-                  respondedAt: null,
-                  respondedByUserId: null,
-                  responseSource: null,
-                  assignedAt: now,
-                  updatedAt: now,
-                }
-              : {
-                  participantRole,
-                  updatedAt:
-                    participantRole === existing.participantRole
-                      ? existing.updatedAt
-                      : now,
-                },
-          )
-          .where(eq(scheduleTaskAssignees.id, existing.id)),
-      )
-    }
-    const targetParticipantIds = targets.map((target) => target.participantId)
-    const removalStatement = db
-      .delete(scheduleTaskAssignees)
-      .where(
-        targetParticipantIds.length === 0
-          ? eq(scheduleTaskAssignees.scheduleTaskId, taskId)
-          : and(
-              eq(scheduleTaskAssignees.scheduleTaskId, taskId),
-              notInArray(
-                scheduleTaskAssignees.participantId,
-                targetParticipantIds,
-              ),
-            ),
-      )
-    // Keep the legacy scalar useful for existing readers only when the child
-    // relation has exactly one internal-user target. A multi-target task must
-    // not accidentally route a response through the old scalar action.
-    await db.batch([
-      removalStatement,
-      db
-        .update(scheduleTasks)
-        .set({
-          assignedTo: null,
-          assignedUserId:
-            targets.length === 1 ? targets[0]?.assignedUserId ?? null : null,
-          updatedAt: now,
-        })
-        .where(eq(scheduleTasks.id, taskId)),
-      ...assignmentStatements,
-    ])
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: task.schedule_tasks.projectId,
-      actor: user,
-      category: "schedule",
-      action: "schedule.assignees_updated",
-      entityType: "schedule_item",
-      entityId: taskId,
-      summary: `Updated assignees for “${task.schedule_tasks.title}”.`,
-      metadata: { assigneeCount: targets.length },
-    })
-    revalidateConfirmationPaths(task.schedule_tasks.projectId)
-    return { success: true }
-  } catch (error) {
-    console.error("Unable to update schedule assignees", error)
-    return { success: false, error: "Unable to update schedule assignees." }
-  }
-}
-
 export async function respondToScheduleTaskAssignee(
   assignmentId: string,
   input: ScheduleAssigneeProposalInput | ScheduleAssigneeResponse,
@@ -1615,5 +1427,3 @@ export async function respondToScheduleTaskAssignee(
   }
 }
 
-export const respondToScheduleTaskAssignment = respondToScheduleTaskAssignee
-export const updateScheduleTaskAssignees = setScheduleTaskAssignees

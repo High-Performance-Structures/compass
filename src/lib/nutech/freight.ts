@@ -10,7 +10,7 @@ import { nuTechCatalogPrices, nuTechProducts } from "@/db/schema-nutech"
  * shipping charge), so its list prices are zero and it never appears in the
  * order's product picker.
  */
-export const NUTECH_FREIGHT_SKU = "FREIGHT"
+const NUTECH_FREIGHT_SKU = "FREIGHT"
 export const NUTECH_FREIGHT_CATEGORY = "freight"
 
 export function isNuTechFreight(product: { readonly category: string }): boolean {

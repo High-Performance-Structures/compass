@@ -10,7 +10,7 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;")
 }
 
-export function plainText(value: string | null): string {
+function plainText(value: string | null): string {
   return value?.trim() ?? ""
 }
 

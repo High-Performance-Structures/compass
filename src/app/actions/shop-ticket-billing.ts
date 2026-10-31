@@ -9,7 +9,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
 
-export type PayApplicationShopTicket = {
+type PayApplicationShopTicket = {
   readonly id: string
   readonly ticketNumber: string
   readonly status: "draft" | "issued" | "void"

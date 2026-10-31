@@ -58,7 +58,7 @@ export type TradeLetterSummary = {
   readonly embeddedSessionUrl: string | null
 }
 
-export type TradeLetterDocs = {
+type TradeLetterDocs = {
   readonly requiredCount: number
   readonly goodCount: number
   readonly owed: readonly { readonly id: string; readonly label: string }[]

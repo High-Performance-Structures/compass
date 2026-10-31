@@ -17,7 +17,7 @@ import {
 import type { FlatRing } from "@/lib/weather/geometry"
 
 /** One forecast cell at the time bar's step, ready to draw. */
-export type WeatherSceneCell = {
+type WeatherSceneCell = {
   readonly lon: number
   readonly lat: number
   readonly precipIn: number

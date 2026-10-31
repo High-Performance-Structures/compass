@@ -92,15 +92,6 @@ export type CreateProjectVendorBillInput = {
   readonly description: string | null
 }
 
-export type CreateProjectRfqInput = {
-  readonly title: string
-  readonly vendorCategory: string | null
-  readonly requestedFrom: string | null
-  readonly responseDueDate: string | null
-  readonly priority: string
-  readonly scope: string | null
-}
-
 export type CreateProjectOwnerPayApplicationInput = {
   readonly applicationNumber: string | null
   readonly periodTo: string | null
@@ -1235,66 +1226,6 @@ export async function createProjectVendorBillDraft(
       success: false,
       error:
         error instanceof Error ? error.message : "Failed to stage vendor bill",
-    }
-  }
-}
-
-export async function createProjectRfqDraft(
-  projectId: string,
-  input: CreateProjectRfqInput
-): Promise<ProjectFinancialWorkflowActionResult> {
-  try {
-    const { db, project } = await verifyProjectUpdateAccess(projectId)
-    const now = new Date().toISOString()
-    const id = crypto.randomUUID()
-    const title = requireText(input.title, "RFQ title")
-    const recordNumber = await nextRecordNumber(db, projectId, "rfq")
-    const requestedFrom = cleanText(input.requestedFrom)
-    const vendorCategory = cleanText(input.vendorCategory)
-    const responseDueDate = cleanText(input.responseDueDate)
-
-    await db.insert(projectOperations).values({
-      id,
-      projectId,
-      sourceSystem: "compass",
-      sourceRecordType: "rfq",
-      sourceRecordNumber: recordNumber,
-      title,
-      description: cleanText(input.scope),
-      status: "draft",
-      priority: cleanText(input.priority) ?? "normal",
-      assigneeType: "vendor",
-      assigneeName: requestedFrom,
-      companyName: requestedFrom ?? vendorCategory,
-      dueDate: responseDueDate,
-      sageJobId: project.sageJobId,
-      sageJobNumber: project.sageJobNumber,
-      sageWriteStatus: "not_ready",
-      sagePayloadJson: JSON.stringify({
-        source: "compass_rfq",
-        projectName: project.name,
-        jobId: project.sageJobId,
-        jobNumber: project.sageJobNumber,
-        rfqNumber: recordNumber,
-        title,
-        vendorCategory,
-        requestedFrom,
-        responseDueDate,
-        scope: cleanText(input.scope),
-      }),
-      syncDirection: "write",
-      syncStatus: "compass_only",
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    revalidateFinancialPaths(projectId)
-    revalidatePath(`/dashboard/projects/${projectId}/rfis`)
-    return { success: true, id }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to create RFQ",
     }
   }
 }

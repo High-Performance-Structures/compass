@@ -17,7 +17,7 @@ export const fieldUserProfileSchema = z.object({
   role: z.string(),
 })
 
-export const fieldTaskSchema = z.object({
+const fieldTaskSchema = z.object({
   id: z.string(),
   kind: z.enum(["schedule", "task"]),
   title: z.string(),
@@ -33,7 +33,7 @@ export const fieldTaskSchema = z.object({
   assignedTo: z.string().nullable(),
 })
 
-export const fieldLogSchema = z.object({
+const fieldLogSchema = z.object({
   id: z.string(),
   logDate: z.string(),
   workCompleted: z.string(),
@@ -52,33 +52,33 @@ export const fieldDocumentSchema = z.object({
   webViewLink: z.string().nullable(),
 })
 
-export const fieldChannelSchema = z.object({
+const fieldChannelSchema = z.object({
   id: z.string(),
   name: z.string(),
 })
 
-export const fieldContactSchema = z.object({
+const fieldContactSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
   role: z.string(),
 })
 
-export const fieldMessageSchema = z.object({
+const fieldMessageSchema = z.object({
   id: z.string(),
   content: z.string(),
   createdAt: z.string(),
   userName: z.string(),
 })
 
-export const fieldDirectConversationSchema = z.object({
+const fieldDirectConversationSchema = z.object({
   id: z.string(),
   name: z.string(),
   unreadCount: z.number(),
   messages: z.array(fieldMessageSchema),
 })
 
-export const fieldNotificationSchema = z.object({
+const fieldNotificationSchema = z.object({
   id: z.string(),
   title: z.string(),
   body: z.string(),
@@ -89,7 +89,7 @@ export const fieldNotificationSchema = z.object({
 })
 
 /** Open to-dos, client contacts and the company's rules, saved for offline logs. */
-export const fieldDailyLogFollowUpSetupSchema = z.object({
+const fieldDailyLogFollowUpSetupSchema = z.object({
   rules: z.object({
     todoMode: z.enum(DAILY_LOG_TODO_MODES),
     todoTypes: z.array(z.enum(DAILY_LOG_TODO_TYPES)),
@@ -119,7 +119,7 @@ export const fieldDailyLogFollowUpSetupSchema = z.object({
 })
 
 /** Cost codes and required fields, saved with the project for offline logs. */
-export const fieldDailyLogFormSchema = z.object({
+const fieldDailyLogFormSchema = z.object({
   costCodes: z.array(
     z.object({
       code: z.string(),
@@ -137,7 +137,7 @@ export const fieldDailyLogFormSchema = z.object({
 })
 
 /** A company machine as Field Mode keeps it for offline logging. */
-export const fieldMachineSchema = z.object({
+const fieldMachineSchema = z.object({
   id: z.string(),
   name: z.string(),
   rateLabel: z.string().nullable(),
@@ -185,7 +185,7 @@ export const fieldProjectPacketSchema = z.object({
   syncedAt: z.string(),
 })
 
-export const fieldWorkLineSchema = z.object({
+const fieldWorkLineSchema = z.object({
   costCode: z.string().max(20),
   hours: z.string().max(10),
   description: z.string().max(500),
@@ -193,7 +193,7 @@ export const fieldWorkLineSchema = z.object({
 })
 
 /** To-dos ticked or created and client contact recorded with a log. */
-export const fieldDailyLogFollowUpsSchema = z.object({
+const fieldDailyLogFollowUpsSchema = z.object({
   todoUpdates: z.array(z.object({
     todoId: z.string().max(80),
     worked: z.boolean(),
@@ -231,7 +231,7 @@ export const fieldDailyLogDraftSchema = z.object({
   followUps: fieldDailyLogFollowUpsSchema.optional(),
 })
 
-export const fieldQueuedAttachmentSchema = z.object({
+const fieldQueuedAttachmentSchema = z.object({
   id: z.string(),
   localPath: z.string(),
   fileName: z.string(),
@@ -269,7 +269,7 @@ export const fieldCherishRecognitionSchema = z.object({
   isNew: z.boolean().default(false),
 })
 
-export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
+const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
     kind: z.literal("daily_log"),
@@ -310,10 +310,8 @@ export const fieldOutboxSchema = z.array(fieldOutboxItemSchema)
 
 export type FieldProject = z.infer<typeof fieldProjectSchema>
 export type FieldDocument = z.infer<typeof fieldDocumentSchema>
-export type FieldContact = z.infer<typeof fieldContactSchema>
 export type FieldUserProfile = z.infer<typeof fieldUserProfileSchema>
 export type FieldProjectPacket = z.infer<typeof fieldProjectPacketSchema>
-export type FieldNotification = z.infer<typeof fieldNotificationSchema>
 export type FieldDailyLogDraft = z.infer<typeof fieldDailyLogDraftSchema>
 export type FieldDailyLogForm = z.infer<typeof fieldDailyLogFormSchema>
 export type FieldDailyLogFollowUpSetup = z.infer<typeof fieldDailyLogFollowUpSetupSchema>

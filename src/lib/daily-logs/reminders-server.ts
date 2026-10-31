@@ -28,7 +28,7 @@ import { dateKeyInTimeZone, timeKeyInTimeZone } from "@/lib/work-calendar"
 
 type Db = ReturnType<typeof getDb>
 
-export const MISSING_DAILY_LOG_EVENT = "daily_log.missing"
+const MISSING_DAILY_LOG_EVENT = "daily_log.missing"
 
 /** Someone on staff with no daily log or duty entry on a day they were expected to log. */
 export type MissingDailyLogPerson = {

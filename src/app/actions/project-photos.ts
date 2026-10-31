@@ -34,7 +34,7 @@ export type ProjectPhotoLibraryItem = {
   readonly schedulePhaseReason: string
 }
 
-export type ProjectPhotoPhaseOption = {
+type ProjectPhotoPhaseOption = {
   readonly value: string
   readonly label: string
   readonly count: number

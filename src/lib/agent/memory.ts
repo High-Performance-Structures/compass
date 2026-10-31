@@ -202,7 +202,7 @@ export async function searchMemories(
     .slice(0, limit)
 }
 
-export async function pruneStaleMemories(
+async function pruneStaleMemories(
   db: Db,
   userId: string,
 ): Promise<number> {

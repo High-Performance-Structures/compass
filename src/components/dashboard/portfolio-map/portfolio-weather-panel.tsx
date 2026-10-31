@@ -29,7 +29,7 @@ const FLAG_TOKEN: Readonly<Record<WeatherFlagKind, string>> = {
   red_flag: "--destructive",
 }
 
-export function stepTime(start: string, step: number): number {
+function stepTime(start: string, step: number): number {
   return Date.parse(start) + step * STEP_MS
 }
 

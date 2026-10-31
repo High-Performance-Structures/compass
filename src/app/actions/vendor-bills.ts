@@ -63,43 +63,6 @@ export async function getVendorBills(projectId?: string) {
     .where(eq(projects.organizationId, orgId))
 }
 
-export async function getVendorBill(id: string) {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // join through project to verify org
-  const rows = await db
-    .select({
-      id: vendorBills.id,
-      netsuiteId: vendorBills.netsuiteId,
-      vendorId: vendorBills.vendorId,
-      projectId: vendorBills.projectId,
-      billNumber: vendorBills.billNumber,
-      status: vendorBills.status,
-      billDate: vendorBills.billDate,
-      dueDate: vendorBills.dueDate,
-      subtotal: vendorBills.subtotal,
-      tax: vendorBills.tax,
-      total: vendorBills.total,
-      amountPaid: vendorBills.amountPaid,
-      amountDue: vendorBills.amountDue,
-      memo: vendorBills.memo,
-      lineItems: vendorBills.lineItems,
-      createdAt: vendorBills.createdAt,
-      updatedAt: vendorBills.updatedAt,
-    })
-    .from(vendorBills)
-    .innerJoin(projects, eq(vendorBills.projectId, projects.id))
-    .where(and(eq(vendorBills.id, id), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createVendorBill(
   data: Omit<NewVendorBill, "id" | "createdAt" | "updatedAt">
 ) {

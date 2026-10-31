@@ -25,6 +25,15 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
+  dead-code:
+    name: Dead code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run knip
+
   ui-standards:
     name: UI Standards
     runs-on: ubuntu-latest

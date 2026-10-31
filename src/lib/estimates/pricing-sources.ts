@@ -30,7 +30,7 @@ export const PRICING_SOURCE_ACTION_LABELS: Readonly<Record<PricingSourceAction, 
   takeoff: "Takeoff to-do for an estimator",
 }
 
-export const pricingSourceSchema = z.object({
+const pricingSourceSchema = z.object({
   /** Stored on estimate lines; never reuse an id for a different meaning. */
   id: z.string().regex(/^[a-z0-9-]{1,40}$/, "Use lowercase letters, numbers and dashes for the id."),
   label: z.string().trim().min(1).max(40),

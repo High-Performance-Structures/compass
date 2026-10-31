@@ -53,7 +53,7 @@ export function changedReportSettings(
   return sections
 }
 
-export function reportSettingsSectionLabel(section: ReportSettingsSection): string {
+function reportSettingsSectionLabel(section: ReportSettingsSection): string {
   switch (section.kind) {
     case "view":
       return "report view"

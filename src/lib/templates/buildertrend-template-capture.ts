@@ -6,7 +6,7 @@ import type {
 } from "./buildertrend-template-inventory"
 import { isArchivedBuildertrendTemplateName } from "./buildertrend-template-inventory"
 
-export type BuildertrendTemplateModuleCounts = {
+type BuildertrendTemplateModuleCounts = {
   readonly invoices: number
   readonly tasks: number
   readonly bidPackages: number
@@ -20,7 +20,7 @@ export type BuildertrendTemplateModuleCounts = {
   readonly specifications: number
 }
 
-export type BuildertrendCapturedScheduleItem = {
+type BuildertrendCapturedScheduleItem = {
   readonly sourceItemId: string
   readonly title: string
   readonly startDate: string
@@ -34,14 +34,14 @@ export type BuildertrendCapturedScheduleItem = {
   readonly notes: string | null
 }
 
-export type BuildertrendCapturedScheduleDependency = {
+type BuildertrendCapturedScheduleDependency = {
   readonly predecessorSourceItemId: string
   readonly successorSourceItemId: string
   readonly type: "FS" | "SS" | "FF" | "SF"
   readonly lagDays: number
 }
 
-export type BuildertrendCapturedSchedule = {
+type BuildertrendCapturedSchedule = {
   readonly sourceAnchorDate: string
   readonly phases: readonly {
     readonly sourcePhaseId: string
@@ -51,7 +51,7 @@ export type BuildertrendCapturedSchedule = {
   readonly dependencies: readonly BuildertrendCapturedScheduleDependency[]
 }
 
-export type BuildertrendTemplateCaptureItem = {
+type BuildertrendTemplateCaptureItem = {
   readonly name: string
   readonly sourceTemplateId: string
   readonly sourceUrl: string

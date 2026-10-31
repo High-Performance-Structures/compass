@@ -55,7 +55,7 @@ export type ListeningRoomSyncAuthorization = {
   readonly userId: string
 }
 
-export type ListeningTrackLinkData = {
+type ListeningTrackLinkData = {
   readonly id: string
   readonly provider: MusicProvider
   readonly url: string
@@ -74,7 +74,7 @@ export type ListeningQueueItemData = {
   readonly links: readonly ListeningTrackLinkData[]
 }
 
-export type ListeningParticipantData = {
+type ListeningParticipantData = {
   readonly userId: string
   readonly displayName: string
   readonly preferredProvider: MusicProvider | null
@@ -751,60 +751,6 @@ export async function addListeningTrackLink(input: {
     return requiredRoomSnapshot(context)
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to add service link") }
-  }
-}
-
-export async function removeListeningTrackLink(input: {
-  readonly channelId: string
-  readonly linkId: string
-}): Promise<ListeningActionResult<ListeningRoomSnapshot>> {
-  try {
-    const channelId = channelIdSchema.safeParse(input.channelId)
-    const linkId = z.string().min(1).max(200).safeParse(input.linkId)
-    if (!channelId.success || !linkId.success) return { success: false, error: "Invalid link" }
-    const context = await listeningContext(channelId.data, { write: true })
-    const room = await roomForChannel(context.db, context.channel.id)
-    if (!room) return { success: false, error: "Listening room not found" }
-    const link = await context.db
-      .select({
-        id: listeningTrackLinks.id,
-        addedBy: listeningTrackLinks.addedBy,
-        queueItemId: listeningTrackLinks.queueItemId,
-        trackAddedBy: listeningQueueItems.addedBy,
-      })
-      .from(listeningTrackLinks)
-      .innerJoin(
-        listeningQueueItems,
-        eq(listeningQueueItems.id, listeningTrackLinks.queueItemId)
-      )
-      .where(
-        and(
-          eq(listeningTrackLinks.id, linkId.data),
-          eq(listeningQueueItems.roomId, room.id)
-        )
-      )
-      .get()
-    if (!link) return { success: false, error: "Link not found" }
-    const canRemove =
-      link.addedBy === context.user.id ||
-      link.trackAddedBy === context.user.id ||
-      room.hostUserId === context.user.id ||
-      can(context.user, "channels", "moderate")
-    if (!canRemove) return { success: false, error: "You cannot remove this link" }
-    const linkCount = await context.db
-      .select({ count: sql<number>`count(*)` })
-      .from(listeningTrackLinks)
-      .where(eq(listeningTrackLinks.queueItemId, link.queueItemId))
-      .get()
-    if ((linkCount?.count ?? 0) <= 1) {
-      return { success: false, error: "A track must keep at least one service link" }
-    }
-    await context.db
-      .delete(listeningTrackLinks)
-      .where(eq(listeningTrackLinks.id, link.id))
-    return requiredRoomSnapshot(context)
-  } catch (error) {
-    return { success: false, error: actionError(error, "Failed to remove service link") }
   }
 }
 

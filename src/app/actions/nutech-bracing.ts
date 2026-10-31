@@ -26,7 +26,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
-export type BracingRentalLineView = {
+type BracingRentalLineView = {
   readonly itemKey: string
   readonly itemLabel: string
   readonly size: string

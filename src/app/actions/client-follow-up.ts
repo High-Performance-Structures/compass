@@ -34,7 +34,7 @@ export type ClientFollowUpJob = {
   readonly periodInteractions: number
 }
 
-export type ClientFollowUpInteraction = {
+type ClientFollowUpInteraction = {
   readonly id: string
   readonly projectId: string
   readonly projectLabel: string

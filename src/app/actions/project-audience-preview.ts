@@ -115,7 +115,7 @@ export type AudienceScheduleItem = {
   readonly assignees: readonly AudienceScheduleAssignee[]
 }
 
-export type AudienceScheduleAssignee = {
+type AudienceScheduleAssignee = {
   readonly id: string
   readonly assignedUserId: string | null
   readonly projectContactId: string | null

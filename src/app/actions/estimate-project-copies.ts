@@ -33,7 +33,7 @@ export type EstimateCopyResult =
   | { readonly success: true; readonly projectId: string; readonly estimateId: string; readonly estimateNumber: string }
   | { readonly success: false; readonly error: string }
 
-export type EstimateCopyTargetDraft = {
+type EstimateCopyTargetDraft = {
   readonly id: string
   readonly estimateNumber: string
   readonly versionNumber: number

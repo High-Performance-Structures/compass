@@ -1,7 +1,7 @@
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
 
 /** reserved: planned, not yet out. out: signed out to the job. returned: checked back in. */
-export const BRACING_RENTAL_STATUSES = ["reserved", "out", "returned"] as const
+const BRACING_RENTAL_STATUSES = ["reserved", "out", "returned"] as const
 export type BracingRentalStatus = (typeof BRACING_RENTAL_STATUSES)[number]
 
 export function isBracingRentalStatus(value: string): value is BracingRentalStatus {

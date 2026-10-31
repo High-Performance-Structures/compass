@@ -8,14 +8,9 @@ import {
   projects,
   users,
 } from "@/db/schema"
-
-export const EXTERNAL_PROJECT_RESOURCE_TYPES = [
-  "photo",
-  "owner_update_document",
-] as const
-
 export type ExternalProjectResourceType =
-  (typeof EXTERNAL_PROJECT_RESOURCE_TYPES)[number]
+  | "photo"
+  | "owner_update_document"
 
 export type ExternalProjectResourceAudience = "owner" | "sub_vendor"
 

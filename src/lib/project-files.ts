@@ -274,23 +274,6 @@ function normalizeFolderName(name: string): string {
   return name.trim().toLowerCase()
 }
 
-export function getProjectFileSourceById(
-  folderId: string
-): ProjectFileSource | null {
-  return (
-    PROJECT_FILE_SOURCES.find(source => source.folderId === folderId) ??
-    null
-  )
-}
-
-export function getProjectFileSourceByKey(
-  key: ProjectFileSourceKey
-): ProjectFileSource | null {
-  return (
-    PROJECT_FILE_SOURCES.find(source => source.key === key) ?? null
-  )
-}
-
 export function getProjectFolderMatch(
   name: string
 ): ProjectFolderMatch | null {
@@ -326,10 +309,6 @@ export function classifyProjectFolderName(
       )
     ) ?? null
   )
-}
-
-export function isHiddenProjectFolderName(name: string): boolean {
-  return classifyProjectFolderName(name)?.hiddenByDefault === true
 }
 
 export function withProjectFileSource(

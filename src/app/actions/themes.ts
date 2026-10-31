@@ -8,12 +8,7 @@ import {
   userThemePreference,
 } from "@/db/schema-theme"
 import { getCurrentUser } from "@/lib/auth"
-import {
-  getCustomThemeForUser,
-  listCustomThemesForUser,
-  saveCustomThemeForUser,
-  setThemePreferenceForUser,
-} from "@/lib/theme/user-themes"
+import { listCustomThemesForUser, setThemePreferenceForUser } from "@/lib/theme/user-themes"
 import { revalidatePath } from "next/cache"
 import { isDemoUser } from "@/lib/demo"
 
@@ -78,50 +73,6 @@ export async function getCustomThemes(): Promise<
   const { env } = await getCloudflareContext()
   const themes = await listCustomThemesForUser(getDb(env.DB), user.id)
   return { success: true, data: themes }
-}
-
-export async function getCustomThemeById(
-  themeId: string,
-): Promise<
-  | {
-      readonly success: true
-      readonly data: {
-        readonly id: string
-        readonly name: string
-        readonly description: string
-        readonly themeData: string
-      }
-    }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  return getCustomThemeForUser(getDb(env.DB), user.id, themeId)
-}
-
-export async function saveCustomTheme(
-  name: string,
-  description: string,
-  themeData: string,
-  existingId?: string,
-): Promise<
-  | { readonly success: true; readonly id: string }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  const result = await saveCustomThemeForUser(getDb(env.DB), user.id, {
-    name,
-    description,
-    themeData,
-    existingId,
-  })
-  if (result.success) revalidatePath("/", "layout")
-  return result
 }
 
 export async function deleteCustomTheme(

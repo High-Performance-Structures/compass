@@ -77,7 +77,7 @@ const accessCandidateSchema = z
   })
   .strict()
 
-export const buildertrendStagingManifestSchema = z
+const buildertrendStagingManifestSchema = z
   .object({
     runKey: z.string().trim().min(1),
     sourceMethod: z.string().trim().min(1),
@@ -99,7 +99,7 @@ export type BuildertrendStagingManifest = z.infer<
   typeof buildertrendStagingManifestSchema
 >
 
-export type BuildertrendStagingSummary = {
+type BuildertrendStagingSummary = {
   readonly runKey: string
   readonly sourceLabel: string
   readonly recordCount: number

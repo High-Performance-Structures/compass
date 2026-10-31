@@ -95,9 +95,9 @@ export type ProjectProfileResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
-export type ProjectProfileJobStatus = ProjectJobStatusOption
+type ProjectProfileJobStatus = ProjectJobStatusOption
 
-export type ProjectProfileNote = {
+type ProjectProfileNote = {
   readonly id: string
   readonly body: string
   readonly authorName: string | null
@@ -105,7 +105,7 @@ export type ProjectProfileNote = {
   readonly updatedAt: string
 }
 
-export type ProjectProfileInteraction = {
+type ProjectProfileInteraction = {
   readonly id: string
   readonly interactionType: string
   readonly interactionTypeLabel: string
@@ -2245,30 +2245,5 @@ export async function createCustomProjectJobStatus(input: {
   } catch (error) {
     console.error("Unable to add job status", error)
     return { success: false, error: "Unable to add job status." }
-  }
-}
-
-export async function deactivateCustomProjectJobStatus(
-  statusId: string,
-): Promise<ProjectProfileResult> {
-  try {
-    const user = await requireAuth()
-    requireFeaturePermission(user, "project-hub", "update")
-    if (!canManageProjectRegistry(user)) {
-      return { success: false, error: "Only project registry managers can manage job statuses." }
-    }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) throw new Error("Database unavailable")
-    const db = getDb(env.DB)
-    await db
-      .update(projectJobStatuses)
-      .set({ active: false, updatedAt: nowIso() })
-      .where(and(eq(projectJobStatuses.id, statusId), eq(projectJobStatuses.organizationId, organizationId)))
-    revalidatePath("/dashboard/projects")
-    return { success: true }
-  } catch (error) {
-    console.error("Unable to deactivate project job status", error)
-    return { success: false, error: "Unable to deactivate project job status." }
   }
 }

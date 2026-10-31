@@ -11,7 +11,7 @@ import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { markCorrespondenceNotificationsRead } from "@/lib/notifications/clear-on-read"
-import type { CorrespondenceInboxFilter, CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
+import type { CorrespondenceInboxFilter, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
 function failure(error: unknown): { readonly success: false; readonly error: string } {
   // Never return SQL/provider internals or another participant's content.
@@ -199,18 +199,4 @@ function isMissingSourceAudienceTable(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   if (/no such table: correspondence_source_(messages|recipients)/i.test(error.message)) return true
   return error.cause !== undefined && isMissingSourceAudienceTable(error.cause)
-}
-
-export async function saveCorrespondenceCompositionDraft(projectId: string, draft: CorrespondenceCompositionDraft): Promise<CorrespondenceResult<{ readonly version: number }>> {
-  try {
-    if (typeof draft.subject !== "string" || draft.subject.length > 200 || typeof draft.body !== "string" || draft.body.length > 50000 || !Array.isArray(draft.recipientUserIds) || draft.recipientUserIds.length > 30 || draft.recipientUserIds.some((id) => typeof id !== "string" || id.length > 200) || !Number.isSafeInteger(draft.version) || draft.version < 0) throw new Error("Invalid composition draft.")
-    const ctx = await correspondenceContext(projectId)
-    const version = draft.version + 1
-    const values = { subject: draft.subject, body: draft.body, recipientUserIds: draft.recipientUserIds, version, updatedAt: new Date().toISOString() }
-    const rows = draft.version === 0
-      ? await ctx.db.insert(correspondenceCompositionDrafts).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, projectId, userId: ctx.user.id, ...values }).onConflictDoNothing().returning({ version: correspondenceCompositionDrafts.version })
-      : await ctx.db.update(correspondenceCompositionDrafts).set(values).where(and(eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.projectId, projectId), eq(correspondenceCompositionDrafts.userId, ctx.user.id), eq(correspondenceCompositionDrafts.version, draft.version))).returning({ version: correspondenceCompositionDrafts.version })
-    if (!rows.length) throw new Error("This draft changed on another device. Copy your text before reloading.")
-    return { success: true, data: { version } }
-  } catch (error) { return failure(error) }
 }

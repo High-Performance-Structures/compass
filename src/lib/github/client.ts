@@ -100,7 +100,7 @@ export type CreatedIssue = Readonly<{
   url: string
 }>
 
-export type GitHubFileDiff = Readonly<{
+type GitHubFileDiff = Readonly<{
   filename: string
   status: string
   additions: number

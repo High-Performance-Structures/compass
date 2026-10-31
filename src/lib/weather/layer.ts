@@ -144,7 +144,7 @@ export function alertCovers(alert: WeatherAlert, lon: number, lat: number): bool
 }
 
 /** Miles from a job to a fire's outline, or to its reported point when it has none. */
-export function milesToFire(fire: ActiveFire, lon: number, lat: number): number {
+function milesToFire(fire: ActiveFire, lon: number, lat: number): number {
   if (fire.rings.length === 0) return milesBetween(lon, lat, fire.lon, fire.lat)
   return Math.min(...fire.rings.map((ring) => milesToRing(lon, lat, ring)))
 }
@@ -152,7 +152,7 @@ export function milesToFire(fire: ActiveFire, lon: number, lat: number): number 
 const COMPASS_POINTS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
 
 /** Direction from a job to a fire, e.g. "northwest". */
-export function bearingWord(fromLon: number, fromLat: number, toLon: number, toLat: number): string {
+function bearingWord(fromLon: number, fromLat: number, toLon: number, toLat: number): string {
   const dx = (toLon - fromLon) * Math.cos((fromLat * Math.PI) / 180)
   const dy = toLat - fromLat
   const degrees = (Math.atan2(dx, dy) * 180) / Math.PI

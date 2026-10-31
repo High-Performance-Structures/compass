@@ -50,7 +50,7 @@ function stripGluedInitials(name: string): string {
   return leading.startsWith(initials) ? rest : name
 }
 
-export function partyKey(name: string): string {
+function partyKey(name: string): string {
   return stripGluedInitials(name.trim())
     .toLowerCase()
     .replace(/&/g, " and ")

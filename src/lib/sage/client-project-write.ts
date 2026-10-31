@@ -18,7 +18,7 @@ export type SageClientStatusId =
   (typeof SAGE_CLIENT_STATUS_OPTIONS)[number]["id"]
 export type SageJobTypeId = (typeof SAGE_JOB_TYPE_OPTIONS)[number]["id"]
 
-export const sageClientPayloadSchema = z.object({
+const sageClientPayloadSchema = z.object({
   compassCustomerId: z.string().min(1),
   sageClientId: z.string().min(1).nullable().optional(),
   sageClientNumber: z.string().min(1).nullable().optional(),
@@ -39,7 +39,7 @@ export const sageClientPayloadSchema = z.object({
   { message: "A linked Sage client needs both its stable ID and number", path: ["sageClientId"] }
 )
 
-export const sageJobPayloadSchema = z.object({
+const sageJobPayloadSchema = z.object({
   compassProjectId: z.string().min(1),
   compassProjectNumber: z.string().min(1).max(30).nullable(),
   name: z.string().min(1).max(75),

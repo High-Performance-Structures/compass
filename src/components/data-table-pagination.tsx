@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-export const TABLE_PAGE_SIZES = [25, 50, 100] as const
+const TABLE_PAGE_SIZES = [25, 50, 100] as const
 export const DEFAULT_TABLE_PAGE_SIZE: number = TABLE_PAGE_SIZES[0]
 
 interface DataTablePaginationProps<TData> {

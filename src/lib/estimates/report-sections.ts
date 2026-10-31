@@ -29,7 +29,7 @@ function assemblyMode(mode: EstimateClientReportMode): boolean {
   return mode === "assembly_summary" || mode === "assembly_items"
 }
 
-export function estimateReportSectionLabel(
+function estimateReportSectionLabel(
   phase: ClientEstimatePhase,
   mode: EstimateClientReportMode
 ): string {
@@ -37,7 +37,7 @@ export function estimateReportSectionLabel(
   return `${phase.divisionCode} · ${mode === "division_summary" ? phase.divisionName : phase.description}`
 }
 
-export function estimateReportSectionKind(
+function estimateReportSectionKind(
   phase: ClientEstimatePhase,
   mode: EstimateClientReportMode
 ): string {

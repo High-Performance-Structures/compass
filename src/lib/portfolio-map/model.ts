@@ -16,7 +16,7 @@ import {
 
 export { PORTFOLIO_PHASES, DEFAULT_PORTFOLIO_MAP_RULES, type PortfolioMapRules, type PortfolioPhaseId }
 export type PortfolioHealth = "ok" | "risk" | "late"
-export { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+export { isPortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export type PortfolioMapJob = {
   readonly id: string

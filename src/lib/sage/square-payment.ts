@@ -10,7 +10,7 @@ import {
 } from "@/lib/sage/square-payment-notifications"
 import { upsertSquareOwnerReceivable } from "@/lib/sage/square-receivable"
 
-export const SQUARE_API_VERSION = "2026-08-19"
+const SQUARE_API_VERSION = "2026-08-19"
 export const SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER = 10000
 export const SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER = 62020
 
@@ -171,7 +171,7 @@ export const sageSquarePaymentResultSchema = z.discriminatedUnion("outcome", [
 ])
 
 export type SquareWebhookEvent = z.infer<typeof squareWebhookEventSchema>
-export type SageSquarePaymentPayload = z.infer<
+type SageSquarePaymentPayload = z.infer<
   typeof sageSquarePaymentPayloadSchema
 >
 

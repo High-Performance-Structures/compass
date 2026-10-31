@@ -65,7 +65,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 
-export type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
+type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
 export type ChangeOrderDocumentInput = {
   readonly label: string
   readonly url: string
@@ -83,12 +83,12 @@ export type ChangeOrderExecutedDocumentReplacementInput =
     readonly reason: string
   }
 
-export type ProjectChangeOrderPhaseOption = {
+type ProjectChangeOrderPhaseOption = {
   readonly value: string
   readonly label: string
 }
 
-export type ProjectChangeOrderCostCodeOption = {
+type ProjectChangeOrderCostCodeOption = {
   readonly onBudget?: boolean
   readonly value: string
   readonly label: string
@@ -96,7 +96,7 @@ export type ProjectChangeOrderCostCodeOption = {
   readonly divisionCode: string
 }
 
-export type ProjectChangeOrderCompanyOption = {
+type ProjectChangeOrderCompanyOption = {
   readonly value: string
   readonly label: string
   readonly description: string

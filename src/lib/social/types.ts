@@ -1,7 +1,8 @@
 import type { ProjectDepartment } from "@/lib/project-branding"
-
-export const SOCIAL_PLATFORMS = ["facebook", "instagram", "x"] as const
-export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number]
+export type SocialPlatform =
+  | "facebook"
+  | "instagram"
+  | "x"
 
 export type FacebookAlbumMode = "none" | "project_album"
 
@@ -108,10 +109,4 @@ export function socialDepartment(value: string): ProjectDepartment | null {
     return value
   }
   return null
-}
-
-export function socialPlatformLabel(platform: SocialPlatform): string {
-  if (platform === "x") return "X"
-  if (platform === "instagram") return "Instagram"
-  return "Facebook"
 }

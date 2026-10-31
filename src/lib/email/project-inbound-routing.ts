@@ -50,7 +50,7 @@ import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
 
-export type ProjectInboundSource = {
+type ProjectInboundSource = {
   readonly kind: "email" | "goto_sms"
   readonly idPrefix: "email" | "sms"
   readonly sourceSystem: "email" | "goto_sms"

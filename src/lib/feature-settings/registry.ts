@@ -26,7 +26,7 @@ import { DEFAULT_WEATHER_WORK_RULES, WEATHER_RULE_CHECKS } from "@/lib/weather/s
  * new fields get sensible values automatically.
  */
 
-export const messageDeskSettingsSchema = z
+const messageDeskSettingsSchema = z
   .object({
     firstResponseDays: z.number().min(0.25).max(30),
     agingDays: z.number().min(0.5).max(60),
@@ -63,7 +63,7 @@ export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
  * keywords are checked against one forecast limit over their days (plus
  * `daysAfter`, e.g. concrete curing).
  */
-export const weatherWorkRuleSchema = z.object({
+const weatherWorkRuleSchema = z.object({
   id: z.string().min(1).max(40),
   label: z.string().trim().min(1).max(80),
   keywords: z.array(z.string().trim().min(2).max(40)).min(1).max(20),
@@ -71,8 +71,6 @@ export const weatherWorkRuleSchema = z.object({
   value: z.number().min(-60).max(130),
   daysAfter: z.number().int().min(0).max(7),
 })
-
-export type WeatherWorkRule = z.infer<typeof weatherWorkRuleSchema>
 
 export const weatherAlertSettingsSchema = z.object({
   /** Snow in 24 hours, inches. */
@@ -108,7 +106,7 @@ export const estimateSettingsSchema = z.object({
   copyMarkupPercents: z.record(z.string().regex(/^[A-Z]$/), z.number().min(0).max(1000)).optional(),
 })
 
-export type EstimateSettings = z.infer<typeof estimateSettingsSchema>
+type EstimateSettings = z.infer<typeof estimateSettingsSchema>
 
 /**
  * Linked job shortcuts: common work a customer asks for that belongs to
@@ -116,7 +114,7 @@ export type EstimateSettings = z.infer<typeof estimateSettingsSchema>
  * create a linked job in any department; shortcuts pre-fill the department
  * and the list of work to choose from.
  */
-export const linkedJobShortcutSchema = z.object({
+const linkedJobShortcutSchema = z.object({
   id: z.string().min(1).max(40),
   label: z.string().trim().min(1).max(80),
   /** Department of the job it's offered on; "*" for every department. */
@@ -130,7 +128,7 @@ export const linkedJobSettingsSchema = z.object({
 })
 
 export type LinkedJobShortcut = z.infer<typeof linkedJobShortcutSchema>
-export type LinkedJobSettings = z.infer<typeof linkedJobSettingsSchema>
+type LinkedJobSettings = z.infer<typeof linkedJobSettingsSchema>
 
 /**
  * Square and Sage payments: who gets Square alerts. Empty lists keep the
@@ -157,7 +155,7 @@ export type SquarePaymentSettings = z.infer<typeof squarePaymentSettingsSchema>
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
 /** One job status's client follow-up thresholds, in business days since the last client contact. */
-export const projectFollowUpThresholdsSchema = z
+const projectFollowUpThresholdsSchema = z
   .object({
     dueDays: z.number().int().min(1).max(60),
     overdueDays: z.number().int().min(2).max(120),
@@ -326,10 +324,10 @@ export const projectDuplicateSettingsSchema = z.object({
   repeatOrderDepartments: z.array(z.enum(["O", "H", "N", "D"])).max(4),
 })
 
-export type ProjectDuplicateSettings = z.infer<typeof projectDuplicateSettingsSchema>
+type ProjectDuplicateSettings = z.infer<typeof projectDuplicateSettingsSchema>
 
 /** One department's identity; see DepartmentProfile in src/lib/department-profiles.ts. */
-export const departmentProfileSchema = z.object({
+const departmentProfileSchema = z.object({
   displayName: z.string().trim().min(1, "Enter a display name.").max(80),
   shortName: z.string().trim().min(1, "Enter a short name.").max(24),
   description: z.string().max(200),
@@ -358,10 +356,10 @@ export const departmentProfilesSchema = z.object({
   }),
 })
 
-export type DepartmentProfilesSettings = z.infer<typeof departmentProfilesSchema>
+type DepartmentProfilesSettings = z.infer<typeof departmentProfilesSchema>
 
 /** A company's changes to one workflow step; see WorkflowStepOverride in src/lib/job-workflows/engine.ts. */
-export const workflowStepOverrideSchema = z.object({
+const workflowStepOverrideSchema = z.object({
   label: z.string().trim().max(60).optional(),
   hidden: z.boolean().optional(),
   jobStatusId: z.string().min(1).max(80).nullable().optional(),
@@ -387,7 +385,7 @@ const workflowOverridesSchema = z.record(z.string().min(1).max(60), workflowStep
 const workflowStepOrderSchema = z.array(z.string().min(1).max(60)).max(60)
 
 /** A step the company added; its checklist lives in the step's extraItems. */
-export const workflowCustomStepSchema = z.object({
+const workflowCustomStepSchema = z.object({
   id: z.string().regex(/^custom-[a-z0-9-]{1,40}$/),
   label: z.string().trim().min(1, "Name the step.").max(60),
   jobStatusId: z.string().min(1).max(80).nullable(),
@@ -403,7 +401,7 @@ const workflowItemKeySchema = z.string().regex(/^[a-z0-9_-]{1,60}\.[a-z0-9_-]{1,
  * job in another department (Design → Construction by default). An item
  * mapped to "" carries nothing.
  */
-export const workflowCarryoverSchema = z.object({
+const workflowCarryoverSchema = z.object({
   from: workflowDepartmentSchema,
   to: workflowDepartmentSchema,
   items: z.record(workflowItemKeySchema, z.union([workflowItemKeySchema, z.literal("")])),
@@ -622,12 +620,12 @@ export const scheduleConflictSettingsSchema = z.object({
 export type ScheduleConflictSettingsValue = z.infer<typeof scheduleConflictSettingsSchema>
 
 /** Contract packets: which optional documents new packets leave out by default. */
-export const contractPacketSettingsSchema = z.object({
+const contractPacketSettingsSchema = z.object({
   /** Template codes left unchecked when a new packet is created. */
   excludedByDefault: z.array(z.string().min(1).max(40)).max(200),
 })
 
-export type ContractPacketSettings = z.infer<typeof contractPacketSettingsSchema>
+type ContractPacketSettings = z.infer<typeof contractPacketSettingsSchema>
 
 /** Contract deposits: how a received deposit reaches pay applications. */
 export const contractDepositSettingsSchema = z.object({

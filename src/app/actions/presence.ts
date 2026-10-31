@@ -3,7 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
-import { userPresence, channelMembers } from "@/db/schema-conversations"
+import { userPresence } from "@/db/schema-conversations"
 import { organizationMembers, users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import {
@@ -23,23 +23,6 @@ export type CurrentUserPresence = {
 
 const VALID_STATUSES = ["online", "idle", "dnd", "offline"] as const
 const MAX_STATUS_LENGTH = 100
-
-type ChannelMemberWithPresence = {
-  id: string
-  displayName: string | null
-  avatarUrl: string | null
-  role: string
-  status: string
-  statusMessage: string | null
-  lastSeenAt: string
-}
-
-type GroupedMembers = {
-  online: ChannelMemberWithPresence[]
-  idle: ChannelMemberWithPresence[]
-  dnd: ChannelMemberWithPresence[]
-  offline: ChannelMemberWithPresence[]
-}
 
 /**
  * Update the current user's presence status.
@@ -235,104 +218,6 @@ export async function getOrganizationTeamAvailability(): Promise<
         err instanceof Error
           ? err.message
           : "Failed to get team availability",
-    }
-  }
-}
-
-/**
- * Get all members of a channel with their presence information.
- * Results are grouped by status for easy display.
- */
-export async function getChannelMembersWithPresence(
-  channelId: string
-): Promise<
-  { success: true; data: GroupedMembers } | { success: false; error: string }
-> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify user is a member of this channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return {
-        success: false,
-        error: "Access denied - not a channel member",
-      }
-    }
-
-    // fetch all channel members with their user info and presence
-    const members = await db
-      .select({
-        id: users.id,
-        displayName: users.displayName,
-        avatarUrl: users.avatarUrl,
-        role: channelMembers.role,
-        status: userPresence.status,
-        statusMessage: userPresence.statusMessage,
-        lastSeenAt: userPresence.lastSeenAt,
-      })
-      .from(channelMembers)
-      .innerJoin(users, eq(channelMembers.userId, users.id))
-      .leftJoin(userPresence, eq(users.id, userPresence.userId))
-      .where(eq(channelMembers.channelId, channelId))
-
-    // group members by status
-    const grouped: GroupedMembers = {
-      online: [],
-      idle: [],
-      dnd: [],
-      offline: [],
-    }
-
-    for (const member of members) {
-      const memberData: ChannelMemberWithPresence = {
-        id: member.id,
-        displayName: member.displayName,
-        avatarUrl: member.avatarUrl,
-        role: member.role,
-        status: member.status ?? "offline",
-        statusMessage: member.statusMessage,
-        lastSeenAt: member.lastSeenAt ?? new Date(0).toISOString(),
-      }
-
-      // determine which group based on status
-      const status = member.status ?? "offline"
-      if (status === "online") {
-        grouped.online.push(memberData)
-      } else if (status === "idle") {
-        grouped.idle.push(memberData)
-      } else if (status === "dnd") {
-        grouped.dnd.push(memberData)
-      } else {
-        grouped.offline.push(memberData)
-      }
-    }
-
-    return { success: true, data: grouped }
-  } catch (err) {
-    return {
-      success: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "Failed to get channel members with presence",
     }
   }
 }

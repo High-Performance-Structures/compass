@@ -31,7 +31,7 @@ export type RoleLens = {
   readonly priority: readonly WorkflowStepId[]
 }
 
-export const PROJECT_MANAGER_ROLE_LENS: RoleLens = {
+const PROJECT_MANAGER_ROLE_LENS: RoleLens = {
   id: "project-manager",
   label: "Project manager",
   badge: "Coordinate",
@@ -302,59 +302,6 @@ export function workflowRoleIdFromString(
       }
       return null
   }
-}
-
-export function workflowRoleIdFromSageEmployee({
-  employeeName,
-  positionTitle,
-}: {
-  readonly employeeName: string | null | undefined
-  readonly positionTitle: string | null | undefined
-}): ProjectWorkflowRoleId | null {
-  const normalizedName = (employeeName ?? "")
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, " ")
-    .trim()
-  const normalizedTitle = (positionTitle ?? "")
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, " ")
-    .trim()
-
-  if (normalizedName === "martine y vogel" || normalizedName === "martine vogel") {
-    return "admin-owner"
-  }
-
-  if (normalizedTitle.includes("assistant proje")) {
-    return "assistant-project-manager"
-  }
-  if (normalizedTitle.includes("superintendent")) {
-    return "field-superintendent"
-  }
-  if (normalizedTitle.includes("senior field")) {
-    return "field-superintendent"
-  }
-  if (normalizedTitle.includes("field crew")) {
-    return "field-crew"
-  }
-  if (normalizedTitle.includes("accounting")) {
-    return "project-administrator"
-  }
-  if (normalizedTitle.includes("design")) {
-    return "design-estimating"
-  }
-  if (normalizedTitle.includes("business develo")) {
-    return "office-manager"
-  }
-  if (normalizedTitle.includes("jack of all")) {
-    return "project-manager"
-  }
-  if (normalizedTitle.includes("jill of all")) {
-    return "admin-owner"
-  }
-
-  return workflowRoleIdFromString(positionTitle)
 }
 
 export function defaultWorkflowRoleId({

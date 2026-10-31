@@ -19,13 +19,13 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
 
-export type InboundEmailReviewProject = {
+type InboundEmailReviewProject = {
   readonly id: string
   readonly projectNumber: string | null
   readonly name: string
 }
 
-export type InboundEmailReviewItem = {
+type InboundEmailReviewItem = {
   readonly id: string
   readonly fromAddress: string
   readonly fromName: string | null

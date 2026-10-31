@@ -110,7 +110,7 @@ export type ProjectContractPacketSummary = {
   readonly updatedAt: string
 }
 
-export type ProjectContractTemplateOption = {
+type ProjectContractTemplateOption = {
   readonly id: string
   readonly versionId: string
   readonly versionNumber: number
@@ -138,7 +138,7 @@ export type ProjectContractPacketEstimateOption = {
   readonly estimateTotalCents: number
 }
 
-export type ProjectContractSignerOption = {
+type ProjectContractSignerOption = {
   readonly id: string
   readonly name: string
   readonly title: string | null

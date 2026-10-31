@@ -64,7 +64,7 @@ export type ProjectClientMeetingItem = {
   readonly dailyLogHref: string | null
 }
 
-export type TranscriptState =
+type TranscriptState =
   | { readonly status: "pending" }
   | { readonly status: "saved"; readonly url: string | null }
   | { readonly status: "none" }

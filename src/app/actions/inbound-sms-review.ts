@@ -38,13 +38,13 @@ import { projectTodoHref } from "@/lib/work-calendar"
 
 type StoredGotoAttachment = GotoInboundMessage["attachments"][number]
 
-export type InboundSmsReviewProject = {
+type InboundSmsReviewProject = {
   readonly id: string
   readonly projectNumber: string | null
   readonly name: string
 }
 
-export type InboundSmsReviewItem = {
+type InboundSmsReviewItem = {
   readonly id: string
   readonly senderPhone: string
   readonly ownerTouchpoint: string
@@ -496,11 +496,6 @@ export type TrashInboundSmsResult =
 /** True when GoTo rejected the call for missing OAuth scope or token. */
 function isGotoPermissionError(detail: string): boolean {
   return /AUTHZ_INSUFFICIENT_SCOPE|insufficient to perform/i.test(detail)
-}
-
-export async function trashInboundSms(formData: FormData): Promise<void> {
-  const result = await trashInboundSmsEvent(requiredFormString(formData, "eventId"))
-  if (!result.success) throw new Error(result.error)
 }
 
 /**

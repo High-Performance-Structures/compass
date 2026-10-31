@@ -8,7 +8,7 @@ import type { ProjectDepartment } from "@/lib/project-branding"
  */
 
 /** Who a template goes to: the client (logged as client contact) or someone else on the job. */
-export type JobEmailAudience = "client" | "other"
+type JobEmailAudience = "client" | "other"
 
 export type JobEmailTemplate = {
   /** Unique within its department. */
@@ -39,7 +39,7 @@ export const JOB_EMAIL_MERGE_FIELDS = [
   { name: "mailingAddress", label: "Mailing address (department profile)" },
 ] as const
 
-export type JobEmailMergeField = (typeof JOB_EMAIL_MERGE_FIELDS)[number]["name"]
+type JobEmailMergeField = (typeof JOB_EMAIL_MERGE_FIELDS)[number]["name"]
 export type JobEmailContext = Readonly<Record<JobEmailMergeField, string>>
 
 const SIGNATURE = `{{senderName}}

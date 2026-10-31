@@ -5,7 +5,7 @@ export type FinishScheduleSheet = {
   readonly values: ReadonlyArray<ReadonlyArray<unknown>>
 }
 
-export type FinishScheduleRoom = {
+type FinishScheduleRoom = {
   readonly sheetId: number
   readonly sheetName: string
   readonly roomName: string
@@ -13,7 +13,7 @@ export type FinishScheduleRoom = {
   readonly sortOrder: number
 }
 
-export type FinishScheduleSelection = {
+type FinishScheduleSelection = {
   readonly sourceRowNumber: number
   readonly sheetId: number
   readonly sheetName: string

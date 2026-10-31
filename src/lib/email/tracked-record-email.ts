@@ -3,7 +3,7 @@
  * reply address, so the reply comes back onto its record (or job) instead of
  * landing in one person's inbox. See docs/development/email-workflows.md.
  */
-export const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs"] as const
+const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs"] as const
 
 export type TrackedRecordKind = (typeof TRACKED_RECORD_KINDS)[number]
 

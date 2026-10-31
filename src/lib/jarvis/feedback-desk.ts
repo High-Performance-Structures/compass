@@ -24,7 +24,7 @@ function metadataExternalActorId(metadata: string | null): string | null {
     : null
 }
 
-export type FeedbackDeskSource =
+type FeedbackDeskSource =
   | "compass-conversation"
   | "feedback-widget"
   | "jarvis-email"

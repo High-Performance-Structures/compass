@@ -83,7 +83,7 @@ export type ProjectSelectionItem = {
   readonly updatedAt: string
 }
 
-export type ProjectSelectionRoom = {
+type ProjectSelectionRoom = {
   readonly id: string
   readonly projectId: string
   readonly sourceSystem: string
@@ -108,12 +108,12 @@ export type ProjectSelectionsSummary = {
   readonly rooms: readonly ProjectSelectionRoom[]
 }
 
-export type ProjectSelectionOption = {
+type ProjectSelectionOption = {
   readonly value: string
   readonly label: string
 }
 
-export type ProjectSelectionCostCodeOption = {
+type ProjectSelectionCostCodeOption = {
   readonly onBudget?: boolean
   readonly value: string
   readonly label: string

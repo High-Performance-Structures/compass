@@ -1,7 +1,7 @@
 export type EcardDepartment = "company" | "orc" | "hps" | "nu-tech"
-export type EcardStyle = "message" | "photo" | "illustrated" | "legacy"
+type EcardStyle = "message" | "photo" | "illustrated" | "legacy"
 
-export type EcardTemplateId =
+type EcardTemplateId =
   | "a"
   | "b"
   | "c"

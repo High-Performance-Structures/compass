@@ -38,7 +38,6 @@ const RAW_INTERVAL_ALLOWLIST: Readonly<Record<string, Allowed>> = {
   "src/components/cherish/cherish-story-invitation.tsx": { count: 1, reason: "UI only: story progress bar animation" },
   "src/components/projects/project-audience-dashboard-photo.tsx": { count: 1, reason: "UI only: photo slideshow advance" },
   "src/components/projects/project-meetings-audience-button.tsx": { count: 1, reason: "UI only: clock tick for the Join window" },
-  "src/components/dashboard/operational-dashboard.tsx": { count: 1, reason: "UI only: photo carousel advance" },
   "src/components/dashboard/portfolio-map/portfolio-weather-panel.tsx": { count: 1, reason: "UI only: weather animation step" },
   "src/components/voice/listening-room.tsx": { count: 1, reason: "UI only: one-second playback clock (the room poll uses the hook)" },
   "src/components/voice/listening-room-player.tsx": { count: 1, reason: "UI only: keeps the local player in step with the shared position" },
@@ -49,10 +48,6 @@ const RAW_INTERVAL_ALLOWLIST: Readonly<Record<string, Allowed>> = {
   "src/hooks/use-voice-state.ts": {
     count: 1,
     reason: "live voice call: keeps participants in sync while connected, including in a background tab",
-  },
-  "src/components/conversations/member-sidebar.tsx": {
-    count: 1,
-    reason: "unused file, left for the dead-code cleanup; delete this entry with the file",
   },
 }
 

@@ -95,7 +95,7 @@ export type ProjectContactItem = {
   readonly identityManagedByActiveUser: boolean
 }
 
-export type ProjectContactGroup = {
+type ProjectContactGroup = {
   readonly contactType: ProjectContactType
   readonly label: string
   readonly count: number
@@ -126,7 +126,7 @@ export type ProjectContactsSummaryOptions = {
   readonly includeHistorical?: boolean
 }
 
-export type ProjectContactCsiGroup = {
+type ProjectContactCsiGroup = {
   readonly csiDivision: string
   readonly csiDivisionName: string
   readonly count: number
@@ -201,7 +201,7 @@ export type AddTaskAssigneeContactResult =
   | { readonly success: true; readonly contact: ProjectTaskAssigneeOption }
   | { readonly success: false; readonly error: string }
 
-export type ProjectContactDirectorySource = "customer" | "vendor" | "team"
+type ProjectContactDirectorySource = "customer" | "vendor" | "team"
 
 export type ProjectContactDirectoryOption = {
   readonly id: string
@@ -218,7 +218,7 @@ export type ProjectContactDirectoryOption = {
   readonly alreadyOnProject?: boolean
 }
 
-export type ProjectDirectoryPersonOption = {
+type ProjectDirectoryPersonOption = {
   readonly id: string
   readonly name: string
   readonly title: string | null
@@ -228,9 +228,9 @@ export type ProjectDirectoryPersonOption = {
   readonly identityManagedByActiveUser: boolean
 }
 
-export type ProjectVendorContactOption = ProjectDirectoryPersonOption
+type ProjectVendorContactOption = ProjectDirectoryPersonOption
 
-export type ProjectContactDivisionOption = {
+type ProjectContactDivisionOption = {
   readonly value: string
   readonly label: string
   readonly name: string

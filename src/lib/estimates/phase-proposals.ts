@@ -29,7 +29,7 @@ import { projectFamilyProjectNumber } from "@/lib/project-family"
  * authorized at the accepted amount and ready to activate.
  */
 
-export const PHASE_PROPOSAL_CONTRACT_REMOVALS = [
+const PHASE_PROPOSAL_CONTRACT_REMOVALS = [
   /** Removed from the draft contract estimate. */
   "removed_from_estimate",
   /** The contract estimate was signed; a draft deduct change order was made. */

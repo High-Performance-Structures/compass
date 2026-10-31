@@ -53,7 +53,7 @@ import {
   type WeatherSceneView,
 } from "@/components/dashboard/portfolio-map/portfolio-weather-scene"
 
-export const TERRAIN_URL = "/maps/colorado-terrain-v1.json"
+const TERRAIN_URL = "/maps/colorado-terrain-v1.json"
 
 /** The terrain file for a state's map (Colorado keeps its original file). */
 export function terrainUrlForState(state: string): string {

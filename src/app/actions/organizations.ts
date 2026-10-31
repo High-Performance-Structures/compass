@@ -2,13 +2,12 @@
 
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { organizations, organizationMembers, type Organization, type NewOrganization } from "@/db/schema"
+import { organizations, organizationMembers, type Organization } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
-import { isDemoUser } from "@/lib/demo"
 
 export async function getOrganizations(): Promise<Organization[]> {
   try {
@@ -41,64 +40,6 @@ export async function getOrganizations(): Promise<Organization[]> {
   } catch (error) {
     console.error("Error fetching organizations:", error)
     return []
-  }
-}
-
-export async function createOrganization(
-  name: string,
-  slug: string,
-  type: "internal" | "client" | "personal" | "demo"
-): Promise<{ success: boolean; error?: string; data?: Organization }> {
-  try {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) {
-      return { success: false, error: "Unauthorized" }
-    }
-    if (isDemoUser(currentUser.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(currentUser, "organization", "create")
-
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
-      return { success: false, error: "Database not available" }
-    }
-
-    const db = getDb(env.DB)
-    const now = new Date().toISOString()
-
-    // check if slug already exists
-    const existing = await db
-      .select()
-      .from(organizations)
-      .where(eq(organizations.slug, slug))
-      .get()
-
-    if (existing) {
-      return { success: false, error: "Organization slug already exists" }
-    }
-
-    const newOrg: NewOrganization = {
-      id: crypto.randomUUID(),
-      name,
-      slug,
-      type,
-      logoUrl: null,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    }
-
-    await db.insert(organizations).values(newOrg).run()
-
-    revalidatePath("/dashboard/people")
-    return { success: true, data: newOrg as Organization }
-  } catch (error) {
-    console.error("Error creating organization:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
   }
 }
 

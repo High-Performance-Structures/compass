@@ -67,7 +67,7 @@ import {
   parseSageJobTypeId,
 } from "@/lib/sage/client-project-write"
 
-export type ProjectFamilyPhaseSummary = {
+type ProjectFamilyPhaseSummary = {
   readonly id: string
   readonly sequence: number
   readonly name: string
@@ -104,14 +104,6 @@ export type ProjectFamilySummary = {
   readonly phases: readonly ProjectFamilyPhaseSummary[]
 }
 
-export type CreateProjectFamilyInput = {
-  readonly name: string
-  readonly description: string | null
-  readonly clientName: string | null
-  readonly address: string | null
-  readonly googleDriveFolderId: string | null
-}
-
 export type CreateProjectFamilyPhaseInput = {
   readonly familyId: string
   readonly sequence: number
@@ -123,7 +115,7 @@ export type CreateProjectFamilyPhaseInput = {
   readonly authorizedAt: string | null
 }
 
-export type LinkProjectToFamilyPhaseInput = {
+type LinkProjectToFamilyPhaseInput = {
   readonly phaseId: string
   readonly projectId: string
 }
@@ -653,40 +645,6 @@ async function savePhaseTrackerLink(input: {
     createdAt: input.now,
     ...values,
   })
-}
-
-export async function createProjectFamily(
-  input: CreateProjectFamilyInput,
-): Promise<ProjectFamilyMutationResult> {
-  try {
-    const context = await requireFamilyAdminContext()
-    const now = new Date().toISOString()
-    const id = `family-${crypto.randomUUID()}`
-    await context.db.insert(projectFamilies).values({
-      id,
-      organizationId: context.organizationId,
-      name: requiredText(input.name, "Family name", 200),
-      description: nullableLimitedText(input.description, "Description", 4_000),
-      clientName: nullableLimitedText(input.clientName, "Client", 200),
-      address: nullableLimitedText(input.address, "Address", 500),
-      status: "OPEN",
-      googleDriveFolderId: nullableLimitedText(
-        input.googleDriveFolderId,
-        "Google Drive folder ID",
-        300,
-      ),
-      createdBy: context.user.id,
-      createdAt: now,
-      updatedAt: now,
-    })
-    revalidatePath("/dashboard/projects")
-    return { success: true, id }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to create project family.",
-    }
-  }
 }
 
 /**
@@ -1246,7 +1204,7 @@ export async function activateProjectFamilyPhase(
   }
 }
 
-export async function linkProjectToFamilyPhase(
+async function linkProjectToFamilyPhase(
   input: LinkProjectToFamilyPhaseInput,
 ): Promise<ProjectFamilyMutationResult> {
   try {

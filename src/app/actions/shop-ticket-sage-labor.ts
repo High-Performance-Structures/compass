@@ -20,7 +20,7 @@ const MAX_RANGE_DAYS = 120
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.")
 
-export type SageLaborRequestView = {
+type SageLaborRequestView = {
   readonly status: "queued" | "running" | "done" | "failed"
   readonly error: string | null
   readonly requestedAt: string

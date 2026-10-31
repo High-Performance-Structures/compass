@@ -47,44 +47,6 @@ export async function getCreditMemos() {
     .where(eq(projects.organizationId, orgId))
 }
 
-export async function getCreditMemo(id: string) {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // join through project to verify org
-  const rows = await db
-    .select({
-      id: creditMemos.id,
-      netsuiteId: creditMemos.netsuiteId,
-      organizationId: creditMemos.organizationId,
-      customerId: creditMemos.customerId,
-      projectId: creditMemos.projectId,
-      sourceSystem: creditMemos.sourceSystem,
-      sourceExternalId: creditMemos.sourceExternalId,
-      cashReceipt: creditMemos.cashReceipt,
-      memoNumber: creditMemos.memoNumber,
-      status: creditMemos.status,
-      issueDate: creditMemos.issueDate,
-      total: creditMemos.total,
-      amountApplied: creditMemos.amountApplied,
-      amountRemaining: creditMemos.amountRemaining,
-      memo: creditMemos.memo,
-      lineItems: creditMemos.lineItems,
-      createdAt: creditMemos.createdAt,
-      updatedAt: creditMemos.updatedAt,
-    })
-    .from(creditMemos)
-    .innerJoin(projects, eq(creditMemos.projectId, projects.id))
-    .where(and(eq(creditMemos.id, id), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  return rows[0] ?? null
-}
-
 export async function createCreditMemo(
   data: Omit<NewCreditMemo, "id" | "createdAt" | "updatedAt">
 ) {

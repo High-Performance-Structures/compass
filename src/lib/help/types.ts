@@ -1,16 +1,13 @@
 import type { Action, Resource } from "@/lib/permissions"
 import type { UserRole } from "@/lib/user-roles"
 
-export const HELP_AUDIENCES = [
-  "staff",
-  "owner",
-  "subcontractor",
-  "supplier",
-  "guest",
-] as const
-
-export type HelpAudience = (typeof HELP_AUDIENCES)[number]
-export type HelpPermission = `${Resource}:${Action}`
+export type HelpAudience =
+  | "staff"
+  | "owner"
+  | "subcontractor"
+  | "supplier"
+  | "guest"
+type HelpPermission = `${Resource}:${Action}`
 
 export type HelpAccessContext = Readonly<{
   role: UserRole

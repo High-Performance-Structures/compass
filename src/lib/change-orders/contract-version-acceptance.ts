@@ -14,17 +14,9 @@ import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-stor
 
 type Db = ReturnType<typeof getDb>
 type EstimateRow = typeof projectEstimates.$inferSelect
-
-/**
- * How a newer contract-estimate version takes effect once a contract
- * baseline exists. Either way a change order records the change.
- * - replace_contract: the new version becomes the contract baseline (e.g. for
- *   the lender); the change order documents it and lists the differences.
- * - difference_change_order: the original contract stays; the change order
- *   carries the line-by-line differences into the budget.
- */
-export const CONTRACT_VERSION_TREATMENTS = ["replace_contract", "difference_change_order"] as const
-export type ContractVersionTreatment = (typeof CONTRACT_VERSION_TREATMENTS)[number]
+export type ContractVersionTreatment =
+  | "replace_contract"
+  | "difference_change_order"
 
 export function isContractVersionTreatment(value: unknown): value is ContractVersionTreatment {
   return value === "replace_contract" || value === "difference_change_order"

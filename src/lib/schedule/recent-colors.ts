@@ -6,7 +6,7 @@ export const MAX_RECENT_SCHEDULE_COLORS = 6
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
-export function isCustomScheduleColor(value: string): boolean {
+function isCustomScheduleColor(value: string): boolean {
   return HEX_COLOR.test(value)
 }
 

@@ -3,7 +3,7 @@
 import type * as React from "react"
 import { cn } from "@/lib/utils"
 
-export type TowerSegment = {
+type TowerSegment = {
   readonly key: string
   readonly label: string
   readonly value: number

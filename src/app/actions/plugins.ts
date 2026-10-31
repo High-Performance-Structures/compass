@@ -10,7 +10,6 @@ import {
 } from "@/db/schema-plugins"
 import { getCurrentUser } from "@/lib/auth"
 import { fetchSkillFromGitHub } from "@/lib/agent/plugins/skills-client"
-import { clearRegistryCache } from "@/lib/agent/plugins/registry"
 import { isDemoUser } from "@/lib/demo"
 
 function skillId(source: string): string {
@@ -93,8 +92,6 @@ export async function installSkill(source: string): Promise<
     createdAt: now,
   })
 
-  clearRegistryCache()
-
   return {
     success: true,
     plugin: { id, name: frontmatter.name },
@@ -132,7 +129,6 @@ export async function uninstallSkill(pluginId: string): Promise<
     .delete(plugins)
     .where(eq(plugins.id, pluginId))
 
-  clearRegistryCache()
   return { success: true }
 }
 
@@ -182,7 +178,6 @@ export async function toggleSkill(
     createdAt: now,
   })
 
-  clearRegistryCache()
   return { success: true }
 }
 

@@ -3,7 +3,7 @@ import type { ProjectDepartment } from "@/lib/project-branding"
 import { groupEstimateAssemblies, type EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
 
-export const ESTIMATE_TEXT_TEMPLATE_TYPES = [
+const ESTIMATE_TEXT_TEMPLATE_TYPES = [
   "terms",
   "introduction",
   "closing",
@@ -87,7 +87,7 @@ export type ClientEstimatePhase = {
   readonly lines: readonly ClientEstimateLine[]
 }
 
-export type ClientEstimateTaxGroup = {
+type ClientEstimateTaxGroup = {
   readonly key: string
   readonly label: string | null
   readonly rateBasisPoints: number
@@ -275,7 +275,7 @@ export function builtInEstimateTextTemplates(input: {
   )
 }
 
-export function estimateTextTemplateIdentity(
+function estimateTextTemplateIdentity(
   template: Pick<
     EstimateTextTemplateOption,
     "departmentCode" | "templateType" | "name"

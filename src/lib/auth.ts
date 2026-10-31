@@ -1,5 +1,5 @@
 import { cache } from "react"
-import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
+import { withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
@@ -875,27 +875,10 @@ export async function ensureUserExists(workosUser: {
   return newUser as User
 }
 
-export async function handleSignOut() {
-  await signOut()
-}
-
 export async function requireAuth(): Promise<AuthUser> {
   const user = await getCurrentUser()
   if (!user) {
     throw new Error("Unauthorized")
   }
-  return user
-}
-
-export async function requireEmailVerified(): Promise<AuthUser> {
-  const user = await requireAuth()
-
-  if (isWorkOSConfigured()) {
-    const session = await withAuth()
-    if (session?.user && !session.user.emailVerified) {
-      throw new Error("Email not verified")
-    }
-  }
-
   return user
 }

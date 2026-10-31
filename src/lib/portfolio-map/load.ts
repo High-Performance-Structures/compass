@@ -51,7 +51,7 @@ export type PortfolioHiddenJob = PortfolioUnplacedJob & {
 
 /** The job's charge with any per-job adjustments applied (see travel-overrides). */
 /** Where the site lookup stands: found, tried and not matched, not tried yet, or no address to try. */
-export type SiteLookupState = "found" | "not_found" | "pending" | "no_address"
+type SiteLookupState = "found" | "not_found" | "pending" | "no_address"
 
 export type PortfolioJobTravel = EffectiveTravelCharge & {
   readonly siteLookup: SiteLookupState

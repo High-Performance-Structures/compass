@@ -1,4 +1,4 @@
-export type CompassCalendarVisibility =
+type CompassCalendarVisibility =
   | "organization"
   | "participants"
   | "private"
@@ -33,7 +33,7 @@ export function calendarDetailLevel(
   return "hidden"
 }
 
-export type GoogleCalendarSyncDirection = "push" | "pull" | "two_way"
+type GoogleCalendarSyncDirection = "push" | "pull" | "two_way"
 export type GoogleCalendarSyncAction =
   | "noop"
   | "push"

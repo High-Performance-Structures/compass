@@ -7,7 +7,7 @@ export type ProjectInteractionTypeOption = {
   readonly label: string
 }
 
-export const PROJECT_INTERACTION_TYPE_DEFINITIONS = [
+const PROJECT_INTERACTION_TYPE_DEFINITIONS = [
   { id: "call", label: "Call" },
   { id: "email", label: "Email" },
   { id: "sms", label: "Text" },

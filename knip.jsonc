@@ -1,0 +1,69 @@
+{
+  // Dead-code guard. `bun run knip` runs in CI and fails on unused files,
+  // unused exports, unused exported types and duplicate exports.
+  // If knip flags something you need, delete it or make it module-private.
+  // Only add an exception here when the code is intentionally kept, and say why.
+  // packages/* are standalone projects with their own lockfiles (not workspaces
+  // of this package.json), so knip does not scan them.
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // The worker entry (custom-worker.ts) comes from knip's wrangler plugin.
+    "open-next.config.ts",
+    // next.config.ts aliases @/lib/cloudflare-context to this file in production builds.
+    "src/lib/cloudflare-context.production.ts",
+    // Desktop shell and the Capacitor field shell.
+    "electron/*.ts",
+    "mobile-shell-src/app.ts",
+    // Maintenance scripts import from src/.
+    "scripts/**/*.{mjs,ts,tsx}",
+    // Tests: Vitest, Playwright, and *.test.ts files kept next to their module.
+    "e2e/**/*.ts",
+    "__tests__/**/*.ts",
+    "src/**/__tests__/**/*.{ts,tsx}",
+    "src/**/*.test.{ts,tsx}",
+    "mobile-shell-src/**/*.test.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "electron/**/*.ts",
+    "mobile-shell-src/**/*.ts"
+  ],
+  "ignore": [
+    // shadcn/ui primitives: kept as a kit even when a primitive is unused.
+    "src/components/ui/**",
+    // Legacy NetSuite module: preserved as reference architecture (see AGENTS.md).
+    "src/lib/netsuite/**",
+    "src/components/netsuite/**",
+    "src/app/actions/netsuite-sync.ts",
+    // Offline sync engine: the desktop shell uses it (getBackupQueueCount).
+    "src/lib/sync/**",
+    // Schema and DB providers belong to the data layer and are reviewed with migrations.
+    "src/db/**"
+  ],
+  "ignoreIssues": {
+    // Vendored AI Elements kit: keep the sub-components of elements we use.
+    "src/components/ai/**": ["exports", "types"],
+    // New shared layer (architecture standard, #1048/#1049/#1052): later PRs
+    // adopt these helpers, so exports that have no caller yet are intentional.
+    // Remove an entry once its module is fully adopted.
+    "src/lib/server/action-context.ts": ["exports", "types"],
+    "src/lib/action-result.ts": ["exports", "types"],
+    "src/lib/format.ts": ["exports", "types"],
+    "src/lib/shared/guards.ts": ["exports", "types"],
+    "src/lib/shared/env.ts": ["exports", "types"],
+    "src/lib/projects/project-list.ts": ["exports", "types"],
+    "src/hooks/use-alert-count.ts": ["exports", "types"],
+    "src/components/notifications/notification-center-store.ts": ["exports", "types"],
+    "src/components/notifications/notification-center-provider.tsx": ["exports", "types"]
+  },
+  "rules": {
+    // Dependency hygiene is out of scope for this guard (several packages are
+    // loaded by CSS, Capacitor native config or scripts that knip cannot see).
+    "dependencies": "off",
+    "devDependencies": "off",
+    "optionalPeerDependencies": "off",
+    "unlisted": "off",
+    "binaries": "off",
+    "unresolved": "off"
+  }
+}

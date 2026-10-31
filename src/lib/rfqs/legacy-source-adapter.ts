@@ -6,7 +6,7 @@ import {
   type RfqHistoricalScope,
 } from "./historical-requests"
 
-export type O152MoneyDerivation = {
+type O152MoneyDerivation = {
   readonly requestId: string
   readonly sourceBidAmount: number
   readonly sourceTotalPlainDecimal: string
@@ -20,10 +20,6 @@ export type O152Capture = {
   readonly payloadJson: string
   readonly sourceRow?: Record<string, unknown>
 }
-
-export type O152CaptureResult =
-  | { readonly success: true; readonly capture: O152Capture }
-  | { readonly success: false; readonly errors: readonly string[] }
 
 export type O152AdapterResult =
   | {
@@ -111,52 +107,6 @@ function validCalendarDate(value: string): boolean {
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
   const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
   return daysInMonth !== undefined && day <= daysInMonth
-}
-
-function pathValue(value: unknown, keys: readonly string[]): unknown {
-  let current = value
-  for (const key of keys) {
-    if (!record(current)) return undefined
-    current = current[key]
-  }
-  return current
-}
-
-function extractRawResponseRows(receipt: unknown): readonly JsonRecord[] | null {
-  const rawReceipts = pathValue(receipt, ["rawReceipts"])
-  if (!Array.isArray(rawReceipts)) return null
-  const parentReceipts = rawReceipts.filter((item) =>
-    record(item) && item.name === "exact_parent_rfq_response_select_star"
-  )
-  if (parentReceipts.length !== 1) return null
-  const rawResponse = pathValue(parentReceipts[0], ["rawResponse"])
-  if (!Array.isArray(rawResponse) || rawResponse.length !== 1) return null
-  const responseEnvelope = rawResponse[0]
-  const results = pathValue(responseEnvelope, ["results"])
-  if (!Array.isArray(results)) return null
-  if (!results.every(record)) return null
-  return results
-}
-
-/** Extracts the exact raw_payload_json string from the sealed local SELECT receipt. */
-export function extractO152CaptureFromReceipt(receipt: unknown): O152CaptureResult {
-  const rows = extractRawResponseRows(receipt)
-  if (rows === null || rows.length !== 1) {
-    return { success: false, errors: ["o152_parent_response_row_missing_or_ambiguous"] }
-  }
-  const row = rows[0]
-  if (row === undefined) return { success: false, errors: ["o152_parent_response_row_missing_or_ambiguous"] }
-  const payloadJson = row.raw_payload_json
-  if (typeof payloadJson !== "string" || payloadJson.length === 0) {
-    return { success: false, errors: ["o152_raw_payload_json_missing"] }
-  }
-  try {
-    const payload: unknown = JSON.parse(payloadJson)
-    if (!record(payload)) return { success: false, errors: ["o152_raw_payload_not_object"] }
-    return { success: true, capture: { payload, payloadJson, sourceRow: row } }
-  } catch {
-    return { success: false, errors: ["o152_raw_payload_json_invalid"] }
-  }
 }
 
 function attachmentEvidence(

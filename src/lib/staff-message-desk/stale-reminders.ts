@@ -9,7 +9,7 @@ import {
   type StaffMessageAgingThresholds,
 } from "@/lib/staff-message-desk/triage"
 
-export const STALE_REMINDER_EVENT = "staff_message.stale"
+const STALE_REMINDER_EVENT = "staff_message.stale"
 
 type Db = ReturnType<typeof getDb>
 

@@ -68,7 +68,7 @@ export type ProjectTemplateContentItem = {
   readonly payloadJson: string | null
 }
 
-export type ProjectTemplateModuleSummary = {
+type ProjectTemplateModuleSummary = {
   readonly moduleType: string
   readonly sourceItemCount: number
   readonly normalizationStatus: string
@@ -767,47 +767,6 @@ export async function applyProjectTemplate(input: {
   } catch (error) {
     console.error("Unable to apply project template", error)
     return { success: false, error: "Unable to apply the template." }
-  }
-}
-
-export async function setProjectTemplateLifecycle(input: {
-  readonly templateId: string
-  readonly lifecycleStatus: "active" | "inactive"
-}): Promise<ActionResult> {
-  try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "schedule", "update")
-    ensureInternalUser(user.role)
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const template = await db
-      .select({ id: projectTemplates.id, reviewStatus: projectTemplates.reviewStatus })
-      .from(projectTemplates)
-      .where(
-        and(
-          eq(projectTemplates.id, input.templateId),
-          eq(projectTemplates.organizationId, organizationId)
-        )
-      )
-      .get()
-    if (!template) return { success: false, error: "Template not found." }
-    if (input.lifecycleStatus === "active" && template.reviewStatus !== "verified") {
-      return { success: false, error: "Verify the template before activating it." }
-    }
-    await db
-      .update(projectTemplates)
-      .set({
-        lifecycleStatus: input.lifecycleStatus,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(projectTemplates.id, input.templateId))
-    revalidatePath("/dashboard/templates")
-    return { success: true }
-  } catch (error) {
-    console.error("Unable to update template status", error)
-    return { success: false, error: "Unable to update template status." }
   }
 }
 

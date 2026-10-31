@@ -21,7 +21,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
 
-export type BuildertrendCutoverStatusCount = {
+type BuildertrendCutoverStatusCount = {
   readonly status: string
   readonly count: number
 }

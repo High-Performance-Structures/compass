@@ -51,38 +51,3 @@ export function PropSkeleton({
 
   return <Skeleton className={cn(baseClasses, className)} />
 }
-
-// Convenience components for common patterns
-export function TextSkeleton({ className }: { className?: string }) {
-  return <PropSkeleton type="text" className={className} />
-}
-
-export function BadgeSkeleton({ className }: { className?: string }) {
-  return <PropSkeleton type="badge" className={className} />
-}
-
-export function TableRowSkeleton({
-  columns = 4,
-  className,
-}: {
-  columns?: number
-  className?: string
-}) {
-  return (
-    <div className={cn("flex items-center gap-4 py-3", className)}>
-      {Array.from({ length: columns }).map((_, i) => (
-        <Skeleton key={i} className="h-4 flex-1" />
-      ))}
-    </div>
-  )
-}
-
-export function CardSkeleton({ className }: { className?: string }) {
-  return (
-    <div className={cn("space-y-3 rounded-lg border p-4", className)}>
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-20 w-full" />
-    </div>
-  )
-}

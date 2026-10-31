@@ -1,4 +1,4 @@
-export const DISPLAY_COLORS = [
+const DISPLAY_COLORS = [
   "blue",
   "green",
   "orange",
@@ -25,7 +25,7 @@ export const DEFAULT_DISPLAY_COLOR_PALETTE: DisplayColorPalette = {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
-export function isCustomDisplayColor(
+function isCustomDisplayColor(
   value: string | null | undefined
 ): value is string {
   return typeof value === "string" && HEX_COLOR.test(value)

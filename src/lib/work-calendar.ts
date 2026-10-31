@@ -4,7 +4,7 @@ export type WorkCalendarProjectIdentity = {
   readonly projectNumber: string | null
 }
 
-export const WORK_CALENDAR_EVENT_TYPES = [
+const WORK_CALENDAR_EVENT_TYPES = [
   "meeting",
   "appointment",
   "inspection",
@@ -17,7 +17,7 @@ export const WORK_CALENDAR_EVENT_TYPES = [
 export type WorkCalendarEventType =
   (typeof WORK_CALENDAR_EVENT_TYPES)[number]
 
-export const WORK_CALENDAR_EVENT_VISIBILITIES = [
+const WORK_CALENDAR_EVENT_VISIBILITIES = [
   "organization",
   "participants",
   "busy",

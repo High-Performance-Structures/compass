@@ -56,7 +56,7 @@ import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 type CompassDb = ReturnType<typeof getDb>
 
-export type NuTechPurchaseOrderOption = {
+type NuTechPurchaseOrderOption = {
   readonly id: string
   readonly number: string | null
   readonly title: string
@@ -65,7 +65,7 @@ export type NuTechPurchaseOrderOption = {
   readonly amount: number | null
 }
 
-export type NuTechEstimateSummary = {
+type NuTechEstimateSummary = {
   readonly id: string
   readonly number: string
   readonly status: string
@@ -73,7 +73,7 @@ export type NuTechEstimateSummary = {
   readonly updatedAt: string
 }
 
-export type NuTechOrderRecord = {
+type NuTechOrderRecord = {
   readonly id: string
   /** The order's number on its job (1, 2, …). */
   readonly orderNumber: number
@@ -122,7 +122,7 @@ export type NuTechTaxDistrict = {
   readonly rateBasisPoints: number
 }
 
-export type NuTechCatalogProductOption = {
+type NuTechCatalogProductOption = {
   readonly id: string
   readonly manufacturerSku: string
   readonly name: string
@@ -139,7 +139,7 @@ export type NuTechCatalogProductOption = {
   readonly taxable: boolean
 }
 
-export type NuTechOrderItemRecord = {
+type NuTechOrderItemRecord = {
   readonly id: string
   readonly productId: string
   readonly manufacturerSku: string

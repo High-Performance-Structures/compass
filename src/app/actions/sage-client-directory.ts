@@ -13,7 +13,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { getSageContactBridgeSecret } from "@/lib/sage/bridge-auth"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 
-export type SageClientDirectoryRow = {
+type SageClientDirectoryRow = {
   readonly sageRecordId: string
   readonly sageClientNumber: string
   readonly name: string

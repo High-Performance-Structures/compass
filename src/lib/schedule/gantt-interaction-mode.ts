@@ -1,6 +1,7 @@
-export const GANTT_SCROLL_MODES = ["default", "power"] as const
 
-export type GanttScrollMode = (typeof GANTT_SCROLL_MODES)[number]
+export type GanttScrollMode =
+  | "default"
+  | "power"
 
 export const DEFAULT_GANTT_SCROLL_MODE: GanttScrollMode = "default"
 

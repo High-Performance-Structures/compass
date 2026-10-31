@@ -88,7 +88,7 @@ async function meetGet(accessToken: string, path: string): Promise<unknown> {
  * code is unique to its calendar event, so every conference on it belongs to
  * this meeting.
  */
-export async function lookupMeetingTranscripts(input: {
+async function lookupMeetingTranscripts(input: {
   readonly accessToken: string
   readonly meetingCode: string
   readonly endsAt: string

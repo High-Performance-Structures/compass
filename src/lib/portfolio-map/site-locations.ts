@@ -12,7 +12,7 @@ const ATTEMPT_COOLDOWN_MS = 10 * 60 * 1000
 // Background work after a response gets about 30 seconds. Start no new
 // lookup after LOOKUP_START_BUDGET_MS, and stop waiting at LOOKUP_DEADLINE_MS.
 export const LOOKUP_START_BUDGET_MS = 15_000
-export const LOOKUP_DEADLINE_MS = 25_000
+const LOOKUP_DEADLINE_MS = 25_000
 
 export type SiteLocationRow = {
   readonly id: string
@@ -73,7 +73,7 @@ function timeout(ms: number): Promise<{ readonly status: "timeout" }> {
   return new Promise((resolve) => setTimeout(() => resolve({ status: "timeout" }), Math.max(0, ms)))
 }
 
-export type SiteLocationWrite = {
+type SiteLocationWrite = {
   readonly siteLocationAddress?: string
   readonly siteLocationStatus?: "found" | "not_found" | null
   readonly siteLatitude?: number | null

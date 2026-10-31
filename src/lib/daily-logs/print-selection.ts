@@ -6,7 +6,7 @@ type PrintableDailyLog = {
   readonly authorName: string | null
 }
 
-export function dailyLogAuthorValue(log: PrintableDailyLog): string {
+function dailyLogAuthorValue(log: PrintableDailyLog): string {
   return log.authorName ?? UNKNOWN_DAILY_LOG_AUTHOR
 }
 

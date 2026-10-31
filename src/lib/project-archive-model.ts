@@ -1,6 +1,6 @@
 import { z } from "zod/v4"
 
-export const ARCHIVE_KINDS = ["daily_log", "message", "owner_update", "rfi", "rfq", "other"] as const
+const ARCHIVE_KINDS = ["daily_log", "message", "owner_update", "rfi", "rfq", "other"] as const
 export const archivePublicationSchema = z.object({
   title: z.string().trim().min(1).max(200),
   kind: z.enum(ARCHIVE_KINDS),

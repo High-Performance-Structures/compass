@@ -35,8 +35,8 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 type Db = ReturnType<typeof getDb>
 
 /** Lets Compass make calendars and manage only the calendars it made. */
-export const MY_COMPASS_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created"
-export const MY_COMPASS_CALENDAR_NAME = "My Compass"
+const MY_COMPASS_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created"
+const MY_COMPASS_CALENDAR_NAME = "My Compass"
 const OPEN_PROJECT_STATUSES = ["OPEN", "WARRANTY"] as const
 const OPEN_TODO_STATUSES = ["incomplete", "open", "in_progress"] as const
 const TODO_RECORD_TYPES = ["todo", "staff_task", "task"] as const
@@ -112,7 +112,7 @@ export function userIsEligible(
 }
 
 /** Everything that belongs on this person's calendar right now. */
-export async function desiredItems(input: {
+async function desiredItems(input: {
   readonly db: Db
   readonly organizationId: string
   readonly settings: MyCompassCalendarSettings

@@ -1,9 +1,9 @@
 "use client"
 
-import { useSyncExternalStore, useCallback, useEffect, useState } from "react"
+import { useSyncExternalStore, useCallback, useEffect } from "react"
 import { useDesktop } from "./use-desktop"
 
-export type SyncStatus = "idle" | "syncing" | "error" | "offline"
+type SyncStatus = "idle" | "syncing" | "error" | "offline"
 
 export interface SyncState {
   status: SyncStatus
@@ -92,39 +92,4 @@ export function useTriggerSync() {
       return false
     }
   }, [isDesktop])
-}
-
-// Hook for offline detection.
-export function useDesktopOnlineStatus(): boolean {
-  const isDesktopApp = useDesktop()
-  const [online, setOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true,
-  )
-
-  useEffect(() => {
-    if (!isDesktopApp) {
-      // Web fallback
-      const handleOnline = () => setOnline(true)
-      const handleOffline = () => setOnline(false)
-      window.addEventListener("online", handleOnline)
-      window.addEventListener("offline", handleOffline)
-      return () => {
-        window.removeEventListener("online", handleOnline)
-        window.removeEventListener("offline", handleOffline)
-      }
-    }
-
-    // Electron's Chromium webview supports navigator online/offline events.
-    const handleOnline = () => setOnline(true)
-    const handleOffline = () => setOnline(false)
-    setOnline(navigator.onLine)
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [isDesktopApp])
-
-  return online
 }

@@ -1,4 +1,4 @@
-export type SageConnectionMode = "sql-server"
+type SageConnectionMode = "sql-server"
 
 export type SageBridgeStatus = {
   readonly configured: boolean

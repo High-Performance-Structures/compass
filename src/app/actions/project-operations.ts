@@ -120,7 +120,7 @@ export type ProjectOperationItem = {
   readonly updatedAt: string
 }
 
-export type ProjectPurchaseOrderLineItem = {
+type ProjectPurchaseOrderLineItem = {
   readonly id: string
   readonly operationId: string
   readonly lineNumber: number
@@ -161,7 +161,7 @@ export type ProjectPurchaseOrderFormOptions = {
   readonly costCodes: readonly ProjectPurchaseOrderCostCodeOption[]
 }
 
-export type ProjectRfqScopeLineItem = {
+type ProjectRfqScopeLineItem = {
   readonly lineNumber: number
   readonly description: string
   readonly phaseCode: string | null
@@ -178,7 +178,7 @@ export type ProjectRfqCostCodeOption = {
   readonly divisionLabel: string
 }
 
-export type ProjectRfqDocumentLinkItem = {
+type ProjectRfqDocumentLinkItem = {
   readonly lineNumber: number
   readonly label: string
   readonly url: string
@@ -197,7 +197,7 @@ export type ProjectRfqItem = ProjectOperationItem & {
   readonly vendorResponse: PortalRfqVendorResponse | null
 }
 
-export type NextScheduleItem = {
+type NextScheduleItem = {
   readonly id: string
   readonly title: string
   readonly startDate: string
@@ -215,7 +215,7 @@ export type ProjectOperationsSummary = {
   readonly commitments: readonly ProjectOperationItem[]
 }
 
-export type ProjectSageSyncItemKind =
+type ProjectSageSyncItemKind =
   | "project_handoff"
   | "purchase_order"
   | "task"

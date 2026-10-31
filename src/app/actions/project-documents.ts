@@ -37,7 +37,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 type DocumentsDb = ReturnType<typeof getDb>
 
-export type ProjectDocumentSourceFile = {
+type ProjectDocumentSourceFile = {
   readonly id: string
   readonly kind: "file" | "folder"
   readonly name: string
@@ -47,7 +47,7 @@ export type ProjectDocumentSourceFile = {
   readonly webViewLink: string | null
 }
 
-export type ProjectDocumentReference = {
+type ProjectDocumentReference = {
   readonly estimateId: string
   readonly estimateLabel: string
   readonly estimateStatus: string

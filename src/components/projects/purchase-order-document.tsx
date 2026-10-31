@@ -4,7 +4,7 @@ import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import type { ProjectBrand } from "@/lib/project-branding"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 
-export type PurchaseOrderDocumentLine = {
+type PurchaseOrderDocumentLine = {
   readonly id: string
   readonly lineNumber: number
   readonly description: string

@@ -40,7 +40,7 @@ export type GreetingCardRecipient = {
   readonly postalCode: string
 }
 
-export type GreetingCardGift = {
+type GreetingCardGift = {
   readonly provider: "giftbit"
   readonly amountCents: number
   readonly region: "USA"

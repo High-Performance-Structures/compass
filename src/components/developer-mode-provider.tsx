@@ -91,14 +91,3 @@ export function DeveloperOnly({
   const { developerModeEnabled } = useDeveloperMode()
   return <>{developerModeEnabled ? children : fallback}</>
 }
-
-export function WorkerOnly({
-  children,
-  fallback = null,
-}: {
-  readonly children: React.ReactNode
-  readonly fallback?: React.ReactNode
-}): React.ReactElement {
-  const { developerModeEnabled } = useDeveloperMode()
-  return <>{developerModeEnabled ? fallback : children}</>
-}

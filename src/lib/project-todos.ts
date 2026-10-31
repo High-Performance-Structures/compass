@@ -7,10 +7,7 @@ export const PROJECT_TODO_RECORD_TYPES = [
   "task",
 ] as const
 
-export type ProjectTodoRecordType =
-  (typeof PROJECT_TODO_RECORD_TYPES)[number]
-
-export const PROJECT_TODO_STATUSES = [
+const PROJECT_TODO_STATUSES = [
   "open",
   "in_progress",
   "blocked",
