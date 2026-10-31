@@ -7,6 +7,8 @@
  * dollar columns), not cents.
  */
 
+import { parseDateOnly } from "@/lib/format"
+
 export type LineItem = {
   description: string
   quantity: number
@@ -101,14 +103,13 @@ export function serializeLineItems(lines: readonly LineItem[]): string {
 }
 
 /**
- * `new Date(value).toLocaleDateString()` in the viewer's locale, exactly as
- * the financial tables have always shown it ("9/1/2026"). Kept as a named
- * wrapper because the shared formatDate renders "Sep 1, 2026". Note: a
- * date-only value parses as UTC midnight here, so west of UTC it shows the
- * previous day; that is today's visible behaviour and is left unchanged.
+ * A financial date in the viewer's locale, as the tables have always shown it
+ * ("9/1/2026"). Date-only values ("YYYY-MM-DD") are calendar dates: they used
+ * to parse as UTC midnight and so showed the previous day west of UTC.
  */
 export function localeDateText(value: string): string {
-  return new Date(value).toLocaleDateString()
+  const date = parseDateOnly(value) ?? new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString()
 }
 
 export type DerivedTotals<T> =
