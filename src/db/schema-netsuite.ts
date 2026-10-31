@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
-import { projects, customers, vendors, organizations } from "./schema"
+import { projects, customers, vendors, organizations, projectBudgetApplications, users } from "./schema"
 
 // oauth token storage (encrypted at rest)
 export const netsuiteAuth = sqliteTable("netsuite_auth", {
@@ -147,6 +147,10 @@ export const payments = sqliteTable("payments", {
   referenceNumber: text("reference_number"),
   memo: text("memo"),
   billingScope: text("billing_scope").notNull().default("construction"),
+  /** A payment is never deleted once applied; voiding it releases its allocations (0285). */
+  voidedAt: text("voided_at"),
+  voidedBy: text("voided_by").references(() => users.id, { onDelete: "set null" }),
+  voidReason: text("void_reason"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
@@ -168,6 +172,9 @@ export const payments = sqliteTable("payments", {
     index("payments_project_id_idx").on(table.projectId),
     index("payments_vendor_id_idx").on(table.vendorId),
     index("payments_customer_id_idx").on(table.customerId),
+  // Declared from drizzle/0285_payment_applications.sql.
+  index("payments_voided_by_idx").on(table.voidedBy),
+  check("payments_void_reason_check", sql`${table.voidReason} IS NULL OR length(trim(${table.voidReason})) > 0`),
 ])
 
 export const creditMemos = sqliteTable("credit_memos", {
@@ -214,6 +221,9 @@ export const invoicePaymentAllocations = sqliteTable(
     paymentId: text("payment_id").notNull(),
     allocationCents: integer("allocation_cents").notNull(),
     createdAt: text("created_at").notNull(),
+    /** Set when the payment is voided: the row stays as history and stops counting (0285). */
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
   },
   (table) => [
     uniqueIndex("invoice_payment_allocations_pair_unique").on(table.invoiceId, table.paymentId),
@@ -235,6 +245,54 @@ export const invoicePaymentAllocations = sqliteTable(
       name: "invoice_payment_allocations_payment_scope_fk",
     }).onDelete("restrict"),
     index("invoice_payment_allocations_project_id_idx").on(table.projectId),
+    // Declared from drizzle/0285_payment_applications.sql.
+    index("invoice_payment_allocations_payment_idx").on(table.paymentId),
+    index("invoice_payment_allocations_released_by_idx").on(table.releasedBy),
+  ],
+)
+
+/**
+ * A received payment applied to a billed pay application (G702 draw). The
+ * draw's paid and open amounts are the sum of its unreleased rows; nothing is
+ * copied onto the pay application. Voiding the payment releases the rows.
+ */
+export const payApplicationPaymentAllocations = sqliteTable(
+  "pay_application_payment_allocations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "restrict" }),
+    paymentId: text("payment_id").notNull(),
+    allocationCents: integer("allocation_cents").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("pay_application_payment_allocations_pair_unique").on(table.applicationId, table.paymentId),
+    index("pay_application_payment_allocations_payment_idx").on(table.paymentId),
+    index("pay_application_payment_allocations_scope_idx").on(table.organizationId, table.projectId),
+    index("pay_application_payment_allocations_project_id_idx").on(table.projectId),
+    index("pay_application_payment_allocations_created_by_idx").on(table.createdBy),
+    index("pay_application_payment_allocations_released_by_idx").on(table.releasedBy),
+    check(
+      "pay_application_payment_allocations_positive_check",
+      sql`typeof(${table.allocationCents}) = 'integer' AND ${table.allocationCents} BETWEEN 1 AND 9007199254740991`,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [projects.organizationId, projects.id],
+      name: "pay_application_payment_allocations_project_scope_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.projectId, table.paymentId],
+      foreignColumns: [payments.organizationId, payments.projectId, payments.id],
+      name: "pay_application_payment_allocations_payment_scope_fk",
+    }).onDelete("restrict"),
   ],
 )
 
@@ -286,5 +344,6 @@ export type CreditMemo = typeof creditMemos.$inferSelect
 export type NewCreditMemo = typeof creditMemos.$inferInsert
 export type InvoicePaymentAllocation = typeof invoicePaymentAllocations.$inferSelect
 export type NewInvoicePaymentAllocation = typeof invoicePaymentAllocations.$inferInsert
+export type PayApplicationPaymentAllocation = typeof payApplicationPaymentAllocations.$inferSelect
 export type InvoiceCreditAllocation = typeof invoiceCreditAllocations.$inferSelect
 export type NewInvoiceCreditAllocation = typeof invoiceCreditAllocations.$inferInsert

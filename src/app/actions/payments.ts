@@ -5,6 +5,7 @@ import { payments, type NewPayment, type Payment } from "@/db/schema-netsuite"
 import { projects } from "@/db/schema"
 import { revalidatePath } from "next/cache"
 import type { ActionDone, ActionFailure } from "@/lib/action-result"
+import { toCents } from "@/lib/format"
 import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
 import { isBillingScope } from "@/lib/financials/billing-scope"
 import {
@@ -14,9 +15,17 @@ import {
   PROJECT_NOT_FOUND,
 } from "@/lib/domain/financials/access"
 import { deletePaymentRow, insertPayment, updatePaymentRow } from "@/lib/domain/financials/store"
+import { paymentHasAllocations } from "@/lib/domain/financials/receivables"
 
 const BILLING_SCOPE_ERROR = "Choose construction or preconstruction billing."
 const NOT_FOUND = "Payment not found or access denied"
+const APPLIED = "This payment is applied to a pay application or invoice. Void it with a reason instead."
+
+/** Voiding goes through the received-payment void action, never a plain edit. */
+function withoutVoidFields<T extends Partial<NewPayment>>(data: T): Omit<T, "voidedAt" | "voidedBy" | "voidReason"> {
+  const { voidedAt: _voidedAt, voidedBy: _voidedBy, voidReason: _voidReason, ...rest } = data
+  return rest
+}
 
 export async function getPayments(): Promise<Payment[]> {
   const { db, organizationId } = await financeReadContext()
@@ -43,6 +52,9 @@ export async function getPayments(): Promise<Payment[]> {
       referenceNumber: payments.referenceNumber,
       memo: payments.memo,
       billingScope: payments.billingScope,
+      voidedAt: payments.voidedAt,
+      voidedBy: payments.voidedBy,
+      voidReason: payments.voidReason,
       createdAt: payments.createdAt,
       updatedAt: payments.updatedAt,
     })
@@ -66,7 +78,7 @@ export async function createPayment(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    const safeData = omitOwnerArSourceFields(data)
+    const safeData = withoutVoidFields(omitOwnerArSourceFields(data))
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
       return { success: false, error: BILLING_SCOPE_ERROR }
     }
@@ -102,7 +114,14 @@ export async function updatePayment(
 
     // verify payment belongs to org via project
     const [existing] = await db
-      .select({ projectId: payments.projectId })
+      .select({
+        projectId: payments.projectId,
+        amount: payments.amount,
+        customerId: payments.customerId,
+        vendorId: payments.vendorId,
+        paymentType: payments.paymentType,
+        billingScope: payments.billingScope,
+      })
       .from(payments)
       .innerJoin(projects, eq(payments.projectId, projects.id))
       .where(and(eq(payments.id, id), eq(projects.organizationId, organizationId)))
@@ -112,9 +131,20 @@ export async function updatePayment(
       return { success: false, error: NOT_FOUND }
     }
 
-    const safeData = omitOwnerArSourceFields(data)
+    const safeData = withoutVoidFields(omitOwnerArSourceFields(data))
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
       return { success: false, error: BILLING_SCOPE_ERROR }
+    }
+    // An applied payment keeps its amount, customer and project; void and re-record to change them.
+    const changesApplication =
+      (safeData.amount !== undefined && toCents(safeData.amount) !== toCents(existing.amount)) ||
+      (safeData.projectId !== undefined && safeData.projectId !== existing.projectId) ||
+      (safeData.customerId !== undefined && safeData.customerId !== existing.customerId) ||
+      (safeData.vendorId !== undefined && safeData.vendorId !== existing.vendorId) ||
+      (safeData.paymentType !== undefined && safeData.paymentType !== existing.paymentType) ||
+      (safeData.billingScope !== undefined && safeData.billingScope !== existing.billingScope)
+    if (changesApplication && (await paymentHasAllocations(db, id))) {
+      return { success: false, error: APPLIED }
     }
     if (
       safeData.projectId !== undefined &&
@@ -153,6 +183,10 @@ export async function deletePayment(id: string): Promise<ActionDone> {
 
     if (!existing) {
       return { success: false, error: NOT_FOUND }
+    }
+
+    if (await paymentHasAllocations(db, id)) {
+      return { success: false, error: APPLIED }
     }
 
     await deletePaymentRow(db, id)

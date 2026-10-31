@@ -4,6 +4,7 @@ import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { projectBudgetApplications, projectContractDeposits, projectOperations, projects } from "@/db/schema"
+import { payApplicationPaymentAllocations } from "@/db/schema-netsuite"
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
@@ -49,7 +50,7 @@ function application(id: string, status: string, createdAt: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   sqlite = new Database(":memory:")
-  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits]) createTable(table)
+  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits, payApplicationPaymentAllocations]) createTable(table)
   const db = drizzle(sqlite)
   db.insert(projects).values({ id: "bishop", name: "Ezell Residence - Bishop Built", projectNumber: "H-430-1900", organizationId: "org", createdAt: "t", updatedAt: "t" }).run()
   db.insert(projectBudgetApplications).values(application("app-1", "internal_review", "2026-10-16")).run()
@@ -86,6 +87,18 @@ describe("approving a pay application for billing", () => {
     await setProjectOwnerPayApplicationSageInvoice("bishop", "app-1", "")
     expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(true)
     expect(row("app-1")).toEqual({ status: "internal_review", owner_visible: 0, billed_by: null, sync_status: "needs_review", sage_invoice_number: null })
+  })
+
+  it("won't undo while a payment is applied to the draw", async () => {
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    const insert = sqlite.prepare(
+      "INSERT INTO pay_application_payment_allocations (id, organization_id, project_id, application_id, payment_id, allocation_cents, created_at, released_at) VALUES (?, 'org', 'bishop', 'app-1', ?, 100, 't', ?)"
+    )
+    insert.run("alloc-1", "pay-1", null)
+    const blocked = await undoProjectOwnerPayApplicationBilling("bishop", "app-1")
+    expect(blocked).toEqual({ success: false, error: "Payments are recorded against this draw. Void them first." })
+    sqlite.prepare("UPDATE pay_application_payment_allocations SET released_at = 'voided'").run()
+    expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(true)
   })
 
   it("won't undo once a later draw has been started", async () => {

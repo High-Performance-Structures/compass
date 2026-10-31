@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { Invoice } from "@/db/schema-netsuite"
@@ -14,7 +15,7 @@ import {
   selectColumn,
   type BadgeVariant,
 } from "@/components/financials/record-columns"
-import { localeDateText } from "@/lib/domain/financials/rules"
+import { invoiceAcceptsPayments, localeDateText } from "@/lib/domain/financials/rules"
 import { formatDollars } from "@/lib/format"
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
@@ -35,6 +36,12 @@ interface InvoicesTableProps {
 }
 
 const SEARCH = { columnId: "invoiceNumber", placeholder: "Search by invoice number..." }
+
+/** Payments are recorded on the project's financials, where the customer's other open items are. */
+function recordPaymentHref(invoice: Invoice): string | null {
+  if (!invoice.projectId || invoice.amountDue <= 0 || !invoiceAcceptsPayments(invoice.status)) return null
+  return `/dashboard/projects/${encodeURIComponent(invoice.projectId)}/financials?recordPayment=${encodeURIComponent(`invoice:${invoice.id}`)}`
+}
 
 export function InvoicesTable({
   invoices,
@@ -94,7 +101,20 @@ export function InvoicesTable({
       },
     },
     dollarsColumn<Invoice>("total", "Total", (inv) => inv.total),
+    dollarsColumn<Invoice>("amountPaid", "Paid", (inv) => inv.amountPaid),
     dollarsColumn<Invoice>("amountDue", "Amount Due", (inv) => inv.amountDue),
+    {
+      id: "recordPayment",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const href = recordPaymentHref(row.original)
+        return href ? (
+          <Link href={href} className="text-sm text-primary hover:underline">
+            Record payment
+          </Link>
+        ) : null
+      },
+    },
     actionsColumn<Invoice>(onEdit, onDelete),
   ]
 

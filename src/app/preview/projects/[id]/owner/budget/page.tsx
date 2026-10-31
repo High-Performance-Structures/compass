@@ -13,6 +13,8 @@ import {
 } from "@tabler/icons-react"
 
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
+import { getOwnerPayApplicationBalances } from "@/app/actions/received-payments"
+import { formatCents } from "@/lib/format"
 import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { printPreviewHref } from "@/lib/print/print-documents"
 import {
@@ -97,6 +99,11 @@ export default async function OwnerBudgetPage({
 
   // Deposit requests are extra; the page still shows without them.
   const depositRequests: readonly DepositRequestSummary[] = await getProjectDepositRequests(id).catch(() => [])
+  // Payments recorded against billed draws; the page still shows without them.
+  const balanceResult = await getOwnerPayApplicationBalances(id).catch(() => null)
+  const balances = new Map(
+    balanceResult?.success ? balanceResult.data.map((entry) => [entry.applicationId, entry]) : []
+  )
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
@@ -186,6 +193,10 @@ export default async function OwnerBudgetPage({
               <div className="mt-4 divide-y border">
                 {budget.applications.map((application, index) => {
                   const payment = budgetPaymentBreakdown(application)
+                  const balance = balances.get(application.id)
+                  const paidLabel = balance && balance.paidState !== "open"
+                    ? (balance.paidState === "paid" ? "Paid" : "Partially paid")
+                    : null
 
                   return (
                     <article
@@ -199,7 +210,7 @@ export default async function OwnerBudgetPage({
                           </p>
                           {index === 0 && <Badge>{application.status === "paid_in_full" ? "Final" : "Current"}</Badge>}
                           <Badge variant="outline">
-                            {statusLabel(application.status)}
+                            {paidLabel ?? statusLabel(application.status)}
                           </Badge>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -210,6 +221,9 @@ export default async function OwnerBudgetPage({
                             : <>{money(payment.applicationTotal)} application total{" · "}{payment.depositApplied > 0
                               ? `${money(payment.currentPaymentDue)} due after ${money(payment.depositApplied)} deposit`
                               : `${money(payment.currentPaymentDue)} current payment`}</>}
+                          {balance && balance.paidCents > 0 && (
+                            <>{" · "}{formatCents(balance.paidCents)} paid · {formatCents(balance.openCents)} outstanding</>
+                          )}
                           {" · "}
                           {money(application.contractSumToDate)} contract to date
                         </p>
