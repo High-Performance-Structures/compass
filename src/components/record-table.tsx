@@ -38,6 +38,7 @@ export function useRecordTable<T>({
   resetKey,
   enableSelection = false,
   initialItemId = null,
+  revealReady = true,
 }: {
   readonly data: readonly T[]
   readonly columns: readonly ColumnDef<T>[]
@@ -45,6 +46,7 @@ export function useRecordTable<T>({
   readonly resetKey: string
   readonly enableSelection?: boolean
   readonly initialItemId?: string | null
+  readonly revealReady?: boolean
 }): TableInstance<T> {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
@@ -91,12 +93,13 @@ export function useRecordTable<T>({
       revealedId.current = null
       return
     }
+    if (!revealReady) return
     if (revealedId.current === initialItemId) return
     const index = table.getPrePaginationRowModel().rows.findIndex((row) => row.id === initialItemId)
     if (index < 0) return
     revealedId.current = initialItemId
     table.setPageIndex(Math.floor(index / table.getState().pagination.pageSize))
-  }, [data, initialItemId, table])
+  }, [data, initialItemId, revealReady, table])
 
   return table
 }

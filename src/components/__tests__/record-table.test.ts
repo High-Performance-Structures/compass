@@ -29,10 +29,12 @@ function Harness({
   data = items,
   resetKey = "all",
   initialItemId = null,
+  revealReady = true,
 }: {
   readonly data?: readonly Item[]
   readonly resetKey?: string
   readonly initialItemId?: string | null
+  readonly revealReady?: boolean
 }): React.ReactElement {
   const table = useRecordTable({
     data,
@@ -41,6 +43,7 @@ function Harness({
     resetKey,
     enableSelection: true,
     initialItemId,
+    revealReady,
   })
   React.useEffect(() => { current = table }, [table])
   return React.createElement(RecordTable<Item>, {
@@ -86,6 +89,14 @@ describe("shared growing record table behavior", () => {
   it("reveals a deep-linked item beyond the first page", async () => {
     await render({ initialItemId: "id-52" })
     expect(current.getState().pagination.pageIndex).toBe(2)
+    expect(host.textContent).toContain("Record 52")
+  })
+
+  it("waits for the destination filter before consuming a new deep link", async () => {
+    await render({ resetKey: "all" })
+    await render({ resetKey: "all", initialItemId: "id-52", revealReady: false })
+    await render({ data: items.slice(10), resetKey: "active", initialItemId: "id-52", revealReady: true })
+    expect(current.getState().pagination.pageIndex).toBe(1)
     expect(host.textContent).toContain("Record 52")
   })
 

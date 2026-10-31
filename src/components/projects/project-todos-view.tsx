@@ -79,6 +79,7 @@ export function ProjectTodosView({
     getRowId: (item) => item.id,
     resetKey: `${filter}:${query}`,
     initialItemId,
+    revealReady: filter === todoFilterForItem(initialItem),
     enableSelection: canManage,
   })
 

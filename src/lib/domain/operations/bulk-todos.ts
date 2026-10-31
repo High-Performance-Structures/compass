@@ -28,7 +28,7 @@ export async function changeProjectTodosCommand(
   try {
     const parsed = inputSchema.safeParse(input)
     if (!parsed.success) return { success: false, error: "Select valid to-dos and an action." }
-    const { db, user } = await operationsContext(projectId, "tasks", true)
+    const { db, user, organizationId } = await operationsContext(projectId, "tasks", true)
     const { mode, selection } = parsed.data
     if (mode === "delete" && !(await canFeature(user, "tasks", "delete")))
       return { success: false, error: "You do not have permission to delete to-dos." }
@@ -79,6 +79,7 @@ export async function changeProjectTodosCommand(
       rows,
       mode,
       new Date().toISOString(),
+      { organizationId, userId: user.id },
     )
     revalidateProjectTodoPaths(projectId)
     return {

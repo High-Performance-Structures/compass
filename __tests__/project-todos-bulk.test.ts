@@ -79,6 +79,19 @@ describe("guarded bulk to-do actions", () => {
       }),
     ).toMatchObject({ success: true })
     expect(status(row.id)).toEqual({ status: "open" })
+    expect(testDb.sqlite.prepare("SELECT todo_id,from_status,to_status,actor_id FROM project_todo_events").all()).toEqual([{ todo_id: row.id, from_status: "archived", to_status: "open", actor_id: "staff-a" }])
+  })
+  it("records restore history only for guarded successes and rolls it back with a failed status change", async () => {
+    seed("one", "archived"); seed("two", "archived")
+    testDb.sqlite.exec("CREATE TRIGGER fail_restore BEFORE UPDATE ON project_operations WHEN OLD.id='two' BEGIN SELECT RAISE(ABORT,'late failure'); END")
+    const input = { mode: "restore", selection: [selection("one"), selection("two")] } satisfies Parameters<typeof changeProjectTodos>[1]
+    expect((await changeProjectTodos("project-a", input)).success).toBe(false)
+    expect(testDb.sqlite.prepare("SELECT todo_id FROM project_todo_events").all()).toEqual([])
+    expect(status("one")).toEqual({ status: "archived" })
+    testDb.sqlite.exec("DROP TRIGGER fail_restore")
+    testDb.failures.setBeforeBatchHook((sqlite) => { sqlite.exec("UPDATE project_operations SET updated_at='newer' WHERE id='two'") })
+    expect(await changeProjectTodos("project-a", input)).toEqual({ success: true, data: { changedIds: ["one"], skippedCount: 1 } })
+    expect(testDb.sqlite.prepare("SELECT todo_id,from_status,to_status,actor_id FROM project_todo_events").all()).toEqual([{ todo_id: "one", from_status: "archived", to_status: "open", actor_id: "staff-a" }])
   })
   it("refuses active deletion, stale versions, duplicate ids and other projects or record types", async () => {
     seed("active")

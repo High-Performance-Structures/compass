@@ -13,7 +13,7 @@
  * `updatedAt` check, a status guard), it passes that condition in; the store
  * still owns the statement.
  */
-import { and, eq, inArray, type SQL } from "drizzle-orm"
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { projectOperations, projectPurchaseOrderLines, projectTodoEvents } from "@/db/schema"
@@ -48,17 +48,48 @@ export async function changeTodosReturning(
   rows: readonly OperationRow[],
   mode: "archive" | "restore" | "delete",
   updatedAt: string,
+  actor: { readonly organizationId: string; readonly userId: string },
 ): Promise<string[]> {
-  const queries = rows.map((row) => {
-    const where = and(eq(projectOperations.projectId, projectId), eq(projectOperations.id, row.id), eq(projectOperations.updatedAt, row.updatedAt), eq(projectOperations.status, row.status), eq(projectOperations.sourceRecordType, row.sourceRecordType))
-    return mode === "delete"
+  const queries = rows.flatMap((row) => {
+    const where = and(
+      eq(projectOperations.projectId, projectId),
+      eq(projectOperations.id, row.id),
+      eq(projectOperations.updatedAt, row.updatedAt),
+      eq(projectOperations.status, row.status),
+      eq(projectOperations.sourceRecordType, row.sourceRecordType),
+    )
+    const change = mode === "delete"
       ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
-      : db.update(projectOperations).set({ status: mode === "archive" ? "archived" : "open", updatedAt }).where(where).returning({ id: projectOperations.id })
+      : db.update(projectOperations)
+          .set({ status: mode === "archive" ? "archived" : "open", updatedAt })
+          .where(where).returning({ id: projectOperations.id })
+    if (mode !== "restore") return [change]
+    const event = todoEventRow({
+      organizationId: actor.organizationId,
+      projectId,
+      todoId: row.id,
+      kind: "status",
+      dailyLogId: null,
+      fromStatus: row.status,
+      toStatus: "open",
+      note: null,
+      actorId: actor.userId,
+      createdAt: updatedAt,
+    })
+    // History and status use the same version guard in one atomic batch.
+    // Insert first: a concurrently changed row produces neither history nor an update.
+    const history = db.insert(projectTodoEvents).select(sql`
+      SELECT ${event.id}, ${event.organizationId}, ${event.projectId}, ${event.todoId},
+        ${event.kind}, ${event.dailyLogId}, ${event.fromStatus}, ${event.toStatus},
+        ${event.note}, ${event.actorId}, ${event.createdAt}
+      FROM ${projectOperations} WHERE ${where}
+    `).returning({ id: projectTodoEvents.todoId })
+    return [history, change]
   })
   const [first, ...rest] = queries
   if (!first) return []
   const results = await db.batch([first, ...rest])
-  return results.flat().map((row) => row.id)
+  return [...new Set(results.flat().map((row) => row.id))]
 }
 
 // ---------------------------------------------------------------------------
