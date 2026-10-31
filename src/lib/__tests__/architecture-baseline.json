@@ -1641,7 +1641,6 @@
     "src/app/actions/project-messages.ts": 2,
     "src/app/actions/project-number-reviews.ts": 1,
     "src/app/actions/project-operations.ts": 3,
-    "src/app/actions/project-photos.ts": 3,
     "src/app/actions/project-profile.ts": 7,
     "src/app/actions/project-registry-archive.ts": 1,
     "src/app/actions/project-registry.ts": 2,
