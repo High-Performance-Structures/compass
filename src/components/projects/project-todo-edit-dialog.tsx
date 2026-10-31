@@ -78,12 +78,14 @@ export function ProjectTodoEditDialog({
   projectId,
   item,
   assigneeOptions,
+  canDelete,
   open,
   onOpenChange,
 }: {
   readonly projectId: string
   readonly item: ProjectTodoItem
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly canDelete: boolean
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
 }): React.ReactElement {
@@ -426,7 +428,7 @@ export function ProjectTodoEditDialog({
                   <IconRestore className="size-4" />
                   Restore to-do
                 </Button>
-                <AlertDialog>
+                {canDelete && <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
                       type="button"
@@ -452,7 +454,7 @@ export function ProjectTodoEditDialog({
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
-                </AlertDialog>
+                </AlertDialog>}
               </div>
             ) : (
               <AlertDialog>

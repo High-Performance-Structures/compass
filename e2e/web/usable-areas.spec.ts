@@ -1155,7 +1155,7 @@ test.describe("usable Compass areas", () => {
       /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
     )
     const focusedTodo = page.locator(
-      'article[data-focused="true"]#todo-e2e-todo-001'
+      'tr[data-focused="true"]#todo-e2e-todo-001'
     )
     await expect(focusedTodo).toContainText("Regression follow-up")
     await expect(
@@ -1471,7 +1471,7 @@ test.describe("usable Compass areas", () => {
       /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
     )
     const focusedTodo = page.locator(
-      'article[data-focused="true"]#todo-e2e-todo-001'
+      'tr[data-focused="true"]#todo-e2e-todo-001'
     )
     await expect(focusedTodo).toContainText("Regression follow-up")
     await expect(focusedTodo).toBeFocused()

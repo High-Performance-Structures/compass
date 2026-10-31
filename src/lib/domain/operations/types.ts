@@ -310,6 +310,8 @@ export type TodoActions = {
 
 export type ProjectTodoItem = ProjectOperationItem & {
   readonly actions: TodoActions
+  readonly createdAt: string
+  readonly authorName: string | null
 }
 
 export type ProjectTaskRecordType =

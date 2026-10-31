@@ -80,7 +80,13 @@ function createD1(sqlite: Sqlite, controller: FailureController): TestD1 {
       },
       run: async () => {
         shouldFail()
-        const result = execute().run(...values.map(sqliteValue))
+        const prepared = execute()
+        // D1 batch() includes rows from UPDATE/DELETE ... RETURNING.
+        if (prepared.reader) {
+          const rows = prepared.all(...values.map(sqliteValue))
+          return { results: rows, success: true, meta: { duration: 0, changes: rows.length, last_row_id: 0, rows_read: rows.length, rows_written: rows.length } }
+        }
+        const result = prepared.run(...values.map(sqliteValue))
         return {
           results: [],
           success: true,

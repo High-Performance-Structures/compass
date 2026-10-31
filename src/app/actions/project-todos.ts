@@ -8,6 +8,7 @@ import { dailyLogCostCodeOptions } from "@/lib/daily-logs/cost-code-lines"
 import { loadProjectTodoHistory, loadTodoHours, loadTodoWorkedLogCounts } from "@/lib/daily-logs/log-followups-server"
 import { isDemoUser } from "@/lib/demo"
 import { operationsContext } from "@/lib/domain/operations/access"
+import { changeProjectTodosCommand, type BulkTodoInput, type BulkTodoResult } from "@/lib/domain/operations/bulk-todos"
 import {
   loadProjectOperation,
   loadProjectTodos,
@@ -45,6 +46,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
+import { canFeature } from "@/lib/permission-enforcement"
 
 /*
  * Project to-dos: staff of the project's organization with the "tasks"
@@ -123,6 +125,10 @@ async function findEditableProjectTodo(
 }
 
 const CHANGED_WHILE_SAVING = "This to-do changed while you were saving. Refresh and review the latest version."
+
+export async function changeProjectTodos(projectId: string, input: BulkTodoInput): Promise<BulkTodoResult> {
+  return changeProjectTodosCommand(projectId, input)
+}
 
 export async function updateProjectTodo(
   projectId: string,
@@ -281,7 +287,8 @@ export async function deleteProjectTodo(
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
   try {
-    const { db, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    const { db, user, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    if (!(await canFeature(user, "tasks", "delete"))) return { success: false, error: "You do not have permission to delete to-dos." }
     if (!isArchivedProjectTodoStatus(operation.status)) {
       return { success: false, error: "Archive the to-do before deleting it permanently." }
     }

@@ -143,7 +143,7 @@ export function toOperationItem(
 }
 
 export function toTodoItem(row: OperationRow, scheduleTaskIds: ReadonlySet<string>): ProjectTodoItem {
-  return { ...toOperationItem(row, scheduleTaskIds), actions: todoActions(row) }
+  return { ...toOperationItem(row, scheduleTaskIds), actions: todoActions(row), createdAt: row.createdAt, authorName: null }
 }
 
 export function toRfqItem(row: OperationRow, recipientEmail: string | null): ProjectRfqItem {
