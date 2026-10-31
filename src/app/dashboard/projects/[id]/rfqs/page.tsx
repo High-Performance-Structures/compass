@@ -9,11 +9,9 @@ import {
   IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 
-import {
-  getProjectContactsSummary,
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   getProjectRfqCostCodeOptions,
   getProjectRfqs,

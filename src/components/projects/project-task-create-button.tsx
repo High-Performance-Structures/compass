@@ -16,10 +16,8 @@ import {
   IconPlus,
 } from "@tabler/icons-react"
 
-import {
-  addDirectoryContactToProjectForTask,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   createProjectTask,
   type ProjectTaskRecordType,

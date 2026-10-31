@@ -3,10 +3,8 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { notFound } from "next/navigation"
 
-import {
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjectTodos } from "@/app/actions/project-operations"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectTodosView } from "@/components/projects/project-todos-view"

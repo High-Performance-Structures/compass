@@ -95,7 +95,7 @@ import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   getScheduleTaskTodos,
   type ProjectOperationItem,

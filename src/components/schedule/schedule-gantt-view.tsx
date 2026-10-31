@@ -94,7 +94,7 @@ import type {
   TaskDependencyData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { useRouter } from "next/navigation"

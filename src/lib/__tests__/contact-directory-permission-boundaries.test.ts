@@ -6,6 +6,10 @@ function actionSource(name: string): string {
   return readFileSync(join(process.cwd(), "src/app/actions", name), "utf8")
 }
 
+function domainSource(name: string): string {
+  return readFileSync(join(process.cwd(), "src/lib/domain/contacts", name), "utf8")
+}
+
 describe("contact directory permission boundaries", () => {
   it("enforces distinct feature grants for client and vendor mutations", () => {
     const customers = actionSource("customers.ts")
@@ -46,18 +50,23 @@ describe("contact directory permission boundaries", () => {
     for (const feature of ["customers", "vendors", "internal-directory"]) {
       expect(picker).toContain(`canFeature(user, "${feature}", "read")`)
     }
-    expect(picker).toContain("canViewCustomers ? db")
-    expect(picker).toContain("isNull(customers.mergedIntoCustomerId)")
-    expect(picker).toContain("canViewVendors ? db")
-    expect(picker).toContain("canViewInternal ? db")
-
-    const save = contacts.split("export async function saveProjectContact(")[1]
+    expect(picker).toContain("customers: canViewCustomers, vendors: canViewVendors, internal: canViewInternal")
+    const options = domainSource("directory-options.ts")
+      .split("export async function loadProjectContactDirectoryOptions(")[1]
       ?.split("export async function ")[0]
-    expect(save).toContain("const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(")
-    expect(save).toContain("if (!unchangedDirectorySelection) {")
-    expect(save).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
-    expect(save?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
-      .toBeLessThan(save?.indexOf("if (input.directorySourceType === \"customer\")") ?? 0)
+    expect(options).toContain("grants.customers\n      ? db")
+    expect(options).toContain("isNull(customers.mergedIntoCustomerId)")
+    expect(options).toContain("grants.vendors\n      ? db")
+    expect(options).toContain("grants.internal\n      ? db")
+
+    const save = domainSource("save-contact.ts")
+    const selection = save.split("async function resolveDirectorySelection(")[1]
+      ?.split("\nasync function ")[0]
+    expect(selection).toContain("const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(")
+    expect(selection).toContain("if (!unchangedDirectorySelection) {")
+    expect(selection).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
+    expect(selection?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
+      .toBeLessThan(selection?.indexOf("input.directorySourceType === \"customer\"\n      ? await selectCustomer") ?? 0)
     expect(save).toContain("isNull(customers.mergedIntoCustomerId)")
   })
 

@@ -12,10 +12,8 @@ import {
 } from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
 import type { ProjectListItem } from "@/app/actions/projects"
-import {
-  getScheduleTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getScheduleTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"

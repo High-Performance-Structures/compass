@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { internalContacts, organizations } from "@/db/schema"
+import { insertInternalContactIfMissing } from "@/lib/domain/contacts/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 /** Provision a directory identity once; later profile edits do not overwrite Sage-owned fields. */
@@ -37,22 +38,18 @@ export async function ensureInternalContactForStaff(
   if (existing) return
 
   const now = new Date().toISOString()
-  await db
-    .insert(internalContacts)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId: input.organizationId,
-      userId: input.userId,
-      name: input.name.trim() || input.email,
-      email: input.email.trim().toLowerCase(),
-      phone: input.phone,
-      sourceSystem: "compass_user",
-      sourceRecordId: input.userId,
-      active: true,
-      syncStatus: "manual",
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoNothing()
-    .run()
+  await insertInternalContactIfMissing(db, {
+    id: crypto.randomUUID(),
+    organizationId: input.organizationId,
+    userId: input.userId,
+    name: input.name.trim() || input.email,
+    email: input.email.trim().toLowerCase(),
+    phone: input.phone,
+    sourceSystem: "compass_user",
+    sourceRecordId: input.userId,
+    active: true,
+    syncStatus: "manual",
+    createdAt: now,
+    updatedAt: now,
+  })
 }

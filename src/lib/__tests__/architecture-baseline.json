@@ -157,14 +157,10 @@
       "src/lib/dashboards/user-dashboards.ts"
     ],
     "customerContacts": [
-      "src/app/actions/customer-people.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "customers": [
-      "src/app/actions/customers.ts",
-      "src/app/actions/netsuite-sync.ts",
-      "src/app/actions/project-contacts.ts",
-      "src/app/actions/project-profile.ts",
-      "src/app/actions/projects.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "customThemes": [
       "src/app/actions/themes.ts",
@@ -277,8 +273,7 @@
       "src/lib/email/gmail-inbound.ts"
     ],
     "internalContacts": [
-      "src/app/actions/projects.ts",
-      "src/lib/internal-contact-provisioning.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "internalDutyEntries": [
       "src/app/actions/daily-log-delete.ts",
@@ -498,31 +493,40 @@
       "src/lib/financials/owner-pay-application-refresh.ts"
     ],
     "projectChangeOrderDocuments": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-change-orders.ts"
     ],
     "projectChangeOrderHistory": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-change-orders.ts",
+      "src/lib/change-orders/contract-version-acceptance.ts",
+      "src/lib/change-orders/estimate-execution.ts",
+      "src/lib/change-orders/rebaseline-store.ts",
+      "src/lib/email/project-inbound-routing.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectChangeOrderLines": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-change-orders.ts",
+      "src/lib/change-orders/contract-version-acceptance.ts",
+      "src/lib/change-orders/estimate-execution.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectChangeOrders": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-change-orders.ts",
+      "src/app/actions/project-estimates.ts",
+      "src/lib/change-orders/contract-version-acceptance.ts",
+      "src/lib/change-orders/estimate-execution.ts",
+      "src/lib/change-orders/rebaseline-store.ts",
+      "src/lib/email/project-inbound-routing.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectClientMeetings": [
       "src/app/actions/project-client-meetings.ts",
       "src/lib/client-meetings/transcripts.ts"
     ],
     "projectContacts": [
-      "src/app/actions/contact-project-associations.ts",
-      "src/app/actions/customers.ts",
-      "src/app/actions/project-access-invitations.ts",
-      "src/app/actions/project-contacts.ts",
-      "src/app/actions/projects.ts",
-      "src/app/actions/vendors.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "projectContactSourceLinks": [
-      "src/app/actions/project-contacts.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "projectContractBudgetAdjustments": [
       "src/lib/financials/contract-budget-store.ts"
@@ -553,28 +557,40 @@
       "src/app/actions/project-email.ts"
     ],
     "projectEstimateAcknowledgements": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-estimates.ts"
     ],
     "projectEstimateAssemblies": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-assemblies.ts",
+      "src/app/actions/estimate-project-copies.ts",
+      "src/app/actions/project-estimates.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectEstimateAssemblyCopies": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-project-copies.ts"
     ],
     "projectEstimateBasisDocuments": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-estimates.ts"
     ],
     "projectEstimateLineCostItems": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-project-copies.ts",
+      "src/app/actions/project-estimates.ts"
     ],
     "projectEstimateLines": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-assemblies.ts",
+      "src/app/actions/estimate-line-pricing.ts",
+      "src/app/actions/estimate-project-copies.ts",
+      "src/app/actions/project-estimate-report-phases.ts",
+      "src/app/actions/project-estimates.ts",
+      "src/app/actions/project-rfq-bids.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectEstimatePhaseDescriptions": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/project-estimates.ts"
     ],
     "projectEstimateReportPhases": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-project-copies.ts",
+      "src/app/actions/project-estimate-report-phases.ts",
+      "src/app/actions/project-estimates.ts"
     ],
     "projectEstimateRfqBidImportLines": [
       "src/app/actions/estimate-phase-proposals.ts",
@@ -587,7 +603,18 @@
       "src/app/actions/project-rfq-bids.ts"
     ],
     "projectEstimates": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/contract-packets.ts",
+      "src/app/actions/estimate-assemblies.ts",
+      "src/app/actions/estimate-phase-proposals.ts",
+      "src/app/actions/estimate-project-copies.ts",
+      "src/app/actions/nutech-estimate.ts",
+      "src/app/actions/project-estimate-report-phases.ts",
+      "src/app/actions/project-estimates.ts",
+      "src/app/actions/project-rfq-bids.ts",
+      "src/app/api/integrations/foxit/webhook/route.ts",
+      "src/lib/change-orders/rebaseline-store.ts",
+      "src/lib/estimates/access.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectExternalLinks": [
       "src/app/actions/project-duplicates.ts",
@@ -692,7 +719,8 @@
       "src/lib/nutech/airlite-po-number.ts"
     ],
     "projectPhaseProposals": [
-      "src/lib/domain/estimates/store.ts"
+      "src/app/actions/estimate-phase-proposals.ts",
+      "src/lib/estimates/phase-proposals.ts"
     ],
     "projectProfileAuditEvents": [
       "src/app/actions/field-cost-codes.ts",
@@ -1023,15 +1051,10 @@
       "src/app/actions/vendor-bills.ts"
     ],
     "vendorContacts": [
-      "src/app/actions/project-contacts.ts",
-      "src/app/actions/vendors.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "vendors": [
-      "src/app/actions/netsuite-sync.ts",
-      "src/app/actions/project-contacts.ts",
-      "src/app/actions/vendor-trade-docs.ts",
-      "src/app/actions/vendors.ts",
-      "src/lib/trade-docs/drive.ts"
+      "src/lib/domain/contacts/store.ts"
     ],
     "vendorTradeDocLinks": [
       "src/app/actions/vendor-trade-doc-link.ts",
@@ -1086,24 +1109,24 @@
   "largeFiles": {
     "src/app/actions/chat-messages.ts": 1376,
     "src/app/actions/cherish-pulse.ts": 919,
-    "src/app/actions/contract-packets.ts": 1450,
+    "src/app/actions/contract-packets.ts": 1469,
     "src/app/actions/estimate-templates.ts": 1134,
     "src/app/actions/google-drive.ts": 1468,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1123,
     "src/app/actions/nutech-orders.ts": 1247,
     "src/app/actions/project-audience-preview.ts": 1192,
-    "src/app/actions/project-change-orders.ts": 1665,
-    "src/app/actions/project-contacts.ts": 3285,
+    "src/app/actions/project-change-orders.ts": 1667,
     "src/app/actions/project-documents.ts": 922,
+    "src/app/actions/project-estimates.ts": 4917,
     "src/app/actions/project-families.ts": 1827,
     "src/app/actions/project-field.ts": 4410,
     "src/app/actions/project-financial-workflows.ts": 1467,
     "src/app/actions/project-operations.ts": 3266,
-    "src/app/actions/project-profile.ts": 2250,
+    "src/app/actions/project-profile.ts": 2248,
     "src/app/actions/project-selections.ts": 1847,
     "src/app/actions/project-templates.ts": 921,
-    "src/app/actions/projects.ts": 1837,
+    "src/app/actions/projects.ts": 1833,
     "src/app/actions/schedule-confirmations.ts": 1406,
     "src/app/actions/social-posts.ts": 1126,
     "src/app/actions/voice-sessions.ts": 986,
@@ -1121,10 +1144,10 @@
     "src/components/nutech/nutech-order-workspace.tsx": 1196,
     "src/components/projects/owner-update-draft-editor.tsx": 1138,
     "src/components/projects/project-audience-preview.tsx": 923,
-    "src/components/projects/project-contact-management.tsx": 1513,
+    "src/components/projects/project-contact-management.tsx": 1511,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
     "src/components/projects/project-daily-log-workspace.tsx": 2512,
-    "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
+    "src/components/projects/project-estimate-planswift-import-client.tsx": 876,
     "src/components/projects/project-estimate-workspace.tsx": 2490,
     "src/components/projects/project-hub-launchpad.tsx": 961,
     "src/components/projects/project-photo-review.tsx": 1367,
@@ -1145,7 +1168,7 @@
     "src/lib/auth.ts": 885,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
     "src/lib/email/gmail-inbound.ts": 851,
-    "src/lib/email/project-inbound-routing.ts": 1056,
+    "src/lib/email/project-inbound-routing.ts": 1062,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
     "src/lib/notifications/create-event.ts": 844,
@@ -1167,10 +1190,11 @@
     "src/app/actions/nutech-orders.ts": 1,
     "src/app/actions/project-access-invitations.ts": 1,
     "src/app/actions/project-audience-sub-vendor.ts": 1,
-    "src/app/actions/project-contacts.ts": 1,
+    "src/app/actions/project-change-orders.ts": 1,
     "src/app/actions/project-contract-deposits.ts": 1,
     "src/app/actions/project-document-folders.ts": 1,
     "src/app/actions/project-documents.ts": 1,
+    "src/app/actions/project-estimates.ts": 1,
     "src/app/actions/project-families.ts": 1,
     "src/app/actions/project-field.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 1,
@@ -1247,6 +1271,7 @@
     "src/components/projects/project-estimate-line-breakdown.tsx": 1,
     "src/components/projects/project-estimate-list.tsx": 1,
     "src/components/projects/project-estimate-phase-proposals.tsx": 1,
+    "src/components/projects/project-estimate-planswift-import-client.tsx": 1,
     "src/components/projects/project-estimate-report-phase-editor.tsx": 1,
     "src/components/projects/project-estimate-report-phases.tsx": 1,
     "src/components/projects/project-estimate-version-comparison.tsx": 1,
@@ -1388,7 +1413,6 @@
     "src/lib/print/rfq-print.ts": 1,
     "src/lib/project-audience-dashboard.ts": 3,
     "src/lib/project-audience-direct-message.ts": 1,
-    "src/lib/project-contact-display.ts": 1,
     "src/lib/quick-add-server.ts": 1,
     "src/lib/rate-book/picker-cache.ts": 1,
     "src/lib/sales-pipeline/load.ts": 1,
@@ -1526,13 +1550,12 @@
     "src/app/actions/project-calendars.ts": 1,
     "src/app/actions/project-change-orders.ts": 1,
     "src/app/actions/project-client-meetings.ts": 1,
-    "src/app/actions/project-contacts.ts": 2,
     "src/app/actions/project-contract-deposits.ts": 2,
     "src/app/actions/project-document-folders.ts": 1,
     "src/app/actions/project-documents.ts": 1,
     "src/app/actions/project-duplicates.ts": 1,
     "src/app/actions/project-estimate-report-phases.ts": 1,
-    "src/app/actions/project-estimates.ts": 1,
+    "src/app/actions/project-estimates.ts": 3,
     "src/app/actions/project-families.ts": 2,
     "src/app/actions/project-field.ts": 3,
     "src/app/actions/project-financial-workflows.ts": 3,

@@ -21,7 +21,7 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
-import type { ProjectContactsSummary } from "@/app/actions/project-contacts"
+import type { ProjectContactsSummary } from "@/lib/domain/contacts/types"
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
 import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"

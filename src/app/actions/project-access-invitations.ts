@@ -32,6 +32,7 @@ import {
   projectContactNeedsPersonForInvitation,
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import { updateProjectContactById } from "@/lib/domain/contacts/store"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
 import { projectContactInvitationDirectorySelection } from "@/lib/project-contact-invitation-select"
@@ -426,11 +427,7 @@ export async function sendProjectAccessInvitation(
     }
     const now = new Date().toISOString()
     // Welcome recovery must read the original contact binding before any identity write.
-    if (!welcomeOnly) await db
-      .update(projectContacts)
-      .set({ ...identity, updatedAt: now })
-      .where(eq(projectContacts.id, row.contact.id))
-      .run()
+    if (!welcomeOnly) await updateProjectContactById(db, { contactId: row.contact.id, values: { ...identity, updatedAt: now } })
     const pendingInvitation = !activeExistingUser
       ? await db
           .select({
@@ -586,11 +583,7 @@ export async function sendProjectAccessInvitation(
         : row.contact.contactType === "internal"
           ? { internalVisible: true, updatedAt: now }
           : { subVendorPortalVisible: true, updatedAt: now }
-    if (!welcomeOnly) await db
-      .update(projectContacts)
-      .set(visibility)
-      .where(eq(projectContacts.id, row.contact.id))
-      .run()
+    if (!welcomeOnly) await updateProjectContactById(db, { contactId: row.contact.id, values: visibility })
 
     const audience =
       requestedRole === "owner"

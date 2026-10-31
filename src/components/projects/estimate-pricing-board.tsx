@@ -5,8 +5,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import {
   createEstimatePricingPackage,

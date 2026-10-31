@@ -22,7 +22,7 @@ import {
   type ProjectRfqCostCodeOption,
   createRfqRequest,
 } from "@/app/actions/project-operations"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type {
   ProjectSelectionItem,
   ProjectSelectionOptions,

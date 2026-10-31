@@ -3,12 +3,19 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, or, sql, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, projectContacts } from "@/db/schema"
+import { customers } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
+import {
+  deleteCustomer as deleteCustomerRecord,
+  insertCustomer,
+  insertCustomerStatement,
+  syncCustomerCopiesStatement,
+  updateCustomerStatement,
+} from "@/lib/domain/contacts/store"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { z } from "zod/v4"
@@ -140,7 +147,7 @@ export async function createCustomer(
     }
 
     await db.batch([
-      db.insert(customers).values(customerValues),
+      insertCustomerStatement(db, customerValues),
       db.insert(sageClientProjectWriteOperations).values({
         id: operationId,
         organizationId: orgId,
@@ -237,7 +244,7 @@ export async function createCustomerDirectoryContact(
       createdAt: now,
       updatedAt: now,
     }
-    await db.insert(customers).values(customer)
+    await insertCustomer(db, customer)
 
     revalidatePath("/dashboard/customers")
     revalidatePath("/dashboard/contacts")
@@ -347,19 +354,17 @@ export async function updateCustomer(
       patch.relationshipType === "lead"
         ? { ...patch, relationshipType: "client" }
         : patch
-    const customerUpdate = db
-      .update(customers)
-      .set({ ...safeData, email: normalizedNextEmail, updatedAt })
-      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
-    const projectContactUpdate = db
-      .update(projectContacts)
-      .set({ ...nextIdentity, email: normalizedNextEmail, updatedAt })
-      .where(
-        and(
-          eq(projectContacts.sourceEntityType, "customer"),
-          eq(projectContacts.sourceEntityId, id)
-        )
-      )
+    const customerUpdate = updateCustomerStatement(db, {
+      customerId: id,
+      organizationId: orgId,
+      values: { ...safeData, email: normalizedNextEmail, updatedAt },
+    })
+    // Project contacts read a linked client's identity from the directory;
+    // the copies are refreshed for readers that still use them.
+    const projectContactUpdate = syncCustomerCopiesStatement(db, {
+      customerId: id,
+      identity: { ...nextIdentity, email: normalizedNextEmail, updatedAt },
+    })
 
     await db.batch([customerUpdate, projectContactUpdate])
 
@@ -393,9 +398,7 @@ export async function deleteCustomer(id: string) {
       .from(customers).where(and(eq(customers.id, id), eq(customers.organizationId, orgId))).get()
     if (!existing) return { success: false, error: "Client not found." }
     if (existing.mergedIntoCustomerId) return { success: false, error: "Merged client records are retained for audit and cannot be deleted." }
-    await db
-      .delete(customers)
-      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
+    await deleteCustomerRecord(db, { customerId: id, organizationId: orgId })
 
     revalidatePath("/dashboard/customers")
     return { success: true }

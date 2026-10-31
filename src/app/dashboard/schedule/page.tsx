@@ -27,10 +27,8 @@ import type { ProjectDepartment } from "@/lib/project-branding"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
 import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
 import { getSchedulePublicationStatus } from "@/app/actions/schedule-publications"
-import {
-  getScheduleTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getScheduleTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 import { isInternalStaffRole } from "@/lib/user-roles"

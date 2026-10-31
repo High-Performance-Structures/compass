@@ -4,7 +4,7 @@ import * as React from "react"
 import { IconCopy } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { duplicateRfqRequest } from "@/app/actions/project-operations"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"

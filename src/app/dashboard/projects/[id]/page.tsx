@@ -42,10 +42,8 @@ import {
   getProjectBudgetSummary,
   type ProjectBudgetSummary,
 } from "@/app/actions/project-budget"
-import {
-  getProjectContactsSummary,
-  type ProjectContactsSummary,
-} from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import type { ProjectContactsSummary } from "@/lib/domain/contacts/types"
 import {
   getProjectRfiSummary,
   type ProjectRfiSummary,

@@ -30,6 +30,7 @@ import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { updateCustomerByIdStatement } from "@/lib/domain/contacts/store"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
@@ -1095,10 +1096,7 @@ export async function updateProjectInformation(input: {
       })
       .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)))
     const customerUpdates = linkedCustomers.map((customer) =>
-      db
-        .update(customers)
-        .set({ address: mailingAddress, updatedAt })
-        .where(eq(customers.id, customer.id)),
+      updateCustomerByIdStatement(db, { customerId: customer.id, values: { address: mailingAddress, updatedAt } }),
     )
     const auditInsert = db.insert(projectProfileAuditEvents).values({
       id: crypto.randomUUID(),

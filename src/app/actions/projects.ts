@@ -6,7 +6,6 @@ import {
   customers,
   internalContacts,
   organizationMembers,
-  projectContacts,
   projectDuplicateDecisions,
   projectExternalLinks,
   projectJobStatuses,
@@ -27,6 +26,7 @@ import { and, asc, eq, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { insertCustomerStatement, insertInternalContactStatement, insertProjectContactStatement, updateCustomerByIdStatement } from "@/lib/domain/contacts/store"
 import type { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   buildProjectDriveFolderName,
@@ -768,7 +768,7 @@ export async function createProjectIntake(
           updatedAt: now,
         }),
         ...(assignee && assigneeDirectoryId && !assigneeDirectory
-          ? [db.insert(internalContacts).values({
+          ? [insertInternalContactStatement(db, {
               id: assigneeDirectoryId,
               organizationId,
               userId: assignee.id,
@@ -784,14 +784,12 @@ export async function createProjectIntake(
             })]
           : []),
         ...(!customerMatch
-          ? [db.insert(customers).values(customerValues)]
+          ? [insertCustomerStatement(db, customerValues)]
           : customerMatch.sageClientStatusId === null &&
             !customerMatch.sageClientId && !customerMatch.sageClientNumber
-            ? [db.update(customers)
-                .set({ sageClientStatusId, updatedAt: now })
-                .where(eq(customers.id, customerId))]
+            ? [updateCustomerByIdStatement(db, { customerId, values: { sageClientStatusId, updatedAt: now } })]
             : []),
-        db.insert(projectContacts).values({
+        insertProjectContactStatement(db, {
           id: ownerContactId,
           projectId,
           contactType: "owner",
@@ -819,7 +817,7 @@ export async function createProjectIntake(
         }),
         ...(assignedTo && internalContactId
           ? [
-              db.insert(projectContacts).values({
+              insertProjectContactStatement(db, {
                 id: internalContactId,
                 projectId,
                 contactType: "internal",
@@ -1726,7 +1724,7 @@ export async function createProjectShell(
         updatedAt: now,
       }),
       ...(!customerMatch
-        ? [db.insert(customers).values({
+        ? [insertCustomerStatement(db, {
             id: customerId,
             organizationId: orgId,
             name: clientName,
@@ -1737,11 +1735,9 @@ export async function createProjectShell(
           })]
         : customerMatch.sageClientStatusId === null &&
           !customerMatch.sageClientId && !customerMatch.sageClientNumber
-          ? [db.update(customers)
-              .set({ sageClientStatusId, updatedAt: now })
-              .where(eq(customers.id, customerId))]
+          ? [updateCustomerByIdStatement(db, { customerId, values: { sageClientStatusId, updatedAt: now } })]
           : []),
-      db.insert(projectContacts).values({
+      insertProjectContactStatement(db, {
         id: crypto.randomUUID(),
         projectId: id,
         contactType: "owner",

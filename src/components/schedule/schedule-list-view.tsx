@@ -35,13 +35,13 @@ import {
   completeScheduleTasks,
   deleteScheduleTasks,
 } from "@/app/actions/schedule-tasks"
-import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contacts"
+import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contact-assignees"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"

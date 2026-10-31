@@ -1,10 +1,9 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, asc, desc, inArray, isNull, or } from "drizzle-orm"
+import { eq, and, asc, desc } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
-  projectContacts,
   internalContacts,
   organizationMembers,
   users,
@@ -16,6 +15,18 @@ import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
+import {
+  clearVendorPrimaryPeople,
+  deactivateVendorPeople,
+  deleteVendor as deleteVendorRecord,
+  insertVendor,
+  insertVendorPeople,
+  insertVendorPersonStatement,
+  syncVendorCompanyCopies,
+  syncVendorPersonCopiesStatement,
+  updateVendor as updateVendorRecord,
+  updateVendorPersonStatement,
+} from "@/lib/domain/contacts/store"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import {
@@ -281,7 +292,7 @@ export async function createVendor(
     const id = crypto.randomUUID()
     const contactInputs = normalizedContactInputs(data.contacts ?? [])
 
-    await db.insert(vendors).values({
+    await insertVendor(db, {
       id,
       organizationId: orgId,
       name,
@@ -292,8 +303,9 @@ export async function createVendor(
       createdAt: now,
       updatedAt: now,
     })
-    for (const contact of contactInputs) {
-      await db.insert(vendorContacts).values({
+    await insertVendorPeople(
+      db,
+      contactInputs.map((contact) => ({
         id: crypto.randomUUID(),
         vendorId: id,
         name: contact.name,
@@ -306,8 +318,8 @@ export async function createVendor(
         sourceRecordId: null,
         createdAt: now,
         updatedAt: now,
-      })
-    }
+      }))
+    )
 
     revalidatePath("/dashboard/vendors")
     revalidatePath("/dashboard/contacts")
@@ -403,34 +415,36 @@ export async function updateVendor(
     const existingById = new Map(
       existingContacts.map((contact) => [contact.id, contact])
     )
-    for (const contact of contactInputs) {
-      const existingContact = contact.id
-        ? existingById.get(contact.id)
-        : undefined
+    const managedByActiveUser = (personId: string): Promise<boolean> =>
+      directoryIdentityManagedByActiveUser({
+        db,
+        organizationId: orgId,
+        entityType: "vendor_contact",
+        entityId: personId,
+      })
+    // Check every edited person at once, then report the first problem in
+    // submitted order, as before.
+    const editedChecks = await Promise.all(
+      contactInputs.map(async (contact) => {
+        const existingContact = contact.id ? existingById.get(contact.id) : undefined
+        const identityChanged =
+          existingContact !== undefined &&
+          contactIdentityChanged(
+            { email: existingContact.email, phone: existingContact.phone, address: null },
+            { email: nullableText(contact.email), phone: nullableText(contact.phone), address: null }
+          )
+        return {
+          contact,
+          existingContact,
+          managed: existingContact && identityChanged ? await managedByActiveUser(existingContact.id) : false,
+        }
+      })
+    )
+    for (const { contact, existingContact, managed } of editedChecks) {
       if (contact.id && !existingContact) {
         return { success: false, error: "Vendor contact not found" }
       }
-      if (
-        existingContact &&
-        contactIdentityChanged(
-          {
-            email: existingContact.email,
-            phone: existingContact.phone,
-            address: null,
-          },
-          {
-            email: nullableText(contact.email),
-            phone: nullableText(contact.phone),
-            address: null,
-          }
-        ) &&
-        (await directoryIdentityManagedByActiveUser({
-          db,
-          organizationId: orgId,
-          entityType: "vendor_contact",
-          entityId: existingContact.id,
-        }))
-      ) {
+      if (existingContact && managed) {
         return {
           success: false,
           error: `${existingContact.name} manages their own email and phone in Compass.`,
@@ -443,41 +457,33 @@ export async function updateVendor(
     const removedContacts = existingContacts.filter(
       (contact) => contact.active && !submittedExistingIds.has(contact.id)
     )
-    for (const removedContact of removedContacts) {
-      if (
-        await directoryIdentityManagedByActiveUser({
-          db,
-          organizationId: orgId,
-          entityType: "vendor_contact",
-          entityId: removedContact.id,
-        })
-      ) {
-        return {
-          success: false,
-          error: `${removedContact.name} is an active Compass user and cannot be removed from this vendor company.`,
-        }
+    const removedChecks = await Promise.all(
+      removedContacts.map(async (removedContact) => ({
+        removedContact,
+        managed: await managedByActiveUser(removedContact.id),
+      }))
+    )
+    const managedRemoval = removedChecks.find((check) => check.managed)
+    if (managedRemoval) {
+      return {
+        success: false,
+        error: `${managedRemoval.removedContact.name} is an active Compass user and cannot be removed from this vendor company.`,
       }
     }
 
     const updatedAt = new Date().toISOString()
-    await db
-      .update(vendors)
-      .set({ name, category, ...nextIdentity, updatedAt })
-      .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
-    await db
-      .update(projectContacts)
-      .set({ companyName: name, updatedAt })
-      .where(eq(projectContacts.vendorId, id))
-    await db
-      .update(projectContacts)
-      .set({ ...nextIdentity, updatedAt })
-      .where(
-        and(
-          eq(projectContacts.sourceEntityType, "vendor"),
-          eq(projectContacts.sourceEntityId, id),
-          isNull(projectContacts.vendorContactId)
-        )
-      )
+    await updateVendorRecord(db, {
+      vendorId: id,
+      organizationId: orgId,
+      values: { name, category, ...nextIdentity, updatedAt },
+    })
+    // Project contacts read a linked vendor from the directory; the copies
+    // are refreshed for readers that still use them.
+    await syncVendorCompanyCopies(db, {
+      vendorId: id,
+      companyName: name,
+      identity: { ...nextIdentity, updatedAt },
+    })
 
     if (data.contacts === undefined) {
       revalidatePath("/dashboard/vendors")
@@ -487,84 +493,59 @@ export async function updateVendor(
     }
 
     const retainedIds = new Set<string>()
-    await db
-      .update(vendorContacts)
-      .set({ isPrimary: false, updatedAt })
-      .where(eq(vendorContacts.vendorId, id))
+    await clearVendorPrimaryPeople(db, { vendorId: id, now: updatedAt })
 
-    for (const contact of contactInputs) {
+    // One batch for every person and their project-contact copies.
+    const personWrites = contactInputs.flatMap((contact) => {
       const existingContact = contact.id ? existingById.get(contact.id) : undefined
-      const identity = {
-        email: nullableText(contact.email),
-        phone: nullableText(contact.phone),
-        address: null,
-      }
-
+      const email = nullableText(contact.email)
+      const phone = nullableText(contact.phone)
       const contactId = existingContact?.id ?? crypto.randomUUID()
       retainedIds.add(contactId)
-      if (existingContact) {
-        await db
-          .update(vendorContacts)
-          .set({
+      const personWrite = existingContact
+        ? updateVendorPersonStatement(db, {
+            vendorId: id,
+            personId: contactId,
+            values: {
+              name: contact.name,
+              title: nullableText(contact.title),
+              email,
+              phone,
+              isPrimary: contact.isPrimary,
+              active: true,
+              updatedAt,
+            },
+          })
+        : insertVendorPersonStatement(db, {
+            id: contactId,
+            vendorId: id,
             name: contact.name,
             title: nullableText(contact.title),
-            email: identity.email,
-            phone: identity.phone,
+            email,
+            phone,
             isPrimary: contact.isPrimary,
             active: true,
+            sourceSystem: "manual",
+            sourceRecordId: null,
+            createdAt: updatedAt,
             updatedAt,
           })
-          .where(
-            and(
-              eq(vendorContacts.id, contactId),
-              eq(vendorContacts.vendorId, id)
-            )
-          )
-      } else {
-        await db.insert(vendorContacts).values({
-          id: contactId,
-          vendorId: id,
-          name: contact.name,
-          title: nullableText(contact.title),
-          email: identity.email,
-          phone: identity.phone,
-          isPrimary: contact.isPrimary,
-          active: true,
-          sourceSystem: "manual",
-          sourceRecordId: null,
-          createdAt: updatedAt,
-          updatedAt,
-        })
-      }
-      await db
-        .update(projectContacts)
-        .set({
-          displayName: contact.name,
-          companyName: name,
-          email: identity.email,
-          phone: identity.phone,
-          updatedAt,
-        })
-        .where(
-          or(
-            eq(projectContacts.vendorContactId, contactId),
-            and(
-              eq(projectContacts.sourceEntityType, "vendor_contact"),
-              eq(projectContacts.sourceEntityId, contactId)
-            )
-          )
-        )
-    }
+      return [
+        personWrite,
+        syncVendorPersonCopiesStatement(db, {
+          vendorContactId: contactId,
+          values: { displayName: contact.name, companyName: name, email, phone, updatedAt },
+          includeSourceEntityMatch: true,
+        }),
+      ]
+    })
+    const [firstWrite, ...otherWrites] = personWrites
+    if (firstWrite) await db.batch([firstWrite, ...otherWrites])
 
     const removedIds = existingContacts
       .map((contact) => contact.id)
       .filter((contactId) => !retainedIds.has(contactId))
-    if (removedIds.length > 0) {
-      await db
-        .update(vendorContacts)
-        .set({ active: false, isPrimary: false, updatedAt })
-        .where(inArray(vendorContacts.id, removedIds))
-    }
+    await deactivateVendorPeople(db, { personIds: removedIds, now: updatedAt })
 
     revalidatePath("/dashboard/vendors")
     revalidatePath("/dashboard/contacts")
@@ -615,10 +596,7 @@ export async function createVendorContact(
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     if (input.isPrimary) {
-      await db
-        .update(vendorContacts)
-        .set({ isPrimary: false, updatedAt: now })
-        .where(eq(vendorContacts.vendorId, vendorId))
+      await clearVendorPrimaryPeople(db, { vendorId, now })
     }
     const contact: VendorContactItem = {
       id,
@@ -634,12 +612,12 @@ export async function createVendorContact(
       sageContactId: null,
       sageLineNumber: null,
     }
-    await db.insert(vendorContacts).values({
+    await insertVendorPeople(db, [{
       ...contact,
       sourceRecordId: null,
       createdAt: now,
       updatedAt: now,
-    })
+    }])
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
     return { success: true, contact }
@@ -666,9 +644,7 @@ export async function deleteVendor(id: string) {
       .from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId))).get()
     if (!existing) return { success: false, error: "Vendor not found." }
     if (existing.mergedIntoVendorId) return { success: false, error: "Merged vendor records are retained for audit and cannot be deleted." }
-    await db
-      .delete(vendors)
-      .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
+    await deleteVendorRecord(db, { vendorId: id, organizationId: orgId })
 
     revalidatePath("/dashboard/vendors")
     return { success: true }

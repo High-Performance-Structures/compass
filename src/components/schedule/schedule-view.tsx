@@ -109,7 +109,7 @@ import {
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
 import type { ProjectListItem } from "@/app/actions/projects"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type {
   ScheduleProjectData,
   ScheduleScope,

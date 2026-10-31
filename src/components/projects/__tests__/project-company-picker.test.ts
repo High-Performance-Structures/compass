@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { projectCompanyOptions } from "@/components/projects/project-company-picker"
 
 function option(

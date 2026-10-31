@@ -1,9 +1,8 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, vendors } from "@/db/schema"
+import { insertCustomer, insertVendor, updateCustomerById, updateVendorById } from "@/lib/domain/contacts/store"
 import { getNetSuiteConfig } from "@/lib/netsuite/config"
 import { TokenManager } from "@/lib/netsuite/auth/token-manager"
 import { getAuthorizeUrl } from "@/lib/netsuite/auth/oauth-client"
@@ -91,14 +90,11 @@ export async function syncCustomers() {
       async (localId, data) => {
         const now = new Date().toISOString()
         if (localId) {
-          await db
-            .update(customers)
-            .set({ ...data, updatedAt: now } as never)
-            .where(eq(customers.id, localId))
+          await updateCustomerById(db, { customerId: localId, values: { ...data, updatedAt: now } as never })
           return localId
         }
         const id = crypto.randomUUID()
-        await db.insert(customers).values({
+        await insertCustomer(db, {
           id,
           name: String(data.name ?? ""),
           email: (data.email as string) ?? null,
@@ -141,14 +137,11 @@ export async function syncVendors() {
       async (localId, data) => {
         const now = new Date().toISOString()
         if (localId) {
-          await db
-            .update(vendors)
-            .set({ ...data, updatedAt: now } as never)
-            .where(eq(vendors.id, localId))
+          await updateVendorById(db, { vendorId: localId, values: { ...data, updatedAt: now } as never })
           return localId
         }
         const id = crypto.randomUUID()
-        await db.insert(vendors).values({
+        await insertVendor(db, {
           id,
           name: String(data.name ?? ""),
           category: (data.category as string) ?? "Subcontractor",

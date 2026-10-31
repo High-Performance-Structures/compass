@@ -11,10 +11,12 @@ import {
   getProjectContactDirectoryOptions,
   getProjectContactSageOptions,
   getProjectContactsSummary,
-  type ProjectContactDirectoryOption,
-  type ProjectContactSageOptions,
-  type ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
+import type {
+  ProjectContactDirectoryOption,
+  ProjectContactSageOptions,
+  ProjectContactsSummary,
+} from "@/lib/domain/contacts/types"
 import { getProjects } from "@/app/actions/projects"
 import {
   ProjectContactsDirectory,
