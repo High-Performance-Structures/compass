@@ -53,7 +53,13 @@ function wrangler(extra) {
     maxBuffer: 256 * 1024 * 1024,
     stdio: ["ignore", "pipe", "inherit"],
   })
-  return JSON.parse(output)
+  // Remote --file runs print a progress table instead of JSON; only reads need the parsed rows.
+  try {
+    return JSON.parse(output)
+  } catch {
+    if (extra.includes("--file")) return []
+    throw new Error(`wrangler returned non-JSON output: ${output.slice(0, 200)}`)
+  }
 }
 
 /** One read-only SELECT. */
