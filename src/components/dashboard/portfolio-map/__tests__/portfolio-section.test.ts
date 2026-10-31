@@ -5,9 +5,26 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
 import type { SalesPipeline } from "@/lib/sales-pipeline/load"
+import type { NotificationCenterItem } from "@/app/actions/notifications"
 
-vi.mock("next/dynamic", () => ({ default: () => () => null }))
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
+const inboxMock = vi.hoisted(() => {
+  const items: NotificationCenterItem[] = []
+  return { items, push: vi.fn(), markRead: vi.fn(async () => {}), done: vi.fn(async () => {}), enabled: vi.fn() }
+})
+vi.mock("@/hooks/use-notification-inbox", () => ({
+  useNotificationInbox: (enabled: boolean) => {
+    inboxMock.enabled(enabled)
+    return { items: inboxMock.items, loaded: true, markRead: inboxMock.markRead, done: inboxMock.done }
+  },
+}))
+
+vi.mock("next/dynamic", () => ({ default: () => ({ onSelectJob, onSelectNotification }: {
+  readonly onSelectJob: (id: string) => void
+  readonly onSelectNotification: (id: string) => void
+}) => React.createElement("div", null,
+  React.createElement("button", { onClick: () => onSelectJob("p1") }, "Select Granby on map"),
+  React.createElement("button", { onClick: () => onSelectNotification("rfi") }, "Open map notification")) }))
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: inboxMock.push }), useSearchParams: () => new URLSearchParams() }))
 vi.mock("@/app/actions/project-profile", () => ({
   updateProjectMapVisibility: vi.fn(async () => ({ success: true })),
   updateProjectJobStatus: vi.fn(async () => ({ success: true })),
@@ -31,6 +48,12 @@ const jobs: readonly PortfolioMapJob[] = [
   { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default", followUp: null, planSetDocumentId: null },
 ]
 
+function notification(id: string, projectId: string, href: string, sourceType = "rfi"): NotificationCenterItem {
+  return { id, eventId: `event-${id}`, projectId, href, sourceType, eventType: `${sourceType}.updated`,
+    title: `Source ${id}`, body: "Updated record", priority: "normal", projectLabel: projectId,
+    readAt: null, createdAt: "2026-10-31T15:00:00Z" }
+}
+
 describe("PortfolioSection", () => {
   let root: Root
   let container: HTMLDivElement
@@ -38,6 +61,8 @@ describe("PortfolioSection", () => {
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
     localStorage.clear()
+    inboxMock.items.splice(0)
+    vi.clearAllMocks()
     container = document.createElement("div")
     document.body.appendChild(container)
     root = createRoot(container)
@@ -53,6 +78,86 @@ describe("PortfolioSection", () => {
     if (!button) throw new Error(`Button not found: ${text}`)
     await act(async () => button.click())
   }
+
+  it("opens a single pipeline notification at its exact source before marking it read", async () => {
+    const href = "/dashboard/projects/p1/rfis?status=all&item=rfi-1#rfi-rfi-1"
+    inboxMock.items.push(notification("one", "p1", href))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    expect(inboxMock.enabled).toHaveBeenLastCalledWith(true)
+    const link = container.querySelector<HTMLAnchorElement>('a[aria-label="1 unread notification for Granby Residence"]')
+    expect(link?.getAttribute("href")).toBe(href)
+    expect(link?.closest("button")).toBeNull()
+    await act(async () => link?.click())
+    expect(inboxMock.push).toHaveBeenCalledWith(href)
+    expect(inboxMock.markRead).toHaveBeenCalledOnce()
+    expect(inboxMock.push.mock.invocationCallOrder[0]).toBeLessThan(inboxMock.markRead.mock.invocationCallOrder[0] ?? 0)
+  })
+
+  it("shows a per-project source chooser for multiple pipeline notifications", async () => {
+    inboxMock.items.push(notification("rfi", "p1", "/dashboard/projects/p1/rfis?item=rfi-1"),
+      notification("mail", "p1", "/dashboard/projects/p1/communications?messageId=mail-1", "project_correspondence"),
+      notification("other", "p2", "/dashboard/projects/p2/todos?item=todo-2", "task"))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    const chooser = container.querySelector<HTMLButtonElement>('button[aria-label="2 unread notifications for Granby Residence; show sources"]')
+    expect(chooser).not.toBeNull()
+    await act(async () => chooser?.click())
+    const sources = container.querySelector('section[aria-label="Unread for this job"]')
+    expect([...sources?.querySelectorAll("a") ?? []].map((link) => link.getAttribute("href"))).toEqual([
+      "/dashboard/projects/p1/rfis?item=rfi-1", "/dashboard/projects/p1/communications?messageId=mail-1",
+    ])
+    expect(inboxMock.push).not.toHaveBeenCalled()
+    const source = sources?.querySelector<HTMLAnchorElement>("a")
+    await act(async () => source?.click())
+    expect(inboxMock.push).toHaveBeenCalledWith("/dashboard/projects/p1/rfis?item=rfi-1")
+  })
+
+  it("keeps map-selected notification rows linked to their source even with the messages layer off", async () => {
+    localStorage.setItem("compass:portfolio-view:v1", "map")
+    inboxMock.items.push(notification("todo", "p1", "/dashboard/projects/p1/todos?item=todo-1", "task"))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    await click("Select Granby on map")
+    const source = container.querySelector<HTMLAnchorElement>('section[aria-label="Unread for this job"] a')
+    expect(source?.getAttribute("href")).toBe("/dashboard/projects/p1/todos?item=todo-1")
+    await act(async () => source?.click())
+    expect(inboxMock.push).toHaveBeenCalledWith("/dashboard/projects/p1/todos?item=todo-1")
+  })
+
+  it("preserves modified-click browser navigation without consuming the notification", async () => {
+    const href = "/dashboard/projects/p1/communications?messageId=mail-1"
+    inboxMock.items.push(notification("mail", "p1", href, "project_correspondence"))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    const link = container.querySelector<HTMLAnchorElement>('a[aria-label="1 unread notification for Granby Residence"]')
+    // Stop jsdom's eventual document navigation after React has handled the click.
+    const preserveNative = (event: MouseEvent): void => {
+      expect(event.defaultPrevented).toBe(false)
+      event.preventDefault()
+    }
+    document.addEventListener("click", preserveNative, { once: true })
+    await act(async () => link?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true })))
+    expect(link?.getAttribute("href")).toBe(href)
+    expect(inboxMock.push).not.toHaveBeenCalled()
+    expect(inboxMock.markRead).not.toHaveBeenCalled()
+  })
+
+  it("opens the exact notification selected on a map tile", async () => {
+    localStorage.setItem("compass:portfolio-view:v1", "map")
+    const href = "/dashboard/projects/p1/rfis?status=all&item=rfi-1#rfi-rfi-1"
+    inboxMock.items.push(notification("rfi", "p1", href), notification("second", "p1", "/dashboard/projects/p1/todos?item=todo-1", "task"))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    await click("Open map notification")
+    expect(inboxMock.push).toHaveBeenCalledWith(href)
+    expect(inboxMock.markRead).toHaveBeenCalledWith(expect.objectContaining({ latest: expect.objectContaining({ id: "rfi" }) }))
+  })
+
+  it("counts only unread items and targets the unread message in a conversation", async () => {
+    inboxMock.items.push({ ...notification("read", "p1", "/dashboard/projects/p1/communications?messageId=read", "project_correspondence"), readAt: "2026-10-31T16:00:00Z" },
+      notification("unread", "p1", "/dashboard/projects/p1/communications?messageId=unread", "project_correspondence"),
+      notification("unrelated", "p99", "/dashboard/projects/p99/todos?item=todo-99", "task"))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    const link = container.querySelector('a[aria-label="1 unread notification for Granby Residence"]')
+    expect(link?.getAttribute("href")).toBe("/dashboard/projects/p1/communications?messageId=unread")
+    expect(container.querySelector('a[href*="p99"]')).toBeNull()
+  })
 
   it("falls back to the pipeline and opens a job's quick info with links into the job", async () => {
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [{ id: "p9", name: "Twinkle Rd - Rogers Residence", projectNumber: "O-1" }], hidden: [{ id: "p7", name: "Compass Developer", projectNumber: "H-DEV", restoreVisibility: "shown" }], travel: null })))
@@ -145,6 +250,7 @@ describe("PortfolioSection", () => {
   })
 
   it("switches the portfolio to the Nu-Tech Sales pipeline and moves a job", async () => {
+    inboxMock.items.push(notification("sales", "n1", "/dashboard/projects/n1/communications?messageId=sales", "project_correspondence"))
     const salesPipelines: readonly SalesPipeline[] = [{
       department: "N",
       title: "Nu-Tech Sales",
@@ -163,6 +269,9 @@ describe("PortfolioSection", () => {
     expect(container.textContent).not.toContain("Granby Residence")
 
     await click("Fairplay Garage")
+    expect(container.querySelector('section[aria-label="Unread for this job"] a')?.getAttribute("href"))
+      .toBe("/dashboard/projects/n1/communications?messageId=sales")
+    expect(container.querySelector('a[aria-label="1 unread notification for Fairplay Garage"]')).not.toBeNull()
     expect(container.textContent).toContain("12 Main St, Fairplay")
     const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"))
     expect(hrefs).toEqual(expect.arrayContaining(["/dashboard/projects/n1", "/dashboard/projects/n1/information"]))
@@ -184,6 +293,7 @@ describe("PortfolioSection", () => {
   })
 
   it("keeps offices and yards on their own Internal view", async () => {
+    inboxMock.items.push(notification("yard", "proj-wp-yard", "/dashboard/projects/proj-wp-yard/duty-log?item=yard-item", "task"))
     const office = { ...jobs[1], id: "proj-h-office", name: "H-Office", workspaceKind: "office" as const, address: "1304 E. Kiowa St." }
     const yard = { ...jobs[1], id: "proj-wp-yard", name: "Woodland Park Yard", workspaceKind: "field" as const, address: null }
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, internal: [office, yard] })))
@@ -193,6 +303,9 @@ describe("PortfolioSection", () => {
     expect(container.textContent).toContain("1 OFFICE · 1 FIELD")
     expect(container.textContent).not.toContain("Granby Residence")
     await click("Woodland Park Yard")
+    expect(container.querySelector('section[aria-label="Unread for this job"] a')?.getAttribute("href"))
+      .toBe("/dashboard/projects/proj-wp-yard/duty-log?item=yard-item")
+    expect(container.querySelector('a[aria-label="1 unread notification for Woodland Park Yard"]')).not.toBeNull()
     const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"))
     expect(hrefs).toEqual(expect.arrayContaining(["/dashboard/projects/proj-wp-yard", "/dashboard/projects/proj-wp-yard/duty-log", "/dashboard/projects/proj-wp-yard/information"]))
   })

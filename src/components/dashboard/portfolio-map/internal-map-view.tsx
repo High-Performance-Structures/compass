@@ -7,6 +7,8 @@ import type { PortfolioMarkerKey } from "@/components/dashboard/portfolio-map/po
 import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import type { PortfolioInternalJob } from "@/lib/portfolio-map/load"
 import { cn } from "@/lib/utils"
+import { PortfolioNotificationIndicator } from "./portfolio-notification-indicator"
+import type { PortfolioMessagesForJob } from "./use-portfolio-messages"
 
 /** The Internal view: the company's own offices and yards, apart from client projects. */
 export const INTERNAL_SCOPE = "internal"
@@ -51,10 +53,12 @@ export function InternalWorkspaceList({
   jobs,
   selectedId,
   onSelect,
+  messagesForJob,
 }: {
   readonly jobs: readonly PortfolioInternalJob[]
   readonly selectedId: string | null
   readonly onSelect: (id: string) => void
+  readonly messagesForJob?: PortfolioMessagesForJob
 }): React.ReactElement {
   return (
     <div className="grid h-full grid-cols-1 overflow-y-auto sm:grid-cols-3">
@@ -81,6 +85,11 @@ export function InternalWorkspaceList({
                     <span className="block font-medium">{job.name}</span>
                     <span className="block text-xs text-muted-foreground">{job.address ?? "No address yet"}</span>
                   </button>
+                  <PortfolioNotificationIndicator
+                    messages={messagesForJob?.(job.id) ?? null}
+                    jobName={job.name}
+                    onOpen={() => onSelect(job.id)}
+                  />
                 </li>
               ))}
             </ul>

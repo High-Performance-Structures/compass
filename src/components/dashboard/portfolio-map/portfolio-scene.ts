@@ -34,6 +34,7 @@ import {
 } from "three"
 import { portfolioMarkerAlert, type PortfolioMapJob, type PortfolioPhaseId } from "@/lib/portfolio-map/model"
 import type { MessageStacks } from "@/lib/notifications/message-stacks"
+import { pickPortfolioTarget, type PortfolioPick } from "./portfolio-picking"
 import {
   buildMessageStacks,
   type BuiltMessageStacks,
@@ -98,7 +99,7 @@ export type SceneHighlight = {
 }
 
 type SceneCallbacks = {
-  readonly onSelect: (jobId: string | null) => void
+  readonly onSelect: (jobId: string | null, notificationId: string | null) => void
   readonly onHover: (jobId: string | null) => void
   readonly onLabels: (labels: readonly SceneLabel[]) => void
   readonly onReady: () => void
@@ -910,19 +911,10 @@ export class PortfolioScene {
     this.requestRender()
   }
 
-  private pick(event: PointerEvent): Marker | null {
+  private pick(event: PointerEvent): PortfolioPick | null {
     if (this.markers.length === 0) return null
-    const rect = this.canvas.getBoundingClientRect()
-    this.pointer.set(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    this.raycaster.setFromCamera(this.pointer, this.camera)
-    const targets: Object3D[] = this.markers.map((marker) => marker.mesh)
-    if (this.builtStacks) targets.push(...this.builtStacks.meshes)
-    const hit = this.raycaster.intersectObjects(targets, false)[0]
-    const jobId = hit?.object.userData.jobId
-    return typeof jobId === "string" ? this.markers.find((marker) => marker.job.id === jobId) ?? null : null
+    return pickPortfolioTarget(event, this.canvas, this.pointer, this.raycaster, this.camera,
+      this.markers.map((marker) => marker.mesh), this.builtStacks?.meshes ?? [])
   }
 
   private readonly handleDown = (event: PointerEvent): void => {
@@ -941,7 +933,7 @@ export class PortfolioScene {
       this.requestRender()
       return
     }
-    const hovered = this.pick(event)?.job.id ?? null
+    const hovered = this.pick(event)?.jobId ?? null
     if (hovered !== this.highlight.hoveredJobId) this.callbacks.onHover(hovered)
   }
 
@@ -949,7 +941,10 @@ export class PortfolioScene {
     const drag = this.drag
     this.drag = null
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
-    if (drag && !drag.moved) this.callbacks.onSelect(this.pick(event)?.job.id ?? null)
+    if (drag && !drag.moved) {
+      const hit = this.pick(event)
+      this.callbacks.onSelect(hit?.jobId ?? null, hit?.notificationId ?? null)
+    }
   }
 
   private readonly handleLeave = (): void => {
