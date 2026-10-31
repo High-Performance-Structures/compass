@@ -16,7 +16,7 @@ import {
   type NotificationCenterLoader,
   type NotificationScopes,
   type NotificationSourceState,
-} from "@/lib/notifications/notification-center-store"
+} from "@/components/notifications/notification-center-store"
 
 const NotificationCenterContext = React.createContext<NotificationCenterStore | null>(null)
 

@@ -3,7 +3,7 @@ import * as React from "react"
 import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { NotificationCenterLoader } from "@/lib/notifications/notification-center-store"
+import type { NotificationCenterLoader } from "@/components/notifications/notification-center-store"
 
 const mocks = vi.hoisted(() => ({ center: vi.fn() }))
 vi.mock("@/app/actions/notifications", () => ({
