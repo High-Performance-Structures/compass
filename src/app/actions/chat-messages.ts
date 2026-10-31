@@ -1359,7 +1359,7 @@ export async function markChannelRead(
         lastReadMessageId: lastMessageId,
         lastReadAt: now,
         unreadCount: 0,
-      })
+      }).onConflictDoUpdate({ target: [channelReadState.channelId, channelReadState.userId], set: { lastReadMessageId: lastMessageId, lastReadAt: now, unreadCount: 0 } })
     }
 
     // Best effort: the read state above is what matters if this fails.
