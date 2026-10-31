@@ -15,12 +15,12 @@ import {
 } from "@/db/schema-estimates"
 import { projectLinks } from "@/db/schema-project-links"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/estimates/access"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/domain/estimates/access"
 import { copyEstimateLines, markupBasisPoints, UNASSIGNED_ITEMS, UNASSIGNED_NAME } from "@/lib/estimates/assembly-copy"
 import { isContractEstimate } from "@/lib/estimates/estimate-family"
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { estimateTotalsForLines } from "@/lib/estimates/phase-proposals"
-import { estimateCanBeEdited, isEstimateStatus } from "@/lib/financials/estimate-ledger"
+import { estimateCanBeEdited, isEstimateStatus } from "@/lib/domain/estimates/rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 
 /*

@@ -3,7 +3,7 @@ import type { getDb } from "@/db"
 import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
-import type { EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
+import type { EstimateLedgerLine } from "@/lib/domain/estimates/rules"
 
 type Db = ReturnType<typeof getDb>
 type EstimateRow = typeof projectEstimates.$inferSelect

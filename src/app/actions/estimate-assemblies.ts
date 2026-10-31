@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm"
 import { z } from "zod/v4"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/estimates/access"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
 import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
 
 const assemblyInput = z.object({

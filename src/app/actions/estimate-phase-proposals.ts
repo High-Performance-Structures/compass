@@ -14,7 +14,7 @@ import { projectFamilyPhases } from "@/db/schema-project-families"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports } from "@/db/schema-rfqs"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { estimateAccess, revalidateEstimate } from "@/lib/estimates/access"
+import { estimateAccess, revalidateEstimate } from "@/lib/domain/estimates/access"
 import { isContractEstimate } from "@/lib/estimates/estimate-family"
 import {
   completePhaseProposal,

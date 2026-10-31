@@ -6,7 +6,7 @@ import { approveProjectRfqBid, importApprovedProjectRfqBid } from "@/app/actions
 import { projectOperations } from "@/db/schema"
 import { projectEstimateLines } from "@/db/schema-estimates"
 import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports, projectRfqBidApprovals } from "@/db/schema-rfqs"
-import { estimateAccess, revalidateEstimate } from "@/lib/estimates/access"
+import { estimateAccess, revalidateEstimate } from "@/lib/domain/estimates/access"
 import { bidsForCostCode, type LineBid } from "@/lib/estimates/line-bids"
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { findPricingSource } from "@/lib/estimates/pricing-sources"

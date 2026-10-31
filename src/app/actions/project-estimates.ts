@@ -22,7 +22,7 @@ import { cookies } from "next/headers"
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { rateBookEntries } from "@/db/schema-rate-book"
-import { estimateAccess, estimateSourceForRecordCopy, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess, type EstimateWorkspaceSource } from "@/lib/estimates/access"
+import { estimateAccess, estimateSourceForRecordCopy, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess, type EstimateWorkspaceSource } from "@/lib/domain/estimates/access"
 import { verifyRecordCopyToken } from "@/lib/paper-trail/print-token"
 import { nextEstimateNumber, type EstimateMode } from "@/lib/estimates/estimate-modes"
 import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
@@ -61,10 +61,10 @@ import {
   calculateEstimateLine,
   calculateEstimateLineBreakdownRollup,
   calculateEstimateTotals,
-  estimateSourceHash,
   isEstimateStatus,
   type EstimateLedgerLine,
-} from "@/lib/financials/estimate-ledger"
+} from "@/lib/domain/estimates/rules"
+import { estimateSourceHash } from "@/lib/financials/estimate-ledger"
 import {
   CONTRACT_ADJUSTMENT_COST_CODES,
   parseProjectTotalsRows,

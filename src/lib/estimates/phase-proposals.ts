@@ -16,10 +16,10 @@ import {
 import { projectFamilies, projectFamilyPhases } from "@/db/schema-project-families"
 import { changeOrderLinesFromEstimate } from "@/lib/change-orders/estimate-execution"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
-import type { CompassDb } from "@/lib/estimates/access"
+import type { CompassDb } from "@/lib/domain/estimates/access"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { estimateLinesBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
-import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
+import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/domain/estimates/rules"
 import { projectFamilyProjectNumber } from "@/lib/project-family"
 
 /*
