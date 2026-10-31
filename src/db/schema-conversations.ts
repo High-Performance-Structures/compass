@@ -207,6 +207,8 @@ export const channelReadState = sqliteTable("channel_read_state", {
     index("channel_read_state_channel_id_idx").on(table.channelId),
     index("channel_read_state_user_id_idx").on(table.userId),
     uniqueIndex("channel_read_state_channel_user_unique").on(table.channelId, table.userId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("channel_read_state_last_read_message_id_idx").on(table.lastReadMessageId),
   ])
 
 export const voiceParticipants = sqliteTable(

@@ -130,6 +130,8 @@ export const socialPostMedia = sqliteTable(
       table.postId,
       table.photoId,
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("social_post_media_photo_id_idx").on(table.photoId),
   ],
 )
 

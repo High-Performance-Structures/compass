@@ -96,9 +96,12 @@ The database is the source of truth, and each fact is stored once.
   says what it freezes.
 - **Every internal id is a foreign key.** A `*_id` or `*_by` column that points
   at a Compass row uses `.references()`. Ids from outside systems (Google, Sage,
-  Buildertrend, Foxit, Square, WorkOS, email providers) are exempt by prefix. A
-  reference that deliberately survives deletion carries an `// fk-exempt:`
-  comment with the reason.
+  Buildertrend, Foxit, Square, WorkOS, email providers) are exempt by prefix.
+  An existing column that cannot take a foreign key is listed in
+  `src/db/id-integrity.ts`: guarded by a validation trigger (0281), exempt with
+  a reason (polymorphic, external, a code constant, or history that outlives
+  its parent), or on the needs-review list, which may only shrink. Run
+  `scripts/orphan-id-report.mjs` before adding a trigger to an existing column.
 - **Every foreign key is indexed.** The referencing column leads some index.
 - **Link tables are unique on their pair.** A membership or link row (two
   foreign keys, plus a role or timestamps) has a unique index on the pair.

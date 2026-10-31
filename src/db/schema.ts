@@ -525,6 +525,8 @@ export const emailReplyThreads = sqliteTable(
     ),
     index("email_reply_threads_source_idx").on(table.sourceType, table.sourceId),
     index("email_reply_threads_project_id_idx").on(table.projectId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("email_reply_threads_channel_id_idx").on(table.channelId),
   ]
 )
 
@@ -878,7 +880,9 @@ export const projects = sqliteTable("projects", {
   index("projects_client_customer_id_idx").on(table.clientCustomerId),
     // Declared from drizzle/0105_project_number_namespace.sql (COLLATE NOCASE, so the column is a sql`` expression).
     uniqueIndex("projects_org_project_number_unique").on(table.organizationId, sql`${table.projectNumber} COLLATE NOCASE`).where(sql`"project_number" IS NOT NULL`),
-])
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("projects_plan_set_document_id_idx").on(table.planSetDocumentId),
+  ])
 
 /** Zone and mountain charge rates (JSON validated by travelChargeSettingsSchema). */
 export const travelChargeSettings = sqliteTable("travel_charge_settings", {
@@ -1042,6 +1046,10 @@ export const projectDuplicateDecisions = sqliteTable(
     ),
     // Declared from drizzle/0274_hot_query_indexes.sql.
     index("project_duplicate_decisions_removed_idx").on(table.removedProjectId, table.status),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_duplicate_decisions_kept_project_id_idx").on(table.keptProjectId),
+    index("project_duplicate_decisions_project_a_id_idx").on(table.projectAId),
+    index("project_duplicate_decisions_project_b_id_idx").on(table.projectBId),
   ],
 )
 
@@ -2759,6 +2767,8 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
     index("idx_project_budget_applications_project").on(table.projectId),
     // Declared from drizzle/0035_project_budget.sql.
     index("idx_project_budget_applications_source").on(table.sourceSystem, table.sourceRecordId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_budget_applications_budget_revision_id_idx").on(table.budgetRevisionId),
   ])
 
 /**
@@ -2859,6 +2869,8 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
     index("idx_project_budget_lines_owner").on(table.projectId, table.ownerVisible),
     // Declared from drizzle/0280_relational_directory_links.sql.
     index("project_budget_lines_vendor_id_idx").on(table.vendorId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_budget_lines_budget_revision_line_id_idx").on(table.budgetRevisionLineId),
   ])
 
 export const projectRfis = sqliteTable("project_rfis", {
@@ -3003,6 +3015,8 @@ export const projectChangeOrders = sqliteTable(
     uniqueIndex("project_change_orders_rebaseline_execution_token_uq").on(
       table.rebaselineExecutionToken
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_change_orders_baseline_estimate_id_idx").on(table.baselineEstimateId),
   ]
 )
 
@@ -3044,6 +3058,8 @@ export const projectChangeOrderLines = sqliteTable(
       table.projectId,
       table.costCode
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_change_order_lines_contract_assembly_id_idx").on(table.contractAssemblyId),
   ]
 )
 
@@ -3720,6 +3736,8 @@ export const customers = sqliteTable(
       .where(
         sql`${table.buildertrendContactId} IS NOT NULL AND trim(${table.buildertrendContactId}) <> ''`
       ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("customers_merged_into_customer_id_idx").on(table.mergedIntoCustomerId),
   ]
 )
 
@@ -3762,7 +3780,9 @@ export const vendors = sqliteTable("vendors", {
   uniqueIndex("vendors_org_sage_vendor_number_unique")
     .on(table.organizationId, table.sageVendorNumber)
     .where(sql`${table.sageVendorNumber} IS NOT NULL AND trim(${table.sageVendorNumber}) <> ''`),
-])
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("vendors_merged_into_vendor_id_idx").on(table.mergedIntoVendorId),
+  ])
 
 export const vendorContacts = sqliteTable(
   "vendor_contacts",
@@ -3803,6 +3823,8 @@ export const vendorContacts = sqliteTable(
       .on(table.vendorId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
     index("vendor_contacts_user_id_idx").on(table.userId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("vendor_contacts_merged_into_person_id_idx").on(table.mergedIntoPersonId),
   ]
 )
 
@@ -3849,6 +3871,8 @@ export const customerContacts = sqliteTable(
       .on(table.customerId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
     index("customer_contacts_user_id_idx").on(table.userId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("customer_contacts_merged_into_person_id_idx").on(table.mergedIntoPersonId),
   ]
 )
 
@@ -4275,6 +4299,8 @@ export const printSnapshots = sqliteTable(
   (table) => [
     index("print_snapshots_user_idx").on(table.userId, table.createdAt),
     index("print_snapshots_expires_idx").on(table.expiresAt),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("print_snapshots_project_id_idx").on(table.projectId),
   ]
 )
 

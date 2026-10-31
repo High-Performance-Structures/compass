@@ -137,6 +137,9 @@ export const tradeLetters = sqliteTable(
     uniqueIndex("trade_letters_envelope_uq").on(table.foxitEnvelopeId).where(sql`${table.foxitEnvelopeId} IS NOT NULL`),
     uniqueIndex("trade_letters_number_uq").on(table.organizationId, table.letterNumber),
     index("trade_letters_vendor_id_idx").on(table.vendorId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("trade_letters_estimate_id_idx").on(table.estimateId),
+    index("trade_letters_rfq_operation_id_idx").on(table.rfqOperationId),
   ]
 )
 

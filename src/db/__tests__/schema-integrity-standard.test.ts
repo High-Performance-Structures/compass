@@ -4,6 +4,15 @@ import { is } from "drizzle-orm"
 import { SQLiteTable, getTableConfig } from "drizzle-orm/sqlite-core"
 import { beforeAll, describe, expect, it } from "vitest"
 
+import {
+  ID_REFERENCE_EXEMPT,
+  ID_REFERENCE_NEEDS_REVIEW,
+  ID_REFERENCE_TRIGGERS,
+  idReferenceIndexName,
+  idReferenceKey,
+  idReferenceTriggerName,
+} from "../id-integrity"
+
 /*
  * Enforces the database rules in docs/development/architecture-standards.md:
  * the Drizzle schema files are the source of truth for every table, column
@@ -336,158 +345,12 @@ const EXTERNAL_ID_COLUMN =
   /(^(google|sage|foxit|square|buildertrend|bt|gmail|workos|netsuite|stripe|external|youtube|github|goto|realtimekit|calendar|ical|watch|recurring_event|subscription|source)_)|((^|_)(provider|drive|sheet)_)/
 
 /**
- * Frozen list of internal *_id / *_by text columns that have no
- * .references(). May only shrink: add the foreign key (with an additive
- * migration) or move the column to the external pattern above if it really
- * holds another system's id. Many of these are polymorphic (entity_id,
- * record_id) or cross-table ids that predate this check.
+ * Internal *_id / *_by columns without .references() are classified in
+ * src/db/id-integrity.ts: triggered (a validation trigger checks the parent
+ * row exists), exempt with a reason, or waiting for review. The review list
+ * is a frozen ratchet: it may only shrink.
  */
-const ID_WITHOUT_REFERENCE_BASELINE: readonly string[] = [
-  "activity_events.entity_id",
-  "agent_action_confirmations.organization_id",
-  "agent_config.model_id",
-  "agent_items.conversation_id",
-  "agent_items.parent_id",
-  "agent_usage.model_id",
-  "buildertrend_staging_access_candidates.requested_project_id",
-  "buildertrend_staging_files.requested_project_id",
-  "buildertrend_staging_observations.entity_id",
-  "buildertrend_staging_records.promoted_record_id",
-  "buildertrend_staging_records.requested_project_id",
-  "channel_read_state.last_read_message_id",
-  "cherish_pulse_responses.audience_reference_id",
-  "compass_project_calendar_members.acl_rule_id",
-  "contact_account_link_events.changed_by_user_id",
-  "contact_account_link_events.next_user_id",
-  "contact_account_link_events.person_id",
-  "contact_account_link_events.previous_user_id",
-  "contact_merge_events.destination_id",
-  "correspondence_attachments.organization_id",
-  "correspondence_composition_drafts.organization_id",
-  "correspondence_email_deliveries.organization_id",
-  "correspondence_email_events.organization_id",
-  "correspondence_email_threads.anchor_message_id",
-  "correspondence_email_threads.organization_id",
-  "correspondence_outbox.recipient_user_id",
-  "correspondence_revisions.actor_user_id",
-  "correspondence_saved_drafts.organization_id",
-  "customer_contacts.merged_into_person_id",
-  "customers.merged_into_customer_id",
-  "email_reply_threads.channel_id",
-  "equipment_log_entries.client_submission_id",
-  "feedback_desk_items.assigned_to_user_id",
-  "feedback_desk_items.channel_id",
-  "feedback_desk_items.delivery_graph_id",
-  "feedback_desk_items.delivery_graph_implementation_task_id",
-  "feedback_desk_items.delivery_graph_release_task_id",
-  "feedback_desk_items.delivery_graph_review_task_id",
-  "feedback_desk_items.feature_priority_approved_by",
-  "feedback_desk_items.message_id",
-  "feedback_desk_items.organization_id",
-  "feedback_desk_items.thread_id",
-  "feedback_interviews.conversation_id",
-  "feedback_maintenance_runs.organization_id",
-  "feedback_service_health.organization_id",
-  "goto_inbound_events.conversation_id",
-  "goto_inbound_events.message_id",
-  "goto_inbound_events.trashed_by",
-  "goto_inbound_settings.channel_id",
-  "inbound_emails.posted_message_id",
-  "jarvis_bridge_events.feedback_desk_item_id",
-  "jarvis_bridge_events.organization_id",
-  "listening_rooms.current_track_id",
-  "local_sync_metadata.record_id",
-  "message_mentions.target_id",
-  "messages.thread_id",
-  "mutation_queue.record_id",
-  "netsuite_auth.account_id",
-  "netsuite_sync_metadata.local_record_id",
-  "nutech_catalog_versions.airlite_template_id",
-  "nutech_order_workflows.airlite_workbook_id",
-  "nutech_order_workflows.tax_entity_id",
-  "permission_audit_events.feature_id",
-  "print_snapshots.project_id",
-  "print_snapshots.user_id",
-  "project_budget_applications.billed_by",
-  "project_budget_applications.budget_revision_id",
-  "project_budget_lines.budget_revision_line_id",
-  "project_change_order_lines.contract_assembly_id",
-  "project_change_orders.baseline_estimate_id",
-  "project_change_orders.replacement_estimate_id",
-  "project_contract_budget_adjustments.change_order_id",
-  "project_contract_budget_adjustments.change_order_line_id",
-  "project_contract_budget_adjustments.contract_assembly_id",
-  "project_correspondence.organization_id",
-  "project_documents.supersedes_document_id",
-  "project_duplicate_decisions.kept_project_id",
-  "project_duplicate_decisions.project_a_id",
-  "project_duplicate_decisions.project_b_id",
-  "project_duplicate_decisions.removed_project_id",
-  "project_email_campaigns.organization_id",
-  "project_email_campaigns.reply_thread_id",
-  "project_estimate_acknowledgements.template_id",
-  "project_estimate_assemblies.contract_assembly_id",
-  "project_estimate_assembly_copies.organization_id",
-  "project_estimate_assembly_copies.target_estimate_id",
-  "project_estimate_line_cost_items.rate_book_entry_id",
-  "project_estimates.change_order_id",
-  "project_estimates.phase_proposal_id",
-  "project_external_resource_grants.resource_id",
-  "project_family_phases.job_status_id",
-  "project_finish_selections.approved_by",
-  "project_finish_selections.parent_selection_id",
-  "project_job_status_label_conflicts.discarded_status_id",
-  "project_job_status_label_conflicts.organization_id",
-  "project_job_status_label_conflicts.retained_status_id",
-  "project_number_retirements.former_project_id",
-  "project_operations.awarded_rfq_id",
-  "project_phase_proposals.deduct_change_order_id",
-  "project_profile_audit_events.entity_id",
-  "project_record_drive_files.existing_file_id",
-  "project_record_drive_files.record_id",
-  "project_record_drive_snapshots.record_id",
-  "project_rfi_attachments.storage_id",
-  "project_selection_decision_events.actor_id",
-  "project_selection_decision_events.selection_id",
-  "project_selection_decisions.approved_by",
-  "project_selection_decisions.change_order_id",
-  "project_selection_decisions.last_mutation_id",
-  "project_selection_requests.last_mutation_id",
-  "project_selection_requests.requester_id",
-  "project_template_content_items.parent_source_item_id",
-  "project_videos.linked_entity_id",
-  "project_warranty_claim_attachments.storage_id",
-  "projects.job_status_id",
-  "projects.plan_set_document_id",
-  "role_permission_overrides.feature_id",
-  "sage_contact_change_proposals.entity_id",
-  "sage_contact_change_proposals.parent_sage_record_id",
-  "sage_contact_create_proposals.parent_sage_record_id",
-  "sage_contact_read_requests.entity_id",
-  "sage_contact_read_requests.parent_sage_record_id",
-  "sage_contact_snapshots.entity_id",
-  "sage_contact_snapshots.parent_sage_record_id",
-  "sage_pay_application_sync_runs.snapshot_id",
-  "schedule_task_links.resource_id",
-  "shop_ticket_lines.rate_book_entry_id",
-  "social_accounts.parent_external_account_id",
-  "social_post_media.photo_id",
-  "staff_message_events.from_assignee_user_id",
-  "staff_message_events.to_assignee_user_id",
-  "sync_tombstone.record_id",
-  "team_permission_overrides.feature_id",
-  "trade_letters.estimate_id",
-  "trade_letters.rfq_operation_id",
-  "user_model_preference.model_id",
-  "user_permission_overrides.feature_id",
-  "user_theme_preference.active_theme_id",
-  "vendor_contacts.merged_into_person_id",
-  "vendors.merged_into_vendor_id",
-  "vendors.trade_docs_folder_id",
-  "voice_realtimekit_meetings.meeting_id",
-  "weather_schedule_risks.rule_id",
-  "youtube_channel_connections.channel_id",
-]
+const ID_REFERENCE_NEEDS_REVIEW_MAX = 9
 
 describe("schema integrity standard", () => {
   let schema: ReadonlyMap<string, TableShape>
@@ -540,24 +403,84 @@ describe("schema integrity standard", () => {
     expect(stale, "These are indexed now; delete them from UNINDEXED_FOREIGN_KEYS.").toEqual([])
   })
 
-  it("declares a foreign key on every internal id column", () => {
-    const missing: string[] = []
+  it("declares a foreign key, a validation trigger or an exemption on every internal id column", () => {
+    const candidates = new Set<string>()
+    const unclassified: string[] = []
+    const triggered = new Set(ID_REFERENCE_TRIGGERS.map(idReferenceKey))
+    const review = new Set(ID_REFERENCE_NEEDS_REVIEW.map(idReferenceKey))
     for (const table of schema.values()) {
       const referenced = new Set(table.foreignKeys.flatMap((foreignKey) => foreignKey.columns))
       for (const column of table.textColumns) {
-        if (!/(_id|_by)$/.test(column)) continue
-        if (referenced.has(column) || EXTERNAL_ID_COLUMN.test(column)) continue
-        missing.push(`${table.name}.${column}`)
+        if (!/(_id|_by)$/.test(column) || referenced.has(column)) continue
+        const key = `${table.name}.${column}`
+        candidates.add(key)
+        if (triggered.has(key) || review.has(key) || key in ID_REFERENCE_EXEMPT) continue
+        if (EXTERNAL_ID_COLUMN.test(column)) continue
+        unclassified.push(key)
       }
     }
-    const baseline = new Set(ID_WITHOUT_REFERENCE_BASELINE)
-    const unexpected = missing.filter((entry) => !baseline.has(entry)).sort()
     expect(
-      unexpected,
-      "Add .references(() => parent.id) to these columns, or match EXTERNAL_ID_COLUMN if they hold another system's id.",
+      unclassified.sort(),
+      "Add .references(() => parent.id) to these columns, or classify them in src/db/id-integrity.ts: a validation trigger (additive migration), or an exemption with a reason. Columns matching EXTERNAL_ID_COLUMN must really hold another system's id.",
     ).toEqual([])
-    const stale = ID_WITHOUT_REFERENCE_BASELINE.filter((entry) => !missing.includes(entry))
-    expect(stale, "These have a foreign key now; delete them from ID_WITHOUT_REFERENCE_BASELINE.").toEqual([])
+
+    const listed = [...triggered, ...review, ...Object.keys(ID_REFERENCE_EXEMPT)]
+    expect(
+      listed.filter((key, index) => listed.indexOf(key) !== index),
+      "Each column belongs in exactly one id-integrity list.",
+    ).toEqual([])
+    expect(
+      listed.filter((key) => !candidates.has(key)).sort(),
+      "These have a foreign key now or no longer exist; delete them from src/db/id-integrity.ts.",
+    ).toEqual([])
+    expect(
+      Object.entries(ID_REFERENCE_EXEMPT).filter(([, reason]) => reason.trim().length < 10).map(([key]) => key),
+      "Every exemption needs a real reason.",
+    ).toEqual([])
+    expect(
+      ID_REFERENCE_NEEDS_REVIEW.length,
+      "ID_REFERENCE_NEEDS_REVIEW may only shrink; lower ID_REFERENCE_NEEDS_REVIEW_MAX when you resolve one.",
+    ).toBeLessThanOrEqual(ID_REFERENCE_NEEDS_REVIEW_MAX)
+  })
+
+  it("creates the insert and update validation triggers for every triggered id column", () => {
+    const triggers = new Map(
+      rows(database, "select name, tbl_name, sql from sqlite_master where type = 'trigger'").map((row) => [
+        str(row.name),
+        { table: str(row.tbl_name), sql: str(row.sql) },
+      ]),
+    )
+    const problems: string[] = []
+    for (const entry of ID_REFERENCE_TRIGGERS) {
+      if (!replayed.has(entry.parent)) problems.push(`${idReferenceKey(entry)}: parent ${entry.parent} does not exist`)
+      for (const event of ["insert", "update"] as const) {
+        const name = idReferenceTriggerName(entry, event)
+        const trigger = triggers.get(name)
+        const head = event === "insert" ? "BEFORE INSERT ON" : `BEFORE UPDATE OF \`${entry.column}\` ON`
+        if (
+          !trigger ||
+          trigger.table !== entry.table ||
+          !trigger.sql.includes(head) ||
+          !trigger.sql.includes(`FROM \`${entry.parent}\` WHERE \`id\` = NEW.\`${entry.column}\``) ||
+          !trigger.sql.includes(`${idReferenceKey(entry)} must reference an existing ${entry.parent}`)
+        ) {
+          problems.push(`${idReferenceKey(entry)}: missing or wrong trigger ${name}`)
+        }
+      }
+    }
+    expect(problems, "Add the validation triggers in an additive migration (see drizzle/0281_id_reference_triggers.sql).").toEqual([])
+  })
+
+  it("indexes every triggered id column unless it says why not", () => {
+    const missing: string[] = []
+    for (const entry of ID_REFERENCE_TRIGGERS) {
+      if (entry.unindexedReason) continue
+      const table = schema.get(entry.table)
+      const leads = new Set(table?.indexes.map((index) => index.columns[0]))
+      if (table?.primaryLead) leads.add(table.primaryLead)
+      if (!leads.has(entry.column)) missing.push(`${idReferenceKey(entry)} (e.g. ${idReferenceIndexName(entry)})`)
+    }
+    expect(missing, "Add an index that starts with each of these columns, or an unindexedReason.").toEqual([])
   })
 
   it("serves foreign key lookups from the 0275 indexes", () => {

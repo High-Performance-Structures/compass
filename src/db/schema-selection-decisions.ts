@@ -37,7 +37,10 @@ export const projectSelectionDecisions = sqliteTable(
     lastMutationId: text("last_mutation_id").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("selection_decisions_project").on(table.projectId)]
+  (table) => [index("selection_decisions_project").on(table.projectId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_selection_decisions_change_order_id_idx").on(table.changeOrderId),
+  ]
 )
 
 export const projectSelectionRequests = sqliteTable(
@@ -91,6 +94,8 @@ export const projectSelectionDecisionEvents = sqliteTable(
       table.selectionId,
       table.createdAt
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_selection_decision_events_selection_id_idx").on(table.selectionId),
   ]
 )
 
