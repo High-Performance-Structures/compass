@@ -3,10 +3,10 @@ import type {
   AudienceRfi,
   AudienceRfq,
   ProjectAudiencePreview,
-} from "@/app/actions/project-audience-preview"
+} from "@/lib/project-audience-preview-types"
 import type { PortalReport, PortalReportItem } from "./portal-report"
-import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
-import type { WarrantyClaimItem } from "@/app/actions/project-warranty"
+import type { ProjectChangeOrderItem } from "@/lib/change-orders/types"
+import type { WarrantyClaimItem } from "@/lib/domain/warranty/types"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
 import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/provenance"
 

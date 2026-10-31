@@ -1,7 +1,7 @@
 import type {
   AudienceContact,
   AudienceMessageChannel,
-} from "@/app/actions/project-audience-preview"
+} from "@/lib/project-audience-preview-types"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { projectAudienceConversationHref } from "@/lib/project-audience-preview-routes"
 

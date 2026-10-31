@@ -3,7 +3,10 @@ import { cache } from "react"
 
 import { getDb } from "@/db"
 import { projectJobStatuses, projectMembers, projects } from "@/db/schema"
+import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { requirePermission } from "@/lib/permissions"
+import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { activeRegistryProject } from "@/lib/project-registry-visibility"
 
@@ -118,4 +121,24 @@ async function loadProjectList(
     )
     .orderBy(asc(projects.projectNumber), asc(projects.name))
   return projectListItems(rows)
+}
+
+/**
+ * The signed-in viewer's projects: requires project read permission and
+ * returns an empty list when the viewer is signed out or not permitted.
+ * The getProjects server action and server-side callers share this.
+ */
+export async function listProjectsForCurrentUser(): Promise<ProjectListItem[]> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "project", "read")
+    return await loadProjectListForRequest(
+      user.id,
+      user.organizationId ?? null,
+      user.organizationType === "internal" &&
+        canUseOrganizationProjectScopeRole(user.role),
+    )
+  } catch {
+    return []
+  }
 }

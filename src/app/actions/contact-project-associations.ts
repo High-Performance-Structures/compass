@@ -3,7 +3,7 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { customers, projectContacts, projects, vendors } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -26,7 +26,7 @@ export async function getCompanyAssociationProjects(): Promise<readonly Associat
     const user = await requireAuth()
     await requireFeaturePermission(user, "project-contacts", "update")
     requirePermission(user, "project", "update")
-    return (await getProjects()).map((project) => ({
+    return (await listProjectsForCurrentUser()).map((project) => ({
       id: project.id,
       name: project.name,
       projectNumber: project.projectNumber,
@@ -57,7 +57,7 @@ export async function addCompaniesToProject(input: {
       !input.projectId.trim()
     ) return { success: false, error: "Choose 1–100 valid directory records and a project." }
 
-    const visibleProjects = await getProjects()
+    const visibleProjects = await listProjectsForCurrentUser()
     if (!visibleProjects.some((project) => project.id === input.projectId)) {
       return { success: false, error: "Project is not available for assignment." }
     }

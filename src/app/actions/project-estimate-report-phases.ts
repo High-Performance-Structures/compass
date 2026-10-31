@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
+import type { ProjectEstimateActionResult } from "@/lib/domain/estimates/types"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { projectEstimateLines, projectEstimateReportPhases, projectEstimates } from "@/db/schema-estimates"

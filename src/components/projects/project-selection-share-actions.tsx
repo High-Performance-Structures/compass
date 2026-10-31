@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { ProjectBrand } from "@/lib/project-branding"
-import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
+import { openPrintSnapshot } from "@/components/print/open-print-snapshot"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
 type PrintMode = "packet" | "room_sheets"

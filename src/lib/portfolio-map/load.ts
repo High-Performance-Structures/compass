@@ -2,7 +2,7 @@ import { and, asc, eq, gte, lt, sql } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projects, projectTravelChargeOverrides, scheduleTasks, travelChargeSettings } from "@/db/schema"
 import { applyTravelOverride, type EffectiveTravelCharge } from "@/lib/portfolio-map/travel-overrides"
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { canOpenProjectFiles } from "@/lib/project-files-access"
@@ -105,14 +105,14 @@ const EMPTY: PortfolioMapData = {
 }
 
 /**
- * Jobs for the office portfolio map. Visibility follows getProjects(), so the
+ * Jobs for the office portfolio map. Visibility follows listProjectsForCurrentUser(), so the
  * map never shows a job the person cannot already open.
  */
 export async function getPortfolioMapData(): Promise<PortfolioMapData> {
   try {
     const user = await getCurrentUser()
     if (!user?.organizationId) return EMPTY
-    const visible = await getProjects()
+    const visible = await listProjectsForCurrentUser()
     if (visible.length === 0) return EMPTY
 
     const { env, ctx } = await getCloudflareContext()
@@ -391,7 +391,7 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
   try {
     const user = await getCurrentUser()
     if (!user?.organizationId) return []
-    const visible = await getProjects()
+    const visible = await listProjectsForCurrentUser()
     if (visible.length === 0) return []
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []

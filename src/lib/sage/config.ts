@@ -1,3 +1,5 @@
+import { envValue } from "@/lib/shared/env"
+
 type SageConnectionMode = "sql-server"
 
 export type SageBridgeStatus = {
@@ -12,15 +14,15 @@ export type SageBridgeStatus = {
 const REQUIRED_SAGE_CONFIG_KEYS = ["SAGE_PAY_APPLICATION_BRIDGE_SECRET"]
 
 function readEnv(
-  env: Record<string, string | undefined>,
+  env: unknown,
   key: string
 ): string | undefined {
-  const value = env[key] ?? process.env[key]
+  const value = envValue(env, key) ?? process.env[key]
   return value && value.trim().length > 0 ? value : undefined
 }
 
 export function getSageBridgeStatus(
-  env: Record<string, string | undefined>
+  env: unknown
 ): SageBridgeStatus {
   const hasBridgeSecret = Boolean(
     readEnv(env, "SAGE_PAY_APPLICATION_BRIDGE_SECRET") ??

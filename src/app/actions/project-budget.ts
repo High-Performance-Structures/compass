@@ -10,6 +10,7 @@ import {
   projectBudgetLines,
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
+import type { ProjectBudgetApplicationItem } from "@/lib/financials/project-budget-types"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -44,27 +45,6 @@ type ProjectBudgetDetailMode =
   | "category_percent"
   | "assembly"
   | "assembly_percent"
-
-export type ProjectBudgetApplicationItem = {
-  readonly id: string
-  readonly sourceSystem: string
-  readonly applicationNumber: string
-  readonly periodTo: string | null
-  readonly status: string
-  readonly originalContractSum: number
-  readonly netChanges: number
-  readonly contractSumToDate: number
-  readonly totalCompletedStoredToDate: number
-  readonly retainageHeld: number
-  readonly totalEarnedLessRetainage: number
-  readonly previousCertificates: number
-  readonly currentPaymentDue: number
-  readonly balanceToFinish: number
-  readonly ownerVisible: boolean
-  readonly documentAvailable: boolean
-  readonly sourceUrl: string | null
-  readonly lastSyncedAt: string | null
-}
 
 export type ProjectBudgetLineItem = {
   readonly id: string

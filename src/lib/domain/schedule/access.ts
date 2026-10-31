@@ -90,3 +90,9 @@ export async function readWorkingSchedule(context: OrgContext, projectId: string
   }
   return loadWorkingSchedule(context.db, projectId)
 }
+
+/** The working schedule for the signed-in viewer (schedule read context). */
+export async function readProjectSchedule(projectId: string): Promise<ScheduleData> {
+  const context = await scheduleReadContext()
+  return readWorkingSchedule(context, projectId)
+}

@@ -13,7 +13,7 @@ import {
   deleteEstimateAssembliesStatement,
   type Statement,
 } from "@/lib/domain/estimates/store"
-import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
+import type { ProjectEstimateActionResult } from "@/lib/domain/estimates/types"
 
 const assemblyInput = z.object({
   name: z.string().trim().min(1, "Enter an assembly name.").max(160),

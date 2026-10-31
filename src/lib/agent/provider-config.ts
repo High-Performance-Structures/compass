@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import { userProviderConfig } from "@/db/schema-ai-config"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { envValue } from "@/lib/shared/env"
 
 // Returns a saved provider config with its API key decrypted. Server-only on
 // purpose: it takes any user ID and does no auth check, so it must never be
@@ -34,9 +35,7 @@ export async function getProviderConfigForJwt(
       return null
     }
 
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
+    const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
     let decryptedApiKey: string | null = null
     if (config.apiKey) {

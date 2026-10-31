@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose"
+import { envValue } from "@/lib/shared/env"
 
 export type AuthResult =
   | {
@@ -19,7 +20,7 @@ export type AuthResult =
  */
 export async function validateAgentAuth(
   req: Request,
-  env: Record<string, string>,
+  env: unknown,
 ): Promise<AuthResult> {
   const authHeader = req.headers.get("Authorization")
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -27,7 +28,7 @@ export async function validateAgentAuth(
   }
 
   const token = authHeader.replace("Bearer ", "")
-  const secret = env.AGENT_AUTH_SECRET
+  const secret = envValue(env, "AGENT_AUTH_SECRET")
   if (!secret) {
     console.error("AGENT_AUTH_SECRET not configured")
     return { valid: false }

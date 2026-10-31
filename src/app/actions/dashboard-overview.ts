@@ -267,9 +267,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const { user, db, env } = await requireUserContext()
     const orgId = requireOrg(user)
 
-    const sageBridgeConfig = getSageBridgeStatus(
-      env as unknown as Record<string, string | undefined>
-    )
+    const sageBridgeConfig = getSageBridgeStatus(env)
 
     const rankedDailyLogs = db
       .select({

@@ -8,6 +8,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { chunkD1Values } from "@/lib/d1-query"
 import {
   canViewWorkingSchedule,
+  readProjectSchedule,
   readWorkingSchedule,
   scheduleReadContext,
   scheduleSwitcherProjects,
@@ -65,8 +66,7 @@ function emptyScopedSchedule(): ScopedScheduleData {
 }
 
 export async function getSchedule(projectId: string): Promise<ScheduleData> {
-  const context = await scheduleReadContext()
-  return readWorkingSchedule(context, projectId)
+  return readProjectSchedule(projectId)
 }
 
 export async function getOwnerScheduleView(projectId: string): Promise<OwnerScheduleView> {

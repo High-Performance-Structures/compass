@@ -1,4 +1,4 @@
-import type { CherishValue } from "@/app/actions/cherish-pulse"
+import type { CherishValue } from "@/lib/cherish/pulse-types"
 
 // Words and phrases that point to each CHERISH value. Matching is
 // deterministic and runs in the browser, so it works offline in Field Desk.

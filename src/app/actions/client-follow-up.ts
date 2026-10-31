@@ -3,7 +3,7 @@
 import { and, desc, eq, gte, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projectContacts, projectFollowUps, projectInteractions, users } from "@/db/schema"
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
 import {
   buildLeaderboard,
@@ -92,8 +92,8 @@ export async function getClientFollowUpWorkspace(
     const streakStart = new Date(now.getTime() - STREAK_WINDOW_DAYS * 86_400_000)
     const earliest = start < streakStart ? start : streakStart
 
-    // getProjects applies the viewer's project access.
-    const visible = await getProjects()
+    // listProjectsForCurrentUser applies the viewer's project access.
+    const visible = await listProjectsForCurrentUser()
     const signals = await loadProjectFollowUpSignals(db, organizationId, visible, now)
     const followed = visible.filter((project) => signals.has(project.id))
     const visibleIds = visible.map((project) => project.id)

@@ -28,15 +28,13 @@ export class SyncEngine {
 
   constructor(
     db: DrizzleD1Database,
-    env: Record<string, string | undefined>,
+    env: unknown,
     conflictStrategy: ConflictStrategy = "newest_wins"
   ) {
     this.db = db
     this.conflictStrategy = conflictStrategy
 
-    const config = getNetSuiteConfig(
-      env as Record<string, string>
-    )
+    const config = getNetSuiteConfig(env)
     const tokenManager = new TokenManager(config, db as never)
     const limiter = new ConcurrencyLimiter(config.concurrencyLimit)
     const baseClient = new BaseClient(tokenManager, limiter)

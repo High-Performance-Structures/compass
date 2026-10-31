@@ -15,17 +15,10 @@ import { requireOrg } from "@/lib/org-scope"
 import { canUseFieldDesk } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import type { CherishPulseResponseType, CherishValue } from "@/lib/cherish/pulse-types"
 
-export type CherishValue =
-  | "Camaraderie"
-  | "Honor"
-  | "Excellence"
-  | "Reliability"
-  | "Integrity"
-  | "Servitude"
-  | "Humility"
+export type { CherishPulseResponseType, CherishValue } from "@/lib/cherish/pulse-types"
 
-export type CherishPulseResponseType = "shoutout" | "concern" | "win"
 type CherishPulseVisibility = "team" | "private"
 type CherishPulseSource =
   | "compass_dashboard"

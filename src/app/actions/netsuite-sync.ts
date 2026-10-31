@@ -18,8 +18,7 @@ export async function getNetSuiteConnectionStatus() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
     const db = getDb(env.DB)
     const tokenManager = new TokenManager(config, db as never)
     const connected = await tokenManager.hasTokens()
@@ -39,8 +38,7 @@ export async function initiateNetSuiteOAuth() {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
 
     const state = crypto.randomUUID()
     const authorizeUrl = getAuthorizeUrl(config, state)
@@ -59,8 +57,7 @@ export async function disconnectNetSuite() {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
     const db = getDb(env.DB)
     const tokenManager = new TokenManager(config, db as never)
     await tokenManager.clearTokens()
@@ -80,9 +77,8 @@ export async function syncCustomers() {
     const user = await getCurrentUser()
     requirePermission(user, "customer", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     const mapper = new CustomerMapper()
 
     const result = await engine.pull(
@@ -127,9 +123,8 @@ export async function syncVendors() {
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     const mapper = new VendorMapper()
 
     const result = await engine.pull(
@@ -176,9 +171,8 @@ export async function getSyncHistory() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     return { success: true, history: await engine.getSyncHistory() }
   } catch (err) {
     return {
@@ -194,9 +188,8 @@ export async function getConflicts() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     return { success: true, conflicts: await engine.getConflicts() }
   } catch (err) {
     return {
@@ -215,9 +208,8 @@ export async function resolveConflict(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     await engine.resolveConflict(metaId, resolution)
 
     revalidatePath("/dashboard")

@@ -4,9 +4,8 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
-import { getUploadSessionUrl } from "@/app/actions/google-drive"
+import { createDriveUploadSession as getUploadSessionUrl } from "@/lib/domain/documents/drive-session"
 import { projectEstimates } from "@/db/schema-estimates"
-import { errorMessage } from "@/lib/action-result"
 import {
   acceptanceUploadTarget,
   contractVersionAcceptancePreview,
@@ -18,10 +17,16 @@ import {
   requireEditableEstimate,
   revalidateEstimate,
 } from "@/lib/domain/estimates/access"
+import {
+  createProjectEstimateDraftCommand,
+  deleteProjectEstimateLineCommand,
+  editEstimate,
+  estimateFailure,
+  saveProjectEstimateLineCommand,
+} from "@/lib/domain/estimates/commands"
 import { saveEstimateLineCostItem, setEstimateLineCostItemRemoved } from "@/lib/domain/estimates/cost-items"
 import {
   createChangeOrderEstimate,
-  createEstimateDraft,
   deletableEstimateDraft,
   duplicateEstimate,
   recordEstimateDraftDeleted,
@@ -42,8 +47,6 @@ import {
 } from "@/lib/domain/estimates/imports"
 import {
   applyEstimateLineMarkup,
-  deleteEstimateLine,
-  saveEstimateLine,
   updateEstimateBuilderFee,
 } from "@/lib/domain/estimates/lines"
 import { markEstimateSentOutsideCompass, prepareEstimateForClientSignature } from "@/lib/domain/estimates/signature"
@@ -95,27 +98,7 @@ export type {
   ProjectEstimateWorkspace,
 } from "@/lib/domain/estimates/types"
 
-function failure(error: unknown, fallback: string): { readonly success: false; readonly error: string } {
-  return { success: false, error: errorMessage(error, fallback) }
-}
-
-/** Runs an edit to an editable estimate and revalidates its pages. */
-async function editEstimate(
-  projectId: string,
-  estimateId: string,
-  fallback: string,
-  edit: (access: Awaited<ReturnType<typeof estimateAccess>>) => Promise<string>
-): Promise<ProjectEstimateActionResult> {
-  try {
-    const access = await estimateAccess(projectId, true)
-    await requireEditableEstimate(access.db, projectId, estimateId)
-    const id = await edit(access)
-    revalidateEstimate(projectId)
-    return { success: true, id }
-  } catch (error) {
-    return failure(error, fallback)
-  }
-}
+const failure = estimateFailure
 
 export async function getProjectEstimateWorkspace(
   projectId: string,
@@ -152,14 +135,7 @@ export async function getEstimateWorkspaceForRecordCopy(
 export async function createProjectEstimateDraft(
   projectId: string
 ): Promise<ProjectEstimateActionResult> {
-  try {
-    const access = await estimateAccess(projectId, true)
-    const id = await createEstimateDraft(access, projectId)
-    revalidateEstimate(projectId)
-    return { success: true, id }
-  } catch (error) {
-    return failure(error, "Unable to create estimate.")
-  }
+  return createProjectEstimateDraftCommand(projectId)
 }
 
 export async function createChangeOrderEstimateDraft(
@@ -370,15 +346,7 @@ export async function saveProjectEstimateLine(
   lineId: string | null,
   input: ProjectEstimateLineInput
 ): Promise<ProjectEstimateActionResult> {
-  try {
-    const access = await estimateAccess(projectId, true)
-    const estimate = await requireEditableEstimate(access.db, projectId, estimateId)
-    const id = await saveEstimateLine(access, projectId, estimate, lineId, input)
-    revalidateEstimate(projectId)
-    return { success: true, id }
-  } catch (error) {
-    return failure(error, "Unable to save estimate line.")
-  }
+  return saveProjectEstimateLineCommand(projectId, estimateId, lineId, input)
 }
 
 export async function saveProjectEstimateLineCostItem(
@@ -450,10 +418,7 @@ export async function deleteProjectEstimateLine(
   estimateId: string,
   lineId: string
 ): Promise<ProjectEstimateActionResult> {
-  return editEstimate(projectId, estimateId, "Unable to delete estimate line.", async (access) => {
-    await deleteEstimateLine(access, estimateId, lineId)
-    return lineId
-  })
+  return deleteProjectEstimateLineCommand(projectId, estimateId, lineId)
 }
 
 export async function addProjectEstimateBasisDocument(

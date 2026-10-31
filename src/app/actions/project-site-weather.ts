@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projects, scheduleTasks } from "@/db/schema"
-import { createProjectTask } from "@/app/actions/project-todos"
+import { createProjectTaskCommand as createProjectTask } from "@/lib/domain/operations/todo-commands"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isInternalStaffRole } from "@/lib/user-roles"

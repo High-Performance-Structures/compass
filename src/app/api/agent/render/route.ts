@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import { agentConfig } from "@/db/schema-ai-config"
 import { eq } from "drizzle-orm"
 import { canUseAskCompass } from "@/lib/permissions"
+import { envValue } from "@/lib/shared/env"
 
 const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
 
@@ -63,8 +64,7 @@ async function getModelConfig(): Promise<{
   modelId: string
 }> {
   const { env } = await getCloudflareContext()
-  const apiKey = (env as unknown as Record<string, string>)
-    .OPENROUTER_API_KEY
+  const apiKey = envValue(env, "OPENROUTER_API_KEY")
 
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY not configured")
