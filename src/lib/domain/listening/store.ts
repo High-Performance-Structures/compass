@@ -17,7 +17,7 @@ import {
   listeningRooms,
   listeningTrackLinks,
 } from "@/db/schema-conversations"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type NewListeningRoom = typeof listeningRooms.$inferInsert
@@ -153,7 +153,7 @@ export async function insertListeningQueueItems(
   db: Db,
   rows: readonly NewListeningQueueItem[]
 ): Promise<void> {
-  await runBatch(db, chunkD1Rows(rows).map((chunk) => db.insert(listeningQueueItems).values(chunk)))
+  await runBatch(db, chunkD1InsertRows(listeningQueueItems, rows).map((chunk) => db.insert(listeningQueueItems).values(chunk)))
 }
 
 export async function setListeningQueueItemPlayedAt(
@@ -207,7 +207,7 @@ export async function insertListeningTrackLinks(
   db: Db,
   rows: readonly NewListeningTrackLink[]
 ): Promise<void> {
-  await runBatch(db, chunkD1Rows(rows).map((chunk) => db.insert(listeningTrackLinks).values(chunk)))
+  await runBatch(db, chunkD1InsertRows(listeningTrackLinks, rows).map((chunk) => db.insert(listeningTrackLinks).values(chunk)))
 }
 
 /** One link per song per service; a link another listener just added wins. */
@@ -274,7 +274,7 @@ export async function insertListeningPlaylistItems(
   db: Db,
   rows: readonly NewListeningPlaylistItem[]
 ): Promise<void> {
-  await runBatch(db, chunkD1Rows(rows).map((chunk) => db.insert(listeningPlaylistItems).values(chunk)))
+  await runBatch(db, chunkD1InsertRows(listeningPlaylistItems, rows).map((chunk) => db.insert(listeningPlaylistItems).values(chunk)))
 }
 
 /** Moves a song to the end of another playlist. */
@@ -311,5 +311,5 @@ export async function insertListeningPlaylistTrackLinks(
   db: Db,
   rows: readonly NewListeningPlaylistTrackLink[]
 ): Promise<void> {
-  await runBatch(db, chunkD1Rows(rows).map((chunk) => db.insert(listeningPlaylistTrackLinks).values(chunk)))
+  await runBatch(db, chunkD1InsertRows(listeningPlaylistTrackLinks, rows).map((chunk) => db.insert(listeningPlaylistTrackLinks).values(chunk)))
 }

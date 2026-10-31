@@ -8,7 +8,7 @@ import { and, eq, inArray, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { organizationCalendarSettings, workCalendarEventAttendees, workCalendarEvents } from "@/db/schema"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 import type { WorkCalendarEventAttendee } from "./types"
@@ -125,7 +125,7 @@ export async function syncEventAttendees(
   const removedIds = input.previous.map((attendee) => attendee.userId).filter((userId) => !nextIds.has(userId))
 
   const statements: BatchItem<"sqlite">[] = [
-    ...chunkD1Rows(added).map((rows) => db.insert(workCalendarEventAttendees).values(rows).onConflictDoNothing()),
+    ...chunkD1InsertRows(workCalendarEventAttendees, added).map((rows) => db.insert(workCalendarEventAttendees).values(rows).onConflictDoNothing()),
     ...chunkD1Values(removedIds).map((userIds) =>
       db
         .delete(workCalendarEventAttendees)

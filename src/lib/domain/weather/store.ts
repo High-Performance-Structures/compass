@@ -8,7 +8,7 @@ import { and, eq, inArray, lt } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { weatherCells, weatherPoints } from "@/db/schema"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type NewWeatherPoint = typeof weatherPoints.$inferInsert
@@ -27,7 +27,7 @@ export async function insertWeatherPointsIfAbsent(
 ): Promise<void> {
   await runBatch(
     db,
-    chunkD1Rows(rows).map((chunk) => db.insert(weatherPoints).values(chunk).onConflictDoNothing())
+    chunkD1InsertRows(weatherPoints, rows).map((chunk) => db.insert(weatherPoints).values(chunk).onConflictDoNothing())
   )
 }
 

@@ -16,7 +16,7 @@ import {
   googleCalendarSelections,
   myCompassCalendars,
 } from "@/db/schema"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type NewGoogleCalendarConnection = typeof googleCalendarConnections.$inferInsert
@@ -192,7 +192,7 @@ export async function insertMissingProjectCalendars(
     createdAt: input.now,
     updatedAt: input.now,
   }))
-  for (const chunk of chunkD1Rows(rows)) {
+  for (const chunk of chunkD1InsertRows(compassProjectCalendars, rows)) {
     await db.insert(compassProjectCalendars).values(chunk).onConflictDoNothing()
   }
 }
@@ -241,7 +241,7 @@ export async function insertMissingMyCompassCalendars(
     createdAt: input.now,
     updatedAt: input.now,
   }))
-  for (const chunk of chunkD1Rows(rows)) {
+  for (const chunk of chunkD1InsertRows(myCompassCalendars, rows)) {
     await db.insert(myCompassCalendars).values(chunk).onConflictDoNothing()
   }
 }

@@ -7,7 +7,7 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { sageLaborLines, shopTicketLaborClaims, shopTicketLines, shopTickets } from "@/db/schema-shop-tickets"
 import { compassCostCodeFromSage } from "@/lib/shop-tickets/sage-labor"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -217,7 +217,7 @@ async function writeLaborClaims(
     const hours = Math.min(claim.hours, Math.max(0, line.hours - (billed.get(line.id) ?? 0)))
     return hours > 0 ? [{ ticketId, laborLineId: line.id, hours, createdAt: now }] : []
   })
-  for (const chunk of chunkD1Rows(rows)) await db.insert(shopTicketLaborClaims).values(chunk)
+  for (const chunk of chunkD1InsertRows(shopTicketLaborClaims, rows)) await db.insert(shopTicketLaborClaims).values(chunk)
 }
 
 function monthStart(date: string | null): string | null {
