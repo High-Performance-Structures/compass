@@ -118,7 +118,7 @@ export function projectTodoColumns({
               href={scheduleItemHref(projectId, item.linkedScheduleTaskId)}
               className="text-xs text-primary hover:underline"
             >
-              Linked schedule item
+              View linked schedule item
             </Link>
           )}
         </div>
