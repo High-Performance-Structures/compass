@@ -7,13 +7,26 @@ import {
   correspondenceMessages,
   correspondenceParticipants,
   correspondenceRecipients,
-  correspondenceWriteGuards,
 } from "@/db/schema-correspondence"
 import {
   correspondenceEmailDeliveries,
   correspondenceEmailEvents,
   correspondenceEmailThreads,
 } from "@/db/schema-correspondence-email"
+import {
+  claimEmailDelivery,
+  emailEventInsertStatement,
+  insertEmailDelivery,
+  insertEmailEventOnce,
+  insertEmailThreadIfMissing,
+  updateEmailDelivery,
+} from "@/lib/domain/correspondence/email-store"
+import {
+  messageInsertStatement,
+  recipientInsertStatement,
+  writeGuardDeleteStatement,
+  writeGuardInsertStatement,
+} from "@/lib/domain/correspondence/store"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
@@ -223,9 +236,7 @@ async function emailThread(input: {
   if (!mailbox) throw new Error("Correspondence email reply mailbox is not configured.")
   const token = createReplyToken()
   const createdAt = new Date().toISOString()
-  await input.db
-    .insert(correspondenceEmailThreads)
-    .values({
+  await insertEmailThreadIfMissing(input.db, {
       id: crypto.randomUUID(),
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -235,7 +246,6 @@ async function emailThread(input: {
       anchorMessageId: anchorMessageId(token, mailbox.domain),
       createdAt,
     })
-    .onConflictDoNothing()
   const thread = await input.db
     .select()
     .from(correspondenceEmailThreads)
@@ -297,9 +307,7 @@ export async function queueCorrespondenceEmail(input: {
   await emailThread(input)
   const now = new Date().toISOString()
   const id = crypto.randomUUID()
-  const rows = await input.db
-    .insert(correspondenceEmailDeliveries)
-    .values({
+  const rows = await insertEmailDelivery(input.db, {
       id,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -317,8 +325,6 @@ export async function queueCorrespondenceEmail(input: {
       error: null,
       updatedAt: now,
     })
-    .onConflictDoNothing()
-    .returning({ id: correspondenceEmailDeliveries.id })
   if (rows[0]) return { kind: "queued", deliveryId: rows[0].id }
   const existing = await input.db
     .select({ id: correspondenceEmailDeliveries.id })
@@ -397,15 +403,7 @@ async function failDispatch(input: {
   readonly error: string
 }): Promise<void> {
   const now = new Date().toISOString()
-  await input.db
-    .update(correspondenceEmailDeliveries)
-    .set({ status: "failed", failedAt: now, error: input.error, updatedAt: now })
-    .where(
-      and(
-        eq(correspondenceEmailDeliveries.id, input.deliveryId),
-        eq(correspondenceEmailDeliveries.status, "dispatching")
-      )
-    )
+  await updateEmailDelivery(input.db, input.deliveryId, { status: "failed", failedAt: now, error: input.error, updatedAt: now }, "dispatching")
 }
 
 export async function dispatchCorrespondenceEmail(input: {
@@ -448,31 +446,10 @@ export async function dispatchCorrespondenceEmail(input: {
   if (!initialRecipient) {
     const error = "Email recipient no longer has access to this Compass message."
     const now = new Date().toISOString()
-    await input.db
-      .update(correspondenceEmailDeliveries)
-      .set({ status: "failed", failedAt: now, error, updatedAt: now })
-      .where(
-        and(
-          eq(correspondenceEmailDeliveries.id, delivery.id),
-          eq(correspondenceEmailDeliveries.status, "queued")
-        )
-      )
+    await updateEmailDelivery(input.db, delivery.id, { status: "failed", failedAt: now, error, updatedAt: now }, "queued")
     return { kind: "failed", deliveryId: delivery.id, error }
   }
-  const claimed = await input.db
-    .update(correspondenceEmailDeliveries)
-    .set({
-      status: "dispatching",
-      attemptCount: delivery.attemptCount + 1,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(
-      and(
-        eq(correspondenceEmailDeliveries.id, delivery.id),
-        eq(correspondenceEmailDeliveries.status, "queued")
-      )
-    )
-    .returning({ id: correspondenceEmailDeliveries.id })
+  const claimed = await claimEmailDelivery(input.db, delivery.id, { status: "dispatching", attemptCount: delivery.attemptCount + 1, updatedAt: new Date().toISOString() }, "queued")
   if (!claimed[0]) return { kind: "already_handled", deliveryId: delivery.id }
   // Recheck after the claim and directly before the provider call. The queue may
   // outlive a revocation, retraction, or recipient-audience change.
@@ -498,7 +475,7 @@ export async function dispatchCorrespondenceEmail(input: {
     mailbox = resolvedMailbox
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to prepare correspondence email."
-    await input.db.update(correspondenceEmailDeliveries).set({ status: "failed", failedAt: new Date().toISOString(), error: message.slice(0, 500), updatedAt: new Date().toISOString() }).where(eq(correspondenceEmailDeliveries.id, delivery.id))
+    await updateEmailDelivery(input.db, delivery.id, { status: "failed", failedAt: new Date().toISOString(), error: message.slice(0, 500), updatedAt: new Date().toISOString() })
     return { kind: "failed", deliveryId: delivery.id, error: message }
   }
   let result: Awaited<ReturnType<CorrespondenceEmailSender>>
@@ -523,10 +500,10 @@ export async function dispatchCorrespondenceEmail(input: {
   }
   const now = new Date().toISOString()
   if (result.kind === "accepted") {
-    await input.db.update(correspondenceEmailDeliveries).set({ status: "accepted", providerMessageId: result.providerMessageId, acceptedAt: now, error: null, updatedAt: now }).where(eq(correspondenceEmailDeliveries.id, delivery.id))
+    await updateEmailDelivery(input.db, delivery.id, { status: "accepted", providerMessageId: result.providerMessageId, acceptedAt: now, error: null, updatedAt: now })
     return { kind: "accepted", deliveryId: delivery.id }
   }
-  await input.db.update(correspondenceEmailDeliveries).set({ status: result.kind, failedAt: result.kind === "failed" ? now : null, error: result.error.slice(0, 500), updatedAt: now }).where(eq(correspondenceEmailDeliveries.id, delivery.id))
+  await updateEmailDelivery(input.db, delivery.id, { status: result.kind, failedAt: result.kind === "failed" ? now : null, error: result.error.slice(0, 500), updatedAt: now })
   return { kind: result.kind, deliveryId: delivery.id, error: result.error }
 }
 
@@ -542,11 +519,9 @@ function inboundWriteGuard(input: {
     input.people.map((person) => ({ userId: person.userId, role: person.role }))
   )
   const staffRoles = JSON.stringify(USER_ROLES.filter(isInternalStaffRole))
-  return input.db.insert(correspondenceWriteGuards).values({
-    id: input.id,
-    // The CHECK constraint on this table aborts the complete D1 batch when a
-    // participant is revoked or loses project access between preflight and write.
-    allowed: sql`CASE WHEN
+  // The CHECK constraint on this table aborts the complete D1 batch when a
+  // participant is revoked or loses project access between preflight and write.
+  return writeGuardInsertStatement(input.db, input.id, sql`CASE WHEN
       EXISTS(SELECT 1 FROM project_correspondence c
         WHERE c.id=${input.conversationId}
           AND c.organization_id=${input.organizationId}
@@ -566,17 +541,14 @@ function inboundWriteGuard(input: {
             WHEN 'sub_vendor' THEN pm.role IN ('subcontractor','supplier')
             ELSE 0 END
       ))
-      THEN 1 ELSE 0 END`,
-  })
+      THEN 1 ELSE 0 END`)
 }
 
 function clearInboundWriteGuard(input: {
   readonly db: Db
   readonly id: string
 }) {
-  return input.db
-    .delete(correspondenceWriteGuards)
-    .where(eq(correspondenceWriteGuards.id, input.id))
+  return writeGuardDeleteStatement(input.db, input.id)
 }
 
 function eventStatus(decision: ReturnType<typeof decideCorrespondenceInbound>): "held" | "suppressed" | "rejected" {
@@ -630,7 +602,7 @@ export async function receiveCorrespondenceEmail(input: {
   if (decision.kind !== "accepted" || !thread || !sender) {
     const status = decision.kind === "accepted" ? "held" : eventStatus(decision)
     const holdReason = decision.kind === "accepted" ? "sender_not_authorized" : decision.reason
-    const inserted = await input.db.insert(correspondenceEmailEvents).values({ id: crypto.randomUUID(), provider: "gmail", providerEventId: input.candidate.gmailMessageId, organizationId: input.organizationId, projectId: thread?.projectId ?? null, conversationId: thread?.conversationId ?? null, messageId: null, senderAddress: normalizedAddress(input.candidate.fromAddress), status, holdReason, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: correspondenceEmailEvents.id })
+    const inserted = await insertEmailEventOnce(input.db, { id: crypto.randomUUID(), provider: "gmail", providerEventId: input.candidate.gmailMessageId, organizationId: input.organizationId, projectId: thread?.projectId ?? null, conversationId: thread?.conversationId ?? null, messageId: null, senderAddress: normalizedAddress(input.candidate.fromAddress), status, holdReason, createdAt: now, updatedAt: now })
     return inserted[0]
       ? { kind: decision.kind === "accepted" ? "held" : decision.kind }
       : { kind: "duplicate" }
@@ -640,9 +612,9 @@ export async function receiveCorrespondenceEmail(input: {
   try {
     await input.db.batch([
       inboundWriteGuard({ db: input.db, id: guardId, organizationId: input.organizationId, projectId: thread.projectId, conversationId: thread.conversationId, people }),
-      input.db.insert(correspondenceEmailEvents).values({ id: crypto.randomUUID(), provider: "gmail", providerEventId: input.candidate.gmailMessageId, organizationId: input.organizationId, projectId: thread.projectId, conversationId: thread.conversationId, messageId, senderAddress: normalizedAddress(input.candidate.fromAddress), status: "posted", holdReason: null, createdAt: now, updatedAt: now }),
-      input.db.insert(correspondenceMessages).values({ id: messageId, conversationId: thread.conversationId, authorUserId: sender.userId, authorName: sender.name, source: "email", sourceKey: `gmail:${input.candidate.gmailMessageId}`, body: input.candidate.textBody ?? input.candidate.snippet ?? "(No message body.)", sentAt: input.candidate.receivedAt, editedAt: null, retractedAt: null, requestHash: `gmail:${input.candidate.gmailMessageId}` }),
-      ...people.map((person) => input.db.insert(correspondenceRecipients).values({ id: crypto.randomUUID(), messageId, userId: person.userId, name: person.name, kind: person.userId === sender.userId ? "author" : "to", openedAt: null, baseline: false })),
+      emailEventInsertStatement(input.db, { id: crypto.randomUUID(), provider: "gmail", providerEventId: input.candidate.gmailMessageId, organizationId: input.organizationId, projectId: thread.projectId, conversationId: thread.conversationId, messageId, senderAddress: normalizedAddress(input.candidate.fromAddress), status: "posted", holdReason: null, createdAt: now, updatedAt: now }),
+      messageInsertStatement(input.db, { id: messageId, conversationId: thread.conversationId, authorUserId: sender.userId, authorName: sender.name, source: "email", sourceKey: `gmail:${input.candidate.gmailMessageId}`, body: input.candidate.textBody ?? input.candidate.snippet ?? "(No message body.)", sentAt: input.candidate.receivedAt, editedAt: null, retractedAt: null, requestHash: `gmail:${input.candidate.gmailMessageId}` }),
+      ...people.map((person) => recipientInsertStatement(input.db, [{ id: crypto.randomUUID(), messageId, userId: person.userId, name: person.name, kind: person.userId === sender.userId ? "author" : "to", openedAt: null, baseline: false }])),
       clearInboundWriteGuard({ db: input.db, id: guardId }),
     ])
     return { kind: "posted", messageId }
@@ -652,9 +624,7 @@ export async function receiveCorrespondenceEmail(input: {
     if (duplicate) return { kind: "duplicate" }
     // A guard failure means the current audience changed. Record the event as
     // held rather than posting it to a now-invalid recipient snapshot.
-    const held = await input.db
-      .insert(correspondenceEmailEvents)
-      .values({
+    const held = await insertEmailEventOnce(input.db, {
         id: crypto.randomUUID(),
         provider: "gmail",
         providerEventId: input.candidate.gmailMessageId,
@@ -668,8 +638,6 @@ export async function receiveCorrespondenceEmail(input: {
         createdAt: now,
         updatedAt: now,
       })
-      .onConflictDoNothing()
-      .returning({ id: correspondenceEmailEvents.id })
     if (held[0]) return { kind: "held" }
     return { kind: "duplicate" }
   }

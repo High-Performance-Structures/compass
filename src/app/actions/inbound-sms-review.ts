@@ -35,6 +35,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { projectTodoHref } from "@/lib/work-calendar"
+import { updateGotoInboundEvents } from "@/lib/domain/feedback/inbound-store"
 
 type StoredGotoAttachment = GotoInboundMessage["attachments"][number]
 
@@ -328,16 +329,11 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
       : undefined
 
   const claimTime = new Date().toISOString()
-  const claimed = await db
-    .update(gotoInboundEvents)
-    .set({ status: "routing", error: null, updatedAt: claimTime })
-    .where(
-      and(
+  const claimed = await updateGotoInboundEvents(db, { status: "routing", error: null, updatedAt: claimTime }, and(
         eq(gotoInboundEvents.id, event.id),
         eq(gotoInboundEvents.organizationId, organizationId),
         eq(gotoInboundEvents.status, "needs_review")
-      )
-    )
+      ))
     .returning({ id: gotoInboundEvents.id })
     .get()
   if (!claimed) throw new Error("Inbound text is already being reviewed")
@@ -391,37 +387,27 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
     routedEntityId = result.entityId
 
     const now = new Date().toISOString()
-    await db
-      .update(gotoInboundEvents)
-      .set({
+    await updateGotoInboundEvents(db, {
         projectId: project.id,
         status: "processed",
         error: null,
         reviewReason: null,
         processedAt: now,
         updatedAt: now,
-      })
-      .where(
-        and(
+      }, and(
           eq(gotoInboundEvents.id, event.id),
           eq(gotoInboundEvents.status, "routing")
-        )
-      )
+        ))
   } catch (error) {
     const failedAt = new Date().toISOString()
-    await db
-      .update(gotoInboundEvents)
-      .set({
+    await updateGotoInboundEvents(db, {
         status: "needs_review",
         error: errorMessage(error),
         updatedAt: failedAt,
-      })
-      .where(
-        and(
+      }, and(
           eq(gotoInboundEvents.id, event.id),
           eq(gotoInboundEvents.status, "routing")
-        )
-      )
+        ))
     revalidatePath("/dashboard/office-maintenance/inbound-email")
     revalidatePath(`/dashboard/projects/${project.id}`)
     revalidatePath(`/dashboard/projects/${project.id}/daily-logs`)
@@ -449,21 +435,16 @@ export async function dismissInboundSms(formData: FormData): Promise<void> {
   const eventId = requiredFormString(formData, "eventId")
   const { db, organizationId, user } = await reviewContext()
   const now = new Date().toISOString()
-  const event = await db
-    .update(gotoInboundEvents)
-    .set({
+  const event = await updateGotoInboundEvents(db, {
       status: "dismissed",
       reviewReason: null,
       processedAt: now,
       updatedAt: now,
-    })
-    .where(
-      and(
+    }, and(
         eq(gotoInboundEvents.id, eventId),
         eq(gotoInboundEvents.organizationId, organizationId),
         eq(gotoInboundEvents.status, "needs_review")
-      )
-    )
+      ))
     .returning({ id: gotoInboundEvents.id, messageId: gotoInboundEvents.messageId })
     .get()
   if (!event) return
@@ -536,15 +517,10 @@ async function trashInboundSmsOrThrow(eventId: string): Promise<void> {
   if (!event) throw new Error("Inbound text is no longer awaiting review")
 
   const claimedAt = new Date().toISOString()
-  const claimed = await db
-    .update(gotoInboundEvents)
-    .set({ status: "trashing", error: null, updatedAt: claimedAt })
-    .where(
-      and(
+  const claimed = await updateGotoInboundEvents(db, { status: "trashing", error: null, updatedAt: claimedAt }, and(
         eq(gotoInboundEvents.id, event.id),
         eq(gotoInboundEvents.status, "needs_review")
-      )
-    )
+      ))
     .returning({ id: gotoInboundEvents.id })
     .get()
   if (!claimed) throw new Error("Inbound text is already being reviewed")
@@ -555,21 +531,16 @@ async function trashInboundSmsOrThrow(eventId: string): Promise<void> {
     contactPhoneNumber: event.senderPhone,
   })
   if (!deleted.success) {
-    await db
-      .update(gotoInboundEvents)
-      .set({
+    await updateGotoInboundEvents(db, {
         status: "needs_review",
         error: deleted.error.slice(0, 2_000),
         updatedAt: new Date().toISOString(),
-      })
-      .where(eq(gotoInboundEvents.id, event.id))
+      }, eq(gotoInboundEvents.id, event.id))
     throw new Error(deleted.error)
   }
 
   const trashedAt = new Date().toISOString()
-  await db
-    .update(gotoInboundEvents)
-    .set({
+  await updateGotoInboundEvents(db, {
       status: "trashed",
       reviewReason: "spam",
       error: null,
@@ -578,15 +549,12 @@ async function trashInboundSmsOrThrow(eventId: string): Promise<void> {
       providerDeletedAt: trashedAt,
       processedAt: trashedAt,
       updatedAt: trashedAt,
-    })
-    .where(
-      and(
+    }, and(
         eq(gotoInboundEvents.organizationId, organizationId),
         eq(gotoInboundEvents.ownerTouchpoint, event.ownerTouchpoint),
         eq(gotoInboundEvents.senderPhone, event.senderPhone),
         inArray(gotoInboundEvents.status, ["needs_review", "trashing"])
-      )
-    )
+      ))
 
   await recordActivityEvent({
     db,

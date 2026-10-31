@@ -10,6 +10,7 @@ import {
   gotoMessageMatchesConfig,
   gotoWebhookConfig,
 } from "@/lib/goto/webhook-security"
+import { insertGotoInboundEvents, updateGotoInboundEvents } from "@/lib/domain/feedback/inbound-store"
 
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024
 const MAX_EVENTS_PER_MINUTE = 120
@@ -117,9 +118,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const now = new Date().toISOString()
   const eventId = crypto.randomUUID()
-  const inserted = await db
-    .insert(gotoInboundEvents)
-    .values({
+  const inserted = await insertGotoInboundEvents(db, {
       id: eventId,
       organizationId: config.organizationId,
       projectId: null,
@@ -151,29 +150,23 @@ export async function POST(request: Request): Promise<Response> {
   })
     .then(async (result) => {
       const processedAt = new Date().toISOString()
-      await db
-        .update(gotoInboundEvents)
-        .set({
+      await updateGotoInboundEvents(db, {
           projectId: result.projectId,
           status: result.status,
           reviewReason: result.reviewReason,
           processedAt,
           updatedAt: processedAt,
-        })
-        .where(eq(gotoInboundEvents.id, eventId))
+        }, eq(gotoInboundEvents.id, eventId))
         .run()
     })
     .catch(async (error: unknown) => {
       const processedAt = new Date().toISOString()
-      await db
-        .update(gotoInboundEvents)
-        .set({
+      await updateGotoInboundEvents(db, {
           status: "failed",
           error: errorMessage(error),
           processedAt,
           updatedAt: processedAt,
-        })
-        .where(eq(gotoInboundEvents.id, eventId))
+        }, eq(gotoInboundEvents.id, eventId))
         .run()
     })
   ctx.waitUntil(processing)

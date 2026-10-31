@@ -2,13 +2,15 @@ import "server-only"
 
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { notificationEvents, notificationPreferences, notificationRecipients, organizationMembers, organizations, users } from "@/db/schema"
-import { correspondence, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceWriteGuards } from "@/db/schema-correspondence"
+import { notificationPreferences, organizationMembers, organizations, users } from "@/db/schema"
+import { correspondenceMessages } from "@/db/schema-correspondence"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
 import { USER_ROLES, isInternalStaffRole } from "@/lib/user-roles"
 import type { InboundCandidate } from "./gmail-message-parser"
 import { projectEmailTitle } from "./project-address"
 import { inboundProjectMessageRecipients } from "./project-message-mentions"
+import { conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
+import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
 
 /** Called only after the shared email/SMS router verifies the sender and project. */
 export async function routeInboundProjectMessage(input: {
@@ -54,17 +56,17 @@ export async function routeInboundProjectMessage(input: {
   // Save the message, audience grants, and in-app notification in one D1 batch.
   // External sender headers never grant access or impersonate a Compass account.
   await input.db.batch([
-    input.db.insert(correspondenceWriteGuards).values({ id: guardId, allowed: sql`CASE WHEN EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND organization_id=${input.organizationId}) AND NOT EXISTS(SELECT 1 FROM json_each(${JSON.stringify(recipients.map((person) => person.id))}) person WHERE NOT EXISTS(SELECT 1 FROM users u JOIN organization_members om ON om.user_id=u.id JOIN organizations o ON o.id=om.organization_id WHERE u.id=person.value AND u.is_active=1 AND o.type='internal' AND om.organization_id=${input.organizationId} AND om.role IN (SELECT value FROM json_each(${JSON.stringify(staffRoles)}))
+    writeGuardInsertStatement(input.db, guardId, sql`CASE WHEN EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND organization_id=${input.organizationId}) AND NOT EXISTS(SELECT 1 FROM json_each(${JSON.stringify(recipients.map((person) => person.id))}) person WHERE NOT EXISTS(SELECT 1 FROM users u JOIN organization_members om ON om.user_id=u.id JOIN organizations o ON o.id=om.organization_id WHERE u.id=person.value AND u.is_active=1 AND o.type='internal' AND om.organization_id=${input.organizationId} AND om.role IN (SELECT value FROM json_each(${JSON.stringify(staffRoles)}))
       AND (${!requiresAssignment} OR EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=${input.projectId} AND pm.user_id=u.id)
         OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=u.id AND pc.contact_type='internal' AND pc.active=1))
-    )) THEN 1 ELSE 0 END` }),
-    input.db.insert(correspondence).values({ id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }),
-    input.db.insert(correspondenceMessages).values({ id, conversationId, authorUserId: null, authorName: sender, source: input.source, sourceKey, body: input.body, sentAt: input.candidate.receivedAt, requestHash: sourceKey }),
-    ...recipients.map((person) => input.db.insert(correspondenceParticipants).values({ id: `${id}-participant-${person.id}`, conversationId, userId: person.id, name: person.name || person.email, email: person.email, role: "staff" })),
-    ...recipients.map((person) => input.db.insert(correspondenceRecipients).values({ id: `${id}-recipient-${person.id}`, messageId: id, userId: person.id, name: person.name || person.email, kind: "to" })),
-    input.db.insert(notificationEvents).values({ id: eventId, organizationId: input.organizationId, projectId: input.projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project message from ${input.candidate.fromName?.trim() || input.candidate.fromAddress}`, body: title, href: `/dashboard/projects/${encodeURIComponent(input.projectId)}/messages?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: input.now }),
-    ...recipients.map((person) => input.db.insert(notificationRecipients).values({ id: `${eventId}-${person.id}`, eventId, userId: person.id, inApp: person.inApp, createdAt: input.now })),
-    input.db.delete(correspondenceWriteGuards).where(eq(correspondenceWriteGuards.id, guardId)),
+    )) THEN 1 ELSE 0 END`),
+    conversationInsertStatement(input.db, { id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }),
+    messageInsertStatement(input.db, { id, conversationId, authorUserId: null, authorName: sender, source: input.source, sourceKey, body: input.body, sentAt: input.candidate.receivedAt, requestHash: sourceKey }),
+    ...recipients.map((person) => participantInsertStatement(input.db, [{ id: `${id}-participant-${person.id}`, conversationId, userId: person.id, name: person.name || person.email, email: person.email, role: "staff" }])),
+    ...recipients.map((person) => recipientInsertStatement(input.db, [{ id: `${id}-recipient-${person.id}`, messageId: id, userId: person.id, name: person.name || person.email, kind: "to" }])),
+    notificationEventInsertStatement(input.db, { id: eventId, organizationId: input.organizationId, projectId: input.projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project message from ${input.candidate.fromName?.trim() || input.candidate.fromAddress}`, body: title, href: `/dashboard/projects/${encodeURIComponent(input.projectId)}/messages?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: input.now }),
+    ...recipients.map((person) => notificationRecipientInsertStatement(input.db, { id: `${eventId}-${person.id}`, eventId, userId: person.id, inApp: person.inApp, createdAt: input.now })),
+    writeGuardDeleteStatement(input.db, guardId),
   ])
   return { id, status: "routed_message" }
 }

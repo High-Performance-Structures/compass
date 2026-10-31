@@ -18,6 +18,7 @@ import { notifyRfiCreated } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { dismissInboundEmailForReview, markInboundEmailPosted } from "@/lib/domain/correspondence/email-store"
 
 type InboundEmailReviewProject = {
   readonly id: string
@@ -251,14 +252,7 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
     }
   }
 
-  await db
-    .update(inboundEmails)
-    .set({
-      projectId: project.id,
-      matchedStatus: "posted",
-      postedMessageId: rfi.id,
-    })
-    .where(eq(inboundEmails.id, email.id))
+  await markInboundEmailPosted(db, email.id, { projectId: project.id, postedMessageId: rfi.id })
 
   revalidatePath("/dashboard/office-maintenance/inbound-email")
   revalidatePath(`/dashboard/projects/${project.id}/rfis`)
@@ -268,15 +262,6 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
 export async function dismissInboundEmail(formData: FormData): Promise<void> {
   const emailId = requiredFormString(formData, "emailId")
   const { db, organizationId } = await reviewContext()
-  await db
-    .update(inboundEmails)
-    .set({ matchedStatus: "dismissed" })
-    .where(
-      and(
-        eq(inboundEmails.id, emailId),
-        eq(inboundEmails.organizationId, organizationId),
-        eq(inboundEmails.matchedStatus, "needs_review")
-      )
-    )
+  await dismissInboundEmailForReview(db, emailId, organizationId)
   revalidatePath("/dashboard/office-maintenance/inbound-email")
 }

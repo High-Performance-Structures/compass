@@ -2,10 +2,10 @@ import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import {
   feedbackDeskItems,
-  jarvisBridgeEvents,
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
 import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
+import { insertFeedbackDeskItems, insertJarvisBridgeEvents } from "@/lib/domain/feedback/store"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -83,9 +83,7 @@ export async function enqueueFeedbackReceipt(
     createdAt: item.createdAt,
   }
 
-  await db
-    .insert(jarvisBridgeEvents)
-    .values({
+  await insertJarvisBridgeEvents(db, {
       id: crypto.randomUUID(),
       organizationId: item.organizationId,
       direction: "outbound",
@@ -115,9 +113,7 @@ export async function enqueueFeedbackDeskItem(
   const idempotencyKey =
     `${input.source}:${input.sourceId}:${eventType}`
 
-  await db
-    .insert(feedbackDeskItems)
-    .values({
+  await insertFeedbackDeskItems(db, {
       id: itemId,
       organizationId: input.organizationId,
       source: input.source,
@@ -181,9 +177,7 @@ export async function enqueueFeedbackDeskItem(
     createdAt: item.createdAt,
   }
 
-  await db
-    .insert(jarvisBridgeEvents)
-    .values({
+  await insertJarvisBridgeEvents(db, {
       id: eventId,
       organizationId: input.organizationId,
       direction: "outbound",

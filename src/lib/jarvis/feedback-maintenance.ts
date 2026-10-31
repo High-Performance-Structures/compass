@@ -1,7 +1,6 @@
 import { and, desc, eq, isNotNull, isNull, lt, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { feedback } from "@/db/schema"
 import {
   feedbackDeskItems,
   feedbackMaintenanceRuns,
@@ -9,6 +8,7 @@ import {
   jarvisBridgeEvents,
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
+import { unimportedConfirmedPrompts, unimportedLegacyFeedback } from "@/lib/domain/feedback/queries"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import {
   confirmedFeedbackReportFromPayload,
@@ -30,6 +30,7 @@ import {
   feedbackIsResolved,
   feedbackSlaTarget,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { insertFeedbackMaintenanceRuns, insertFeedbackServiceHealth, insertJarvisBridgeEvents, updateFeedbackDeskItems, updateFeedbackMaintenanceRuns } from "@/lib/domain/feedback/store"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -64,12 +65,12 @@ export async function reclaimStaleGithubIssueCreationClaims(
   organizationId: string,
 ): Promise<number> {
   const now = new Date().toISOString()
-  const rows = await db.update(feedbackDeskItems).set({
+  const rows = await updateFeedbackDeskItems(db, {
     githubIssueCreationClaimToken: null,
     githubIssueCreationClaimedAt: null,
     githubIssueCreationClaimExpiresAt: null,
     updatedAt: now,
-  }).where(and(
+  }, and(
     eq(feedbackDeskItems.organizationId, organizationId),
     isNull(feedbackDeskItems.githubIssueUrl),
     isNotNull(feedbackDeskItems.githubIssueCreationClaimToken),
@@ -85,11 +86,11 @@ export async function reconcileStaleFeatureGithubIssueApprovals(
   db: CompassDb,
   organizationId: string,
 ): Promise<number> {
-  const rows = await db.update(feedbackDeskItems).set({
+  const rows = await updateFeedbackDeskItems(db, {
     githubIssueCreationApprovedAt: null,
     githubIssueCreationApprovedBy: null,
     updatedAt: new Date().toISOString(),
-  }).where(and(
+  }, and(
     eq(feedbackDeskItems.organizationId, organizationId),
     eq(feedbackDeskItems.kind, "feature"),
     isNull(feedbackDeskItems.featurePriorityApprovedAt),
@@ -139,19 +140,10 @@ async function recoverLegacyFeedback(
   db: CompassDb,
   organizationId: string,
 ): Promise<number> {
-  const rows = await db.select().from(feedback)
-    .orderBy(desc(feedback.createdAt))
-    .limit(500)
-  const existing = await db.select({ sourceId: feedbackDeskItems.sourceId })
-    .from(feedbackDeskItems)
-    .where(and(
-      eq(feedbackDeskItems.organizationId, organizationId),
-      eq(feedbackDeskItems.source, "feedback-widget"),
-    ))
-  const sourceIds = new Set(existing.map((row) => row.sourceId))
+  // Only the newest legacy rows this organization has not imported yet.
+  const rows = await unimportedLegacyFeedback(db, organizationId)
   let count = 0
   for (const row of rows) {
-    if (sourceIds.has(row.id)) continue
     await enqueueFeedbackDeskItem(db, {
       organizationId,
       source: "feedback-widget",
@@ -168,7 +160,6 @@ async function recoverLegacyFeedback(
         recoveredAt: new Date().toISOString(),
       },
     })
-    sourceIds.add(row.id)
     count += 1
   }
   return count
@@ -178,26 +169,10 @@ async function recoverConfirmedPrompts(
   db: CompassDb,
   organizationId: string,
 ): Promise<number> {
-  const events = await db.select({
-    id: jarvisBridgeEvents.id,
-    payload: jarvisBridgeEvents.payload,
-    createdAt: jarvisBridgeEvents.createdAt,
-  }).from(jarvisBridgeEvents).where(and(
-    eq(jarvisBridgeEvents.organizationId, organizationId),
-    eq(jarvisBridgeEvents.direction, "outbound"),
-    eq(jarvisBridgeEvents.source, "ask-jarvis"),
-    eq(jarvisBridgeEvents.eventType, "agent.prompt"),
-  )).orderBy(desc(jarvisBridgeEvents.createdAt)).limit(1_000)
-  const existing = await db.select({ sourceId: feedbackDeskItems.sourceId })
-    .from(feedbackDeskItems)
-    .where(and(
-      eq(feedbackDeskItems.organizationId, organizationId),
-      eq(feedbackDeskItems.source, "ask-jarvis"),
-    ))
-  const sourceIds = new Set(existing.map((row) => row.sourceId))
+  // Recent confirmed prompts that have no Feedback Desk item yet.
+  const events = await unimportedConfirmedPrompts(db, organizationId)
   let count = 0
   for (const event of events) {
-    if (sourceIds.has(event.id)) continue
     const report = confirmedFeedbackReportFromPayload(event.payload)
     if (!report) continue
     const reporter = payloadReporter(event.payload)
@@ -219,7 +194,6 @@ async function recoverConfirmedPrompts(
         confirmedAt: event.createdAt,
       },
     })
-    sourceIds.add(event.id)
     count += 1
   }
   return count
@@ -267,10 +241,10 @@ async function scrubLegacyGithubIssues(
         continue
       }
       const now = new Date().toISOString()
-      await db.update(feedbackDeskItems).set({
+      await updateFeedbackDeskItems(db, {
         privacyScrubbedAt: now,
         updatedAt: now,
-      }).where(eq(feedbackDeskItems.id, item.id))
+      }, eq(feedbackDeskItems.id, item.id))
       scrubbed += 1
     } catch {
       failed += 1
@@ -293,7 +267,7 @@ async function ensureFeedbackDeliveryGraphRequests(
       .get()
     if (existing) continue
     const now = new Date().toISOString()
-    await db.insert(jarvisBridgeEvents).values({
+    await insertJarvisBridgeEvents(db, {
       id: crypto.randomUUID(),
       organizationId: item.organizationId,
       direction: "outbound",
@@ -325,7 +299,7 @@ export async function recordFeedbackServiceHealth(
   const existing = await db.select().from(feedbackServiceHealth)
     .where(eq(feedbackServiceHealth.serviceName, input.serviceName)).get()
   const failed = input.status === "failed"
-  await db.insert(feedbackServiceHealth).values({
+  await insertFeedbackServiceHealth(db, {
     serviceName: input.serviceName,
     organizationId: input.organizationId,
     status: input.status,
@@ -361,7 +335,7 @@ export async function runFeedbackMaintenance(
   if (!organizationId) throw new Error("JARVIS_BRIDGE_ORGANIZATION_ID is required")
   const runId = crypto.randomUUID()
   const startedAt = new Date().toISOString()
-  await db.insert(feedbackMaintenanceRuns).values({
+  await insertFeedbackMaintenanceRuns(db, {
     id: runId,
     organizationId,
     operation: "reconcile",
@@ -403,9 +377,9 @@ export async function runFeedbackMaintenance(
     let slaBackfilledCount = 0
     for (const item of allItems) {
       if (item.slaTargetAt !== null) continue
-      await db.update(feedbackDeskItems).set({
+      await updateFeedbackDeskItems(db, {
         slaTargetAt: feedbackSlaTarget(item.priority, new Date(item.createdAt)),
-      }).where(eq(feedbackDeskItems.id, item.id))
+      }, eq(feedbackDeskItems.id, item.id))
       slaBackfilledCount += 1
     }
     const itemsWithSla = allItems.map((item) => item.slaTargetAt !== null
@@ -438,7 +412,7 @@ export async function runFeedbackMaintenance(
       failedCount,
     }
     const completedAt = new Date().toISOString()
-    await db.update(feedbackMaintenanceRuns).set({
+    await updateFeedbackMaintenanceRuns(db, {
       status: failedCount > 0 ? "partial" : "success",
       processedCount: result.processedCount,
       updatedCount:
@@ -448,7 +422,7 @@ export async function runFeedbackMaintenance(
       failedCount,
       summary: JSON.stringify(result),
       completedAt,
-    }).where(eq(feedbackMaintenanceRuns.id, runId))
+    }, eq(feedbackMaintenanceRuns.id, runId))
     await recordFeedbackServiceHealth(db, {
       serviceName: "feedback-reconciler",
       organizationId,
@@ -458,12 +432,12 @@ export async function runFeedbackMaintenance(
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
-    await db.update(feedbackMaintenanceRuns).set({
+    await updateFeedbackMaintenanceRuns(db, {
       status: "failed",
       failedCount: failedCount + 1,
       summary: message,
       completedAt: new Date().toISOString(),
-    }).where(eq(feedbackMaintenanceRuns.id, runId))
+    }, eq(feedbackMaintenanceRuns.id, runId))
     await recordFeedbackServiceHealth(db, {
       serviceName: "feedback-reconciler",
       organizationId,

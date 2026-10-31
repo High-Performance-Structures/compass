@@ -10,6 +10,7 @@ import {
 } from "@/lib/jarvis/auth"
 import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
+import { updateFeedbackDeskItems, updateJarvisBridgeEvents } from "@/lib/domain/feedback/store"
 
 const acknowledgementSchema = z.object({
   claimToken: z.string().min(1).max(128).optional(),
@@ -152,7 +153,7 @@ export async function POST(
       const retryAt = new Date(
         now.getTime() + retrySeconds * 1000,
       ).toISOString()
-      const reset = await db.update(jarvisBridgeEvents).set({
+      const reset = await updateJarvisBridgeEvents(db, {
         status: "pending",
         result: null,
         lastError: "Delivery graph attachment is incomplete",
@@ -161,7 +162,7 @@ export async function POST(
         claimedAt: null,
         completedAt: null,
         updatedAt: nowIso,
-      }).where(activeClaimPredicate(id, claimToken))
+      }, activeClaimPredicate(id, claimToken))
         .returning({ id: jarvisBridgeEvents.id }).get()
       if (!reset) {
         return Response.json({ error: "Event claim is no longer active" }, { status: 409 })
@@ -175,9 +176,7 @@ export async function POST(
     }
   }
 
-  const acknowledged = await db
-    .update(jarvisBridgeEvents)
-    .set({
+  const acknowledged = await updateJarvisBridgeEvents(db, {
       status: shouldRetry ? "pending" : parsed.data.status,
       result:
         parsed.data.result === undefined
@@ -194,8 +193,7 @@ export async function POST(
           ? jarvisPayloadAfterCompletion(existing.payload)
           : existing.payload,
       updatedAt: nowIso,
-    })
-    .where(activeClaimPredicate(id, claimToken))
+    }, activeClaimPredicate(id, claimToken))
     .returning({ id: jarvisBridgeEvents.id })
     .get()
 
@@ -208,12 +206,12 @@ export async function POST(
     parsed.data.status === "failed" &&
     existing.feedbackDeskItemId
   ) {
-    await db.update(feedbackDeskItems).set({
+    await updateFeedbackDeskItems(db, {
       deliveryGraphStatus: "failed",
       deliveryGraphLastError: parsed.data.error ?? "Delivery worker failed",
       deliveryGraphUpdatedAt: nowIso,
       updatedAt: nowIso,
-    }).where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
+    }, eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
   }
 
   return Response.json({ success: true })
