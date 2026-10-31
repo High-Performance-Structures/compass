@@ -17,6 +17,7 @@ import {
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { recipientNotificationHref } from "@/lib/conversations/notification-route"
+import { notificationSourceHref } from "@/lib/notifications/source-href"
 import {
   dismissReadNotificationRecipients,
   insertNotificationDelivery,
@@ -498,6 +499,7 @@ export async function getNotificationCenter(
         priority: notificationEvents.priority,
         eventType: notificationEvents.eventType,
         sourceType: notificationEvents.sourceType,
+        sourceId: notificationEvents.sourceId,
         projectId: notificationEvents.projectId,
         projectName: projects.name,
         projectNumber: projects.projectNumber,
@@ -536,7 +538,7 @@ export async function getNotificationCenter(
           projectLabel: projectName
             ? projectNumberAndName({ name: projectName, projectNumber })
             : null,
-          href: recipientNotificationHref(row.href, user.role),
+          href: recipientNotificationHref(notificationSourceHref(row), user.role),
         })),
       },
     }
