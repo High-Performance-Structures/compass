@@ -5,9 +5,20 @@ import { and, desc, eq } from "drizzle-orm"
 import { getEstimateSelectedTrades, type SelectedTrade } from "@/app/actions/estimate-bids"
 import { vendors } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
-import { tradeLetters, type TradeLetter } from "@/db/schema-trade-docs"
+import { tradeLetters } from "@/db/schema-trade-docs"
+import { errorMessage } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { getCloudflareContext } from "@/lib/db"
+import {
+  summarizeTradeLetter,
+  tradeLetterCodeIndexes,
+  tradeLetterIsEditable,
+  tradeLetterKindOf,
+  tradeLetterScope,
+  tradeLetterStatusOf,
+  tradeLetterTotalCents,
+  type TradeLetterSummary,
+} from "@/lib/domain/trade-letters/rules"
+import { deleteTradeLetter as deleteTradeLetterRow, insertTradeLetter, updateTradeLetter } from "@/lib/domain/trade-letters/store"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { estimateAccess, revalidateEstimate } from "@/lib/domain/estimates/access"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -17,7 +28,6 @@ import { orderedCents, remainingTradeCodes, type TradeCode } from "@/lib/trade-l
 import { loadTradePurchaseOrders, type TradePurchaseOrder } from "@/lib/trade-letters/orders-server"
 import {
   isTradeLetterKind,
-  isTradeLetterStatus,
   longDate,
   nextTradeLetterSequence,
   parseScope,
@@ -26,7 +36,6 @@ import {
   tradeLetterRoute,
   type TradeLetterKind,
   type TradeLetterRoute,
-  type TradeLetterScopeItem,
   type TradeLetterStatus,
 } from "@/lib/trade-letters/letter"
 import {
@@ -41,22 +50,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
-export type TradeLetterSummary = {
-  readonly id: string
-  readonly kind: TradeLetterKind
-  readonly letterNumber: string
-  readonly status: TradeLetterStatus
-  readonly totalCents: number
-  readonly signerName: string
-  readonly signerEmail: string
-  readonly includesAgreement: boolean
-  readonly createdAt: string
-  readonly sentAt: string | null
-  readonly signedAt: string | null
-  /** Where the signed copy opens: the vendor's Drive folder copy, else Foxit. */
-  readonly signedUrl: string | null
-  readonly embeddedSessionUrl: string | null
-}
+export type { TradeLetterSummary } from "@/lib/domain/trade-letters/rules"
 
 type TradeLetterDocs = {
   readonly requiredCount: number
@@ -109,37 +103,9 @@ export type TradeLetterComposerDefaults = {
   readonly companySignerTitle: string
 }
 
-function message(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
-
-function shortDate(iso: string): string {
+/** An ISO timestamp's calendar day as "October 30, 2026". */
+function letterDay(iso: string): string {
   return longDate(iso.slice(0, 10))
-}
-
-function summarize(letter: TradeLetter): TradeLetterSummary {
-  const status: TradeLetterStatus = isTradeLetterStatus(letter.status) ? letter.status : "draft"
-  return {
-    id: letter.id,
-    kind: letter.kind === "award" ? "award" : "intent",
-    letterNumber: letter.letterNumber,
-    status,
-    totalCents: letter.totalCents,
-    signerName: letter.signerName,
-    signerEmail: letter.signerEmail,
-    includesAgreement: letter.includesAgreement,
-    createdAt: letter.createdAt,
-    sentAt: letter.sentAt,
-    signedAt: letter.signedAt,
-    signedUrl: status !== "signed"
-      ? null
-      : letter.signedDriveFileId
-        ? `https://drive.google.com/file/d/${letter.signedDriveFileId}/view`
-        : letter.foxitEnvelopeId
-          ? `/api/integrations/foxit/envelopes/${encodeURIComponent(letter.foxitEnvelopeId)}/document`
-          : null,
-    embeddedSessionUrl: status === "preparing" ? letter.foxitEmbeddedSessionUrl : null,
-  }
 }
 
 async function staffAccess(projectId: string, write: boolean) {
@@ -157,12 +123,12 @@ async function estimateState(db: Awaited<ReturnType<typeof staffAccess>>["db"], 
     .get()
   if (!estimate) throw new Error("Estimate not found.")
   if (estimate.status === "accepted") {
-    return { ownerSigned: true, ownerStatus: estimate.acceptedAt ? `The owner signed ${shortDate(estimate.acceptedAt)}.` : "The owner has signed." }
+    return { ownerSigned: true, ownerStatus: estimate.acceptedAt ? `The owner signed ${letterDay(estimate.acceptedAt)}.` : "The owner has signed." }
   }
   if (estimate.status === "signature_pending") {
     return {
       ownerSigned: false,
-      ownerStatus: estimate.signatureRequestedAt ? `Sent to the owner for signature ${shortDate(estimate.signatureRequestedAt)}.` : "Out to the owner for signature.",
+      ownerStatus: estimate.signatureRequestedAt ? `Sent to the owner for signature ${letterDay(estimate.signatureRequestedAt)}.` : "Out to the owner for signature.",
     }
   }
   return { ownerSigned: false, ownerStatus: "The owner hasn't signed this estimate yet." }
@@ -188,8 +154,8 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
       .filter((trade) => tradeLetterRoute({ ownerScope: trade.ownerScope, sageCostTypes: trade.sageCostTypes }) === "purchase_order")
       .map((trade) => trade.rfqId)
     const ordersByRfq = await loadTradePurchaseOrders(access.db, projectId, supplierRfqIds)
-    const rows: TradeLetterRow[] = []
-    for (const trade of trades.data) {
+    // Each trade's vendor and doc standing load together rather than one trade at a time.
+    const rows: TradeLetterRow[] = await Promise.all(trades.data.map(async (trade): Promise<TradeLetterRow> => {
       const route = tradeLetterRoute({ ownerScope: trade.ownerScope, sageCostTypes: trade.sageCostTypes })
       const tradeLettersForRfq = letters.filter((letter) => letter.rfqOperationId === trade.rfqId)
       const linkedVendorId = tradeLettersForRfq.find((letter) => letter.vendorId)?.vendorId ?? null
@@ -201,7 +167,7 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
       }
       const standing = vendor ? await vendorTradeStanding(access.db, settings, vendor) : null
       const orders = ordersByRfq.get(trade.rfqId) ?? []
-      rows.push({
+      return {
         trade,
         route,
         vendor: vendor ? { id: vendor.id, name: vendor.name, category: vendor.category, sageVendorId: vendor.sageVendorId } : null,
@@ -214,18 +180,18 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
               agreementSignedOn: standing.agreementSignedOn,
             }
           : null,
-        letters: tradeLettersForRfq.map(summarize),
+        letters: tradeLettersForRfq.map(summarizeTradeLetter),
         orders,
         orderedCents: orderedCents(orders),
         leftToOrder: remainingTradeCodes(trade.codes, orders),
-      })
-    }
+      }
+    }))
     return {
       success: true,
       data: { ...state, rows, agreementFormSet: agreementFormFileId(settings) !== null, agreementDocTypeId: settings.letters.agreementDocTypeId, canEdit: access.canEdit },
     }
   } catch (error) {
-    return { success: false, error: message(error, "Could not load the letters.") }
+    return { success: false, error: errorMessage(error, "Could not load the letters.") }
   }
 }
 
@@ -251,7 +217,7 @@ export async function getTradeLetterComposerDefaults(projectId: string): Promise
       },
     }
   } catch (error) {
-    return { success: false, error: message(error, "Could not open the letter.") }
+    return { success: false, error: errorMessage(error, "Could not open the letter.") }
   }
 }
 
@@ -274,12 +240,8 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
     if (tradeLetterRoute({ ownerScope: trade.ownerScope, sageCostTypes: trade.sageCostTypes }) !== "letter") {
       return { success: false, error: "Letters are for subcontracted work. Suppliers get purchase orders, and owner scope is in the owner contract." }
     }
-    const indexes = [...new Set(input.codeIndexes)].filter((index) => Number.isInteger(index) && index >= 0 && index < trade.codes.length)
-    if (indexes.length === 0) return { success: false, error: "Choose at least one cost code." }
-    const scope: TradeLetterScopeItem[] = indexes.map((index) => {
-      const code = trade.codes[index]
-      return { costCode: code?.costCode ?? null, description: code?.description ?? "", amountCents: code?.amountCents ?? 0 }
-    })
+    const scope = tradeLetterScope(trade.codes, input.codeIndexes)
+    if (scope.length === 0) return { success: false, error: "Choose at least one cost code." }
     const signerName = input.signerName.trim().slice(0, 120)
     const signerEmail = normalizeRecipientEmail(input.signerEmail)
     if (!signerName) return { success: false, error: "Enter who signs for the trade." }
@@ -302,13 +264,13 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
       .map((line) => line.type.label)
 
     const now = new Date().toISOString()
-    const quoteLabel = [trade.rfqNumber ?? "your quote", trade.quoteSubmittedAt ? `dated ${shortDate(trade.quoteSubmittedAt)}` : null].filter(Boolean).join(", ")
+    const quoteLabel = [trade.rfqNumber ?? "your quote", trade.quoteSubmittedAt ? `dated ${letterDay(trade.quoteSubmittedAt)}` : null].filter(Boolean).join(", ")
     const values = {
       vendorId: vendor?.id ?? null,
       vendorName: vendor?.name ?? trade.vendor,
       kind: input.kind,
       scopeJson: JSON.stringify(scope),
-      totalCents: scope.reduce((sum, item) => sum + item.amountCents, 0),
+      totalCents: tradeLetterTotalCents(scope),
       quoteLabel,
       owedJson: JSON.stringify(owed),
       note: input.note.trim().slice(0, 2000) || null,
@@ -329,15 +291,11 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
         .where(and(eq(tradeLetters.id, letterId), eq(tradeLetters.projectId, projectId)))
         .get()
       if (!existing) return { success: false, error: "Letter not found." }
-      if (existing.status !== "draft" && existing.status !== "preparing") {
+      if (!tradeLetterIsEditable(existing.status)) {
         return { success: false, error: "This letter has already gone out. Write a new one instead." }
       }
       if (existing.kind !== input.kind) return { success: false, error: "Write a new letter to change its kind." }
-      await access.db
-        .update(tradeLetters)
-        .set({ ...values, status: "draft", foxitEnvelopeId: null, foxitEmbeddedSessionUrl: null })
-        .where(eq(tradeLetters.id, existing.id))
-        .run()
+      await updateTradeLetter(access.db, existing.id, { ...values, status: "draft", foxitEnvelopeId: null, foxitEmbeddedSessionUrl: null })
       revalidateEstimate(projectId)
       return { success: true, data: { id: existing.id } }
     }
@@ -347,26 +305,23 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
       .from(tradeLetters)
       .where(eq(tradeLetters.organizationId, access.organizationId))
     const id = crypto.randomUUID()
-    await access.db
-      .insert(tradeLetters)
-      .values({
-        ...values,
-        id,
-        organizationId: access.organizationId,
-        projectId,
-        estimateId,
-        rfqOperationId: trade.rfqId,
-        letterNumber: tradeLetterNumber(input.kind, nextTradeLetterSequence(input.kind, numbers.map((row) => row.letterNumber))),
-        status: "draft",
-        createdBy: access.user.id,
-        createdByName: (access.user.displayName ?? access.user.email).slice(0, 200),
-        createdAt: now,
-      })
-      .run()
+    await insertTradeLetter(access.db, {
+      ...values,
+      id,
+      organizationId: access.organizationId,
+      projectId,
+      estimateId,
+      rfqOperationId: trade.rfqId,
+      letterNumber: tradeLetterNumber(input.kind, nextTradeLetterSequence(input.kind, numbers.map((row) => row.letterNumber))),
+      status: "draft",
+      createdBy: access.user.id,
+      createdByName: (access.user.displayName ?? access.user.email).slice(0, 200),
+      createdAt: now,
+    })
     revalidateEstimate(projectId)
     return { success: true, data: { id } }
   } catch (error) {
-    return { success: false, error: message(error, "Could not save the letter.") }
+    return { success: false, error: errorMessage(error, "Could not save the letter.") }
   }
 }
 
@@ -377,18 +332,18 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
 export async function prepareTradeLetterSignature(projectId: string, letterId: string): Promise<Result<{ readonly embeddedSessionUrl: string }>> {
   try {
     const access = await staffAccess(projectId, true)
-    const { env } = await getCloudflareContext()
+    const { env } = access
     const letter = await access.db
       .select()
       .from(tradeLetters)
       .where(and(eq(tradeLetters.id, letterId), eq(tradeLetters.projectId, projectId)))
       .get()
     if (!letter) return { success: false, error: "Letter not found." }
-    if (letter.status !== "draft" && letter.status !== "preparing") {
+    if (!tradeLetterIsEditable(letter.status)) {
       return { success: false, error: "This letter has already gone out." }
     }
     const state = await estimateState(access.db, projectId, letter.estimateId)
-    const availability = tradeLetterAvailability(letter.kind === "award" ? "award" : "intent", state.ownerSigned)
+    const availability = tradeLetterAvailability(tradeLetterKindOf(letter), state.ownerSigned)
     if (!availability.allowed) return { success: false, error: availability.reason }
     const clientId = env.FOXIT_ESIGN_CLIENT_ID?.trim()
     const clientSecret = env.FOXIT_ESIGN_CLIENT_SECRET?.trim()
@@ -418,15 +373,11 @@ export async function prepareTradeLetterSignature(projectId: string, letterId: s
       sourceHash: letter.updatedAt,
       signInSequence: true,
     })
-    await access.db
-      .update(tradeLetters)
-      .set({ status: "preparing", foxitEnvelopeId: foxit.envelopeId, foxitEmbeddedSessionUrl: foxit.embeddedSessionUrl, updatedAt: new Date().toISOString() })
-      .where(eq(tradeLetters.id, letter.id))
-      .run()
+    await updateTradeLetter(access.db, letter.id, { status: "preparing", foxitEnvelopeId: foxit.envelopeId, foxitEmbeddedSessionUrl: foxit.embeddedSessionUrl, updatedAt: new Date().toISOString() })
     revalidateEstimate(projectId)
     return { success: true, data: { embeddedSessionUrl: foxit.embeddedSessionUrl } }
   } catch (error) {
-    return { success: false, error: message(error, "Could not prepare the letter for signature.") }
+    return { success: false, error: errorMessage(error, "Could not prepare the letter for signature.") }
   }
 }
 
@@ -443,7 +394,7 @@ export async function deleteTradeLetter(projectId: string, letterId: string): Pr
       .where(and(eq(tradeLetters.id, letterId), eq(tradeLetters.projectId, projectId)))
       .get()
     if (!letter) return { success: false, error: "Letter not found." }
-    await access.db.delete(tradeLetters).where(eq(tradeLetters.id, letter.id)).run()
+    await deleteTradeLetterRow(access.db, letter.id)
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -458,7 +409,7 @@ export async function deleteTradeLetter(projectId: string, letterId: string): Pr
     revalidateEstimate(projectId)
     return { success: true, data: null }
   } catch (error) {
-    return { success: false, error: message(error, "Could not delete the letter.") }
+    return { success: false, error: errorMessage(error, "Could not delete the letter.") }
   }
 }
 
@@ -475,16 +426,14 @@ export async function getTradeLetter(projectId: string, letterId: string): Promi
     const trades = await getEstimateSelectedTrades(projectId, letter.estimateId)
     const trade = trades.success ? trades.data.find((item) => item.rfqId === letter.rfqOperationId) : undefined
     const scope = parseScope(letter.scopeJson)
-    const codeIndexes = (trade?.codes ?? []).flatMap((code, index) =>
-      scope.some((item) => item.costCode === code.costCode && item.description === code.description) ? [index] : [],
-    )
+    const codeIndexes = tradeLetterCodeIndexes(trade?.codes ?? [], scope)
     return {
       success: true,
       data: {
         id: letter.id,
-        status: isTradeLetterStatus(letter.status) ? letter.status : "draft",
+        status: tradeLetterStatusOf(letter),
         rfqId: letter.rfqOperationId,
-        kind: letter.kind === "award" ? "award" : "intent",
+        kind: tradeLetterKindOf(letter),
         vendorId: letter.vendorId,
         codeIndexes,
         signerName: letter.signerName,
@@ -495,6 +444,6 @@ export async function getTradeLetter(projectId: string, letterId: string): Promi
       },
     }
   } catch (error) {
-    return { success: false, error: message(error, "Could not open the letter.") }
+    return { success: false, error: errorMessage(error, "Could not open the letter.") }
   }
 }

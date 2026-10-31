@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { notFound } from "next/navigation"
 import { PrintSourceMode } from "@/components/print/print-source-mode"
 
-import { getProjectPurchaseOrders } from "@/app/actions/project-operations"
+import { getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
 import { DocumentReportActions } from "@/components/projects/document-report-actions"
 import { PurchaseOrderDocument } from "@/components/projects/purchase-order-document"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"

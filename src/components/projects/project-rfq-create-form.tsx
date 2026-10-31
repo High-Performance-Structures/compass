@@ -16,12 +16,8 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
-import {
-  type CreateRfqDocumentLinkInput,
-  type CreateRfqScopeLineInput,
-  type ProjectRfqCostCodeOption,
-  createRfqRequest,
-} from "@/app/actions/project-operations"
+import type { CreateRfqDocumentLinkInput, CreateRfqScopeLineInput, ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
+import { createRfqRequest } from "@/app/actions/project-operations"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type {
   ProjectSelectionItem,

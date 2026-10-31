@@ -26,6 +26,19 @@ import {
 } from "@/lib/financials/pay-application-change-orders"
 import { getCloudflareContext } from "@/lib/db"
 import { chunkD1Rows } from "@/lib/d1-query"
+import { budgetLineProgress, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
+import { insertOperations, operationDeleteQuery, operationUpdateQuery, updateOperations } from "@/lib/domain/operations/store"
+import {
+  deleteBudgetApplicationsStatement,
+  deleteBudgetLinesStatement,
+  discardBudgetApplication,
+  insertBudgetApplication,
+  insertBudgetLines,
+  updateBudgetApplications,
+  updateBudgetApplicationsStatement,
+  updateBudgetLines,
+  updateBudgetLinesStatement,
+} from "@/lib/domain/budget/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   currentWorkForPercent,
@@ -676,29 +689,21 @@ export async function updateProjectOwnerPayApplicationLine(
         "Completed work and stored materials cannot exceed the adjusted budget line."
       )
     }
-    const retainageHeld =
-      Math.round(totalCompletedStored * retainagePercent) / 100
+    const retainageHeld = retainageAtPercent(totalCompletedStored, retainagePercent)
     const now = new Date().toISOString()
-    await db
-      .update(projectBudgetLines)
-      .set({
+    await updateBudgetLines(db, eq(projectBudgetLines.id, lineId), {
+      currentWorkCompleted,
+      storedMaterials,
+      ...budgetLineProgress({
+        previousWorkCompleted: line.previousWorkCompleted,
         currentWorkCompleted,
         storedMaterials,
-        priorCosts: line.previousWorkCompleted,
-        currentCosts: currentWorkCompleted + storedMaterials,
-        totalCosts: totalCompletedStored,
-        percentComplete:
-          line.adjustedEstimate > 0
-            ? Math.round((totalCompletedStored / line.adjustedEstimate) * 1_000) /
-              10
-            : 0,
-        balanceToFinish: line.adjustedEstimate - totalCompletedStored,
-        retainageHeld,
-        ownerVisible: input.ownerVisible,
-        updatedAt: now,
-      })
-      .where(eq(projectBudgetLines.id, lineId))
-      .run()
+        adjustedEstimate: line.adjustedEstimate,
+      }),
+      retainageHeld,
+      ownerVisible: input.ownerVisible,
+      updatedAt: now,
+    })
     await refreshOwnerPayApplication(db, projectId, applicationId, now)
     revalidateFinancialPaths(projectId)
     return { success: true, id: lineId }
@@ -766,25 +771,14 @@ export async function setProjectOwnerPayApplicationPercentComplete(
     const updates = lines.map((line) => {
       const result = currentWorkForPercent(line, percentComplete)
       if (!result.success) throw new Error(result.error)
-      const totalCompletedStored =
-        line.previousWorkCompleted + result.currentWorkCompleted + line.storedMaterials
+      const progress = budgetLineProgress({ ...line, currentWorkCompleted: result.currentWorkCompleted })
       const retainageRate = line.totalCosts > 0 ? line.retainageHeld / line.totalCosts : 0
-      return db
-        .update(projectBudgetLines)
-        .set({
-          currentWorkCompleted: result.currentWorkCompleted,
-          priorCosts: line.previousWorkCompleted,
-          currentCosts: result.currentWorkCompleted + line.storedMaterials,
-          totalCosts: totalCompletedStored,
-          percentComplete:
-            line.adjustedEstimate > 0
-              ? Math.round((totalCompletedStored / line.adjustedEstimate) * 1_000) / 10
-              : 0,
-          balanceToFinish: line.adjustedEstimate - totalCompletedStored,
-          retainageHeld: Math.round(totalCompletedStored * retainageRate * 100) / 100,
-          updatedAt: now,
-        })
-        .where(eq(projectBudgetLines.id, line.id))
+      return updateBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id), {
+        currentWorkCompleted: result.currentWorkCompleted,
+        ...progress,
+        retainageHeld: retainageAtRate(progress.totalCosts, retainageRate),
+        updatedAt: now,
+      })
     })
     const [first, ...rest] = updates
     if (first) await db.batch([first, ...rest])
@@ -822,11 +816,10 @@ export async function setProjectOwnerPayApplicationOwnerDetail(
       )
       .get()
     if (!application) throw new Error("Pay application not found.")
-    await db
-      .update(projectBudgetApplications)
-      .set({ ownerDetail, updatedAt: new Date().toISOString() })
-      .where(eq(projectBudgetApplications.id, applicationId))
-      .run()
+    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
+      ownerDetail,
+      updatedAt: new Date().toISOString(),
+    })
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -897,17 +890,16 @@ export async function deleteProjectOwnerPayApplicationDraft(
       .get()
     if (!application) throw new Error("Only a draft pay application can be deleted.")
     await db.batch([
-      db.delete(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)),
-      db
-        .delete(projectOperations)
-        .where(
-          and(
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.sourceRecordType, "owner_pay_application"),
-            eq(projectOperations.sourceRecordId, applicationId)
-          )
-        ),
-      db.delete(projectBudgetApplications).where(eq(projectBudgetApplications.id, applicationId)),
+      deleteBudgetLinesStatement(db, eq(projectBudgetLines.applicationId, applicationId)),
+      operationDeleteQuery(
+        db,
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "owner_pay_application"),
+          eq(projectOperations.sourceRecordId, applicationId)
+        )
+      ),
+      deleteBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId)),
     ])
     // Its applied deposit is free again for the other drafts.
     await refreshAutoDepositPayApplications(db, projectId, new Date().toISOString())
@@ -946,11 +938,11 @@ export async function setProjectOwnerPayApplicationDeposit(
     if (!application) throw new Error("Draft pay application not found.")
     const amount = input.mode === "manual" ? nonnegativeAmount(input.amount, "Deposit applied") : 0
     const now = new Date().toISOString()
-    await db
-      .update(projectBudgetApplications)
-      .set({ depositAppliedMode: input.mode, depositApplied: amount, updatedAt: now })
-      .where(eq(projectBudgetApplications.id, applicationId))
-      .run()
+    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
+      depositAppliedMode: input.mode,
+      depositApplied: amount,
+      updatedAt: now,
+    })
     await refreshOwnerPayApplication(db, projectId, applicationId, now)
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
@@ -1041,31 +1033,22 @@ export async function markProjectOwnerPayApplicationReady(
         totalCompletedStored: line.totalCosts,
       })),
     })
-    await db
-      .update(projectBudgetApplications)
-      .set({
-        status: "internal_review",
-        syncStatus: "needs_review",
-        updatedAt: now,
-      })
-      .where(eq(projectBudgetApplications.id, applicationId))
-      .run()
-    await db
-      .update(projectOperations)
-      .set({
+    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
+      status: "internal_review",
+      syncStatus: "needs_review",
+      updatedAt: now,
+    })
+    await updateOperations(
+      db,
+      and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, applicationId)),
+      {
         status: "internal_review",
         sageWriteStatus: "draft_ready",
         sagePayloadJson: sageReviewPayload,
         syncStatus: "needs_review",
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordId, applicationId)
-        )
-      )
-      .run()
+      }
+    )
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -1102,20 +1085,20 @@ export async function returnProjectOwnerPayApplicationToDraft(
     if (!application) throw new Error("Only a pay application in internal review can go back to draft.")
     const now = new Date().toISOString()
     await db.batch([
-      db
-        .update(projectBudgetApplications)
-        .set({ status: "draft", syncStatus: "compass_only", updatedAt: now })
-        .where(eq(projectBudgetApplications.id, applicationId)),
-      db
-        .update(projectOperations)
-        .set({ status: "draft", syncStatus: "compass_only", updatedAt: now })
-        .where(
-          and(
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.sourceRecordType, "owner_pay_application"),
-            eq(projectOperations.sourceRecordId, applicationId)
-          )
+      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+        status: "draft",
+        syncStatus: "compass_only",
+        updatedAt: now,
+      }),
+      operationUpdateQuery(
+        db,
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "owner_pay_application"),
+          eq(projectOperations.sourceRecordId, applicationId)
         ),
+        { status: "draft", syncStatus: "compass_only", updatedAt: now }
+      ),
     ])
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
@@ -1177,7 +1160,7 @@ export async function createProjectVendorBillDraft(
     const description =
       cleanText(input.description) ?? `${vendorName} vendor bill`
 
-    await db.insert(projectOperations).values({
+    await insertOperations(db, {
       id,
       projectId,
       sourceSystem: "compass",
@@ -1228,18 +1211,6 @@ export async function createProjectVendorBillDraft(
         error instanceof Error ? error.message : "Failed to stage vendor bill",
     }
   }
-}
-
-async function discardPartialPayApplication(
-  db: ReturnType<typeof getDb>,
-  applicationId: string
-): Promise<void> {
-  await db
-    .delete(projectBudgetLines)
-    .where(eq(projectBudgetLines.applicationId, applicationId))
-  await db
-    .delete(projectBudgetApplications)
-    .where(eq(projectBudgetApplications.id, applicationId))
 }
 
 export async function createProjectOwnerPayApplicationDraft(
@@ -1316,7 +1287,7 @@ export async function createProjectOwnerPayApplicationDraft(
       if (duplicate.status !== "building" || operationRows[0]) {
         throw new Error("That pay application number already exists.")
       }
-      await discardPartialPayApplication(db, duplicate.id)
+      await discardBudgetApplication(db, duplicate.id)
     }
     const priorApplications = await db
       .select()
@@ -1351,7 +1322,7 @@ export async function createProjectOwnerPayApplicationDraft(
       priorApplication?.totalCompletedStoredToDate ?? 0
     const priorRetainage = priorApplication?.retainageHeld ?? 0
 
-    await db.insert(projectBudgetApplications).values({
+    await insertBudgetApplication(db, {
       id: applicationId,
       projectId,
       sourceSystem: "compass_contract_budget",
@@ -1395,14 +1366,14 @@ export async function createProjectOwnerPayApplicationDraft(
     )
     try {
       for (const rows of chunkD1Rows(applicationLineRows)) {
-        await db.insert(projectBudgetLines).values(rows)
+        await insertBudgetLines(db, rows)
       }
     } catch (error) {
-      await discardPartialPayApplication(db, applicationId)
+      await discardBudgetApplication(db, applicationId)
       throw error
     }
 
-    await db.insert(projectOperations).values({
+    await insertOperations(db, {
       id,
       projectId,
       sourceSystem: "compass",
@@ -1446,11 +1417,7 @@ export async function createProjectOwnerPayApplicationDraft(
       createdAt: now,
       updatedAt: now,
     })
-    await db
-      .update(projectBudgetApplications)
-      .set({ status: "draft", updatedAt: now })
-      .where(eq(projectBudgetApplications.id, applicationId))
-      .run()
+    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), { status: "draft", updatedAt: now })
 
     revalidateFinancialPaths(projectId)
     return { success: true, id }

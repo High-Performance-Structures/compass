@@ -3,6 +3,7 @@ import { ProjectBrandContactDetails } from "@/components/projects/project-brand-
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import type { ProjectBrand } from "@/lib/project-branding"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
+import { formatDate } from "@/lib/format"
 
 type PurchaseOrderDocumentLine = {
   readonly id: string
@@ -30,13 +31,9 @@ export type PurchaseOrderDocumentData = {
   readonly lines: readonly PurchaseOrderDocumentLine[]
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return "No due date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** A due date as "Oct 30, 2026", or "No due date". */
+function dueDate(value: string | null): string {
+  return formatDate(value, "medium", "No due date")
 }
 
 /**
@@ -78,8 +75,8 @@ export function PurchaseOrderDocument({
           <p className="mt-2 text-sm font-semibold">
             {order.sourceRecordNumber ?? "Unnumbered"}
           </p>
-          <p>P.O. Date: {formatDate(order.sageOrderDate)}</p>
-          <p>Required By: {formatDate(order.dueDate)}</p>
+          <p>P.O. Date: {dueDate(order.sageOrderDate)}</p>
+          <p>Required By: {dueDate(order.dueDate)}</p>
         </div>
       </div>
 

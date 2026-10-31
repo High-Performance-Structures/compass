@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { dailyLogPhotos, dailyLogs, ownerProjectUpdates, projects } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { deleteDutyEntriesForDailyLogs } from "@/lib/domain/duties/store"
 import { requireAuth } from "@/lib/auth"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
 import { isDemoUser } from "@/lib/demo"
@@ -125,7 +126,7 @@ export async function deleteProjectDailyLogs(
     // foreign key, and task links are removed with the log. The log's cost
     // code lines go with it (copied into the activity record above).
     await detachPhotosFromDailyLogs(db, ids)
-    await db.delete(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, ids))
+    await deleteDutyEntriesForDailyLogs(db, ids)
     await deleteDailyLogs(db, projectId, ids)
 
     revalidatePath(`/dashboard/projects/${projectId}`)

@@ -8,6 +8,7 @@ import {
   projects,
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
+import { insertOperations, updateOperationById } from "@/lib/domain/operations/store"
 
 type ScriptHandoffPayload = {
   readonly source: string
@@ -260,15 +261,12 @@ async function upsertScriptOperation(
   }
 
   if (existing) {
-    await db
-      .update(projectOperations)
-      .set(values)
-      .where(eq(projectOperations.id, existing.id))
+    await updateOperationById(db, existing.id, values)
     return existing.id
   }
 
   const id = crypto.randomUUID()
-  await db.insert(projectOperations).values({
+  await insertOperations(db, {
     id,
     projectId: input.projectId,
     costCode: null,

@@ -13,13 +13,8 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
-import {
-  type CreateRfqDocumentLinkInput,
-  type CreateRfqScopeLineInput,
-  type ProjectRfqCostCodeOption,
-  type ProjectRfqItem,
-  updateRfqRequest,
-} from "@/app/actions/project-operations"
+import type { CreateRfqDocumentLinkInput, CreateRfqScopeLineInput, ProjectRfqCostCodeOption, ProjectRfqItem } from "@/lib/domain/operations/types"
+import { updateRfqRequest } from "@/app/actions/project-operations"
 import type {
   ProjectSelectionItem,
   ProjectSelectionOptions,

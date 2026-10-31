@@ -39,7 +39,7 @@ describe("purchase order delivery output coverage", () => {
   })
 
   it("loads the project address for the sent email document", () => {
-    const action = source("src/app/actions/project-operations.ts")
+    const action = source("src/app/actions/project-purchase-orders.ts")
 
     expect(action).toContain("address: projects.address")
     expect(action).toContain("deliveryLocation: resolvedPurchaseOrderShipTo")
@@ -48,11 +48,12 @@ describe("purchase order delivery output coverage", () => {
   })
 
   it("loads vendor addresses for the printable document", () => {
-    const action = source("src/app/actions/project-operations.ts")
+    const queries = source("src/lib/domain/operations/queries.ts")
+    const records = source("src/lib/domain/operations/records.ts")
 
-    expect(action).toContain("address: projectContacts.address")
-    expect(action).toContain("address: vendors.address")
-    expect(action).toContain("purchaseOrderVendorDetails")
-    expect(action).toContain("vendorAddress: vendorDetails.address")
+    expect(queries).toContain("address: projectContacts.address")
+    expect(queries).toContain("address: vendors.address")
+    expect(queries).toContain("purchaseOrderVendorDetails")
+    expect(records).toContain("vendorAddress: vendor.address")
   })
 })

@@ -43,6 +43,7 @@ import {
   taskUpdateQuery,
 } from "@/lib/domain/schedule/store"
 import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-items"
+import { operationInsertQuery } from "@/lib/domain/operations/store"
 import { projectDepartment } from "@/lib/project-branding"
 import type { ProjectListItem } from "@/lib/projects/project-list"
 import { calculateEndDate } from "@/lib/schedule/business-days"
@@ -384,7 +385,7 @@ export async function createTask(
       // templates even though the surrounding batch is otherwise valid.
       await db.batch([
         taskInsertQuery(db, scheduleTaskRow),
-        ...linkedTodoRows.map((todoRow) => db.insert(projectOperations).values(todoRow))
+        ...linkedTodoRows.map((todoRow) => operationInsertQuery(db, todoRow))
       ])
     } else {
       await insertTask(db, scheduleTaskRow)

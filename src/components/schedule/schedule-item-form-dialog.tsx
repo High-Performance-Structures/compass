@@ -96,10 +96,8 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import {
-  getScheduleTaskTodos,
-  type ProjectOperationItem,
-} from "@/app/actions/project-operations"
+import { getScheduleTaskTodos } from "@/app/actions/project-todos"
+import type { ProjectTodoItem } from "@/lib/domain/operations/types"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ScheduleCommitmentResponses } from "@/components/schedule/schedule-commitment-responses"
@@ -250,7 +248,7 @@ export function ScheduleItemFormDialog({
   const [customPhaseName, setCustomPhaseName] = useState("")
   const [saveCustomPhase, setSaveCustomPhase] = useState(true)
   const [linkedTodos, setLinkedTodos] = useState<
-    readonly ProjectOperationItem[]
+    readonly ProjectTodoItem[]
   >([])
   const [linkedTodosLoading, setLinkedTodosLoading] = useState(false)
   const [linkedTodosError, setLinkedTodosError] = useState<string | null>(null)

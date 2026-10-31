@@ -12,6 +12,7 @@ import {
   type DailyLogWorkLine,
 } from "@/lib/daily-logs/daily-log-form"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { deleteDailyLogDutyEntries, insertDutyEntries } from "@/lib/domain/duties/store"
 import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { loadFieldCostCodeList } from "@/lib/field/cost-codes-server"
 import { dutiesFor, dutyDisplay } from "@/lib/internal-duties/model"
@@ -232,14 +233,12 @@ export async function replaceDailyLogWorkLines(
   const labels = new Map(existing.map((row) => [row.code, row.label]))
   for (const option of input.options) labels.set(option.code, option.name)
 
-  await db
-    .delete(internalDutyEntries)
-    .where(and(eq(internalDutyEntries.dailyLogId, input.dailyLogId), eq(internalDutyEntries.projectId, input.projectId)))
+  await deleteDailyLogDutyEntries(db, input.dailyLogId, input.projectId)
   if (input.lines.length === 0) return
   const now = new Date().toISOString()
-  // One insert per line keeps each statement under D1's bound-parameter cap.
-  for (const [index, line] of input.lines.entries()) {
-    await db.insert(internalDutyEntries).values({
+  await insertDutyEntries(
+    db,
+    input.lines.map((line, index) => ({
       id: crypto.randomUUID(),
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -256,8 +255,8 @@ export async function replaceDailyLogWorkLines(
       createdBy: input.createdBy,
       createdAt: now,
       updatedAt: now,
-    })
-  }
+    }))
+  )
 }
 
 export type CheckedDailyLogForm =

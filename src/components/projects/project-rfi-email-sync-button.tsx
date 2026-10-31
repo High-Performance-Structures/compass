@@ -6,16 +6,13 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { isRecord } from "@/lib/shared/guards"
 
 type SyncSummary = {
   readonly scanned?: number
   readonly posted?: number
   readonly needsReview?: number
   readonly errors?: readonly string[]
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function syncSummaries(value: unknown): readonly SyncSummary[] {

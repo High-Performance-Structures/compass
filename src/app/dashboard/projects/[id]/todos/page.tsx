@@ -5,7 +5,7 @@ import { notFound } from "next/navigation"
 
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { getProjectTodos } from "@/app/actions/project-operations"
+import { getProjectTodos } from "@/app/actions/project-todos"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectTodosView } from "@/components/projects/project-todos-view"
 import { requireAuth } from "@/lib/auth"

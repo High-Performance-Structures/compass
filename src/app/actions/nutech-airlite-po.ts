@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
 import { nuTechCatalogPrices, nuTechCatalogVersions, nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
 import { generateNuTechAirliteWorkbook } from "@/app/actions/nutech-order-items"
-import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput, type ProjectPurchaseOrderCostCodeOption } from "@/app/actions/project-operations"
+import { createPurchaseOrderRequest } from "@/app/actions/project-purchase-orders"
+import type { CreatePurchaseOrderLineInput, ProjectPurchaseOrderCostCodeOption } from "@/lib/domain/operations/types"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
@@ -124,7 +125,8 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
       quantity: item.quantity,
       unitCost: item.unitCostCents / 100,
       unit: item.unit,
-      amount: (item.unitCostCents * item.quantity) / 100,
+      // Priced on the server from quantity × unit cost.
+      amountOverride: null,
       taxGroup: null,
     }))
     // The freight quoted for a delivery is the manufacturer's charge too.
@@ -138,7 +140,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
         quantity: 1,
         unitCost: freightCents / 100,
         unit: "LS",
-        amount: freightCents / 100,
+        amountOverride: null,
         taxGroup: null,
       })
     }

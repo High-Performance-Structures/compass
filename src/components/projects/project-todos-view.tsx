@@ -11,10 +11,8 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import {
-  setProjectTodoStatus,
-  type ProjectOperationItem,
-} from "@/app/actions/project-operations"
+import { setProjectTodoStatus } from "@/app/actions/project-todos"
+import type { ProjectTodoItem } from "@/lib/domain/operations/types"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-dialog"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -44,19 +42,16 @@ import {
   scheduleItemHref,
 } from "@/lib/work-calendar"
 import { PageHeader } from "@/components/page-header"
+import { formatDate } from "@/lib/format"
 
 type TodoFilter = "active" | "completed" | "archived" | "all"
 
-function formatDate(value: string | null): string {
-  if (!value) return "No due date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** A due date as "Oct 30, 2026", or "No due date". */
+function dueDate(value: string | null): string {
+  return formatDate(value, "medium", "No due date")
 }
 
-function sourceLabel(item: ProjectOperationItem): string {
+function sourceLabel(item: ProjectTodoItem): string {
   if (item.sourceSystem === "buildertrend") return "Buildertrend import"
   if (item.sourceSystem === "compass") return "Compass"
   if (item.sourceSystem === "sage") return "Sage"
@@ -64,7 +59,7 @@ function sourceLabel(item: ProjectOperationItem): string {
 }
 
 function todoMatches(
-  item: ProjectOperationItem,
+  item: ProjectTodoItem,
   query: string,
   includeInternalDetails: boolean
 ): boolean {
@@ -89,7 +84,7 @@ function todoMatches(
 }
 
 function itemMatchesFilter(
-  item: ProjectOperationItem,
+  item: ProjectTodoItem,
   filter: TodoFilter
 ): boolean {
   if (filter === "all") return true
@@ -109,7 +104,7 @@ function itemMatchesFilter(
 }
 
 function initialFilterForItem(
-  item: ProjectOperationItem | null
+  item: ProjectTodoItem | null
 ): TodoFilter {
   if (!item) return "active"
   if (isArchivedProjectTodoStatus(item.status)) return "archived"
@@ -122,7 +117,7 @@ function StatusControl({
   item,
 }: {
   readonly projectId: string
-  readonly item: ProjectOperationItem
+  readonly item: ProjectTodoItem
 }): React.ReactElement {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
@@ -193,7 +188,7 @@ export function ProjectTodosView({
 }: {
   readonly projectId: string
   readonly projectLabel: string
-  readonly items: readonly ProjectOperationItem[]
+  readonly items: readonly ProjectTodoItem[]
   readonly initialItemId: string | null
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly canManage: boolean
@@ -207,7 +202,7 @@ export function ProjectTodosView({
     initialFilterForItem(initialItem)
   )
   const [editingItem, setEditingItem] =
-    React.useState<ProjectOperationItem | null>(null)
+    React.useState<ProjectTodoItem | null>(null)
   const counts = React.useMemo(
     () => ({
       active: items.filter((item) => itemMatchesFilter(item, "active")).length,
@@ -307,7 +302,7 @@ export function ProjectTodosView({
         {visibleItems.length > 0 ? (
           visibleItems.map((item) => {
             const focused = item.id === initialItemId
-            const archived = isArchivedProjectTodoStatus(item.status)
+            const archived = item.actions.canRestore
             return (
               <article
                 id={`todo-${item.id}`}
@@ -362,7 +357,7 @@ export function ProjectTodosView({
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <div className="mr-2 text-sm text-muted-foreground sm:text-right">
-                    <p>{formatDate(item.dueDate ?? item.startDate)}</p>
+                    <p>{dueDate(item.dueDate ?? item.startDate)}</p>
                     <p className="mt-1 capitalize">{item.priority} priority</p>
                   </div>
                   {canManage && !archived && (

@@ -6,6 +6,7 @@ import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-reques
 
 import { and, eq, inArray } from "drizzle-orm"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { updateOperations } from "@/lib/domain/operations/store"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -41,6 +42,7 @@ import {
   withPortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
+import { rfiInsertStatement } from "@/lib/domain/rfis/store"
 import { validRfiPriority } from "@/lib/rfis/status"
 import { resolveSubVendorRfiRecipient } from "@/lib/rfis/sub-vendor-recipient"
 
@@ -227,7 +229,7 @@ export async function createSubVendorRfi(
       updatedAt: now,
     }
     await context.db.batch([
-      context.db.insert(projectRfis).values(inserted),
+      rfiInsertStatement(context.db, inserted),
       context.db.insert(projectSourceRecordParticipants).values({
         id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
@@ -323,9 +325,15 @@ export async function respondToSubVendorPurchaseOrder(
 
     const now = new Date().toISOString()
     if (input.decision === "acknowledge") {
-      const updateResult = await context.db
-        .update(projectOperations)
-        .set({
+      const changes = await updateOperations(
+        context.db,
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.status, purchaseOrder.status),
+          eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
+        ),
+        {
           sagePayloadJson: withPortalPurchaseOrderAcknowledgement(
             purchaseOrder.sagePayloadJson,
             {
@@ -337,17 +345,9 @@ export async function respondToSubVendorPurchaseOrder(
             }
           ),
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectOperations.id, purchaseOrderId),
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.status, purchaseOrder.status),
-            eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
-          )
-        )
-        .run()
-      if ((updateResult.meta.changes ?? 0) !== 1) {
+        }
+      )
+      if (changes !== 1) {
         return {
           success: false,
           error:
@@ -392,9 +392,15 @@ export async function respondToSubVendorPurchaseOrder(
         return { success: false, error: "Choose a valid fulfillment status." }
       }
       const note = cleanText(input.note, 2_000)
-      const updateResult = await context.db
-        .update(projectOperations)
-        .set({
+      const changes = await updateOperations(
+        context.db,
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.status, purchaseOrder.status),
+          eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
+        ),
+        {
           sagePayloadJson: withPortalPurchaseOrderStatusUpdate(
             purchaseOrder.sagePayloadJson,
             {
@@ -407,17 +413,9 @@ export async function respondToSubVendorPurchaseOrder(
             }
           ),
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectOperations.id, purchaseOrderId),
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.status, purchaseOrder.status),
-            eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
-          )
-        )
-        .run()
-      if ((updateResult.meta.changes ?? 0) !== 1) {
+        }
+      )
+      if (changes !== 1) {
         return {
           success: false,
           error:
@@ -496,7 +494,7 @@ export async function respondToSubVendorPurchaseOrder(
       updatedAt: now,
     }
     await context.db.batch([
-      context.db.insert(projectRfis).values(inserted),
+      rfiInsertStatement(context.db, inserted),
       context.db.insert(projectSourceRecordParticipants).values({
         id: crypto.randomUUID(), organizationId: context.organizationId, projectId,
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
@@ -592,9 +590,14 @@ export async function submitSubVendorRfqResponse(
     const now = new Date().toISOString()
     const responseStatus =
       input.decision === "decline" ? "declined" : "response_received"
-    await context.db
-      .update(projectOperations)
-      .set({
+    await updateOperations(
+      context.db,
+      and(
+        eq(projectOperations.id, rfqId),
+        eq(projectOperations.projectId, projectId),
+        inArray(projectOperations.status, ["sent", "response_received"])
+      ),
+      {
         status: responseStatus,
         amount: input.decision === "quote" ? amount : null,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
@@ -605,14 +608,8 @@ export async function submitSubVendorRfqResponse(
           submittedAt: now,
         }),
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectOperations.id, rfqId),
-          eq(projectOperations.projectId, projectId),
-          inArray(projectOperations.status, ["sent", "response_received"])
-        )
-      )
+      }
+    )
     const updatedRfq = await context.db
       .select({ status: projectOperations.status })
       .from(projectOperations)

@@ -27,6 +27,7 @@ import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { insertCustomerStatement, insertInternalContactStatement, insertProjectContactStatement, updateCustomerByIdStatement } from "@/lib/domain/contacts/store"
+import { operationInsertQuery, operationUpdateQuery } from "@/lib/domain/operations/store"
 import type { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   buildProjectDriveFolderName,
@@ -955,7 +956,7 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
-        db.insert(projectOperations).values({
+        operationInsertQuery(db, {
           id: operationId,
           projectId,
           sourceSystem: "google_developer_project_tracking",
@@ -978,7 +979,7 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
-        db.insert(projectOperations).values({
+        operationInsertQuery(db, {
           id: sageOperationId,
           projectId,
           sourceSystem: "compass_project_intake",
@@ -1091,10 +1092,7 @@ export async function createProjectIntake(
               updatedAt: syncedAt,
             })
             .where(eq(projectExternalLinks.id, driveLinkId)),
-          db
-            .update(projectOperations)
-            .set({ externalUrl: drive.folderUrl, updatedAt: syncedAt })
-            .where(eq(projectOperations.id, sageOperationId)),
+          operationUpdateQuery(db, eq(projectOperations.id, sageOperationId), { externalUrl: drive.folderUrl, updatedAt: syncedAt }),
         ])
       } catch (error) {
         driveStatus = "pending"
@@ -1204,16 +1202,12 @@ export async function createProjectIntake(
             updatedAt: trackingSyncedAt,
           })
           .where(eq(projectExternalLinks.id, departmentTrackerLinkId)),
-        db
-          .update(projectOperations)
-          .set({
-            status: trackerStatus === "written" ? "completed" : "open",
-            syncStatus: trackerStatus === "written" ? "mapped" : "pending",
-            lastSyncedAt:
-              trackerStatus === "written" ? trackingSyncedAt : null,
-            updatedAt: trackingSyncedAt,
-          })
-          .where(eq(projectOperations.id, operationId)),
+        operationUpdateQuery(db, eq(projectOperations.id, operationId), {
+          status: trackerStatus === "written" ? "completed" : "open",
+          syncStatus: trackerStatus === "written" ? "mapped" : "pending",
+          lastSyncedAt: trackerStatus === "written" ? trackingSyncedAt : null,
+          updatedAt: trackingSyncedAt,
+        }),
       ])
     } catch (error) {
       warning = appendWarning(
@@ -1452,15 +1446,11 @@ export async function provisionProjectDriveFolder(
             .set({ googleDriveFolderId: drive.folderId, updatedAt: now })
             .where(eq(projectFamilies.id, familyPhase.familyId))
         : null
-    const sageOperationUpdate = db
-      .update(projectOperations)
-      .set({ externalUrl: drive.folderUrl, updatedAt: now })
-      .where(
-        and(
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordType, "sage_project_handoff")
-        )
-      )
+    const sageOperationUpdate = operationUpdateQuery(
+      db,
+      and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordType, "sage_project_handoff")),
+      { externalUrl: drive.folderUrl, updatedAt: now }
+    )
     if (driveLink) {
       await db.batch([
         projectUpdate,

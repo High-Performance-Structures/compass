@@ -18,10 +18,8 @@ import {
 
 import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import {
-  createProjectTask,
-  type ProjectTaskRecordType,
-} from "@/app/actions/project-operations"
+import { createProjectTask } from "@/app/actions/project-todos"
+import type { ProjectTaskRecordType } from "@/lib/domain/operations/types"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"

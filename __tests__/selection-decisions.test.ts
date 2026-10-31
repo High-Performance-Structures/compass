@@ -40,7 +40,7 @@ const mocks = vi.hoisted(() => ({
   canFeature: vi.fn(),
   preview: vi.fn(),
 }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.cloudflare }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: mocks.permission,

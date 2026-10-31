@@ -2,8 +2,6 @@ import { and, desc, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
-  projectBudgetApplications,
-  projectBudgetLines,
   projectChangeOrderLines,
   projectChangeOrders,
   sageCostCodes,
@@ -15,6 +13,12 @@ import {
   projectEstimateLines,
   projectEstimates,
 } from "@/db/schema-estimates"
+import {
+  activateBudgetProjectionStatement,
+  insertBudgetApplicationStatement,
+  insertBudgetLinesStatement,
+  supersedeCurrentBudgetProjectionStatement,
+} from "@/lib/domain/budget/store"
 import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/domain/estimates/rules"
 import {
   buildContractBudget,
@@ -470,10 +474,8 @@ export async function rebuildProjectContractBudget(input: {
     ...adjustmentRows.map((adjustment) =>
       input.db.insert(projectContractBudgetAdjustments).values(adjustment)
     ),
-    input.db.insert(projectBudgetApplications).values(projectionRow),
-    ...projectionLineRows.map((line) =>
-      input.db.insert(projectBudgetLines).values(line)
-    ),
+    insertBudgetApplicationStatement(input.db, projectionRow),
+    ...projectionLineRows.map((line) => insertBudgetLinesStatement(input.db, line)),
   ]
   const firstStatement = preparationStatements[0]
   if (!firstStatement) {
@@ -515,31 +517,12 @@ async function activateContractBudgetRevision(input: {
           eq(projectContractBudgetRevisions.status, "current")
         )
       ),
-    input.db
-      .update(projectBudgetApplications)
-      .set({ status: "budget_superseded", updatedAt: input.now })
-      .where(
-        and(
-          eq(projectBudgetApplications.projectId, input.projectId),
-          eq(projectBudgetApplications.status, "budget_current"),
-          eq(
-            projectBudgetApplications.sourceSystem,
-            "compass_contract_budget_projection"
-          )
-        )
-      ),
+    supersedeCurrentBudgetProjectionStatement(input.db, input.projectId, input.now),
     input.db
       .update(projectContractBudgetRevisions)
       .set({ status: "current" })
       .where(eq(projectContractBudgetRevisions.id, input.revisionId)),
-    input.db
-      .update(projectBudgetApplications)
-      .set({
-        status: "budget_current",
-        ownerVisible: true,
-        updatedAt: input.now,
-      })
-      .where(eq(projectBudgetApplications.id, projectionId)),
+    activateBudgetProjectionStatement(input.db, projectionId, input.now),
   ])
   // Draft draws follow the new revision so an executed change order reaches them.
   await moveDraftPayApplicationsToRevision(input.db, input.projectId, input.revisionId, input.now)

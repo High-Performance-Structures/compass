@@ -9,6 +9,14 @@ import {
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { chunkD1Rows } from "@/lib/d1-query"
+import { updateOperations } from "@/lib/domain/operations/store"
+import {
+  deleteBudgetLinesStatement,
+  insertBudgetLinesStatement,
+  updateBudgetApplications,
+  updateBudgetApplicationsStatement,
+  updateBudgetLinesStatement,
+} from "@/lib/domain/budget/store"
 import {
   currentPaymentDueAfterDeposit,
   depositAppliedToDraw,
@@ -102,29 +110,20 @@ export async function refreshOwnerPayApplication(
     Math.round(
       (application.contractSumToDate - totalEarnedLessRetainage) * 100
     ) / 100
-  await db
-    .update(projectBudgetApplications)
-    .set({
-      totalCompletedStoredToDate,
-      retainageHeld,
-      totalEarnedLessRetainage,
-      depositApplied,
-      currentPaymentDue,
-      balanceToFinish,
-      updatedAt: now,
-    })
-    .where(eq(projectBudgetApplications.id, applicationId))
-    .run()
-  await db
-    .update(projectOperations)
-    .set({ amount: currentPaymentDue, updatedAt: now })
-    .where(
-      and(
-        eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordId, applicationId)
-      )
-    )
-    .run()
+  await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
+    totalCompletedStoredToDate,
+    retainageHeld,
+    totalEarnedLessRetainage,
+    depositApplied,
+    currentPaymentDue,
+    balanceToFinish,
+    updatedAt: now,
+  })
+  await updateOperations(
+    db,
+    and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, applicationId)),
+    { amount: currentPaymentDue, updatedAt: now }
+  )
 }
 
 
@@ -333,23 +332,20 @@ export async function syncDraftPayApplication(
         }
         matchedIds.add(line.id)
         statements.push(
-          db
-            .update(projectBudgetLines)
-            .set({
-              budgetRevisionLineId: share.budgetRevisionLineId,
-              sourceRecordId: share.budgetRevisionLineId,
-              ...lineAmountsOnRevision(line, share),
-              assemblyName: share.assemblyName,
-              assemblySort: share.assemblySort,
-              ownerLabel: share.assemblyName ? `${share.description} · ${share.assemblyName}` : share.description,
-              internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
-              updatedAt: now,
-            })
-            .where(eq(projectBudgetLines.id, line.id))
+          updateBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id), {
+            budgetRevisionLineId: share.budgetRevisionLineId,
+            sourceRecordId: share.budgetRevisionLineId,
+            ...lineAmountsOnRevision(line, share),
+            assemblyName: share.assemblyName,
+            assemblySort: share.assemblySort,
+            ownerLabel: share.assemblyName ? `${share.description} · ${share.assemblyName}` : share.description,
+            internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
+            updatedAt: now,
+          })
         )
       }
       for (const line of olds) {
-        if (!matchedIds.has(line.id)) statements.push(db.delete(projectBudgetLines).where(eq(projectBudgetLines.id, line.id)))
+        if (!matchedIds.has(line.id)) statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
       }
       continue
     }
@@ -374,21 +370,18 @@ export async function syncDraftPayApplication(
         })
       )
     })
-    for (const line of olds) statements.push(db.delete(projectBudgetLines).where(eq(projectBudgetLines.id, line.id)))
+    for (const line of olds) statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
   }
-  for (const rows of chunkD1Rows(inserts)) statements.push(db.insert(projectBudgetLines).values(rows))
+  for (const rows of chunkD1Rows(inserts)) statements.push(insertBudgetLinesStatement(db, rows))
   statements.push(
-    db
-      .update(projectBudgetApplications)
-      .set({
-        budgetRevisionId: revisionId,
-        sourceRecordId: revisionId,
-        originalContractSum: revision.originalContractSumCents / 100,
-        netChanges: revision.approvedChangesCents / 100,
-        contractSumToDate: revision.revisedContractSumCents / 100,
-        updatedAt: now,
-      })
-      .where(eq(projectBudgetApplications.id, applicationId))
+    updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+      budgetRevisionId: revisionId,
+      sourceRecordId: revisionId,
+      originalContractSum: revision.originalContractSumCents / 100,
+      netChanges: revision.approvedChangesCents / 100,
+      contractSumToDate: revision.revisedContractSumCents / 100,
+      updatedAt: now,
+    })
   )
   const [first, ...rest] = statements
   if (first) await db.batch([first, ...rest])

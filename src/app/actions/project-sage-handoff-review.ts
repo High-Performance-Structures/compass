@@ -3,17 +3,14 @@
 import { and, eq, exists, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   projectOperations,
   projectProfileAuditEvents,
   projects,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { orgContext } from "@/lib/server/action-context"
 import { isGooglePhaseHandoffAwaitingClientReview } from "@/lib/sage/project-handoff-review"
 
 type ReviewProjectHandoffClientResult =
@@ -32,19 +29,18 @@ export async function reviewProjectHandoffClient(
   clientNameInput: string,
 ): Promise<ReviewProjectHandoffClientResult> {
   try {
-    const user = await requireAuth()
+    // Not a "mutation" context: the demo keeps its own message below.
+    const context = await orgContext({ feature: "sage-sync", action: "update" })
+    if (!context.success) throw new Error(context.error)
+    const { db, user, organizationId } = context.data
     if (isDemoUser(user.id)) {
       return { success: false, error: "Demo projects are read-only." }
     }
-    await requireFeaturePermission(user, "sage-sync", "update")
-    const organizationId = requireOrg(user)
     const clientName = reviewedClientName(clientNameInput)
     if (!clientName) {
       return { success: false, error: "Enter the Sage client/company." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const operation = await db
       .select({
         id: projectOperations.id,
@@ -159,29 +155,28 @@ export async function reviewProjectHandoffClient(
             ),
           ),
       ),
-      db
-        .update(projectOperations)
-        .set({
+      operationUpdateQuery(
+        db,
+        and(
+          eq(projectOperations.id, operationId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceSystem, "google_project_manager"),
+          eq(projectOperations.sourceRecordType, "sage_project_handoff"),
+          eq(projectOperations.status, "needs_review"),
+          eq(projectOperations.syncDirection, "write"),
+          eq(projectOperations.sageWriteStatus, "not_ready"),
+          eq(projectOperations.syncStatus, "needs_review"),
+          eq(projectOperations.updatedAt, expectedUpdatedAt),
+        ),
+        {
           companyName: clientName,
           description: reviewedDescription,
           status: "open",
           sageWriteStatus: "needs_review",
           syncStatus: "pending_sage",
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectOperations.id, operationId),
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.sourceSystem, "google_project_manager"),
-            eq(projectOperations.sourceRecordType, "sage_project_handoff"),
-            eq(projectOperations.status, "needs_review"),
-            eq(projectOperations.syncDirection, "write"),
-            eq(projectOperations.sageWriteStatus, "not_ready"),
-            eq(projectOperations.syncStatus, "needs_review"),
-            eq(projectOperations.updatedAt, expectedUpdatedAt),
-          ),
-        ),
+        },
+      ),
     ])
     const operationUpdate = results[2]
     if (!operationUpdate || operationUpdate.meta.changes !== 1) {

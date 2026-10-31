@@ -6,13 +6,8 @@ import type {
   HistoricalRfqWorkspaceItem,
 } from "@/lib/rfqs/historical-workspace"
 import type { RfqHistoricalLine } from "@/lib/rfqs/historical-requests"
+import { formatCents } from "@/lib/format"
 
-function formatCents(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value / 100)
-}
 
 function submissionLabel(
   submission: "draft" | "submitted" | "other"

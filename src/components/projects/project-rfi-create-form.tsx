@@ -39,6 +39,7 @@ import {
   type RfiContactOption,
 } from "@/lib/rfis/contact-options"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+import { cleanText, isRecord } from "@/lib/shared/guards"
 
 type ProjectRfiCreateFormProps = {
   readonly projectId: string
@@ -58,11 +59,6 @@ function formText(formData: FormData, name: string): string {
   return typeof value === "string" ? value : ""
 }
 
-function cleanText(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
 function selectedOrTyped(
   formData: FormData,
   selectName: string,
@@ -74,12 +70,8 @@ function selectedOrTyped(
   )
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
 function recordString(
-  record: Record<string, unknown>,
+  record: Readonly<Record<string, unknown>>,
   key: string
 ): string | null {
   const value = record[key]

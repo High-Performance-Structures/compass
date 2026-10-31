@@ -23,7 +23,7 @@ import {
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
 import type { ProjectContactsSummary } from "@/lib/domain/contacts/types"
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
-import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
+import type { ProjectOperationsSummary } from "@/lib/domain/operations/types"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
 import { Badge } from "@/components/ui/badge"
 import {

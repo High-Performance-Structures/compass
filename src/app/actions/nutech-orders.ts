@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache"
 import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
 import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { isNuTechFreight } from "@/lib/nutech/freight"
 import {
   nuTechCatalogPrices,
@@ -787,10 +788,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
         : purchaseOrder.status
     await access.db.batch([
       releaseNuTechOrderPurchaseOrderStatement(access.db, { orderId: order.id, userId: access.user.id, now }),
-      access.db
-        .update(projectOperations)
-        .set({ status: purchaseOrderStatus, updatedAt: now })
-        .where(eq(projectOperations.id, purchaseOrderId)),
+      operationUpdateQuery(access.db, eq(projectOperations.id, purchaseOrderId), { status: purchaseOrderStatus, updatedAt: now }),
     ])
     await syncProjectWithOrder(access, { jobStatusId: jobStatusForNuTechOrderStatus("po_released"), deliveryMethod: null, now })
     revalidateNuTechPaths(projectId)

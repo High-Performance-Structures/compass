@@ -27,13 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatCents as money } from "@/lib/format"
 
-function money(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100)
-}
 
 export function ProjectRfqBidActions({
   projectId,

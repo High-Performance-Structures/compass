@@ -12,17 +12,15 @@ import {
   projectPurchaseOrderLines,
   scheduleTasks,
 } from "@/db/schema"
-import {
-  getProjectPurchaseOrders,
-  getProjectTodos,
-} from "@/app/actions/project-operations"
+import { getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
+import { getProjectTodos } from "@/app/actions/project-todos"
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   cloudflare: vi.fn(),
   permission: vi.fn(),
 }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.cloudflare }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: mocks.permission,

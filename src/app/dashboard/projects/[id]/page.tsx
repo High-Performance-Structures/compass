@@ -32,12 +32,9 @@ import {
   getProjectRegistry,
   type ProjectRegistry,
 } from "@/app/actions/project-registry"
-import {
-  getProjectOperationsSummary,
-  type ProjectOperationsSummary,
-  getProjectSageSyncQueue,
-  type ProjectSageSyncQueue,
-} from "@/app/actions/project-operations"
+import { getProjectOperationsSummary } from "@/app/actions/project-operations"
+import type { ProjectOperationsSummary, ProjectSageSyncQueue } from "@/lib/domain/operations/types"
+import { getProjectSageSyncQueue } from "@/app/actions/project-sage-sync-queue"
 import {
   getProjectBudgetSummary,
   type ProjectBudgetSummary,

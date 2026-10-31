@@ -7,7 +7,7 @@ import { toast } from "sonner"
 
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { createProjectTask } from "@/app/actions/project-operations"
+import { createProjectTask } from "@/app/actions/project-todos"
 import type { ProjectRow } from "@/app/actions/work-calendar"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCombobox } from "@/components/projects/project-combobox"

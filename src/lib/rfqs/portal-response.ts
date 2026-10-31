@@ -1,3 +1,5 @@
+import { isRecord } from "@/lib/shared/guards"
+
 export type PortalRfqScopeItem = {
   readonly lineNumber: number
   readonly description: string
@@ -38,10 +40,6 @@ export type PortalRfqPayload = {
   readonly scopeItems: readonly PortalRfqScopeItem[]
   readonly documentLinks: readonly PortalRfqDocumentLink[]
   readonly vendorResponse: PortalRfqVendorResponse | null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function parseRecord(value: string | null): Record<string, unknown> {

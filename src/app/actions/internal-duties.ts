@@ -4,24 +4,23 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { getDb } from "@/db"
 import { dailyLogs, organizationMembers, projects, users } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
+import { isUniqueConflict, weekStartOf } from "@/lib/domain/duties/rules"
+import { deleteDutyEntry as deleteDutyEntryRow, insertDutyEntry, updateDutyEntry } from "@/lib/domain/duties/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { dutiesFor, monthSummary, parseHours, type DutyOption, type DutySummaryRow, type WorkspaceKind } from "@/lib/internal-duties/model"
-import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { dutiesNeedingAttention, loadRecurringDuties, type RecurringDutyView } from "@/lib/internal-duties/recurring-data"
 
 const FEATURE = "internal-duties"
 
-type Db = ReturnType<typeof getDb>
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
 export type DutyLogEntryView = {
@@ -68,11 +67,11 @@ function nameOf(user: { readonly displayName: string | null; readonly firstName:
   return user.displayName?.trim() || [user.firstName, user.lastName].filter(Boolean).join(" ") || "Unknown"
 }
 
+/** Signed-in user of an organization; each action adds its own permission check. */
 async function context(): Promise<{ readonly db: Db; readonly user: AuthUser; readonly orgId: string }> {
-  const user = await requireAuth()
-  const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  return { db: getDb(env.DB), user, orgId }
+  const ctx = await orgContext()
+  if (!ctx.success) throw new Error(ctx.error)
+  return { db: ctx.data.db, user: ctx.data.user, orgId: ctx.data.organizationId }
 }
 
 async function loadProject(db: Db, orgId: string, projectId: string) {
@@ -238,7 +237,7 @@ export async function saveDutyEntry(projectId: string, entryId: string | null, r
       if (existing.userId !== user.id && !canEditFeatureSettings(user.role, "internal-duties")) {
         return { success: false, error: "You can only change your own entries." }
       }
-      await db.update(internalDutyEntries).set(values).where(eq(internalDutyEntries.id, entryId))
+      await updateDutyEntry(db, entryId, values)
       revalidatePath(`/dashboard/projects/${projectId}/duty-log`)
       return { success: true, data: { id: entryId } }
     }
@@ -254,7 +253,7 @@ export async function saveDutyEntry(projectId: string, entryId: string | null, r
       userId = log.authorId ?? user.id
     }
     const id = crypto.randomUUID()
-    await db.insert(internalDutyEntries).values({
+    await insertDutyEntry(db, {
       id,
       organizationId: orgId,
       projectId,
@@ -267,7 +266,7 @@ export async function saveDutyEntry(projectId: string, entryId: string | null, r
     revalidatePath(`/dashboard/projects/${projectId}/duty-log`)
     return { success: true, data: { id } }
   } catch (error) {
-    if (error instanceof Error && /UNIQUE/i.test(error.message)) return { success: false, error: "That daily log already has a duty." }
+    if (isUniqueConflict(error)) return { success: false, error: "That daily log already has a duty." }
     return failure(error)
   }
 }
@@ -285,7 +284,7 @@ export async function deleteDutyEntry(projectId: string, entryId: string): Promi
     if (existing.userId !== user.id && !canEditFeatureSettings(user.role, "internal-duties")) {
       return { success: false, error: "You can only delete your own entries." }
     }
-    await db.delete(internalDutyEntries).where(eq(internalDutyEntries.id, entryId))
+    await deleteDutyEntryRow(db, entryId)
     revalidatePath(`/dashboard/projects/${projectId}/duty-log`)
     return { success: true, data: null }
   } catch (error) {
@@ -331,20 +330,13 @@ export type InternalWorkspaceSummary = {
   readonly attention: readonly RecurringDutyView[]
 }
 
-function mondayOf(date: Date): string {
-  const day = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-  const offset = (day.getUTCDay() + 6) % 7
-  day.setUTCDate(day.getUTCDate() - offset)
-  return day.toISOString().slice(0, 10)
-}
-
 /** The Overview panel for an internal workspace; null for client projects. */
 export async function getInternalWorkspaceSummary(projectId: string): Promise<InternalWorkspaceSummary | null> {
   const { db, user, orgId } = await context()
   if (!(await canFeature(user, FEATURE, "read"))) return null
   const project = await loadProject(db, orgId, projectId)
   if (!project?.workspaceKind) return null
-  const weekStart = mondayOf(new Date())
+  const weekStart = weekStartOf(new Date())
   const [entryRows, logRows, canEdit, recurring] = await Promise.all([
     db
       .select({
