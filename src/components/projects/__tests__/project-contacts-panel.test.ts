@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type {
-  ProjectContactDirectoryOption,
-  ProjectContactItem,
-} from "@/app/actions/project-contacts"
+import type { ProjectContactDirectoryOption, ProjectContactItem } from "@/lib/domain/contacts/types"
 import {
   buildProjectContactDisplayGroups,
   canViewHistoricalProjectContacts,

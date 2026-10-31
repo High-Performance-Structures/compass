@@ -8,6 +8,11 @@ import { customerContacts, customers, projectContacts } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  clearOtherCustomerPrimaryPeople,
+  insertCustomerPerson,
+  updateCustomerPerson,
+} from "@/lib/domain/contacts/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
@@ -110,20 +115,19 @@ export async function saveCustomerDirectoryPerson(
         )).get()
       if (!existing) return { success: false, error: "Contact was not found." }
       if (existing.sageContactId) return { success: false, error: "Use Sage review for a linked contact." }
-      await db.update(customerContacts).set({
+      await updateCustomerPerson(db, { personId, values: {
         name: value.name, title: value.title || null, email: value.email || null,
         phone: value.phone || null, isPrimary: value.isPrimary, updatedAt: now,
-      }).where(eq(customerContacts.id, personId)).run()
+      } })
     } else {
-      await db.insert(customerContacts).values({
+      await insertCustomerPerson(db, {
         id, customerId, name: value.name, title: value.title || null,
         email: value.email || null, phone: value.phone || null,
         isPrimary: value.isPrimary, sourceSystem: "manual", createdAt: now, updatedAt: now,
-      }).run()
+      })
     }
     if (value.isPrimary) {
-      await db.update(customerContacts).set({ isPrimary: false, updatedAt: now })
-        .where(and(eq(customerContacts.customerId, customerId), sql`${customerContacts.id} <> ${id}`)).run()
+      await clearOtherCustomerPrimaryPeople(db, { customerId, keepPersonId: id, now })
     }
     await recordActivityEvent({
       db, organizationId: orgId,
@@ -162,8 +166,7 @@ export async function deleteCustomerDirectoryPerson(personId: string): Promise<M
     const assignment = await db.select({ id: projectContacts.id }).from(projectContacts)
       .where(eq(projectContacts.customerContactId, personId)).limit(1).get()
     if (assignment) return { success: false, error: "Remove this person from project contacts first." }
-    await db.update(customerContacts).set({ active: false, updatedAt: new Date().toISOString() })
-      .where(eq(customerContacts.id, personId)).run()
+    await updateCustomerPerson(db, { personId, values: { active: false, updatedAt: new Date().toISOString() } })
     await recordActivityEvent({
       db, organizationId: orgId,
       actor: { id: user.id, email: user.email, displayName: user.displayName,

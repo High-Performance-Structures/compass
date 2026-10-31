@@ -18,12 +18,9 @@ import {
   getProjectPurchaseOrders,
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
-import {
-  getProjectContactsSummary,
-  getProjectPurchaseOrderSiteContactOptions,
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"

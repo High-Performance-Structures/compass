@@ -16,17 +16,15 @@ import {
   type CustomerRelationshipType,
 } from "@/app/actions/customers"
 import { saveCustomerDirectoryPerson } from "@/app/actions/customer-people"
-import {
-  getProjectContactDirectoryOptions,
-  removeProjectContact,
-  saveProjectContact,
-  type ProjectContactCostCodeOption,
-  type ProjectContactDirectoryOption,
-  type ProjectContactItem,
-  type ProjectContactMutationInput,
-  type ProjectContactSageOptions,
-  type ProjectContactType,
-} from "@/app/actions/project-contacts"
+import { getProjectContactDirectoryOptions, removeProjectContact, saveProjectContact } from "@/app/actions/project-contacts"
+import type {
+  ProjectContactCostCodeOption,
+  ProjectContactDirectoryOption,
+  ProjectContactItem,
+  ProjectContactMutationInput,
+  ProjectContactSageOptions,
+  ProjectContactType,
+} from "@/lib/domain/contacts/types"
 import {
   createVendor,
   createVendorContact,

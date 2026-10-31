@@ -18,7 +18,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   archiveProjectTodo,
   deleteProjectTodo,

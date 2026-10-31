@@ -2,7 +2,8 @@
 
 import * as React from "react"
 
-import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions, type ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjectPurchaseOrderFormOptions, type ProjectPurchaseOrderFormOptions } from "@/app/actions/project-operations"
 import type { TradeLetterRow } from "@/app/actions/trade-letters"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"

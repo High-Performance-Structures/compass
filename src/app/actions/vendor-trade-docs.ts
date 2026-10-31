@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache"
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateVendorById } from "@/lib/domain/contacts/store"
 import type { AuthUser } from "@/lib/auth"
 import { tradeDocAccess, type TradeDocAccess } from "@/lib/trade-docs/access"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
@@ -373,11 +374,10 @@ export async function setVendorTradeDocBillMode(vendorId: string, mode: TradeDoc
     const access = await tradeDocAccess(true)
     const vendor = await loadVendor(access, vendorId)
     if (mode !== null && !isTradeDocBillMode(mode)) return { success: false, error: "Choose flag, hold or nothing." }
-    await access.db
-      .update(vendors)
-      .set({ tradeDocsBillMode: mode, updatedAt: new Date().toISOString() })
-      .where(eq(vendors.id, vendor.id))
-      .run()
+    await updateVendorById(access.db, {
+      vendorId: vendor.id,
+      values: { tradeDocsBillMode: mode, updatedAt: new Date().toISOString() },
+    })
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,

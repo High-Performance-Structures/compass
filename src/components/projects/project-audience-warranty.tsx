@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import { warrantyAssigneeOptions } from "@/lib/warranty/assignee"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"

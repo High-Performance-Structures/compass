@@ -14,6 +14,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { insertProjectContactsIfMissing } from "@/lib/domain/contacts/store"
 
 export type CompanyDirectoryKind = "customer" | "vendor"
 type AssociationProject = { readonly id: string; readonly name: string; readonly projectNumber: string | null }
@@ -133,34 +134,32 @@ export async function addCompaniesToProject(input: {
     const missing = companyRows.filter((company) => !existingIds.has(company.id))
     const now = new Date().toISOString()
 
-    const inserted = missing.length > 0
-      ? await db.insert(projectContacts).values(missing.map((company) => ({
-          id: `project-contact-company-${input.projectId}-${input.kind}-${company.id}`,
-          projectId: input.projectId,
-          contactType: company.contactType,
-          sourceSystem: input.kind === "vendor" ? "global_directory" : "customer_directory",
-          sourceRecordId: company.id,
-          sourceEntityType: input.kind,
-          sourceEntityId: company.id,
-          vendorId: input.kind === "vendor" ? company.id : null,
-          customerId: input.kind === "customer" ? company.id : null,
-          displayName: company.name,
-          companyName: company.company ?? company.name,
-          role: company.contactType === "owner" ? "Owner / Client" : company.contactType === "supplier" ? "Supplier" : "Subcontractor",
-          email: company.email,
-          phone: company.phone,
-          address: company.address,
-          ownerPortalVisible: false,
-          subVendorPortalVisible: false,
-          internalVisible: true,
-          active: true,
-          sortOrder: 800,
-          syncStatus: company.syncStatus,
-          lastSyncedAt: company.lastSyncedAt,
-          createdAt: now,
-          updatedAt: now,
-        }))).onConflictDoNothing().returning({ id: projectContacts.id })
-      : []
+    const inserted = await insertProjectContactsIfMissing(db, missing.map((company) => ({
+      id: `project-contact-company-${input.projectId}-${input.kind}-${company.id}`,
+      projectId: input.projectId,
+      contactType: company.contactType,
+      sourceSystem: input.kind === "vendor" ? "global_directory" : "customer_directory",
+      sourceRecordId: company.id,
+      sourceEntityType: input.kind,
+      sourceEntityId: company.id,
+      vendorId: input.kind === "vendor" ? company.id : null,
+      customerId: input.kind === "customer" ? company.id : null,
+      displayName: company.name,
+      companyName: company.company ?? company.name,
+      role: company.contactType === "owner" ? "Owner / Client" : company.contactType === "supplier" ? "Supplier" : "Subcontractor",
+      email: company.email,
+      phone: company.phone,
+      address: company.address,
+      ownerPortalVisible: false,
+      subVendorPortalVisible: false,
+      internalVisible: true,
+      active: true,
+      sortOrder: 800,
+      syncStatus: company.syncStatus,
+      lastSyncedAt: company.lastSyncedAt,
+      createdAt: now,
+      updatedAt: now,
+    })))
 
     let warning: string | undefined
     if (inserted.length > 0) {

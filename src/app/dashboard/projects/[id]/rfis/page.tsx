@@ -11,10 +11,8 @@ import {
   getProjectRfis,
 } from "@/app/actions/project-rfis"
 import { ProjectRfiVendorAssignment } from "@/components/projects/project-rfi-vendor-assignment"
-import {
-  getProjectContactsSummary,
-  getProjectTaskAssigneeOptions,
-} from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import { getProjects } from "@/app/actions/projects"
 import { PageHeader } from "@/components/page-header"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
