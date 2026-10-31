@@ -1,9 +1,8 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { sageCostCodes } from "@/db/schema"
 import {
   nuTechCatalogPrices,
@@ -11,16 +10,24 @@ import {
   nuTechOrderWorkflows,
   nuTechProducts,
 } from "@/db/schema-nutech"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { nuTechOrgContext } from "@/lib/domain/nutech/access"
+import {
+  activateNuTechCatalogVersion as activateCatalogVersion,
+  deleteNuTechCatalogVersion as deleteCatalogVersion,
+  ensureNuTechFreightProduct,
+  replaceNuTechCatalogPrices,
+  setNuTechProductCostCode,
+  setNuTechProductTaxable as storeProductTaxable,
+  upsertNuTechCatalogProducts,
+  upsertNuTechCatalogVersion,
+} from "@/lib/domain/nutech/store"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
-import { ensureNuTechFreightProduct, isNuTechFreight } from "@/lib/nutech/freight"
+import { isNuTechFreight } from "@/lib/nutech/freight"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
-import { requireOrg } from "@/lib/org-scope"
+import { chunkD1Values } from "@/lib/d1-query"
 import {
   canFeature,
   requireFeaturePermission,
@@ -108,11 +115,8 @@ async function sourceHash(value: unknown): Promise<string> {
 }
 
 export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspace> {
-  const user = await requireAuth()
+  const { db, user, organizationId } = await nuTechOrgContext()
   await requireFeaturePermission(user, "nutech-orders", "read")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [versionRows, priceRows, sageRows, canImport, canDelete] =
     await Promise.all([
       db
@@ -230,12 +234,9 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
 
 export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
+    const { db, env, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const { sheetsClient, userEmail } = await getOrganizationDriveContext({
       db,
       environment: env,
@@ -311,35 +312,23 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
         ? `${NUTECH_2026_CATALOG_SOURCES.name} · revision ${hash.slice(0, 8)}`
         : NUTECH_2026_CATALOG_SOURCES.name)
     const versionId = existingVersion?.id ?? crypto.randomUUID()
-    await db
-      .insert(nuTechCatalogVersions)
-      .values({
-        id: versionId,
-        organizationId,
-        name: versionName,
-        effectiveDate: NUTECH_2026_CATALOG_SOURCES.effectiveDate,
-        status: existingVersion?.status ?? "draft",
-        newStandardSheetId: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
-        newCashSheetId: NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
-        returningStandardSheetId:
-          NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
-        returningCashSheetId: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
-        airliteTemplateId: NUTECH_2026_CATALOG_SOURCES.airliteTemplateId,
-        sourceHash: hash,
-        importedAt: now,
-        importedBy: user.id,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [nuTechCatalogVersions.organizationId, nuTechCatalogVersions.name],
-        set: {
-          sourceHash: hash,
-          importedAt: now,
-          importedBy: user.id,
-          updatedAt: now,
-        },
-      })
+    await upsertNuTechCatalogVersion(db, {
+      id: versionId,
+      organizationId,
+      name: versionName,
+      effectiveDate: NUTECH_2026_CATALOG_SOURCES.effectiveDate,
+      status: existingVersion?.status ?? "draft",
+      newStandardSheetId: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
+      newCashSheetId: NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
+      returningStandardSheetId: NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
+      returningCashSheetId: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
+      airliteTemplateId: NUTECH_2026_CATALOG_SOURCES.airliteTemplateId,
+      sourceHash: hash,
+      importedAt: now,
+      importedBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
 
     const existingProducts = await db
       .select({ id: nuTechProducts.id, manufacturerSku: nuTechProducts.manufacturerSku })
@@ -367,33 +356,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       createdAt: now,
       updatedAt: now,
     }))
-    // One INSERT per chunk: D1 caps bound parameters at 100 per statement.
-    const productConflictSet = {
-      name: sql`excluded.name`,
-      category: sql`excluded.category`,
-      origin: sql`excluded.origin`,
-      priceUnit: sql`excluded.price_unit`,
-      packageQuantity: sql`excluded.package_quantity`,
-      packageLabel: sql`excluded.package_label`,
-      minimumOrderIncrement: sql`excluded.minimum_order_increment`,
-      squareFeetPerUnitMils: sql`excluded.square_feet_per_unit_mils`,
-      airliteTemplateSku: sql`excluded.airlite_template_sku`,
-      airliteTemplateRow: sql`excluded.airlite_template_row`,
-      airliteMappingStatus: sql`excluded.airlite_mapping_status`,
-      active: true,
-      updatedAt: now,
-    }
-    const productInserts = chunkD1Rows(productRows, 2).map((chunk) =>
-      db
-        .insert(nuTechProducts)
-        .values(chunk)
-        .onConflictDoUpdate({
-          target: [nuTechProducts.organizationId, nuTechProducts.manufacturerSku],
-          set: productConflictSet,
-        })
-    )
-    const [firstProductInsert, ...restProductInserts] = productInserts
-    if (firstProductInsert) await db.batch([firstProductInsert, ...restProductInserts])
+    await upsertNuTechCatalogProducts(db, productRows, now)
     const storedProducts = (
       await Promise.all(
         chunkD1Values(imported.products.map((product) => product.manufacturerSku)).map((skus) =>
@@ -428,12 +391,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
         updatedAt: now,
       }
     })
-    await db.batch([
-      db
-        .delete(nuTechCatalogPrices)
-        .where(eq(nuTechCatalogPrices.catalogVersionId, versionId)),
-      ...chunkD1Rows(priceRows).map((chunk) => db.insert(nuTechCatalogPrices).values(chunk)),
-    ])
+    await replaceNuTechCatalogPrices(db, versionId, priceRows)
     await ensureNuTechFreightProduct(db, organizationId, versionId)
     revalidateCatalogPaths()
     return { success: true, id: versionId, productCount: priceRows.length }
@@ -446,12 +404,9 @@ export async function activateNuTechCatalogVersion(
   versionId: string
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const version = await db
       .select({ id: nuTechCatalogVersions.id })
       .from(nuTechCatalogVersions)
@@ -466,27 +421,7 @@ export async function activateNuTechCatalogVersion(
     if (!version) throw new Error("Nu-Tech catalog version not found.")
     await ensureNuTechFreightProduct(db, organizationId, versionId)
     const now = new Date().toISOString()
-    await db.batch([
-      db
-        .update(nuTechCatalogVersions)
-        .set({ status: "archived", updatedAt: now })
-        .where(
-          and(
-            eq(nuTechCatalogVersions.organizationId, organizationId),
-            eq(nuTechCatalogVersions.status, "active"),
-            ne(nuTechCatalogVersions.id, versionId)
-          )
-        ),
-      db
-        .update(nuTechCatalogVersions)
-        .set({
-          status: "active",
-          activatedAt: now,
-          activatedBy: user.id,
-          updatedAt: now,
-        })
-        .where(eq(nuTechCatalogVersions.id, versionId)),
-    ])
+    await activateCatalogVersion(db, { organizationId, versionId, userId: user.id, now })
     revalidateCatalogPaths()
     return { success: true, id: versionId }
   } catch (error) {
@@ -499,12 +434,9 @@ export async function mapNuTechProductToSageCostCode(
   mapping: NuTechProductCostCodeMapping
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const product = await db
       .select({ id: nuTechProducts.id })
       .from(nuTechProducts)
@@ -529,17 +461,14 @@ export async function mapNuTechProductToSageCostCode(
       if (!costCode) throw new Error("Choose an active Sage cost code.")
     }
     const now = new Date().toISOString()
-    await db
-      .update(nuTechProducts)
-      .set({
-        sageCostCodeId,
-        sageCostCodeName,
-        sageMappingStatus: mapping === null ? "unmapped" : "mapped",
-        sageMappedAt: mapping === null ? null : now,
-        sageMappedBy: mapping === null ? null : user.id,
-        updatedAt: now,
-      })
-      .where(eq(nuTechProducts.id, productId))
+    await setNuTechProductCostCode(db, {
+      productId,
+      sageCostCodeId,
+      sageCostCodeName,
+      mapped: mapping !== null,
+      userId: user.id,
+      now,
+    })
     revalidateCatalogPaths()
     return { success: true, id: productId }
   } catch (error) {
@@ -550,18 +479,11 @@ export async function mapNuTechProductToSageCostCode(
 /** Whether a price-list item is sales-taxable on estimates and order totals. */
 export async function setNuTechProductTaxable(productId: string, taxable: boolean): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const updated = await db
-      .update(nuTechProducts)
-      .set({ taxable, updatedAt: new Date().toISOString() })
-      .where(and(eq(nuTechProducts.id, productId), eq(nuTechProducts.organizationId, organizationId)))
-      .returning({ id: nuTechProducts.id })
-    if (updated.length === 0) throw new Error("Nu-Tech product not found.")
+    const updated = await storeProductTaxable(db, { organizationId, productId, taxable, now: new Date().toISOString() })
+    if (!updated) throw new Error("Nu-Tech product not found.")
     revalidateCatalogPaths()
     return { success: true, id: productId }
   } catch (error) {
@@ -573,12 +495,9 @@ export async function deleteNuTechCatalogVersion(
   versionId: string
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "delete")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const version = await db
       .select({ id: nuTechCatalogVersions.id, status: nuTechCatalogVersions.status })
       .from(nuTechCatalogVersions)
@@ -601,9 +520,7 @@ export async function deleteNuTechCatalogVersion(
       .limit(1)
       .get()
     if (linkedOrder) throw new Error("This catalog is already linked to a Nu-Tech order.")
-    await db
-      .delete(nuTechCatalogVersions)
-      .where(eq(nuTechCatalogVersions.id, versionId))
+    await deleteCatalogVersion(db, versionId)
     revalidateCatalogPaths()
     return { success: true, id: versionId }
   } catch (error) {

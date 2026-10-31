@@ -15,11 +15,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatDate } from "@/lib/format"
 
-function shortDate(value: string | null): string {
-  if (!value) return ""
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+/** "Oct 30, 2026"; blank when missing, the raw text when unreadable. */
+function linkDate(value: string | null): string {
+  return value ? formatDate(value, "medium", value) : ""
 }
 
 /**
@@ -85,7 +85,7 @@ export function TradeDocRequestPanel({
         toast.error(result.error)
         return
       }
-      toast.success(`Request sent. The link works until ${shortDate(result.data.expiresAt)}.`)
+      toast.success(`Request sent. The link works until ${linkDate(result.data.expiresAt)}.`)
       setComposing(false)
       await load()
       onSent()
@@ -159,9 +159,9 @@ export function TradeDocRequestPanel({
           {data.links.map((link) => (
             <li key={link.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>
-                {link.audience === "agent" ? "Agent link" : "Link"} to {link.recipientEmail} · sent {shortDate(link.createdAt)} by {link.createdByName}
-                {link.lastSubmittedAt ? ` · files received ${shortDate(link.lastSubmittedAt)}` : link.lastOpenedAt ? ` · opened ${shortDate(link.lastOpenedAt)}` : " · not opened yet"}
-                {link.live ? ` · works until ${shortDate(link.expiresAt)}` : " · off"}
+                {link.audience === "agent" ? "Agent link" : "Link"} to {link.recipientEmail} · sent {linkDate(link.createdAt)} by {link.createdByName}
+                {link.lastSubmittedAt ? ` · files received ${linkDate(link.lastSubmittedAt)}` : link.lastOpenedAt ? ` · opened ${linkDate(link.lastOpenedAt)}` : " · not opened yet"}
+                {link.live ? ` · works until ${linkDate(link.expiresAt)}` : " · off"}
               </span>
               {canEdit && link.live && (
                 <button type="button" className="text-xs text-destructive underline" disabled={pending} onClick={() => turnOff(link.id)}>
@@ -172,7 +172,7 @@ export function TradeDocRequestPanel({
           ))}
           {data.replies.map((reply) => (
             <li key={reply.id} className="grid gap-0.5 border-l-2 border-primary pl-2">
-              <span className="text-xs text-muted-foreground">Reply · {shortDate(reply.receivedAt)}</span>
+              <span className="text-xs text-muted-foreground">Reply · {linkDate(reply.receivedAt)}</span>
               <span>{reply.summary}</span>
               {reply.files.length > 0 && (
                 <span className="text-xs text-muted-foreground">Saved: {reply.files.join(", ")}. Record each one with Upload on its line, choosing the saved file.</span>

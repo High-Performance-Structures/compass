@@ -1,8 +1,9 @@
-import { and, eq, isNull, max } from "drizzle-orm"
+import { and, eq, max } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import { nuTechOrderWorkflows } from "@/db/schema-nutech"
+import { clearNuTechOrderAirlitePoNumber, setNuTechOrderAirlitePoSequence } from "@/lib/domain/nutech/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { nextAirlitePoSequence } from "@/lib/nutech/airlite-workbook"
 
@@ -48,10 +49,7 @@ export async function assignNuTechAirlitePoNumber(
       nextSetting: settings.nextPurchaseOrderNumber,
     })
     if (sequence === null) return null
-    await db
-      .update(nuTechOrderWorkflows)
-      .set({ airlitePoSequence: sequence })
-      .where(eq(nuTechOrderWorkflows.id, input.workflowId))
+    await setNuTechOrderAirlitePoSequence(db, input.workflowId, sequence)
   }
   if (input.purchaseOrderId && !input.purchaseOrderReleased) {
     await db
@@ -74,21 +72,5 @@ export async function assignNuTechAirlitePoNumber(
  * form, so the next PO starts fresh. A released order keeps its number.
  */
 export async function releaseNuTechAirlitePoNumber(db: Db, purchaseOrderId: string): Promise<void> {
-  await db
-    .update(nuTechOrderWorkflows)
-    .set({
-      airlitePoSequence: null,
-      airliteWorkbookId: null,
-      airliteWorkbookUrl: null,
-      airliteWorkbookStatus: "not_generated",
-      airliteWorkbookGeneratedAt: null,
-      airliteWorkbookGeneratedBy: null,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(
-      and(
-        eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, purchaseOrderId),
-        isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
-      )
-    )
+  await clearNuTechOrderAirlitePoNumber(db, purchaseOrderId, new Date().toISOString())
 }

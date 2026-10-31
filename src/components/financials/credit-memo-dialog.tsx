@@ -20,7 +20,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { LineItemsEditor, type LineItem } from "./line-items-editor"
+import { LineItemsEditor } from "./line-items-editor"
+import {
+  creditMemoTotals,
+  lineItemsSubtotal,
+  parseLineItems,
+  type LineItem,
+} from "@/lib/domain/financials/rules"
 import type { CreditMemo } from "@/db/schema-netsuite"
 import type { Customer, Project } from "@/db/schema"
 
@@ -71,7 +77,7 @@ export function CreditMemoDialog({
       setIssueDate(initialData.issueDate)
       setMemoText(initialData.memo ?? "")
       setLines(
-        initialData.lineItems ? JSON.parse(initialData.lineItems) : []
+        parseLineItems(initialData.lineItems) ?? []
       )
     } else {
       setCustomerId("")
@@ -84,9 +90,12 @@ export function CreditMemoDialog({
     }
   }, [initialData, open])
 
-  const total = lines.reduce((s, l) => s + l.amount, 0)
+  // Preview only: the server recomputes these from the lines on save.
   const amountApplied = initialData?.amountApplied ?? 0
-  const amountRemaining = total - amountApplied
+  const { total, amountRemaining } = creditMemoTotals(
+    lineItemsSubtotal(lines),
+    amountApplied
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

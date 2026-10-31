@@ -1,47 +1,20 @@
 "use client"
 
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-
-import * as React from "react"
-import { IconDotsVertical } from "@tabler/icons-react"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type SortingState,
-} from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 
 import type { Payment } from "@/db/schema-netsuite"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
 import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { formatCurrency } from "@/lib/utils"
+  actionsColumn,
+  dollarsColumn,
+  MobileRecordActions,
+  RecordsEmpty,
+  searchInputClass,
+  selectColumn,
+} from "@/components/financials/record-columns"
+import { localeDateText } from "@/lib/domain/financials/rules"
+import { formatDollars } from "@/lib/format"
 
 interface PaymentsTableProps {
   payments: Payment[]
@@ -52,6 +25,8 @@ interface PaymentsTableProps {
   onDelete?: (id: string) => void
 }
 
+const SEARCH = { columnId: "referenceNumber", placeholder: "Search by reference number..." }
+
 export function PaymentsTable({
   payments,
   customerMap,
@@ -60,42 +35,14 @@ export function PaymentsTable({
   onEdit,
   onDelete,
 }: PaymentsTableProps) {
-  const isMobile = useIsMobile()
-  const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] =
-    React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
-
   const columns: ColumnDef<Payment>[] = [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
+    selectColumn<Payment>(),
     {
       accessorKey: "referenceNumber",
       header: "Reference #",
       cell: ({ row }) => (
         <span className="font-medium">
-          {row.getValue("referenceNumber") || "-"}
+          {row.original.referenceNumber || "-"}
         </span>
       ),
     },
@@ -103,7 +50,7 @@ export function PaymentsTable({
       accessorKey: "paymentType",
       header: "Type",
       cell: ({ row }) => {
-        const type = row.getValue("paymentType") as string
+        const type = row.original.paymentType
         return (
           <Badge variant={type === "received" ? "default" : "secondary"}>
             {type}
@@ -129,241 +76,78 @@ export function PaymentsTable({
           ? (projectMap[row.original.projectId] ?? "-")
           : "-",
     },
-    {
-      accessorKey: "amount",
-      header: "Amount",
-      cell: ({ row }) => formatCurrency(row.getValue("amount") as number),
-    },
+    dollarsColumn<Payment>("amount", "Amount", (p) => p.amount),
     {
       accessorKey: "paymentDate",
       header: "Date",
-      cell: ({ row }) =>
-        new Date(
-          row.getValue("paymentDate") as string
-        ).toLocaleDateString(),
+      cell: ({ row }) => localeDateText(row.original.paymentDate),
     },
     {
       accessorKey: "paymentMethod",
       header: "Method",
       cell: ({ row }) => {
-        const m = row.getValue("paymentMethod") as string | null
+        const m = row.original.paymentMethod
         return m ? m.replace("_", " ") : "-"
       },
     },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const payment = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="size-8 p-0">
-                <IconDotsVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(payment)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDelete?.(payment.id)}
-              >
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
-    },
+    actionsColumn<Payment>(onEdit, onDelete),
   ]
 
-  const table = useReactTable({
-    data: payments,
-    columns,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: { sorting, columnFilters, rowSelection, pagination },
-  })
-
-  const emptyState = (
-    <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-muted-foreground">No payments yet</p>
-      <p className="text-sm text-muted-foreground/70 mt-1">
-        Record a payment to track money in or out.
-      </p>
-    </div>
-  )
-
-  if (isMobile) {
-    const rows = table.getRowModel().rows
-    return (
-      <div className="space-y-3">
-        <Input
-          placeholder="Search by reference number..."
-          value={
-            (table.getColumn("referenceNumber")?.getFilterValue() as string) ??
-            ""
-          }
-          onChange={(e) =>
-            table
-              .getColumn("referenceNumber")
-              ?.setFilterValue(e.target.value)
-          }
-          className="w-full"
-        />
-        {rows.length ? (
-          <div className="rounded-md border divide-y">
-            {rows.map((row) => {
-              const p = row.original
-              const counterparty = p.customerId
-                ? customerMap[p.customerId]
-                : p.vendorId
-                  ? vendorMap[p.vendorId]
-                  : null
-              return (
-                <div
-                  key={row.id}
-                  className="flex items-center gap-3 px-3 py-2.5"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
-                        {p.referenceNumber || "-"}
-                      </p>
-                      <Badge
-                        variant={
-                          p.paymentType === "received"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="shrink-0 text-xs px-1.5 py-0"
-                      >
-                        {p.paymentType}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {counterparty ?? "-"}
-                      {` · ${new Date(p.paymentDate).toLocaleDateString()}`}
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold shrink-0">
-                    {formatCurrency(p.amount)}
-                  </span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 shrink-0"
-                      >
-                        <IconDotsVertical className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(p)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => onDelete?.(p.id)}
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          emptyState
-        )}
-        <DataTablePagination
-          table={table}
-          itemLabel="payments"
-          id="payments-mobile-items-per-page"
-        />
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      <Input
-        placeholder="Search by reference number..."
-        value={
-          (table.getColumn("referenceNumber")?.getFilterValue() as string) ??
-          ""
-        }
-        onChange={(e) =>
-          table
-            .getColumn("referenceNumber")
-            ?.setFilterValue(e.target.value)
-        }
-        className="w-full sm:max-w-sm"
-      />
-      <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      <TanstackSortableHeader header={header} />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
-                    No payments found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-      <DataTablePagination table={table} itemLabel="payments" id="payments-items-per-page" />
-    </div>
+    <EntityTable
+      data={payments}
+      columns={columns}
+      mobileToolbar={({ table }) => (
+        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
+      )}
+      desktopToolbar={({ table }) => (
+        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
+      )}
+      mobileRow={(p) => {
+        const counterparty = p.customerId
+          ? customerMap[p.customerId]
+          : p.vendorId
+            ? vendorMap[p.vendorId]
+            : null
+        return (
+          <>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate">
+                  {p.referenceNumber || "-"}
+                </p>
+                <Badge
+                  variant={
+                    p.paymentType === "received"
+                      ? "default"
+                      : "secondary"
+                  }
+                  className="shrink-0 text-xs px-1.5 py-0"
+                >
+                  {p.paymentType}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                {counterparty ?? "-"}
+                {` · ${localeDateText(p.paymentDate)}`}
+              </p>
+            </div>
+            <span className="text-sm font-semibold shrink-0">
+              {formatDollars(p.amount)}
+            </span>
+            <MobileRecordActions record={p} onEdit={onEdit} onDelete={onDelete} />
+          </>
+        )
+      }}
+      mobileEmpty={
+        <RecordsEmpty
+          title="No payments yet"
+          hint="Record a payment to track money in or out."
+        />
+      }
+      desktopEmpty="No payments found"
+      itemLabel="payments"
+      paginationId="payments"
+    />
   )
 }

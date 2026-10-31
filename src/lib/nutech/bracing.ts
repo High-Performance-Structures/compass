@@ -1,4 +1,5 @@
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
+import { formatCents } from "@/lib/format"
 
 /** reserved: planned, not yet out. out: signed out to the job. returned: checked back in. */
 const BRACING_RENTAL_STATUSES = ["reserved", "out", "returned"] as const
@@ -104,8 +105,4 @@ export function bracingAvailability(
       return owned === 0 && out === 0 ? [] : [{ itemKey: item.key, label: item.label, size, owned, out, available: owned - out }]
     }),
   )
-}
-
-export function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })
 }

@@ -1,24 +1,24 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
-import { getDb } from "@/db"
-import { creditMemos, type NewCreditMemo } from "@/db/schema-netsuite"
+import { creditMemos, type CreditMemo, type NewCreditMemo } from "@/db/schema-netsuite"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
-import { requireOrg } from "@/lib/org-scope"
-import { isDemoUser } from "@/lib/demo"
+import type { ActionDone, ActionFailure } from "@/lib/action-result"
 import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
+import {
+  financeContext,
+  financeReadContext,
+  isOrganizationProject,
+  PROJECT_NOT_FOUND,
+} from "@/lib/domain/financials/access"
+import { deriveCreditMemoTotals } from "@/lib/domain/financials/rules"
+import { deleteCreditMemoRow, insertCreditMemo, updateCreditMemoRow } from "@/lib/domain/financials/store"
 
-export async function getCreditMemos() {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const orgId = requireOrg(user)
+const NOT_FOUND = "Credit memo not found or access denied"
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+export async function getCreditMemos(): Promise<CreditMemo[]> {
+  const { db, organizationId } = await financeReadContext()
 
   // join through projects to filter by org
   return db
@@ -44,44 +44,34 @@ export async function getCreditMemos() {
     })
     .from(creditMemos)
     .innerJoin(projects, eq(creditMemos.projectId, projects.id))
-    .where(eq(projects.organizationId, orgId))
+    .where(eq(projects.organizationId, organizationId))
 }
 
 export async function createCreditMemo(
   data: Omit<NewCreditMemo, "id" | "createdAt" | "updatedAt">
-) {
+): Promise<{ readonly success: true; readonly id: string } | ActionFailure> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "create")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("create")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify project belongs to org if provided
-    if (data.projectId) {
-      const [project] = await db
-        .select()
-        .from(projects)
-        .where(and(eq(projects.id, data.projectId), eq(projects.organizationId, orgId)))
-        .limit(1)
-
-      if (!project) {
-        return { success: false, error: "Project not found or access denied" }
-      }
+    if (data.projectId && !(await isOrganizationProject(db, organizationId, data.projectId))) {
+      return { success: false, error: PROJECT_NOT_FOUND }
     }
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const safeData = omitOwnerArSourceFields(data)
+    // Totals come from the lines on the server, never from the client.
+    const totals = deriveCreditMemoTotals(safeData, null)
+    if (!totals.ok) return { success: false, error: totals.error }
 
-    await db.insert(creditMemos).values({
+    await insertCreditMemo(db, {
       id,
       ...safeData,
-      organizationId: orgId,
+      ...totals.values,
+      organizationId,
       sourceSystem: "compass",
       createdAt: now,
       updatedAt: now,
@@ -103,45 +93,41 @@ export async function createCreditMemo(
 export async function updateCreditMemo(
   id: string,
   data: Partial<NewCreditMemo>
-) {
+): Promise<ActionDone> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("update")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify credit memo belongs to org via project
     const [existing] = await db
-      .select({ projectId: creditMemos.projectId })
+      .select({
+        projectId: creditMemos.projectId,
+        lineItems: creditMemos.lineItems,
+        total: creditMemos.total,
+        amountApplied: creditMemos.amountApplied,
+      })
       .from(creditMemos)
       .innerJoin(projects, eq(creditMemos.projectId, projects.id))
-      .where(and(eq(creditMemos.id, id), eq(projects.organizationId, orgId)))
+      .where(and(eq(creditMemos.id, id), eq(projects.organizationId, organizationId)))
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Credit memo not found or access denied" }
+      return { success: false, error: NOT_FOUND }
     }
 
     const safeData = omitOwnerArSourceFields(data)
-    if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
-      const [project] = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(eq(projects.id, safeData.projectId), eq(projects.organizationId, orgId)))
-        .limit(1)
-      if (!project) {
-        return { success: false, error: "Project not found or access denied" }
-      }
+    if (
+      safeData.projectId !== undefined &&
+      safeData.projectId !== null &&
+      safeData.projectId !== existing.projectId &&
+      !(await isOrganizationProject(db, organizationId, safeData.projectId))
+    ) {
+      return { success: false, error: PROJECT_NOT_FOUND }
     }
-    await db
-      .update(creditMemos)
-      .set({ ...safeData, updatedAt: new Date().toISOString() })
-      .where(eq(creditMemos.id, id))
+    const totals = deriveCreditMemoTotals(safeData, existing)
+    if (!totals.ok) return { success: false, error: totals.error }
+    await updateCreditMemoRow(db, id, { ...safeData, ...totals.values, updatedAt: new Date().toISOString() })
 
     revalidatePath("/dashboard/financials")
     return { success: true }
@@ -156,31 +142,25 @@ export async function updateCreditMemo(
   }
 }
 
-export async function deleteCreditMemo(id: string) {
+export async function deleteCreditMemo(id: string): Promise<ActionDone> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    requirePermission(user, "finance", "delete")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await financeContext("delete")
+    if (!context.success) return context
+    const { db, organizationId } = context.data
 
     // verify credit memo belongs to org via project
     const [existing] = await db
       .select({ projectId: creditMemos.projectId })
       .from(creditMemos)
       .innerJoin(projects, eq(creditMemos.projectId, projects.id))
-      .where(and(eq(creditMemos.id, id), eq(projects.organizationId, orgId)))
+      .where(and(eq(creditMemos.id, id), eq(projects.organizationId, organizationId)))
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Credit memo not found or access denied" }
+      return { success: false, error: NOT_FOUND }
     }
 
-    await db.delete(creditMemos).where(eq(creditMemos.id, id))
+    await deleteCreditMemoRow(db, id)
 
     revalidatePath("/dashboard/financials")
     return { success: true }

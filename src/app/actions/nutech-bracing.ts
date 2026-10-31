@@ -2,12 +2,13 @@
 
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projectProfileAuditEvents, projects } from "@/db/schema"
 import { nuTechBracingRentalLines, nuTechBracingRentals } from "@/db/schema-nutech"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
+import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
+import { deleteNuTechBracingRentalStatement, saveNuTechBracingRentalStatements } from "@/lib/domain/nutech/store"
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -19,9 +20,8 @@ import {
   type BracingCharges,
   type BracingRentalStatus,
 } from "@/lib/nutech/bracing"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { projectDepartment } from "@/lib/project-branding"
+import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -59,27 +59,21 @@ export type ProjectBracingRentals = {
   readonly canEdit: boolean
 }
 
-type Db = ReturnType<typeof getDb>
-
 function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function bracingAccess(projectId: string | null, action: "read" | "update" | "delete") {
-  const user = await requireAuth()
+async function bracingAccess(
+  projectId: string | null,
+  action: "read" | "update" | "delete",
+): Promise<{ readonly user: AuthUser; readonly organizationId: string; readonly db: Db }> {
+  const { db, user, organizationId } = await nuTechOrgContext()
   if (!isInternalStaffRole(user.role)) throw new Error("Bracing rentals are available to office staff.")
   await requireFeaturePermission(user, "nutech-orders", action)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   if (projectId !== null) {
-    const project = await db
-      .select({ id: projects.id, projectNumber: projects.projectNumber })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .get()
+    const project = await readNuTechProject(db, organizationId, projectId)
     if (!project) throw new Error("Project not found.")
-    if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
+    if (!isNuTechJob(project)) {
       throw new Error("Bracing rentals are kept on N jobs.")
     }
   }
@@ -281,19 +275,12 @@ export async function saveBracingRental(input: BracingRentalInput): Promise<Resu
       updatedAt: now,
     }
     await db.batch([
-      existing
-        ? db.update(nuTechBracingRentals).set(values).where(eq(nuTechBracingRentals.id, id))
-        : db.insert(nuTechBracingRentals).values({
-            id,
-            organizationId,
-            projectId: input.projectId,
-            dailyRateCents,
-            createdBy: user.id,
-            createdAt: now,
-            ...values,
-          }),
-      db.delete(nuTechBracingRentalLines).where(eq(nuTechBracingRentalLines.rentalId, id)),
-      ...lines.map((line) => db.insert(nuTechBracingRentalLines).values({ ...line, rentalId: id })),
+      ...saveNuTechBracingRentalStatements(db, {
+        rentalId: id,
+        create: existing ? null : { organizationId, projectId: input.projectId, dailyRateCents, createdBy: user.id, createdAt: now },
+        values,
+        lines,
+      }),
       db.insert(projectProfileAuditEvents).values({
         id: crypto.randomUUID(),
         organizationId,
@@ -335,7 +322,7 @@ export async function deleteBracingRental(projectId: string, rentalId: string): 
     if (!rental) return { success: false, error: "Rental not found." }
     if (rental.status !== "reserved") return { success: false, error: "Bracing that went out is kept for the record and can't be deleted." }
     await db.batch([
-      db.delete(nuTechBracingRentals).where(eq(nuTechBracingRentals.id, rental.id)),
+      deleteNuTechBracingRentalStatement(db, rental.id),
       db.insert(projectProfileAuditEvents).values({
         id: crypto.randomUUID(),
         organizationId,
@@ -391,12 +378,14 @@ export async function getBracingInventory(): Promise<Result<BracingInventory>> {
       .innerJoin(projects, eq(projects.id, nuTechBracingRentals.projectId))
       .where(and(eq(nuTechBracingRentals.organizationId, organizationId), ne(nuTechBracingRentals.status, "returned")))
       .orderBy(asc(nuTechBracingRentals.expectedReturnOn))
-    const lines = rentals.length
-      ? await db
-          .select()
-          .from(nuTechBracingRentalLines)
-          .where(inArray(nuTechBracingRentalLines.rentalId, rentals.map((rental) => rental.id)))
-      : []
+    // Every open rental in the company: chunked to stay under D1's parameter limit.
+    const lines = (
+      await Promise.all(
+        chunkD1Values(rentals.map((rental) => rental.id)).map((ids) =>
+          db.select().from(nuTechBracingRentalLines).where(inArray(nuTechBracingRentalLines.rentalId, ids)),
+        ),
+      )
+    ).flat()
     const outIds = new Set(rentals.filter((rental) => rental.status === "out").map((rental) => rental.id))
     return {
       success: true,
