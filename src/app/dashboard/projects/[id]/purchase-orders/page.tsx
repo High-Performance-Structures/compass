@@ -13,11 +13,8 @@ import {
   IconShoppingCart,
 } from "@tabler/icons-react"
 
-import {
-  getProjectPurchaseOrderFormOptions,
-  getProjectPurchaseOrders,
-  type ProjectPurchaseOrderItem,
-} from "@/app/actions/project-operations"
+import { getProjectPurchaseOrderFormOptions, getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
+import type { ProjectPurchaseOrderItem } from "@/lib/domain/operations/types"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
@@ -48,7 +45,6 @@ import {
   projectOperationMatchesStatusFilter,
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
-import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
@@ -63,14 +59,11 @@ import {
 import { getProjectPaperTrail, type PaperTrailRecordView } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 import { PurchaseOrderDocument } from "@/components/projects/purchase-order-document"
+import { formatDate } from "@/lib/format"
 
-function formatDate(value: string | null): string {
-  if (!value) return "No due date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** A due date as "Oct 30, 2026", or "No due date". */
+function dueDate(value: string | null): string {
+  return formatDate(value, "medium", "No due date")
 }
 
 function label(value: string): string {
@@ -205,7 +198,7 @@ function PurchaseOrderCard({
             {order.priority === "high" && (
               <Badge variant="destructive">High</Badge>
             )}
-            {canEditPurchaseOrderDraft(order) && (
+            {order.actions.canEdit && (
               <ProjectPurchaseOrderEditForm
                 projectId={projectId}
                 purchaseOrder={order}
@@ -279,7 +272,7 @@ function PurchaseOrderCard({
               ? `${order.lines.length} cost lines`
               : order.costCode ?? "Cost code TBD"}
           </span>
-          <span>{formatDate(order.dueDate)}</span>
+          <span>{dueDate(order.dueDate)}</span>
         </div>
         {paperTrail !== undefined ? (
           <PaperTrailRecordStatus

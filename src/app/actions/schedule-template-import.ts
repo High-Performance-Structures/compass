@@ -25,6 +25,7 @@ import {
   templateTaskInsertStatement
 } from "@/lib/domain/schedule/store"
 import { loadScheduleTemplateTodos } from "@/lib/domain/schedule/template-items"
+import { templateTodoInsertStatement } from "@/lib/domain/operations/store"
 import { buildScheduleTemplateApplication } from "@/lib/templates/schedule-template-application"
 import {
   normalizeBulkScheduleTemplateOffsets,
@@ -37,6 +38,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * Imports selected items of a published schedule template. The application,
  * application-item, and linked to-do rows (other modules' tables) are written
  * in the same atomic D1 batch as the schedule rows, with their SQL unchanged.
+ * The linked to-dos are built by the operations store.
  */
 export async function importScheduleTemplateItems(
   projectId: string,
@@ -248,25 +250,15 @@ export async function importScheduleTemplateItems(
     }
     for (const linkedTodo of linkedTodoRows) {
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_operations (
-            id, project_id, source_system, source_record_type,
-            source_record_id, title, description, status, priority,
-            assignee_type, start_date, due_date, sage_write_status,
-            sage_payload_json, sync_direction, sync_status, created_at,
-            updated_at
-          ) VALUES (?, ?, 'compass_template', 'schedule_task', ?, ?, ?,
-            'open', 'normal', 'internal', ?, ?, 'not_ready', ?, 'write',
-            'compass_only', ?, ?)`
-        ).bind(
-          linkedTodo.id,
+        templateTodoInsertStatement(env.DB, {
+          id: linkedTodo.id,
           projectId,
-          linkedTodo.scheduleTaskId,
-          linkedTodo.todo.title,
-          linkedTodo.todo.description,
-          linkedTodo.scheduleTaskStartDate,
-          linkedTodo.scheduleTaskEndDate,
-          JSON.stringify({
+          scheduleTaskId: linkedTodo.scheduleTaskId,
+          title: linkedTodo.todo.title,
+          description: linkedTodo.todo.description,
+          startDate: linkedTodo.scheduleTaskStartDate,
+          dueDate: linkedTodo.scheduleTaskEndDate,
+          payloadJson: JSON.stringify({
             source: "project_template_schedule_item",
             templateId: templateVersion.templateId,
             templateName: templateVersion.templateName,
@@ -275,9 +267,8 @@ export async function importScheduleTemplateItems(
             sourceItemId: linkedTodo.todo.sourceItemId,
             checklistItems: linkedTodo.todo.checklistItems
           }),
-          now,
           now
-        )
+        })
       )
     }
 

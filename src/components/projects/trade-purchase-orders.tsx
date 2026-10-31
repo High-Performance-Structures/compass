@@ -4,15 +4,14 @@ import * as React from "react"
 
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { getProjectPurchaseOrderFormOptions, type ProjectPurchaseOrderFormOptions } from "@/app/actions/project-operations"
+import { getProjectPurchaseOrderFormOptions } from "@/app/actions/project-purchase-orders"
+import type { ProjectPurchaseOrderFormOptions } from "@/lib/domain/operations/types"
 import type { TradeLetterRow } from "@/app/actions/trade-letters"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
 import { statusLabel } from "@/lib/project-operations/status"
 import { countsAgainstAcceptedPrice } from "@/lib/trade-letters/orders"
+import { formatCents as money } from "@/lib/format"
 
-function money(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })
-}
 
 export type TradePurchaseOrderSetup = {
   readonly coding: ProjectPurchaseOrderFormOptions

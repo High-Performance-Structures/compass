@@ -27,18 +27,15 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TRADE_LETTER_KIND_LABELS, TRADE_LETTER_STATUS_LABELS, longDate, tradeLetterAvailability, type TradeLetterKind } from "@/lib/trade-letters/letter"
+import { formatCents as money, formatDate } from "@/lib/format"
 
-function money(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })
-}
-
-function shortDate(iso: string | null): string {
-  if (!iso) return ""
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+/** Letter timestamps as "Oct 30"; nothing when the step hasn't happened. */
+function letterDate(iso: string | null): string {
+  return formatDate(iso, "short", "")
 }
 
 function letterLine(letter: TradeLetterSummary): string {
-  const when = letter.status === "signed" ? shortDate(letter.signedAt) : letter.status === "sent" ? shortDate(letter.sentAt) : shortDate(letter.createdAt)
+  const when = letter.status === "signed" ? letterDate(letter.signedAt) : letter.status === "sent" ? letterDate(letter.sentAt) : letterDate(letter.createdAt)
   return `${TRADE_LETTER_KIND_LABELS[letter.kind]} ${letter.letterNumber} · ${TRADE_LETTER_STATUS_LABELS[letter.status]}${when ? ` ${when}` : ""}`
 }
 

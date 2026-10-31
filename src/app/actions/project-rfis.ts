@@ -1,22 +1,52 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   emailReplyThreads,
   inboundEmails,
   projectRfiAttachments,
   projectRfis,
-  projects,
 } from "@/db/schema"
+import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import { recordActivityEvent } from "@/lib/activity-log"
+import type { AuthUser } from "@/lib/auth"
+import { rfiReadContext, rfiWriteContext } from "@/lib/domain/rfis/access"
+import {
+  groupAttachmentsByRfi,
+  isMissingAttachmentTableError,
+  requireText,
+  rfiAnsweredAtAfterUpdate,
+  rfiAttachmentRows,
+  rfiNumberFor,
+  rfiStatusAfterUpdate,
+  summarizeRfis,
+  toRfiItem,
+} from "@/lib/domain/rfis/rules"
+import {
+  rfiAttachmentsInsertStatement,
+  rfiDeleteStatement,
+  rfiInsertStatement,
+  rfiUpdateStatement,
+  updateRfi,
+} from "@/lib/domain/rfis/store"
+import type { CreateProjectRfiInput, ProjectRfiAttachmentItem, ProjectRfiInboundEmailItem, ProjectRfiItem, ProjectRfiSummary, UpdateProjectRfiInput } from "@/lib/domain/rfis/types"
 import {
   notifyRfiCreated,
   notifyRfiUpdated,
 } from "@/lib/notifications/events"
-import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import { requireOrg } from "@/lib/org-scope"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { assertProjectAccess } from "@/lib/project-access"
+import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
+import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
+import { appendRfiCommunication } from "@/lib/rfis/communication"
+import {
+  validRfiAudience,
+  validRfiPriority,
+  validRfiStatus,
+} from "@/lib/rfis/status"
 import {
   listRfiVendorOptions,
   loadRfiVendorAssignments,
@@ -25,138 +55,29 @@ import {
   type RfiVendorAssignment,
   type RfiVendorOption,
 } from "@/lib/rfis/vendor-assignment"
-import { recordActivityEvent } from "@/lib/activity-log"
-import { projectSourceRecordParticipants } from "@/db/schema-participants"
-import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
-import { assertProjectAccess } from "@/lib/project-access"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { appendRfiCommunication } from "@/lib/rfis/communication"
+import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
+import type { Db } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import {
-  validRfiAudience,
-  validRfiPriority,
-  validRfiStatus,
-} from "@/lib/rfis/status"
 
-type ProjectRfiAttachmentItem = {
-  readonly id: string
-  readonly fileName: string
-  readonly mimeType: string | null
-  readonly fileSize: number
-  readonly storageUrl: string | null
-  readonly storageStatus: string
-}
-
-export type ProjectRfiInboundEmailItem = {
-  readonly id: string
-  readonly rfiId: string
-  readonly from: string
-  readonly subject: string
-  readonly body: string
-  readonly receivedAt: string
-}
-
-export type ProjectRfiItem = {
-  readonly id: string
-  readonly rfiNumber: string
-  readonly subject: string
-  readonly question: string
-  readonly answer: string | null
-  readonly status: string
-  readonly priority: string
-  readonly audience: string
-  readonly requesterName: string | null
-  readonly assignedToName: string | null
-  readonly companyName: string | null
-  readonly dueDate: string | null
-  readonly submittedAt: string
-  readonly answeredAt: string | null
-  readonly attachmentCount: number
-  readonly attachments: readonly ProjectRfiAttachmentItem[]
-  /** Staff only: the vendor company that can see this RFI; null for externals. */
-  readonly assignedVendor: RfiVendorAssignment | null
-}
-
-export type ProjectRfiSummary = {
-  readonly totalCount: number
-  readonly openCount: number
-  readonly highPriorityCount: number
-  readonly subVendorVisibleCount: number
-  readonly ownerVisibleCount: number
-  readonly nextDue: ProjectRfiItem | null
-  readonly items: readonly ProjectRfiItem[]
-}
+export type {
+  CreateProjectRfiInput,
+  ProjectRfiAttachmentInput,
+  ProjectRfiInboundEmailItem,
+  ProjectRfiItem,
+  ProjectRfiSummary,
+  UpdateProjectRfiInput,
+} from "@/lib/domain/rfis/types"
 
 type ProjectRfiActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
 
-type ProjectUpdateContext = {
-  readonly db: ReturnType<typeof getDb>
-  readonly env: unknown
-  readonly user: AuthUser
-  readonly orgId: string
-  readonly projectNumber: string | null
+async function verifyProjectAccess(projectId: string): Promise<Db> {
+  return (await rfiReadContext(projectId)).db
 }
 
-export type ProjectRfiAttachmentInput = {
-  readonly fileName: string
-  readonly mimeType: string | null
-  readonly fileSize: number
-  readonly storageProvider: string
-  readonly storageId: string | null
-  readonly storageUrl: string | null
-}
-
-export type CreateProjectRfiInput = {
-  readonly subject: string
-  readonly question: string
-  readonly priority: string
-  readonly audience: string
-  readonly requesterName: string | null
-  readonly assignedToName: string | null
-  readonly companyName: string | null
-  readonly dueDate: string | null
-  /** Active subcontractor/supplier project contact whose company may see the RFI. */
-  readonly assignedVendorContactId: string | null
-  readonly attachments: readonly ProjectRfiAttachmentInput[]
-}
-
-export type UpdateProjectRfiInput = {
-  readonly answer: string | null
-  readonly status: string
-  readonly audience: string
-  readonly mentionedUserIds?: readonly string[]
-}
-
-async function verifyProjectAccess(
-  projectId: string
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireProjectAudienceReadUser(projectId)
-  await requireFeaturePermission(user, "rfis", "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  await assertProjectAccess(db, user, projectId)
-  return db
-}
-
-async function externalRfiVisibility(db: ReturnType<typeof getDb>, projectId: string): Promise<ReturnType<typeof or>> {
+async function externalRfiVisibility(db: Db, projectId: string): Promise<ReturnType<typeof or>> {
   const user = await requireProjectAudienceReadUser(projectId)
   if (isInternalStaffRole(user.role)) return undefined
   const contact = await getProjectAudienceViewerContact(db, projectId, user)
@@ -168,119 +89,9 @@ async function externalRfiVisibility(db: ReturnType<typeof getDb>, projectId: st
   return inArray(projectRfis.id, [])
 }
 
-async function verifyProjectUpdateAccess(
-  projectId: string
-): Promise<ReturnType<typeof getDb>> {
-  const context = await getProjectUpdateContext(projectId)
-  return context.db
-}
-
-async function getProjectUpdateContext(
-  projectId: string
-): Promise<ProjectUpdateContext> {
-  await assertAudiencePreviewWriteAllowed()
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "rfis", "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  return { db, env, user, orgId, projectNumber: existing[0].projectNumber }
-}
-
-async function assertRfiVendorAssignmentAccess(db: ReturnType<typeof getDb>, user: AuthUser, projectId: string): Promise<void> {
+async function assertRfiVendorAssignmentAccess(db: Db, user: AuthUser, projectId: string): Promise<void> {
   if (!isInternalStaffRole(user.role)) throw new Error("Only project staff can assign vendor access.")
   await assertProjectAccess(db, user, projectId)
-}
-
-function cleanText(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function requireText(value: string, label: string): string {
-  const trimmed = value.trim()
-  if (trimmed.length === 0) {
-    throw new Error(`${label} is required`)
-  }
-  return trimmed
-}
-
-function rfiNumberFor(
-  projectNumber: string | null,
-  existingCount: number,
-  id: string
-): string {
-  const sequence = String(existingCount + 1).padStart(3, "0")
-  const prefix = cleanText(projectNumber)
-  if (prefix) return `${prefix}-RFI-${sequence}`
-
-  const collisionSuffix = id.slice(0, 6).toUpperCase()
-  return `RFI-${sequence}-${collisionSuffix}`
-}
-
-function isClosedRfiStatus(status: string): boolean {
-  return ["complete", "closed", "void", "cancelled"].includes(
-    status.toLowerCase()
-  )
-}
-
-function isOpenRfi(item: ProjectRfiItem): boolean {
-  return !isClosedRfiStatus(item.status)
-}
-
-function isSubVendorVisible(item: ProjectRfiItem): boolean {
-  return item.audience === "sub_vendor" || item.audience === "public"
-}
-
-function isOwnerVisible(item: ProjectRfiItem): boolean {
-  return item.audience === "owner" || item.audience === "public"
-}
-
-function isMissingAttachmentTableError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
-  return (
-    message.includes("project_rfi_attachments") &&
-    (message.includes("no such table") || message.includes("failed query"))
-  )
-}
-
-function toRfiItem(
-  row: typeof projectRfis.$inferSelect,
-  attachments: readonly ProjectRfiAttachmentItem[],
-  assignedVendor: RfiVendorAssignment | null = null
-): ProjectRfiItem {
-  return {
-    id: row.id,
-    rfiNumber: row.rfiNumber,
-    subject: row.subject,
-    question: row.question,
-    answer: row.answer,
-    status: row.status,
-    priority: row.priority,
-    audience: row.audience,
-    requesterName: row.requesterName,
-    assignedToName: row.assignedToName,
-    companyName: row.companyName,
-    dueDate: row.dueDate,
-    submittedAt: row.submittedAt,
-    answeredAt: row.answeredAt,
-    attachmentCount: attachments.length,
-    attachments,
-    assignedVendor,
-  }
 }
 
 export async function getProjectRfiSummary(
@@ -294,19 +105,7 @@ export async function getProjectRfiSummary(
     .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
-  const items = rows.map((row) => toRfiItem(row, []))
-  const openItems = items.filter(isOpenRfi)
-
-  return {
-    totalCount: items.length,
-    openCount: openItems.length,
-    highPriorityCount: openItems.filter((item) => item.priority === "high")
-      .length,
-    subVendorVisibleCount: items.filter(isSubVendorVisible).length,
-    ownerVisibleCount: items.filter(isOwnerVisible).length,
-    nextDue: openItems[0] ?? null,
-    items: items.slice(0, 8),
-  }
+  return summarizeRfis(rows.map((row) => toRfiItem(row, [])))
 }
 
 export async function getProjectRfis(
@@ -343,21 +142,7 @@ export async function getProjectRfis(
     }
   }
 
-  const attachmentsByRfi = new Map<string, ProjectRfiAttachmentItem[]>()
-  for (const attachment of attachmentRows) {
-    const existing = attachmentsByRfi.get(attachment.rfiId) ?? []
-    attachmentsByRfi.set(attachment.rfiId, [
-      ...existing,
-      {
-        id: attachment.id,
-        fileName: attachment.fileName,
-        mimeType: attachment.mimeType,
-        fileSize: attachment.fileSize,
-        storageUrl: attachment.storageUrl,
-        storageStatus: attachment.storageStatus,
-      },
-    ])
-  }
+  const attachmentsByRfi = groupAttachmentsByRfi(attachmentRows)
 
   const user = await requireProjectAudienceReadUser(projectId)
   const assignments = isInternalStaffRole(user.role)
@@ -425,14 +210,14 @@ export async function createProjectRfi(
   input: CreateProjectRfiInput
 ): Promise<ProjectRfiActionResult> {
   try {
-    const { db, user, orgId, projectNumber } =
-      await getProjectUpdateContext(projectId)
+    const { db, user, orgId, projectNumber } = await rfiWriteContext(projectId)
     const vendorContactId = cleanText(input.assignedVendorContactId)
     if (vendorContactId) await assertRfiVendorAssignmentAccess(db, user, projectId)
-    const rows = await db
-      .select({ id: projectRfis.id })
+    const existingCount = await db
+      .select({ count: sql<number>`count(*)` })
       .from(projectRfis)
       .where(eq(projectRfis.projectId, projectId))
+      .then((rows) => rows[0]?.count ?? 0)
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -453,7 +238,7 @@ export async function createProjectRfi(
     const inserted: typeof projectRfis.$inferInsert = {
       id,
       projectId,
-      rfiNumber: rfiNumberFor(projectNumber, rows.length, id),
+      rfiNumber: rfiNumberFor(projectNumber, existingCount, id),
       subject: requireText(input.subject, "Subject"),
       question: requireText(input.question, "Question"),
       status: "new",
@@ -468,20 +253,13 @@ export async function createProjectRfi(
       updatedAt: now,
     }
 
-    const attachmentRows = input.attachments.map((attachment) => ({
-      id: crypto.randomUUID(),
+    const attachmentRows = rfiAttachmentRows({
       projectId,
       rfiId: id,
-      fileName: requireText(attachment.fileName, "Attachment file name"),
-      mimeType: cleanText(attachment.mimeType),
-      fileSize: Math.max(0, Math.round(attachment.fileSize)),
-      storageProvider: cleanText(attachment.storageProvider) ?? "google_drive",
-      storageId: cleanText(attachment.storageId),
-      storageUrl: cleanText(attachment.storageUrl),
-      storageStatus: cleanText(attachment.storageId) ? "uploaded" : "pending",
-      createdAt: now,
-      updatedAt: now,
-    }))
+      attachments: input.attachments,
+      now,
+      newId: () => crypto.randomUUID(),
+    })
 
     // D1 batches are atomic: the RFI, its vendor assignment, and its attachment
     // metadata either all commit or all roll back. A timeout/error must never
@@ -490,9 +268,9 @@ export async function createProjectRfi(
       ? [rfiVendorAssignmentStatement(db, { organizationId: orgId, projectId, rfiId: id, contact: vendorContact, now })]
       : []
     const attachmentInsert = attachmentRows.length > 0
-      ? [db.insert(projectRfiAttachments).values(attachmentRows)]
+      ? [rfiAttachmentsInsertStatement(db, attachmentRows)]
       : []
-    await db.batch([db.insert(projectRfis).values(inserted), ...assignment, ...attachmentInsert])
+    await db.batch([rfiInsertStatement(db, inserted), ...assignment, ...attachmentInsert])
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
@@ -528,8 +306,7 @@ export async function updateProjectRfi(
   input: UpdateProjectRfiInput
 ): Promise<ProjectRfiActionResult> {
   try {
-    const { db, user, orgId } =
-      await getProjectUpdateContext(projectId)
+    const { db, user, orgId } = await rfiWriteContext(projectId)
     const existing = await db
       .select({
         rfiNumber: projectRfis.rfiNumber,
@@ -570,21 +347,19 @@ export async function updateProjectRfi(
     if (!audience) {
       return { success: false, error: "Please choose a valid RFI audience." }
     }
-    const status =
-      response && requestedStatus === "new" ? "in_progress" : requestedStatus
-    await db
-      .update(projectRfis)
-      .set({
-        answer,
+    const status = rfiStatusAfterUpdate(response !== null, requestedStatus)
+    await updateRfi(db, projectId, rfiId, {
+      answer,
+      status,
+      audience,
+      answeredAt: rfiAnsweredAtAfterUpdate({
+        hasResponse: response !== null,
         status,
-        audience,
-        answeredAt:
-          response || status === "complete"
-            ? existing.answeredAt ?? now
-            : existing.answeredAt,
-        updatedAt: now,
-      })
-      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+        existingAnsweredAt: existing.answeredAt,
+        now,
+      }),
+      updatedAt: now,
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
@@ -628,7 +403,7 @@ export async function setProjectRfiVendorAssignment(
   contactId: string | null
 ): Promise<ProjectRfiActionResult> {
   try {
-    const { db, user, orgId } = await getProjectUpdateContext(projectId)
+    const { db, user, orgId } = await rfiWriteContext(projectId)
     await assertRfiVendorAssignmentAccess(db, user, projectId)
     const [existing] = await db
       .select({ id: projectRfis.id, rfiNumber: projectRfis.rfiNumber })
@@ -647,9 +422,11 @@ export async function setProjectRfiVendorAssignment(
       // Keep the visible assignment text in step with the stable assignment.
       await db.batch([
         assignment,
-        db.update(projectRfis)
-          .set({ assignedToName: contact.displayName, companyName: contact.companyName, updatedAt: now })
-          .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))),
+        rfiUpdateStatement(db, projectId, rfiId, {
+          assignedToName: contact.displayName,
+          companyName: contact.companyName,
+          updatedAt: now,
+        }),
       ])
     } else {
       await assignment
@@ -686,7 +463,7 @@ export async function deleteProjectRfi(
   rfiId: string
 ): Promise<ProjectRfiActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const { db } = await rfiWriteContext(projectId)
     const [existing] = await db
       .select({ id: projectRfis.id, sourceRecordId: projectRfis.sourceRecordId })
       .from(projectRfis)
@@ -700,8 +477,7 @@ export async function deleteProjectRfi(
     // Attachments cascade through their foreign key. Participant grants key on
     // the RFI id without a foreign key, so they are removed in the same batch.
     await db.batch([
-      db.delete(projectRfis)
-        .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))),
+      rfiDeleteStatement(db, projectId, rfiId),
       db.delete(projectSourceRecordParticipants)
         .where(and(
           eq(projectSourceRecordParticipants.projectId, projectId),

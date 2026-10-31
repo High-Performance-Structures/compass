@@ -3,7 +3,7 @@
 import * as React from "react"
 import { IconCheck, IconMail, IconSend } from "@tabler/icons-react"
 
-import { sendPurchaseOrderEmail } from "@/app/actions/project-operations"
+import { sendPurchaseOrderEmail } from "@/app/actions/project-purchase-orders"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {

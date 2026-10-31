@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectBudgetApplications, projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -85,12 +87,16 @@ export async function approveProjectOwnerPayApplicationForBilling(
     }
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now })
-        .where(and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review"))),
-      db.update(projectOperations)
-        .set({ status: "billed", syncStatus: "awaiting_sage_invoice", updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(
+        db,
+        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review")),
+        { status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now }
+      ),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), {
+        status: "billed",
+        syncStatus: "awaiting_sage_invoice",
+        updatedAt: now,
+      }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
@@ -135,12 +141,16 @@ export async function undoProjectOwnerPayApplicationBilling(
     }
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now })
-        .where(and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed"))),
-      db.update(projectOperations)
-        .set({ status: "internal_review", syncStatus: "needs_review", updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(
+        db,
+        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed")),
+        { status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now }
+      ),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), {
+        status: "internal_review",
+        syncStatus: "needs_review",
+        updatedAt: now,
+      }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
@@ -169,12 +179,12 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     const syncStatus = number ? "synced" : "awaiting_sage_invoice"
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ sageInvoiceNumber: number, syncStatus, updatedAt: now })
-        .where(eq(projectBudgetApplications.id, applicationId)),
-      db.update(projectOperations)
-        .set({ syncStatus, updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+        sageInvoiceNumber: number,
+        syncStatus,
+        updatedAt: now,
+      }),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",

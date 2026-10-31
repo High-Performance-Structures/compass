@@ -12,9 +12,9 @@ import {
 } from "@/db/schema-estimates"
 import { projectFamilyPhases } from "@/db/schema-project-families"
 import { contractPackets } from "@/db/schema-contracts"
-import { projectEstimateRfqBidImportLines, projectEstimateRfqBidImports } from "@/db/schema-rfqs"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, revalidateEstimate } from "@/lib/domain/estimates/access"
+import { rfqBidImportsForEstimatesDeleteQueries } from "@/lib/domain/operations/store"
 import { estimateTotalsForLines } from "@/lib/domain/estimates/rules"
 import {
   copyAssemblyAsPhaseEstimate,
@@ -285,17 +285,7 @@ export async function deletePhaseProposal(projectId: string, proposalId: string)
     // the bid can be imported again; lines and details cascade.
     const estimateDeletes = versionIds.length > 0
       ? [
-          access.db.delete(projectEstimateRfqBidImportLines).where(inArray(
-            projectEstimateRfqBidImportLines.importId,
-            access.db
-              .select({ id: projectEstimateRfqBidImports.id })
-              .from(projectEstimateRfqBidImports)
-              .where(and(eq(projectEstimateRfqBidImports.projectId, projectId), inArray(projectEstimateRfqBidImports.estimateId, versionIds)))
-          )),
-          access.db.delete(projectEstimateRfqBidImports).where(and(
-            eq(projectEstimateRfqBidImports.projectId, projectId),
-            inArray(projectEstimateRfqBidImports.estimateId, versionIds),
-          )),
+          ...rfqBidImportsForEstimatesDeleteQueries(access.db, projectId, versionIds),
           deleteEstimatesStatement(access.db, and(eq(projectEstimates.projectId, projectId), inArray(projectEstimates.id, versionIds))),
         ]
       : []

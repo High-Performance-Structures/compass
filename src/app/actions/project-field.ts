@@ -9,8 +9,9 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { projectOperations } from "@/db/schema"
-import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { moveDailyLogDutyEntries } from "@/lib/domain/duties/store"
+import { updateOperations } from "@/lib/domain/operations/store"
 import { applyDailyLogFollowUps } from "@/lib/daily-logs/log-followups-server"
 import {
   isInternalFieldViewer,
@@ -232,18 +233,11 @@ export async function updateProjectDailyLog(
         now,
       })
 
-      await db
-        .update(projectOperations)
-        .set({
-          projectId: targetProjectId,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.sourceRecordId, dailyLogId)
-          )
-        )
+      await updateOperations(
+        db,
+        and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, dailyLogId)),
+        { projectId: targetProjectId, updatedAt: now }
+      )
 
       // Schedule items belong to a specific project, so their association
       // cannot safely follow a daily log that moves to another project.
@@ -263,10 +257,7 @@ export async function updateProjectDailyLog(
         checked,
       })
     } else if (moving) {
-      await db
-        .update(internalDutyEntries)
-        .set({ projectId: targetProjectId, updatedAt: now })
-        .where(eq(internalDutyEntries.dailyLogId, dailyLogId))
+      await moveDailyLogDutyEntries(db, dailyLogId, targetProjectId, now)
     }
     if (lineTodos) {
       await applyDailyLogFollowUps(db, {

@@ -22,6 +22,7 @@ import {
   projectTemplateVersions
 } from "@/db/schema-templates"
 import { requireAuth } from "@/lib/auth"
+import { insertOperations } from "@/lib/domain/operations/store"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { spreadsheetIdFromUrl } from "@/lib/financials/project-totals-import"
@@ -1205,9 +1206,8 @@ export async function requestSelectionCostCodeSageReview(
 
     if (!existing) {
       const id = crypto.randomUUID()
-      await db.insert(projectOperations).values({
-        id,
-        projectId,
+      await insertOperations(db, {
+        id, projectId,
         sourceSystem: "compass",
         sourceRecordType: "sage_cost_code_request",
         sourceRecordId: cleanedCostCode,
@@ -1493,7 +1493,7 @@ export async function updateProjectSelection(
         changes
       }
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: logId,
         projectId,
         sourceSystem: "compass",
@@ -1515,7 +1515,7 @@ export async function updateProjectSelection(
         updatedAt: now
       })
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: changeOrderReviewId,
         projectId,
         sourceSystem: "compass",
@@ -1536,7 +1536,7 @@ export async function updateProjectSelection(
         updatedAt: now
       })
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: pmTaskId,
         projectId,
         sourceSystem: "compass",
@@ -1566,7 +1566,7 @@ export async function updateProjectSelection(
         updatedAt: now
       })
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: adminTaskId,
         projectId,
         sourceSystem: "compass",
@@ -1695,7 +1695,7 @@ export async function updateProjectSelectionStatus(
         ]
       }
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: reviewId,
         projectId,
         sourceSystem: "compass",
@@ -1716,7 +1716,7 @@ export async function updateProjectSelectionStatus(
         updatedAt: now
       })
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: pmTaskId,
         projectId,
         sourceSystem: "compass",
@@ -1746,7 +1746,7 @@ export async function updateProjectSelectionStatus(
         updatedAt: now
       })
 
-      await db.insert(projectOperations).values({
+      await insertOperations(db, {
         id: adminTaskId,
         projectId,
         sourceSystem: "compass",

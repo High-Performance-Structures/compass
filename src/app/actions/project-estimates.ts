@@ -1,15 +1,11 @@
 "use server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { projectEstimates } from "@/db/schema-estimates"
-import {
-  projectEstimateRfqBidImportLines,
-  projectEstimateRfqBidImports,
-} from "@/db/schema-rfqs"
 import { errorMessage } from "@/lib/action-result"
 import {
   acceptanceUploadTarget,
@@ -52,6 +48,7 @@ import {
 } from "@/lib/domain/estimates/lines"
 import { markEstimateSentOutsideCompass, prepareEstimateForClientSignature } from "@/lib/domain/estimates/signature"
 import { deleteEstimatesStatement } from "@/lib/domain/estimates/store"
+import { rfqBidImportsForEstimatesDeleteQueries } from "@/lib/domain/operations/store"
 import type {
   ContractVersionAcceptancePreview,
   ProjectEstimateActionResult,
@@ -197,30 +194,7 @@ export async function deleteProjectEstimateDraft(
     // approved bid can be imported into a replacement estimate later. The
     // RFQ tables belong to the RFQ area; the estimate goes through its store.
     const deletionResults = await access.db.batch([
-      access.db
-        .delete(projectEstimateRfqBidImportLines)
-        .where(
-          inArray(
-            projectEstimateRfqBidImportLines.importId,
-            access.db
-              .select({ id: projectEstimateRfqBidImports.id })
-              .from(projectEstimateRfqBidImports)
-              .where(
-                and(
-                  eq(projectEstimateRfqBidImports.projectId, projectId),
-                  eq(projectEstimateRfqBidImports.estimateId, estimateId)
-                )
-              )
-          )
-        ),
-      access.db
-        .delete(projectEstimateRfqBidImports)
-        .where(
-          and(
-            eq(projectEstimateRfqBidImports.projectId, projectId),
-            eq(projectEstimateRfqBidImports.estimateId, estimateId)
-          )
-        ),
+      ...rfqBidImportsForEstimatesDeleteQueries(access.db, projectId, [estimateId]),
       deleteEstimatesStatement(
         access.db,
         and(

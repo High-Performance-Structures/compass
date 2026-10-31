@@ -3,6 +3,7 @@ import "server-only"
 import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
+import { updateRfi } from "@/lib/domain/rfis/store"
 import {
   emailReplyThreads,
   inboundEmails,
@@ -545,15 +546,10 @@ async function importCandidate(input: {
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (rfi && canonicalRfiStatus(rfi.status) === "new") {
-      await input.db
-        .update(projectRfis)
-        .set({ status: "in_progress", updatedAt: now })
-        .where(
-          and(
-            eq(projectRfis.id, replyThread.sourceId),
-            eq(projectRfis.projectId, replyThread.projectId)
-          )
-        )
+      await updateRfi(input.db, replyThread.projectId, replyThread.sourceId, {
+        status: "in_progress",
+        updatedAt: now,
+      })
     }
   }
   await insertInboundAudit({

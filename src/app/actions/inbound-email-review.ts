@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { inboundEmails, projectRfis, projects } from "@/db/schema"
+import { insertRfi } from "@/lib/domain/rfis/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -188,7 +189,7 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const rfiNumber = rfiNumberFor(project.projectNumber, count, id)
-    await db.insert(projectRfis).values({
+    await insertRfi(db, {
       id,
       projectId: project.id,
       sourceSystem: "email",

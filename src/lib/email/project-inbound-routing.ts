@@ -4,6 +4,8 @@ import { and, eq, inArray, or, sql } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 
 import type { getDb } from "@/db"
+import { insertRfiIfMissing } from "@/lib/domain/rfis/store"
+import { insertOperationIfAbsent } from "@/lib/domain/operations/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { insertChangeOrderHistoryIfAbsent, insertChangeOrderIfAbsent } from "@/lib/domain/estimates/store"
 import {
@@ -323,29 +325,26 @@ async function routeRfi(input: {
     projectEmailTitle(input.candidate.subject) ||
     `Email from ${senderLabel(input.candidate)}`
 
-  await input.db
-    .insert(projectRfis)
-    .values({
+  await insertRfiIfMissing(input.db, {
+    id,
+    projectId: input.projectId,
+    sourceSystem: input.source.sourceSystem,
+    sourceRecordId: input.candidate.gmailMessageId,
+    rfiNumber: rfiNumber({
+      projectNumber: input.projectNumber,
+      existingCount: existing.length,
       id,
-      projectId: input.projectId,
-      sourceSystem: input.source.sourceSystem,
-      sourceRecordId: input.candidate.gmailMessageId,
-      rfiNumber: rfiNumber({
-        projectNumber: input.projectNumber,
-        existingCount: existing.length,
-        id,
-      }),
-      subject: title,
-      question: candidateBody(input.candidate),
-      status: "new",
-      priority: "normal",
-      audience: "internal",
-      requesterName: senderLabel(input.candidate),
-      submittedAt: input.candidate.receivedAt,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectRfis.id })
+    }),
+    subject: title,
+    question: candidateBody(input.candidate),
+    status: "new",
+    priority: "normal",
+    audience: "internal",
+    requesterName: senderLabel(input.candidate),
+    submittedAt: input.candidate.receivedAt,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   return { id, status: "routed_rfi" }
 }
@@ -376,9 +375,7 @@ async function routeTodo(input: {
     `Email from ${senderLabel(input.candidate)}`
   const title = input.delivery ? `Delivery: ${baseTitle}` : baseTitle
 
-  await input.db
-    .insert(projectOperations)
-    .values({
+  await insertOperationIfAbsent(input.db, {
       id,
       projectId: input.projectId,
       sourceSystem: input.source.sourceSystem,
@@ -398,7 +395,6 @@ async function routeTodo(input: {
       createdAt: input.now,
       updatedAt: input.now,
     })
-    .onConflictDoNothing({ target: projectOperations.id })
 
   return { id, status: "routed_todo" }
 }
@@ -426,9 +422,7 @@ async function routeRfq(input: {
     `RFQ from ${senderLabel(input.candidate)}`
   const prefix = input.projectNumber?.trim() || "PROJECT"
 
-  await input.db
-    .insert(projectOperations)
-    .values({
+  await insertOperationIfAbsent(input.db, {
       id,
       projectId: input.projectId,
       sourceSystem: input.source.sourceSystem,
@@ -447,7 +441,6 @@ async function routeRfq(input: {
       createdAt: input.now,
       updatedAt: input.now,
     })
-    .onConflictDoNothing({ target: projectOperations.id })
 
   return { id, status: "routed_rfq" }
 }

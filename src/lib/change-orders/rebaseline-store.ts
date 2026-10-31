@@ -18,6 +18,10 @@ import {
   updateChangeOrdersStatement,
   updateEstimatesStatement,
 } from "@/lib/domain/estimates/store"
+import {
+  activateBudgetProjectionStatement,
+  supersedeCurrentBudgetProjectionStatement,
+} from "@/lib/domain/budget/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 
@@ -247,24 +251,12 @@ export async function executeBaselineReplacement(
           eq(projectContractBudgetRevisions.status, "current")
         )
       ),
-    db
-      .update(projectBudgetApplications)
-      .set({ status: "budget_superseded", updatedAt: now })
-      .where(
-        and(
-          eq(projectBudgetApplications.projectId, projectId),
-          eq(projectBudgetApplications.status, "budget_current"),
-          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget_projection")
-        )
-      ),
+    supersedeCurrentBudgetProjectionStatement(db, projectId, now),
     db
       .update(projectContractBudgetRevisions)
       .set({ status: "current" })
       .where(eq(projectContractBudgetRevisions.id, preparedBudget.revisionId)),
-    db
-      .update(projectBudgetApplications)
-      .set({ status: "budget_current", ownerVisible: true, updatedAt: now })
-      .where(eq(projectBudgetApplications.id, projectionId)),
+    activateBudgetProjectionStatement(db, projectionId, now),
     // Migration 0148 guards this status write against financial activity
     // created after the read-side eligibility check. Any blocker aborts the
     // entire D1 batch, including estimate and budget activation above.

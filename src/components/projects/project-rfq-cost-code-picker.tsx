@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import type { ProjectRfqCostCodeOption } from "@/app/actions/project-operations"
+import type { ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
 import {
   SearchableCombobox,
   type SearchableComboboxOption,

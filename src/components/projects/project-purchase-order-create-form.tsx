@@ -12,14 +12,8 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import {
-  createPurchaseOrderRequest,
-  updatePurchaseOrderRequest,
-  type CreatePurchaseOrderLineInput,
-  type ProjectPurchaseOrderCostCodeOption,
-  type ProjectPurchaseOrderItem,
-  type ProjectPurchaseOrderPhaseOption,
-} from "@/app/actions/project-operations"
+import { createPurchaseOrderRequest, updatePurchaseOrderRequest } from "@/app/actions/project-purchase-orders"
+import type { CreatePurchaseOrderLineInput, ProjectPurchaseOrderCostCodeOption, ProjectPurchaseOrderItem, ProjectPurchaseOrderPhaseOption } from "@/lib/domain/operations/types"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
@@ -35,6 +29,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
+import { purchaseOrderLineAmount } from "@/lib/domain/operations/rules"
+import { cleanText } from "@/lib/shared/guards"
 import {
   Popover,
   PopoverContent,
@@ -296,8 +292,10 @@ function draftLinesFromPurchaseOrder(
     quantity: textFromNumber(line.quantity),
     unitCost: textFromNumber(line.unitCost),
     unit: line.unit ?? "",
+    // Blank unless the stored amount was a typed lump sum (compared to the cent).
     amount:
-      line.amount === line.quantity * line.unitCost
+      Math.round(line.amount * 100) ===
+      Math.round(purchaseOrderLineAmount({ quantity: line.quantity, unitCost: line.unitCost, amountOverride: null }) * 100)
         ? ""
         : textFromNumber(line.amount),
     taxGroup: line.taxGroup ?? "",
@@ -311,18 +309,13 @@ function numberFromText(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function cleanText(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
+/** Preview only: the server prices the line again with the same rule when it saves. */
 function lineAmount(line: DraftPurchaseOrderLine): number {
-  const amount = numberFromText(line.amount)
-  if (amount !== null) return amount
-
-  const quantity = numberFromText(line.quantity) ?? 0
-  const unitCost = numberFromText(line.unitCost) ?? 0
-  return quantity * unitCost
+  return purchaseOrderLineAmount({
+    quantity: numberFromText(line.quantity) ?? 0,
+    unitCost: numberFromText(line.unitCost) ?? 0,
+    amountOverride: numberFromText(line.amount),
+  })
 }
 
 function toLineInput(line: DraftPurchaseOrderLine): CreatePurchaseOrderLineInput {
@@ -333,7 +326,7 @@ function toLineInput(line: DraftPurchaseOrderLine): CreatePurchaseOrderLineInput
     quantity: numberFromText(line.quantity),
     unitCost: numberFromText(line.unitCost),
     unit: cleanText(line.unit),
-    amount: lineAmount(line),
+    amountOverride: numberFromText(line.amount),
     taxGroup: cleanText(line.taxGroup),
   }
 }

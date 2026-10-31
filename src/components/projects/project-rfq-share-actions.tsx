@@ -9,10 +9,8 @@ import {
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 
-import {
-  type ProjectRfqItem,
-  updateProjectOperationStatus,
-} from "@/app/actions/project-operations"
+import type { ProjectRfqItem } from "@/lib/domain/operations/types"
+import { updateProjectOperationStatus } from "@/app/actions/project-operations"
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { Button } from "@/components/ui/button"
 import type { ProjectBrand } from "@/lib/project-branding"
@@ -38,7 +36,7 @@ export function ProjectRfqShareActions({
 
   async function prepareForSharing(): Promise<boolean> {
     setShareError(null)
-    if (rfq.status !== "draft") return true
+    if (!rfq.actions.sharingMarksSent) return true
     const result = await updateProjectOperationStatus(
       projectId,
       rfq.id,

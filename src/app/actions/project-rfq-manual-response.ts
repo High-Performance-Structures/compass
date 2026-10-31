@@ -3,17 +3,13 @@
 import { and, desc, eq, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import {
   projectRfqBidApprovals,
   projectRfqManualResponseEvents,
 } from "@/db/schema-rfqs"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { operationUpdateQuery, rfqManualResponseEventFromSelectStatement } from "@/lib/domain/operations/store"
+import { orgContext } from "@/lib/server/action-context"
 import { rfqResponseCoversScope } from "@/lib/rfqs/bid-workflow"
 import {
   parsePortalRfqPayload,
@@ -68,11 +64,9 @@ function validDate(value: string): boolean {
 export async function getProjectRfqManualResponseEvents(
   projectId: string
 ): Promise<readonly ManualRfqResponseEventItem[]> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "rfqs", "read")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const context = await orgContext({ feature: "rfqs" })
+  if (!context.success) throw new Error(context.error)
+  const { db, organizationId } = context.data
   const project = await db.select({ id: projects.id }).from(projects).where(and(
     eq(projects.id, projectId), eq(projects.organizationId, organizationId)
   )).limit(1).then((rows) => rows[0] ?? null)
@@ -97,12 +91,10 @@ export async function saveManualProjectRfqResponse(
   input: ManualRfqResponseInput
 ): Promise<ManualRfqResponseResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-    await requireFeaturePermission(user, "rfqs", "update")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    // The project check keeps its own "Project not found." message.
+    const context = await orgContext({ feature: "rfqs", mutation: true })
+    if (!context.success) throw new Error(context.error)
+    const { db, user, organizationId } = context.data
     const project = await db.select({ id: projects.id }).from(projects).where(and(
       eq(projects.id, projectId), eq(projects.organizationId, organizationId)
     )).limit(1).then((rows) => rows[0] ?? null)
@@ -189,7 +181,7 @@ export async function saveManualProjectRfqResponse(
     const previousResponseJson = payload.vendorResponse ? JSON.stringify(payload.vendorResponse) : null
     const responseJson = JSON.stringify(response)
     const responseStatus = input.decision === "quote" ? "response_received" : "declined"
-    const insertEvent = db.insert(projectRfqManualResponseEvents).select(sql`SELECT
+    const insertEvent = rfqManualResponseEventFromSelectStatement(db, sql`SELECT
       ${eventId}, ${projectId}, ${rfqId}, ${receivedVia}, ${sourceReference},
       ${previousResponseJson}, ${responseJson}, ${user.id}, ${actorName}, ${now}
       FROM ${projectOperations}
@@ -203,18 +195,18 @@ export async function saveManualProjectRfqResponse(
         )`)
     await db.batch([
       insertEvent,
-      db.update(projectOperations).set({
-        status: responseStatus,
-        amount,
-        sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, response),
-        updatedAt: now,
-      }).where(and(
+      operationUpdateQuery(db, and(
         eq(projectOperations.id, rfqId),
         eq(projectOperations.projectId, projectId),
         eq(projectOperations.updatedAt, rfq.updatedAt),
         sql`EXISTS (SELECT 1 FROM ${projectRfqManualResponseEvents}
           WHERE ${projectRfqManualResponseEvents.id} = ${eventId})`
-      )),
+      ), {
+        status: responseStatus,
+        amount,
+        sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, response),
+        updatedAt: now,
+      }),
     ])
     const saved = await db.select({ id: projectRfqManualResponseEvents.id, updatedAt: projectOperations.updatedAt })
       .from(projectRfqManualResponseEvents)

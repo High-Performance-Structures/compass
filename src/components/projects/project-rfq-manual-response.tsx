@@ -8,7 +8,7 @@ import {
   saveManualProjectRfqResponse,
   type ManualRfqResponseEventItem,
 } from "@/app/actions/project-rfq-manual-response"
-import type { ProjectRfqItem } from "@/app/actions/project-operations"
+import type { ProjectRfqItem } from "@/lib/domain/operations/types"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -99,7 +99,7 @@ export function ProjectRfqManualResponse({
     <div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button type="button" variant="outline" size="sm" disabled={approved || !["draft", "sent", "response_received", "declined"].includes(rfq.status)}>
+          <Button type="button" variant="outline" size="sm" disabled={approved || !rfq.actions.canRecordResponse}>
             {rfq.vendorResponse ? <IconEdit className="size-4" /> : <IconMessageReply className="size-4" />}
             {rfq.vendorResponse ? "Update response" : "Record response"}
           </Button>

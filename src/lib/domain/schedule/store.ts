@@ -21,7 +21,7 @@ import {
   taskDependencies,
 } from "@/db/schema"
 import { scheduleTaskAssignees } from "@/db/schema-participants"
-import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { linkedTodoDateUpdateStatement } from "@/lib/domain/operations/store"
 import type { Db } from "@/lib/server/action-context"
 import type { ScheduleTaskData, TaskDependencyData, WorkdayExceptionData } from "@/lib/schedule/types"
 

@@ -4,6 +4,7 @@ import type { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { clearNuTechOrderAirlitePoNumber, setNuTechOrderAirlitePoSequence } from "@/lib/domain/nutech/store"
+import { updateOperations } from "@/lib/domain/operations/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { nextAirlitePoSequence } from "@/lib/nutech/airlite-workbook"
 
@@ -52,16 +53,15 @@ export async function assignNuTechAirlitePoNumber(
     await setNuTechOrderAirlitePoSequence(db, input.workflowId, sequence)
   }
   if (input.purchaseOrderId && !input.purchaseOrderReleased) {
-    await db
-      .update(projectOperations)
-      .set({ sourceRecordNumber: airlitePurchaseOrderNumber(input.projectNumber, sequence) })
-      .where(
-        and(
-          eq(projectOperations.id, input.purchaseOrderId),
-          eq(projectOperations.projectId, input.projectId),
-          eq(projectOperations.sourceRecordType, "purchase_order")
-        )
-      )
+    await updateOperations(
+      db,
+      and(
+        eq(projectOperations.id, input.purchaseOrderId),
+        eq(projectOperations.projectId, input.projectId),
+        eq(projectOperations.sourceRecordType, "purchase_order")
+      ),
+      { sourceRecordNumber: airlitePurchaseOrderNumber(input.projectNumber, sequence) }
+    )
   }
   return sequence
 }

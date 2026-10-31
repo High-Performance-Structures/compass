@@ -38,6 +38,7 @@ import type {
 } from "@/lib/schedule/types"
 import { buildProjectTemplateContentApplication } from "@/lib/templates/project-template-content-application"
 import { buildScheduleTemplateApplication } from "@/lib/templates/schedule-template-application"
+import { templateBidPackageInsertStatement, templateStaffTodoInsertStatement } from "@/lib/domain/operations/store"
 
 export type ProjectTemplateLibraryItem = {
   readonly id: string
@@ -512,24 +513,15 @@ export async function applyProjectTemplate(input: {
     }
     for (const todo of contentBuild.todos) {
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_operations (
-            id, project_id, source_system, source_record_type,
-            source_record_id, title, description, status, priority,
-            assignee_type, sage_write_status, sage_payload_json,
-            sync_direction, sync_status, created_at, updated_at
-          ) VALUES (?, ?, 'compass_template', 'staff_task', ?, ?, ?, 'open',
-            'normal', 'internal', 'not_ready', ?, 'write', 'compass_only', ?, ?)`
-        ).bind(
-          todo.id,
-          input.projectId,
-          todo.sourceRecordId,
-          todo.title,
-          todo.description,
-          todo.sourcePayloadJson,
+        templateStaffTodoInsertStatement(env.DB, {
+          id: todo.id,
+          projectId: input.projectId,
+          sourceRecordId: todo.sourceRecordId,
+          title: todo.title,
+          description: todo.description,
+          payloadJson: todo.sourcePayloadJson,
           now,
-          now
-        )
+        })
       )
     }
     const selectionRooms = new Set(
@@ -591,28 +583,16 @@ export async function applyProjectTemplate(input: {
     }
     for (const bidPackage of contentBuild.bidPackages) {
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_operations (
-            id, project_id, source_system, source_record_type,
-            source_record_id, title, description, status, priority,
-            assignee_type, cost_code, sage_cost_code, sage_write_status,
-            sage_payload_json, sync_direction, sync_status, created_at,
-            updated_at
-          ) VALUES (?, ?, 'compass_template', 'rfq', ?, ?, ?, 'draft',
-            'normal', 'vendor', ?, ?, 'not_ready', ?, 'write',
-            'compass_only', ?, ?)`
-        ).bind(
-          bidPackage.id,
-          input.projectId,
-          bidPackage.sourceRecordId,
-          bidPackage.title,
-          bidPackage.description,
-          bidPackage.costCode,
-          bidPackage.costCode,
-          bidPackage.sourcePayloadJson,
+        templateBidPackageInsertStatement(env.DB, {
+          id: bidPackage.id,
+          projectId: input.projectId,
+          sourceRecordId: bidPackage.sourceRecordId,
+          title: bidPackage.title,
+          description: bidPackage.description,
+          costCode: bidPackage.costCode,
+          payloadJson: bidPackage.sourcePayloadJson,
           now,
-          now
-        )
+        })
       )
     }
     statements.push(

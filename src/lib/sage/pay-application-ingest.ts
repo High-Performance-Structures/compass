@@ -15,6 +15,10 @@ import {
   type SagePayApplicationSnapshot,
 } from "@/lib/sage/pay-application-snapshot"
 import { validateSageSyncClaim } from "@/lib/sage/sync-claim"
+import {
+  sageSnapshotApplicationInsertStatement,
+  sageSnapshotBudgetLineInsertStatement,
+} from "@/lib/domain/budget/store"
 
 export type SagePayApplicationIngestResult =
   | {
@@ -449,17 +453,7 @@ export async function ingestSagePayApplicationSnapshot(
       reconciliationJson,
       now,
     }),
-    env.DB.prepare(
-      `INSERT INTO project_budget_applications (
-        id, project_id, source_system, source_record_id,
-        application_number, period_to, status,
-        original_contract_sum, net_changes, contract_sum_to_date,
-        total_completed_stored_to_date, retainage_held,
-        total_earned_less_retainage, previous_certificates,
-        current_payment_due, balance_to_finish, owner_visible,
-        sync_status, last_synced_at, created_at, updated_at
-      ) VALUES (?, ?, 'sage_read_snapshot', ?, ?, ?, 'imported_draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'synced', ?, ?, ?)`
-    ).bind(
+    sageSnapshotApplicationInsertStatement(env.DB, [
       applicationId,
       run.projectId,
       sourceRecordId,
@@ -476,24 +470,14 @@ export async function ingestSagePayApplicationSnapshot(
       snapshot.header.balanceToFinish,
       snapshot.capturedAt,
       now,
-      now
-    ),
+      now,
+    ]),
   ]
 
   for (const line of snapshot.lines) {
     const currentCosts = line.currentWorkCompleted + line.storedMaterials
     statements.push(
-      env.DB.prepare(
-        `INSERT INTO project_budget_lines (
-          id, project_id, application_id, source_system, source_record_id,
-          source_record_number, cost_code, csi_division, csi_division_name,
-          description, original_estimate, prior_changes, current_changes,
-          total_changes, adjusted_estimate, prior_costs, current_costs,
-          total_costs, percent_complete, balance_to_finish, retainage_held,
-          owner_visible, sort_order, sync_status, last_synced_at,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, 'sage_read_snapshot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'synced', ?, ?, ?)`
-      ).bind(
+      sageSnapshotBudgetLineInsertStatement(env.DB, [
         `${applicationId}:line:${encodeURIComponent(line.sourceLineId)}`,
         run.projectId,
         applicationId,
@@ -520,8 +504,8 @@ export async function ingestSagePayApplicationSnapshot(
         line.sortOrder,
         snapshot.capturedAt,
         now,
-        now
-      )
+        now,
+      ])
     )
   }
 

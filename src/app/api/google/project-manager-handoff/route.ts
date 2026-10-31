@@ -12,6 +12,7 @@ import {
   projectFamilyPhases,
 } from "@/db/schema-project-families"
 import { getCloudflareContext } from "@/lib/db"
+import { insertOperations, updateOperationsReturning } from "@/lib/domain/operations/store"
 import {
   baseProjectNumber,
   projectNumberPhaseNumber,
@@ -431,20 +432,15 @@ async function stageProjectForSageSync(
   }
 
   if (existing) {
-    const updated = await db
-      .update(projectOperations)
-      .set(values)
-      .where(
-        and(
-          eq(projectOperations.id, existing.id),
-          eq(projectOperations.updatedAt, existing.updatedAt),
-        ),
-      )
-      .returning({ id: projectOperations.id })
+    const updated = await updateOperationsReturning(
+      db,
+      and(eq(projectOperations.id, existing.id), eq(projectOperations.updatedAt, existing.updatedAt)),
+      values,
+    )
     return updated.length === 1
   }
 
-  await db.insert(projectOperations).values({
+  await insertOperations(db, {
     id: crypto.randomUUID(),
     projectId: input.projectId,
     amount: null,

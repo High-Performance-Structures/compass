@@ -271,11 +271,7 @@
       "src/lib/sage/contact-canonical.ts"
     ],
     "internalDutyEntries": [
-      "src/app/actions/daily-log-delete.ts",
-      "src/app/actions/internal-duties.ts",
-      "src/app/actions/project-field.ts",
-      "src/app/actions/recurring-duties.ts",
-      "src/lib/daily-logs/cost-code-lines.ts"
+      "src/lib/domain/duties/store.ts"
     ],
     "invoicePaymentAllocations": [
       "src/lib/sage/square-receivable.ts"
@@ -455,18 +451,10 @@
       "src/lib/project-archives.ts"
     ],
     "projectBudgetApplications": [
-      "src/app/actions/pay-application-billing.ts",
-      "src/app/actions/project-financial-workflows.ts",
-      "src/lib/change-orders/rebaseline-store.ts",
-      "src/lib/financials/contract-budget-store.ts",
-      "src/lib/financials/owner-pay-application-refresh.ts",
-      "src/lib/sage/pay-application-ingest.ts"
+      "src/lib/domain/budget/store.ts"
     ],
     "projectBudgetLines": [
-      "src/app/actions/project-financial-workflows.ts",
-      "src/lib/financials/contract-budget-store.ts",
-      "src/lib/financials/owner-pay-application-refresh.ts",
-      "src/lib/sage/pay-application-ingest.ts"
+      "src/lib/domain/budget/store.ts"
     ],
     "projectChangeOrderDocuments": [
       "src/lib/domain/estimates/store.ts"
@@ -546,14 +534,10 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectEstimateRfqBidImportLines": [
-      "src/app/actions/estimate-phase-proposals.ts",
-      "src/app/actions/project-estimates.ts",
-      "src/app/actions/project-rfq-bids.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectEstimateRfqBidImports": [
-      "src/app/actions/estimate-phase-proposals.ts",
-      "src/app/actions/project-estimates.ts",
-      "src/app/actions/project-rfq-bids.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectEstimates": [
       "src/app/actions/estimate-line-order.ts",
@@ -643,30 +627,7 @@
       "src/app/actions/project-number-reviews.ts"
     ],
     "projectOperations": [
-      "src/app/actions/nutech-orders.ts",
-      "src/app/actions/pay-application-billing.ts",
-      "src/app/actions/project-audience-sub-vendor.ts",
-      "src/app/actions/project-field.ts",
-      "src/app/actions/project-financial-workflows.ts",
-      "src/app/actions/project-operations.ts",
-      "src/app/actions/project-rfq-bids.ts",
-      "src/app/actions/project-rfq-email.ts",
-      "src/app/actions/project-rfq-manual-response.ts",
-      "src/app/actions/project-sage-handoff-review.ts",
-      "src/app/actions/project-selections.ts",
-      "src/app/actions/project-templates.ts",
-      "src/app/actions/projects.ts",
-      "src/app/actions/rfq-quote-link.ts",
-      "src/app/actions/schedule-template-import.ts",
-      "src/app/actions/schedule.ts",
-      "src/app/api/google/project-manager-handoff/route.ts",
-      "src/app/api/google/script-handoff/route.ts",
-      "src/lib/daily-logs/log-followups-server.ts",
-      "src/lib/email/project-inbound-routing.ts",
-      "src/lib/financials/owner-pay-application-refresh.ts",
-      "src/lib/nutech/airlite-po-number.ts",
-      "src/lib/sage/square-receivable.ts",
-      "src/lib/schedule/linked-todo-sync.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectPhaseProposals": [
       "src/lib/domain/estimates/store.ts"
@@ -694,7 +655,7 @@
       "src/lib/project-contact-tracker-refresh.ts"
     ],
     "projectPurchaseOrderLines": [
-      "src/app/actions/project-operations.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectRecordDriveFiles": [
       "src/app/actions/paper-trail.ts",
@@ -712,28 +673,22 @@
       "src/app/actions/project-registry-archive.ts"
     ],
     "projectRfiAttachments": [
-      "src/app/actions/project-rfis.ts"
+      "src/lib/domain/rfis/store.ts"
     ],
     "projectRfis": [
-      "src/app/actions/inbound-email-review.ts",
-      "src/app/actions/project-audience-sub-vendor.ts",
-      "src/app/actions/project-rfis.ts",
-      "src/lib/email/gmail-inbound.ts",
-      "src/lib/email/project-inbound-routing.ts"
+      "src/lib/domain/rfis/store.ts"
     ],
     "projectRfqBidApprovals": [
-      "src/app/actions/project-rfq-bids.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectRfqEmailDeliveries": [
-      "src/app/actions/project-rfq-email.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectRfqManualResponseEvents": [
-      "src/app/actions/project-rfq-manual-response.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectRfqQuoteLinks": [
-      "src/app/actions/project-rfq-email.ts",
-      "src/app/actions/rfq-quote-link.ts",
-      "src/app/quote/[token]/page.tsx"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectRouteAliases": [
       "src/app/actions/project-duplicates.ts",
@@ -798,7 +753,7 @@
       "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "projectTodoEvents": [
-      "src/lib/daily-logs/log-followups-server.ts"
+      "src/lib/domain/operations/store.ts"
     ],
     "projectTravelChargeOverrides": [
       "src/app/actions/project-travel-charges.ts"
@@ -835,10 +790,10 @@
       "src/app/actions/rate-book.ts"
     ],
     "recurringDuties": [
-      "src/app/actions/recurring-duties.ts"
+      "src/lib/domain/duties/store.ts"
     ],
     "recurringDutyCompletions": [
-      "src/app/actions/recurring-duties.ts"
+      "src/lib/domain/duties/store.ts"
     ],
     "rolePermissionOverrides": [
       "src/app/actions/permission-overrides.ts"
@@ -1016,8 +971,7 @@
       "src/app/actions/permission-overrides.ts"
     ],
     "tradeLetters": [
-      "src/app/actions/trade-letters.ts",
-      "src/lib/trade-letters/webhook.ts"
+      "src/lib/domain/trade-letters/store.ts"
     ],
     "travelChargeSettings": [
       "src/app/actions/travel-charges.ts"
@@ -1129,22 +1083,21 @@
     "src/app/actions/google-drive.ts": 1468,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1123,
-    "src/app/actions/nutech-orders.ts": 983,
+    "src/app/actions/nutech-orders.ts": 981,
     "src/app/actions/project-audience-preview.ts": 1192,
     "src/app/actions/project-change-orders.ts": 1665,
     "src/app/actions/project-documents.ts": 922,
     "src/app/actions/project-families.ts": 1827,
-    "src/app/actions/project-financial-workflows.ts": 1467,
-    "src/app/actions/project-operations.ts": 3266,
+    "src/app/actions/project-financial-workflows.ts": 1434,
     "src/app/actions/project-profile.ts": 2248,
     "src/app/actions/project-selections.ts": 1847,
-    "src/app/actions/project-templates.ts": 921,
-    "src/app/actions/projects.ts": 1833,
+    "src/app/actions/project-templates.ts": 901,
+    "src/app/actions/projects.ts": 1823,
     "src/app/actions/schedule-confirmations.ts": 1406,
     "src/app/actions/social-posts.ts": 1126,
     "src/app/actions/voice-sessions.ts": 986,
     "src/app/actions/work-calendar.ts": 2267,
-    "src/app/api/google/project-manager-handoff/route.ts": 822,
+    "src/app/api/google/project-manager-handoff/route.ts": 818,
     "src/app/dashboard/contacts/page.tsx": 993,
     "src/app/page.tsx": 1149,
     "src/components/agent/chat-view.tsx": 1047,
@@ -1164,12 +1117,12 @@
     "src/components/projects/project-estimate-workspace.tsx": 2490,
     "src/components/projects/project-hub-launchpad.tsx": 961,
     "src/components/projects/project-photo-review.tsx": 1367,
-    "src/components/projects/project-purchase-order-create-form.tsx": 1058,
-    "src/components/projects/project-rfq-create-form.tsx": 1343,
-    "src/components/projects/project-rfq-edit-form.tsx": 1074,
+    "src/components/projects/project-purchase-order-create-form.tsx": 1051,
+    "src/components/projects/project-rfq-create-form.tsx": 1339,
+    "src/components/projects/project-rfq-edit-form.tsx": 1069,
     "src/components/projects/projects-hub.tsx": 1670,
     "src/components/schedule/schedule-gantt-view.tsx": 1308,
-    "src/components/schedule/schedule-item-form-dialog.tsx": 2088,
+    "src/components/schedule/schedule-item-form-dialog.tsx": 2086,
     "src/components/schedule/schedule-list-view.tsx": 814,
     "src/components/schedule/schedule-view.tsx": 1698,
     "src/components/schedule/work-calendar-event-dialog.tsx": 822,
@@ -1180,8 +1133,8 @@
     "src/lib/agent/render/registry.tsx": 1809,
     "src/lib/auth.ts": 885,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
-    "src/lib/email/gmail-inbound.ts": 825,
-    "src/lib/email/project-inbound-routing.ts": 1050,
+    "src/lib/email/gmail-inbound.ts": 821,
+    "src/lib/email/project-inbound-routing.ts": 1043,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
     "src/lib/notifications/create-event.ts": 843,
@@ -1206,14 +1159,11 @@
     "src/app/actions/project-documents.ts": 1,
     "src/app/actions/project-families.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 1,
-    "src/app/actions/project-operations.ts": 2,
-    "src/app/actions/project-rfis.ts": 1,
     "src/app/actions/project-selections.ts": 1,
     "src/app/actions/project-warranty.ts": 1,
     "src/app/actions/projects.ts": 1,
     "src/app/actions/social-connections.ts": 1,
     "src/app/actions/social-posts.ts": 1,
-    "src/app/actions/trade-letters.ts": 1,
     "src/app/actions/voice-sessions.ts": 1,
     "src/app/api/conversations/attachments/[attachmentId]/route.ts": 1,
     "src/app/api/conversations/attachments/upload/route.ts": 1,
@@ -1231,9 +1181,6 @@
     "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": 1,
     "src/app/api/social/media/[photoId]/route.ts": 1,
     "src/app/dashboard/office-alerts/page.tsx": 1,
-    "src/app/dashboard/projects/[id]/purchase-orders/page.tsx": 1,
-    "src/app/dashboard/projects/[id]/rfis/page.tsx": 1,
-    "src/app/dashboard/projects/[id]/rfqs/page.tsx": 1,
     "src/app/dashboard/requests/[id]/page.tsx": 1,
     "src/app/dashboard/requests/my-requests-list.tsx": 1,
     "src/app/preview/projects/[id]/owner/budget/page.tsx": 2,
@@ -1279,26 +1226,14 @@
     "src/components/projects/project-estimate-workspace.tsx": 1,
     "src/components/projects/project-financial-workspace.tsx": 1,
     "src/components/projects/project-follow-up-aging.tsx": 1,
-    "src/components/projects/project-historical-rfq-list.tsx": 1,
     "src/components/projects/project-owner-pay-application-editor.tsx": 1,
-    "src/components/projects/project-purchase-order-create-form.tsx": 1,
-    "src/components/projects/project-rfi-create-form.tsx": 2,
-    "src/components/projects/project-rfi-email-sync-button.tsx": 1,
-    "src/components/projects/project-rfq-bid-actions.tsx": 1,
-    "src/components/projects/project-sage-sync-queue-panel.tsx": 2,
     "src/components/projects/project-selection-share-actions.tsx": 1,
-    "src/components/projects/project-todos-view.tsx": 1,
     "src/components/projects/project-video-upload.tsx": 1,
     "src/components/projects/project-warranty-workspace.tsx": 1,
-    "src/components/projects/purchase-order-document.tsx": 1,
     "src/components/projects/recurring-duties-board.tsx": 1,
     "src/components/projects/shop-ticket-document.tsx": 1,
     "src/components/projects/shop-tickets-workspace.tsx": 1,
-    "src/components/projects/trade-letter-dialog.tsx": 1,
-    "src/components/projects/trade-letters-section.tsx": 2,
-    "src/components/projects/trade-purchase-orders.tsx": 1,
     "src/components/rate-book/rate-book-fill-picker.tsx": 1,
-    "src/components/rfqs/quote-link-form.tsx": 1,
     "src/components/settings/account-deletion-requests-card.tsx": 1,
     "src/components/templates/estimate-template-editor.tsx": 1,
     "src/components/voice/realtimekit-meeting-window.tsx": 1,
@@ -1348,14 +1283,9 @@
     "src/lib/print/portal-report.ts": 1,
     "src/lib/print/rfq-print.ts": 1,
     "src/lib/purchase-orders/email.ts": 1,
-    "src/lib/purchase-orders/portal-response.ts": 1,
-    "src/lib/purchase-orders/ship-to.ts": 1,
     "src/lib/push/providers.ts": 1,
     "src/lib/rate-book/model.ts": 1,
-    "src/lib/rfqs/bid-workflow.ts": 1,
     "src/lib/rfqs/email.ts": 1,
-    "src/lib/rfqs/portal-response.ts": 1,
-    "src/lib/rfqs/vendor-response.ts": 2,
     "src/lib/sage/client-directory-import.ts": 1,
     "src/lib/sage/pay-application-ingest.ts": 1,
     "src/lib/sage/square-payment.ts": 1,
@@ -1367,7 +1297,6 @@
     "src/lib/social/x.ts": 1,
     "src/lib/templates/buildertrend-template-capture.ts": 1,
     "src/lib/templates/buildertrend-template-inventory.ts": 1,
-    "src/lib/trade-letters/letter-pdf.ts": 1,
     "src/lib/warranty/google-drive.ts": 1
   },
   "envCasts": {
@@ -1407,7 +1336,6 @@
     "src/lib/portfolio-map/load.ts": 1,
     "src/lib/print/audience-record-reports.ts": 3,
     "src/lib/print/open-print-snapshot.ts": 1,
-    "src/lib/print/rfq-print.ts": 1,
     "src/lib/project-audience-dashboard.ts": 3,
     "src/lib/project-audience-direct-message.ts": 1,
     "src/lib/quick-add-server.ts": 1,
@@ -1503,7 +1431,6 @@
     "src/app/actions/greeting-cards.ts": 8,
     "src/app/actions/inbound-email-review.ts": 1,
     "src/app/actions/inbound-sms-review.ts": 1,
-    "src/app/actions/internal-duties.ts": 1,
     "src/app/actions/internal-workspaces.ts": 2,
     "src/app/actions/invites.ts": 5,
     "src/app/actions/job-emails.ts": 1,
@@ -1547,16 +1474,10 @@
     "src/app/actions/project-links.ts": 1,
     "src/app/actions/project-messages.ts": 2,
     "src/app/actions/project-number-reviews.ts": 1,
-    "src/app/actions/project-operations.ts": 3,
     "src/app/actions/project-profile.ts": 6,
     "src/app/actions/project-registry-archive.ts": 1,
     "src/app/actions/project-registry.ts": 2,
     "src/app/actions/project-rfi-email.ts": 1,
-    "src/app/actions/project-rfis.ts": 2,
-    "src/app/actions/project-rfq-bids.ts": 1,
-    "src/app/actions/project-rfq-email.ts": 1,
-    "src/app/actions/project-rfq-manual-response.ts": 2,
-    "src/app/actions/project-sage-handoff-review.ts": 1,
     "src/app/actions/project-selections.ts": 2,
     "src/app/actions/project-site-weather.ts": 2,
     "src/app/actions/project-templates.ts": 7,
@@ -1571,7 +1492,6 @@
     "src/app/actions/provider-config.ts": 4,
     "src/app/actions/rate-book.ts": 1,
     "src/app/actions/record-email-replies.ts": 1,
-    "src/app/actions/recurring-duties.ts": 1,
     "src/app/actions/rfq-quote-link.ts": 1,
     "src/app/actions/sage-client-directory.ts": 2,
     "src/app/actions/sage-contact-changes.ts": 6,
@@ -1589,7 +1509,6 @@
     "src/app/actions/staff-message-desk.ts": 1,
     "src/app/actions/template-import-options.ts": 3,
     "src/app/actions/themes.ts": 4,
-    "src/app/actions/trade-letters.ts": 1,
     "src/app/actions/travel-charges.ts": 1,
     "src/app/actions/user-schedule-preferences.ts": 1,
     "src/app/actions/users.ts": 5,

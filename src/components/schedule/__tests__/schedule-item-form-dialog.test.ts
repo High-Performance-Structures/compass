@@ -62,7 +62,7 @@ vi.mock("@/app/actions/schedule-confirmations", () => ({
   sendScheduleTaskReminder: vi.fn(),
 }))
 
-vi.mock("@/app/actions/project-operations", () => ({
+vi.mock("@/app/actions/project-todos", () => ({
   getScheduleTaskTodos: vi.fn(async () => []),
 }))
 

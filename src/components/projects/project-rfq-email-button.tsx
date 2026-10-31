@@ -5,7 +5,7 @@ import { IconMail, IconSend } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 
 import { sendProjectRfqEmail, type RfqEmailDeliveryItem } from "@/app/actions/project-rfq-email"
-import type { ProjectRfqItem } from "@/app/actions/project-operations"
+import type { ProjectRfqItem } from "@/lib/domain/operations/types"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -72,7 +72,7 @@ export function ProjectRfqEmailButton({
     router.refresh()
   }
 
-  const canSend = rfq.templateReview === null && ["draft", "sent"].includes(rfq.status)
+  const canSend = rfq.actions.canEmail
   return (
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next)

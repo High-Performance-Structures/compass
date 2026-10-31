@@ -40,25 +40,7 @@ import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
-
-function formatDate(value: string | null): string {
-  if (!value) return "No due date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
+import { formatDate, formatDateTime } from "@/lib/format"
 
 function label(value: string): string {
   return value
@@ -322,7 +304,7 @@ export default async function ProjectRfisPage({
                   {rfi.companyName && <span>{rfi.companyName}</span>}
                   {rfi.assignedToName && <span>Assigned: {rfi.assignedToName}</span>}
                   {rfi.assignedVendor && <span>Vendor access: {rfi.assignedVendor.label}</span>}
-                  <span>Response needed by {formatDate(rfi.dueDate)}</span>
+                  <span>Response needed by {formatDate(rfi.dueDate, "medium", "No due date")}</span>
                   {rfi.attachmentCount > 0 && (
                     <span>
                       {rfi.attachmentCount} attachment

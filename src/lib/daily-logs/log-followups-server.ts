@@ -13,6 +13,7 @@ import {
   users,
 } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
+import { insertOperations, recordTodoEvent, updateOperations } from "@/lib/domain/operations/store"
 import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
 import type { DailyLogWorkLine } from "@/lib/daily-logs/daily-log-form"
 import {
@@ -275,36 +276,6 @@ export function linkedWorkLines(lines: readonly DailyLogWorkLine[], todoIds: Rea
   return lines.map((line) => (line.todoId && !todoIds.has(line.todoId) ? { ...line, todoId: null } : line))
 }
 
-export async function recordTodoEvent(
-  db: Db,
-  event: {
-    readonly organizationId: string
-    readonly projectId: string
-    readonly todoId: string
-    readonly kind: "created" | "worked" | "still_blocked" | "unblocked" | "status"
-    readonly dailyLogId: string | null
-    readonly fromStatus: string | null
-    readonly toStatus: string | null
-    readonly note: string | null
-    readonly actorId: string | null
-    readonly createdAt?: string
-  },
-): Promise<void> {
-  await db.insert(projectTodoEvents).values({
-    id: crypto.randomUUID(),
-    organizationId: event.organizationId,
-    projectId: event.projectId,
-    todoId: event.todoId,
-    kind: event.kind,
-    dailyLogId: event.dailyLogId,
-    fromStatus: event.fromStatus,
-    toStatus: event.toStatus,
-    note: event.note?.trim().slice(0, 500) || null,
-    actorId: event.actorId,
-    createdAt: event.createdAt ?? new Date().toISOString(),
-  })
-}
-
 function assigneeTypeFor(recordType: DailyLogTodoType): string {
   if (recordType === "subcontractor_task") return "subcontractor"
   if (recordType === "supplier_task") return "supplier"
@@ -373,10 +344,10 @@ export async function applyDailyLogFollowUps(
       status = next
     }
     if (status !== todo.status) {
-      await db
-        .update(projectOperations)
-        .set({ status, updatedAt: now })
-        .where(and(eq(projectOperations.id, todo.id), eq(projectOperations.projectId, projectId)))
+      await updateOperations(db, and(eq(projectOperations.id, todo.id), eq(projectOperations.projectId, projectId)), {
+        status,
+        updatedAt: now,
+      })
     }
   }
 
@@ -459,7 +430,7 @@ export async function applyDailyLogFollowUps(
     const id = crypto.randomUUID()
     todoCount += 1
     const recordType = DAILY_LOG_TODO_TYPES.find((type) => type === todo.recordType) ?? "staff_task"
-    await db.insert(projectOperations).values({
+    await insertOperations(db, {
       id,
       projectId,
       sourceSystem: "compass",
