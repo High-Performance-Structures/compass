@@ -1,7 +1,8 @@
 import {
+  index,
+  integer,
   sqliteTable,
   text,
-  integer,
 } from "drizzle-orm/sqlite-core"
 import { users, organizations } from "./schema"
 
@@ -20,7 +21,10 @@ export const mcpApiKeys = sqliteTable("mcp_api_keys", {
   isActive: integer("is_active", { mode: "boolean" })
     .notNull()
     .default(true),
-})
+},
+  (table) => [
+    index("mcp_api_keys_user_id_idx").on(table.userId),
+  ])
 
 export const mcpUsage = sqliteTable("mcp_usage", {
   id: text("id").primaryKey(),
@@ -35,7 +39,10 @@ export const mcpUsage = sqliteTable("mcp_usage", {
   errorMessage: text("error_message"),
   durationMs: integer("duration_ms").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("mcp_usage_api_key_id_idx").on(table.apiKeyId),
+  ])
 
 export type McpApiKey = typeof mcpApiKeys.$inferSelect
 export type NewMcpApiKey = typeof mcpApiKeys.$inferInsert
@@ -62,7 +69,10 @@ export const mcpServers = sqliteTable("mcp_servers", {
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id),
-})
+},
+  (table) => [
+    index("mcp_servers_org_id_idx").on(table.orgId),
+  ])
 
 export type McpServer = typeof mcpServers.$inferSelect
 export type NewMcpServer = typeof mcpServers.$inferInsert

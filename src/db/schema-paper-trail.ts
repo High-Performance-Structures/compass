@@ -71,6 +71,7 @@ export const projectRecordDriveFiles = sqliteTable(
     uniqueIndex("project_record_drive_files_record_idx").on(table.recordType, table.recordId),
     index("project_record_drive_files_due_idx").on(table.status, table.dueAt),
     index("project_record_drive_files_project_idx").on(table.projectId),
+    index("project_record_drive_files_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -103,6 +104,7 @@ export const projectRecordDriveSnapshots = sqliteTable(
   (table) => [
     index("project_record_drive_snapshots_due_idx").on(table.status, table.requestedAt),
     uniqueIndex("project_record_drive_snapshots_record_idx").on(table.recordType, table.recordId, table.milestone, table.milestoneAt),
+    index("project_record_drive_snapshots_project_id_idx").on(table.projectId),
   ],
 )
 

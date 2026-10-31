@@ -74,6 +74,8 @@ export const projectWarrantyClaims = sqliteTable(
     ),
     index("project_warranty_claims_assigned_contact_idx").on(table.projectId, table.assignedProjectContactId),
     index("project_warranty_claims_assigned_vendor_idx").on(table.projectId, table.assignedVendorId),
+    index("project_warranty_claims_assigned_vendor_id_idx").on(table.assignedVendorId),
+    index("project_warranty_claims_assigned_project_contact_id_idx").on(table.assignedProjectContactId),
   ]
 )
 
@@ -146,6 +148,7 @@ export const projectWarrantyClaimEvents = sqliteTable(
       table.claimId,
       table.createdAt
     ),
+    index("project_warranty_claim_events_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -190,6 +193,7 @@ export const buildertrendWarrantyClaimStaging = sqliteTable(
       table.updatedAt
     ),
     index("buildertrend_warranty_staging_project_idx").on(table.projectId),
+    index("buildertrend_warranty_claim_staging_promoted_claim_id_idx").on(table.promotedClaimId),
   ]
 )
 

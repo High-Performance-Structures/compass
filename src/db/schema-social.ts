@@ -64,6 +64,7 @@ export const socialConnectionDrafts = sqliteTable(
       table.userId,
       table.expiresAt,
     ),
+    index("social_connection_drafts_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -158,6 +159,7 @@ export const socialPostTargets = sqliteTable(
       table.accountId,
     ),
     index("social_post_targets_status_idx").on(table.status, table.updatedAt),
+    index("social_post_targets_account_id_idx").on(table.accountId),
   ],
 )
 
@@ -181,6 +183,7 @@ export const socialProjectAlbums = sqliteTable(
       table.accountId,
       table.projectId,
     ),
+    index("social_project_albums_project_id_idx").on(table.projectId),
   ],
 )
 

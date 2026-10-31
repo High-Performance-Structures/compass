@@ -62,5 +62,6 @@ export const rateBookEntryHistory = sqliteTable(
     changedAt: text("changed_at").notNull(),
     changedBy: text("changed_by").references(() => users.id, { onDelete: "set null" }),
   },
-  (table) => [index("rate_book_entry_history_entry_idx").on(table.entryId, table.version)],
+  (table) => [index("rate_book_entry_history_entry_idx").on(table.entryId, table.version),
+    index("rate_book_entry_history_organization_id_idx").on(table.organizationId)],
 )

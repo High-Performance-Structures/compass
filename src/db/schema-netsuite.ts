@@ -93,6 +93,8 @@ export const invoices = sqliteTable("invoices", {
     .where(sql`${table.organizationId} IS NOT NULL AND ${table.sourceExternalId} IS NOT NULL AND trim(${table.sourceExternalId}) <> ''`),
   check("invoices_source_system_check", sql`${table.sourceSystem} IN ('buildertrend', 'compass', 'manual', 'sage')`),
   check("invoices_source_scope_check", sql`${table.sourceExternalId} IS NULL OR (trim(${table.sourceExternalId}) <> '' AND ${table.organizationId} IS NOT NULL AND ${table.projectId} IS NOT NULL)`),
+    index("invoices_project_id_idx").on(table.projectId),
+    index("invoices_customer_id_idx").on(table.customerId),
 ])
 
 export const vendorBills = sqliteTable("vendor_bills", {
@@ -116,7 +118,11 @@ export const vendorBills = sqliteTable("vendor_bills", {
   lineItems: text("line_items"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("vendor_bills_project_id_idx").on(table.projectId),
+    index("vendor_bills_vendor_id_idx").on(table.vendorId),
+  ])
 
 export const payments = sqliteTable("payments", {
   id: text("id").primaryKey(),
@@ -159,6 +165,9 @@ export const payments = sqliteTable("payments", {
       AND typeof(${table.netAmountCents}) = 'integer' AND ${table.netAmountCents} BETWEEN 0 AND 9007199254740991
       AND ${table.grossAmountCents} = ${table.processingFeeCents} + ${table.netAmountCents})
   `),
+    index("payments_project_id_idx").on(table.projectId),
+    index("payments_vendor_id_idx").on(table.vendorId),
+    index("payments_customer_id_idx").on(table.customerId),
 ])
 
 export const creditMemos = sqliteTable("credit_memos", {
@@ -191,6 +200,8 @@ export const creditMemos = sqliteTable("credit_memos", {
   check("credit_memos_source_system_check", sql`${table.sourceSystem} IN ('buildertrend', 'compass', 'manual', 'sage')`),
   check("credit_memos_source_scope_check", sql`${table.sourceExternalId} IS NULL OR (trim(${table.sourceExternalId}) <> '' AND ${table.organizationId} IS NOT NULL AND ${table.projectId} IS NOT NULL)`),
   check("credit_memos_non_cash_check", sql`${table.cashReceipt} = 0`),
+    index("credit_memos_project_id_idx").on(table.projectId),
+    index("credit_memos_customer_id_idx").on(table.customerId),
 ])
 
 export const invoicePaymentAllocations = sqliteTable(
@@ -223,6 +234,7 @@ export const invoicePaymentAllocations = sqliteTable(
       foreignColumns: [payments.organizationId, payments.projectId, payments.id],
       name: "invoice_payment_allocations_payment_scope_fk",
     }).onDelete("restrict"),
+    index("invoice_payment_allocations_project_id_idx").on(table.projectId),
   ],
 )
 
@@ -256,6 +268,7 @@ export const invoiceCreditAllocations = sqliteTable(
       foreignColumns: [creditMemos.organizationId, creditMemos.projectId, creditMemos.id],
       name: "invoice_credit_allocations_credit_scope_fk",
     }).onDelete("restrict"),
+    index("invoice_credit_allocations_project_id_idx").on(table.projectId),
   ],
 )
 

@@ -151,6 +151,7 @@ export const contractPackets = sqliteTable(
       table.versionNumber
     ),
     uniqueIndex("contract_packets_foxit_envelope_uq").on(table.foxitEnvelopeId),
+    index("contract_packets_estimate_id_idx").on(table.estimateId),
   ]
 )
 
@@ -193,6 +194,8 @@ export const contractPacketDocuments = sqliteTable(
       table.projectId,
       table.packetId
     ),
+    index("contract_packet_documents_template_version_id_idx").on(table.templateVersionId),
+    index("contract_packet_documents_template_id_idx").on(table.templateId),
   ]
 )
 

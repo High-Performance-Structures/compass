@@ -195,6 +195,8 @@ export const scheduleTemplateDependencies = sqliteTable(
       table.successorItemId,
       table.type
     ),
+    index("schedule_template_dependencies_successor_item_id_idx").on(table.successorItemId),
+    index("schedule_template_dependencies_predecessor_item_id_idx").on(table.predecessorItemId),
   ]
 )
 
@@ -294,6 +296,7 @@ export const projectTemplateApplications = sqliteTable(
       table.templateId,
       table.status
     ),
+    index("project_template_applications_version_id_idx").on(table.versionId),
   ]
 )
 
@@ -321,6 +324,7 @@ export const projectTemplateApplicationItems = sqliteTable(
       table.applicationId,
       table.templateItemId
     ),
+    index("project_template_application_items_template_item_id_idx").on(table.templateItemId),
   ]
 )
 

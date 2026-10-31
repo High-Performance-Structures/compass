@@ -275,6 +275,8 @@ export const nuTechOrderItems = sqliteTable(
       table.workflowId,
       table.sortOrder
     ),
+    index("nutech_order_items_catalog_version_id_idx").on(table.catalogVersionId),
+    index("nutech_order_items_product_id_idx").on(table.productId),
   ]
 )
 

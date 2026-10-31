@@ -71,6 +71,7 @@ export const projectSourceRecordParticipants = sqliteTable(
       table.membershipStatus,
       table.active,
     ),
+    index("project_source_record_participants_project_id_idx").on(table.projectId),
   ],
 )
 
@@ -136,6 +137,8 @@ export const scheduleTaskAssignees = sqliteTable(
       table.projectContactId,
     ),
     index("schedule_task_assignees_participant_idx").on(table.participantId),
+    index("schedule_task_assignees_project_contact_id_idx").on(table.projectContactId),
+    index("schedule_task_assignees_assigned_user_id_idx").on(table.assignedUserId),
   ],
 )
 

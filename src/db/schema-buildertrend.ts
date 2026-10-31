@@ -223,6 +223,7 @@ export const buildertrendScheduleTaskSourceLinks = sqliteTable(
     index("buildertrend_schedule_task_source_task_idx").on(
       table.scheduleTaskId
     ),
+    index("buildertrend_schedule_task_source_links_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -294,6 +295,8 @@ export const buildertrendAccessCandidates = sqliteTable(
       table.organizationId,
       table.portalAccessStatus
     ),
+    index("buildertrend_staging_access_candidates_matched_vendor_id_idx").on(table.matchedVendorId),
+    index("buildertrend_staging_access_candidates_matched_customer_id_idx").on(table.matchedCustomerId),
   ]
 )
 
@@ -375,6 +378,7 @@ export const buildertrendModuleAttestations = sqliteTable(
       "buildertrend_module_attestations_observed_count_check",
       sql`${table.observedCount} >= 0`
     ),
+    index("buildertrend_module_attestations_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -469,6 +473,8 @@ export const buildertrendIdentityDecisions = sqliteTable(
       "buildertrend_identity_decisions_no_portal_access",
       sql`${table.portalIdentityAllowed} = 0`
     ),
+    index("buildertrend_staging_identity_decisions_customer_provenance_id_idx").on(table.customerProvenanceId),
+    index("buildertrend_staging_identity_decisions_source_record_id_idx").on(table.sourceRecordId),
   ]
 )
 
@@ -519,6 +525,8 @@ export const buildertrendIdentityRelationships = sqliteTable(
       "buildertrend_identity_relationships_no_portal_access",
       sql`${table.grantsPortalAccess} = 0`
     ),
+    index("buildertrend_staging_identity_relationships_to_decision_id_idx").on(table.toDecisionId),
+    index("buildertrend_staging_identity_relationships_from_decision_id_idx").on(table.fromDecisionId),
   ]
 )
 

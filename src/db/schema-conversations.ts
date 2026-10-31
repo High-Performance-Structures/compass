@@ -33,7 +33,12 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("channels_project_id_idx").on(table.projectId),
+    index("channels_organization_id_idx").on(table.organizationId),
+    index("channels_category_id_idx").on(table.categoryId),
+  ])
 
 // messages - chat messages with markdown support, threading, pins
 // Note: threadId is a self-reference, which TypeScript handles via deferred evaluation
@@ -55,7 +60,14 @@ export const messages = sqliteTable("messages", {
   replyCount: integer("reply_count").notNull().default(0),
   lastReplyAt: text("last_reply_at"),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("messages_channel_thread_created_idx").on(table.channelId, table.threadId, table.createdAt),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("messages_thread_created_idx").on(table.threadId, table.createdAt),
+    index("messages_user_id_idx").on(table.userId),
+  ])
 
 // message_attachments - files, images, etc
 export const messageAttachments = sqliteTable("message_attachments", {
@@ -70,7 +82,10 @@ export const messageAttachments = sqliteTable("message_attachments", {
   width: integer("width"),
   height: integer("height"),
   uploadedAt: text("uploaded_at").notNull(),
-})
+},
+  (table) => [
+    index("message_attachments_message_id_idx").on(table.messageId),
+  ])
 
 // message_reactions - emoji reactions
 export const messageReactions = sqliteTable("message_reactions", {
@@ -83,7 +98,11 @@ export const messageReactions = sqliteTable("message_reactions", {
     .references(() => users.id, { onDelete: "cascade" }),
   emoji: text("emoji").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("message_reactions_user_id_idx").on(table.userId),
+    index("message_reactions_message_id_idx").on(table.messageId),
+  ])
 
 // message_mentions - @user, @channel, @here, @agent mentions
 export const messageMentions = sqliteTable("message_mentions", {
@@ -94,7 +113,10 @@ export const messageMentions = sqliteTable("message_mentions", {
   mentionType: text("mention_type").notNull(), // "user" | "channel" | "here" | "agent"
   targetId: text("target_id"), // userId for user, "compass-agent" for agent, null for channel/here
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("message_mentions_message_id_idx").on(table.messageId),
+  ])
 
 // channel_members - who can access which channels
 export const channelMembers = sqliteTable("channel_members", {
@@ -108,7 +130,13 @@ export const channelMembers = sqliteTable("channel_members", {
   role: text("role").notNull().default("member"), // owner | moderator | member
   notifyLevel: text("notify_level").notNull().default("all"), // all | mentions | none
   joinedAt: text("joined_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("channel_members_channel_user_idx").on(table.channelId, table.userId),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("channel_members_user_idx").on(table.userId),
+  ])
 
 // typing_sessions - active typing indicators with TTL
 export const typingSessions = sqliteTable("typing_sessions", {
@@ -121,7 +149,11 @@ export const typingSessions = sqliteTable("typing_sessions", {
     .references(() => users.id, { onDelete: "cascade" }),
   startedAt: text("started_at").notNull(),
   expiresAt: text("expires_at").notNull(), // 5-second TTL
-})
+},
+  (table) => [
+    index("typing_sessions_user_id_idx").on(table.userId),
+    index("typing_sessions_channel_id_idx").on(table.channelId),
+  ])
 
 // user_presence - online status and activity
 export const userPresence = sqliteTable("user_presence", {
@@ -135,7 +167,10 @@ export const userPresence = sqliteTable("user_presence", {
   // Updated only by real user input, not by connection heartbeats.
   lastActiveAt: text("last_active_at"),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("user_presence_user_id_idx").on(table.userId),
+  ])
 
 // channel_categories - organize channels into groups
 export const channelCategories = sqliteTable("channel_categories", {
@@ -147,7 +182,10 @@ export const channelCategories = sqliteTable("channel_categories", {
   position: integer("position").notNull().default(0),
   collapsedByDefault: integer("collapsed_by_default", { mode: "boolean" }).default(false),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("channel_categories_organization_id_idx").on(table.organizationId),
+  ])
 
 // channel_read_state - unread tracking per user per channel
 export const channelReadState = sqliteTable("channel_read_state", {
@@ -161,7 +199,11 @@ export const channelReadState = sqliteTable("channel_read_state", {
   lastReadMessageId: text("last_read_message_id"),
   lastReadAt: text("last_read_at").notNull(),
   unreadCount: integer("unread_count").notNull().default(0),
-})
+},
+  (table) => [
+    index("channel_read_state_channel_id_idx").on(table.channelId),
+    index("channel_read_state_user_id_idx").on(table.userId),
+  ])
 
 export const voiceParticipants = sqliteTable(
   "voice_participants",
@@ -208,6 +250,7 @@ export const voiceSignals = sqliteTable(
   (table) => [
     index("voice_signals_target_idx").on(table.channelId, table.targetUserId),
     index("voice_signals_created_idx").on(table.channelId, table.createdAt),
+    index("voice_signals_target_user_id_idx").on(table.targetUserId),
   ]
 )
 

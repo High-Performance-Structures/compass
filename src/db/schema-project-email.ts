@@ -22,6 +22,9 @@ export const projectEmailCampaigns = sqliteTable("project_email_campaigns", {
 }, (table) => [
   uniqueIndex("project_email_campaign_message_unique").on(table.messageId),
   index("project_email_campaign_project_idx").on(table.organizationId, table.projectId),
+    index("project_email_campaigns_reply_thread_id_idx").on(table.replyThreadId),
+    index("project_email_campaigns_conversation_id_idx").on(table.conversationId),
+    index("project_email_campaigns_project_id_idx").on(table.projectId),
 ])
 
 /** Email-only recipients are not correspondence participants and gain no portal access. */
