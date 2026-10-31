@@ -3,7 +3,7 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -36,7 +36,7 @@ async function viewerContext(projectIds: readonly string[]) {
   if (user.organizationId && isInternalStaffRole(user.role)) {
     return { db, ctx, organizationId: user.organizationId, projectIds: requested, staff: true }
   }
-  const accessible = new Set((await getProjects()).map((project) => project.id))
+  const accessible = new Set((await listProjectsForCurrentUser()).map((project) => project.id))
   const allowed = requested.filter((id) => accessible.has(id))
   const first = allowed[0]
   if (!first) return { db, ctx, organizationId: null, projectIds: [], staff: false }

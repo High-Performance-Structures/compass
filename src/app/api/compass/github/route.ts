@@ -24,9 +24,8 @@ const GITHUB_ROLES: ReadonlySet<string> = new Set([
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
-  const envRecord = env as unknown as Record<string, string>
 
-  const auth = await validateAgentAuth(req, envRecord)
+  const auth = await validateAgentAuth(req, env)
   if (!auth.valid) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,

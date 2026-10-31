@@ -15,25 +15,6 @@ vi.mock("@/lib/agent/memory", () => ({
   saveMemory: vi.fn(),
   searchMemories: vi.fn().mockResolvedValue([]),
 }))
-vi.mock("@/app/actions/plugins", () => ({
-  installSkill: vi.fn(),
-  uninstallSkill: vi.fn(),
-  toggleSkill: vi.fn(),
-  getInstalledSkills: vi.fn().mockResolvedValue([]),
-}))
-vi.mock("@/app/actions/themes", () => ({
-  getCustomThemes: vi
-    .fn()
-    .mockResolvedValue({ success: true, data: [] }),
-  setUserThemePreference: vi
-    .fn()
-    .mockResolvedValue({ success: true }),
-}))
-vi.mock("@/app/actions/dashboards", () => ({
-  getCustomDashboards: vi
-    .fn()
-    .mockResolvedValue({ success: true, data: [] }),
-}))
 vi.mock("@/lib/theme/presets", () => ({
   THEME_PRESETS: [
     {
@@ -47,7 +28,18 @@ vi.mock("@/lib/theme/presets", () => ({
 import {
   executeBridgeTool,
   getAvailableTools,
+  type BridgeToolActions,
 } from "../tool-adapter"
+
+const actions: BridgeToolActions = {
+  installSkill: vi.fn(),
+  uninstallSkill: vi.fn(),
+  toggleSkill: vi.fn(),
+  getInstalledSkills: vi.fn().mockResolvedValue([]),
+  getCustomThemes: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  setUserThemePreference: vi.fn().mockResolvedValue({ success: true }),
+  getCustomDashboards: vi.fn().mockResolvedValue({ success: true, data: [] }),
+}
 
 describe("executeBridgeTool", () => {
   it("returns error for unknown tool", async () => {
@@ -57,6 +49,7 @@ describe("executeBridgeTool", () => {
       "member",
       {},
       ["read"],
+      actions,
     )
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -71,6 +64,7 @@ describe("executeBridgeTool", () => {
       "member",
       { content: "test", memoryType: "note" },
       ["read"],
+      actions,
     )
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -86,6 +80,7 @@ describe("executeBridgeTool", () => {
       "admin",
       { source: "github:foo/bar" },
       ["read"],
+      actions,
     )
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -100,6 +95,7 @@ describe("executeBridgeTool", () => {
       "admin",
       { source: "github:foo/bar" },
       ["write"],
+      actions,
     )
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -114,6 +110,7 @@ describe("executeBridgeTool", () => {
       "member",
       {},
       ["write"],
+      actions,
     )
     expect(result.success).toBe(true)
   })
@@ -125,6 +122,7 @@ describe("executeBridgeTool", () => {
       "member",
       {},
       ["admin"],
+      actions,
     )
     expect(result.success).toBe(true)
   })
@@ -136,6 +134,7 @@ describe("executeBridgeTool", () => {
       "member",
       { themeId: "default" },
       ["admin"],
+      actions,
     )
     // setTheme calls a mocked function, should succeed
     expect(result.success).toBe(true)
@@ -156,6 +155,7 @@ describe("executeBridgeTool", () => {
       "member",
       { query: "test" },
       ["read"],
+      actions,
     )
     expect(result.success).toBe(false)
     if (!result.success) {

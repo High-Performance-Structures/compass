@@ -2,7 +2,6 @@
 
 import { and, eq, isNull, notExists, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { z } from "zod/v4"
 import {
   projectFinishSelections,
   projectChangeOrders,
@@ -21,24 +20,13 @@ import {
   moneyCents,
   specificationJson,
 } from "@/lib/selections/decisions"
+import { publishSelectionSchema, type PublishSelectionInput } from "@/lib/selections/publish-input"
+
+export type { PublishSelectionInput } from "@/lib/selections/publish-input"
 
 type Result =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
-const publishSchema = z.object({
-  selectionId: z.string().min(1),
-  expectedRevision: z.number().int().nonnegative(),
-  selectionUpdatedAt: z.string(),
-  published: z.boolean(),
-  decisionDueDate: z.string().max(10),
-  allowance: z.string(),
-  price: z.string(),
-  scheduleImpact: z.string().max(2000),
-  ownerNote: z.string().max(4000),
-  requiresChangeOrder: z.boolean(),
-  changeOrderId: z.string(),
-})
-export type PublishSelectionInput = z.infer<typeof publishSchema>
 function failure(error: unknown): Result {
   return {
     success: false,
@@ -59,7 +47,7 @@ export async function publishSelectionDecision(
   raw: PublishSelectionInput
 ): Promise<Result> {
   try {
-    const input = publishSchema.parse(raw)
+    const input = publishSelectionSchema.parse(raw)
     const { db, user, actorName } = await selectionAccess(
       projectId,
       "staff",

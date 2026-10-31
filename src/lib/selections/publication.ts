@@ -1,4 +1,4 @@
-import type { PublishSelectionInput } from "@/app/actions/selection-decisions"
+import type { PublishSelectionInput } from "@/lib/selections/publish-input"
 import type { SelectionDecisionItem } from "./types"
 
 /** Publish the reviewed values without inventing pricing or owner approval. */

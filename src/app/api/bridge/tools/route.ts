@@ -9,6 +9,7 @@ import {
   checkRateLimit,
 } from "@/lib/mcp/auth"
 import { executeBridgeTool } from "@/lib/mcp/tool-adapter"
+import { BRIDGE_TOOL_ACTIONS } from "@/app/api/bridge/tools/bridge-tool-actions"
 import type { BridgeToolRequest } from "@/lib/mcp/types"
 
 function extractBearer(
@@ -97,6 +98,7 @@ export async function POST(
     userRole,
     body.args,
     authResult.scopes,
+    BRIDGE_TOOL_ACTIONS,
   )
   const durationMs = Date.now() - startMs
 

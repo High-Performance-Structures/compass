@@ -29,11 +29,15 @@ import { correctProjectNumber, type ProjectNumberCorrectionInput } from "@/lib/d
 import {
   addCustomProjectJobStatus,
   changeProjectDeliveryMethod,
-  changeProjectJobStatus,
   changeProjectMapVisibility,
   loadProjectAgingStatusRows,
   type ProjectAgingStatusRow,
 } from "@/lib/domain/project/job-status"
+import {
+  plainResult,
+  revalidateProjectProfile,
+  updateProjectJobStatusCommand,
+} from "@/lib/domain/project/profile-commands"
 import type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 import { retryProjectProfileSyncOperation as runSyncOperation } from "@/lib/domain/project/profile-sync"
 
@@ -50,17 +54,6 @@ export type { ProjectInformation } from "@/lib/domain/project/information"
 export type { ProjectInteractionFormOptions } from "@/lib/domain/crm/interactions"
 export type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 
-function revalidateProjectProfile(projectId: string): void {
-  revalidatePath(`/dashboard/projects/${projectId}`)
-  revalidatePath(`/dashboard/projects/${projectId}/information`)
-  revalidatePath("/dashboard/projects")
-  revalidatePath("/dashboard/projects/follow-up")
-}
-
-/** Strips the internal `changed` flag so callers see the same result as before. */
-function plainResult(result: ProjectProfileResult): ProjectProfileResult {
-  return result.success ? { success: true } : { success: false, error: result.error }
-}
 
 export async function getProjectFollowUpOwners(
   projectId: string,
@@ -156,14 +149,7 @@ export async function updateProjectJobStatus(input: {
   readonly projectId: string
   readonly jobStatusId: string
 }): Promise<ProjectProfileResult> {
-  try {
-    const result = await changeProjectJobStatus(input)
-    if (result.success && result.changed) revalidateProjectProfile(input.projectId)
-    return plainResult(result)
-  } catch (error) {
-    console.error("Unable to update project job status", error)
-    return { success: false, error: "Unable to update project status." }
-  }
+  return updateProjectJobStatusCommand(input)
 }
 
 export async function updateProjectDeliveryMethod(input: {

@@ -21,6 +21,7 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
+import { envValue } from "@/lib/shared/env"
 import { requirePermission } from "@/lib/permissions"
 import { insertMessageAttachment } from "@/lib/domain/conversations/store"
 
@@ -79,9 +80,9 @@ function driveFolderIdFromUrl(value: string | null): string | null {
 function uploadEmail(
   userEmail: string,
   googleEmail: string | null,
-  env: Record<string, string>
+  env: unknown
 ): string {
-  const configured = env.COMPASS_GOOGLE_UPLOAD_USER?.trim()
+  const configured = envValue(env, "COMPASS_GOOGLE_UPLOAD_USER")?.trim()
   if (configured) return configured
   if (googleEmail) return googleEmail
   if (userEmail.endsWith("@hps-colorado.com")) return userEmail
@@ -290,8 +291,7 @@ export async function POST(
       )
     }
 
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const keyJson = await decrypt(
       auth.serviceAccountKeyEncrypted,
       config.encryptionKey,
@@ -300,7 +300,7 @@ export async function POST(
     const client = new DriveClient({
       serviceAccountKey: parseServiceAccountKey(keyJson),
     })
-    const googleEmail = uploadEmail(user.email, user.googleEmail, envRecord)
+    const googleEmail = uploadEmail(user.email, user.googleEmail, env)
     const folderId = await findOrCreateAttachmentFolder(
       client,
       googleEmail,

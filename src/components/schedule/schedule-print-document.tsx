@@ -16,7 +16,7 @@ import { ProjectBrandContactDetails } from "@/components/projects/project-brand-
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import type { ProjectBrand } from "@/lib/project-branding"
-import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
+import { openPrintSnapshot } from "@/components/print/open-print-snapshot"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 import {
   filterScheduleItemsForPrint,

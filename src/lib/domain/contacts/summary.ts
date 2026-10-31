@@ -11,6 +11,7 @@ import {
 } from "@/lib/project-contact-access-status"
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import type { ProjectContext } from "@/lib/server/action-context"
+import { contactsProjectContext } from "./access"
 
 import { buildCsiGroups, buildGroups, normalizeEmailKey, toContactItem } from "./rules"
 import { resolvedProjectContacts } from "./store"
@@ -127,7 +128,7 @@ function sourceCounts(
   }
 }
 
-export async function loadProjectContactsSummary(
+async function loadProjectContactsSummary(
   context: ProjectContext,
   audience: ProjectContactAudience,
   options: ProjectContactsSummaryOptions
@@ -248,4 +249,17 @@ export async function loadProjectContactsSummary(
     allContacts,
     historicalContacts,
   }
+}
+
+/**
+ * The project contacts summary for the signed-in viewer: contacts project
+ * access (organization scope), then the summary for the audience.
+ */
+export async function readProjectContactsSummary(
+  projectId: string,
+  audience: ProjectContactAudience = "internal",
+  options: ProjectContactsSummaryOptions = {}
+): Promise<ProjectContactsSummary> {
+  const context = await contactsProjectContext(projectId)
+  return loadProjectContactsSummary(context, audience, options)
 }

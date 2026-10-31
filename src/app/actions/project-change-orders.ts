@@ -7,7 +7,7 @@ import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } fro
 import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getUploadSessionUrl } from "@/app/actions/google-drive"
+import { createDriveUploadSession as getUploadSessionUrl } from "@/lib/domain/documents/drive-session"
 import { getDb } from "@/db"
 import {
   projectChangeOrderDocuments,
@@ -42,10 +42,7 @@ import {
   changeOrderRequesterType,
   type ChangeOrderRequesterType,
 } from "@/lib/change-orders/access"
-import {
-  readChangeOrderRequesterType,
-  type RecordedChangeOrderRequesterType,
-} from "@/lib/change-orders/provenance"
+import { readChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
@@ -73,136 +70,27 @@ import {
 } from "@/lib/domain/estimates/store"
 import { cleanText } from "@/lib/shared/guards"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
+import type {
+  ChangeOrderAudience,
+  ChangeOrderDocumentInput,
+  ChangeOrderExecutedDocumentInput,
+  ChangeOrderExecutedDocumentReplacementInput,
+  ProjectChangeOrderCompanyOption,
+  ProjectChangeOrderCostCodeOption,
+  ProjectChangeOrderPhaseOption,
+  ProjectChangeOrderEstimateOption,
+  ProjectChangeOrderFormOptions,
+  ProjectChangeOrderItem,
+} from "@/lib/change-orders/types"
 
-type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
-export type ChangeOrderDocumentInput = {
-  readonly label: string
-  readonly url: string
-  readonly notes: string | null
-}
-
-export type ChangeOrderExecutedDocumentInput = {
-  readonly url: string
-  readonly label: string
-  readonly attested: boolean
-}
-
-export type ChangeOrderExecutedDocumentReplacementInput =
-  ChangeOrderExecutedDocumentInput & {
-    readonly reason: string
-  }
-
-type ProjectChangeOrderPhaseOption = {
-  readonly value: string
-  readonly label: string
-}
-
-type ProjectChangeOrderCostCodeOption = {
-  readonly onBudget?: boolean
-  readonly value: string
-  readonly label: string
-  readonly description: string
-  readonly divisionCode: string
-}
-
-type ProjectChangeOrderCompanyOption = {
-  readonly value: string
-  readonly label: string
-  readonly description: string
-}
-
-export type ProjectChangeOrderEstimateOption = {
-  readonly id: string
-  readonly estimateNumber: string
-  readonly versionNumber: number
-  readonly title: string
-  readonly status: string
-  readonly estimateTotalCents: number
-}
-
-export type ProjectChangeOrderFormOptions = {
-  readonly phases: readonly ProjectChangeOrderPhaseOption[]
-  readonly costCodes: readonly ProjectChangeOrderCostCodeOption[]
-  readonly companies: readonly ProjectChangeOrderCompanyOption[]
-  readonly estimates: readonly ProjectChangeOrderEstimateOption[]
-  readonly currentBaselineEstimateId: string | null
-  /** The accepted contract estimate's assemblies a change can add to or reduce. */
-  readonly contractAssemblies: readonly { readonly id: string; readonly name: string }[]
-}
-
-export type ProjectChangeOrderItem = {
-  readonly id: string
-  readonly projectId: string
-  readonly changeOrderNumber: string
-  readonly title: string
-  readonly scope: string
-  readonly reason: string | null
-  readonly amountCents: number | null
-  readonly scheduleImpactDays: number | null
-  readonly status: ChangeOrderStatus
-  readonly audience: ChangeOrderAudience
-  readonly requesterType: RecordedChangeOrderRequesterType
-  readonly requesterUserId: string | null
-  readonly requesterName: string
-  readonly requesterCompany: string | null
-  readonly sourceType: string
-  readonly sourceRecordId: string | null
-  readonly sourceHref: string | null
-  readonly internalNotes: string | null
-  readonly budgetTreatment: ChangeOrderBudgetTreatment
-  /** How it's built; null for older change orders with recorded lines. */
-  readonly kind: ChangeOrderKind | null
-  readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
-  readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
-  /** This change order's own estimate (built like the contract estimate). */
-  readonly changeOrderEstimate: ProjectChangeOrderEstimateOption | null
-  readonly replacementEstimateUrl: string | null
-  readonly estimateComparisonUrl: string | null
-  readonly rebaselineCompletedAt: string | null
-  readonly rebaselineBlockers: readonly string[]
-  readonly canExecuteRebaseline: boolean
-  readonly foxitStatus: string
-  readonly sageStatus: string
-  readonly executedDocumentAvailable: boolean
-  readonly executedDocumentLabel: string | null
-  readonly canManageExecutedDocument: boolean
-  readonly submittedAt: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
-  readonly canEdit: boolean
-  readonly canApprove: boolean
-  readonly allowedTransitions: readonly ChangeOrderStatus[]
-  readonly lines: readonly {
-    readonly id: string
-    readonly lineNumber: number
-    readonly description: string
-    readonly phaseCode: string | null
-    readonly costCode: string | null
-    readonly amountCents: number | null
-    /** Set on lines compared between two contract-estimate versions. */
-    readonly changeKind: string | null
-    readonly previousAmountCents: number | null
-    readonly newAmountCents: number | null
-    /** The contract assembly the line adds to or reduces. */
-    readonly assemblyName: string | null
-  }[]
-  readonly documents: readonly {
-    readonly id: string
-    readonly label: string
-    readonly url: string
-    readonly notes: string | null
-  }[]
-  readonly history: readonly {
-    readonly id: string
-    readonly eventType: string
-    readonly fromStatus: string | null
-    readonly toStatus: string | null
-    readonly actorName: string
-    readonly actorRole: string
-    readonly note: string | null
-    readonly createdAt: string
-  }[]
-}
+export type {
+  ChangeOrderDocumentInput,
+  ChangeOrderExecutedDocumentInput,
+  ChangeOrderExecutedDocumentReplacementInput,
+  ProjectChangeOrderEstimateOption,
+  ProjectChangeOrderFormOptions,
+  ProjectChangeOrderItem,
+} from "@/lib/change-orders/types"
 
 export type CreateProjectChangeOrderInput = {
   readonly title: string

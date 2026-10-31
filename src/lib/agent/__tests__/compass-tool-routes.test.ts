@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
-// The in-process data source imports every Compass API route; stub them so
+// The agent tool route map imports every Compass API route; stub them so
 // this test only checks which paths it serves.
 vi.mock("server-only", () => ({}))
 vi.mock("@/app/api/compass/dashboards/route", () => ({ POST: vi.fn() }))
@@ -16,7 +16,7 @@ vi.mock("@/app/api/compass/skills/route", () => ({ POST: vi.fn() }))
 vi.mock("@/app/api/compass/themes/route", () => ({ POST: vi.fn() }))
 
 import { createTools } from "agent-core"
-import { AGENT_TOOL_ROUTES } from "@/lib/agent/in-process-data-source"
+import { AGENT_TOOL_ROUTES } from "@/app/api/compass/agent-tool-routes"
 
 // Minimal valid input for tools whose schemas have required fields. Tools
 // not listed here accept an empty object.

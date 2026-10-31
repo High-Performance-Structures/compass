@@ -13,12 +13,14 @@ import { deleteDutyEntry as deleteDutyEntryRow, insertDutyEntry, updateDutyEntry
 import { updateProjects } from "@/lib/domain/project/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { dutiesFor, monthSummary, parseHours, type DutyOption, type DutySummaryRow, type WorkspaceKind } from "@/lib/internal-duties/model"
+import { dutiesFor, monthSummary, parseHours, type DutyOption, type DutySummaryRow, type InternalWorkspaceSummary, type WorkspaceKind } from "@/lib/internal-duties/model"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { dutiesNeedingAttention, loadRecurringDuties, type RecurringDutyView } from "@/lib/internal-duties/recurring-data"
+
+export type { InternalWorkspaceSummary } from "@/lib/internal-duties/model"
 
 const FEATURE = "internal-duties"
 
@@ -314,21 +316,6 @@ export async function setProjectWorkspaceKind(projectId: string, kind: Workspace
   } catch (error) {
     return failure(error)
   }
-}
-
-export type InternalWorkspaceSummary = {
-  readonly projectId: string
-  readonly workspaceKind: WorkspaceKind
-  /** Monday of the current week, YYYY-MM-DD. */
-  readonly weekStart: string
-  readonly weekHours: number
-  readonly byDuty: readonly DutySummaryRow[]
-  readonly byPerson: readonly { readonly name: string; readonly hours: number; readonly entries: number }[]
-  /** Daily logs written before the duty log that still need a duty. */
-  readonly waitingLogs: number
-  readonly canEdit: boolean
-  /** Recurring duties behind, due soon, or not started yet. */
-  readonly attention: readonly RecurringDutyView[]
 }
 
 /** The Overview panel for an internal workspace; null for client projects. */

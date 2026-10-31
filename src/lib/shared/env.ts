@@ -9,6 +9,16 @@ export function envString(env: unknown, key: string): string | null {
   return cleanText(field(env, key)) ?? cleanText(process.env[key])
 }
 
+/**
+ * Reads a Worker binding exactly as configured: the raw string, untrimmed,
+ * with no process.env fallback. Use it where code previously read
+ * an `env` cast to a string record, so behaviour is unchanged.
+ */
+export function envValue(env: unknown, key: string): string | undefined {
+  const value = field(env, key)
+  return typeof value === "string" ? value : undefined
+}
+
 /** A boolean flag: "1", "true", "yes", or "on" (any case) is true. */
 export function envFlag(env: unknown, key: string): boolean {
   const value = envString(env, key)

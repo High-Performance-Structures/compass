@@ -29,7 +29,7 @@ import {
   updateUserStatement,
 } from "@/lib/domain/identity/store"
 import { isPendingInvitationPlaceholder } from "@/lib/domain/identity/rules"
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import {
   getUserAvailabilityCondition,
   sortSettingsRosterUsers,
@@ -276,7 +276,7 @@ export async function getAssignableContactProjects(): Promise<
   const currentUser = await getCurrentUser()
   if (!currentUser || !canManageUserAccess(currentUser) || !currentUser.organizationId) return []
   requirePermission(currentUser, "project", "update")
-  const visibleProjects = await getProjects()
+  const visibleProjects = await listProjectsForCurrentUser()
   return visibleProjects.map((project) => ({
     id: project.id,
     name: project.name,
@@ -311,7 +311,7 @@ export async function grantContactsProjectAccess(
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "Database not available" }
     const db = getDb(env.DB)
-    const visibleProjects = await getProjects()
+    const visibleProjects = await listProjectsForCurrentUser()
     if (!visibleProjects.some((candidate) => candidate.id === projectId)) {
       return { success: false, error: "Project is not available for assignment." }
     }
@@ -413,11 +413,10 @@ export async function inviteUser(input: {
       .get()
 
     // check if workos is configured
-    const envRecord = env as unknown as Record<string, string>
     const isWorkOSConfigured =
-      envRecord.WORKOS_API_KEY &&
-      envRecord.WORKOS_CLIENT_ID &&
-      !envRecord.WORKOS_API_KEY.includes("placeholder")
+      env.WORKOS_API_KEY &&
+      env.WORKOS_CLIENT_ID &&
+      !env.WORKOS_API_KEY.includes("placeholder")
 
     if (isWorkOSConfigured) {
       // send invitation through workos
@@ -447,7 +446,7 @@ export async function inviteUser(input: {
           }
 
           const resendResult = await sendOrResendWorkOSInvitation({
-            apiKey: envRecord.WORKOS_API_KEY,
+            apiKey: env.WORKOS_API_KEY,
             email: normalizedEmail,
           })
           if (!resendResult.success) return resendResult
@@ -510,7 +509,7 @@ export async function inviteUser(input: {
 
         // On first login, ensureUserExists() activates the pending local row.
         const invitationResult = await sendOrResendWorkOSInvitation({
-          apiKey: envRecord.WORKOS_API_KEY,
+          apiKey: env.WORKOS_API_KEY,
           email: normalizedEmail,
         })
         if (!invitationResult.success) return invitationResult

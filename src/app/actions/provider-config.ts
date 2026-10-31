@@ -14,6 +14,7 @@ import {
   saveUserProviderConfig,
   updateUserModelOverrides as storeModelOverrides,
 } from "@/lib/domain/settings/store"
+import { envValue } from "@/lib/shared/env"
 
 // --- types ---
 
@@ -109,9 +110,7 @@ export async function setUserProviderConfig(
 
     let encryptedApiKey: string | null = null
     if (apiKey) {
-      const encryptionKey = (
-        env as unknown as Record<string, string>
-      ).PROVIDER_KEY_ENCRYPTION_KEY
+      const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
       if (!encryptionKey) {
         return {

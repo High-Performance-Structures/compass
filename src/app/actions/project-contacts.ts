@@ -19,7 +19,7 @@ import {
   type PendingInvitation,
 } from "@/lib/domain/contacts/save-contact"
 import { deactivateProjectContact, releaseSourceLinksForContact } from "@/lib/domain/contacts/store"
-import { loadProjectContactsSummary } from "@/lib/domain/contacts/summary"
+import { readProjectContactsSummary } from "@/lib/domain/contacts/summary"
 import { revokeContactInvitations, revokePendingContactInvitations } from "@/lib/domain/identity/store"
 import { deleteProjectMembers } from "@/lib/domain/project/store"
 import type {
@@ -42,8 +42,7 @@ export async function getProjectContactsSummary(
   audience: ProjectContactAudience = "internal",
   options: ProjectContactsSummaryOptions = {}
 ): Promise<ProjectContactsSummary> {
-  const context = await contactsProjectContext(projectId)
-  return loadProjectContactsSummary(context, audience, options)
+  return readProjectContactsSummary(projectId, audience, options)
 }
 
 export async function getProjectContactDirectoryOptions(

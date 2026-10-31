@@ -48,8 +48,7 @@ export async function GET(
     let allowedParentId: string | null = null
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
 
     const auth = await db

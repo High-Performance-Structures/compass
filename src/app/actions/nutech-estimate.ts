@@ -8,11 +8,11 @@ import { projects, sageCostCodes } from "@/db/schema"
 import { projectEstimateLines, projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { nuTechOrderItems, nuTechProducts } from "@/db/schema-nutech"
 import {
-  createProjectEstimateDraft,
-  deleteProjectEstimateLine,
-  saveProjectEstimateLine,
-  type ProjectEstimateLineInput,
-} from "@/app/actions/project-estimates"
+  createProjectEstimateDraftCommand as createProjectEstimateDraft,
+  deleteProjectEstimateLineCommand as deleteProjectEstimateLine,
+  saveProjectEstimateLineCommand as saveProjectEstimateLine,
+} from "@/lib/domain/estimates/commands"
+import type { ProjectEstimateLineInput } from "@/lib/domain/estimates/types"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { nuTechItemTaxable, nuTechShippingCents } from "@/lib/domain/nutech/rules"
 import { linkNuTechOrderEstimate } from "@/lib/domain/nutech/store"

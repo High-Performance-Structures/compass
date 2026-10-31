@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import { agentConfig, agentUsage } from "@/db/schema-ai-config"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
+import { envValue } from "@/lib/shared/env"
 
 // --- types ---
 
@@ -214,9 +215,7 @@ export async function getModelList(): Promise<{
     }
 
     const { env } = await getCloudflareContext()
-    const apiKey = (
-      env as unknown as Record<string, string>
-    ).OPENROUTER_API_KEY
+    const apiKey = envValue(env, "OPENROUTER_API_KEY")
 
     if (!apiKey) {
       return {

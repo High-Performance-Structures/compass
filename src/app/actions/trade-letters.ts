@@ -2,7 +2,7 @@
 
 import { and, desc, eq } from "drizzle-orm"
 
-import { getEstimateSelectedTrades, type SelectedTrade } from "@/app/actions/estimate-bids"
+import { loadEstimateSelectedTrades as getEstimateSelectedTrades, type SelectedTrade } from "@/lib/domain/estimates/selected-trades"
 import { vendors } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import { tradeLetters } from "@/db/schema-trade-docs"

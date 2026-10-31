@@ -1,8 +1,8 @@
 "use server"
 
-import { getMessages } from "@/app/actions/chat-messages"
-import { getChannel } from "@/app/actions/conversations"
-import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { readChannelMessages as getMessages } from "@/lib/domain/conversations/messages"
+import { readChannelForViewer as getChannel } from "@/lib/domain/conversations/channels"
+import { readProjectContactsSummary } from "@/lib/domain/contacts/summary"
 import { getCurrentUser } from "@/lib/auth"
 
 export type ConversationPanelProjectRecipient = {
@@ -92,7 +92,7 @@ export async function getConversationPanelData(channelId: string): Promise<
 
   const channel = channelResult.data
   const contactsSummary = channel.projectId
-    ? await getProjectContactsSummary(channel.projectId).catch(() => null)
+    ? await readProjectContactsSummary(channel.projectId).catch(() => null)
     : null
   const messages = messagesResult.success && messagesResult.data
     ? messagesResult.data.map((message) => ({

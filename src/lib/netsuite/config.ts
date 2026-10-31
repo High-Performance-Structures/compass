@@ -1,3 +1,5 @@
+import { envValue } from "@/lib/shared/env"
+
 export interface NetSuiteConfig {
   accountId: string
   clientId: string
@@ -8,15 +10,15 @@ export interface NetSuiteConfig {
 }
 
 export function getNetSuiteConfig(
-  env: Record<string, string | undefined>
+  env: unknown
 ): NetSuiteConfig {
-  const accountId = env.NETSUITE_ACCOUNT_ID
-  const clientId = env.NETSUITE_CLIENT_ID
-  const clientSecret = env.NETSUITE_CLIENT_SECRET
-  const redirectUri = env.NETSUITE_REDIRECT_URI
-  const tokenEncryptionKey = env.NETSUITE_TOKEN_ENCRYPTION_KEY
+  const accountId = envValue(env, "NETSUITE_ACCOUNT_ID")
+  const clientId = envValue(env, "NETSUITE_CLIENT_ID")
+  const clientSecret = envValue(env, "NETSUITE_CLIENT_SECRET")
+  const redirectUri = envValue(env, "NETSUITE_REDIRECT_URI")
+  const tokenEncryptionKey = envValue(env, "NETSUITE_TOKEN_ENCRYPTION_KEY")
   const concurrencyLimit = parseInt(
-    env.NETSUITE_CONCURRENCY_LIMIT ?? "15",
+    envValue(env, "NETSUITE_CONCURRENCY_LIMIT") ?? "15",
     10
   )
 

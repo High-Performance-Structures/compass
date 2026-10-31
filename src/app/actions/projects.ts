@@ -1,7 +1,7 @@
 "use server"
 
 import { projectOperations } from "@/db/schema"
-import { loadProjectListForRequest, type ProjectListItem } from "@/lib/projects/project-list"
+import { listProjectsForCurrentUser, type ProjectListItem } from "@/lib/projects/project-list"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
@@ -71,7 +71,6 @@ import { projectWorkspaceClients } from "@/lib/google/project-workspace"
 import { requireOrg } from "@/lib/org-scope"
 import { canCreateProjectDriveFolder, requirePermission } from "@/lib/permissions"
 import { getProjectAccessRecord } from "@/lib/project-access"
-import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import {
   parseSageClientStatusId,
@@ -559,18 +558,7 @@ export async function provisionProjectDriveFolder(
 }
 
 export async function getProjects(): Promise<ProjectListItem[]> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "project", "read")
-    return await loadProjectListForRequest(
-      user.id,
-      user.organizationId ?? null,
-      user.organizationType === "internal" &&
-        canUseOrganizationProjectScopeRole(user.role),
-    )
-  } catch {
-    return []
-  }
+  return listProjectsForCurrentUser()
 }
 
 export async function createProjectShell(

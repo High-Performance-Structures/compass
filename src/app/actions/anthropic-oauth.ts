@@ -14,6 +14,7 @@ import {
   refreshAccessToken as refreshToken_,
 } from "agent-core"
 import { userContext } from "@/lib/server/action-context"
+import { envValue } from "@/lib/shared/env"
 
 export async function exchangeOAuthCode(
   code: string,
@@ -33,9 +34,7 @@ export async function exchangeOAuthCode(
     const tokens = await exchangeOAuthCode_(code, state, verifier)
 
     const { env } = await getCloudflareContext()
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
+    const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
     if (!encryptionKey) {
       return {
@@ -112,9 +111,7 @@ export async function getOAuthAccessToken(
 
     if (!row) return null
 
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
+    const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
     if (!encryptionKey) return null
 

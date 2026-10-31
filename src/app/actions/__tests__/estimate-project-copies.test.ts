@@ -28,7 +28,7 @@ vi.mock("@/lib/permissions", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent, activityActorName: () => "Estimator" }))
 vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: mocks.readFeatureSettings }))
-vi.mock("@/app/actions/project-estimates", () => ({ createProjectEstimateDraft: mocks.createProjectEstimateDraft }))
+vi.mock("@/lib/domain/estimates/commands", () => ({ createProjectEstimateDraftCommand: mocks.createProjectEstimateDraft }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: null } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 

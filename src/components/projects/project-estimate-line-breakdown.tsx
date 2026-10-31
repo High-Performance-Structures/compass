@@ -22,7 +22,7 @@ import {
 } from "@/app/actions/project-estimates"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import type { RateBookPickerOption } from "@/app/actions/rate-book"
-import { loadRateBookPicker } from "@/lib/rate-book/picker-cache"
+import { loadRateBookPicker } from "@/components/rate-book/rate-book-picker-cache"
 import { EstimateUnitInput } from "@/components/estimate-unit-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
