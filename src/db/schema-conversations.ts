@@ -137,6 +137,8 @@ export const channelMembers = sqliteTable("channel_members", {
     index("channel_members_channel_user_idx").on(table.channelId, table.userId),
     // Declared from drizzle/0274_hot_query_indexes.sql.
     index("channel_members_user_idx").on(table.userId),
+    // One membership per person per channel (migration 0277).
+    uniqueIndex("channel_members_channel_user_unique").on(table.channelId, table.userId),
   ])
 
 // typing_sessions - active typing indicators with TTL
@@ -204,6 +206,7 @@ export const channelReadState = sqliteTable("channel_read_state", {
   (table) => [
     index("channel_read_state_channel_id_idx").on(table.channelId),
     index("channel_read_state_user_id_idx").on(table.userId),
+    uniqueIndex("channel_read_state_channel_user_unique").on(table.channelId, table.userId),
   ])
 
 export const voiceParticipants = sqliteTable(

@@ -52,7 +52,7 @@ async function ensureChannelMember(
       role: "member",
       notifyLevel: "all",
       joinedAt: now,
-    })
+    }).onConflictDoNothing()
   }
 
   const existingReadState = await db
@@ -74,7 +74,7 @@ async function ensureChannelMember(
       lastReadMessageId: null,
       lastReadAt: now,
       unreadCount: 0,
-    })
+    }).onConflictDoNothing()
   }
 }
 

@@ -177,6 +177,7 @@ async function ensureMembers(
         notifyLevel: "all",
         joinedAt: now,
       })))
+      .onConflictDoNothing()
       .run()
   }
 
@@ -191,6 +192,7 @@ async function ensureMembers(
         lastReadAt: now,
         unreadCount: 0,
       })))
+      .onConflictDoNothing()
       .run()
   }
 }

@@ -238,7 +238,7 @@ async function ensureSystemMembership(input: {
     role: "member",
     notifyLevel: "mentions",
     joinedAt: now,
-  })
+  }).onConflictDoNothing()
   await input.db.insert(channelReadState).values({
     id: crypto.randomUUID(),
     userId: input.systemUserId,
@@ -246,7 +246,7 @@ async function ensureSystemMembership(input: {
     lastReadMessageId: null,
     lastReadAt: now,
     unreadCount: 0,
-  })
+  }).onConflictDoNothing()
 }
 
 function messageContent(candidate: InboundCandidate): string {
