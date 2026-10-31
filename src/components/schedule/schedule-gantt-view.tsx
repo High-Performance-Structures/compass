@@ -1,9 +1,7 @@
 "use client"
 
 import {
-  conflictSummary,
   NO_CONFLICT_SETTINGS,
-  primaryParty,
   type ScheduleConflict,
   type ScheduleConflictSettings,
 } from "@/lib/schedule/conflicts"
@@ -12,120 +10,39 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
-  type UIEvent,
 } from "react"
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import { Button } from "@/components/ui/button"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Switch } from "@/components/ui/switch"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  IconAlertTriangle,
-  IconPencil,
-  IconPlus,
-  IconChevronRight,
-  IconChevronDown,
-  IconSettings,
-  IconZoomIn,
-  IconZoomOut,
-  IconCalendar,
-} from "@tabler/icons-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-  GanttChart,
-  type GanttScrollPosition,
-} from "./gantt-chart"
+import { GanttChart } from "./gantt-chart"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
-import {
-  transformToFrappeTasks,
-  transformWithPhaseGroups,
-} from "@/lib/schedule/gantt-transform"
-import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
-import { updateTask } from "@/app/actions/schedule"
+import type { FrappeTask } from "@/lib/schedule/gantt-transform"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
-import { countBusinessDays } from "@/lib/schedule/business-days"
-import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
-import { effectivePercentComplete } from "@/lib/schedule/progress"
-import {
-  DEFAULT_DISPLAY_COLOR_LABELS,
-  DEFAULT_DISPLAY_COLOR_PALETTE,
-  DISPLAY_COLOR_OPTIONS,
-  schedulePaletteLabelStorageKey,
-  normalizeDisplayColorPalette,
-  schedulePaletteStorageKey,
-  type DisplayColor,
-  type DisplayColorPalette,
-} from "@/lib/schedule/appearance"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
-import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-import { format } from "date-fns"
-import { scheduleItemHref } from "@/lib/work-calendar"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
-import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
-  centeredGanttRowScrollTop,
-  canScrollGanttAxis,
-  ganttWheelIntent,
-  nearestScheduleRowIndexForDate,
-  normalizeWheelDelta,
-  persistGanttScrollPosition,
-  revealBarScrollLeft,
-  scheduleScrollStorageKey,
-  shouldRestoreGanttScroll,
-  synchronizedScrollTop,
-} from "@/lib/schedule/gantt-scroll"
-import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
+  DEFAULT_COLUMN_WIDTHS,
+  ganttDisplay,
+  zoomedColumnWidth,
+  type ViewMode,
+} from "./schedule-gantt/gantt-view-rules"
+import { useGanttPalette } from "./schedule-gantt/use-gantt-palette"
+import { useGanttScrollSync } from "./schedule-gantt/use-gantt-scroll-sync"
+import { GanttTaskTable } from "./schedule-gantt/gantt-task-table"
+import { GanttScheduleKey } from "./schedule-gantt/gantt-schedule-key"
+import { GanttControls } from "./schedule-gantt/gantt-controls"
+import { useGanttDateChange } from "./schedule-gantt/use-gantt-date-change"
 
 // Stable empty list: a fresh [] per render rebuilt the whole Gantt chart.
 const NO_EXCEPTIONS: readonly WorkdayExceptionData[] = []
-
-type ViewMode = "Day" | "Week" | "Month" | "Year"
-
-const COLOR_PICKER_SWATCHES = [
-  "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#06b6d4",
-  "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#6b7280", "#111827",
-] as const
 
 interface ScheduleGanttViewProps {
   readonly projectId: string | null
@@ -148,52 +65,6 @@ interface ScheduleGanttViewProps {
 
 const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
 
-// Local calendar date (YYYY-MM-DD) so "today" matches the viewer's day.
-function localIsoDate(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-/**
- * Scroll sync is pixel-for-pixel, so both panes must be able to scroll the
- * same distance. The list ends with an Add row the chart has no row for.
- * Frappe positions its SVG absolutely, so padding cannot extend the chart's
- * scroll area; an invisible spacer as tall as the list does. Heights are read
- * from the list table and the SVG, never from scrollHeight, so the spacer
- * cannot feed back into its own measurement. Returns a cleanup.
- */
-function matchGanttPaneHeights(
-  taskList: HTMLElement,
-  ganttContainer: HTMLElement
-): () => void {
-  const spacer = document.createElement("div")
-  spacer.setAttribute("aria-hidden", "true")
-  spacer.dataset.ganttScrollSpacer = ""
-  spacer.style.cssText =
-    "position:absolute;top:0;left:0;width:1px;pointer-events:none;visibility:hidden"
-  ganttContainer.appendChild(spacer)
-
-  const listContent = taskList.firstElementChild
-  const apply = (): void => {
-    const svg = ganttContainer.querySelector("svg")
-    const listHeight = listContent?.getBoundingClientRect().height ?? 0
-    const chartHeight = svg?.getBoundingClientRect().height ?? 0
-    spacer.style.height = `${Math.max(listHeight, chartHeight)}px`
-    taskList.style.paddingBottom = `${Math.max(0, chartHeight - listHeight)}px`
-  }
-  apply()
-  const observer = new ResizeObserver(apply)
-  if (listContent) observer.observe(listContent)
-  const svg = ganttContainer.querySelector("svg")
-  if (svg) observer.observe(svg)
-  return () => {
-    observer.disconnect()
-    spacer.remove()
-    taskList.style.paddingBottom = ""
-  }
-}
-
 export function ScheduleGanttView({
   projectId,
   tasks,
@@ -208,7 +79,6 @@ export function ScheduleGanttView({
   onGroupByPhaseChange,
   shiftReasonRequired = true,
 }: ScheduleGanttViewProps) {
-  const router = useRouter()
   const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>("Week")
   const [phaseGrouping, setPhaseGrouping] = useState(false)
@@ -218,12 +88,6 @@ export function ScheduleGanttView({
   const [showCriticalPath, setShowCriticalPath] = useState(false)
   const [showScheduleKey, setShowScheduleKey] = useState(false)
   const [editingScheduleKey, setEditingScheduleKey] = useState(false)
-  const [displayColorPalette, setDisplayColorPalette] = useState<DisplayColorPalette>(
-    DEFAULT_DISPLAY_COLOR_PALETTE
-  )
-  const [displayColorLabels, setDisplayColorLabels] = useState<Record<DisplayColor, string>>(
-    DEFAULT_DISPLAY_COLOR_LABELS
-  )
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
@@ -232,41 +96,7 @@ export function ScheduleGanttView({
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
   const [ganttRevision, setGanttRevision] = useState(0)
   const [panMode] = useState(false)
-  const taskListRef = useRef<HTMLDivElement>(null)
-  const ganttContainerRef = useRef<HTMLElement | null>(null)
-  const paneHeightCleanupRef = useRef<(() => void) | null>(null)
-  useEffect(
-    () => () => {
-      paneHeightCleanupRef.current?.()
-      paneHeightCleanupRef.current = null
-    },
-    []
-  )
-  const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
-  const scrollToTodayRef = useRef<(() => void) | null>(null)
-  const scrollToDateRef = useRef<((date: string) => void) | null>(null)
-  const scrollRestoredProjectRef = useRef<string | null | undefined>(undefined)
-  // The chart can rebuild once while loading; keep opening on today until then.
-  const openAtTodayUntilRef = useRef(0)
-  // The list and chart mirror each other's vertical scroll. Each side ignores
-  // the scroll event caused by its own mirroring so they cannot fight.
-  const mirroredListTopRef = useRef<number | null>(null)
-  const mirroredGanttTopRef = useRef<number | null>(null)
-  const markMirrored = useCallback(
-    (ref: { current: number | null }, top: number): void => {
-      ref.current = top
-      // Scroll events dispatch before animation frames, so after two frames the
-      // echo has arrived. Clear the marker even if no echo came (clamped edge).
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          if (ref.current === top) ref.current = null
-        })
-      )
-    },
-    []
-  )
   const preferenceScopeKey = projectId ?? "unified"
-  const scrollStorageKey = scheduleScrollStorageKey(projectId)
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects]
@@ -277,292 +107,17 @@ export function ScheduleGanttView({
     setPhaseGrouping(groupByPhase)
   }, [groupByPhase])
 
-  const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
-
-  useEffect(() => {
-    try {
-      const storedPalette = window.localStorage.getItem(
-        schedulePaletteStorageKey(preferenceScopeKey)
-      )
-      const storedLabels = window.localStorage.getItem(
-        schedulePaletteLabelStorageKey(preferenceScopeKey)
-      )
-      if (storedPalette) {
-        setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(storedPalette)))
-      }
-      if (storedLabels) {
-        const candidate = JSON.parse(storedLabels) as Partial<Record<DisplayColor, string>>
-        setDisplayColorLabels({
-          ...DEFAULT_DISPLAY_COLOR_LABELS,
-          ...Object.fromEntries(
-            Object.entries(candidate).filter(([, value]) => typeof value === "string" && value.trim())
-          ),
-        })
-      }
-    } catch {
-      // A malformed or unavailable local preference falls back to the default palette.
-    } finally {
-      setHasLoadedPalette(true)
-    }
-  }, [preferenceScopeKey])
-
-  useEffect(() => {
-    if (!hasLoadedPalette) return
-    window.localStorage.setItem(
-      schedulePaletteStorageKey(preferenceScopeKey),
-      JSON.stringify(displayColorPalette)
-    )
-    window.localStorage.setItem(
-      schedulePaletteLabelStorageKey(preferenceScopeKey),
-      JSON.stringify(displayColorLabels)
-    )
-  }, [
-    displayColorLabels,
-    displayColorPalette,
-    hasLoadedPalette,
-    preferenceScopeKey,
-  ])
-
-  const updatePaletteColor = (color: DisplayColor, value: string) => {
-    setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
-  }
-
-  const updatePaletteLabel = (color: DisplayColor, value: string) => {
-    setDisplayColorLabels((labels) => ({ ...labels, [color]: value }))
-  }
-
-  const defaultWidths: Record<ViewMode, number> = {
-    Day: 38,
-    Week: 140,
-    Month: 120,
-    Year: 160,
-  }
-  const [columnWidth, setColumnWidth] = useState(defaultWidths[viewMode])
+  const palette = useGanttPalette(preferenceScopeKey)
+  const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTHS[viewMode])
 
   const handleZoom = useCallback((direction: "in" | "out") => {
-    setColumnWidth((prev) => {
-      const next = direction === "in" ? prev * 1.3 : prev / 1.3
-      return Math.round(Math.min(300, Math.max(20, next)))
-    })
+    setColumnWidth((prev) => zoomedColumnWidth(prev, direction))
   }, [])
 
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode)
-    setColumnWidth(defaultWidths[mode])
+    setColumnWidth(DEFAULT_COLUMN_WIDTHS[mode])
   }
-
-  const rememberScrollPosition = useCallback(
-    (position: GanttScrollPosition) => {
-      scrollPositionRef.current = position
-      persistGanttScrollPosition(
-        () => window.sessionStorage,
-        scrollStorageKey,
-        position
-      )
-    },
-    [scrollStorageKey]
-  )
-
-  useEffect(() => {
-    const taskList = taskListRef.current
-    if (!taskList) return
-
-    // The resizable layout can consume trackpad wheel gestures before the
-    // browser applies its default nested-scroll behavior. Own the gesture on
-    // the task pane just as the timeline does so either side remains usable.
-    const handleTaskListWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return
-      const intent = ganttWheelIntent(
-        event.deltaX,
-        event.deltaY,
-        event.shiftKey
-      )
-      if (!intent) return
-      const target =
-        intent.axis === "horizontal" ? ganttContainerRef.current : taskList
-      if (!target) return
-      const pageSize =
-        intent.axis === "vertical" ? target.clientHeight : target.clientWidth
-      const delta = normalizeWheelDelta(
-        intent.delta,
-        event.deltaMode,
-        pageSize
-      )
-      const canScroll =
-        intent.axis === "vertical"
-          ? canScrollGanttAxis(
-              target.scrollTop,
-              target.scrollHeight,
-              target.clientHeight,
-              delta
-            )
-          : canScrollGanttAxis(
-              target.scrollLeft,
-              target.scrollWidth,
-              target.clientWidth,
-              delta
-            )
-      if (!canScroll) {
-        const workspace = taskList.closest<HTMLElement>(
-          '[data-dashboard-scroll-region="schedule"]'
-        )
-        if (
-          intent.axis === "vertical" &&
-          workspace &&
-          canScrollGanttAxis(
-            workspace.scrollTop,
-            workspace.scrollHeight,
-            workspace.clientHeight,
-            delta
-          )
-        ) {
-          event.preventDefault()
-          workspace.scrollTop += delta
-        }
-        return
-      }
-
-      event.preventDefault()
-      if (intent.axis === "vertical") target.scrollTop += delta
-      else target.scrollLeft += delta
-    }
-
-    taskList.addEventListener("wheel", handleTaskListWheel, {
-      passive: false,
-    })
-    return () => taskList.removeEventListener("wheel", handleTaskListWheel)
-  }, [isMobile])
-
-  const handleGanttContainerReady = useCallback(
-    (container: HTMLElement | null) => {
-      ganttContainerRef.current = container
-      paneHeightCleanupRef.current?.()
-      paneHeightCleanupRef.current = null
-      if (!container) return
-      if (taskListRef.current) {
-        paneHeightCleanupRef.current = matchGanttPaneHeights(
-          taskListRef.current,
-          container
-        )
-      }
-
-      let position = scrollPositionRef.current
-      let restoredFromStorage = false
-      if (shouldRestoreGanttScroll(projectId, scrollRestoredProjectRef.current)) {
-        try {
-          const stored = window.sessionStorage.getItem(scrollStorageKey)
-          if (stored) {
-            const parsed: unknown = JSON.parse(stored)
-            if (
-              parsed &&
-              typeof parsed === "object" &&
-              "left" in parsed &&
-              "top" in parsed &&
-              typeof parsed.left === "number" &&
-              typeof parsed.top === "number" &&
-              (!("anchorDate" in parsed) ||
-                typeof parsed.anchorDate === "string")
-            ) {
-              const anchorDate =
-                "anchorDate" in parsed &&
-                typeof parsed.anchorDate === "string"
-                  ? parsed.anchorDate
-                  : null
-              position = {
-                left: parsed.left,
-                top: parsed.top,
-                ...(anchorDate ? { anchorDate } : {}),
-              }
-              restoredFromStorage = true
-            }
-          }
-        } catch {
-          // Use the current in-memory position.
-        }
-        scrollRestoredProjectRef.current = projectId
-      }
-
-      scrollPositionRef.current = position
-      // Nothing remembered yet: open on today instead of the portfolio's
-      // earliest task (which could be years back).
-      const remembered =
-        position.anchorDate !== undefined || position.left !== 0 || position.top !== 0
-      if (!remembered) openAtTodayUntilRef.current = performance.now() + 3000
-      const openAtToday = !remembered || performance.now() < openAtTodayUntilRef.current
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Persisted numeric positions must be restored directly. Recomputing
-          // from an anchor date can clamp to zero in mobile WebKit while the
-          // Gantt content is still laying out, losing the saved viewport.
-          if (!restoredFromStorage && openAtToday && scrollToDateRef.current) {
-            scrollToDateRef.current(localIsoDate(new Date()))
-          } else {
-            container.scrollLeft = position.left
-          }
-          container.scrollTop = position.top
-          if (taskListRef.current) {
-            taskListRef.current.scrollTop = synchronizedScrollTop(
-              position.top,
-              taskListRef.current.scrollHeight,
-              taskListRef.current.clientHeight
-            )
-          }
-        })
-      })
-    },
-    [projectId, scrollStorageKey]
-  )
-
-  const handleGanttScroll = useCallback(
-    (position: GanttScrollPosition) => {
-      const taskList = taskListRef.current
-      const ganttContainer = ganttContainerRef.current
-      if (taskList && ganttContainer) {
-        const synchronizedTop = synchronizedScrollTop(
-          position.top,
-          taskList.scrollHeight,
-          taskList.clientHeight
-        )
-        if (mirroredGanttTopRef.current !== null) {
-          // This scroll was our own mirroring from the list; don't echo it back.
-          mirroredGanttTopRef.current = null
-        } else if (Math.abs(taskList.scrollTop - synchronizedTop) > 1) {
-          markMirrored(mirroredListTopRef, synchronizedTop)
-          taskList.scrollTop = synchronizedTop
-        }
-      }
-      rememberScrollPosition(position)
-    },
-    [markMirrored, rememberScrollPosition]
-  )
-
-  const handleTaskListScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      const top = event.currentTarget.scrollTop
-      const ganttContainer = ganttContainerRef.current
-      if (ganttContainer) {
-        const synchronizedTop = synchronizedScrollTop(
-          top,
-          ganttContainer.scrollHeight,
-          ganttContainer.clientHeight
-        )
-        if (mirroredListTopRef.current !== null) {
-          mirroredListTopRef.current = null
-        } else if (Math.abs(ganttContainer.scrollTop - synchronizedTop) > 1) {
-          markMirrored(mirroredGanttTopRef, synchronizedTop)
-          ganttContainer.scrollTop = synchronizedTop
-        }
-      }
-      rememberScrollPosition({
-        left: ganttContainer?.scrollLeft ?? scrollPositionRef.current.left,
-        top: ganttContainer?.scrollTop ?? top,
-        ...(scrollPositionRef.current.anchorDate
-          ? { anchorDate: scrollPositionRef.current.anchorDate }
-          : {}),
-      })
-    },
-    [markMirrored, rememberScrollPosition]
-  )
 
   const openTaskEditor = useCallback(
     (task: FrappeTask) => {
@@ -575,90 +130,37 @@ export function ScheduleGanttView({
     [tasks]
   )
 
-  // Selecting a row highlights its bar and, only if the bar is off-screen,
-  // slides the timeline sideways. The row is already level with its bar
-  // (vertical scroll is mirrored), so nothing moves vertically and repeated
-  // clicks on the same row are stable.
-  const focusTaskOnTimeline = useCallback((task: ScheduleTaskData) => {
-    setFocusedTaskId(task.id)
-    const container = ganttContainerRef.current
-    const bar = container?.querySelector<SVGRectElement>(
-      `.bar-wrapper[data-id="${CSS.escape(task.id)}"] .bar`
-    )
-    if (!container || !bar) return
-    const left = revealBarScrollLeft({
-      barLeft: Number(bar.getAttribute("x") ?? 0),
-      barWidth: Number(bar.getAttribute("width") ?? 0),
-      scrollLeft: container.scrollLeft,
-      clientWidth: container.clientWidth,
-      scrollWidth: container.scrollWidth,
-    })
-    if (left !== null) container.scrollTo({ left, behavior: "smooth" })
-  }, [])
-
-  const filteredTasks = tasks
-
-  const { frappeTasks, displayItems } = useMemo(() => {
-    const transformed = groupByCrew
-      ? transformWithPhaseGroups(
-          filteredTasks as ScheduleTaskData[],
-          dependencies as TaskDependencyData[],
-          collapsedPhases,
-          (task) => primaryParty(task.assignedTo, conflictSettings),
-        )
-      : phaseGrouping
-      ? transformWithPhaseGroups(
-          filteredTasks as ScheduleTaskData[],
-          dependencies as TaskDependencyData[],
-          collapsedPhases,
-        )
-      : {
-          frappeTasks: transformToFrappeTasks(
-            filteredTasks as ScheduleTaskData[],
-            dependencies as TaskDependencyData[],
-          ),
-          displayItems: filteredTasks.map(
-            (task): DisplayItem => ({
-              type: "task",
-              task: task as ScheduleTaskData,
-            })
-          ),
-        }
-
-    // A double-booked crew outlines the bar in the destructive color.
-    const marked = conflicts.size === 0
-      ? transformed
-      : {
-          ...transformed,
-          frappeTasks: transformed.frappeTasks.map((task) =>
-            conflicts.has(task.id)
-              ? { ...task, hasConflict: true }
-              : task
-          ),
-        }
-    if (!multipleProjects) return marked
-    const taskById = new Map(filteredTasks.map((task) => [task.id, task]))
-    return {
-      ...marked,
-      frappeTasks: marked.frappeTasks.map((task) => {
-        const scheduleTask = taskById.get(task.id)
-        const project = scheduleTask
-          ? projectById.get(scheduleTask.projectId)
-          : null
-        return project ? { ...task, projectColor: project.color } : task
+  const { frappeTasks, displayItems } = useMemo(
+    () =>
+      ganttDisplay({
+        tasks,
+        dependencies,
+        collapsedPhases,
+        groupByCrew,
+        phaseGrouping,
+        conflictSettings,
+        conflicts,
+        multipleProjects,
+        projectById,
       }),
-    }
-  }, [
-    conflictSettings,
-    conflicts,
-    groupByCrew,
-    collapsedPhases,
-    dependencies,
-    filteredTasks,
-    multipleProjects,
-    phaseGrouping,
-    projectById,
-  ])
+    [
+      conflictSettings,
+      conflicts,
+      groupByCrew,
+      collapsedPhases,
+      dependencies,
+      tasks,
+      multipleProjects,
+      phaseGrouping,
+      projectById,
+    ]
+  )
+  const scroll = useGanttScrollSync({
+    projectId,
+    isMobile,
+    displayItems,
+    setFocusedTaskId,
+  })
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
       const next = new Set(prev)
@@ -668,544 +170,64 @@ export function ScheduleGanttView({
     })
   }
 
-  const handleDateChange = useCallback(
-    async (task: FrappeTask, start: Date, end: Date) => {
-      if (task.id.startsWith("phase-")) return
-      const startDate = format(start, "yyyy-MM-dd")
-      const endDate = format(end, "yyyy-MM-dd")
-      const scheduleTask = tasks.find(
-        (candidate) => candidate.id === task.id
-      )
-      const taskExceptions = scheduleTask
-        ? exceptions.filter(
-            (exception) => exception.projectId === scheduleTask.projectId
-          )
-        : []
-      const workdays = countBusinessDays(
-        startDate,
-        endDate,
-        taskExceptions
-      )
-      const shiftReasonInput = shiftReasonRequired
-        ? window.prompt(
-            `Why is “${scheduleTask?.title ?? task.name}” shifting? This will be saved in schedule history.`
-          )
-        : ""
-      const shiftReasonResult = resolveScheduleShiftReason(
-        shiftReasonRequired,
-        shiftReasonInput
-      )
-      if (shiftReasonResult !== null && !shiftReasonResult.success) {
-        if (shiftReasonInput !== null) toast.error(shiftReasonResult.error)
-        setGanttRevision((revision) => revision + 1)
-        return
-      }
+  const handleDateChange = useGanttDateChange({
+    tasks,
+    exceptions,
+    shiftReasonRequired,
+    setGanttRevision,
+  })
 
-      const result = await updateTask(task.id, {
-        startDate,
-        workdays: Math.max(1, workdays),
-        shiftReason: shiftReasonResult?.reason,
-      })
-
-      if (result.success) {
-        router.refresh()
-      } else {
-        toast.error(result.error)
-        setGanttRevision((revision) => revision + 1)
-      }
-    },
-    [exceptions, router, shiftReasonRequired, tasks]
-  )
-
-  const handleTodayScrollReady = useCallback(
-    (handler: (() => void) | null) => {
-      scrollToTodayRef.current = handler
-    },
-    []
-  )
-
-  const handleDateScrollReady = useCallback(
-    (handler: ((date: string) => void) | null) => {
-      scrollToDateRef.current = handler
-    },
-    []
-  )
-
-  const scrollToToday = useCallback(() => {
-    const ganttContainer = ganttContainerRef.current
-    if (!ganttContainer) {
-      scrollToTodayRef.current?.()
-      return
-    }
-    const today = format(new Date(), "yyyy-MM-dd")
-    const rowIndex = nearestScheduleRowIndexForDate(
-      displayItems.map((item) =>
-        item.type === "task"
-          ? {
-              startDate: item.task.startDate,
-              endDate: item.task.endDateCalculated,
-            }
-          : {
-              startDate: item.group.startDate,
-              endDate: item.group.endDate,
-            }
-      ),
-      today
-    )
-    if (rowIndex === null) {
-      scrollToTodayRef.current?.()
-      return
-    }
-
-    const ganttTop = centeredGanttRowScrollTop({
-      rowIndex,
-      clientHeight: ganttContainer.clientHeight,
-      scrollHeight: ganttContainer.scrollHeight,
-    })
-    ganttContainer.scrollTop = ganttTop
-
-    const taskList = taskListRef.current
-    if (taskList) {
-      const listTop = synchronizedScrollTop(
-        ganttTop,
-        taskList.scrollHeight,
-        taskList.clientHeight
-      )
-      // Mark this as mirroring so the list's scroll echo does not reset the
-      // chart and cancel the smooth horizontal move to today.
-      markMirrored(mirroredListTopRef, listTop)
-      taskList.scrollTop = listTop
-    }
-
-    const targetItem = displayItems[rowIndex]
-    if (targetItem?.type === "task") {
-      setFocusedTaskId(targetItem.task.id)
-    }
-
-    // Start the smooth horizontal movement last. Assigning scrollTop after
-    // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
-    scrollToTodayRef.current?.()
-  }, [displayItems, markMirrored])
-
-
-  // The list's own scroll area scrolls both ways: a minimum width keeps titles
-  // readable when the panel is narrow, and the horizontal scrollbar stays at
-  // the bottom of the visible panel instead of the end of a long table.
   const taskTable = (
-    <Table className="table-fixed min-w-[30rem]" containerClassName="overflow-visible">
-      <TableHeader className="sticky top-0 z-10 bg-background">
-        <TableRow className="h-[85px]">
-          <TableHead className="text-xs">Title</TableHead>
-          <TableHead className="text-xs w-[80px]">Start</TableHead>
-          <TableHead className="text-xs w-[52px]">Days</TableHead>
-          <TableHead className="text-xs w-[52px]">Done</TableHead>
-          <TableHead className="w-[40px]" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {displayItems.map((item) => {
-          if (item.type === "phase-header") {
-            const { phase, group, collapsed } = item
-            return (
-              <TableRow
-                key={`phase-${phase}`}
-                className="h-[48px] max-h-[48px] bg-muted/40 cursor-pointer hover:bg-muted/60"
-                onClick={() => togglePhase(phase)}
-              >
-                <TableCell
-                  colSpan={collapsed ? 5 : 1}
-                  className="h-[48px] py-0 text-xs font-medium"
-                >
-                  <span className="flex items-center gap-1">
-                    {collapsed
-                      ? <IconChevronRight className="size-3.5 shrink-0" />
-                      : <IconChevronDown className="size-3.5 shrink-0" />}
-                    {group.label}
-                    <span className="text-muted-foreground font-normal ml-1">
-                      ({group.tasks.length})
-                    </span>
-                    {collapsed && (
-                      <span className="text-muted-foreground font-normal ml-auto text-xs">
-                        {group.startDate.slice(5)} – {group.endDate.slice(5)}
-                      </span>
-                    )}
-                  </span>
-                </TableCell>
-                {!collapsed && (
-                  <>
-                    <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
-                      {group.startDate.slice(5)}
-                    </TableCell>
-                    <TableCell className="h-[48px] py-0 text-xs" />
-                    <TableCell className="h-[48px] py-0 text-xs" />
-                    <TableCell className="h-[48px] py-0" />
-                  </>
-                )}
-              </TableRow>
-            )
-          }
-
-          const { task } = item
-          const taskProject = projectById.get(task.projectId)
-          return (
-            <TableRow
-              key={task.id}
-              data-schedule-task-id={task.id}
-              className={cn(
-                "h-[48px] max-h-[48px] cursor-pointer",
-                focusedTaskId === task.id && "bg-accent"
-              )}
-              onClick={() => focusTaskOnTimeline(task)}
-              title="Show this item on the timeline"
-            >
-              <TableCell className="h-[48px] py-0 text-xs">
-                <span
-                  className={cn(
-                    "flex min-w-0 items-center gap-1.5",
-                    (phaseGrouping || groupByCrew) && "pl-4"
-                  )}
-                >
-                  {multipleProjects && taskProject && (
-                    <span
-                      className="inline-flex max-w-[104px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-xs font-medium"
-                      title={projectScheduleLabel(taskProject)}
-                    >
-                      <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: taskProject.color }}
-                      />
-                      <span className="truncate">
-                        {taskProject.projectNumber ?? taskProject.name}
-                      </span>
-                    </span>
-                  )}
-                  {conflicts.has(task.id) ? (
-                    <span
-                      className="shrink-0 text-destructive"
-                      title={(conflicts.get(task.id) ?? [])
-                        .map((conflict) =>
-                          conflictSummary(conflict, (id) => {
-                            const other = projectById.get(id)
-                            return other ? projectScheduleLabel(other) : "another job"
-                          })
-                        )
-                        .join("\n")}
-                    >
-                      <IconAlertTriangle className="size-3.5" aria-hidden="true" />
-                      <span className="sr-only">Crew double-booked</span>
-                    </span>
-                  ) : null}
-                  {/* Two lines fit the 48px row, which must stay level with its bar. */}
-                  <span
-                    className="line-clamp-2 break-words leading-tight"
-                    title={scheduleItemTimeLabel(task) ? `${task.title} · ${scheduleItemTimeLabel(task)}` : task.title}
-                  >
-                    {task.title}
-                  </span>
-                </span>
-              </TableCell>
-              <TableCell
-                className="h-[48px] py-0 text-xs text-muted-foreground"
-                title={scheduleItemTimeLabel(task) ?? undefined}
-              >
-                {task.startDate.slice(5)}
-              </TableCell>
-              <TableCell className="h-[48px] py-0 text-xs">
-                {task.workdays}
-              </TableCell>
-              <TableCell className="h-[48px] py-0 text-xs tabular-nums">
-                {effectivePercentComplete(task.status, task.percentComplete)}%
-              </TableCell>
-              <TableCell className="h-[48px] py-0">
-                <div
-                  className="flex items-center"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <ProjectTaskCreateButton
-                    compact
-                    projectId={task.projectId}
-                    sourceLabel="Schedule item"
-                    sourceRecordId={task.id}
-                    sourceRecordNumber={null}
-                    sourceHref={scheduleItemHref(task.projectId, task.id)}
-                    defaultTitle={`Follow up: ${task.title}`}
-                    defaultDescription={`${task.phase} schedule item.`}
-                    defaultAssigneeName={task.assignedTo}
-                    defaultCompanyName={null}
-                    defaultDueDate={task.endDateCalculated}
-                    defaultPriority={task.isCriticalPath ? "high" : "normal"}
-                    defaultTaskType="schedule_task"
-                    assigneeOptions={assigneeOptions}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-6"
-                    aria-label={`Edit ${task.title}`}
-                    onClick={() => {
-                      setFocusedTaskId(task.id)
-                      setEditingTask(task)
-                      setTaskFormOpen(true)
-                    }}
-                  >
-                    <IconPencil className="size-3" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          )
-        })}
-        {projectId && (
-          <TableRow>
-            <TableCell colSpan={5} className="py-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs w-full justify-start"
-                onClick={() => {
-                  setEditingTask(null)
-                  setTaskFormOpen(true)
-                }}
-              >
-                <IconPlus className="size-3 mr-1" />
-                Add Schedule Item
-              </Button>
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <GanttTaskTable
+      displayItems={displayItems}
+      togglePhase={togglePhase}
+      projectById={projectById}
+      multipleProjects={multipleProjects}
+      conflicts={conflicts}
+      focusedTaskId={focusedTaskId}
+      focusTaskOnTimeline={scroll.focusTaskOnTimeline}
+      phaseGrouping={phaseGrouping}
+      groupByCrew={groupByCrew}
+      assigneeOptions={assigneeOptions}
+      projectId={projectId}
+      onEditTask={(task) => {
+        setFocusedTaskId(task.id)
+        setEditingTask(task)
+        setTaskFormOpen(true)
+      }}
+      onAddTask={() => {
+        setEditingTask(null)
+        setTaskFormOpen(true)
+      }}
+    />
   )
 
   const scheduleKey = (
-    <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-2">
-      {showScheduleKey && (
-        <div className="w-72 rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-medium">Schedule key</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 px-1.5 text-xs"
-              onClick={() => setEditingScheduleKey((editing) => !editing)}
-            >
-              {editingScheduleKey ? "Done" : "Edit"}
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-            {DISPLAY_COLOR_OPTIONS.map((color) => (
-              <div
-                key={color.value}
-                className="flex items-center gap-1.5 text-xs text-foreground"
-              >
-                {editingScheduleKey ? (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={`Choose ${color.label} schedule color`}
-                        className="size-5 shrink-0 rounded-full"
-                        style={{ backgroundColor: displayColorPalette[color.value] }}
-                      />
-                    </PopoverTrigger>
-                    <PopoverContent side="top" align="start" className="w-44 p-2">
-                      <p className="mb-2 text-xs font-medium">Choose {color.label}</p>
-                      <div className="grid grid-cols-6 gap-1.5">
-                        {COLOR_PICKER_SWATCHES.map((swatch) => (
-                          <button
-                            key={swatch}
-                            type="button"
-                            aria-label={`Set ${color.label} to ${swatch}`}
-                            className={cn(
-                              "size-5 rounded border border-border shadow-sm transition-transform hover:scale-110",
-                              displayColorPalette[color.value] === swatch && "ring-2 ring-ring ring-offset-1"
-                            )}
-                            style={{ backgroundColor: swatch }}
-                            onClick={() => updatePaletteColor(color.value, swatch)}
-                          />
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    className="size-5 rounded-full"
-                    style={{ backgroundColor: displayColorPalette[color.value] }}
-                  />
-                )}
-                {editingScheduleKey ? (
-                  <span
-                    contentEditable
-                    suppressContentEditableWarning
-                    role="textbox"
-                    tabIndex={0}
-                    aria-label={`${color.label} schedule meaning`}
-                    className="min-w-0 outline-none"
-                    onBlur={(event) => {
-                      const meaning = event.currentTarget.textContent?.trim()
-                      updatePaletteLabel(color.value, meaning || DEFAULT_DISPLAY_COLOR_LABELS[color.value])
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur()
-                    }}
-                  >
-                    {displayColorLabels[color.value]}
-                  </span>
-                ) : (
-                  <span>{displayColorLabels[color.value]}</span>
-                )}
-              </div>
-            ))}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-2 h-6 px-1.5 text-xs"
-            onClick={() => {
-              setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
-              setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
-            }}
-          >
-            Reset personal colors
-          </Button>
-          <div className="mt-3 border-t pt-2 text-xs leading-snug text-muted-foreground">
-            <p>Schedule item bars use their chosen display color; phase is grouping only.</p>
-            <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
-          </div>
-        </div>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 bg-background/95 px-2.5 text-xs shadow-sm backdrop-blur"
-        aria-expanded={showScheduleKey}
-        onClick={() => setShowScheduleKey((open) => !open)}
-      >
-        Schedule key
-        <IconChevronDown
-          className={cn("size-3 transition-transform", showScheduleKey && "rotate-180")}
-        />
-      </Button>
-    </div>
+    <GanttScheduleKey
+      palette={palette}
+      showScheduleKey={showScheduleKey}
+      setShowScheduleKey={setShowScheduleKey}
+      editingScheduleKey={editingScheduleKey}
+      setEditingScheduleKey={setEditingScheduleKey}
+    />
   )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className="mb-1 flex h-8 shrink-0 items-center"
-        data-gantt-controls
-      >
-        <div className="flex items-center gap-1">
-          {isMobile && (
-            <Select
-              value={mobileView}
-              onValueChange={(value) =>
-                setMobileView(value as "tasks" | "chart")
-              }
-            >
-              <SelectTrigger className="h-8 w-20 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="chart">Chart</SelectItem>
-                <SelectItem value="tasks">Items</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="Gantt controls"
-                className="h-8 px-2 text-xs"
-                size="sm"
-                variant="outline"
-              >
-                <IconCalendar className="size-3.5" />
-                <span className="ml-1.5">{viewMode}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup
-                value={viewMode}
-                onValueChange={(mode) =>
-                  handleViewModeChange(mode as ViewMode)
-                }
-              >
-                {(["Day", "Week", "Month", "Year"] as const).map((mode) => (
-                  <DropdownMenuRadioItem key={mode} value={mode}>
-                    {mode}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={scrollToToday}>Today</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={() => handleZoom("out")}
-            title="Zoom out"
-          >
-            <IconZoomOut className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={() => handleZoom("in")}
-            title="Zoom in"
-          >
-            <IconZoomIn className="size-3.5" />
-          </Button>
-
-          <ContextualHelpBeacon topicId="schedule.gantt" />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="Gantt settings"
-                variant="ghost"
-                size="icon"
-                className="size-7"
-              >
-                <IconSettings className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <div className="space-y-2 px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs">Group by Phase</span>
-                  <Switch
-                    checked={phaseGrouping}
-                    onCheckedChange={(checked) => {
-                      setPhaseGrouping(checked)
-                      onGroupByPhaseChange?.(checked)
-                    }}
-                    className="scale-75"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs">Critical Path View</span>
-                  <Switch
-                    checked={showCriticalPath}
-                    onCheckedChange={setShowCriticalPath}
-                    className="scale-75"
-                  />
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      <GanttControls
+        isMobile={isMobile}
+        mobileView={mobileView}
+        setMobileView={setMobileView}
+        viewMode={viewMode}
+        handleViewModeChange={handleViewModeChange}
+        scrollToToday={scroll.scrollToToday}
+        handleZoom={handleZoom}
+        phaseGrouping={phaseGrouping}
+        setPhaseGrouping={setPhaseGrouping}
+        onGroupByPhaseChange={onGroupByPhaseChange}
+        showCriticalPath={showCriticalPath}
+        setShowCriticalPath={setShowCriticalPath}
+      />
 
       {/* Main content */}
       {isMobile ? (
@@ -1226,14 +248,14 @@ export function ScheduleGanttView({
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
                 focusedTaskId={focusedTaskId}
-                displayColorPalette={displayColorPalette}
+                displayColorPalette={palette.displayColorPalette}
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}
-                onContainerReady={handleGanttContainerReady}
-                onScrollPositionChange={handleGanttScroll}
-                onTodayClick={scrollToToday}
-                onTodayScrollReady={handleTodayScrollReady}
-                onDateScrollReady={handleDateScrollReady}
+                onContainerReady={scroll.handleGanttContainerReady}
+                onScrollPositionChange={scroll.handleGanttScroll}
+                onTodayClick={scroll.scrollToToday}
+                onTodayScrollReady={scroll.handleTodayScrollReady}
+                onDateScrollReady={scroll.handleDateScrollReady}
               />
               {scheduleKey}
             </div>
@@ -1246,9 +268,9 @@ export function ScheduleGanttView({
         >
           <ResizablePanel defaultSize="30%" minSize="20%">
             <div
-              ref={taskListRef}
+              ref={scroll.taskListRef}
               className="schedule-gantt-task-list h-full min-w-0 overflow-auto"
-              onScroll={handleTaskListScroll}
+              onScroll={scroll.handleTaskListScroll}
             >
               {taskTable}
             </div>
@@ -1268,14 +290,14 @@ export function ScheduleGanttView({
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
                 focusedTaskId={focusedTaskId}
-                displayColorPalette={displayColorPalette}
+                displayColorPalette={palette.displayColorPalette}
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}
-                onContainerReady={handleGanttContainerReady}
-                onScrollPositionChange={handleGanttScroll}
-                onTodayClick={scrollToToday}
-                onTodayScrollReady={handleTodayScrollReady}
-                onDateScrollReady={handleDateScrollReady}
+                onContainerReady={scroll.handleGanttContainerReady}
+                onScrollPositionChange={scroll.handleGanttScroll}
+                onTodayClick={scroll.scrollToToday}
+                onTodayScrollReady={scroll.handleTodayScrollReady}
+                onDateScrollReady={scroll.handleDateScrollReady}
               />
               {scheduleKey}
             </div>

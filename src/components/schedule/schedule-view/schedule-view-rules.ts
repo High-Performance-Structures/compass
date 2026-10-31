@@ -17,7 +17,7 @@ export type View = "calendar" | "list" | "gantt"
 // Every schedule starts ungrouped, so several jobs' items mix on one
 // timeline in date order and overlaps sit side by side. "By project" is
 // still a grouping choice.
-export const DEFAULT_SCHEDULE_GROUP: ScheduleGroupMode = "none"
+const DEFAULT_SCHEDULE_GROUP: ScheduleGroupMode = "none"
 
 type SearchParamReader = { readonly get: (key: string) => string | null }
 

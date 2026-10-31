@@ -10,14 +10,10 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { IconTrash } from "@tabler/icons-react"
 import { format, parseISO } from "date-fns"
-import { Button } from "@/components/ui/button"
 import { createTask, updateTask } from "@/app/actions/schedule"
 import { calculateEndDate, workdaysFromEndDate } from "@/lib/schedule/business-days"
 import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
@@ -51,6 +47,8 @@ import { ScheduleDateFields } from "./schedule-item-form/schedule-date-fields"
 import { ScheduleItemDetails } from "./schedule-item-form/schedule-item-details"
 import { RelatedTodosSection } from "./schedule-item-form/related-todos-section"
 import { DeleteScheduleItemDialog } from "./schedule-item-form/delete-schedule-item-dialog"
+import { ScheduleItemFormFooter } from "./schedule-item-form/form-footer"
+import { ShiftReasonField } from "./schedule-item-form/shift-reason-field"
 
 interface ScheduleItemFormDialogProps {
   open: boolean
@@ -307,32 +305,7 @@ export function ScheduleItemFormDialog({
                 chooseEndDate={chooseEndDate}
               />
 
-              {shiftReasonRequired && (
-              <FormField
-                control={form.control}
-                name="shiftReason"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground font-medium">
-                      Schedule shift reason
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Required when dates or predecessors change"
-                        className="min-h-[60px] resize-none text-sm"
-                        maxLength={500}
-                        {...field}
-                      />
-                    </FormControl>
-                    <p className="text-xs text-muted-foreground">
-                      Saved in activity history. If the project finish moves later,
-                      project administrators are warned that a change order may be needed.
-                    </p>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              )}
+              {shiftReasonRequired && <ShiftReasonField form={form} />}
 
               <ScheduleItemDetails
                 form={form}
@@ -358,40 +331,12 @@ export function ScheduleItemFormDialog({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t shrink-0">
-              {isEditing ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                >
-                  <IconTrash className="size-3.5" />
-                  Delete schedule item
-                </Button>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                {!isEditing && template.selectedTemplateItemId
-                  ? `1 schedule item + ${template.selectedTemplateTodoIds.length} to-do${
-                      template.selectedTemplateTodoIds.length === 1 ? "" : "s"
-                    }`
-                  : null}
-              </p>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm">
-                  {isEditing ? "Save" : "Create"}
-                </Button>
-              </div>
-            </div>
+            <ScheduleItemFormFooter
+              isEditing={isEditing}
+              template={template}
+              setConfirmDeleteOpen={setConfirmDeleteOpen}
+              onOpenChange={onOpenChange}
+            />
           </form>
         </Form>
       </DialogContent>
