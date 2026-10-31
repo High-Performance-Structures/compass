@@ -19,7 +19,7 @@ import type {
   ProjectSelectionItem,
   ProjectSelectionOptions,
   ProjectSelectionsSummary,
-} from "@/app/actions/project-selections"
+} from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {

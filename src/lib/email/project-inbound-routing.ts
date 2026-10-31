@@ -13,13 +13,13 @@ import {
   organizationMembers,
   projectContacts,
   projectChangeOrders,
-  projectInteractions,
   projectOperations,
   projectRfis,
   projectVideos,
   projects,
   users,
 } from "@/db/schema"
+import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import {
   stripHtml,
   type InboundCandidate,
@@ -152,27 +152,24 @@ async function recordVerifiedInboundClientInteraction(input: {
     throw new Error("Verified inbound route has an unsupported client interaction type.")
   }
   const summary = `${input.source.label} from ${senderLabel(input.candidate)}: ${title}`
-  await input.db
-    .insert(projectInteractions)
-    .values({
-      id: `project-interaction-${input.source.idPrefix}-${input.candidate.gmailMessageId}`,
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      projectContactId: contact.id,
-      interactionType,
-      direction: "inbound",
-      source: input.source.sourceSystem,
-      qualifiesForClientTouch: true,
-      summary,
-      occurredAt: input.candidate.receivedAt,
-      createdBy: null,
-      updatedBy: null,
-      deletedBy: null,
-      createdAt: input.candidate.receivedAt,
-      updatedAt: input.candidate.receivedAt,
-      deletedAt: null,
-    })
-    .onConflictDoNothing()
+  await insertProjectInteractionIfAbsent(input.db, {
+    id: `project-interaction-${input.source.idPrefix}-${input.candidate.gmailMessageId}`,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    projectContactId: contact.id,
+    interactionType,
+    direction: "inbound",
+    source: input.source.sourceSystem,
+    qualifiesForClientTouch: true,
+    summary,
+    occurredAt: input.candidate.receivedAt,
+    createdBy: null,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: input.candidate.receivedAt,
+    updatedAt: input.candidate.receivedAt,
+    deletedAt: null,
+  })
   // An inbound client email or text is contact; clear any overdue reminder.
   await clearOverdueFollowUpReminders(input.db, [input.projectId]).catch((error: unknown) => {
     console.error("Unable to clear overdue follow-up reminders", error)

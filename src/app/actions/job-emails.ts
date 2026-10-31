@@ -4,7 +4,9 @@ import { and, asc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { projectContacts, projectInteractions, projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectContacts, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { insertProjectInteractionStatement } from "@/lib/domain/crm/store"
 import type { TemplateEmailDraft } from "@/lib/email/template-email"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -190,8 +192,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     const now = new Date().toISOString()
     const loggedContact = template.audience === "client"
     await ctx.db.batch([
-      ctx.db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      recordProjectAudit(ctx.db, {
         organizationId: ctx.organizationId,
         projectId,
         actorUserId: ctx.user.id,
@@ -204,7 +205,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
       }),
       ...(loggedContact
         ? [
-            ctx.db.insert(projectInteractions).values({
+            insertProjectInteractionStatement(ctx.db, {
               id: crypto.randomUUID(),
               organizationId: ctx.organizationId,
               projectId,

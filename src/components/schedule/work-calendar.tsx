@@ -21,7 +21,7 @@ import type {
   WorkCalendarEntry,
   WorkCalendarEntryKind,
   WorkCalendarData,
-} from "@/app/actions/work-calendar"
+} from "@/lib/domain/work-calendar/types"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { SearchableCombobox } from "@/components/searchable-combobox"

@@ -45,10 +45,8 @@ import {
   getProjectRfiSummary,
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
-import {
-  getProjectFamilySummary,
-  type ProjectFamilySummary,
-} from "@/app/actions/project-families"
+import { getProjectFamilySummary } from "@/app/actions/project-families"
+import type { ProjectFamilySummary } from "@/lib/domain/families/rules"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"

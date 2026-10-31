@@ -397,7 +397,7 @@
       "src/lib/domain/nutech/store.ts"
     ],
     "organizationCalendarSettings": [
-      "src/app/actions/work-calendar.ts"
+      "src/lib/domain/work-calendar/store.ts"
     ],
     "organizationFeatureSettings": [
       "src/app/actions/feature-settings.ts",
@@ -497,9 +497,7 @@
       "src/app/actions/project-documents.ts"
     ],
     "projectDuplicateDecisions": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-registry-archive.ts",
-      "src/app/actions/projects.ts"
+      "src/lib/domain/project/registry-store.ts"
     ],
     "projectEmailCampaigns": [
       "src/app/actions/project-email.ts"
@@ -545,83 +543,53 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectExternalLinks": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-families.ts",
-      "src/app/actions/project-profile.ts",
-      "src/app/actions/project-registry.ts",
-      "src/app/actions/projects.ts",
-      "src/app/api/google/project-manager-handoff/route.ts",
-      "src/app/api/google/script-handoff/route.ts"
+      "src/lib/domain/project/store.ts"
     ],
     "projectFamilies": [
-      "src/app/actions/project-families.ts",
-      "src/app/actions/projects.ts",
-      "src/lib/estimates/phase-proposals.ts"
+      "src/lib/domain/families/store.ts"
     ],
     "projectFamilyPhases": [
-      "src/app/actions/project-families.ts",
-      "src/app/actions/projects.ts",
-      "src/app/api/google/project-manager-handoff/route.ts",
-      "src/lib/estimates/phase-proposals.ts"
+      "src/lib/domain/families/store.ts"
     ],
     "projectFieldCostCodes": [
       "src/app/actions/field-cost-codes.ts"
     ],
     "projectFinishSelectionRooms": [
-      "src/app/actions/project-selections.ts",
-      "src/app/actions/project-templates.ts"
+      "src/lib/domain/selections/store.ts"
     ],
     "projectFinishSelections": [
-      "src/app/actions/project-selections.ts",
-      "src/app/actions/project-templates.ts",
-      "src/app/actions/selection-decisions.ts"
+      "src/lib/domain/selections/store.ts"
     ],
     "projectFollowUpReminders": [
       "src/lib/project-follow-up-reminders.ts"
     ],
     "projectFollowUps": [
-      "src/app/actions/project-profile.ts"
+      "src/lib/domain/crm/store.ts"
     ],
     "projectInteractions": [
-      "src/app/actions/job-emails.ts",
-      "src/app/actions/nutech-emails.ts",
-      "src/app/actions/project-profile.ts",
-      "src/lib/daily-logs/log-followups-server.ts",
-      "src/lib/email/project-inbound-routing.ts",
-      "src/lib/email/tracked-record-replies.ts"
+      "src/lib/domain/crm/store.ts"
     ],
     "projectJobStatuses": [
-      "src/app/actions/project-profile.ts"
+      "src/lib/domain/project/store.ts"
     ],
     "projectLinks": [
       "src/app/actions/estimate-project-copies.ts",
       "src/app/actions/project-links.ts"
     ],
     "projectMembers": [
-      "src/app/actions/project-access-invitations.ts",
-      "src/app/actions/project-contacts.ts",
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/projects.ts",
-      "src/app/actions/users.ts",
-      "src/lib/auth.ts"
+      "src/lib/domain/project/store.ts"
     ],
     "projectNotes": [
-      "src/app/actions/project-profile.ts"
+      "src/lib/domain/crm/store.ts"
     ],
     "projectNumberAliases": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-families.ts",
-      "src/app/actions/project-profile.ts"
+      "src/lib/domain/project/numbering-store.ts"
     ],
     "projectNumberReservations": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-profile.ts",
-      "src/app/actions/project-registry-archive.ts",
-      "src/app/actions/projects.ts"
+      "src/lib/domain/project/numbering-store.ts"
     ],
     "projectNumberRetirements": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-registry-archive.ts"
+      "src/lib/domain/project/numbering-store.ts"
     ],
     "projectNumberReviewDecisions": [
       "src/app/actions/project-number-reviews.ts"
@@ -633,25 +601,10 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectProfileAuditEvents": [
-      "src/app/actions/field-cost-codes.ts",
-      "src/app/actions/internal-workspaces.ts",
-      "src/app/actions/job-emails.ts",
-      "src/app/actions/job-workflows.ts",
-      "src/app/actions/nutech-bracing.ts",
-      "src/app/actions/nutech-emails.ts",
-      "src/app/actions/nutech-orders.ts",
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-families.ts",
-      "src/app/actions/project-profile.ts",
-      "src/app/actions/project-registry-archive.ts",
-      "src/app/actions/project-sage-handoff-review.ts",
-      "src/app/actions/project-travel-charges.ts",
-      "src/lib/daily-logs/log-followups-server.ts",
-      "src/lib/job-workflows/carryover.ts"
+      "src/lib/domain/project-audit/store.ts"
     ],
     "projectProfileSyncOperations": [
-      "src/app/actions/project-families.ts",
-      "src/app/actions/project-profile.ts",
+      "src/lib/domain/project/store.ts",
       "src/lib/project-contact-tracker-refresh.ts"
     ],
     "projectPurchaseOrderLines": [
@@ -669,8 +622,7 @@
       "src/lib/paper-trail/sweep.ts"
     ],
     "projectRegistryRemovals": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-registry-archive.ts"
+      "src/lib/domain/project/registry-store.ts"
     ],
     "projectRfiAttachments": [
       "src/lib/domain/rfis/store.ts"
@@ -691,27 +643,10 @@
       "src/lib/domain/operations/store.ts"
     ],
     "projectRouteAliases": [
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-registry-archive.ts"
+      "src/lib/domain/project/numbering-store.ts"
     ],
     "projects": [
-      "src/app/actions/internal-duties.ts",
-      "src/app/actions/internal-workspaces.ts",
-      "src/app/actions/nutech-orders.ts",
-      "src/app/actions/project-documents.ts",
-      "src/app/actions/project-duplicates.ts",
-      "src/app/actions/project-families.ts",
-      "src/app/actions/project-profile.ts",
-      "src/app/actions/project-registry-archive.ts",
-      "src/app/actions/project-registry.ts",
-      "src/app/actions/project-sage-handoff-review.ts",
-      "src/app/actions/projects.ts",
-      "src/app/actions/schedule-publications.ts",
-      "src/app/actions/schedule.ts",
-      "src/app/api/google/project-manager-handoff/route.ts",
-      "src/app/api/integrations/sage/client-project-writes/results/route.ts",
-      "src/lib/buildertrend/lead-project-cutover.ts",
-      "src/lib/portfolio-map/site-locations.ts"
+      "src/lib/domain/project/store.ts"
     ],
     "projectSavedViews": [
       "src/app/actions/project-views.ts",
@@ -1061,10 +996,10 @@
       "src/lib/weather/refresh-server.ts"
     ],
     "workCalendarEventAttendees": [
-      "src/app/actions/work-calendar.ts"
+      "src/lib/domain/work-calendar/store.ts"
     ],
     "workCalendarEvents": [
-      "src/app/actions/work-calendar.ts",
+      "src/lib/domain/work-calendar/store.ts",
       "src/lib/google/calendar/sync.ts"
     ],
     "workdayExceptions": [
@@ -1083,21 +1018,16 @@
     "src/app/actions/google-drive.ts": 1468,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1123,
-    "src/app/actions/nutech-orders.ts": 981,
+    "src/app/actions/nutech-orders.ts": 980,
     "src/app/actions/project-audience-preview.ts": 1192,
     "src/app/actions/project-change-orders.ts": 1665,
-    "src/app/actions/project-documents.ts": 922,
-    "src/app/actions/project-families.ts": 1827,
+    "src/app/actions/project-documents.ts": 907,
     "src/app/actions/project-financial-workflows.ts": 1434,
-    "src/app/actions/project-profile.ts": 2248,
-    "src/app/actions/project-selections.ts": 1847,
-    "src/app/actions/project-templates.ts": 901,
-    "src/app/actions/projects.ts": 1823,
+    "src/app/actions/project-templates.ts": 889,
     "src/app/actions/schedule-confirmations.ts": 1406,
     "src/app/actions/social-posts.ts": 1126,
     "src/app/actions/voice-sessions.ts": 986,
-    "src/app/actions/work-calendar.ts": 2267,
-    "src/app/api/google/project-manager-handoff/route.ts": 818,
+    "src/app/api/google/project-manager-handoff/route.ts": 816,
     "src/app/dashboard/contacts/page.tsx": 993,
     "src/app/page.tsx": 1149,
     "src/components/agent/chat-view.tsx": 1047,
@@ -1125,16 +1055,16 @@
     "src/components/schedule/schedule-item-form-dialog.tsx": 2086,
     "src/components/schedule/schedule-list-view.tsx": 814,
     "src/components/schedule/schedule-view.tsx": 1698,
-    "src/components/schedule/work-calendar-event-dialog.tsx": 822,
+    "src/components/schedule/work-calendar-event-dialog.tsx": 815,
     "src/components/schedule/work-calendar.tsx": 830,
     "src/components/settings/ai-model-tab.tsx": 1379,
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/agent/render/registry.tsx": 1809,
-    "src/lib/auth.ts": 885,
+    "src/lib/auth.ts": 879,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
     "src/lib/email/gmail-inbound.ts": 821,
-    "src/lib/email/project-inbound-routing.ts": 1043,
+    "src/lib/email/project-inbound-routing.ts": 1040,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
     "src/lib/notifications/create-event.ts": 843,
@@ -1157,11 +1087,8 @@
     "src/app/actions/project-contract-deposits.ts": 1,
     "src/app/actions/project-document-folders.ts": 1,
     "src/app/actions/project-documents.ts": 1,
-    "src/app/actions/project-families.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 1,
-    "src/app/actions/project-selections.ts": 1,
     "src/app/actions/project-warranty.ts": 1,
-    "src/app/actions/projects.ts": 1,
     "src/app/actions/social-connections.ts": 1,
     "src/app/actions/social-posts.ts": 1,
     "src/app/actions/voice-sessions.ts": 1,
@@ -1468,17 +1395,14 @@
     "src/app/actions/project-duplicates.ts": 1,
     "src/app/actions/project-estimate-report-phases.ts": 1,
     "src/app/actions/project-estimates.ts": 1,
-    "src/app/actions/project-families.ts": 2,
     "src/app/actions/project-financial-workflows.ts": 3,
     "src/app/actions/project-historical-rfq-history.ts": 1,
     "src/app/actions/project-links.ts": 1,
     "src/app/actions/project-messages.ts": 2,
     "src/app/actions/project-number-reviews.ts": 1,
-    "src/app/actions/project-profile.ts": 6,
     "src/app/actions/project-registry-archive.ts": 1,
     "src/app/actions/project-registry.ts": 2,
     "src/app/actions/project-rfi-email.ts": 1,
-    "src/app/actions/project-selections.ts": 2,
     "src/app/actions/project-site-weather.ts": 2,
     "src/app/actions/project-templates.ts": 7,
     "src/app/actions/project-timeline.ts": 1,
@@ -1516,7 +1440,7 @@
     "src/app/actions/vendors.ts": 6,
     "src/app/actions/view-preferences.ts": 2,
     "src/app/actions/voice-sessions.ts": 6,
-    "src/app/actions/work-calendar.ts": 4,
+    "src/app/actions/work-calendar.ts": 1,
     "src/app/api/agent/render/route.ts": 1,
     "src/app/api/agent/route.ts": 1,
     "src/app/api/bridge/context/route.ts": 1,

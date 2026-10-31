@@ -11,10 +11,12 @@ import {
 
 import {
   requestSelectionCostCodeSageReview,
-  type ProjectSelectionItem,
-  type ProjectSelectionOptions,
-  type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionItem,
+  ProjectSelectionOptions,
+  ProjectSelectionsSummary,
+} from "@/lib/domain/selections/types"
 import { ProjectSelectionCreateForm } from "@/components/projects/project-selection-create-form"
 import { ProjectFinishScheduleImportSheet } from "@/components/projects/project-finish-schedule-import-sheet"
 import { ProjectSelectionDeleteButton } from "@/components/projects/project-selection-delete-button"

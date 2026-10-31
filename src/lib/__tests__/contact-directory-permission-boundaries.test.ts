@@ -40,7 +40,7 @@ describe("contact directory permission boundaries", () => {
     expect(intake).toContain('if (cleanText(input.assignedTo)) {')
     expect(intake).toContain('requireFeaturePermission(user, "internal-directory", "read")')
     expect(intake?.indexOf('requireFeaturePermission(user, "customers", "read")'))
-      .toBeLessThan(intake?.indexOf("const customerMatches =") ?? 0)
+      .toBeLessThan(intake?.indexOf("await resolveIntakeCustomer(") ?? 0)
   })
 
   it("does not expose or assign denied directories through project contact actions", () => {
@@ -72,6 +72,12 @@ describe("contact directory permission boundaries", () => {
 
   it("excludes archived merge sources from project association and project intake", () => {
     expect(actionSource("contact-project-associations.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
-    expect(actionSource("projects.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
+    // Intake's client lookups moved to the project domain module.
+    const intake = readFileSync(join(process.cwd(), "src/lib/domain/project/intake.ts"), "utf8")
+    const resolveCustomer = intake.split("export async function resolveIntakeCustomer(")[1]
+      ?.split("export async function ")[0] ?? ""
+    expect(resolveCustomer.match(/isNull\(customers\.mergedIntoCustomerId\)/g)).toHaveLength(2)
+    expect(readFileSync(join(process.cwd(), "src/lib/domain/project/intake-shell.ts"), "utf8"))
+      .toContain("isNull(customers.mergedIntoCustomerId)")
   })
 })

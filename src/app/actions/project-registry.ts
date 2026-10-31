@@ -12,6 +12,12 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import {
+  deleteProjectExternalLinks,
+  insertProjectExternalLink,
+  updateProjectExternalLinks,
+  updateProjects,
+} from "@/lib/domain/project/store"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canManageProjectRegistry,
@@ -175,31 +181,26 @@ async function upsertProjectLink(
 
   if (!hasExternalValue) {
     if (existingId) {
-      await db
-        .delete(projectExternalLinks)
-        .where(eq(projectExternalLinks.id, existingId))
+      await deleteProjectExternalLinks(db, eq(projectExternalLinks.id, existingId))
     }
     return
   }
 
   if (existingId) {
-    await db
-      .update(projectExternalLinks)
-      .set({
-        label: input.label,
-        externalId: input.externalId,
-        externalNumber: input.externalNumber,
-        externalUrl: input.externalUrl,
-        syncDirection: input.syncDirection,
-        syncStatus: input.syncStatus,
-        metadata: input.metadata,
-        updatedAt: now,
-      })
-      .where(eq(projectExternalLinks.id, existingId))
+    await updateProjectExternalLinks(db, eq(projectExternalLinks.id, existingId), {
+      label: input.label,
+      externalId: input.externalId,
+      externalNumber: input.externalNumber,
+      externalUrl: input.externalUrl,
+      syncDirection: input.syncDirection,
+      syncStatus: input.syncStatus,
+      metadata: input.metadata,
+      updatedAt: now,
+    })
     return
   }
 
-  await db.insert(projectExternalLinks).values({
+  await insertProjectExternalLink(db, {
     id: crypto.randomUUID(),
     projectId,
     system: input.system,
@@ -348,9 +349,7 @@ export async function updateProjectRegistry(
       "weekly"
     )
 
-    await db
-      .update(projects)
-      .set({
+    await updateProjects(db, eq(projects.id, projectId), {
         projectNumber,
         status,
         sageJobId,
@@ -366,7 +365,6 @@ export async function updateProjectRegistry(
         ownerUpdateCadence,
         updatedAt: now,
       })
-      .where(eq(projects.id, projectId))
 
     await upsertProjectLink(db, projectId, {
       system: "sage",

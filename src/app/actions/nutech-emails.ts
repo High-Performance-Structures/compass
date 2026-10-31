@@ -4,7 +4,9 @@ import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, asc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
-import { projectContacts, projectInteractions, projectOperations, projectProfileAuditEvents } from "@/db/schema"
+import { projectContacts, projectOperations } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { insertProjectInteractionStatement } from "@/lib/domain/crm/store"
 import { isDemoUser } from "@/lib/demo"
 import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
 import { parseDateOnly } from "@/lib/format"
@@ -252,8 +254,7 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
     const now = new Date().toISOString()
     const loggedContact = template.audience === "customer"
     await ctx.db.batch([
-      ctx.db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      recordProjectAudit(ctx.db, {
         organizationId: ctx.organizationId,
         projectId,
         actorUserId: ctx.user.id,
@@ -266,7 +267,7 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
       }),
       ...(loggedContact
         ? [
-            ctx.db.insert(projectInteractions).values({
+            insertProjectInteractionStatement(ctx.db, {
               id: crypto.randomUUID(),
               organizationId: ctx.organizationId,
               projectId,

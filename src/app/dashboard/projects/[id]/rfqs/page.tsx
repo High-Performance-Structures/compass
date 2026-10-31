@@ -31,9 +31,11 @@ import {
 import {
   getProjectSelectionOptions,
   getProjectSelections,
-  type ProjectSelectionOptions,
-  type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionOptions,
+  ProjectSelectionsSummary,
+} from "@/lib/domain/selections/types"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectHistoricalRfqWorkspace } from "@/app/actions/project-historical-rfq-history"
 import { PageHeader } from "@/components/page-header"

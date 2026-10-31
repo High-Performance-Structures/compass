@@ -14,6 +14,7 @@ import {
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
+import { updateProjects, updateProjectsStatement } from "@/lib/domain/project/store"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import type { DriveFile } from "@/lib/google/client/types"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
@@ -618,15 +619,11 @@ export async function updateProjectDocumentStatus(
           updatedAt: now,
         })
         .where(eq(projectDocuments.id, documentId)),
-      access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.planSetDocumentId, documentId)
-          )
-        ),
+      updateProjectsStatement(
+        access.db,
+        and(eq(projects.id, projectId), eq(projects.planSetDocumentId, documentId)),
+        { planSetDocumentId: null, updatedAt: now }
+      ),
     ])
     await recordActivityEvent({
       db: access.db,
@@ -803,11 +800,7 @@ export async function setProjectPlanSetDocument(
       if (document.status !== "current") {
         throw new Error("Only a current document can be the working plan set.")
       }
-      await access.db
-        .update(projects)
-        .set({ planSetDocumentId: documentId, updatedAt: now })
-        .where(eq(projects.id, projectId))
-        .run()
+      await updateProjects(access.db, eq(projects.id, projectId), { planSetDocumentId: documentId, updatedAt: now })
       await recordActivityEvent({
         db: access.db,
         organizationId: access.organizationId,
@@ -820,11 +813,7 @@ export async function setProjectPlanSetDocument(
         summary: `Set ${document.title} as the working plan set.`,
       })
     } else {
-      await access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(eq(projects.id, projectId))
-        .run()
+      await updateProjects(access.db, eq(projects.id, projectId), { planSetDocumentId: null, updatedAt: now })
     }
     refreshDocumentPaths(projectId)
     revalidatePath("/dashboard")
@@ -889,15 +878,11 @@ export async function removeProjectDocument(
             eq(projectDocuments.projectId, projectId)
           )
         ),
-      access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.planSetDocumentId, documentId)
-          )
-        ),
+      updateProjectsStatement(
+        access.db,
+        and(eq(projects.id, projectId), eq(projects.planSetDocumentId, documentId)),
+        { planSetDocumentId: null, updatedAt: now }
+      ),
     ])
     await recordActivityEvent({
       db: access.db,

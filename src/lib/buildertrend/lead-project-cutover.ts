@@ -8,6 +8,11 @@ import {
   buildBuildertrendInventoryManifest,
   isTrustedBuildertrendUrl,
 } from "./inventory-manifest"
+import {
+  buildertrendCutoverNewProjectSql,
+  buildertrendCutoverProjectCollisionGuardSql,
+  buildertrendCutoverProjectReferenceGuardSql,
+} from "@/lib/domain/project/store"
 
 const textField = z.string().trim().min(1).optional()
 const nullableTextField = z.string().trim().min(1).nullable().optional()
@@ -110,11 +115,6 @@ function firstText(...values: readonly (string | null | undefined)[]): string | 
     if (normalized) return normalized
   }
   return undefined
-}
-
-function sqlText(value: string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "NULL"
-  return `'${value.replaceAll("'", "''")}'`
 }
 
 function stableKey(value: string): string {
@@ -332,85 +332,6 @@ function buildProjectPlans(
   return { plans, errors }
 }
 
-function newProjectSql(
-  organizationId: string,
-  project: ProjectPlan,
-  capturedAt: string,
-): string {
-  return `INSERT INTO projects (
-  id, project_number, name, status, client_status, job_status_id, client_name,
-  organization_id, google_drive_folder_id, owner_updates_enabled,
-  owner_update_channel, owner_update_cadence, owner_schedule_view,
-  created_at, updated_at
-) SELECT
-  ${sqlText(project.projectId)}, ${sqlText(project.projectNumber)},
-  ${sqlText(project.projectName)}, 'OPEN', 'lead', 'current',
-  ${sqlText(project.clientName)}, ${sqlText(organizationId)},
-  ${sqlText(project.googleDriveProjectFolderId)}, 0, 'compass', 'weekly', 'items',
-  ${sqlText(capturedAt)}, ${sqlText(capturedAt)}
-WHERE EXISTS (
-  SELECT 1 FROM organizations WHERE id = ${sqlText(organizationId)}
-)
-ON CONFLICT(id) DO UPDATE SET
-  google_drive_folder_id = COALESCE(
-    projects.google_drive_folder_id,
-    excluded.google_drive_folder_id
-  ),
-  updated_at = CASE
-    WHEN projects.organization_id = excluded.organization_id
-      THEN excluded.updated_at
-    ELSE projects.updated_at
-  END
-WHERE projects.organization_id = excluded.organization_id;`
-}
-
-function newProjectCollisionGuardSql(
-  organizationId: string,
-  project: ProjectPlan,
-  capturedAt: string,
-): string {
-  const projectNumberConflict = project.projectNumber
-    ? `OR EXISTS (
-    SELECT 1 FROM projects
-    WHERE organization_id = ${sqlText(organizationId)}
-      AND project_number = ${sqlText(project.projectNumber)} COLLATE NOCASE
-      AND id <> ${sqlText(project.projectId)}
-  )`
-    : ""
-  return `-- Fail closed if a new Buildertrend project would reuse an existing identity.
-INSERT INTO projects (id, name, status, organization_id, created_at, updated_at)
-SELECT NULL, 'Buildertrend cutover collision guard', 'OPEN',
-  ${sqlText(organizationId)}, ${sqlText(capturedAt)}, ${sqlText(capturedAt)}
-WHERE EXISTS (
-  SELECT 1 FROM projects
-  WHERE id = ${sqlText(project.projectId)}
-    AND organization_id <> ${sqlText(organizationId)}
-)
-OR EXISTS (
-  SELECT 1 FROM projects
-  WHERE organization_id = ${sqlText(organizationId)}
-    AND google_drive_folder_id = ${sqlText(project.googleDriveProjectFolderId)}
-    AND id <> ${sqlText(project.projectId)}
-)
-${projectNumberConflict};`
-}
-
-function projectReferenceGuardSql(
-  organizationId: string,
-  project: ProjectPlan,
-  capturedAt: string,
-): string {
-  return `-- Fail closed rather than staging a lead against a nonexistent Compass project.
-INSERT INTO projects (id, name, status, organization_id, created_at, updated_at)
-SELECT NULL, 'Buildertrend cutover project reference guard', 'OPEN',
-  ${sqlText(organizationId)}, ${sqlText(capturedAt)}, ${sqlText(capturedAt)}
-WHERE NOT EXISTS (
-  SELECT 1 FROM projects
-  WHERE id = ${sqlText(project.projectId)}
-    AND organization_id = ${sqlText(organizationId)}
-);`
-}
-
 function toInventoryRows(
   input: BuildertrendLeadProjectCutoverInput,
   plans: readonly LeadPlan[],
@@ -499,20 +420,20 @@ export async function buildBuildertrendLeadProjectCutoverSql(
   const existingProjectReferenceGuards = uniqueProjects
     .filter((plan) => plan.project.existingProjectId)
     .map((plan) =>
-      projectReferenceGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
+      buildertrendCutoverProjectReferenceGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
     )
   const newProjectCollisionGuards = uniqueProjects
     .filter((plan) => !plan.project.existingProjectId)
     .map((plan) =>
-      newProjectCollisionGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
+      buildertrendCutoverProjectCollisionGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
     )
   const newProjectCreations = uniqueProjects
     .filter((plan) => !plan.project.existingProjectId)
-    .map((plan) => newProjectSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt))
+    .map((plan) => buildertrendCutoverNewProjectSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt))
   const newProjectReferenceGuards = uniqueProjects
     .filter((plan) => !plan.project.existingProjectId)
     .map((plan) =>
-      projectReferenceGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
+      buildertrendCutoverProjectReferenceGuardSql(normalizedOrganizationId, plan.project, parsed.data.capturedAt),
     )
   const projectStatements = [
     ...existingProjectReferenceGuards,

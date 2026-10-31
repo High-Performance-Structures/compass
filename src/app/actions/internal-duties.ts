@@ -10,6 +10,7 @@ import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { isUniqueConflict, weekStartOf } from "@/lib/domain/duties/rules"
 import { deleteDutyEntry as deleteDutyEntryRow, insertDutyEntry, updateDutyEntry } from "@/lib/domain/duties/store"
+import { updateProjects } from "@/lib/domain/project/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { dutiesFor, monthSummary, parseHours, type DutyOption, type DutySummaryRow, type WorkspaceKind } from "@/lib/internal-duties/model"
@@ -307,7 +308,7 @@ export async function setProjectWorkspaceKind(projectId: string, kind: Workspace
         .limit(1)
       if (used) return { success: false, error: "This workspace has duty entries. Delete them first." }
     }
-    await db.update(projects).set({ workspaceKind: kind }).where(eq(projects.id, projectId))
+    await updateProjects(db, eq(projects.id, projectId), { workspaceKind: kind })
     revalidatePath(`/dashboard/projects/${projectId}/duty-log`)
     return { success: true, data: null }
   } catch (error) {

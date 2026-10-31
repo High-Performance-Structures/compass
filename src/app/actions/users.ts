@@ -17,6 +17,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { insertProjectMember } from "@/lib/domain/project/store"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 import { getProjects } from "@/app/actions/projects"
@@ -350,13 +351,13 @@ export async function grantContactsProjectAccess(
     const existingIds = new Set(existing.map((member) => member.userId))
     const newMembers = members.filter((member) => !existingIds.has(member.userId))
     if (newMembers.length > 0) {
-      await db.insert(projectMembers).values(newMembers.map((member) => ({
+      await insertProjectMember(db, newMembers.map((member) => ({
         id: crypto.randomUUID(),
         projectId,
         userId: member.userId,
         role: member.role,
         assignedAt: new Date().toISOString(),
-      }))).run()
+      })))
     }
     revalidatePath("/dashboard/contacts")
     revalidatePath(`/dashboard/projects/${projectId}`)

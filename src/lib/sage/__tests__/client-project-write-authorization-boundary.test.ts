@@ -12,6 +12,7 @@ const projectActions = source("../../../app/actions/projects.ts")
 const resultsRoute = source(
   "../../../app/api/integrations/sage/client-project-writes/results/route.ts"
 )
+const projectStore = source("../../domain/project/store.ts")
 const windowsWriter = source(
   "../../../../scripts/Sage.100.Contractor.CompassClientProjectWriter.cs"
 )
@@ -46,9 +47,11 @@ describe("Sage customer/project creation authorization boundary", () => {
     expect(resultsRoute).toContain("UPDATE customers")
     expect(resultsRoute).toContain("sage_client_id = ?")
     expect(resultsRoute).toContain("sage_client_number = ?")
-    expect(resultsRoute).toContain("UPDATE projects")
-    expect(resultsRoute).toContain("sage_job_id = ?")
-    expect(resultsRoute).toContain("sage_job_number = ?")
+    // The project write goes through the project store.
+    expect(resultsRoute).toContain("sageJobResultStatement(env.DB")
+    expect(projectStore).toContain("UPDATE projects")
+    expect(projectStore).toContain("sage_job_id = ?")
+    expect(projectStore).toContain("sage_job_number = ?")
   })
 
   it("does not bypass contact review when filling a missing Sage client email", () => {

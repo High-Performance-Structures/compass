@@ -27,7 +27,7 @@ import {
   createProjectEstimateFromTemplate,
   type EstimateTemplateOption,
 } from "@/app/actions/estimate-templates"
-import type { ProjectFamilySummary } from "@/app/actions/project-families"
+import type { ProjectFamilySummary } from "@/lib/domain/families/rules"
 
 import {
   addProjectEstimateBasisDocument,

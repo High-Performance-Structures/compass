@@ -4,8 +4,10 @@ import * as React from "react"
 
 import {
   updateProjectSelectionStatus,
-  type ProjectSelectionStatus,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionStatus,
+} from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 
 const STATUS_OPTIONS: readonly {

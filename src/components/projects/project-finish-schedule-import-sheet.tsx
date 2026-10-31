@@ -7,8 +7,10 @@ import { IconFileImport, IconRefresh } from "@tabler/icons-react"
 import {
   importProjectFinishSchedule,
   previewProjectFinishScheduleImport,
-  type ProjectFinishScheduleImportPreview,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectFinishScheduleImportPreview,
+} from "@/lib/domain/selections/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

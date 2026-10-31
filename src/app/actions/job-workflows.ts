@@ -3,7 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { projectJobStatuses, projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectJobStatuses, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -174,8 +175,7 @@ export async function catchUpJobWorkflow(projectId: string): Promise<Result<{ re
     for (const chunk of chunkD1Rows(rows)) {
       await db.insert(projectWorkflowChecks).values(chunk).onConflictDoNothing()
     }
-    await db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    await recordProjectAudit(db, {
       organizationId,
       projectId,
       actorUserId: user.id,
@@ -206,8 +206,7 @@ export async function setJobWorkflowCheck(input: {
     const { db, organizationId, user } = await context(input.projectId, "update")
     if (isDemoUser(user.id) || isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
     const now = new Date().toISOString()
-    const audit = db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    const audit = recordProjectAudit(db, {
       organizationId,
       projectId: input.projectId,
       actorUserId: user.id,

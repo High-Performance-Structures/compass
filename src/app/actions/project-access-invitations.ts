@@ -33,6 +33,7 @@ import {
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 import { updateProjectContactById } from "@/lib/domain/contacts/store"
+import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
 import { projectContactInvitationDirectorySelection } from "@/lib/project-contact-invitation-select"
@@ -97,24 +98,17 @@ async function ensureProjectMembership(input: {
     .get()
 
   if (existing) {
-    await input.db
-      .update(projectMembers)
-      .set({ role: input.role })
-      .where(eq(projectMembers.id, existing.id))
-      .run()
+    await updateProjectMembers(input.db, eq(projectMembers.id, existing.id), { role: input.role })
     return
   }
 
-  await input.db
-    .insert(projectMembers)
-    .values({
-      id: crypto.randomUUID(),
-      userId: input.userId,
-      projectId: input.projectId,
-      role: input.role,
-      assignedAt: input.now,
-    })
-    .run()
+  await insertProjectMember(input.db, {
+    id: crypto.randomUUID(),
+    userId: input.userId,
+    projectId: input.projectId,
+    role: input.role,
+    assignedAt: input.now,
+  })
 }
 
 async function ensureExternalOrganizationMembership(input: {

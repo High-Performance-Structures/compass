@@ -6,8 +6,10 @@ import { IconTrash } from "@tabler/icons-react"
 
 import {
   deleteProjectSelection,
-  type ProjectSelectionItem,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionItem,
+} from "@/lib/domain/selections/types"
 import {
   AlertDialog,
   AlertDialogAction,

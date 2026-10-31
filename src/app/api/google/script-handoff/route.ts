@@ -9,6 +9,7 @@ import {
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
 import { insertOperations, updateOperationById } from "@/lib/domain/operations/store"
+import { insertProjectExternalLink, updateProjectExternalLinks } from "@/lib/domain/project/store"
 
 type ScriptHandoffPayload = {
   readonly source: string
@@ -199,14 +200,11 @@ async function upsertSourceLink(
   }
 
   if (existing) {
-    await db
-      .update(projectExternalLinks)
-      .set(values)
-      .where(eq(projectExternalLinks.id, existing.id))
+    await updateProjectExternalLinks(db, eq(projectExternalLinks.id, existing.id), values)
     return
   }
 
-  await db.insert(projectExternalLinks).values({
+  await insertProjectExternalLink(db, {
     id: crypto.randomUUID(),
     projectId: input.projectId,
     system,

@@ -5,13 +5,13 @@ import {
   organizationCalendarSettings,
   organizationMembers,
   projectContacts,
-  projectInteractions,
   projectOperations,
-  projectProfileAuditEvents,
   projects,
   projectTodoEvents,
   users,
 } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { insertProjectInteraction } from "@/lib/domain/crm/store"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { insertOperations, recordTodoEvent, updateOperations } from "@/lib/domain/operations/store"
 import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
@@ -376,7 +376,7 @@ export async function applyDailyLogFollowUps(
     const occurredIso = occurredAt.success ? occurredAt.instant : `${input.logDate}T12:00:00.000Z`
     const id = crypto.randomUUID()
     const summary = contact.summary.trim()
-    await db.insert(projectInteractions).values({
+    await insertProjectInteraction(db, {
       id,
       organizationId,
       projectId,
@@ -395,8 +395,7 @@ export async function applyDailyLogFollowUps(
       deletedBy: null,
       dailyLogId,
     })
-    await db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    await recordProjectAudit(db, {
       organizationId,
       projectId,
       actorUserId: userId,

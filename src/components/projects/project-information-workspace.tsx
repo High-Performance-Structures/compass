@@ -549,7 +549,7 @@ export function ProjectInformationWorkspace({
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={operation.status === "failed" ? "destructive" : operation.status === "completed" ? "default" : "secondary"}>{operation.status}</Badge>
                   {operation.error && <span className="text-destructive">{operation.error}</span>}
-                  {operation.status !== "completed" && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => retrySyncOperation(operation.id)}>Retry</Button>}
+                  {operation.canRetry && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => retrySyncOperation(operation.id)}>Retry</Button>}
                 </span>
               </div>
             ))}

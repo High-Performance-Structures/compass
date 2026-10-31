@@ -1,364 +1,72 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
-import { isDeliveryMethod } from "@/lib/sales-pipeline/stages"
 
-import { getDb } from "@/db"
 import {
-  customerContacts,
-  customers,
-  organizationMembers,
-  projectContacts,
-  projectExternalLinks,
-  projectFollowUps,
-  projectInteractions,
-  projectJobStatusLabelKeys,
-  projectJobStatuses,
-  projectNotes,
-  projectNumberAliases,
-  projectNumberRetirements,
-  projectNumberReservations,
-  projectProfileAuditEvents,
-  projectProfileSyncOperations,
-  projects,
-  users,
-} from "@/db/schema"
-import { googleAuth } from "@/db/schema-google"
-import { requireAuth } from "@/lib/auth"
-import { decrypt } from "@/lib/crypto"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoOrg, isDemoUser } from "@/lib/demo"
-import { updateCustomerByIdStatement } from "@/lib/domain/contacts/store"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+  loadOrganizationFollowUpOwners,
+  loadProjectFollowUpOwners,
+  loadProjectFollowUpQueue,
+  postponeProjectFollowUp,
+  removeProjectFollowUp,
+  scheduleProjectFollowUp,
+} from "@/lib/domain/crm/follow-ups"
 import {
-  canManageProjectRegistry,
-} from "@/lib/permissions"
-import { SheetsClient } from "@/lib/google/client/sheets-client"
-import { DriveClient } from "@/lib/google/client/drive-client"
+  loadProjectInteractionFormOptions,
+  logProjectInteraction,
+  removeProjectInteraction,
+  type ProjectInteractionFormOptions,
+} from "@/lib/domain/crm/interactions"
+import { addProjectNote, removeProjectNote } from "@/lib/domain/crm/notes"
+import type { ProjectFollowUpOwner, ProjectFollowUpQueueItem } from "@/lib/domain/crm/rules"
 import {
-  getGoogleConfig,
-  getGoogleCryptoSalt,
-  parseServiceAccountKey,
-} from "@/lib/google/config"
-import { buildProjectDriveFolderName } from "@/lib/google/project-drive-provisioning"
+  loadProjectInformation,
+  saveProjectInformation,
+  type ProjectInformation,
+  type ProjectInformationInput,
+  type ProjectInformationSave,
+} from "@/lib/domain/project/information"
+import { correctProjectNumber, type ProjectNumberCorrectionInput } from "@/lib/domain/project/information-numbering"
 import {
-  departmentTrackingDestination,
-  locateProjectTrackerLayout,
-  patchProjectTrackerCells,
-  projectTrackerOwnerContact,
-  PROJECT_REGISTRY_DESTINATION,
-  updateProjectTrackerRow,
-  type ProjectIntakeDepartment,
-} from "@/lib/google/project-intake-tracker"
-import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
-import {
-  PROJECT_CLIENT_STATUSES,
-  PROJECT_JOB_STATUS_DEFINITIONS,
-  buildProjectNumberWithAddressSuffix,
-  isBuiltInProjectJobStatusId,
-  isBuiltInProjectJobStatusLabel,
-  isEligibleFollowUpOwner,
-  isMeaningfulClientInteraction,
-  isSupportedProjectJobStatusLabel,
-  legacyProjectStatusAfterClientUpdate,
-  normalizeProjectJobStatusLabel,
-  projectJobStatusOptions,
-  projectInteractionTypeLabel,
-  projectInteractionTypeOptions,
-  projectNumberParts,
-  type ProjectClientStatus,
-  type ProjectInteractionTypeOption,
-  type ProjectJobStatusOption,
-} from "@/lib/project-profile"
-import {
-  projectNumberDepartmentSequence,
-  projectNumberReviewIssue,
-} from "@/lib/project-number-review"
-import { clientFollowUpState, followUpThresholds, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
-import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
-import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
-import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
-import { getProjectAccessRecord } from "@/lib/project-access"
-import type { WorkspaceKind } from "@/lib/internal-duties/model"
-import {
-  isProjectDepartment,
-  resolvedProjectDepartment,
-  type ProjectDepartment,
-} from "@/lib/project-branding"
-import { isInternalStaffRole } from "@/lib/user-roles"
-import { validatePublicProjectIdentity } from "@/lib/social/privacy"
+  addCustomProjectJobStatus,
+  changeProjectDeliveryMethod,
+  changeProjectJobStatus,
+  changeProjectMapVisibility,
+  loadProjectAgingStatusRows,
+  type ProjectAgingStatusRow,
+} from "@/lib/domain/project/job-status"
+import type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
+import { retryProjectProfileSyncOperation as runSyncOperation } from "@/lib/domain/project/profile-sync"
 
-export type ProjectProfileResult =
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
+/*
+ * Project Information page actions: thin adapters over the project and crm
+ * domain modules. Access is `projectProfileContext` (internal staff with
+ * project-hub permission, project access record in their organization).
+ */
 
-type ProjectProfileJobStatus = ProjectJobStatusOption
-
-type ProjectProfileNote = {
-  readonly id: string
-  readonly body: string
-  readonly authorName: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
-}
-
-type ProjectProfileInteraction = {
-  readonly id: string
-  readonly interactionType: string
-  readonly interactionTypeLabel: string
-  readonly direction: string
-  readonly summary: string
-  readonly source: string
-  readonly occurredAt: string
-  readonly authorName: string | null
-  readonly contactId: string | null
-}
-
-export type ProjectFollowUpOwner = {
-  readonly id: string
-  readonly displayName: string
-}
-
-export type ProjectInformation = {
-  readonly project: {
-    readonly id: string
-    readonly name: string
-    readonly projectNumber: string | null
-    readonly department: ProjectDepartment | null
-    readonly projectAddress: string | null
-    readonly mailingAddress: string | null
-    readonly publicTitle: string | null
-    readonly publicLocationCity: string | null
-    readonly clientStatus: ProjectClientStatus
-    readonly jobStatusId: string
-    readonly status: string
-    readonly portfolioMapVisibility: PortfolioMapVisibility
-    /** Internal workspace kind; null for client jobs. */
-    readonly workspaceKind: WorkspaceKind | null
-    readonly internalDepartment: boolean
-  }
-  readonly jobStatuses: readonly ProjectProfileJobStatus[]
-  readonly interactionTypes: readonly ProjectInteractionTypeOption[]
-  /** What a logged client contact must include (Settings → Workflows). */
-  readonly interactionRules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
-  readonly clientContacts: readonly {
-    readonly id: string
-    readonly displayName: string
-  }[]
-  readonly projectNumberAliases: readonly string[]
-  readonly notes: readonly ProjectProfileNote[]
-  readonly interactions: readonly ProjectProfileInteraction[]
-  readonly followUp: {
-    readonly nextFollowUpAt: string
-    readonly ownerUserId: string | null
-    readonly ownerName: string | null
-  } | null
-  /** Client follow-up aging by the company's thresholds; null when the status isn't followed up. */
-  readonly followUpSignal: ProjectFollowUpSignal | null
-  readonly syncOperations: readonly {
-    readonly id: string
-    readonly operation: string
-    readonly status: string
-    readonly error: string | null
-    readonly updatedAt: string
-  }[]
-}
-
-function nullableText(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function isProjectClientStatus(value: string): value is ProjectClientStatus {
-  return value === "lead" || value === "customer"
-}
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function profilePath(projectId: string): string {
-  return `/dashboard/projects/${projectId}`
-}
+// "use server" files may only re-export types straight from their module.
+export type { ProjectAgingStatusRow } from "@/lib/domain/project/job-status"
+export type { ProjectFollowUpOwner, ProjectFollowUpQueueItem } from "@/lib/domain/crm/rules"
+export type { ProjectInformation } from "@/lib/domain/project/information"
+export type { ProjectInteractionFormOptions } from "@/lib/domain/crm/interactions"
+export type { ProjectProfileResult } from "@/lib/domain/project/profile-rules"
 
 function revalidateProjectProfile(projectId: string): void {
-  revalidatePath(profilePath(projectId))
-  revalidatePath(`${profilePath(projectId)}/information`)
+  revalidatePath(`/dashboard/projects/${projectId}`)
+  revalidatePath(`/dashboard/projects/${projectId}/information`)
   revalidatePath("/dashboard/projects")
   revalidatePath("/dashboard/projects/follow-up")
 }
 
-function trackerDepartment(projectNumber: string | null): ProjectIntakeDepartment | null {
-  const prefix = projectNumber?.trim().slice(0, 1).toUpperCase()
-  if (prefix === "O" || prefix === "H" || prefix === "N" || prefix === "D") {
-    return prefix
-  }
-  return null
-}
-
-function projectAddressParts(address: string | null): {
-  readonly streetNumber: string | null
-  readonly streetName: string | null
-  readonly cityStateZip: string | null
-} {
-  const parts = address?.split(",").map((part) => part.trim()).filter(Boolean) ?? []
-  const street = parts[0] ?? ""
-  const match = /^(\S+)\s+(.+)$/.exec(street)
-  return {
-    streetNumber: match?.[1] ?? null,
-    streetName: match?.[2] ?? (street || null),
-    cityStateZip: parts.slice(1).join(", ") || null,
-  }
-}
-
-function syncProjectNumbers(payloadJson: string): {
-  readonly previousProjectNumber: string
-  readonly projectNumber: string
-} | null {
-  try {
-    const payload: unknown = JSON.parse(payloadJson)
-    if (
-      typeof payload === "object"
-      && payload !== null
-      && "previousProjectNumber" in payload
-      && "projectNumber" in payload
-      && typeof payload.previousProjectNumber === "string"
-      && typeof payload.projectNumber === "string"
-    ) {
-      return {
-        previousProjectNumber: payload.previousProjectNumber,
-        projectNumber: payload.projectNumber,
-      }
-    }
-  } catch {
-    return null
-  }
-  return null
-}
-
-async function projectSyncClients(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly environment: Awaited<ReturnType<typeof getCloudflareContext>>["env"]
-}): Promise<{ readonly drive: DriveClient; readonly sheets: SheetsClient; readonly trackerEmail: string }> {
-  if (!input.environment?.DB) throw new Error("Database unavailable")
-  const authRows = await input.db
-    .select({
-      serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
-      connectorGoogleEmail: users.googleEmail,
-      connectorEmail: users.email,
-    })
-    .from(googleAuth)
-    .innerJoin(users, eq(users.id, googleAuth.connectedBy))
-    .where(eq(googleAuth.organizationId, input.organizationId))
-    .limit(1)
-  const auth = authRows[0]
-  if (!auth) throw new Error("Google Workspace service account is not connected.")
-  const config = getGoogleConfig(input.environment)
-  const keyJson = await decrypt(
-    auth.serviceAccountKeyEncrypted,
-    config.encryptionKey,
-    getGoogleCryptoSalt(),
-  )
-  const serviceAccountKey = parseServiceAccountKey(keyJson)
-  return {
-    drive: new DriveClient({ serviceAccountKey }),
-    sheets: new SheetsClient(serviceAccountKey),
-    trackerEmail: resolveProjectIntakeIntegrationEmail({
-      connectorGoogleEmail: auth.connectorGoogleEmail,
-      connectorEmail: auth.connectorEmail,
-    }),
-  }
-}
-
-async function projectProfileContext(projectId: string, action: "read" | "update") {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "project-hub", action)
-  if (!isInternalStaffRole(user.role)) {
-    throw new Error("Project information is available to internal staff only.")
-  }
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  if (!env?.DB) throw new Error("Database unavailable")
-  const db = getDb(env.DB)
-  const access = await getProjectAccessRecord(db, user, projectId)
-  if (!access || access.organizationId !== organizationId) {
-    throw new Error("Project not found or access denied.")
-  }
-  return { db, organizationId, user }
-}
-
-async function writeAuditEvent(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly projectId: string
-  readonly actorId: string
-  readonly eventType: string
-  readonly entityType: string
-  readonly entityId: string | null
-  readonly before: unknown
-  readonly after: unknown
-}): Promise<void> {
-  await input.db.insert(projectProfileAuditEvents).values({
-    id: crypto.randomUUID(),
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    actorUserId: input.actorId,
-    eventType: input.eventType,
-    entityType: input.entityType,
-    entityId: input.entityId,
-    beforeJson: JSON.stringify(input.before),
-    afterJson: JSON.stringify(input.after),
-    createdAt: nowIso(),
-  })
-}
-
-async function validJobStatus(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly jobStatusId: string
-}): Promise<boolean> {
-  if (PROJECT_JOB_STATUS_DEFINITIONS.some((status) => status.id === input.jobStatusId)) {
-    return true
-  }
-  const custom = await input.db
-    .select({ id: projectJobStatuses.id })
-    .from(projectJobStatuses)
-    .where(
-      and(
-        eq(projectJobStatuses.organizationId, input.organizationId),
-        eq(projectJobStatuses.id, input.jobStatusId),
-        eq(projectJobStatuses.active, true),
-      ),
-    )
-    .limit(1)
-  return custom.length === 1
+/** Strips the internal `changed` flag so callers see the same result as before. */
+function plainResult(result: ProjectProfileResult): ProjectProfileResult {
+  return result.success ? { success: true } : { success: false, error: result.error }
 }
 
 export async function getProjectFollowUpOwners(
   projectId: string,
 ): Promise<readonly ProjectFollowUpOwner[]> {
   try {
-    const { db, organizationId } = await projectProfileContext(projectId, "read")
-    const members = await db
-      .select({
-        id: users.id,
-        displayName: users.displayName,
-        email: users.email,
-        active: users.isActive,
-        role: organizationMembers.role,
-      })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
-      .orderBy(asc(users.displayName), asc(users.email))
-    return members
-      .filter((member) => isEligibleFollowUpOwner(member))
-      .map((member) => ({ id: member.id, displayName: member.displayName ?? member.email }))
+    return await loadProjectFollowUpOwners(projectId)
   } catch (error) {
     console.error("Unable to load follow-up owners", error)
     return []
@@ -368,26 +76,7 @@ export async function getProjectFollowUpOwners(
 /** Staff who can own client follow-up, for company-wide settings (no project needed). */
 export async function getOrganizationFollowUpOwners(): Promise<readonly ProjectFollowUpOwner[]> {
   try {
-    const user = await requireAuth()
-    if (!isInternalStaffRole(user.role)) return []
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const members = await db
-      .select({
-        id: users.id,
-        displayName: users.displayName,
-        email: users.email,
-        active: users.isActive,
-        role: organizationMembers.role,
-      })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
-      .orderBy(asc(users.displayName), asc(users.email))
-    return members
-      .filter((member) => isEligibleFollowUpOwner(member))
-      .map((member) => ({ id: member.id, displayName: member.displayName ?? member.email }))
+    return await loadOrganizationFollowUpOwners()
   } catch (error) {
     console.error("Unable to load follow-up owners", error)
     return []
@@ -398,347 +87,18 @@ export async function getProjectInformation(
   projectId: string,
 ): Promise<ProjectInformation | null> {
   try {
-    const { db, organizationId } = await projectProfileContext(projectId, "read")
-    const projectRows = await db
-      .select({
-        id: projects.id,
-        name: projects.name,
-        projectNumber: projects.projectNumber,
-        department: projects.department,
-        projectAddress: projects.address,
-        mailingAddress: projects.mailingAddress,
-        publicTitle: projects.publicTitle,
-        publicLocationCity: projects.publicLocationCity,
-        clientStatus: projects.clientStatus,
-        jobStatusId: projects.jobStatusId,
-        status: projects.status,
-        portfolioMapVisibility: projects.portfolioMapVisibility,
-        workspaceKind: projects.workspaceKind,
-        internalDepartment: projects.internalDepartment,
-      })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .limit(1)
-    const project = projectRows[0]
-    if (!project) return null
-
-    const [customStatuses, customInteractionTypes, notes, interactions, followUps, operations, aliases, clientContacts] = await Promise.all([
-      db
-        .select({
-          id: projectJobStatuses.id,
-          label: projectJobStatuses.label,
-          sageCode: projectJobStatuses.sageCode,
-          followUpCadenceDays: projectJobStatuses.followUpCadenceDays,
-          active: projectJobStatuses.active,
-        })
-        .from(projectJobStatuses)
-        .where(
-          and(
-            eq(projectJobStatuses.organizationId, organizationId),
-            eq(projectJobStatuses.active, true),
-          ),
-        )
-        .orderBy(asc(projectJobStatuses.sortOrder), asc(projectJobStatuses.label)),
-      db
-        .selectDistinct({ interactionType: projectInteractions.interactionType })
-        .from(projectInteractions)
-        .where(
-          and(
-            eq(projectInteractions.organizationId, organizationId),
-            eq(projectInteractions.source, "manual"),
-            like(projectInteractions.interactionType, "custom:%"),
-          ),
-        )
-        .orderBy(asc(projectInteractions.interactionType)),
-      db
-        .select({
-          id: projectNotes.id,
-          body: projectNotes.content,
-          authorName: users.displayName,
-          createdAt: projectNotes.createdAt,
-          updatedAt: projectNotes.updatedAt,
-        })
-        .from(projectNotes)
-        .leftJoin(users, eq(users.id, projectNotes.createdBy))
-        .where(and(eq(projectNotes.projectId, projectId), isNull(projectNotes.deletedAt)))
-        .orderBy(desc(projectNotes.createdAt)),
-      db
-        .select({
-          id: projectInteractions.id,
-          interactionType: projectInteractions.interactionType,
-          direction: projectInteractions.direction,
-          summary: projectInteractions.summary,
-          source: projectInteractions.source,
-          occurredAt: projectInteractions.occurredAt,
-          authorName: users.displayName,
-          contactId: projectInteractions.projectContactId,
-        })
-        .from(projectInteractions)
-        .leftJoin(users, eq(users.id, projectInteractions.createdBy))
-        .where(
-          and(
-            eq(projectInteractions.projectId, projectId),
-            eq(projectInteractions.qualifiesForClientTouch, true),
-            isNull(projectInteractions.deletedAt),
-          ),
-        )
-        .orderBy(desc(projectInteractions.occurredAt)),
-      db
-        .select({
-          nextFollowUpAt: projectFollowUps.nextFollowUpAt,
-          ownerUserId: projectFollowUps.ownerUserId,
-          ownerName: users.displayName,
-        })
-        .from(projectFollowUps)
-        .leftJoin(
-          organizationMembers,
-          and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(organizationMembers.userId, projectFollowUps.ownerUserId),
-          ),
-        )
-        .leftJoin(users, and(eq(users.id, organizationMembers.userId), eq(users.isActive, true)))
-        .where(eq(projectFollowUps.projectId, projectId))
-        .limit(1),
-      db
-        .select({
-          id: projectProfileSyncOperations.id,
-          operation: projectProfileSyncOperations.operation,
-          status: projectProfileSyncOperations.status,
-          error: projectProfileSyncOperations.error,
-          updatedAt: projectProfileSyncOperations.updatedAt,
-        })
-        .from(projectProfileSyncOperations)
-        .where(eq(projectProfileSyncOperations.projectId, projectId))
-        .orderBy(desc(projectProfileSyncOperations.updatedAt))
-        .limit(12),
-      db
-        .select({ projectNumber: projectNumberAliases.projectNumber })
-        .from(projectNumberAliases)
-        .where(eq(projectNumberAliases.projectId, projectId))
-        .orderBy(desc(projectNumberAliases.createdAt)),
-      db
-        .select({ id: projectContacts.id, displayName: projectContacts.displayName })
-        .from(projectContacts)
-        .where(
-          and(
-            eq(projectContacts.projectId, projectId),
-            eq(projectContacts.contactType, "owner"),
-            eq(projectContacts.active, true),
-          ),
-        )
-        .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)),
-    ])
-
-    const clientStatus = isProjectClientStatus(project.clientStatus)
-      ? project.clientStatus
-      : "customer"
-    return {
-      project: {
-        ...project,
-        department: resolvedProjectDepartment({
-          department: project.department,
-          projectId: project.id,
-          projectNumber: project.projectNumber,
-        }),
-        clientStatus,
-      },
-      jobStatuses: projectJobStatusOptions(customStatuses, project.jobStatusId),
-      interactionTypes: projectInteractionTypeOptions(
-        customInteractionTypes.map((item) => item.interactionType),
-      ),
-      interactionRules: await readFeatureSettings(db, organizationId, "client-interactions"),
-      clientContacts,
-      projectNumberAliases: aliases.map((alias) => alias.projectNumber),
-      notes,
-      interactions: interactions.map((interaction) => ({
-        ...interaction,
-        interactionTypeLabel: projectInteractionTypeLabel(interaction.interactionType),
-      })),
-      followUp: followUps[0] ?? null,
-      followUpSignal: await loadProjectFollowUpSignals(db, organizationId, [project], new Date())
-        .then((signals) => signals.get(project.id) ?? null)
-        .catch((error: unknown) => {
-          console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
-          return null
-        }),
-      syncOperations: operations,
-    }
+    return await loadProjectInformation(projectId)
   } catch (error) {
     console.error("Unable to load project information", error)
     return null
   }
 }
 
-export type ProjectFollowUpQueueItem = {
-  readonly projectId: string
-  readonly projectNumber: string | null
-  readonly projectName: string
-  readonly clientName: string | null
-  readonly clientStatus: ProjectClientStatus
-  readonly jobStatusId: string
-  readonly jobStatusLabel: string
-  readonly state: "current" | "due" | "overdue" | "scheduled" | "unrecorded"
-  readonly businessDaysSinceLastTouch: number | null
-  readonly lastClientInteractionAt: string | null
-  readonly nextFollowUpAt: string | null
-  readonly followUpOwnerName: string | null
-}
-
 export async function getProjectFollowUpQueue(): Promise<
   readonly ProjectFollowUpQueueItem[]
 > {
   try {
-    const user = await requireAuth()
-    requireFeaturePermission(user, "project-hub", "read")
-    if (!isInternalStaffRole(user.role)) return []
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
-    const db = getDb(env.DB)
-    const [rows, customStatuses, agingSettings] = await Promise.all([
-      db
-        .select({
-          projectId: projects.id,
-          projectNumber: projects.projectNumber,
-          projectName: projects.name,
-          clientName: projects.clientName,
-          clientStatus: projects.clientStatus,
-          jobStatusId: projects.jobStatusId,
-          occurredAt: projectInteractions.occurredAt,
-          nextFollowUpAt: projectFollowUps.nextFollowUpAt,
-          ownerName: users.displayName,
-        })
-        .from(projects)
-        .leftJoin(projectFollowUps, eq(projectFollowUps.projectId, projects.id))
-        .leftJoin(
-          organizationMembers,
-          and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(organizationMembers.userId, projectFollowUps.ownerUserId),
-          ),
-        )
-        .leftJoin(users, and(eq(users.id, organizationMembers.userId), eq(users.isActive, true)))
-        .leftJoin(
-          projectInteractions,
-          and(
-            eq(projectInteractions.projectId, projects.id),
-            eq(projectInteractions.qualifiesForClientTouch, true),
-            isNull(projectInteractions.deletedAt),
-          ),
-        )
-        .where(eq(projects.organizationId, organizationId))
-        .orderBy(desc(projectInteractions.occurredAt)),
-      db
-        .select({
-          id: projectJobStatuses.id,
-          label: projectJobStatuses.label,
-          cadenceDays: projectJobStatuses.followUpCadenceDays,
-        })
-        .from(projectJobStatuses)
-        .where(
-          and(
-            eq(projectJobStatuses.organizationId, organizationId),
-            eq(projectJobStatuses.active, true),
-          ),
-        ),
-      readFeatureSettings(db, organizationId, "project-aging"),
-    ])
-    const customStatusesById = new Map(customStatuses.map((status) => [status.id, status]))
-    const builtInStatusLabels = new Map<string, string>(
-      PROJECT_JOB_STATUS_DEFINITIONS.map((status) => [status.id, status.label]),
-    )
-    const grouped = new Map<
-      string,
-      {
-        readonly projectId: string
-        readonly projectNumber: string | null
-        readonly projectName: string
-        readonly clientName: string | null
-        readonly clientStatus: ProjectClientStatus
-        readonly jobStatusId: string
-        readonly nextFollowUpAt: string | null
-        readonly ownerName: string | null
-        readonly interactions: {
-          readonly occurredAt: string
-          readonly deletedAt: null
-          readonly qualifiesForClientTouch: true
-        }[]
-      }
-    >()
-    for (const row of rows) {
-      let project = grouped.get(row.projectId)
-      if (!project) {
-        const clientStatus = isProjectClientStatus(row.clientStatus)
-          ? row.clientStatus
-          : "customer"
-        project = {
-          projectId: row.projectId,
-          projectNumber: row.projectNumber,
-          projectName: row.projectName,
-          clientName: row.clientName,
-          clientStatus,
-          jobStatusId: row.jobStatusId,
-          nextFollowUpAt: row.nextFollowUpAt,
-          ownerName: row.ownerName,
-          interactions: [],
-        }
-        grouped.set(row.projectId, project)
-      }
-      if (row.occurredAt) {
-        project.interactions.push({
-          occurredAt: row.occurredAt,
-          deletedAt: null,
-          qualifiesForClientTouch: true,
-        })
-      }
-    }
-
-    const queue = [...grouped.values()].flatMap((project) => {
-      const customStatus = customStatusesById.get(project.jobStatusId)
-      const state = clientFollowUpState({
-        jobStatusId: project.jobStatusId,
-        thresholds: followUpThresholds({
-          jobStatusId: project.jobStatusId,
-          customCadenceDays: customStatus ? customStatus.cadenceDays : undefined,
-          settings: agingSettings,
-        }),
-        interactions: project.interactions,
-        nextFollowUpAt: project.nextFollowUpAt,
-        now: new Date(),
-      })
-      if (!state.eligible || state.state === "excluded") return []
-      const jobStatusLabel =
-        builtInStatusLabels.get(project.jobStatusId) ?? customStatus?.label ?? "Unknown"
-      return [{
-        projectId: project.projectId,
-        projectNumber: project.projectNumber,
-        projectName: project.projectName,
-        clientName: project.clientName,
-        clientStatus: project.clientStatus,
-        jobStatusId: project.jobStatusId,
-        jobStatusLabel,
-        state: state.state,
-        businessDaysSinceLastTouch: state.businessDaysSinceLastTouch,
-        lastClientInteractionAt: state.lastClientInteractionAt,
-        nextFollowUpAt: state.nextFollowUpAt,
-        followUpOwnerName: project.ownerName,
-      }]
-    })
-    const stateOrder: Readonly<Record<ProjectFollowUpQueueItem["state"], number>> = {
-      overdue: 0,
-      due: 1,
-      unrecorded: 2,
-      current: 3,
-      scheduled: 4,
-    }
-    return queue.sort((left, right) => {
-      const stateDifference = stateOrder[left.state] - stateOrder[right.state]
-      if (stateDifference !== 0) return stateDifference
-      const leftTime = left.nextFollowUpAt ?? left.lastClientInteractionAt ?? ""
-      const rightTime = right.nextFollowUpAt ?? right.lastClientInteractionAt ?? ""
-      return leftTime.localeCompare(rightTime)
-    })
+    return await loadProjectFollowUpQueue()
   } catch (error) {
     console.error("Unable to load project follow-up queue", error)
     return []
@@ -749,499 +109,26 @@ export async function retryProjectProfileSyncOperation(input: {
   readonly projectId: string
   readonly operationId: string
 }): Promise<ProjectProfileResult> {
-  const attemptedAt = nowIso()
-  try {
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const operationRows = await db
-      .select({
-        id: projectProfileSyncOperations.id,
-        operation: projectProfileSyncOperations.operation,
-        payloadJson: projectProfileSyncOperations.payloadJson,
-        attempts: projectProfileSyncOperations.attempts,
-      })
-      .from(projectProfileSyncOperations)
-      .where(
-        and(
-          eq(projectProfileSyncOperations.id, input.operationId),
-          eq(projectProfileSyncOperations.projectId, input.projectId),
-          eq(projectProfileSyncOperations.organizationId, organizationId),
-        ),
-      )
-      .limit(1)
-    const operation = operationRows[0]
-    if (!operation) return { success: false, error: "Synchronization operation not found." }
-    const numbers = syncProjectNumbers(operation.payloadJson)
-    if (!numbers) return { success: false, error: "Synchronization operation has invalid project-number data." }
-    const projectRows = await db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        name: projects.name,
-        address: projects.address,
-        mailingAddress: projects.mailingAddress,
-        clientName: projects.clientName,
-        projectManager: projects.projectManager,
-        googleDriveFolderId: projects.googleDriveFolderId,
-      })
-      .from(projects)
-      .where(eq(projects.id, input.projectId))
-      .limit(1)
-    const project = projectRows[0]
-    if (!project || !project.projectNumber) return { success: false, error: "Project number is unavailable." }
-    const clients = await projectSyncClients({ db, organizationId, environment: (await getCloudflareContext()).env })
-    const nextAttempts = operation.attempts + 1
-
-    if (operation.operation === "drive_folder_rename") {
-      const driveLinks = await db
-        .select({ externalId: projectExternalLinks.externalId })
-        .from(projectExternalLinks)
-        .where(and(eq(projectExternalLinks.projectId, input.projectId), eq(projectExternalLinks.system, "google_drive")))
-        .limit(1)
-      const folderId = project.googleDriveFolderId ?? driveLinks[0]?.externalId ?? null
-      if (!folderId) throw new Error("No Google Drive folder is linked to this project.")
-      const address = projectAddressParts(project.address)
-      const folderName = buildProjectDriveFolderName({
-        projectNumber: project.projectNumber,
-        projectName: project.name,
-        streetNumber: address.streetNumber,
-        streetName: address.streetName,
-      })
-      await clients.drive.renameFile(user.googleEmail ?? user.email, folderId, folderName)
-    } else if (operation.operation === "tracker_row_update") {
-      const department = trackerDepartment(project.projectNumber)
-      if (!department) throw new Error("Project number has no supported tracker department.")
-      const contactRows = await db
-        .select({
-          displayName: projectContacts.displayName,
-          customerContactId: projectContacts.customerContactId,
-          companyName: projectContacts.companyName,
-          email: projectContacts.email,
-          phone: projectContacts.phone,
-          directoryPersonName: customerContacts.name,
-          directoryPersonEmail: customerContacts.email,
-          directoryPersonPhone: customerContacts.phone,
-          directoryCompanyName: customers.company,
-        })
-        .from(projectContacts)
-        .leftJoin(
-          customers,
-          and(
-            or(
-              eq(projectContacts.customerId, customers.id),
-              and(
-                eq(projectContacts.sourceEntityType, "customer"),
-                eq(projectContacts.sourceEntityId, customers.id)
-              )
-            ),
-            eq(customers.organizationId, organizationId)
-          )
-        )
-        .leftJoin(
-          customerContacts,
-          and(
-            eq(projectContacts.customerContactId, customerContacts.id),
-            eq(customerContacts.customerId, customers.id),
-            eq(customerContacts.active, true)
-          )
-        )
-        .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-        .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
-        .limit(1)
-      const contact = contactRows[0]
-      const address = projectAddressParts(project.address)
-      const ownerContact = projectTrackerOwnerContact({
-        projectClientName: project.clientName,
-        assignmentName: contact?.displayName ?? null,
-        assignmentCompanyName: contact?.companyName ?? null,
-        assignmentEmail: contact?.email ?? null,
-        assignmentPhone: contact?.phone ?? null,
-        canonicalPersonId: contact?.customerContactId ?? null,
-        canonicalPersonName: contact?.directoryPersonName ?? null,
-        canonicalPersonEmail: contact?.directoryPersonEmail ?? null,
-        canonicalPersonPhone: contact?.directoryPersonPhone ?? null,
-        canonicalCompanyName: contact?.directoryCompanyName ?? null,
-      })
-      const clientName = ownerContact.name
-      const companyName = ownerContact.companyName
-      const nameParts = clientName.trim().split(/\s+/).filter(Boolean)
-      const firstName = nameParts[0] ?? ""
-      const lastName = nameParts.slice(1).join(" ")
-      const driveFolderUrl = project.googleDriveFolderId ? `https://drive.google.com/drive/folders/${project.googleDriveFolderId}` : ""
-      const trackerDestination = departmentTrackingDestination(department)
-      const registryRows = await clients.sheets.getValues(clients.trackerEmail, { spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId, range: "'Registry'!A:ZZ" })
-      const registryLayout = locateProjectTrackerLayout(registryRows)
-      if (!registryLayout) throw new Error("Project Registry has no Project Number or Project ID header.")
-      const syncProjectNumbers = [numbers.previousProjectNumber, project.projectNumber]
-      await updateProjectTrackerRow({
-        sheets: clients.sheets,
-        googleEmail: clients.trackerEmail,
-        spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
-        sheetTitle: PROJECT_REGISTRY_DESTINATION.sheetTitle,
-        rows: registryRows,
-        layout: registryLayout,
-        currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: registryLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, "street number code": address.streetNumber ?? "", "street name label": address.streetName ?? project.name, "client first name": firstName, "client last name": lastName, "company name": companyName, "city state zip": address.cityStateZip ?? "", "folder link": driveFolderUrl, "lead tracker link": `https://docs.google.com/spreadsheets/d/${trackerDestination.spreadsheetId}` } }),
-      })
-      const departmentRows = await clients.sheets.getValues(clients.trackerEmail, { spreadsheetId: trackerDestination.spreadsheetId, range: "'Tracker'!A:ZZ" })
-      const departmentLayout = locateProjectTrackerLayout(departmentRows)
-      if (!departmentLayout) throw new Error(`${trackerDestination.workbookTitle} has no Project Number or Project ID header.`)
-      await updateProjectTrackerRow({
-        sheets: clients.sheets,
-        googleEmail: clients.trackerEmail,
-        spreadsheetId: trackerDestination.spreadsheetId,
-        sheetTitle: trackerDestination.sheetTitle,
-        rows: departmentRows,
-        layout: departmentLayout,
-        currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: departmentLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, client: clientName, customer: clientName, "builder gc": companyName || clientName, "contact person": clientName, address: project.address ?? "", "project address": project.address ?? "", phone: ownerContact.phone, email: ownerContact.email, "billing address": project.mailingAddress ?? "", "folder link": driveFolderUrl } }),
-      })
-    } else {
-      return { success: false, error: "Unsupported synchronization operation." }
-    }
-
-    await db
-      .update(projectProfileSyncOperations)
-      .set({ status: "completed", error: null, attempts: nextAttempts, attemptedAt, completedAt: nowIso(), updatedAt: nowIso() })
-      .where(eq(projectProfileSyncOperations.id, operation.id))
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_profile_sync_completed", entityType: "project_profile_sync_operation", entityId: operation.id, before: null, after: { operation: operation.operation } })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "External synchronization failed."
-    try {
-      const { db } = await projectProfileContext(input.projectId, "update")
-      await db
-        .update(projectProfileSyncOperations)
-        .set({
-          status: "failed",
-          error: errorMessage.slice(0, 1000),
-          attempts: sql`${projectProfileSyncOperations.attempts} + 1`,
-          attemptedAt,
-          updatedAt: nowIso(),
-        })
-        .where(eq(projectProfileSyncOperations.id, input.operationId))
-    } catch (updateError) {
-      console.error("Unable to record project profile synchronization failure", updateError)
-    }
-    console.error("Unable to synchronize project profile", error)
-    revalidateProjectProfile(input.projectId)
-    return { success: false, error: errorMessage }
-  }
+  const outcome = await runSyncOperation(input)
+  if (outcome.revalidate) revalidateProjectProfile(input.projectId)
+  return outcome.result
 }
 
-export async function updateProjectInformation(input: {
-  readonly projectId: string
-  readonly department: ProjectDepartment
-  readonly projectAddress: string | null
-  readonly mailingAddress: string | null
-  readonly publicTitle: string | null
-  readonly publicLocationCity: string | null
-  readonly clientStatus: ProjectClientStatus
-  readonly jobStatusId: string
-  readonly addressSuffix: string | null
-  readonly updateClientDefaultMailingAddress: boolean
-}): Promise<ProjectProfileResult> {
+/** Saves, then runs the queued Google sync operations before revalidating. */
+async function finishSave(projectId: string, save: ProjectInformationSave): Promise<ProjectProfileResult> {
+  if (!save.result.success) return save.result
+  await Promise.all(
+    save.syncOperationIds.map((operationId) =>
+      retryProjectProfileSyncOperation({ projectId, operationId }),
+    ),
+  )
+  revalidateProjectProfile(projectId)
+  return { success: true }
+}
+
+export async function updateProjectInformation(input: ProjectInformationInput): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    if (!PROJECT_CLIENT_STATUSES.includes(input.clientStatus)) {
-      return { success: false, error: "Choose Lead or Customer." }
-    }
-    if (!isProjectDepartment(input.department)) {
-      return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
-    }
-    if (!(await validJobStatus({ db, organizationId, jobStatusId: input.jobStatusId }))) {
-      return { success: false, error: "Choose an active governed job status." }
-    }
-
-    const existingRows = await db
-      .select({
-        id: projects.id,
-        name: projects.name,
-        clientName: projects.clientName,
-        projectNumber: projects.projectNumber,
-        department: projects.department,
-        status: projects.status,
-        address: projects.address,
-        mailingAddress: projects.mailingAddress,
-        clientStatus: projects.clientStatus,
-        jobStatusId: projects.jobStatusId,
-        publicTitle: projects.publicTitle,
-        publicLocationCity: projects.publicLocationCity,
-      })
-      .from(projects)
-      .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)))
-      .limit(1)
-    const existing = existingRows[0]
-    if (!existing) return { success: false, error: "Project not found." }
-
-    const projectAddress = nullableText(input.projectAddress)
-    const mailingAddress = nullableText(input.mailingAddress)
-    const publicTitle = nullableText(input.publicTitle)
-    const publicLocationCity = nullableText(input.publicLocationCity)
-    if ((publicTitle === null) !== (publicLocationCity === null)) {
-      return {
-        success: false,
-        error: "Add both a privacy-safe public project title and a town/city, or leave both blank.",
-      }
-    }
-    if (publicTitle && publicLocationCity) {
-      const identityErrors = validatePublicProjectIdentity({
-        publicTitle,
-        locationCity: publicLocationCity,
-        internalProjectName: existing.name,
-        clientName: existing.clientName,
-      })
-      if (identityErrors.length > 0) {
-        return { success: false, error: identityErrors.join(" ") }
-      }
-    }
-    let projectNumber = existing.projectNumber
-    if (input.addressSuffix !== null && existing.projectNumber) {
-      try {
-        projectNumber = buildProjectNumberWithAddressSuffix(
-          existing.projectNumber,
-          input.addressSuffix,
-        )
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Invalid project-number suffix.",
-        }
-      }
-    }
-
-    const numberChanged = projectNumber !== existing.projectNumber && projectNumber !== null
-    if (numberChanged) {
-      const requestedProjectNumber = projectNumber
-      if (!requestedProjectNumber) return { success: false, error: "Project number is unavailable." }
-      const requestedParts = projectNumberParts(requestedProjectNumber)
-      const [projectConflict, aliasConflict, retirementConflict] = await Promise.all([
-        db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.organizationId, organizationId),
-              eq(projects.projectNumber, requestedProjectNumber),
-            ),
-          )
-          .limit(1),
-        db
-          .select({ projectId: projectNumberAliases.projectId })
-          .from(projectNumberAliases)
-          .where(
-            and(
-              eq(projectNumberAliases.organizationId, organizationId),
-              eq(projectNumberAliases.projectNumber, requestedProjectNumber),
-            ),
-          )
-          .limit(1),
-        db.select({ formerProjectId: projectNumberRetirements.formerProjectId }).from(projectNumberRetirements).where(and(
-          eq(projectNumberRetirements.organizationId, organizationId),
-          requestedParts ? or(eq(projectNumberRetirements.projectNumber, requestedProjectNumber), and(eq(projectNumberRetirements.department, requestedParts.department), eq(projectNumberRetirements.sequence, Number(requestedParts.sequence)))) : eq(projectNumberRetirements.projectNumber, requestedProjectNumber),
-        )).limit(1),
-      ])
-      if (projectConflict[0] && projectConflict[0].id !== existing.id) {
-        return { success: false, error: "That project number already exists." }
-      }
-      if (aliasConflict[0] && aliasConflict[0].projectId !== existing.id) {
-        return { success: false, error: "That project number is reserved by a historical project record." }
-      }
-      if (retirementConflict[0] && retirementConflict[0].formerProjectId !== existing.id) return { success: false, error: "That department and sequence were retired with a removed project." }
-    }
-
-    const linkedCustomers = input.updateClientDefaultMailingAddress
-      ? await db
-        .select({
-          id: customers.id,
-          sageClientId: customers.sageClientId,
-          sageClientNumber: customers.sageClientNumber,
-        })
-        .from(projectContacts)
-        .innerJoin(customers, eq(projectContacts.sourceEntityId, customers.id))
-        .where(
-          and(
-            eq(projectContacts.projectId, input.projectId),
-            eq(projectContacts.sourceEntityType, "customer"),
-            eq(customers.organizationId, organizationId),
-          ),
-        )
-      : []
-    if (linkedCustomers.some((customer) => customer.sageClientId || customer.sageClientNumber)) {
-      return {
-        success: false,
-        error: "This client is linked to Sage. Update its default mailing address through Contacts review, or leave the client-default option unchecked.",
-      }
-    }
-    const updatedAt = nowIso()
-    const legacyStatus = legacyProjectStatusAfterClientUpdate({
-      currentStatus: existing.status,
-      clientStatus: input.clientStatus,
-    })
-    const projectUpdate = db
-      .update(projects)
-      .set({
-        projectNumber,
-        department: input.department,
-        status: legacyStatus,
-        address: projectAddress,
-        mailingAddress,
-        clientStatus: input.clientStatus,
-        jobStatusId: input.jobStatusId,
-        publicTitle,
-        publicLocationCity,
-        updatedAt,
-      })
-      .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)))
-    const customerUpdates = linkedCustomers.map((customer) =>
-      updateCustomerByIdStatement(db, { customerId: customer.id, values: { address: mailingAddress, updatedAt } }),
-    )
-    const auditInsert = db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
-      organizationId,
-      projectId: input.projectId,
-      actorUserId: user.id,
-      eventType: "project_information_updated",
-      entityType: "project",
-      entityId: input.projectId,
-      beforeJson: JSON.stringify(existing),
-      afterJson: JSON.stringify({
-        projectNumber,
-        department: input.department,
-        projectAddress,
-        mailingAddress,
-        clientStatus: input.clientStatus,
-        jobStatusId: input.jobStatusId,
-        publicTitle,
-        publicLocationCity,
-        status: legacyStatus,
-      }),
-      createdAt: updatedAt,
-    })
-    const syncOperationIds: string[] = []
-
-    if (numberChanged) {
-      if (!existing.projectNumber || !projectNumber) {
-        return { success: false, error: "Project number is unavailable." }
-      }
-      const parts = projectNumberParts(projectNumber)
-      if (!parts) return { success: false, error: "Invalid project number." }
-      const reservationRows = await db
-        .select({ id: projectNumberReservations.id })
-        .from(projectNumberReservations)
-        .where(and(eq(projectNumberReservations.projectId, input.projectId), eq(projectNumberReservations.organizationId, organizationId)))
-        .limit(1)
-      const reservationWrite = reservationRows[0]
-        ? db
-          .update(projectNumberReservations)
-          .set({ projectNumber })
-          .where(eq(projectNumberReservations.id, reservationRows[0].id))
-        : db.insert(projectNumberReservations).values({
-          id: crypto.randomUUID(),
-          organizationId,
-          projectId: input.projectId,
-          department: parts.department,
-          sequence: Number(parts.sequence),
-          projectNumber,
-          createdAt: updatedAt,
-        })
-      const driveOperationId = crypto.randomUUID()
-      const trackerOperationId = crypto.randomUUID()
-      syncOperationIds.push(driveOperationId, trackerOperationId)
-      const syncPayload = JSON.stringify({
-        previousProjectNumber: existing.projectNumber,
-        projectNumber,
-      })
-      await db.batch([
-        projectUpdate,
-        ...customerUpdates,
-        reservationWrite,
-        db.insert(projectNumberAliases).values({
-          id: crypto.randomUUID(),
-          organizationId,
-          projectId: input.projectId,
-          projectNumber: existing.projectNumber,
-          createdBy: user.id,
-          createdAt: updatedAt,
-        }).onConflictDoNothing(),
-        db
-          .update(projectExternalLinks)
-          .set({ externalNumber: projectNumber, updatedAt })
-          .where(
-            and(
-              eq(projectExternalLinks.projectId, input.projectId),
-              eq(projectExternalLinks.externalNumber, existing.projectNumber),
-            ),
-          ),
-        db.insert(projectProfileSyncOperations).values([
-          {
-            id: driveOperationId,
-            organizationId,
-            projectId: input.projectId,
-            operation: "drive_folder_rename",
-            status: "pending",
-            payloadJson: syncPayload,
-            error: null,
-            attempts: 0,
-            attemptedAt: null,
-            completedAt: null,
-            createdAt: updatedAt,
-            updatedAt,
-          },
-          {
-            id: trackerOperationId,
-            organizationId,
-            projectId: input.projectId,
-            operation: "tracker_row_update",
-            status: "pending",
-            payloadJson: syncPayload,
-            error: null,
-            attempts: 0,
-            attemptedAt: null,
-            completedAt: null,
-            createdAt: updatedAt,
-            updatedAt,
-          },
-        ]),
-        auditInsert,
-      ])
-    } else if (projectNumber) {
-      const trackerOperationId = crypto.randomUUID()
-      syncOperationIds.push(trackerOperationId)
-      await db.batch([
-        projectUpdate,
-        ...customerUpdates,
-        db.insert(projectProfileSyncOperations).values({
-          id: trackerOperationId,
-          organizationId,
-          projectId: input.projectId,
-          operation: "tracker_row_update",
-          status: "pending",
-          payloadJson: JSON.stringify({
-            previousProjectNumber: projectNumber,
-            projectNumber,
-          }),
-          error: null,
-          attempts: 0,
-          attemptedAt: null,
-          completedAt: null,
-          createdAt: updatedAt,
-          updatedAt,
-        }),
-        auditInsert,
-      ])
-    } else {
-      await db.batch([projectUpdate, ...customerUpdates, auditInsert])
-    }
-    await Promise.all(
-      syncOperationIds.map((operationId) =>
-        retryProjectProfileSyncOperation({ projectId: input.projectId, operationId }),
-      ),
-    )
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    return await finishSave(input.projectId, await saveProjectInformation(input))
   } catch (error) {
     console.error("Unable to update project information", error)
     return { success: false, error: "Unable to update project information." }
@@ -1249,356 +136,10 @@ export async function updateProjectInformation(input: {
 }
 
 export async function correctProjectNumberForReview(
-  input:
-    | {
-        readonly projectId: string
-        readonly approvedProjectNumber: string
-        readonly reason: "number_review"
-      }
-    | {
-        readonly projectId: string
-        readonly approvedProjectNumber: string
-        readonly reason: "number_collision"
-        readonly conflictingProjectId: string
-      },
+  input: ProjectNumberCorrectionInput,
 ): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(
-      input.projectId,
-      "update",
-    )
-    if (!canManageProjectRegistry(user)) {
-      return {
-        success: false,
-        error: "Project-number corrections are limited to registry administrators.",
-      }
-    }
-    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
-      return { success: false, error: "Demo data cannot be changed." }
-    }
-
-    const existingRows = await db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        department: projects.department,
-        name: projects.name,
-      })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, input.projectId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .limit(1)
-    const existing = existingRows[0]
-    if (!existing) return { success: false, error: "Project not found." }
-
-    const reviewIssue = projectNumberReviewIssue(
-      existing.projectNumber,
-      existing.name,
-    )
-    if (!existing.projectNumber) {
-      return {
-        success: false,
-        error: "This project number is unavailable.",
-      }
-    }
-
-    let requiredDepartment = reviewIssue?.department ?? existing.department
-    let collisionDepartmentSequence: string | null = null
-    if (input.reason === "number_review") {
-      if (!reviewIssue) {
-        return {
-          success: false,
-          error: "This project number no longer requires cutover review.",
-        }
-      }
-    } else {
-      if (input.conflictingProjectId === existing.id) {
-        return { success: false, error: "Choose two different projects." }
-      }
-      const conflictingRows = await db
-        .select({
-          projectNumber: projects.projectNumber,
-          name: projects.name,
-        })
-        .from(projects)
-        .where(
-          and(
-            eq(projects.id, input.conflictingProjectId),
-            eq(projects.organizationId, organizationId),
-          ),
-        )
-        .limit(1)
-      const conflicting = conflictingRows[0]
-      const existingDepartmentSequence = projectNumberDepartmentSequence(
-        existing.projectNumber,
-        existing.name,
-      )
-      const conflictingDepartmentSequence = projectNumberDepartmentSequence(
-        conflicting?.projectNumber ?? null,
-        conflicting?.name ?? null,
-      )
-      if (
-        !conflicting ||
-        !existingDepartmentSequence ||
-        existingDepartmentSequence !== conflictingDepartmentSequence
-      ) {
-        return {
-          success: false,
-          error: "These projects no longer share a department and sequence.",
-        }
-      }
-      collisionDepartmentSequence = existingDepartmentSequence
-      const collisionDepartment = existingDepartmentSequence.slice(0, 1)
-      requiredDepartment =
-        requiredDepartment ??
-        reviewIssue?.department ??
-        (isProjectDepartment(collisionDepartment) ? collisionDepartment : null)
-    }
-
-    const approvedProjectNumber = input.approvedProjectNumber.trim().toUpperCase()
-    const parts = projectNumberParts(approvedProjectNumber)
-    if (!parts) {
-      return {
-        success: false,
-        error: "Enter an approved number in DEPARTMENT-SEQUENCE-SUFFIX format.",
-      }
-    }
-    if (
-      (requiredDepartment !== null && parts.department !== requiredDepartment) ||
-      (existing.department !== null && parts.department !== existing.department)
-    ) {
-      return {
-        success: false,
-        error: "The approved number must stay in the project's current department.",
-      }
-    }
-    if (approvedProjectNumber === existing.projectNumber.toUpperCase()) {
-      return { success: false, error: "Enter a corrected project number." }
-    }
-    const approvedDepartmentSequence = projectNumberDepartmentSequence(
-      approvedProjectNumber,
-    )
-    if (
-      collisionDepartmentSequence !== null &&
-      approvedDepartmentSequence === collisionDepartmentSequence
-    ) {
-      return {
-        success: false,
-        error: "Assign a new sequential number to resolve this collision.",
-      }
-    }
-
-    const sequence = Number(parts.sequence)
-    const [projectConflicts, aliasConflicts, reservationNumberConflicts, retirementConflicts, reservationSequenceConflicts, projectReservations] =
-      await Promise.all([
-        db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.organizationId, organizationId),
-              eq(projects.projectNumber, approvedProjectNumber),
-            ),
-          )
-          .limit(1),
-        db
-          .select({ projectId: projectNumberAliases.projectId })
-          .from(projectNumberAliases)
-          .where(
-            and(
-              eq(projectNumberAliases.organizationId, organizationId),
-              eq(projectNumberAliases.projectNumber, approvedProjectNumber),
-            ),
-          )
-          .limit(1),
-        db
-          .select({ projectId: projectNumberReservations.projectId })
-          .from(projectNumberReservations)
-          .where(
-            and(
-              eq(projectNumberReservations.organizationId, organizationId),
-              eq(projectNumberReservations.projectNumber, approvedProjectNumber),
-            ),
-          )
-          .limit(1),
-        db.select({ formerProjectId: projectNumberRetirements.formerProjectId }).from(projectNumberRetirements).where(and(
-          eq(projectNumberRetirements.organizationId, organizationId),
-          or(eq(projectNumberRetirements.projectNumber, approvedProjectNumber), and(eq(projectNumberRetirements.department, parts.department), eq(projectNumberRetirements.sequence, sequence))),
-        )).limit(1),
-        db
-          .select({ projectId: projectNumberReservations.projectId })
-          .from(projectNumberReservations)
-          .where(
-            and(
-              eq(projectNumberReservations.organizationId, organizationId),
-              eq(projectNumberReservations.department, parts.department),
-              eq(projectNumberReservations.sequence, sequence),
-            ),
-          )
-          .limit(1),
-        db
-          .select({ id: projectNumberReservations.id })
-          .from(projectNumberReservations)
-          .where(
-            and(
-              eq(projectNumberReservations.organizationId, organizationId),
-              eq(projectNumberReservations.projectId, existing.id),
-            ),
-          )
-          .limit(1),
-      ])
-
-    if (projectConflicts[0] && projectConflicts[0].id !== existing.id) {
-      return {
-        success: false,
-        error: "That approved number already belongs to another project. Use Merge into existing project instead.",
-      }
-    }
-    if (aliasConflicts[0] && aliasConflicts[0].projectId !== existing.id) {
-      return {
-        success: false,
-        error: "That approved number is a historical alias for another project. Review that project before continuing.",
-      }
-    }
-    const reservationConflict =
-      reservationNumberConflicts[0] ?? reservationSequenceConflicts[0]
-    if (reservationConflict && reservationConflict.projectId !== existing.id) {
-      return {
-        success: false,
-        error: "That department and sequence are reserved by another project. Use Merge into existing project instead.",
-      }
-    }
-    if (retirementConflicts[0] && retirementConflicts[0].formerProjectId !== existing.id) return { success: false, error: "That department and sequence were retired with a removed project." }
-
-    const updatedAt = nowIso()
-    const driveOperationId = crypto.randomUUID()
-    const trackerOperationId = crypto.randomUUID()
-    const syncPayload = JSON.stringify({
-      previousProjectNumber: existing.projectNumber,
-      projectNumber: approvedProjectNumber,
-    })
-    const reservation = projectReservations[0]
-      ? db
-          .update(projectNumberReservations)
-          .set({
-            department: parts.department,
-            sequence,
-            projectNumber: approvedProjectNumber,
-          })
-          .where(eq(projectNumberReservations.id, projectReservations[0].id))
-      : db.insert(projectNumberReservations).values({
-          id: crypto.randomUUID(),
-          organizationId,
-          projectId: existing.id,
-          department: parts.department,
-          sequence,
-          projectNumber: approvedProjectNumber,
-          createdAt: updatedAt,
-        })
-
-    await db.batch([
-      db
-        .update(projects)
-        .set({
-          projectNumber: approvedProjectNumber,
-          department: parts.department,
-          updatedAt,
-        })
-        .where(
-          and(
-            eq(projects.id, existing.id),
-            eq(projects.organizationId, organizationId),
-          ),
-        ),
-      reservation,
-      db
-        .insert(projectNumberAliases)
-        .values({
-          id: crypto.randomUUID(),
-          organizationId,
-          projectId: existing.id,
-          projectNumber: existing.projectNumber,
-          createdBy: user.id,
-          createdAt: updatedAt,
-        })
-        .onConflictDoNothing(),
-      db
-        .update(projectExternalLinks)
-        .set({ externalNumber: approvedProjectNumber, updatedAt })
-        .where(
-          and(
-            eq(projectExternalLinks.projectId, existing.id),
-            eq(projectExternalLinks.externalNumber, existing.projectNumber),
-          ),
-        ),
-      db.insert(projectProfileSyncOperations).values([
-        {
-          id: driveOperationId,
-          organizationId,
-          projectId: existing.id,
-          operation: "drive_folder_rename",
-          status: "pending",
-          payloadJson: syncPayload,
-          error: null,
-          attempts: 0,
-          attemptedAt: null,
-          completedAt: null,
-          createdAt: updatedAt,
-          updatedAt,
-        },
-        {
-          id: trackerOperationId,
-          organizationId,
-          projectId: existing.id,
-          operation: "tracker_row_update",
-          status: "pending",
-          payloadJson: syncPayload,
-          error: null,
-          attempts: 0,
-          attemptedAt: null,
-          completedAt: null,
-          createdAt: updatedAt,
-          updatedAt,
-        },
-      ]),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
-        organizationId,
-        projectId: existing.id,
-        actorUserId: user.id,
-        eventType:
-          input.reason === "number_collision"
-            ? "project_number_collision_resolved"
-            : "project_number_corrected",
-        entityType: "project",
-        entityId: existing.id,
-        beforeJson: JSON.stringify({
-          projectNumber: existing.projectNumber,
-          department: existing.department,
-        }),
-        afterJson: JSON.stringify({
-          projectNumber: approvedProjectNumber,
-          department: parts.department,
-          retainedAlias: existing.projectNumber,
-        }),
-        createdAt: updatedAt,
-      }),
-    ])
-
-    await Promise.all(
-      [driveOperationId, trackerOperationId].map((operationId) =>
-        retryProjectProfileSyncOperation({
-          projectId: existing.id,
-          operationId,
-        }),
-      ),
-    )
-    revalidateProjectProfile(existing.id)
-    return { success: true }
+    return await finishSave(input.projectId, await correctProjectNumber(input))
   } catch (error) {
     console.error("Unable to correct project number", error)
     return {
@@ -1616,58 +157,9 @@ export async function updateProjectJobStatus(input: {
   readonly jobStatusId: string
 }): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(
-      input.projectId,
-      "update",
-    )
-    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
-      return { success: false, error: "Demo data cannot be changed." }
-    }
-    if (!isBuiltInProjectJobStatusId(input.jobStatusId)) {
-      return { success: false, error: "Choose a listed project status." }
-    }
-
-    const existingRows = await db
-      .select({ jobStatusId: projects.jobStatusId })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, input.projectId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .limit(1)
-    const existing = existingRows[0]
-    if (!existing) return { success: false, error: "Project not found." }
-    if (existing.jobStatusId === input.jobStatusId) return { success: true }
-
-    const updatedAt = nowIso()
-    await db.batch([
-      db
-        .update(projects)
-        .set({ jobStatusId: input.jobStatusId, updatedAt })
-        .where(
-          and(
-            eq(projects.id, input.projectId),
-            eq(projects.organizationId, organizationId),
-          ),
-        ),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
-        organizationId,
-        projectId: input.projectId,
-        actorUserId: user.id,
-        eventType: "project_job_status_updated",
-        entityType: "project",
-        entityId: input.projectId,
-        beforeJson: JSON.stringify({ jobStatusId: existing.jobStatusId }),
-        afterJson: JSON.stringify({ jobStatusId: input.jobStatusId }),
-        createdAt: updatedAt,
-      }),
-    ])
-
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await changeProjectJobStatus(input)
+    if (result.success && result.changed) revalidateProjectProfile(input.projectId)
+    return plainResult(result)
   } catch (error) {
     console.error("Unable to update project job status", error)
     return { success: false, error: "Unable to update project status." }
@@ -1679,60 +171,12 @@ export async function updateProjectDeliveryMethod(input: {
   readonly deliveryMethod: string | null
 }): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(
-      input.projectId,
-      "update",
-    )
-    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
-      return { success: false, error: "Demo data cannot be changed." }
+    const result = await changeProjectDeliveryMethod(input)
+    if (result.success && result.changed) {
+      revalidateProjectProfile(input.projectId)
+      revalidatePath("/dashboard")
     }
-    const deliveryMethod = input.deliveryMethod
-    if (deliveryMethod !== null && !isDeliveryMethod(deliveryMethod)) {
-      return { success: false, error: "Choose delivery or customer pickup." }
-    }
-
-    const existingRows = await db
-      .select({ deliveryMethod: projects.deliveryMethod })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, input.projectId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .limit(1)
-    const existing = existingRows[0]
-    if (!existing) return { success: false, error: "Project not found." }
-    if (existing.deliveryMethod === deliveryMethod) return { success: true }
-
-    const updatedAt = nowIso()
-    await db.batch([
-      db
-        .update(projects)
-        .set({ deliveryMethod, updatedAt })
-        .where(
-          and(
-            eq(projects.id, input.projectId),
-            eq(projects.organizationId, organizationId),
-          ),
-        ),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
-        organizationId,
-        projectId: input.projectId,
-        actorUserId: user.id,
-        eventType: "project_delivery_method_updated",
-        entityType: "project",
-        entityId: input.projectId,
-        beforeJson: JSON.stringify({ deliveryMethod: existing.deliveryMethod }),
-        afterJson: JSON.stringify({ deliveryMethod }),
-        createdAt: updatedAt,
-      }),
-    ])
-
-    revalidateProjectProfile(input.projectId)
-    revalidatePath("/dashboard")
-    return { success: true }
+    return plainResult(result)
   } catch (error) {
     console.error("Unable to update project delivery method", error)
     return { success: false, error: "Unable to save the delivery method." }
@@ -1744,60 +188,12 @@ export async function updateProjectMapVisibility(input: {
   readonly visibility: string
 }): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(
-      input.projectId,
-      "update",
-    )
-    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
-      return { success: false, error: "Demo data cannot be changed." }
+    const result = await changeProjectMapVisibility(input)
+    if (result.success && result.changed) {
+      revalidateProjectProfile(input.projectId)
+      revalidatePath("/dashboard")
     }
-    const visibility = input.visibility
-    if (!isPortfolioMapVisibility(visibility)) {
-      return { success: false, error: "Choose a portfolio map setting." }
-    }
-
-    const existingRows = await db
-      .select({ visibility: projects.portfolioMapVisibility })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, input.projectId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .limit(1)
-    const existing = existingRows[0]
-    if (!existing) return { success: false, error: "Project not found." }
-    if (existing.visibility === visibility) return { success: true }
-
-    const updatedAt = nowIso()
-    await db.batch([
-      db
-        .update(projects)
-        .set({ portfolioMapVisibility: visibility, updatedAt })
-        .where(
-          and(
-            eq(projects.id, input.projectId),
-            eq(projects.organizationId, organizationId),
-          ),
-        ),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
-        organizationId,
-        projectId: input.projectId,
-        actorUserId: user.id,
-        eventType: "project_map_visibility_updated",
-        entityType: "project",
-        entityId: input.projectId,
-        beforeJson: JSON.stringify({ portfolioMapVisibility: existing.visibility }),
-        afterJson: JSON.stringify({ portfolioMapVisibility: visibility }),
-        createdAt: updatedAt,
-      }),
-    ])
-
-    revalidateProjectProfile(input.projectId)
-    revalidatePath("/dashboard")
-    return { success: true }
+    return plainResult(result)
   } catch (error) {
     console.error("Unable to update portfolio map visibility", error)
     return { success: false, error: "Unable to update the portfolio map setting." }
@@ -1809,27 +205,9 @@ export async function createProjectNote(input: {
   readonly body: string
 }): Promise<ProjectProfileResult> {
   try {
-    const body = nullableText(input.body)
-    if (!body) return { success: false, error: "Enter a note." }
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const timestamp = nowIso()
-    const id = crypto.randomUUID()
-    await db.insert(projectNotes).values({
-      id,
-      organizationId,
-      projectId: input.projectId,
-      content: body,
-      createdBy: user.id,
-      updatedBy: user.id,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      deletedAt: null,
-      deletedBy: null,
-    })
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_note_created", entityType: "project_note", entityId: id, before: null, after: { body } })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await addProjectNote(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to create project note", error)
     return { success: false, error: "Unable to create project note." }
@@ -1841,23 +219,9 @@ export async function deleteProjectNote(input: {
   readonly noteId: string
 }): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const noteRows = await db
-      .select({ content: projectNotes.content })
-      .from(projectNotes)
-      .where(and(eq(projectNotes.id, input.noteId), eq(projectNotes.projectId, input.projectId), isNull(projectNotes.deletedAt)))
-      .limit(1)
-    const note = noteRows[0]
-    if (!note) return { success: false, error: "Note not found." }
-    const timestamp = nowIso()
-    await db
-      .update(projectNotes)
-      .set({ deletedAt: timestamp, deletedBy: user.id, updatedBy: user.id, updatedAt: timestamp })
-      .where(eq(projectNotes.id, input.noteId))
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_note_deleted", entityType: "project_note", entityId: input.noteId, before: note, after: null })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await removeProjectNote(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to delete project note", error)
     return { success: false, error: "Unable to delete project note." }
@@ -1873,71 +237,9 @@ export async function createProjectInteraction(input: {
   readonly contactId: string | null
 }): Promise<ProjectProfileResult> {
   try {
-    const summary = nullableText(input.summary)
-    const occurredAt = nullableText(input.occurredAt)
-    if (!summary || !occurredAt || Number.isNaN(new Date(occurredAt).getTime())) {
-      return { success: false, error: "Enter a summary and valid interaction time." }
-    }
-    const interactionType = nullableText(input.interactionType)
-    if (!interactionType) return { success: false, error: "Choose an interaction type." }
-    if (!isMeaningfulClientInteraction({
-      interactionType,
-      direction: input.direction,
-      source: "manual",
-    })) {
-      return { success: false, error: "Choose a valid client interaction type and direction." }
-    }
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    if (!input.contactId) return { success: false, error: "Choose an active client contact." }
-    // Only a complete record counts as client contact for project aging.
-    const recordProblem = clientInteractionRecordProblem(
-      { summary, occurredAt },
-      await readFeatureSettings(db, organizationId, "client-interactions"),
-    )
-    if (recordProblem) return { success: false, error: recordProblem }
-    const contactRows = await db
-      .select({ id: projectContacts.id })
-      .from(projectContacts)
-      .where(
-        and(
-          eq(projectContacts.id, input.contactId),
-          eq(projectContacts.projectId, input.projectId),
-          eq(projectContacts.contactType, "owner"),
-          eq(projectContacts.active, true),
-        ),
-      )
-      .limit(1)
-    if (!contactRows[0]) return { success: false, error: "Choose an active client contact on this project." }
-    const timestamp = nowIso()
-    const id = crypto.randomUUID()
-    await db.insert(projectInteractions).values({
-      id,
-      organizationId,
-      projectId: input.projectId,
-      projectContactId: input.contactId,
-      interactionType,
-      direction: input.direction,
-      summary,
-      source: "manual",
-      qualifiesForClientTouch: true,
-      occurredAt: new Date(occurredAt).toISOString(),
-      createdBy: user.id,
-      updatedBy: user.id,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      deletedAt: null,
-      deletedBy: null,
-    })
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "client_interaction_created", entityType: "project_interaction", entityId: id, before: null, after: { interactionType, direction: input.direction, summary, occurredAt } })
-    try {
-      // Logged contact ends the overdue stretch, so its reminder (and red bell) clears.
-      await clearOverdueFollowUpReminders(db, [input.projectId])
-    } catch (error) {
-      console.error("Unable to clear overdue follow-up reminders", error)
-    }
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await logProjectInteraction(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to create client interaction", error)
     return { success: false, error: "Unable to create client interaction." }
@@ -1949,23 +251,9 @@ export async function deleteProjectInteraction(input: {
   readonly interactionId: string
 }): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const interactionRows = await db
-      .select({ summary: projectInteractions.summary, occurredAt: projectInteractions.occurredAt })
-      .from(projectInteractions)
-      .where(and(eq(projectInteractions.id, input.interactionId), eq(projectInteractions.projectId, input.projectId), isNull(projectInteractions.deletedAt)))
-      .limit(1)
-    const interaction = interactionRows[0]
-    if (!interaction) return { success: false, error: "Interaction not found." }
-    const timestamp = nowIso()
-    await db
-      .update(projectInteractions)
-      .set({ deletedAt: timestamp, deletedBy: user.id, updatedBy: user.id, updatedAt: timestamp })
-      .where(eq(projectInteractions.id, input.interactionId))
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "client_interaction_deleted", entityType: "project_interaction", entityId: input.interactionId, before: interaction, after: null })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await removeProjectInteraction(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to delete client interaction", error)
     return { success: false, error: "Unable to delete client interaction." }
@@ -1978,58 +266,13 @@ export async function setProjectFollowUp(input: {
   readonly ownerUserId: string | null
 }): Promise<ProjectProfileResult> {
   try {
-    const nextFollowUpAt = nullableText(input.nextFollowUpAt)
-    if (!nextFollowUpAt || Number.isNaN(new Date(nextFollowUpAt).getTime())) {
-      return { success: false, error: "Choose a valid follow-up date." }
-    }
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    if (input.ownerUserId) {
-      const ownerRows = await db
-        .select({ active: users.isActive, role: organizationMembers.role })
-        .from(organizationMembers)
-        .innerJoin(users, eq(users.id, organizationMembers.userId))
-        .where(
-          and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(organizationMembers.userId, input.ownerUserId),
-          ),
-        )
-        .limit(1)
-      if (!ownerRows[0] || !isEligibleFollowUpOwner(ownerRows[0])) {
-        return { success: false, error: "Choose an active internal organization member." }
-      }
-    }
-    const timestamp = nowIso()
-    await db
-      .insert(projectFollowUps)
-      .values({
-        projectId: input.projectId,
-        organizationId,
-        nextFollowUpAt: new Date(nextFollowUpAt).toISOString(),
-        ownerUserId: input.ownerUserId,
-        createdBy: user.id,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .onConflictDoUpdate({
-        target: projectFollowUps.projectId,
-        set: { nextFollowUpAt: new Date(nextFollowUpAt).toISOString(), ownerUserId: input.ownerUserId, updatedAt: timestamp },
-      })
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_follow_up_set", entityType: "project_follow_up", entityId: input.projectId, before: null, after: { nextFollowUpAt, ownerUserId: input.ownerUserId } })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await scheduleProjectFollowUp(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to set project follow-up", error)
     return { success: false, error: "Unable to set project follow-up." }
   }
-}
-
-/** Active client contacts a contact can be logged against, for quick logging from the map. */
-export type ProjectInteractionFormOptions = {
-  readonly contacts: readonly { readonly id: string; readonly displayName: string }[]
-  readonly interactionTypes: readonly ProjectInteractionTypeOption[]
-  readonly rules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
 }
 
 /** What the client-contact form needs: the job's client contacts, the company's interaction types and record rules. */
@@ -2037,34 +280,7 @@ export async function getProjectInteractionFormOptions(
   projectId: string,
 ): Promise<{ readonly success: true; readonly options: ProjectInteractionFormOptions } | { readonly success: false; readonly error: string }> {
   try {
-    const { db, organizationId } = await projectProfileContext(projectId, "read")
-    const [contacts, customTypes, rules] = await Promise.all([
-      db
-        .select({ id: projectContacts.id, displayName: projectContacts.displayName })
-        .from(projectContacts)
-        .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-        .orderBy(asc(projectContacts.displayName)),
-      db
-        .selectDistinct({ interactionType: projectInteractions.interactionType })
-        .from(projectInteractions)
-        .where(
-          and(
-            eq(projectInteractions.organizationId, organizationId),
-            eq(projectInteractions.source, "manual"),
-            like(projectInteractions.interactionType, "custom:%"),
-          ),
-        )
-        .orderBy(asc(projectInteractions.interactionType)),
-      readFeatureSettings(db, organizationId, "client-interactions"),
-    ])
-    return {
-      success: true,
-      options: {
-        contacts,
-        interactionTypes: projectInteractionTypeOptions(customTypes.map((item) => item.interactionType)),
-        rules,
-      },
-    }
+    return { success: true, options: await loadProjectInteractionFormOptions(projectId) }
   } catch (error) {
     console.error("Unable to load client contact options", error)
     return { success: false, error: "Unable to load client contacts." }
@@ -2080,37 +296,9 @@ export async function snoozeProjectFollowUp(input: {
   readonly nextFollowUpAt: string
 }): Promise<ProjectProfileResult> {
   try {
-    const next = new Date(input.nextFollowUpAt)
-    if (Number.isNaN(next.getTime()) || next.getTime() <= Date.now()) {
-      return { success: false, error: "Choose a future follow-up date." }
-    }
-    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const before = await db
-      .select({ nextFollowUpAt: projectFollowUps.nextFollowUpAt })
-      .from(projectFollowUps)
-      .where(eq(projectFollowUps.projectId, input.projectId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    const timestamp = nowIso()
-    await db
-      .insert(projectFollowUps)
-      .values({
-        projectId: input.projectId,
-        organizationId,
-        nextFollowUpAt: next.toISOString(),
-        ownerUserId: null,
-        createdBy: user.id,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .onConflictDoUpdate({
-        target: projectFollowUps.projectId,
-        set: { nextFollowUpAt: next.toISOString(), updatedAt: timestamp },
-      })
-    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_follow_up_snoozed", entityType: "project_follow_up", entityId: input.projectId, before, after: { nextFollowUpAt: next.toISOString() } })
-    revalidateProjectProfile(input.projectId)
-    return { success: true }
+    const result = await postponeProjectFollowUp(input)
+    if (result.success) revalidateProjectProfile(input.projectId)
+    return result
   } catch (error) {
     console.error("Unable to snooze project follow-up", error)
     return { success: false, error: "Unable to snooze the follow-up." }
@@ -2119,32 +307,13 @@ export async function snoozeProjectFollowUp(input: {
 
 export async function clearProjectFollowUp(projectId: string): Promise<ProjectProfileResult> {
   try {
-    const { db, organizationId, user } = await projectProfileContext(projectId, "update")
-    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
-    const followUpRows = await db
-      .select({ nextFollowUpAt: projectFollowUps.nextFollowUpAt, ownerUserId: projectFollowUps.ownerUserId })
-      .from(projectFollowUps)
-      .where(eq(projectFollowUps.projectId, projectId))
-      .limit(1)
-    const followUp = followUpRows[0]
-    if (!followUp) return { success: true }
-    await db.delete(projectFollowUps).where(eq(projectFollowUps.projectId, projectId))
-    await writeAuditEvent({ db, organizationId, projectId, actorId: user.id, eventType: "project_follow_up_cleared", entityType: "project_follow_up", entityId: projectId, before: followUp, after: null })
-    revalidateProjectProfile(projectId)
-    return { success: true }
+    const result = await removeProjectFollowUp(projectId)
+    if (result.success && result.changed) revalidateProjectProfile(projectId)
+    return plainResult(result)
   } catch (error) {
     console.error("Unable to clear project follow-up", error)
     return { success: false, error: "Unable to clear project follow-up." }
   }
-}
-
-export type ProjectAgingStatusRow = {
-  readonly id: string
-  readonly label: string
-  /** True for statuses the company added. */
-  readonly custom: boolean
-  /** Timing used when Settings has no entry; null means not followed up by default. */
-  readonly defaultThresholds: { readonly dueDays: number; readonly overdueDays: number } | null
 }
 
 /**
@@ -2155,35 +324,7 @@ export async function getProjectAgingStatusRows(): Promise<
   { readonly success: true; readonly rows: readonly ProjectAgingStatusRow[] } | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
-    if (!isInternalStaffRole(user.role)) return { success: false, error: "Project aging settings are available to office staff." }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const custom = await db
-      .select({ id: projectJobStatuses.id, label: projectJobStatuses.label, cadenceDays: projectJobStatuses.followUpCadenceDays })
-      .from(projectJobStatuses)
-      .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true)))
-      .orderBy(asc(projectJobStatuses.sortOrder), asc(projectJobStatuses.label))
-    const thresholdsFor = (cadence: number | null): ProjectAgingStatusRow["defaultThresholds"] =>
-      cadence === null ? null : { dueDays: cadence, overdueDays: cadence + 1 }
-    return {
-      success: true,
-      rows: [
-        ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
-          id: status.id,
-          label: status.label,
-          custom: false,
-          defaultThresholds: thresholdsFor(status.followUpCadenceDays),
-        })),
-        ...custom.map((status) => ({
-          id: status.id,
-          label: status.label,
-          custom: true,
-          defaultThresholds: thresholdsFor(status.cadenceDays),
-        })),
-      ],
-    }
+    return await loadProjectAgingStatusRows()
   } catch (error) {
     console.error("Unable to load project aging statuses", error)
     return { success: false, error: "Unable to load job statuses." }
@@ -2196,50 +337,9 @@ export async function createCustomProjectJobStatus(input: {
   readonly followUpCadenceDays: number | null
 }): Promise<ProjectProfileResult> {
   try {
-    const user = await requireAuth()
-    requireFeaturePermission(user, "project-hub", "update")
-    if (!canManageProjectRegistry(user)) return { success: false, error: "Only project registry managers can add job statuses." }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) throw new Error("Database unavailable")
-    const db = getDb(env.DB)
-    const label = nullableText(input.label)
-    if (!label) return { success: false, error: "Enter a job-status label." }
-    if (!isSupportedProjectJobStatusLabel(label)) {
-      return {
-        success: false,
-        error: "Custom job-status labels must use printable basic Latin characters.",
-      }
-    }
-    const normalizedLabel = normalizeProjectJobStatusLabel(label)
-    if (isBuiltInProjectJobStatusLabel(label)) {
-      return {
-        success: false,
-        error: "That standard status is already available in the Job status menu.",
-      }
-    }
-    const existingCustomStatuses = await db
-      .select({ statusId: projectJobStatusLabelKeys.statusId })
-      .from(projectJobStatusLabelKeys)
-      .where(
-        and(
-          eq(projectJobStatusLabelKeys.organizationId, organizationId),
-          eq(projectJobStatusLabelKeys.normalizedLabel, normalizedLabel),
-        ),
-      )
-      .limit(1)
-    if (existingCustomStatuses.length > 0) {
-      return { success: false, error: "That custom status already exists." }
-    }
-    if (input.followUpCadenceDays !== null && (!Number.isInteger(input.followUpCadenceDays) || input.followUpCadenceDays < 1)) {
-      return { success: false, error: "Follow-up cadence must be a positive whole number." }
-    }
-    const timestamp = nowIso()
-    await db.insert(projectJobStatuses).values({
-      id: crypto.randomUUID(), organizationId, label, sageCode: nullableText(input.sageCode), followUpCadenceDays: input.followUpCadenceDays, active: true, sortOrder: 999, createdBy: user.id, createdAt: timestamp, updatedAt: timestamp,
-    })
-    revalidatePath("/dashboard/projects")
-    return { success: true }
+    const result = await addCustomProjectJobStatus(input)
+    if (result.success) revalidatePath("/dashboard/projects")
+    return result
   } catch (error) {
     console.error("Unable to add job status", error)
     return { success: false, error: "Unable to add job status." }

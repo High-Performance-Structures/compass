@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import { sageJobResultStatement } from "@/lib/domain/project/store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -130,19 +131,14 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (operation.projectId && result.job) {
     statements.push(
-      env.DB.prepare(
-        `UPDATE projects
-         SET sage_job_id = ?, sage_job_number = ?,
-             sage_job_status_number = ?, sage_job_type_number = ?, updated_at = ?
-         WHERE id = ?`
-      ).bind(
-        result.job.id,
-        result.job.number,
-        result.job.statusNumber,
-        result.job.typeNumber,
+      sageJobResultStatement(env.DB, {
+        projectId: operation.projectId,
+        sageJobId: result.job.id,
+        sageJobNumber: result.job.number,
+        sageJobStatusNumber: result.job.statusNumber,
+        sageJobTypeNumber: result.job.typeNumber,
         now,
-        operation.projectId
-      )
+      })
     )
   }
   await env.DB.batch(statements)

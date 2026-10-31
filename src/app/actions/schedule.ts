@@ -42,6 +42,7 @@ import {
   taskInsertQuery,
   taskUpdateQuery,
 } from "@/lib/domain/schedule/store"
+import { updateProjects } from "@/lib/domain/project/store"
 import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-items"
 import { operationInsertQuery } from "@/lib/domain/operations/store"
 import { projectDepartment } from "@/lib/project-branding"
@@ -113,13 +114,10 @@ export async function updateOwnerScheduleView(
       return { success: false, error: "Project not found or access denied" }
     }
 
-    await db
-      .update(projects)
-      .set({
-        ownerScheduleView,
-        updatedAt: new Date().toISOString()
-      })
-      .where(eq(projects.id, projectId))
+    await updateProjects(db, eq(projects.id, projectId), {
+      ownerScheduleView,
+      updatedAt: new Date().toISOString()
+    })
 
     await recordActivityEvent({
       db,

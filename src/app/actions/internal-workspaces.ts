@@ -3,10 +3,12 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { projectProfileAuditEvents, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { insertProject, updateProjectsStatement } from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { isWorkspaceKind, type WorkspaceKind } from "@/lib/internal-duties/model"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -58,12 +60,12 @@ export async function updateProjectWorkspace(input: ProjectWorkspaceInput): Prom
     const now = new Date().toISOString()
     const after = { workspaceKind: input.workspaceKind, internalDepartment: input.internalDepartment }
     await db.batch([
-      db
-        .update(projects)
-        .set({ ...after, updatedAt: now })
-        .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId))),
-      db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      updateProjectsStatement(
+        db,
+        and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)),
+        { ...after, updatedAt: now },
+      ),
+      recordProjectAudit(db, {
         organizationId,
         projectId: input.projectId,
         actorUserId: user.id,
@@ -125,7 +127,7 @@ export async function createInternalWorkspace(input: CreateInternalWorkspaceInpu
     }
     const projectId = `proj-internal-${crypto.randomUUID().slice(0, 12)}`
     const now = new Date().toISOString()
-    await db.insert(projects).values({
+    await insertProject(db, {
       id: projectId,
       organizationId,
       projectNumber,
