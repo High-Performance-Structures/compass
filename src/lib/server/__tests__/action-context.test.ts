@@ -115,6 +115,17 @@ describe("projectContext", () => {
     expect(await projectContext("p-1", { scope: "organization" })).toEqual({ success: false, error: "Project not found" })
   })
 
+  it("member scope keeps access for project members with no active organization", async () => {
+    const project = { id: "p-1", organizationId: "org-2", projectNumber: "O-1" }
+    mocks.getCurrentUser.mockResolvedValue({ ...staff, role: "client", organizationId: null, organizationType: null })
+    mocks.getProjectAccessRecord.mockResolvedValue(project)
+    expect(await projectContext("p-1", { scope: "member" })).toMatchObject({
+      success: true,
+      data: { organizationId: null, project },
+    })
+    expect(await projectContext("p-1", { scope: "organization" })).toEqual({ success: false, error: "No active organization" })
+  })
+
   it("reports an inaccessible project as not found", async () => {
     mocks.getProjectAccessRecord.mockResolvedValue(null)
     expect(await projectContext("p-2", { scope: "member" })).toEqual({ success: false, error: "Project not found" })

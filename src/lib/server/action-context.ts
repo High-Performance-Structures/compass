@@ -25,7 +25,14 @@ export type OrgContext = {
   readonly env: CloudflareEnv
 }
 
-export type ProjectContext = OrgContext & {
+/**
+ * `organizationId` is the user's active organization. It is null only for
+ * "member" scope, where an invited owner or vendor may belong to the project
+ * without an active organization; the project's own organization is on
+ * `project.organizationId`.
+ */
+export type ProjectContext = Omit<OrgContext, "organizationId"> & {
+  readonly organizationId: string | null
   readonly project: ProjectAccessRecord
 }
 
@@ -53,12 +60,17 @@ function permissionDenied(user: AuthUser, feature: string, action: Action): stri
   return `Permission denied: ${user.role} cannot ${action} ${feature}`
 }
 
-export async function orgContext(options: ContextOptions = {}): Promise<ContextResult<OrgContext>> {
+type UserContext = Omit<OrgContext, "organizationId"> & { readonly organizationId: string | null }
+
+async function userContext(
+  options: ContextOptions,
+  requireOrganization: boolean,
+): Promise<ContextResult<UserContext>> {
   const user = await getCurrentUser()
   if (!user) return actionFailure(CONTEXT_ERRORS.unauthorized)
   const organizationId = user.organizationId
-  if (!organizationId) return actionFailure(CONTEXT_ERRORS.noOrganization)
-  if (options.mutation && (isDemoUser(user.id) || isDemoOrg(organizationId))) {
+  if (requireOrganization && !organizationId) return actionFailure(CONTEXT_ERRORS.noOrganization)
+  if (options.mutation && (isDemoUser(user.id) || (organizationId !== null && isDemoOrg(organizationId)))) {
     return actionFailure(CONTEXT_ERRORS.demoReadOnly)
   }
   if (options.feature) {
@@ -70,6 +82,14 @@ export async function orgContext(options: ContextOptions = {}): Promise<ContextR
   const { env } = await getCloudflareContext()
   if (!env?.DB) return actionFailure(CONTEXT_ERRORS.noDatabase)
   return { success: true, data: { user, organizationId, db: getDb(env.DB), env } }
+}
+
+export async function orgContext(options: ContextOptions = {}): Promise<ContextResult<OrgContext>> {
+  const context = await userContext(options, true)
+  if (!context.success) return context
+  const { organizationId } = context.data
+  if (!organizationId) return actionFailure(CONTEXT_ERRORS.noOrganization)
+  return { success: true, data: { ...context.data, organizationId } }
 }
 
 /**
@@ -99,17 +119,22 @@ async function organizationProject(
   return project ?? null
 }
 
-/** `orgContext` plus the project, read once. */
+/**
+ * The context plus the project, read once. "member" scope does not require an
+ * active organization, so project members from outside keep their access.
+ */
 export async function projectContext(
   projectId: string,
   options: ProjectContextOptions,
 ): Promise<ContextResult<ProjectContext>> {
-  const context = await orgContext(options)
+  const context = await userContext(options, options.scope === "organization")
   if (!context.success) return context
   const { db, user, organizationId } = context.data
   const project =
     options.scope === "organization"
-      ? await organizationProject(db, organizationId, projectId)
+      ? organizationId
+        ? await organizationProject(db, organizationId, projectId)
+        : null
       : await getProjectAccessRecord(db, user, projectId)
   if (!project) return actionFailure(CONTEXT_ERRORS.projectNotFound)
   return { success: true, data: { ...context.data, project } }
