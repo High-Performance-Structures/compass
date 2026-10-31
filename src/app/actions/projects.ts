@@ -4,7 +4,6 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { projectOperations } from "@/db/schema"
 import { loadProjectListForRequest, type ProjectListItem } from "@/lib/projects/project-list"
-import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
@@ -82,6 +81,7 @@ import {
   parseSageJobTypeId,
   sageJobTypeName,
 } from "@/lib/sage/client-project-write"
+import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
 
 export type { ProjectListItem } from "@/lib/projects/project-list"
 export type {
@@ -189,7 +189,7 @@ function intakeQueueStatements(
       createdAt: now,
       updatedAt: now,
     }),
-    db.insert(sageClientProjectWriteOperations).values({
+    insertSageClientProjectWriteOperation(db, {
       id: ids.sageWriteOperationId,
       organizationId: input.organizationId,
       customerId: input.customerId,
@@ -655,7 +655,7 @@ export async function createProjectShell(
         sageClientStatusId,
         now,
       }),
-      db.insert(sageClientProjectWriteOperations).values({
+      insertSageClientProjectWriteOperation(db, {
         id: crypto.randomUUID(),
         organizationId: orgId,
         customerId,

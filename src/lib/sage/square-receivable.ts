@@ -1,4 +1,10 @@
 import {
+  refreshInvoicePaidStatusStatement,
+  upsertInvoicePaymentAllocationStatement,
+  upsertSageReceivableInvoiceStatement,
+  upsertSageReceivablePaymentStatement,
+} from "@/lib/domain/financials/store";
+import {
   setSquareInvoiceOperationStatus,
   squareOwnerInvoiceOperationUpsertStatement,
   squarePaymentOperationUpsertStatement,
@@ -187,95 +193,45 @@ export async function upsertSquareOwnerReceivable(
   };
 
   await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO invoices (
-         id, organization_id, customer_id, project_id, source_system,
-         source_external_id, invoice_number, status, issue_date, due_date,
-         subtotal, tax, total, amount_paid, amount_due, memo, line_items,
-         created_at, updated_at
-       ) VALUES (?, ?, ?, ?, 'sage', ?, ?, 'open', ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         organization_id = excluded.organization_id,
-         customer_id = excluded.customer_id,
-         project_id = excluded.project_id,
-         invoice_number = excluded.invoice_number,
-         issue_date = excluded.issue_date,
-         due_date = excluded.due_date,
-         subtotal = excluded.subtotal,
-         tax = excluded.tax,
-         total = excluded.total,
-         memo = excluded.memo,
-         updated_at = excluded.updated_at`,
-    ).bind(
-      ids.invoiceId,
-      input.organizationId,
-      input.customerId,
-      input.projectId,
-      invoiceSourceId,
-      input.sageInvoiceNumber,
+    upsertSageReceivableInvoiceStatement(env.DB, {
+      id: ids.invoiceId,
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      projectId: input.projectId,
+      sourceExternalId: invoiceSourceId,
+      invoiceNumber: input.sageInvoiceNumber,
       issueDate,
       dueDate,
-      invoiceSubtotal,
-      invoiceTax,
-      invoiceTotal,
-      invoiceTotal,
-      `Sage invoice ${input.sageInvoiceNumber}; Square invoice ${input.squareInvoiceId}.`,
+      subtotal: invoiceSubtotal,
+      tax: invoiceTax,
+      total: invoiceTotal,
+      memo: `Sage invoice ${input.sageInvoiceNumber}; Square invoice ${input.squareInvoiceId}.`,
       now,
-      now,
-    ),
-    env.DB.prepare(
-      `INSERT INTO payments (
-         id, organization_id, customer_id, vendor_id, project_id,
-         source_system, source_external_id, payment_type, amount,
-         gross_amount_cents, processing_fee_cents, net_amount_cents,
-         cash_receipt, payment_date, payment_method, reference_number, memo,
-         created_at, updated_at
-       ) VALUES (?, ?, ?, NULL, ?, 'sage', ?, 'received', ?, ?, ?, ?, 1, ?, 'square', ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         organization_id = excluded.organization_id,
-         customer_id = excluded.customer_id,
-         project_id = excluded.project_id,
-         amount = excluded.amount,
-         gross_amount_cents = excluded.gross_amount_cents,
-         processing_fee_cents = excluded.processing_fee_cents,
-         net_amount_cents = excluded.net_amount_cents,
-         payment_date = excluded.payment_date,
-         payment_method = excluded.payment_method,
-         reference_number = excluded.reference_number,
-         memo = excluded.memo,
-         updated_at = excluded.updated_at`,
-    ).bind(
-      ids.paymentId,
-      input.organizationId,
-      input.customerId,
-      input.projectId,
-      paymentSourceId,
-      paymentAmount,
-      paymentAmountCents,
+    }),
+    upsertSageReceivablePaymentStatement(env.DB, {
+      id: ids.paymentId,
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      projectId: input.projectId,
+      sourceExternalId: paymentSourceId,
+      amount: paymentAmount,
+      grossAmountCents: paymentAmountCents,
       processingFeeCents,
       netAmountCents,
       paymentDate,
-      input.squarePaymentId,
-      `Square payment for Sage invoice ${input.sageInvoiceNumber}.`,
+      referenceNumber: input.squarePaymentId,
+      memo: `Square payment for Sage invoice ${input.sageInvoiceNumber}.`,
       now,
+    }),
+    upsertInvoicePaymentAllocationStatement(env.DB, {
+      id: ids.allocationId,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      invoiceId: ids.invoiceId,
+      paymentId: ids.paymentId,
+      allocationCents: paymentAmountCents,
       now,
-    ),
-    env.DB.prepare(
-      `INSERT INTO invoice_payment_allocations (
-         id, organization_id, project_id, invoice_id, payment_id,
-         allocation_cents, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(invoice_id, payment_id) DO UPDATE SET
-         allocation_cents = excluded.allocation_cents`,
-    ).bind(
-      ids.allocationId,
-      input.organizationId,
-      input.projectId,
-      ids.invoiceId,
-      ids.paymentId,
-      paymentAmountCents,
-      now,
-    ),
+    }),
     squareOwnerInvoiceOperationUpsertStatement(env.DB, {
       id: ids.invoiceOperationId,
       projectId: input.projectId,
@@ -305,51 +261,12 @@ export async function upsertSquareOwnerReceivable(
     }),
   ]);
 
-  await env.DB.prepare(
-    `UPDATE invoices
-     SET amount_paid = MIN(
-           total,
-           COALESCE((
-             SELECT SUM(allocation_cents) / 100.0
-             FROM invoice_payment_allocations
-             WHERE invoice_id = ?
-           ), 0)
-         ),
-         amount_due = MAX(
-           total - COALESCE((
-             SELECT SUM(allocation_cents) / 100.0
-             FROM invoice_payment_allocations
-             WHERE invoice_id = ?
-           ), 0),
-           0
-         ),
-         status = CASE
-           WHEN COALESCE((
-             SELECT SUM(allocation_cents)
-             FROM invoice_payment_allocations
-             WHERE invoice_id = ?
-           ), 0) >= CAST(ROUND(total * 100) AS INTEGER) THEN 'paid'
-           WHEN COALESCE((
-             SELECT SUM(allocation_cents)
-             FROM invoice_payment_allocations
-             WHERE invoice_id = ?
-           ), 0) > 0 THEN 'partially_paid'
-           ELSE 'open'
-         END,
-         updated_at = ?
-     WHERE id = ? AND organization_id = ? AND project_id = ?`,
-  )
-    .bind(
-      ids.invoiceId,
-      ids.invoiceId,
-      ids.invoiceId,
-      ids.invoiceId,
-      now,
-      ids.invoiceId,
-      input.organizationId,
-      input.projectId,
-    )
-    .run();
+  await refreshInvoicePaidStatusStatement(env.DB, {
+    invoiceId: ids.invoiceId,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    now,
+  }).run();
 
   const invoice = await env.DB.prepare(
     `SELECT status FROM invoices

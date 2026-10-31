@@ -303,6 +303,70 @@ export async function clearReminderNotifications(
 }
 
 // ---------------------------------------------------------------------------
+// Raw D1 statements gated by the caller's guard (Sage Square alerts)
+// ---------------------------------------------------------------------------
+
+/**
+ * SQL the caller owns that must hold for the write to apply (for example
+ * "the receipt is still open"), with its bind values in order.
+ */
+export type NotificationWriteGuard = { readonly sql: string; readonly binds: readonly unknown[] }
+
+/** One internal-audience bell event with a deterministic id. */
+export type InternalNotificationEventInsert = {
+  readonly id: string
+  readonly organizationId: string
+  readonly projectId: string | null
+  readonly eventType: string
+  readonly sourceType: string
+  readonly sourceId: string
+  readonly title: string
+  readonly body: string
+  readonly href: string
+  readonly priority: string
+  readonly createdAt: string
+}
+
+/** Inserts the event only while `guard` holds; a repeated id is a no-op, so retries are idempotent. */
+export function insertInternalNotificationEventWhereStatement(
+  database: D1Database,
+  event: InternalNotificationEventInsert,
+  guard: NotificationWriteGuard
+): D1PreparedStatement {
+  return database.prepare(`INSERT INTO notification_events
+    (id, organization_id, project_id, event_type, source_type, source_id, title, body, href, priority, audience, created_at)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'internal', ?
+    WHERE ${guard.sql} ON CONFLICT(id) DO NOTHING`)
+    .bind(event.id, event.organizationId, event.projectId, event.eventType, event.sourceType, event.sourceId,
+      event.title, event.body, event.href, event.priority, event.createdAt, ...guard.binds)
+}
+
+/** Inserts one in-app-only recipient only while `guard` holds; a repeated id is a no-op. */
+export function insertNotificationRecipientWhereStatement(
+  database: D1Database,
+  recipient: { readonly id: string; readonly eventId: string; readonly userId: string; readonly createdAt: string },
+  guard: NotificationWriteGuard
+): D1PreparedStatement {
+  return database.prepare(`INSERT INTO notification_recipients (id, event_id, user_id, in_app, email, sms, push, created_at)
+      SELECT ?, ?, ?, 1, 0, 0, 0, ? WHERE ${guard.sql} ON CONFLICT(id) DO NOTHING`)
+    .bind(recipient.id, recipient.eventId, recipient.userId, recipient.createdAt, ...guard.binds)
+}
+
+/**
+ * Dismisses (and with `markRead`, also reads) the recipient rows `where`
+ * selects. Timestamps already set are kept.
+ */
+export function settleNotificationRecipientsWhereStatement(
+  database: D1Database,
+  input: { readonly markRead: boolean; readonly now: string; readonly where: NotificationWriteGuard }
+): D1PreparedStatement {
+  const read = input.markRead ? "read_at = COALESCE(read_at, ?), " : ""
+  return database.prepare(`UPDATE notification_recipients SET ${read}dismissed_at = COALESCE(dismissed_at, ?)
+     WHERE ${input.where.sql}`)
+    .bind(...(input.markRead ? [input.now, input.now] : [input.now]), ...input.where.binds)
+}
+
+// ---------------------------------------------------------------------------
 // Preferences
 // ---------------------------------------------------------------------------
 

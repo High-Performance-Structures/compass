@@ -3,7 +3,12 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import { sageClientWriteResultCustomerStatement } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
+import {
+  sageClientProjectWriteSucceededStatement,
+  updateSageClientProjectWriteOperations,
+} from "@/lib/domain/sage-bridge/store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -79,54 +84,41 @@ export async function POST(request: Request): Promise<Response> {
 
   const now = new Date().toISOString()
   if (result.outcome === "failed") {
-    await db
-      .update(sageClientProjectWriteOperations)
-      .set({
+    await updateSageClientProjectWriteOperations(
+      db,
+      {
         status: "failed",
         errorMessage: result.error,
         completedAt: now,
         updatedAt: now,
-      })
-      .where(eq(sageClientProjectWriteOperations.id, operation.id))
+      },
+      eq(sageClientProjectWriteOperations.id, operation.id)
+    )
     return Response.json({ success: true, status: "failed" }, { status: 202 })
   }
 
   const statements = [
-    env.DB.prepare(
-      `UPDATE sage_client_project_write_operations
-       SET status = 'succeeded', sage_client_id = ?, sage_client_number = ?,
-           sage_job_id = ?, sage_job_number = ?,
-           resolved_client_status_number = ?, resolved_job_status_number = ?,
-           resolved_job_type_number = ?, error_message = NULL,
-           completed_at = ?, updated_at = ?
-       WHERE id = ?`
-    ).bind(
-      result.client.id,
-      result.client.number,
-      result.job?.id ?? null,
-      result.job?.number ?? null,
-      result.client.statusNumber,
-      result.job?.statusNumber ?? null,
-      result.job?.typeNumber ?? null,
+    sageClientProjectWriteSucceededStatement(env.DB, {
+      operationId: operation.id,
+      clientId: result.client.id,
+      clientNumber: result.client.number,
+      clientStatusNumber: result.client.statusNumber,
+      jobId: result.job?.id ?? null,
+      jobNumber: result.job?.number ?? null,
+      jobStatusNumber: result.job?.statusNumber ?? null,
+      jobTypeNumber: result.job?.typeNumber ?? null,
       now,
-      now,
-      operation.id
-    ),
+    }),
   ]
   if (operation.customerId) {
     statements.push(
-      env.DB.prepare(
-        `UPDATE customers
-         SET sage_client_id = ?, sage_client_number = ?,
-             sage_client_status_id = ?, updated_at = ?
-         WHERE id = ?`
-      ).bind(
-        result.client.id,
-        result.client.number,
-        result.client.statusNumber,
+      sageClientWriteResultCustomerStatement(env.DB, {
+        customerId: operation.customerId,
+        sageClientId: result.client.id,
+        sageClientNumber: result.client.number,
+        sageClientStatusId: result.client.statusNumber,
         now,
-        operation.customerId
-      )
+      })
     )
   }
   if (operation.projectId && result.job) {

@@ -9,9 +9,12 @@ function source(relativePath: string): string {
 const customerActions = source("../../../app/actions/customers.ts")
 const contactEditGate = source("../contact-edit-gate.ts")
 const projectActions = source("../../../app/actions/projects.ts")
-const resultsRoute = source(
-  "../../../app/api/integrations/sage/client-project-writes/results/route.ts"
-)
+// The route's customer write now goes through the contacts store and its
+// operation writes through the Sage bridge store.
+const resultsRoute =
+  source("../../../app/api/integrations/sage/client-project-writes/results/route.ts") +
+  source("../../domain/contacts/store.ts") +
+  source("../../domain/sage-bridge/store.ts")
 const projectStore = source("../../domain/project/store.ts")
 const windowsWriter = source(
   "../../../../scripts/Sage.100.Contractor.CompassClientProjectWriter.cs"

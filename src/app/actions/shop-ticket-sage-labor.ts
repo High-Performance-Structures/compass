@@ -13,6 +13,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { chunkD1Values } from "@/lib/d1-query"
 import { compassCostCodeFromSage, groupSageLabor, type SageLaborGroup } from "@/lib/shop-tickets/sage-labor"
+import { insertSageLaborRequest } from "@/lib/domain/sage-bridge/store"
 
 const FEATURE = "shop-tickets"
 /** About a quarter; longer ranges are usually a typo. */
@@ -87,7 +88,7 @@ export async function requestSageLaborHours(projectId: string, dateFrom: string,
     if (waiting) return { success: true, requestId: waiting.id }
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    await db.insert(sageLaborRequests).values({
+    await insertSageLaborRequest(db, {
       id,
       organizationId: orgId,
       projectId,

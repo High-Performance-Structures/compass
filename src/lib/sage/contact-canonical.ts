@@ -1,5 +1,9 @@
 import "server-only"
 
+import {
+  sageSnapshotDirectoryUpdateStatement,
+  upsertInternalContactPrivateAddressStatement,
+} from "@/lib/domain/contacts/store"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactIdentityError } from "@/lib/sage/contact-bridge"
@@ -73,46 +77,26 @@ export async function applySageContactSnapshotToCanonical(
   let statement: D1PreparedStatement
   if (snapshot.kind === "client_company") {
     const patch = patchFor(snapshot.fields, CLIENT_COMPANY)
-    statement = database.prepare(
-      `UPDATE customers SET ${updateAssignments("sage_client_id", patch)}
-       WHERE id = ? AND organization_id = ? AND sage_client_id = ?`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId)
+    statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_client_id", patch),
+      [snapshot.sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
   } else if (snapshot.kind === "vendor_company") {
     const patch = patchFor(snapshot.fields, VENDOR_COMPANY)
-    statement = database.prepare(
-      `UPDATE vendors SET ${updateAssignments("sage_vendor_id", patch)},
-         sync_status = 'synced', last_synced_at = ?
-       WHERE id = ? AND organization_id = ? AND sage_vendor_id = ?`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId)
+    statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_vendor_id", patch),
+      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
   } else if (snapshot.kind === "client_person") {
     const patch = patchFor(snapshot.fields, PERSON)
-    statement = database.prepare(
-      `UPDATE customer_contacts SET ${updateAssignments("sage_contact_id", patch)},
-         sync_status = 'synced', last_synced_at = ?
-       WHERE id = ? AND sage_contact_id = ?
-         AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
-      snapshot.sageRecordId,
-      organizationId, snapshot.parentSageRecordId)
+    statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
+      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, snapshot.sageRecordId,
+        organizationId, snapshot.parentSageRecordId])
   } else if (snapshot.kind === "vendor_person") {
     const patch = patchFor(snapshot.fields, PERSON)
-    statement = database.prepare(
-      `UPDATE vendor_contacts SET ${updateAssignments("sage_contact_id", patch)}
-       WHERE id = ? AND sage_contact_id = ?
-         AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      snapshot.sageRecordId,
-      organizationId, snapshot.parentSageRecordId)
+    statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
+      [snapshot.sageRecordId, ...patch.values, now, snapshot.entityId, snapshot.sageRecordId,
+        organizationId, snapshot.parentSageRecordId])
   } else {
     const patch = patchFor(snapshot.fields, EMPLOYEE)
-    statement = database.prepare(
-      `UPDATE internal_contacts SET ${updateAssignments("sage_employee_id", patch)},
-         sync_status = 'synced', last_synced_at = ?
-       WHERE id = ? AND organization_id = ? AND sage_employee_id = ?`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId)
+    statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_employee_id", patch),
+      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
   }
   const result = await statement.run()
   if (result.meta.changes !== 1) {
@@ -122,16 +106,9 @@ export async function applySageContactSnapshotToCanonical(
     const privatePatch = patchFor(snapshot.fields, EMPLOYEE_PRIVATE)
     if (privatePatch.clauses.length > 0) {
       const columns = privatePatch.clauses.map((clause) => clause.slice(1, clause.indexOf("`", 1)))
-      const placeholders = columns.map(() => "?").join(", ")
-      const updates = columns.map((column) => `\`${column}\` = excluded.\`${column}\``).join(", ")
-      await database.prepare(
-        `INSERT INTO internal_contact_private_addresses
-         (internal_contact_id, ${columns.map((column) => `\`${column}\``).join(", ")}, updated_at)
-         VALUES (?, ${placeholders}, ?)
-         ON CONFLICT(internal_contact_id) DO UPDATE SET
-           ${updates},
-           updated_at = excluded.updated_at`
-      ).bind(snapshot.entityId, ...privatePatch.values, now).run()
+      await upsertInternalContactPrivateAddressStatement(database, {
+        internalContactId: snapshot.entityId, columns, values: privatePatch.values, now,
+      }).run()
     }
   }
   return { success: true }

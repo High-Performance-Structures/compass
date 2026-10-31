@@ -7,6 +7,17 @@ import {
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  SAGE_BRIDGE_NONCE_RETENTION_MS,
+  sageBridgeBatchLimit,
+  sageBridgeCutoff,
+} from "@/lib/domain/sage-bridge/rules"
+import { updateSageSquarePaymentOperations } from "@/lib/domain/sage-bridge/square-store"
+import {
+  deleteSageBridgeRequestNonces,
+  insertSageBridgeRequestNonce,
+  sageBridgeHeartbeatStatement,
+} from "@/lib/domain/sage-bridge/store"
+import {
   getSageBridgeSecret,
   SAGE_BRIDGE_REQUEST_ID_HEADER,
   verifySageBridgeRequest,
@@ -19,7 +30,6 @@ import {
 
 const MAX_BATCH = 10
 const CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
-const NONCE_RETENTION_MILLISECONDS = 15 * 60 * 1000
 
 function unauthorized(error: string): Response {
   return Response.json({ error }, { status: 401 })
@@ -45,27 +55,18 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const requestId = request.headers.get(SAGE_BRIDGE_REQUEST_ID_HEADER)
   if (!requestId) return unauthorized("Missing bridge signature")
-  const requestedLimit = Number(url.searchParams.get("limit") ?? "5")
-  const limit = Number.isInteger(requestedLimit)
-    ? Math.min(MAX_BATCH, Math.max(1, requestedLimit))
-    : 5
+  const limit = sageBridgeBatchLimit(url.searchParams.get("limit"), 5, MAX_BATCH)
   const now = new Date()
   const nowIso = now.toISOString()
-  const staleClaimIso = new Date(
-    now.getTime() - CLAIM_RETRY_MILLISECONDS
-  ).toISOString()
+  const staleClaimIso = sageBridgeCutoff(now, CLAIM_RETRY_MILLISECONDS)
   const db = getDb(env.DB)
 
-  await db
-    .delete(sageBridgeRequestNonces)
-    .where(
-      lt(
-        sageBridgeRequestNonces.createdAt,
-        new Date(now.getTime() - NONCE_RETENTION_MILLISECONDS).toISOString()
-      )
-    )
+  await deleteSageBridgeRequestNonces(
+    db,
+    lt(sageBridgeRequestNonces.createdAt, sageBridgeCutoff(now, SAGE_BRIDGE_NONCE_RETENTION_MS))
+  )
   try {
-    await db.insert(sageBridgeRequestNonces).values({
+    await insertSageBridgeRequestNonce(db, {
       requestId,
       route: url.pathname,
       createdAt: nowIso,
@@ -77,15 +78,7 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
 
-  await env.DB.prepare(
-    `INSERT INTO sage_bridge_status (id, last_seen_at, updated_at)
-     VALUES ('square-payment-writer', ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       last_seen_at = excluded.last_seen_at,
-       updated_at = excluded.updated_at`
-  )
-    .bind(nowIso, nowIso)
-    .run()
+  await sageBridgeHeartbeatStatement(env.DB, "square-payment-writer", nowIso).run()
 
   const candidates = await db
     .select({ id: sageSquarePaymentOperations.id })
@@ -112,31 +105,30 @@ export async function GET(request: Request): Promise<Response> {
   const requests: unknown[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    await db
-      .update(sageSquarePaymentOperations)
-      .set({
+    await updateSageSquarePaymentOperations(
+      db,
+      {
         status: "running",
         claimToken,
         claimedAt: nowIso,
         attemptCount: sql`${sageSquarePaymentOperations.attemptCount} + 1`,
         updatedAt: nowIso,
-      })
-      .where(
-        and(
-          eq(sageSquarePaymentOperations.id, candidate.id),
-          eq(
-            sageSquarePaymentOperations.operationType,
-            "post_square_processing_fee"
-          ),
-          or(
-            eq(sageSquarePaymentOperations.status, "queued"),
-            and(
-              eq(sageSquarePaymentOperations.status, "running"),
-              lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-            )
+      },
+      and(
+        eq(sageSquarePaymentOperations.id, candidate.id),
+        eq(
+          sageSquarePaymentOperations.operationType,
+          "post_square_processing_fee"
+        ),
+        or(
+          eq(sageSquarePaymentOperations.status, "queued"),
+          and(
+            eq(sageSquarePaymentOperations.status, "running"),
+            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
           )
         )
       )
+    )
     const claimed = await db
       .select()
       .from(sageSquarePaymentOperations)
@@ -158,15 +150,16 @@ export async function GET(request: Request): Promise<Response> {
     }
     const validated = sageSquarePaymentPayloadSchema.safeParse(payload)
     if (!validated.success) {
-      await db
-        .update(sageSquarePaymentOperations)
-        .set({
+      await updateSageSquarePaymentOperations(
+        db,
+        {
           status: "failed",
           errorMessage: "Stored Sage Square payment payload failed validation",
           completedAt: nowIso,
           updatedAt: nowIso,
-        })
-        .where(eq(sageSquarePaymentOperations.id, claimed.id))
+        },
+        eq(sageSquarePaymentOperations.id, claimed.id)
+      )
       continue
     }
     requests.push({

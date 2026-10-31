@@ -14,6 +14,11 @@ import {
   sagePayApplicationSnapshotSchema,
   type SagePayApplicationSnapshot,
 } from "@/lib/sage/pay-application-snapshot"
+import {
+  acquireSagePayApplicationRunStatement,
+  sagePayApplicationTerminalRunStatement,
+  updateSagePayApplicationSyncRuns,
+} from "@/lib/domain/sage-bridge/store"
 import { validateSageSyncClaim } from "@/lib/sage/sync-claim"
 import {
   sageSnapshotApplicationInsertStatement,
@@ -72,9 +77,9 @@ async function markRun(
 ): Promise<void> {
   const now = new Date().toISOString()
   const db = getDb(env.DB)
-  await db
-    .update(sagePayApplicationSyncRuns)
-    .set({
+  await updateSagePayApplicationSyncRuns(
+    db,
+    {
       status: input.status,
       snapshotId: input.snapshotId ?? null,
       sourceApplicationId: input.sourceApplicationId ?? null,
@@ -85,14 +90,13 @@ async function markRun(
       capturedAt: input.capturedAt ?? null,
       completedAt: now,
       updatedAt: now,
-    })
-    .where(
-      and(
-        eq(sagePayApplicationSyncRuns.id, runId),
-        eq(sagePayApplicationSyncRuns.status, "processing"),
-        eq(sagePayApplicationSyncRuns.claimToken, claimToken)
-      )
+    },
+    and(
+      eq(sagePayApplicationSyncRuns.id, runId),
+      eq(sagePayApplicationSyncRuns.status, "processing"),
+      eq(sagePayApplicationSyncRuns.claimToken, claimToken)
     )
+  )
 }
 
 async function acquireRunForIngestion(
@@ -102,14 +106,12 @@ async function acquireRunForIngestion(
   claimedAt: string
 ): Promise<boolean> {
   const now = new Date().toISOString()
-  const result = await env.DB.prepare(
-    `UPDATE sage_pay_application_sync_runs
-     SET status = 'processing', claimed_at = ?, updated_at = ?
-     WHERE id = ? AND status = 'running'
-       AND claim_token = ? AND claimed_at = ?`
-  )
-    .bind(now, now, runId, claimToken, claimedAt)
-    .run()
+  const result = await acquireSagePayApplicationRunStatement(env.DB, {
+    runId,
+    claimToken,
+    claimedAt,
+    now,
+  }).run()
   return (result.meta.changes ?? 0) === 1
 }
 
@@ -130,48 +132,6 @@ function reviewReason(reconciliationJson: string): string | null {
   } catch {
     return "Stored Sage reconciliation data requires review."
   }
-}
-
-function terminalRunStatement(
-  env: CloudflareEnv,
-  input: {
-    readonly runId: string
-    readonly projectId: string
-    readonly claimToken: string
-    readonly status: "completed" | "needs_review"
-    readonly snapshotId: string
-    readonly sourceApplicationId: string
-    readonly sourceRevision: string
-    readonly sourceHash: string
-    readonly reconciliationJson: string
-    readonly errorMessage: string | null
-    readonly capturedAt: string
-    readonly now: string
-  }
-): D1PreparedStatement {
-  return env.DB.prepare(
-    `UPDATE sage_pay_application_sync_runs
-     SET status = ?, snapshot_id = ?, source_application_id = ?,
-         source_revision = ?, source_hash = ?, reconciliation_json = ?,
-         error_message = ?, captured_at = ?, completed_at = ?,
-         updated_at = ?
-     WHERE id = ? AND project_id = ?
-       AND status = 'processing' AND claim_token = ?`
-  ).bind(
-    input.status,
-    input.snapshotId,
-    input.sourceApplicationId,
-    input.sourceRevision,
-    input.sourceHash,
-    input.reconciliationJson,
-    input.errorMessage,
-    input.capturedAt,
-    input.now,
-    input.now,
-    input.runId,
-    input.projectId,
-    input.claimToken
-  )
 }
 
 function snapshotInsertStatement(
@@ -382,7 +342,7 @@ export async function ingestSagePayApplicationSnapshot(
           reconciliationJson,
           now,
         }),
-        terminalRunStatement(env, {
+        sagePayApplicationTerminalRunStatement(env.DB, {
           runId: run.id,
           projectId: run.projectId,
           claimToken: snapshot.claimToken,
@@ -510,7 +470,7 @@ export async function ingestSagePayApplicationSnapshot(
   }
 
   statements.push(
-    terminalRunStatement(env, {
+    sagePayApplicationTerminalRunStatement(env.DB, {
       runId: run.id,
       projectId: run.projectId,
       claimToken: snapshot.claimToken,

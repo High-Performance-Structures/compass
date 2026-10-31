@@ -1,6 +1,8 @@
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
+import { insertInternalNotificationEventWhereStatement, insertNotificationRecipientWhereStatement, settleNotificationRecipientsWhereStatement } from "@/lib/domain/notifications/store"
+import { markSageSquareCreatorNotifiedStatement, recordSageSquareInvoiceCreatorStatement } from "@/lib/domain/sage-bridge/square-store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import { getPermissions } from "@/lib/permissions"
@@ -123,12 +125,9 @@ export async function recordSquareInvoiceCreator(env: CloudflareEnv, config: Squ
     || (row.sage_job_short_name ?? "").trim().toUpperCase() !== observation.sageJobShortName.toUpperCase()) return false
   const username = observation.creatorUsername?.toLowerCase() ?? null
   if (row.sage_invoice_creator_username !== null && row.sage_invoice_creator_username !== username) return false
-  await env.DB.prepare(`UPDATE sage_square_payment_operations
-    SET sage_invoice_creator_username = COALESCE(sage_invoice_creator_username, ?), invoice_creator_lookup_at = ?
-    WHERE id = ? AND organization_id = ?
-      AND (sage_invoice_creator_username IS NULL OR sage_invoice_creator_username = ?)
-      AND (invoice_creator_lookup_at IS NULL OR invoice_creator_lookup_at < ?)`)
-    .bind(username, observation.checkedAt, row.id, config.organizationId, username, observation.checkedAt).run()
+  await recordSageSquareInvoiceCreatorStatement(env.DB, {
+    operationId: row.id, organizationId: config.organizationId, username, checkedAt: observation.checkedAt,
+  }).run()
   // Never alter posting status, amounts, or the write queue from this path.
   return true
 }
@@ -165,27 +164,28 @@ async function persistAlert(env: CloudflareEnv, config: SquareCreatorConfigurati
   const body = routed
     ? `Square received ${amount} for Sage invoice ${row.sage_invoice_number}. The invoice and payment are linked in this project's Financials tab. ${inSage ? "The receipt is in Sage." : "The receipt still needs entering in Sage."}`
     : `Square received ${amount} for Sage invoice ${row.sage_invoice_number}, created in Sage by "${row.sage_invoice_creator_username ?? "unknown"}". That Sage login isn't matched to a Compass person with finance access, so they weren't told. Match it in Settings → Workflows → Square and Sage payments.`
-  const statements = [env.DB.prepare(`INSERT INTO notification_events
-    (id, organization_id, project_id, event_type, source_type, source_id, title, body, href, priority, audience, created_at)
-    SELECT ?, ?, ?, ?, 'sage_square_payment', ?, ?, ?, ?, ?, 'internal', ?
-    WHERE EXISTS (${DELIVERABLE}) ON CONFLICT(id) DO NOTHING`)
-    .bind(eventId, config.organizationId, row.project_id, routed ? "sage.square_payment.received" : "sage.square_payment.creator_routing",
-      row.id, title, body, `/dashboard/projects/${encodeURIComponent(row.project_id)}/financials?squareReceipt=${encodeURIComponent(row.id)}`,
-      routed ? "normal" : "high", now, row.id, config.organizationId)]
+  const statements = [insertInternalNotificationEventWhereStatement(env.DB, {
+    id: eventId, organizationId: config.organizationId, projectId: row.project_id,
+    eventType: routed ? "sage.square_payment.received" : "sage.square_payment.creator_routing",
+    sourceType: "sage_square_payment", sourceId: row.id, title, body,
+    href: `/dashboard/projects/${encodeURIComponent(row.project_id)}/financials?squareReceipt=${encodeURIComponent(row.id)}`,
+    priority: routed ? "normal" : "high", createdAt: now,
+  }, { sql: `EXISTS (${DELIVERABLE})`, binds: [row.id, config.organizationId] })]
   for (const recipient of recipients) {
-    statements.push(env.DB.prepare(`INSERT INTO notification_recipients (id, event_id, user_id, in_app, email, sms, push, created_at)
-      SELECT ?, ?, ?, 1, 0, 0, 0, ? WHERE EXISTS (${DELIVERABLE})
-      AND EXISTS (SELECT 1 FROM notification_events WHERE id = ?) ON CONFLICT(id) DO NOTHING`)
-      .bind(`${eventId}:${recipient.id}`, eventId, recipient.id, now, row.id, config.organizationId, eventId))
+    statements.push(insertNotificationRecipientWhereStatement(env.DB, {
+      id: `${eventId}:${recipient.id}`, eventId, userId: recipient.id, createdAt: now,
+    }, { sql: `EXISTS (${DELIVERABLE}) AND EXISTS (SELECT 1 FROM notification_events WHERE id = ?)`, binds: [row.id, config.organizationId, eventId] }))
   }
   if (routed) {
-    statements.push(env.DB.prepare(`UPDATE sage_square_payment_operations SET invoice_creator_notified_at = ?
-      WHERE id = ? AND organization_id = ? AND invoice_creator_notified_at IS NULL
-        AND error_message IS NULL AND status IN ${OPEN_STATUSES}
-        AND EXISTS (SELECT 1 FROM notification_recipients WHERE event_id = ?)`).bind(now, row.id, config.organizationId, eventId))
-    statements.push(env.DB.prepare(`UPDATE notification_recipients SET read_at = COALESCE(read_at, ?), dismissed_at = COALESCE(dismissed_at, ?)
-      WHERE event_id = ? AND EXISTS (SELECT 1 FROM sage_square_payment_operations
-        WHERE id = ? AND organization_id = ? AND invoice_creator_notified_at IS NOT NULL)`).bind(now, now, `square-creator:${config.organizationId}:${row.id}:routing`, row.id, config.organizationId))
+    statements.push(markSageSquareCreatorNotifiedStatement(env.DB, {
+      operationId: row.id, organizationId: config.organizationId, eventId, openStatuses: OPEN_STATUSES, now,
+    }))
+    statements.push(settleNotificationRecipientsWhereStatement(env.DB, {
+      markRead: true, now,
+      where: { sql: `event_id = ? AND EXISTS (SELECT 1 FROM sage_square_payment_operations
+        WHERE id = ? AND organization_id = ? AND invoice_creator_notified_at IS NOT NULL)`,
+      binds: [`square-creator:${config.organizationId}:${row.id}:routing`, row.id, config.organizationId] },
+    }))
   }
   // Deterministic IDs + one transaction make overlapping cron/report deliveries
   // idempotent and let a failed recipient insert retry without losing the alert.

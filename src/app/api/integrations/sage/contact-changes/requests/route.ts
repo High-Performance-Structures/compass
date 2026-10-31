@@ -5,14 +5,22 @@ import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
 import {
   sageBridgeRequestNonces,
-  sageContactChangeEvents,
   sageContactChangeProposals,
-  sageContactCreateEvents,
   sageContactCreateProposals,
   sageContactReadRequests,
   sageContactSnapshots,
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import { SAGE_BRIDGE_NONCE_RETENTION_MS, sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
+import {
+  claimSageContactCreateStatement,
+  insertSageContactChangeEvent,
+  insertSageContactCreateEvent,
+  updateSageContactChangeProposals,
+  updateSageContactCreateProposals,
+  updateSageContactReadRequests,
+} from "@/lib/domain/sage-bridge/contact-store"
+import { deleteSageBridgeRequestNonces, insertSageBridgeRequestNonce } from "@/lib/domain/sage-bridge/store"
 import {
   getSageContactBridgeSecret,
   SAGE_BRIDGE_REQUEST_ID_HEADER,
@@ -27,7 +35,6 @@ import { sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { planSageContactCreate } from "@/lib/sage/contact-change-proposal"
 
 const CLAIM_RETRY_MS = 10 * 60 * 1000
-const NONCE_RETENTION_MS = 15 * 60 * 1000
 const MAX_BATCH = 5
 const changesSchema = z.array(z.object({
   field: z.string(), before: z.string().nullable(), after: z.string().nullable(),
@@ -56,15 +63,15 @@ export async function GET(request: Request): Promise<Response> {
   if (!requestId) return Response.json({ error: "Missing bridge request ID" }, { status: 401 })
   const now = new Date()
   const nowIso = now.toISOString()
-  const staleIso = new Date(now.getTime() - CLAIM_RETRY_MS).toISOString()
+  const staleIso = sageBridgeCutoff(now, CLAIM_RETRY_MS)
   const db = getDb(env.DB)
 
-  await db.delete(sageBridgeRequestNonces).where(lt(
+  await deleteSageBridgeRequestNonces(db, lt(
     sageBridgeRequestNonces.createdAt,
-    new Date(now.getTime() - NONCE_RETENTION_MS).toISOString()
+    sageBridgeCutoff(now, SAGE_BRIDGE_NONCE_RETENTION_MS)
   ))
   try {
-    await db.insert(sageBridgeRequestNonces).values({
+    await insertSageBridgeRequestNonce(db, {
       requestId, route: new URL(request.url).pathname, createdAt: nowIso,
     })
   } catch {
@@ -80,11 +87,11 @@ export async function GET(request: Request): Promise<Response> {
   for (const candidate of readCandidates) {
     if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
     if (sageContactReadClaimError(candidate)) {
-      await db.update(sageContactReadRequests).set({
+      await updateSageContactReadRequests(db, {
         status: "failed",
         errorMessage: "Sage contact read has no verified identity or valid review candidate.",
         completedAt: nowIso,
-      }).where(and(eq(sageContactReadRequests.id, candidate.id), or(
+      }, and(eq(sageContactReadRequests.id, candidate.id), or(
         eq(sageContactReadRequests.status, "queued"),
         and(eq(sageContactReadRequests.status, "running"),
           lt(sageContactReadRequests.claimedAt, staleIso))
@@ -92,9 +99,9 @@ export async function GET(request: Request): Promise<Response> {
       continue
     }
     const claimToken = crypto.randomUUID()
-    const updated = await db.update(sageContactReadRequests).set({
+    const updated = await updateSageContactReadRequests(db, {
       status: "running", claimToken, claimedAt: nowIso,
-    }).where(and(eq(sageContactReadRequests.id, candidate.id), or(
+    }, and(eq(sageContactReadRequests.id, candidate.id), or(
       eq(sageContactReadRequests.status, "queued"),
       and(eq(sageContactReadRequests.status, "running"),
         lt(sageContactReadRequests.claimedAt, staleIso))
@@ -127,10 +134,10 @@ export async function GET(request: Request): Promise<Response> {
         kind.success ? kind.data : "employee",
         Object.fromEntries(changes.success ? changes.data.map((change) => [change.field, change.after]) : [])
       )) {
-        await db.update(sageContactChangeProposals).set({
+        await updateSageContactChangeProposals(db, {
           status: "failed", errorMessage: "Stored Sage contact proposal is invalid",
           completedAt: nowIso, updatedAt: nowIso,
-        }).where(eq(sageContactChangeProposals.id, candidate.id))
+        }, eq(sageContactChangeProposals.id, candidate.id))
         continue
       }
       const snapshot = await db.select().from(sageContactSnapshots).where(and(
@@ -144,11 +151,11 @@ export async function GET(request: Request): Promise<Response> {
         snapshot.parentSageRecordId !== candidate.parentSageRecordId ||
         !Number.isFinite(capturedAt) || now.getTime() - capturedAt > CLAIM_RETRY_MS) {
         await db.batch([
-          db.update(sageContactChangeProposals).set({
+          updateSageContactChangeProposals(db, {
             status: "conflict", errorMessage: "Sage snapshot changed or expired before bridge claim",
             completedAt: nowIso, updatedAt: nowIso,
-          }).where(eq(sageContactChangeProposals.id, candidate.id)),
-          db.insert(sageContactChangeEvents).values({
+          }, eq(sageContactChangeProposals.id, candidate.id)),
+          insertSageContactChangeEvent(db, {
             id: crypto.randomUUID(), proposalId: candidate.id,
             organizationId: candidate.organizationId, actorUserId: null,
             eventType: "conflict", detailJson: "{}", createdAt: nowIso,
@@ -157,11 +164,11 @@ export async function GET(request: Request): Promise<Response> {
         continue
       }
       const claimToken = crypto.randomUUID()
-      const updated = await db.update(sageContactChangeProposals).set({
+      const updated = await updateSageContactChangeProposals(db, {
         status: "running", claimToken, claimedAt: nowIso,
         attemptCount: sql`${sageContactChangeProposals.attemptCount} + 1`,
         updatedAt: nowIso,
-      }).where(and(eq(sageContactChangeProposals.id, candidate.id), or(
+      }, and(eq(sageContactChangeProposals.id, candidate.id), or(
         eq(sageContactChangeProposals.status, "approved"),
         and(eq(sageContactChangeProposals.status, "running"),
           lt(sageContactChangeProposals.claimedAt, staleIso))
@@ -186,15 +193,15 @@ export async function GET(request: Request): Promise<Response> {
     )).limit(MAX_BATCH)
     for (const row of stale) {
       if (!sageContactOrganizationMatches(env, row.organizationId)) continue
-      const finished = await db.update(sageContactCreateProposals).set({
+      const finished = await updateSageContactCreateProposals(db, {
         status: "needs_reconciliation", completedAt: nowIso, updatedAt: nowIso,
         errorMessage: "Sage Add outcome is uncertain. Inspect Sage before any retry.",
-      }).where(and(eq(sageContactCreateProposals.id, row.id),
+      }, and(eq(sageContactCreateProposals.id, row.id),
         eq(sageContactCreateProposals.status, "running"),
         eq(sageContactCreateProposals.claimToken, row.claimToken ?? "")))
         .returning({ id: sageContactCreateProposals.id })
       if (finished.length === 1) {
-        await db.insert(sageContactCreateEvents).values({
+        await insertSageContactCreateEvent(db, {
           id: crypto.randomUUID(), proposalId: row.id,
           organizationId: row.organizationId, actorUserId: null,
           eventType: "needs_reconciliation", detailJson: "{}", createdAt: nowIso,
@@ -223,13 +230,13 @@ export async function GET(request: Request): Promise<Response> {
           : null
       if (!plan?.success || !company || company.sageRecordId !== candidate.parentSageRecordId ||
         candidate.attemptCount !== 0) {
-        const failed = await db.update(sageContactCreateProposals).set({
+        const failed = await updateSageContactCreateProposals(db, {
           status: "failed", completedAt: nowIso, updatedAt: nowIso,
           errorMessage: "Stored create proposal or parent Sage link is invalid.",
-        }).where(and(eq(sageContactCreateProposals.id, candidate.id),
+        }, and(eq(sageContactCreateProposals.id, candidate.id),
           eq(sageContactCreateProposals.status, "approved")))
           .returning({ id: sageContactCreateProposals.id })
-        if (failed.length === 1) await db.insert(sageContactCreateEvents).values({
+        if (failed.length === 1) await insertSageContactCreateEvent(db, {
           id: crypto.randomUUID(), proposalId: candidate.id,
           organizationId: candidate.organizationId, actorUserId: null,
           eventType: "failed", detailJson: "{}", createdAt: nowIso,
@@ -237,29 +244,13 @@ export async function GET(request: Request): Promise<Response> {
         continue
       }
       const claimToken = crypto.randomUUID()
-      const parentTable = kind.data === "client_person" ? "customers" : "vendors"
-      const parentIdColumn = kind.data === "client_person" ? "customer_id" : "vendor_id"
-      const parentSageColumn = kind.data === "client_person" ? "sage_client_id" : "sage_vendor_id"
-      const activeFilter = kind.data === "client_person" ? "" : "AND parent.directory_status = 'active'"
-      const claimed = await env.DB.prepare(
-        `UPDATE sage_contact_create_proposals
-         SET status = 'running', claim_token = ?, claimed_at = ?, attempt_count = attempt_count + 1,
-             updated_at = ?
-         WHERE id = ? AND organization_id = ? AND status = 'approved' AND attempt_count = 0
-           AND EXISTS (SELECT 1 FROM ${parentTable} parent
-             WHERE parent.id = sage_contact_create_proposals.${parentIdColumn}
-               AND parent.organization_id = sage_contact_create_proposals.organization_id
-               AND parent.${parentSageColumn} = sage_contact_create_proposals.parent_sage_record_id
-               ${activeFilter})
-           AND NOT EXISTS (
-             SELECT 1 FROM sage_contact_create_proposals other
-             WHERE other.organization_id = ? AND other.parent_sage_record_id = ?
-               AND other.status IN ('running', 'needs_reconciliation') AND other.id <> ?
-           )`
-      ).bind(claimToken, nowIso, nowIso, candidate.id, candidate.organizationId,
-        candidate.organizationId, candidate.parentSageRecordId, candidate.id).run()
+      const claimed = await claimSageContactCreateStatement(env.DB, {
+        // As before: anything but a client person claims against vendors.
+        kind: kind.data === "client_person" ? "client_person" : "vendor_person", proposalId: candidate.id, organizationId: candidate.organizationId,
+        parentSageRecordId: candidate.parentSageRecordId, claimToken, now: nowIso,
+      }).run()
       if (claimed.meta.changes !== 1) continue
-      await db.insert(sageContactCreateEvents).values({
+      await insertSageContactCreateEvent(db, {
         id: crypto.randomUUID(), proposalId: candidate.id,
         organizationId: candidate.organizationId, actorUserId: null,
         eventType: "claimed", detailJson: "{}", createdAt: nowIso,
