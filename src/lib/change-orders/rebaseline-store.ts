@@ -7,11 +7,7 @@ import {
   projectOperations,
 } from "@/db/schema"
 import { invoices, payments, vendorBills } from "@/db/schema-netsuite"
-import {
-  projectContractBudgetRevisions,
-  projectEstimateLines,
-  projectEstimates,
-} from "@/db/schema-estimates"
+import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { preconstructionRebaselineBlockers } from "@/lib/change-orders/rebaseline"
 import {
   insertChangeOrderHistoryStatement,
@@ -22,6 +18,11 @@ import {
   activateBudgetProjectionStatement,
   supersedeCurrentBudgetProjectionStatement,
 } from "@/lib/domain/budget/store"
+import { contractBudgetProjectionId } from "@/lib/domain/financials/rules"
+import {
+  makeContractBudgetRevisionCurrentStatement,
+  supersedeCurrentContractBudgetRevisionStatement,
+} from "@/lib/domain/financials/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 
@@ -197,7 +198,7 @@ export async function executeBaselineReplacement(
   }
 
   const now = new Date().toISOString()
-  const projectionId = `contract-budget-view:${preparedBudget.revisionId}`
+  const projectionId = contractBudgetProjectionId(preparedBudget.revisionId)
   const executionToken = crypto.randomUUID()
   const statements: BatchStatement[] = [
     ...(input.leadingStatements ?? []),
@@ -242,20 +243,9 @@ export async function executeBaselineReplacement(
         updatedAt: now,
       }
     ),
-    db
-      .update(projectContractBudgetRevisions)
-      .set({ status: "superseded" })
-      .where(
-        and(
-          eq(projectContractBudgetRevisions.projectId, projectId),
-          eq(projectContractBudgetRevisions.status, "current")
-        )
-      ),
+    supersedeCurrentContractBudgetRevisionStatement(db, projectId),
     supersedeCurrentBudgetProjectionStatement(db, projectId, now),
-    db
-      .update(projectContractBudgetRevisions)
-      .set({ status: "current" })
-      .where(eq(projectContractBudgetRevisions.id, preparedBudget.revisionId)),
+    makeContractBudgetRevisionCurrentStatement(db, preparedBudget.revisionId),
     activateBudgetProjectionStatement(db, projectionId, now),
     // Migration 0148 guards this status write against financial activity
     // created after the read-side eligibility check. Any blocker aborts the

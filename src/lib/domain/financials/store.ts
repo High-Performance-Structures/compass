@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
+import type { BatchItem } from "drizzle-orm/batch"
 
 import {
   creditMemos,
@@ -10,11 +11,17 @@ import {
   type NewPayment,
   type NewVendorBill,
 } from "@/db/schema-netsuite"
+import {
+  projectContractBudgetAdjustments,
+  projectContractBudgetLines,
+  projectContractBudgetRevisions,
+} from "@/db/schema-estimates"
 import type { Db } from "@/lib/server/action-context"
 
 /**
- * The only writer of the financial tables: invoices, vendor bills, payments
- * and credit memos (architecture standard, section 1). Callers resolve
+ * The only writer of the financial tables: invoices, vendor bills, payments,
+ * credit memos, and the contract budget (revisions, their lines and their
+ * change order adjustments) (architecture standard, section 1). Callers resolve
  * access and compute totals (rules.ts) first; this module only writes.
  */
 
@@ -219,4 +226,52 @@ export function refreshInvoicePaidStatusStatement(database: D1Database, input: {
     input.invoiceId, input.invoiceId, input.invoiceId, input.invoiceId,
     input.now, input.invoiceId, input.organizationId, input.projectId,
   )
+}
+
+// ---------------------------------------------------------------------------
+// Contract budget revisions, lines and adjustments. Each returns an
+// unexecuted statement so callers keep their single atomic `db.batch`.
+// ---------------------------------------------------------------------------
+
+type BatchStatement = BatchItem<"sqlite">
+
+export function insertContractBudgetRevisionStatement(
+  db: Db,
+  values: typeof projectContractBudgetRevisions.$inferInsert
+): BatchStatement {
+  return db.insert(projectContractBudgetRevisions).values(values)
+}
+
+export function insertContractBudgetLineStatement(
+  db: Db,
+  values: typeof projectContractBudgetLines.$inferInsert
+): BatchStatement {
+  return db.insert(projectContractBudgetLines).values(values)
+}
+
+export function insertContractBudgetAdjustmentStatement(
+  db: Db,
+  values: typeof projectContractBudgetAdjustments.$inferInsert
+): BatchStatement {
+  return db.insert(projectContractBudgetAdjustments).values(values)
+}
+
+/** Retires the project's current revision. Batch it with `makeContractBudgetRevisionCurrentStatement`. */
+export function supersedeCurrentContractBudgetRevisionStatement(db: Db, projectId: string): BatchStatement {
+  return db
+    .update(projectContractBudgetRevisions)
+    .set({ status: "superseded" })
+    .where(
+      and(
+        eq(projectContractBudgetRevisions.projectId, projectId),
+        eq(projectContractBudgetRevisions.status, "current")
+      )
+    )
+}
+
+export function makeContractBudgetRevisionCurrentStatement(db: Db, revisionId: string): BatchStatement {
+  return db
+    .update(projectContractBudgetRevisions)
+    .set({ status: "current" })
+    .where(eq(projectContractBudgetRevisions.id, revisionId))
 }

@@ -202,3 +202,38 @@ export function deriveCreditMemoTotals(
   const totals = creditMemoTotals(total, input.amountApplied ?? stored?.amountApplied ?? 0)
   return { ok: true, values: { ...totals, ...normalizedLines(input.lineItems) } }
 }
+
+// ---------------------------------------------------------------------------
+// Contract budget revisions. Each rebuild of a project's contract budget is a
+// numbered revision; exactly one per project is "current".
+// ---------------------------------------------------------------------------
+
+/** The number the next revision takes: one past the project's highest, from 1. */
+export function nextContractBudgetRevisionNumber(latestRevisionNumber: number | null | undefined): number {
+  return (latestRevisionNumber ?? 0) + 1
+}
+
+/** The id of the budget projection (budget view row) built for a revision. */
+export function contractBudgetProjectionId(revisionId: string): string {
+  return `contract-budget-view:${revisionId}`
+}
+
+/** The label the revision's budget projection carries, e.g. "Contract Budget R3". */
+export function contractBudgetApplicationNumber(revisionNumber: number): string {
+  return `Contract Budget R${revisionNumber}`
+}
+
+/**
+ * What a rebuild does when a revision with the same source hash exists:
+ * - "unchanged": that revision is already current, nothing to do.
+ * - "reuse": it was prepared but never published; publish it (or hand it back
+ *   unpublished when the caller activates it in its own batch).
+ * - "build": no matching revision, so a new one is numbered and built.
+ */
+export type ContractBudgetRevisionPlan = "unchanged" | "reuse" | "build"
+
+export function contractBudgetRevisionPlan(matchingStatus: string | null | undefined): ContractBudgetRevisionPlan {
+  if (matchingStatus === "current") return "unchanged"
+  if (matchingStatus === "building") return "reuse"
+  return "build"
+}
