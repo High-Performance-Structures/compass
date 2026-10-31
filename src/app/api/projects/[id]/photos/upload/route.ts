@@ -3,17 +3,16 @@ import { and, eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   dailyLogs,
-  dailyLogPhotos,
   projectExternalLinks,
   projects,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
-import { getCloudflareContext } from "@/lib/db"
+import { normalizedPhotoKind, photoUploadSizeCheck } from "@/lib/domain/field/rules"
+import { insertDailyLogPhoto } from "@/lib/domain/field/store"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import {
   getGoogleConfig,
@@ -23,13 +22,11 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import {
-  MAX_PHOTO_UPLOAD_BATCH_BYTES,
-  MAX_PHOTO_UPLOAD_FILE_BYTES,
-  PHOTO_UPLOAD_LIMIT_LABEL,
-} from "@/lib/photos/upload-limits"
+import { PHOTO_UPLOAD_LIMIT_LABEL } from "@/lib/photos/upload-limits"
 import { photoUploadVisibility } from "@/lib/photos/upload-visibility"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { orgContext, type Db } from "@/lib/server/action-context"
+import { envString } from "@/lib/shared/env"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
@@ -71,15 +68,10 @@ function formBoolean(formData: FormData, name: string): boolean {
   return formText(formData, name) === "true"
 }
 
-function envString(env: Record<string, string>, key: string): string | null {
-  const value = env[key]?.trim()
-  return value && value.length > 0 ? value : null
-}
-
 function resolveGoogleUploadEmail(input: {
   readonly userEmail: string
   readonly googleEmail: string | null
-  readonly env: Record<string, string>
+  readonly env: unknown
 }): string {
   const configuredEmail = envString(input.env, "COMPASS_GOOGLE_UPLOAD_USER")
   if (configuredEmail) return configuredEmail
@@ -93,19 +85,6 @@ function normalizedSchedulePhase(value: string): string | null {
     return null
   }
   return value
-}
-
-function normalizedPhotoKind(value: string): string {
-  switch (value) {
-    case "progress":
-    case "issue":
-    case "delivery":
-    case "selection":
-    case "archive":
-      return value
-    default:
-      return "progress"
-  }
 }
 
 function capturedAtFromDate(value: string): string {
@@ -186,7 +165,7 @@ async function findOrCreatePhotosFolder(
 async function resolveUploadFolderId(
   client: DriveClient,
   googleEmail: string,
-  db: ReturnType<typeof getDb>,
+  db: Db,
   projectId: string,
   projectDriveFolderId: string | null,
   sharedDriveId: string | null
@@ -223,7 +202,7 @@ async function resolveUploadFolderId(
 }
 
 async function resolveProjectDriveFolderId(
-  db: ReturnType<typeof getDb>,
+  db: Db,
   projectId: string,
   projectDriveFolderId: string | null
 ): Promise<string | null> {
@@ -274,15 +253,18 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+    // The checks above keep their messages; the context supplies the database.
+    const context = await orgContext()
+    if (!context.success) {
+      return NextResponse.json(context, { status: 500 })
+    }
+    const { db, env } = context.data
     const googleEmail = resolveGoogleUploadEmail({
       userEmail: user.email,
       googleEmail: user.googleEmail,
-      env: envRecord,
+      env,
     })
-    const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const config = getGoogleConfig(env)
 
     const [project] = await db
       .select({
@@ -327,21 +309,17 @@ export async function POST(
       )
     }
 
-    const invalidFile = files.find(
-      (file) => file.size > MAX_PHOTO_UPLOAD_FILE_BYTES
-    )
-    if (invalidFile) {
+    const sizes = photoUploadSizeCheck(files)
+    if (!sizes.ok && sizes.reason === "file") {
       return NextResponse.json(
         {
           success: false,
-          error: `${invalidFile.name} is larger than 50 MB. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
+          error: `${sizes.file.name} is larger than 50 MB. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
         },
         { status: 400 }
       )
     }
-
-    const totalUploadBytes = files.reduce((total, file) => total + file.size, 0)
-    if (totalUploadBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
+    if (!sizes.ok) {
       return NextResponse.json(
         {
           success: false,
@@ -406,6 +384,7 @@ export async function POST(
       readonly fileName: string
       readonly mimeType: string | null
     }[] = []
+    // Sequential: each file is a Google Drive upload (rate-limited outside API).
     for (const file of files) {
       const mimeType = file.type || "application/octet-stream"
       const driveFile = await client.uploadFile(googleEmail, {
@@ -417,7 +396,7 @@ export async function POST(
       })
       const uploadedFileId = crypto.randomUUID()
 
-      await db.insert(dailyLogPhotos).values({
+      await insertDailyLogPhoto(db, {
         id: uploadedFileId,
         projectId,
         dailyLogId: validatedDailyLogId,

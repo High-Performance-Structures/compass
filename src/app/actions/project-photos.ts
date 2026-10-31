@@ -1,10 +1,12 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm"
+import { and, asc, desc, eq, not, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { dailyLogPhotos, dailyLogs, projectPhotoSourceDates, projects, scheduleTasks } from "@/db/schema"
 import { errorMessage } from "@/lib/action-result"
+import { normalizedPhotoKind, normalizedPhotoReviewStatus } from "@/lib/domain/field/rules"
+import { setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
 import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
@@ -79,30 +81,6 @@ async function photoContext(
   })
   if (!context.success) throw new Error(context.error)
   return context.data
-}
-
-function normalizedReviewStatus(value: string): string {
-  switch (value) {
-    case "approved":
-    case "needs_review":
-    case "rejected":
-      return value
-    default:
-      return "needs_review"
-  }
-}
-
-function normalizedPhotoKind(value: string): string {
-  switch (value) {
-    case "progress":
-    case "issue":
-    case "delivery":
-    case "selection":
-    case "archive":
-      return value
-    default:
-      return "progress"
-  }
 }
 
 function isImage(value: {
@@ -275,16 +253,12 @@ export async function updateProjectPhotoPhase(
 
     const normalizedPhase = phase.trim() === "unassigned" ? "" : phase.trim()
 
-    await db
-      .update(dailyLogPhotos)
-      .set({
-        schedulePhaseOverride:
-          normalizedPhase.length > 0 ? normalizedPhase : null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(eq(dailyLogPhotos.projectId, projectId), eq(dailyLogPhotos.id, photoId))
-      )
+    await setPhotoPhaseOverride(db, {
+      projectId,
+      photoId,
+      phase: normalizedPhase.length > 0 ? normalizedPhase : null,
+      now: new Date().toISOString(),
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/photos`)
@@ -320,22 +294,18 @@ export async function updateProjectPhotoPermissions(
       return { success: false, error: "Select at least one photo." }
     }
 
-    await db
-      .update(dailyLogPhotos)
-      .set({
-        reviewStatus: normalizedReviewStatus(input.reviewStatus),
+    await setPhotoPermissions(db, {
+      projectId,
+      photoIds,
+      values: {
+        reviewStatus: normalizedPhotoReviewStatus(input.reviewStatus),
         ownerVisible: input.ownerVisible,
         subVendorVisible: input.subVendorVisible,
         publicShareable: input.publicShareable,
         photoKind: normalizedPhotoKind(input.photoKind),
         updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(dailyLogPhotos.projectId, projectId),
-          inArray(dailyLogPhotos.id, photoIds)
-        )
-      )
+      },
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/photos`)

@@ -7,7 +7,6 @@ import type { getDb } from "@/db"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { insertChangeOrderHistoryIfAbsent, insertChangeOrderIfAbsent } from "@/lib/domain/estimates/store"
 import {
-  dailyLogs,
   notificationPreferences,
   organizationMembers,
   projectContacts,
@@ -35,6 +34,7 @@ import {
   trustedInternalEmailDomains,
 } from "@/lib/email/internal-email-alias"
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
+import { dailyLogInsertIfAbsentStatement, insertDailyLogIfAbsent } from "@/lib/domain/field/store"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 import { projectDepartment } from "@/lib/project-branding"
@@ -535,24 +535,21 @@ async function routeDailyLog(input: {
     .filter((line): line is string => line !== null)
     .join("\n")
 
-  await input.db
-    .insert(dailyLogs)
-    .values({
-      id,
-      projectId: input.projectId,
-      authorId: null,
-      sourceSystem: input.source.sourceSystem,
-      sourceExternalId: input.candidate.gmailMessageId,
-      logDate: input.candidate.receivedAt.slice(0, 10),
-      workCompleted: candidateBody(input.candidate),
-      notes: sourceNote,
-      isClientVisible: false,
-      reviewStatus: "needs_review",
-      syncStatus: "pending",
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: dailyLogs.id })
+  await insertDailyLogIfAbsent(input.db, {
+    id,
+    projectId: input.projectId,
+    authorId: null,
+    sourceSystem: input.source.sourceSystem,
+    sourceExternalId: input.candidate.gmailMessageId,
+    logDate: input.candidate.receivedAt.slice(0, 10),
+    workCompleted: candidateBody(input.candidate),
+    notes: sourceNote,
+    isClientVisible: false,
+    reviewStatus: "needs_review",
+    syncStatus: "pending",
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   await storeDailyLogEmailAttachments({
     env: input.env,
@@ -663,26 +660,23 @@ async function routeVideo(input: {
     target: [projectVideos.sourceSystem, projectVideos.sourceExternalId],
   })
 
-  const dailyLogInsert = input.db
-    .insert(dailyLogs)
-    .values({
-      id: dailyLogId,
-      projectId: input.projectId,
-      authorId: null,
-      sourceSystem: input.source.sourceSystem,
-      sourceExternalId: `${input.candidate.gmailMessageId}:video`,
-      logDate: input.candidate.receivedAt.slice(0, 10),
-      workCompleted: title,
-      notes:
-        `Video submitted by ${senderLabel(input.candidate)} for staff review. ` +
-        "The share link will appear here after publication.",
-      isClientVisible: false,
-      reviewStatus: "needs_review",
-      syncStatus: "pending",
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: dailyLogs.id })
+  const dailyLogInsert = dailyLogInsertIfAbsentStatement(input.db, {
+    id: dailyLogId,
+    projectId: input.projectId,
+    authorId: null,
+    sourceSystem: input.source.sourceSystem,
+    sourceExternalId: `${input.candidate.gmailMessageId}:video`,
+    logDate: input.candidate.receivedAt.slice(0, 10),
+    workCompleted: title,
+    notes:
+      `Video submitted by ${senderLabel(input.candidate)} for staff review. ` +
+      "The share link will appear here after publication.",
+    isClientVisible: false,
+    reviewStatus: "needs_review",
+    syncStatus: "pending",
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   await input.db.batch([videoInsert, dailyLogInsert])
 

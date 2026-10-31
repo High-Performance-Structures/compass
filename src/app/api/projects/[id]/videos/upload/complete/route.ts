@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
 import { getDb } from "@/db"
-import { dailyLogs, projects, projectVideos } from "@/db/schema"
+import { projects, projectVideos } from "@/db/schema"
+import { dailyLogInsertStatement } from "@/lib/domain/field/store"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -231,7 +232,7 @@ export async function POST(
     if (dailyLogId) {
       await db.batch([
         videoInsert,
-        db.insert(dailyLogs).values({
+        dailyLogInsertStatement(db, {
           id: dailyLogId,
           projectId,
           authorId: user.id,

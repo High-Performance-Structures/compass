@@ -47,11 +47,8 @@ import type {
   OwnerUpdateScheduleSelection,
   OwnerUpdateTodoSelection,
 } from "@/lib/owner-updates/snapshot"
-import {
-  MAX_PHOTO_UPLOAD_BATCH_BYTES,
-  MAX_PHOTO_UPLOAD_FILE_BYTES,
-  PHOTO_UPLOAD_LIMIT_LABEL,
-} from "@/lib/photos/upload-limits"
+import { photoUploadSizeCheck } from "@/lib/domain/field/rules"
+import { PHOTO_UPLOAD_LIMIT_LABEL } from "@/lib/photos/upload-limits"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
 import {
   ownerUpdateDraftStorageKey,
@@ -389,19 +386,16 @@ export function OwnerUpdateDraftEditor({
   function chooseUploadFiles(fileList: FileList | null): void {
     const files = fileList === null ? [] : Array.from(fileList)
     setUploadFiles(files)
-    const oversized = files.find(
-      (file) => file.size > MAX_PHOTO_UPLOAD_FILE_BYTES
-    )
-    const totalBytes = files.reduce((total, file) => total + file.size, 0)
-    if (oversized) {
+    const sizes = photoUploadSizeCheck(files)
+    if (!sizes.ok && sizes.reason === "file") {
       setStatus({
         kind: "error",
-        message: `${oversized.name} is too large. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
+        message: `${sizes.file.name} is too large. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
       })
-    } else if (totalBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
+    } else if (!sizes.ok) {
       setStatus({
         kind: "error",
-        message: `${formatBytes(totalBytes)} selected. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
+        message: `${formatBytes(sizes.totalBytes)} selected. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
       })
     } else {
       setStatus({ kind: "idle" })

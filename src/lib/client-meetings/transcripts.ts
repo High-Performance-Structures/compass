@@ -3,7 +3,9 @@ import "server-only"
 import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { dailyLogs, projectClientMeetings, projects, users } from "@/db/schema"
+import { projectClientMeetings, projects, users } from "@/db/schema"
+import { insertDailyLogIfAbsent } from "@/lib/domain/field/store"
+import { isRecord } from "@/lib/shared/guards"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -42,10 +44,6 @@ type LookupResult =
   | { readonly kind: "found"; readonly docs: readonly TranscriptDoc[] }
   | { readonly kind: "waiting" }
   | { readonly kind: "none" }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
 
 function stringField(record: Record<string, unknown>, key: string): string | null {
   const value = record[key]
@@ -232,26 +230,23 @@ async function createTranscriptDailyLog(input: {
   const workCompleted = `${header.join("\n")}\n\nTranscript\n\n${body}`.slice(0, MAX_LOG_TEXT)
   const id = `meet-transcript-${meeting.id}`
   const stamp = input.now.toISOString()
-  await db
-    .insert(dailyLogs)
-    .values({
-      id,
-      projectId: meeting.projectId,
-      authorId: meeting.organizerUserId,
-      sourceSystem: "google_meet",
-      sourceExternalId: meeting.id,
-      logDate: localDate(meeting.startsAt, meeting.timeZone),
-      workCompleted,
-      notes: "Saved automatically from the Google Meet transcript. The PDF is in the project's Meeting Notes folder in Drive. Review before sharing with the client.",
-      // Internal until staff choose to share it.
-      isClientVisible: false,
-      reviewStatus: "draft",
-      tags: "client-meeting",
-      syncStatus: "pending",
-      createdAt: stamp,
-      updatedAt: stamp,
-    })
-    .onConflictDoNothing({ target: dailyLogs.id })
+  await insertDailyLogIfAbsent(db, {
+    id,
+    projectId: meeting.projectId,
+    authorId: meeting.organizerUserId,
+    sourceSystem: "google_meet",
+    sourceExternalId: meeting.id,
+    logDate: localDate(meeting.startsAt, meeting.timeZone),
+    workCompleted,
+    notes: "Saved automatically from the Google Meet transcript. The PDF is in the project's Meeting Notes folder in Drive. Review before sharing with the client.",
+    // Internal until staff choose to share it.
+    isClientVisible: false,
+    reviewStatus: "draft",
+    tags: "client-meeting",
+    syncStatus: "pending",
+    createdAt: stamp,
+    updatedAt: stamp,
+  })
   return id
 }
 
