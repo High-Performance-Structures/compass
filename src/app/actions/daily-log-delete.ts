@@ -2,16 +2,17 @@
 
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { dailyLogPhotos, dailyLogs, ownerProjectUpdates, projects } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { detachPhotosFromDailyLogs, deleteDailyLogs } from "@/lib/domain/field/store"
 import { requireOrg } from "@/lib/org-scope"
+import { chunkD1Values } from "@/lib/d1-query"
 import { canFeature } from "@/lib/permission-enforcement"
+import { orgContext } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type DeleteDailyLogsResult =
@@ -40,8 +41,10 @@ export async function deleteProjectDailyLogs(
     if (ids.length === 0) return { success: false, error: "Choose at least one daily log." }
     if (ids.length > 200) return { success: false, error: "Delete at most 200 daily logs at a time." }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    // The checks above keep their messages; the context supplies the database.
+    const context = await orgContext()
+    if (!context.success) return context
+    const { db } = context.data
     const project = await db
       .select({ id: projects.id })
       .from(projects)
@@ -50,10 +53,16 @@ export async function deleteProjectDailyLogs(
       .then((rows) => rows[0] ?? null)
     if (!project) return { success: false, error: "Project not found." }
 
-    const logs = await db
-      .select()
-      .from(dailyLogs)
-      .where(and(eq(dailyLogs.projectId, projectId), inArray(dailyLogs.id, ids)))
+    const logs = (
+      await Promise.all(
+        chunkD1Values(ids).map((idChunk) =>
+          db
+            .select()
+            .from(dailyLogs)
+            .where(and(eq(dailyLogs.projectId, projectId), inArray(dailyLogs.id, idChunk)))
+        )
+      )
+    ).flat()
     if (logs.length !== ids.length) return { success: false, error: "Some of those daily logs no longer exist. Refresh and try again." }
 
     const canDeleteAny = await canFeature(user, "daily-logs", "delete")
@@ -73,11 +82,24 @@ export async function deleteProjectDailyLogs(
       if (blocker) return { success: false, error: blocker }
     }
 
-    const photoCounts = await db
-      .select({ dailyLogId: dailyLogPhotos.dailyLogId })
-      .from(dailyLogPhotos)
-      .where(inArray(dailyLogPhotos.dailyLogId, ids))
-    const workLines = await db.select().from(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, ids))
+    const idChunks = chunkD1Values(ids)
+    const photoCounts = (
+      await Promise.all(
+        idChunks.map((idChunk) =>
+          db
+            .select({ dailyLogId: dailyLogPhotos.dailyLogId })
+            .from(dailyLogPhotos)
+            .where(inArray(dailyLogPhotos.dailyLogId, idChunk))
+        )
+      )
+    ).flat()
+    const workLines = (
+      await Promise.all(
+        idChunks.map((idChunk) =>
+          db.select().from(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, idChunk))
+        )
+      )
+    ).flat()
 
     // Record first so a failed audit write never leaves an unrecorded delete.
     for (const log of logs) {
@@ -102,9 +124,9 @@ export async function deleteProjectDailyLogs(
     // Files are kept: daily_log_photos.daily_log_id is set to null by the
     // foreign key, and task links are removed with the log. The log's cost
     // code lines go with it (copied into the activity record above).
-    await db.update(dailyLogPhotos).set({ dailyLogId: null }).where(inArray(dailyLogPhotos.dailyLogId, ids))
+    await detachPhotosFromDailyLogs(db, ids)
     await db.delete(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, ids))
-    await db.delete(dailyLogs).where(and(eq(dailyLogs.projectId, projectId), inArray(dailyLogs.id, ids)))
+    await deleteDailyLogs(db, projectId, ids)
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)

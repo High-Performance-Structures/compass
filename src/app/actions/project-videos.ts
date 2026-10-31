@@ -14,6 +14,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { dailyLogDeleteStatement, updateDailyLogFromVideo } from "@/lib/domain/field/store"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
 import {
   getYoutubeOAuthConfig,
@@ -381,14 +382,10 @@ export async function deleteProjectVideo(input: {
     ) {
       await db.batch([
         deleteVideo,
-        db
-          .delete(dailyLogs)
-          .where(
-            and(
-              eq(dailyLogs.id, video.linkedEntityId),
-              eq(dailyLogs.projectId, input.projectId)
-            )
-          ),
+        dailyLogDeleteStatement(db, {
+          dailyLogId: video.linkedEntityId,
+          projectId: input.projectId,
+        }),
       ])
     } else {
       await deleteVideo.run()
@@ -534,18 +531,14 @@ export async function publishProjectVideo(input: {
       ]
         .filter((value): value is string => Boolean(value))
         .join("\n")
-      await db
-        .update(dailyLogs)
-        .set({
-          notes,
-          isClientVisible:
-            video.compassAudience === "owner" ||
-            video.compassAudience === "public",
-          syncStatus: "synced",
-          updatedAt: publishedAt,
-        })
-        .where(eq(dailyLogs.id, video.linkedEntityId))
-        .run()
+      await updateDailyLogFromVideo(db, video.linkedEntityId, {
+        notes,
+        isClientVisible:
+          video.compassAudience === "owner" ||
+          video.compassAudience === "public",
+        syncStatus: "synced",
+        updatedAt: publishedAt,
+      })
     }
     await recordActivityEvent({
       db,
