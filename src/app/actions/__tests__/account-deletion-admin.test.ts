@@ -73,6 +73,12 @@ function open(role = "admin"): CorrespondenceTestDatabase {
         .run(`${owner}-${visibility}`, owner === "owner-a" ? "org-a" : "org-b", owner, visibility, visibility, '{"department":"ALL","status":{"kind":"all"}}', NOW, NOW)
     }
   }
+  // 0282 copies: the same views in saved_views, plus each owner's default.
+  sqlite.exec(migration("0282_saved_views.sql"))
+  sqlite.exec(`
+    INSERT INTO saved_views SELECT id, organization_id, owner_user_id, 'projects', name, visibility, definition, created_at, updated_at FROM project_saved_views;
+    INSERT INTO saved_view_defaults VALUES ('owner-a', 'org-a', 'projects', NULL, '{}', '${NOW}'), ('owner-b', 'org-b', 'projects', NULL, '{}', '${NOW}');
+  `)
   sqlite.exec(`
     INSERT INTO account_deletion_requests (id, user_id, email_snapshot, display_name_snapshot, status, requested_at, updated_at) VALUES
       ('req-a', 'owner-a', 'owner-a@example.test', 'Owner A', 'pending', '${NOW}', '${NOW}'),
@@ -145,6 +151,9 @@ describe("account deletion processing", () => {
     expect(personalRowsFor(database, "owner-a")).toBe(0)
     expect(row(database, "SELECT count(*) AS n FROM project_saved_views WHERE owner_user_id = 'owner-a'").n).toBe(0)
     expect(row(database, "SELECT count(*) AS n FROM project_saved_views WHERE owner_user_id = 'owner-b'").n).toBe(2)
+    expect(row(database, "SELECT count(*) AS n FROM saved_views WHERE owner_user_id = 'owner-a'").n).toBe(0)
+    expect(row(database, "SELECT count(*) AS n FROM saved_views WHERE owner_user_id = 'owner-b'").n).toBe(2)
+    expect(row(database, "SELECT group_concat(user_id) AS n FROM saved_view_defaults").n).toBe("owner-b")
     expect(personalRowsFor(database, "owner-b")).toBe(PERSONAL_TABLE_NAMES.length)
     expect(row(database, "SELECT * FROM users WHERE id = 'owner-a'")).toMatchObject({
       email: "deleted+owner-a@deleted.invalid",

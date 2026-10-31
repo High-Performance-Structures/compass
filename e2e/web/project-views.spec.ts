@@ -25,6 +25,9 @@ test.describe("personal project views", () => {
     db.prepare("INSERT OR IGNORE INTO project_saved_views (id,organization_id,owner_user_id,name,visibility,definition,created_at,updated_at) VALUES ('project-filter-shared','hps-org-001','project-filter-colleague','Filter team completed','shared',?,?,?)").run(definition, now, now)
     db.prepare("DELETE FROM user_view_preferences WHERE user_id='dev-user-1' AND view_key='project-hub-default:hps-org-001'").run()
     db.prepare("DELETE FROM project_saved_views WHERE owner_user_id='dev-user-1' AND name LIKE 'Filter browser%'").run()
+    // Migration 0282 copies: clear them too so a re-run starts from the same state.
+    db.prepare("DELETE FROM saved_view_defaults WHERE user_id='dev-user-1' AND organization_id='hps-org-001' AND scope='projects'").run()
+    db.prepare("DELETE FROM saved_views WHERE owner_user_id='dev-user-1' AND scope='projects' AND name LIKE 'Filter browser%'").run()
     db.close()
   })
 

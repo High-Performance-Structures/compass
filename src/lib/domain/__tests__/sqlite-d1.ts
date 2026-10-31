@@ -5,8 +5,8 @@ import type { Db } from "@/lib/server/action-context"
 
 type Sqlite = InstanceType<typeof Database>
 
-/** A minimal D1 binding over an in-memory SQLite database, for store tests. */
-function d1Over(sqlite: Sqlite): unknown {
+/** A minimal D1 binding over an in-memory SQLite database, for store and action tests. */
+export function d1Over(sqlite: Sqlite): unknown {
   function statementFor(statement: ReturnType<Sqlite["prepare"]>, values: readonly unknown[] = []): Record<string, unknown> {
     // better-sqlite3 marks statements that return rows (SELECT, RETURNING).
     const reader = Boolean(Reflect.get(statement, "reader"))
@@ -24,8 +24,19 @@ function d1Over(sqlite: Sqlite): unknown {
   }
   return {
     prepare: (query: string): unknown => statementFor(sqlite.prepare(query)),
-    batch: async (statements: readonly { run: () => Promise<unknown> }[]): Promise<unknown[]> =>
-      Promise.all(statements.map((statement) => statement.run())),
+    // D1 runs a batch as one transaction: in order, all or nothing.
+    batch: async (statements: readonly { run: () => Promise<unknown> }[]): Promise<unknown[]> => {
+      sqlite.exec("BEGIN")
+      try {
+        const results: unknown[] = []
+        for (const statement of statements) results.push(await statement.run())
+        sqlite.exec("COMMIT")
+        return results
+      } catch (error) {
+        sqlite.exec("ROLLBACK")
+        throw error
+      }
+    },
     exec: async (query: string): Promise<unknown> => {
       sqlite.exec(query)
       return { count: 0, duration: 0 }

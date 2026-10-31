@@ -1692,6 +1692,59 @@ export const scheduleSavedViews = sqliteTable(
 )
 
 export type ScheduleSavedView = typeof scheduleSavedViews.$inferSelect
+
+/** The screens a saved view can filter. A new scope is a value here plus a zod schema in its caller. */
+export const SAVED_VIEW_SCOPES = ["projects", "schedule"] as const
+export type SavedViewScope = (typeof SAVED_VIEW_SCOPES)[number]
+export const SAVED_VIEW_VISIBILITIES = ["personal", "shared"] as const
+
+/**
+ * Named filter views for every screen (migration 0282). Replaces
+ * project_saved_views and schedule_saved_views, which keep their rows and are
+ * dual-written by domain/settings/store.ts until reads move here for good.
+ */
+export const savedViews = sqliteTable(
+  "saved_views",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: SAVED_VIEW_SCOPES }).notNull(),
+    name: text("name").notNull(),
+    visibility: text("visibility", { enum: SAVED_VIEW_VISIBILITIES }).notNull().default("personal"),
+    // json: filter definition, validated per scope by the caller's zod schema
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("saved_views_org_owner_scope_name_unique").on(table.organizationId, table.ownerUserId, table.scope, table.name),
+    index("saved_views_org_scope_visibility_idx").on(table.organizationId, table.scope, table.visibility),
+    index("saved_views_owner_idx").on(table.ownerUserId),
+  ],
+)
+
+/**
+ * A person's default view for one screen in one organization: either a saved
+ * view (view_id) or an unnamed filter snapshot (inline_definition).
+ */
+export const savedViewDefaults = sqliteTable(
+  "saved_view_defaults",
+  {
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: SAVED_VIEW_SCOPES }).notNull(),
+    viewId: text("view_id").references(() => savedViews.id, { onDelete: "set null" }),
+    // json: snapshot of the default filters when they are not a named view
+    inlineDefinition: text("inline_definition"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.organizationId, table.scope] }),
+    index("saved_view_defaults_org_idx").on(table.organizationId),
+    index("saved_view_defaults_view_idx").on(table.viewId),
+  ],
+)
 export type NewScheduleSavedView = typeof scheduleSavedViews.$inferInsert
 
 export const schedulePhaseOptions = sqliteTable(
