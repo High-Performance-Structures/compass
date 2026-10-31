@@ -54,7 +54,8 @@ Square) call domain stores and never write tables directly.
 
 Rules:
 
-- **One writer per table.** Only the owning module's `store.ts` writes a table.
+- **One writer per table.** Only the owning module's `store.ts` writes a table,
+  whether through Drizzle or raw SQL (`INSERT INTO`, `UPDATE`, `DELETE FROM`).
   The check keeps a list of the files that currently write each table, and new
   writers fail it.
 - **`src/lib` never imports from `src/app`.** Shared logic moves down into

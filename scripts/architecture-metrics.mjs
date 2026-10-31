@@ -67,21 +67,28 @@ function sorted(object) {
 }
 
 /** Every ratchet metric, keyed by rule. */
-function schemaTableNames(root, files) {
+function schemaTables(root, files) {
   const names = new Set()
+  // SQL table name -> exported Drizzle table, so raw-SQL writes count too.
+  const bySqlName = new Map()
   for (const path of files) {
     if (!/^src\/db\/schema.*\.ts$/.test(path) && path !== "src/lib/sync/schema.ts") continue
     const text = readFileSync(join(root, path), "utf8")
-    for (const match of text.matchAll(/export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*sqliteTable\(/g)) {
+    for (const match of text.matchAll(/export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*sqliteTable\(\s*["'`]([A-Za-z0-9_]+)["'`]/g)) {
       names.add(match[1])
+      bySqlName.set(match[2], match[1])
     }
   }
-  return names
+  return { names, bySqlName }
 }
+
+// Uppercase SQL keywords only, followed by a real table name (checked
+// against the schema), so prose like "update the project" never matches.
+const RAW_SQL_WRITE = /\b(?:INSERT(?:\s+OR\s+[A-Z]+)?\s+INTO|DELETE\s+FROM|UPDATE(?:\s+OR\s+[A-Z]+)?)\s+[`"]?([a-z][a-z0-9_]*)[`"]?/g
 
 export function computeArchitectureMetrics(root) {
   const files = SOURCE_DIRS.flatMap((dir) => walk(root, dir)).sort()
-  const tables = schemaTableNames(root, files)
+  const { names: tables, bySqlName } = schemaTables(root, files)
   const tableWriters = {}
   const largeFiles = {}
   const localHelpers = {}
@@ -95,11 +102,19 @@ export function computeArchitectureMetrics(root) {
     const text = readFileSync(join(root, path), "utf8")
 
     // One writer per table: which files insert/update/delete each table.
-    for (const match of text.matchAll(/\.(?:insert|update|delete)\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g)) {
-      const table = match[1]
-      if (!tables.has(table)) continue
+    const addWriter = (table) => {
       const writers = (tableWriters[table] ??= [])
       if (!writers.includes(path)) writers.push(path)
+    }
+    for (const match of text.matchAll(/\.(?:insert|update|delete)\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g)) {
+      if (tables.has(match[1])) addWriter(match[1])
+    }
+    // Migrations and schema files define tables; they are not writers.
+    if (!path.startsWith("src/db/")) {
+      for (const match of text.matchAll(RAW_SQL_WRITE)) {
+        const table = bySqlName.get(match[1])
+        if (table) addWriter(table)
+      }
     }
 
     if (path.startsWith("src/app/") || path.startsWith("src/lib/") || path.startsWith("src/components/")) {
@@ -150,7 +165,7 @@ export function computeArchitectureMetrics(root) {
 }
 
 export const ARCHITECTURE_RULES = {
-  tableWriters: "One writer per table: write through the owning domain module's store.ts (section 1).",
+  tableWriters: "One writer per table, counting raw SQL as well as Drizzle writes: write through the owning domain module's store.ts (section 1).",
   largeFiles: `Files over ${MAX_FILE_LINES} lines may not grow, and new ones may not exceed it (section 7).`,
   localHelpers: "Use the shared money, date, guard, text and env helpers instead of a local copy (section 4).",
   envCasts: "Read environment values through src/lib/shared/env.ts, not `env as unknown as Record<string, string>` (section 4).",
