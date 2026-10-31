@@ -28,6 +28,13 @@ import {
   updateTask,
   updateTaskForAssignee,
 } from "@/lib/domain/schedule/store"
+import {
+  notifyScheduleAssignees,
+  publishedAssigneeUserIds,
+  scheduleConfirmationHref,
+} from "@/lib/domain/schedule/assignment-notices"
+import { loadTaskPeople } from "@/lib/domain/schedule/queries"
+import { scheduleItemAssigneeUserIds } from "@/lib/schedule/assignees"
 import { isDemoUser } from "@/lib/demo"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
@@ -154,20 +161,6 @@ async function notifyInternalScheduleResponse(input: {
   })
 }
 
-function confirmationHref(
-  projectId: string,
-  taskId: string,
-  projectRole: string | null
-): string {
-  if (projectRole === "client" || projectRole === "owner") {
-    return `/preview/projects/${projectId}/owner/schedule`
-  }
-  if (projectRole === "subcontractor" || projectRole === "supplier") {
-    return `/preview/projects/${projectId}/sub-vendor/schedule`
-  }
-  return `/dashboard/projects/${projectId}/schedule?view=list&item=${taskId}`
-}
-
 function revalidateConfirmationPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/schedule`)
   revalidatePath(`/preview/projects/${projectId}/owner/schedule`)
@@ -186,8 +179,14 @@ async function isSchedulePublished(
   return project?.schedulePublished === true
 }
 
+/**
+ * Sends schedule.assigned for a published item. `recipientUserIds` narrows it
+ * to the people a publication added; without it every published assignee is
+ * told (the manual resend).
+ */
 export async function sendPublishedScheduleAssignment(
-  taskId: string
+  taskId: string,
+  recipientUserIds?: readonly string[]
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
@@ -202,8 +201,11 @@ export async function sendPublishedScheduleAssignment(
         id: scheduleTasks.id,
         projectId: scheduleTasks.projectId,
         title: scheduleTasks.title,
+        assignedTo: scheduleTasks.assignedTo,
         assignedUserId: scheduleTasks.assignedUserId,
         confirmationRequired: scheduleTasks.confirmationRequired,
+        ownerVisible: scheduleTasks.ownerVisible,
+        subVendorVisible: scheduleTasks.subVendorVisible,
       })
       .from(scheduleTasks)
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
@@ -322,7 +324,7 @@ export async function sendPublishedScheduleAssignment(
             ? `Schedule confirmation requested: ${task.title}`
             : `Schedule item assigned: ${task.title}`,
           body: `${user.displayName ?? user.email} assigned this to you.`,
-          href: confirmationHref(task.projectId, task.id, membership?.role ?? null),
+          href: scheduleConfirmationHref(task.projectId, task.id, membership?.role ?? null),
           priority: task.confirmationRequired ? "high" : "normal",
           audience: "assignee",
           createdBy: user.id,
@@ -347,85 +349,34 @@ export async function sendPublishedScheduleAssignment(
       }
       return { success: true }
     }
-    if (!task.assignedUserId) {
+    // Every assignee is equal: each linked account on both the item and its
+    // publication is told, or only the ones the publication just added.
+    const people = (await loadTaskPeople(db, [task.id])).get(task.id) ?? []
+    const currentUserIds = scheduleItemAssigneeUserIds({ ...task, people })
+    if (currentUserIds.length === 0) {
       return {
         success: false,
         error: "The assignment is not linked to an active Compass user.",
       }
     }
-    if (!publishedTask || publishedTask.assignedUserId !== task.assignedUserId) {
+    const publishedUserIds = publishedTask ? publishedAssigneeUserIds(publishedTask) : []
+    const recipients = (recipientUserIds ?? currentUserIds).filter(
+      (userId) => currentUserIds.includes(userId) && publishedUserIds.includes(userId)
+    )
+    if (!publishedTask || recipients.length === 0) {
       return {
         success: false,
         error: "Publish this assignment before sending its notification.",
       }
     }
-
-    const recipient = await db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(and(eq(users.id, task.assignedUserId), eq(users.isActive, true)))
-      .get()
-    if (!recipient) {
-      return { success: false, error: "The assigned Compass user is inactive." }
-    }
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, task.projectId),
-          eq(projectMembers.userId, recipient.id)
-        )
-      )
-      .get()
-    if (!isPublishedScheduleAssignmentVisible({
-      currentAssignedUserId: task.assignedUserId,
-      publishedAssignedUserId: publishedTask.assignedUserId,
-      projectRole: membership?.role ?? null,
-      ownerVisible: publishedTask.ownerVisible,
-      subVendorVisible: publishedTask.subVendorVisible,
-    })) {
-      return {
-        success: false,
-        error: "The published item is not visible to the assigned user.",
-      }
-    }
-
-    await createNotificationEvent({
-      organizationId,
-      projectId: task.projectId,
-      eventType: "schedule.assigned",
-      sourceType: "schedule_item",
-      sourceId: task.id,
-      title: `Schedule item assigned: ${task.title}`,
-      body: `${user.displayName ?? user.email} assigned this to you.`,
-      href: confirmationHref(
-        task.projectId,
-        task.id,
-        membership?.role ?? null
-      ),
-      priority: "normal",
-      audience: "assignee",
-      createdBy: user.id,
-      recipients: [{ userId: recipient.id, email: recipient.email }],
-      delivery: {
-        inApp: true,
-        email: true,
-        push: true,
-      },
-    })
-    await recordActivityEvent({
+    return await notifyScheduleAssignees({
       db,
       organizationId,
-      projectId: task.projectId,
       actor: user,
-      category: "schedule",
-      action: "schedule.assignment_notified",
-      entityType: "schedule_item",
-      entityId: task.id,
-      summary: `Sent the published assignment for “${task.title}”.`,
+      task,
+      published: publishedTask,
+      recipientUserIds: recipients,
     })
-    return { success: true }
   } catch (error) {
     console.error("Unable to send published schedule assignment", error)
     return { success: false, error: "Unable to send the assignment notification." }
@@ -550,7 +501,7 @@ export async function sendScheduleTaskReminder(
       sourceId: task.id,
       title: `Please confirm: ${task.title}`,
       body: `${user.displayName ?? user.email} is waiting for your schedule commitment response.`,
-      href: confirmationHref(
+      href: scheduleConfirmationHref(
         task.projectId,
         task.id,
         membership?.role ?? null

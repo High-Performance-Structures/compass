@@ -1,4 +1,5 @@
 import { primaryParty, type ScheduleConflict, type ScheduleConflictSettings } from "@/lib/schedule/conflicts"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { orderScheduleTasks, type ScheduleOrderMode } from "@/lib/schedule/task-ordering"
 import { STATUS_OPTIONS, type ScheduleTaskData, type TaskFilters, type TaskStatus } from "@/lib/schedule/types"
@@ -129,8 +130,9 @@ export function visibleScheduleTasks(input: {
   }
   if (filters.assignedTo) {
     const search = filters.assignedTo.toLowerCase()
+    // Any one of an item's people matches; all assignees are equal.
     tasks = tasks.filter((t) =>
-      t.assignedTo?.toLowerCase().includes(search)
+      scheduleItemAssigneeNames(t).some((name) => name.toLowerCase().includes(search))
     )
   }
   if (filters.search) {
@@ -145,12 +147,12 @@ export function visibleScheduleTasks(input: {
     const terms = input.currentUserAssigneeTerms
       .map((term) => term.trim().toLowerCase())
       .filter(Boolean)
-    tasks = tasks.filter((task) => {
-      const assignee = task.assignedTo?.trim().toLowerCase() ?? ""
-      return terms.some(
-        (term) => assignee === term || assignee.includes(term)
-      )
-    })
+    tasks = tasks.filter((task) =>
+      scheduleItemAssigneeNames(task).some((name) => {
+        const assignee = name.toLowerCase()
+        return terms.some((term) => assignee === term || assignee.includes(term))
+      })
+    )
   } else if (preset === "past-due") {
     tasks = tasks.filter(
       (task) =>

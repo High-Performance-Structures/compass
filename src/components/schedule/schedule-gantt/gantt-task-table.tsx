@@ -21,6 +21,7 @@ import { conflictSummary, type ScheduleConflict } from "@/lib/schedule/conflicts
 import type { DisplayItem } from "@/lib/schedule/gantt-transform"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { scheduleItemHref } from "@/lib/work-calendar"
@@ -200,7 +201,7 @@ export function GanttTaskTable({
                     sourceHref={scheduleItemHref(task.projectId, task.id)}
                     defaultTitle={`Follow up: ${task.title}`}
                     defaultDescription={`${task.phase} schedule item.`}
-                    defaultAssigneeName={task.assignedTo}
+                    defaultAssigneeName={scheduleItemAssigneeNames(task)[0] ?? null}
                     defaultCompanyName={null}
                     defaultDueDate={task.endDateCalculated}
                     defaultPriority={task.isCriticalPath ? "high" : "normal"}

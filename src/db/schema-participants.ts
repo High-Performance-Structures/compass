@@ -142,6 +142,41 @@ export const scheduleTaskAssignees = sqliteTable(
   ],
 )
 
+/**
+ * Everyone assigned to a schedule item, in the order they were picked. All
+ * assignees are equal. schedule_tasks.assigned_to keeps the joined names and
+ * assigned_user_id the first linked account for existing readers (0284).
+ */
+export const scheduleTaskPeople = sqliteTable(
+  "schedule_task_people",
+  {
+    id: text("id").primaryKey(),
+    scheduleTaskId: text("schedule_task_id")
+      .notNull()
+      .references(() => scheduleTasks.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    // snapshot: the name as picked or typed. Typed names and directory
+    // customers or vendors have no Compass row to point at, like assigned_to.
+    displayName: text("display_name").notNull(),
+    assignedUserId: text("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    projectContactId: text("project_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("schedule_task_people_task_name_unique").on(
+      table.scheduleTaskId,
+      table.displayName,
+    ),
+    index("schedule_task_people_assigned_user_idx").on(table.assignedUserId),
+    index("schedule_task_people_project_contact_idx").on(table.projectContactId),
+  ],
+)
+
 export const projectSourceRecordParticipantsRelations = relations(
   projectSourceRecordParticipants,
   ({ one, many }) => ({

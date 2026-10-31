@@ -28,6 +28,7 @@ import {
   insertDependency,
   insertTask,
   recalcCriticalPath,
+  setTaskAssignedTo,
   updateTask,
   updateTaskDates,
 } from "@/lib/domain/schedule/store"
@@ -109,8 +110,9 @@ async function createTask(db: Db, orgId: string, body: Body): Promise<Response> 
   const endDate = calculateEndDate(startDate, workdays, exceptions)
   const now = new Date().toISOString()
   const progress = normalizeScheduleProgress(requestedStatus, percentComplete)
+  const taskId = crypto.randomUUID()
   await insertTask(db, {
-    id: crypto.randomUUID(),
+    id: taskId,
     projectId,
     title,
     startDate,
@@ -126,6 +128,8 @@ async function createTask(db: Db, orgId: string, body: Body): Promise<Response> 
     createdAt: now,
     updatedAt: now,
   })
+  // The people list (schedule_task_people) follows the single name.
+  if (assignedTo) await setTaskAssignedTo(db, taskId, assignedTo, now)
 
   await recalcCriticalPath(db, projectId)
   revalidateSchedule(projectId)
@@ -179,6 +183,10 @@ async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
       ...(fields.assignedTo !== undefined ? { assignedTo: fields.assignedTo as string | null } : {}),
       updatedAt: new Date().toISOString(),
     })
+    if (fields.assignedTo !== undefined) {
+      const assignedTo = typeof fields.assignedTo === "string" ? fields.assignedTo.trim() : ""
+      await setTaskAssignedTo(db, taskId, assignedTo || null, new Date().toISOString())
+    }
 
     // propagate date changes
     const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)

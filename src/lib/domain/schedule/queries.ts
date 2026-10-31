@@ -8,16 +8,23 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 import {
   organizationMembers,
   projectAccessInvitations,
+  projectContacts,
   projects,
   scheduleTasks,
   taskDependencies,
   users,
   workdayExceptions,
 } from "@/db/schema"
-import { scheduleTaskAssignees } from "@/db/schema-participants"
+import { scheduleTaskAssignees, scheduleTaskPeople } from "@/db/schema-participants"
 import { chunkD1Values } from "@/lib/d1-query"
+import type { ScheduleAssigneeInput } from "@/lib/schedule/assignees"
 import type { Db } from "@/lib/server/action-context"
-import type { ScheduleData, ScheduleTaskAssigneeData, WorkdayExceptionData } from "@/lib/schedule/types"
+import type {
+  ScheduleData,
+  ScheduleTaskAssigneeData,
+  ScheduleTaskPersonData,
+  WorkdayExceptionData,
+} from "@/lib/schedule/types"
 
 import {
   dependenciesWithin,
@@ -166,6 +173,7 @@ export async function loadWorkingSchedule(db: Db, projectId: string): Promise<Sc
     existing.push(row)
     assigneesByTask.set(row.scheduleTaskId, existing)
   }
+  const peopleByTask = await loadTaskPeople(db, taskIds)
   const dependencies = await loadDependenciesForTasks(db, taskIds)
   const exceptions = await loadProjectExceptions(db, projectId)
 
@@ -173,6 +181,7 @@ export async function loadWorkingSchedule(db: Db, projectId: string): Promise<Sc
     tasks: tasks.map((task) => ({
       ...taskWithProgress(task),
       assignees: assigneesByTask.get(task.id) ?? [],
+      people: peopleByTask.get(task.id) ?? [],
     })),
     dependencies: dependencies.map(dependencyData),
     exceptions,
@@ -227,4 +236,80 @@ export async function resolveAssignedUserId(
   }
 
   return null
+}
+
+/**
+ * Everyone assigned to each task, in picked order, read by task id in chunks
+ * under D1's parameter limit.
+ */
+export async function loadTaskPeople(
+  db: Db,
+  taskIds: readonly string[]
+): Promise<Map<string, ScheduleTaskPersonData[]>> {
+  const rows = (
+    await Promise.all(
+      chunkD1Values(taskIds).map((chunk) =>
+        db
+          .select({
+            scheduleTaskId: scheduleTaskPeople.scheduleTaskId,
+            position: scheduleTaskPeople.position,
+            name: scheduleTaskPeople.displayName,
+            assignedUserId: scheduleTaskPeople.assignedUserId,
+            projectContactId: scheduleTaskPeople.projectContactId,
+          })
+          .from(scheduleTaskPeople)
+          .where(inArray(scheduleTaskPeople.scheduleTaskId, chunk))
+      )
+    )
+  ).flat()
+  rows.sort((left, right) => left.position - right.position)
+  const byTask = new Map<string, ScheduleTaskPersonData[]>()
+  for (const { scheduleTaskId, name, assignedUserId, projectContactId } of rows) {
+    const people = byTask.get(scheduleTaskId) ?? []
+    people.push({ name, assignedUserId, projectContactId })
+    byTask.set(scheduleTaskId, people)
+  }
+  return byTask
+}
+
+/**
+ * The people rows for picked assignees: each picked option's Compass account
+ * (see resolveAssignedUserId) and, for a project contact, the contact when it
+ * belongs to this project. Typed names keep only their name.
+ */
+export async function resolveScheduleTaskPeople(
+  db: Db,
+  organizationId: string,
+  projectId: string,
+  inputs: readonly ScheduleAssigneeInput[]
+): Promise<ScheduleTaskPersonData[]> {
+  const contactIds = inputs.flatMap((input) =>
+    input.optionId?.startsWith("project:") ? [input.optionId.slice("project:".length)] : []
+  )
+  const projectContactIds = new Set(
+    (
+      await Promise.all(
+        chunkD1Values(contactIds).map((chunk) =>
+          db
+            .select({ id: projectContacts.id })
+            .from(projectContacts)
+            .where(and(eq(projectContacts.projectId, projectId), inArray(projectContacts.id, chunk)))
+        )
+      )
+    )
+      .flat()
+      .map((row) => row.id)
+  )
+  return Promise.all(
+    inputs.map(async (input) => {
+      const contactId = input.optionId?.startsWith("project:")
+        ? input.optionId.slice("project:".length)
+        : null
+      return {
+        name: input.name,
+        assignedUserId: await resolveAssignedUserId(db, organizationId, projectId, input.optionId),
+        projectContactId: contactId !== null && projectContactIds.has(contactId) ? contactId : null,
+      }
+    })
+  )
 }

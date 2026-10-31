@@ -16,6 +16,7 @@ import {
   toggleSelectedId,
   withSavedPhaseOption,
 } from "../form-model"
+import { withAssignee } from "../assignees-field"
 
 function task(overrides: Partial<ScheduleTaskData> = {}): ScheduleTaskData {
   return {
@@ -155,5 +156,55 @@ describe("schedule item form model", () => {
     expect(toggleSelectedId(ids, "a", true)).toBe(ids)
     expect(toggleSelectedId(ids, "b", true)).toEqual(["a", "b"])
     expect(toggleSelectedId(ids, "a", false)).toEqual([])
+  })
+})
+
+describe("schedule item assignees in the form", () => {
+  const options: readonly ProjectTaskAssigneeOption[] = [
+    {
+      id: "team:u-ann",
+      name: "Ann Lee",
+      label: "Ann Lee",
+      companyName: null,
+      email: null,
+      phone: null,
+      contactType: "internal",
+      source: "project",
+      projectContactId: null,
+      directoryContactId: null,
+      projectAccess: true,
+    },
+  ]
+
+  it("loads every saved person and matches each to its picker option", () => {
+    const values = editingTaskValues(
+      task({
+        assignedTo: "Ann Lee, Framing Crew",
+        people: [
+          { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
+          { name: "Framing Crew", assignedUserId: null, projectContactId: null },
+        ],
+      }),
+      options
+    )
+    expect(values.assignees).toEqual([
+      { name: "Ann Lee", optionId: "team:u-ann" },
+      { name: "Framing Crew", optionId: null },
+    ])
+  })
+
+  it("loads an item that only has the single stored name", () => {
+    expect(editingTaskValues(task({ assignedTo: "Ann Lee" }), options).assignees).toEqual([
+      { name: "Ann Lee", optionId: "team:u-ann" },
+    ])
+    expect(editingTaskValues(task()).assignees).toEqual([])
+  })
+
+  it("adds a person once and ignores blanks", () => {
+    const one = withAssignee([], " Ann Lee ", "team:u-ann")
+    expect(one).toEqual([{ name: "Ann Lee", optionId: "team:u-ann" }])
+    expect(withAssignee(one, "ann lee", null)).toEqual(one)
+    expect(withAssignee(one, "  ", null)).toEqual(one)
+    expect(withAssignee(one, "Bo Diaz", null)).toEqual([...one, { name: "Bo Diaz", optionId: null }])
   })
 })

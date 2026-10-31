@@ -20,14 +20,18 @@ import {
   isOrganizationProject,
   loadDependenciesForTasks,
   loadProjectExceptions,
+  loadTaskPeople,
   nextProjectSortOrder,
   resolveAssignedUserId,
+  resolveScheduleTaskPeople,
 } from "@/lib/domain/schedule/queries"
 import {
   dependencyData,
   exceptionDataCast,
+  legacyAssignment,
   ownerSchedulePaths,
   propagateFrom,
+  requestedAssignees,
   schedulePaths,
   taskEditValues,
   taskWithProgress,
@@ -39,6 +43,7 @@ import {
   insertTask,
   persistScheduleDateUpdates,
   recalcCriticalPath,
+  replaceTaskPeopleQueries,
   resetTaskAssigneesQuery,
   taskInsertQuery,
   taskUpdateQuery,
@@ -48,6 +53,7 @@ import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-i
 import { operationInsertQuery } from "@/lib/domain/operations/store"
 import { projectDepartment } from "@/lib/project-branding"
 import type { ProjectListItem } from "@/lib/projects/project-list"
+import { samePeople, type ScheduleAssigneeInput } from "@/lib/schedule/assignees"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
 import { normalizeScheduleItemTimes } from "@/lib/schedule/item-time"
@@ -217,14 +223,15 @@ export async function getScopedSchedule(
         left.sortOrder - right.sortOrder ||
         left.title.localeCompare(right.title)
     )
-  const dependencies = await loadDependenciesForTasks(
-    db,
-    tasks.map((task) => task.id)
-  )
+  const taskIds = tasks.map((task) => task.id)
+  const [dependencies, peopleByTask] = await Promise.all([
+    loadDependenciesForTasks(db, taskIds),
+    loadTaskPeople(db, taskIds),
+  ])
 
   return {
     projects: scopedProjects.filter((project) => verifiedProjectIds.has(project.id)),
-    tasks: tasks.map(taskWithProgress),
+    tasks: tasks.map((task) => ({ ...taskWithProgress(task), people: peopleByTask.get(task.id) ?? [] })),
     dependencies: dependencies.map(dependencyData),
     exceptions: exceptionChunks.flat().map(exceptionDataCast)
   }
@@ -249,6 +256,8 @@ export async function createTask(
     status?: TaskStatus
     isMilestone?: boolean
     percentComplete?: number
+    /** Everyone assigned, in picked order; replaces assignedTo when given. */
+    assignees?: readonly ScheduleAssigneeInput[]
     assignedTo?: string
     assignedOptionId?: string | null
     ownerVisible?: boolean
@@ -310,7 +319,12 @@ export async function createTask(
     const nextOrder = await nextProjectSortOrder(db, projectId)
 
     const id = crypto.randomUUID()
-    const assignedUserId = await resolveAssignedUserId(db, orgId, projectId, data.assignedOptionId)
+    const assigneeRequest = requestedAssignees(data)
+    if (assigneeRequest && "error" in assigneeRequest) return { success: false, error: assigneeRequest.error }
+    const people = assigneeRequest
+      ? await resolveScheduleTaskPeople(db, orgId, projectId, assigneeRequest.inputs)
+      : []
+    const { assignedTo, assignedUserId } = legacyAssignment(people)
     const confirmationRequired = data.confirmationRequired ?? false
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
@@ -334,7 +348,7 @@ export async function createTask(
       isCriticalPath: false,
       isMilestone: data.isMilestone ?? false,
       percentComplete: progress.percentComplete,
-      assignedTo: data.assignedTo ?? null,
+      assignedTo,
       assignedUserId,
       ownerVisible: data.ownerVisible ?? true,
       subVendorVisible: data.subVendorVisible ?? false,
@@ -377,12 +391,13 @@ export async function createTask(
         }))
       : []
 
-    if (linkedTodoRows.length > 0) {
+    if (linkedTodoRows.length > 0 || people.length > 0) {
       // Keep each to-do in its own prepared statement. D1 limits the number of
       // bound values in one statement, so a multi-row insert fails for larger
       // templates even though the surrounding batch is otherwise valid.
       await db.batch([
         taskInsertQuery(db, scheduleTaskRow),
+        ...replaceTaskPeopleQueries(db, id, people, now),
         ...linkedTodoRows.map((todoRow) => operationInsertQuery(db, todoRow))
       ])
     } else {
@@ -435,6 +450,8 @@ export async function updateTask(
     status?: TaskStatus
     isMilestone?: boolean
     percentComplete?: number
+    /** Everyone assigned, in picked order; replaces assignedTo when given. */
+    assignees?: readonly ScheduleAssigneeInput[]
     assignedTo?: string | null
     assignedOptionId?: string | null
     ownerVisible?: boolean
@@ -465,15 +482,29 @@ export async function updateTask(
       (data.status ?? task.status) as TaskStatus,
       data.percentComplete ?? task.percentComplete
     )
-    const assignedUserId =
-      data.assignedOptionId !== undefined
+    const assigneeRequest = requestedAssignees(data)
+    if (assigneeRequest && "error" in assigneeRequest) return { success: false, error: assigneeRequest.error }
+    const people = assigneeRequest
+      ? await resolveScheduleTaskPeople(db, orgId, task.projectId, assigneeRequest.inputs)
+      : null
+    const storedPeople = people ? ((await loadTaskPeople(db, [taskId])).get(taskId) ?? []) : []
+    // The form sends the whole list: assigned_to holds every name and
+    // assigned_user_id the first linked account. A legacy single-name edit
+    // keeps today's rules for assigned_user_id.
+    const fromList = people !== null && data.assignees !== undefined
+    const editData = fromList
+      ? { ...data, assignedTo: legacyAssignment(people).assignedTo, assignedOptionId: null }
+      : data
+    const assignedUserId = fromList
+      ? legacyAssignment(people).assignedUserId
+      : data.assignedOptionId !== undefined
         ? await resolveAssignedUserId(db, orgId, task.projectId, data.assignedOptionId)
         : data.assignedTo === null
           ? null
           : task.assignedUserId
     const assignmentChanged =
-      (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) ||
-      (data.assignedOptionId !== undefined && assignedUserId !== task.assignedUserId)
+      (editData.assignedTo !== undefined && editData.assignedTo !== task.assignedTo) ||
+      ((fromList || data.assignedOptionId !== undefined) && assignedUserId !== task.assignedUserId)
     const confirmationRequired = data.confirmationRequired ?? task.confirmationRequired
     const resetConfirmation =
       assignmentChanged ||
@@ -491,6 +522,8 @@ export async function updateTask(
       assignedUserId,
       now
     })
+    const peopleQueries =
+      people && !samePeople(storedPeople, people) ? replaceTaskPeopleQueries(db, taskId, people, now) : []
 
     // Only propagate and invalidate assignee responses when the schedule dates
     // actually changed. Ordinary metadata edits must preserve confirmations.
@@ -539,7 +572,7 @@ export async function updateTask(
       db,
       taskId,
       taskEditValues({
-        data,
+        data: editData,
         workdays,
         status: progress.status,
         percentComplete: progress.percentComplete,
@@ -555,14 +588,15 @@ export async function updateTask(
       // Legacy scalar assignment changes invalidate normalized assignees. The
       // child rows carry independent response authority and cannot be left
       // attached to a newly assigned scalar task.
-      await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId)])
+      await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId), ...peopleQueries])
     } else if (scheduleDatesChanged || resetConfirmation) {
       await db.batch([
         taskUpdate,
         resetTaskAssigneesQuery(db, taskId, { startDate, workdays, endDate }, now),
+        ...peopleQueries,
       ])
     } else {
-      await taskUpdate
+      await db.batch([taskUpdate, ...peopleQueries])
     }
     await persistScheduleDateUpdates(env.DB, task.projectId, dateUpdates, now)
     if (shiftReasonResult?.success) {

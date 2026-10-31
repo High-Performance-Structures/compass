@@ -2,6 +2,7 @@ import { z } from "zod"
 import type { SearchableComboboxOption } from "@/components/searchable-combobox"
 import type { ReusableSchedulePhaseOption } from "@/app/actions/schedule-phases"
 import { normalizeScheduleItemTimes } from "@/lib/schedule/item-time"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import type {
   DependencyType,
   ScheduleTaskData,
@@ -85,7 +86,8 @@ export const scheduleItemSchema = z.object({
   status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
   isMilestone: z.boolean(),
   percentComplete: z.number().min(0).max(100),
-  assignedTo: z.string(),
+  // Everyone assigned, in picked order. All assignees are equal.
+  assignees: z.array(z.object({ name: z.string(), optionId: z.string().nullable() })),
   ownerVisible: z.boolean(),
   subVendorVisible: z.boolean(),
   confirmationRequired: z.boolean(),
@@ -119,7 +121,7 @@ export function newScheduleItemValues(): ScheduleItemFormValues {
     status: "PENDING",
     isMilestone: false,
     percentComplete: 0,
-    assignedTo: "",
+    assignees: [],
     ownerVisible: true,
     subVendorVisible: false,
     confirmationRequired: false,
@@ -128,8 +130,14 @@ export function newScheduleItemValues(): ScheduleItemFormValues {
   }
 }
 
-/** Form values for an existing item; the shift reason always starts blank. */
-export function editingTaskValues(task: ScheduleTaskData): ScheduleItemFormValues {
+/**
+ * Form values for an existing item; the shift reason always starts blank.
+ * Each assignee is matched back to its picker option where one exists.
+ */
+export function editingTaskValues(
+  task: ScheduleTaskData,
+  assigneeOptions: readonly ProjectTaskAssigneeOption[] = []
+): ScheduleItemFormValues {
   return {
     title: task.title,
     startDate: task.startDate,
@@ -141,7 +149,10 @@ export function editingTaskValues(task: ScheduleTaskData): ScheduleItemFormValue
     status: task.status,
     isMilestone: task.isMilestone,
     percentComplete: task.percentComplete,
-    assignedTo: task.assignedTo ?? "",
+    assignees: scheduleItemAssigneeNames(task).map((name) => ({
+      name,
+      optionId: matchingAssigneeOptionId(assigneeOptions, name),
+    })),
     ownerVisible: task.ownerVisible ?? true,
     subVendorVisible: task.subVendorVisible ?? false,
     confirmationRequired: task.confirmationRequired ?? false,
@@ -150,7 +161,7 @@ export function editingTaskValues(task: ScheduleTaskData): ScheduleItemFormValue
   }
 }
 
-/** The assignee option whose name matches the saved free-text assignee. */
+/** The assignee option whose name matches a saved assignee name. */
 export function matchingAssigneeOptionId(
   options: readonly ProjectTaskAssigneeOption[],
   assignedTo: string | null | undefined
