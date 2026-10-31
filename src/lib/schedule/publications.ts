@@ -18,6 +18,11 @@ const publishedTaskSchema = z.object({
   // Participant IDs are server-side publication metadata used to prevent
   // unpublished child-assignee changes from appearing in external previews.
   assigneeParticipantIds: z.array(z.string()).default([]),
+  // Every linked account assigned (schedule_task_people), so a later
+  // publication notifies only the people it adds. Older snapshots kept only
+  // assignedUserId. Not compared for draft changes: assignedTo and
+  // assignedUserId already change with the list.
+  assigneeUserIds: z.array(z.string()).default([]),
   ownerVisible: z.boolean().optional(),
   subVendorVisible: z.boolean().optional(),
   confirmationRequired: z.boolean().default(false),

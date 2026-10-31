@@ -141,6 +141,24 @@ describe("schedule view rules", () => {
     expect(ids("my-items", [" "])).toEqual([])
   })
 
+  it("matches an item by any one of its people, all equal", () => {
+    const shared = task({
+      id: "shared",
+      assignedTo: "Ann Lee, Jane Doe",
+      people: [
+        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
+        { name: "Jane Doe", assignedUserId: null, projectContactId: null },
+      ],
+    })
+    const other = task({ id: "other", assignedTo: "Bo Diaz" })
+    const ids = (input: Partial<Parameters<typeof visibleScheduleTasks>[0]>) =>
+      visibleScheduleTasks({ ...baseInput, tasks: [shared, other], ...input }).map((item) => item.id)
+    expect(ids({ preset: "my-items", currentUserAssigneeTerms: ["jane doe"] })).toEqual(["shared"])
+    expect(ids({ preset: "my-items", currentUserAssigneeTerms: ["ann lee"] })).toEqual(["shared"])
+    expect(ids({ filters: { ...EMPTY_FILTERS, assignedTo: "jane" } })).toEqual(["shared"])
+    expect(ids({ filters: { ...EMPTY_FILTERS, assignedTo: "bo" } })).toEqual(["other"])
+  })
+
   it("groups by phase, project and crew with unassigned last", () => {
     const tasks = [
       task({ id: "1", phase: "z", projectId: "p2", assignedTo: null }),

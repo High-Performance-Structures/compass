@@ -28,7 +28,6 @@ import { toast } from "sonner"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   editingTaskValues,
-  matchingAssigneeOptionId,
   newScheduleItemValues,
   scheduleItemSchema,
   scheduleShiftRequested,
@@ -83,7 +82,6 @@ export function ScheduleItemFormDialog({
   const isEditing = !!editingTask
   const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [assignedOptionId, setAssignedOptionId] = useState<string | null>(null)
   const [endDateNote, setEndDateNote] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
@@ -92,7 +90,7 @@ export function ScheduleItemFormDialog({
     defaultValues: newScheduleItemValues()
   })
 
-  const template = useTemplateImport(open, isEditing, form, setAssignedOptionId)
+  const template = useTemplateImport(open, isEditing, form)
   const phase = usePhaseOptions(open, projectId)
   const { recentColors, rememberColor } = useRecentColors(open)
   const predecessors = usePredecessorEdits(projectId, editingTask, allTasks, dependencies)
@@ -106,13 +104,11 @@ export function ScheduleItemFormDialog({
     if (!open) return
     setEndDateNote(null)
     if (editingTask) {
-      form.reset(editingTaskValues(editingTask))
-      setAssignedOptionId(matchingAssigneeOptionId(assigneeOptions, editingTask.assignedTo))
+      form.reset(editingTaskValues(editingTask, assigneeOptions))
       // expand details when editing since they likely want to see everything
       setDetailsOpen(true)
     } else {
       form.reset(newScheduleItemValues())
-      setAssignedOptionId(null)
       setDetailsOpen(false)
       resetTemplateSelection()
     }
@@ -188,8 +184,6 @@ export function ScheduleItemFormDialog({
     if (isEditing) {
       const result = await updateTask(editingTask.id, {
         ...taskValues,
-        assignedTo: taskValues.assignedTo || null,
-        assignedOptionId,
         acceptChangeProposal: proposalState.acceptProposalOnSave,
         shiftReason: shiftReasonResult?.success
           ? shiftReasonResult.reason
@@ -203,8 +197,6 @@ export function ScheduleItemFormDialog({
     } else {
       const result = await createTask(projectId, {
         ...taskValues,
-        assignedTo: taskValues.assignedTo || undefined,
-        assignedOptionId,
         templateScheduleItemId: template.selectedTemplateItemId || null,
         templateTodoIds: template.selectedTemplateTodoIds
       })
@@ -315,7 +307,6 @@ export function ScheduleItemFormDialog({
                 editingTask={editingTask}
                 hasPredecessors={hasPredecessors}
                 assigneeOptions={assigneeOptions}
-                setAssignedOptionId={setAssignedOptionId}
                 proposalState={proposalState}
                 predecessors={predecessors}
               />

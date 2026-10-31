@@ -61,6 +61,15 @@ export interface ScheduleTaskData {
   createdAt: string
   updatedAt: string
   assignees?: readonly ScheduleTaskAssigneeData[]
+  /** Everyone assigned, in picked order (schedule_task_people). */
+  people?: readonly ScheduleTaskPersonData[]
+}
+
+/** One person assigned to a schedule item. All assignees are equal. */
+export interface ScheduleTaskPersonData {
+  readonly name: string
+  readonly assignedUserId: string | null
+  readonly projectContactId: string | null
 }
 
 export interface ScheduleTaskAssigneeData {

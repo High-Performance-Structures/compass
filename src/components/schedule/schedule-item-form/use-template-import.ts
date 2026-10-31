@@ -34,8 +34,7 @@ export interface TemplateImportState {
 export function useTemplateImport(
   open: boolean,
   isEditing: boolean,
-  form: UseFormReturn<ScheduleItemFormValues>,
-  setAssignedOptionId: (id: string | null) => void
+  form: UseFormReturn<ScheduleItemFormValues>
 ): TemplateImportState {
   const [templateGroups, setTemplateGroups] = useState<
     readonly ScheduleTemplateImportGroup[] | null
@@ -91,12 +90,15 @@ export function useTemplateImport(
     form.setValue("phase", item.phase, { shouldDirty: true })
     form.setValue("displayColor", item.displayColor, { shouldDirty: true })
     form.setValue("isMilestone", item.isMilestone, { shouldDirty: true })
-    form.setValue("assignedTo", item.assignedTo ?? "", { shouldDirty: true })
+    form.setValue(
+      "assignees",
+      item.assignedTo?.trim() ? [{ name: item.assignedTo.trim(), optionId: null }] : [],
+      { shouldDirty: true }
+    )
     form.setValue("ownerVisible", item.ownerVisible, { shouldDirty: true })
     form.setValue("subVendorVisible", item.subVendorVisible, {
       shouldDirty: true
     })
-    setAssignedOptionId(null)
   }
 
   function chooseTemplate(templateId: string): void {
@@ -111,10 +113,9 @@ export function useTemplateImport(
       shouldDirty: true
     })
     form.setValue("isMilestone", false, { shouldDirty: true })
-    form.setValue("assignedTo", "", { shouldDirty: true })
+    form.setValue("assignees", [], { shouldDirty: true })
     form.setValue("ownerVisible", true, { shouldDirty: true })
     form.setValue("subVendorVisible", false, { shouldDirty: true })
-    setAssignedOptionId(null)
   }
 
   function toggleTemplateTodo(todoId: string, selected: boolean): void {

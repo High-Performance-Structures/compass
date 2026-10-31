@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest"
 
 import { getDb } from "@/db"
 import { loadWorkingSchedule } from "@/lib/domain/schedule/queries"
+import { assignProjectTasks, replaceTaskPeopleQueries } from "@/lib/domain/schedule/store"
+import { insertStatements, planScheduleTaskPeopleBackfill } from "../../../../../scripts/lib/schedule-task-people-backfill.mjs"
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle")
 const D1_MAX_BOUND_PARAMETERS = 100
@@ -94,6 +96,65 @@ describe("loadWorkingSchedule assignees", () => {
     expect(schedule.tasks.every((task) => (task.assignees ?? []).length === 1)).toBe(true)
     const last = schedule.tasks.find((task) => task.id === "t149")
     expect(last?.assignees?.[0]?.participantId).toBe("participant-149")
+    sqlite.close()
+  })
+
+  it("stores and reads every person on an item, in picked order, and replaces them", async () => {
+    const sqlite = migratedDatabase()
+    sqlite.pragma("foreign_keys = OFF")
+    const now = "2026-10-31T00:00:00.000Z"
+    sqlite.prepare("INSERT INTO projects (id, name, organization_id, created_at) VALUES ('p1', 'Job', 'org', ?)").run(now)
+    sqlite
+      .prepare(
+        "INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase, sort_order, assigned_to, created_at, updated_at) VALUES ('t1', 'p1', 'Framing', '2026-11-02', 1, '2026-11-02', 'Framing', 0, 'Ann Lee, Bo Diaz', ?, ?)"
+      )
+      .run(now, now)
+    const db = d1(sqlite)
+    const people = [
+      { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
+      { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo" },
+    ]
+    const [first, ...rest] = replaceTaskPeopleQueries(db, "t1", people, now)
+    if (!first) throw new Error("expected statements")
+    await db.batch([first, ...rest])
+
+    expect((await loadWorkingSchedule(db, "p1")).tasks[0]?.people).toEqual(people)
+
+    await assignProjectTasks(db, "p1", [{ id: "t1", confirmationRequired: false }], "Cy Ross", now)
+    const reassigned = (await loadWorkingSchedule(db, "p1")).tasks[0]
+    expect(reassigned?.assignedTo).toBe("Cy Ross")
+    expect(reassigned?.people).toEqual([{ name: "Cy Ross", assignedUserId: null, projectContactId: null }])
+    sqlite.close()
+  })
+
+  it("backfills one person per single assignee and is a no-op on a re-run", () => {
+    const sqlite = migratedDatabase()
+    sqlite.pragma("foreign_keys = OFF")
+    const now = "2026-10-31T00:00:00.000Z"
+    const insertTask = sqlite.prepare(
+      "INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase, sort_order, assigned_to, assigned_user_id, created_at, updated_at) VALUES (?, 'p1', 'Item', '2026-11-02', 1, '2026-11-02', 'Framing', 0, ?, ?, ?, ?)"
+    )
+    insertTask.run("t1", "Smith, John", "u1", now, now)
+    insertTask.run("t2", "O'Neil Framing", null, now, now)
+    let next = 0
+    const plan = planScheduleTaskPeopleBackfill(
+      [
+        { id: "t1", assigned_to: "Smith, John", assigned_user_id: "u1" },
+        { id: "t2", assigned_to: "O'Neil Framing", assigned_user_id: null },
+        { id: "t3", assigned_to: "  ", assigned_user_id: null },
+      ],
+      { now, newId: () => `row-${(next += 1)}` }
+    )
+    expect(plan.skipped).toEqual([{ id: "t3", reason: "blank assigned_to" }])
+    const statements = insertStatements(plan.rows)
+    for (const statement of [...statements, ...statements]) sqlite.exec(statement)
+
+    expect(
+      sqlite.prepare("SELECT schedule_task_id, position, display_name, assigned_user_id FROM schedule_task_people ORDER BY schedule_task_id").all()
+    ).toEqual([
+      { schedule_task_id: "t1", position: 0, display_name: "Smith, John", assigned_user_id: "u1" },
+      { schedule_task_id: "t2", position: 0, display_name: "O'Neil Framing", assigned_user_id: null },
+    ])
     sqlite.close()
   })
 })

@@ -12,6 +12,12 @@ import {
   wouldCreateCycle,
   wouldDependencyUpdateCreateCycle,
 } from "@/lib/schedule/dependency-validation"
+import {
+  joinAssigneeNames,
+  MAX_SCHEDULE_ASSIGNEES,
+  normalizeAssigneeInputs,
+  type ScheduleAssigneeInput,
+} from "@/lib/schedule/assignees"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import { propagateDates, recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import type {
@@ -19,6 +25,7 @@ import type {
   ExceptionCategory,
   ExceptionRecurrence,
   ScheduleTaskData,
+  ScheduleTaskPersonData,
   TaskDependencyData,
   TaskStatus,
   WorkdayExceptionData,
@@ -259,6 +266,50 @@ export function schedulePaths(projectId: string): readonly string[] {
     "/dashboard",
     "/dashboard/schedule",
   ]
+}
+
+/** What a create or edit asks about assignees, from the form or a legacy caller. */
+export type AssigneeRequest = {
+  readonly assignees?: readonly ScheduleAssigneeInput[]
+  readonly assignedTo?: string | null
+  readonly assignedOptionId?: string | null
+}
+
+/**
+ * The assignee list a request sets: the form's `assignees`, or the single
+ * legacy `assignedTo` (with its picked option) that older callers send.
+ * Undefined leaves the assignees alone; an error names a list that is too long.
+ */
+export function requestedAssignees(
+  request: AssigneeRequest
+): { readonly inputs: ScheduleAssigneeInput[] } | { readonly error: string } | undefined {
+  const raw =
+    request.assignees ??
+    (request.assignedTo === undefined
+      ? undefined
+      : request.assignedTo
+        ? [{ name: request.assignedTo, optionId: request.assignedOptionId ?? null }]
+        : [])
+  if (raw === undefined) return undefined
+  const inputs = normalizeAssigneeInputs(raw)
+  if (inputs.length > MAX_SCHEDULE_ASSIGNEES) {
+    return { error: `Assign at most ${MAX_SCHEDULE_ASSIGNEES} people to one schedule item.` }
+  }
+  return { inputs }
+}
+
+/**
+ * The legacy columns for an assignee list: every name joined for
+ * assigned_to, and the first linked account for assigned_user_id.
+ */
+export function legacyAssignment(people: readonly ScheduleTaskPersonData[]): {
+  readonly assignedTo: string | null
+  readonly assignedUserId: string | null
+} {
+  return {
+    assignedTo: joinAssigneeNames(people.map((person) => person.name)),
+    assignedUserId: people.find((person) => person.assignedUserId !== null)?.assignedUserId ?? null,
+  }
 }
 
 /** Fields of a schedule item edit that map straight onto the stored row. */

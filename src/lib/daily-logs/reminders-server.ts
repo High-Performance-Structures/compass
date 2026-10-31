@@ -12,6 +12,7 @@ import {
   workCalendarEvents,
 } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
+import { scheduleTaskPeople } from "@/db/schema-participants"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import {
   isFieldRole,
@@ -136,7 +137,14 @@ export async function staffMissingDailyLogs(
   if (staff.length === 0) return []
   const staffIds = staff.map((member) => member.userId)
 
-  const [logged, dutyLogged, absent, scheduled] = await Promise.all([
+  // An item's open window counts for everyone assigned to it (all equal).
+  const scheduledToday = and(
+    eq(projects.organizationId, organizationId),
+    lte(scheduleTasks.startDate, date),
+    gte(scheduleTasks.endDateCalculated, date),
+    ne(scheduleTasks.status, "COMPLETE"),
+  )
+  const [logged, dutyLogged, absent, scheduledFirst, scheduledPeople] = await Promise.all([
     Promise.all(
       chunks(staffIds).map((ids) =>
         db.select({ userId: dailyLogs.authorId }).from(dailyLogs).where(and(eq(dailyLogs.logDate, date), inArray(dailyLogs.authorId, [...ids]))),
@@ -155,15 +163,15 @@ export async function staffMissingDailyLogs(
       .select({ userId: scheduleTasks.assignedUserId, projectId: projects.id, name: projects.name, projectNumber: projects.projectNumber })
       .from(scheduleTasks)
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
-      .where(
-        and(
-          eq(projects.organizationId, organizationId),
-          lte(scheduleTasks.startDate, date),
-          gte(scheduleTasks.endDateCalculated, date),
-          ne(scheduleTasks.status, "COMPLETE"),
-        ),
-      ),
+      .where(scheduledToday),
+    db
+      .select({ userId: scheduleTaskPeople.assignedUserId, projectId: projects.id, name: projects.name, projectNumber: projects.projectNumber })
+      .from(scheduleTaskPeople)
+      .innerJoin(scheduleTasks, eq(scheduleTasks.id, scheduleTaskPeople.scheduleTaskId))
+      .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
+      .where(scheduledToday),
   ])
+  const scheduled = [...scheduledFirst, ...scheduledPeople]
   const done = new Set<string>()
   for (const row of [...logged.flat(), ...dutyLogged.flat()]) if (row.userId) done.add(row.userId)
   const scheduledProject = new Map<string, { readonly id: string; readonly label: string }>()

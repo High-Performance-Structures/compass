@@ -725,6 +725,9 @@
     "scheduleTaskLinks": [
       "src/lib/domain/schedule/store.ts"
     ],
+    "scheduleTaskPeople": [
+      "src/lib/domain/schedule/store.ts"
+    ],
     "scheduleTasks": [
       "src/lib/domain/schedule/store.ts"
     ],
@@ -873,7 +876,7 @@
     "src/app/actions/project-change-orders.ts": 1553,
     "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1432,
-    "src/app/actions/schedule-confirmations.ts": 1393,
+    "src/app/actions/schedule-confirmations.ts": 1344,
     "src/app/actions/social-posts.ts": 1123,
     "src/app/actions/voice-sessions.ts": 982,
     "src/app/api/google/project-manager-handoff/route.ts": 816,
@@ -893,7 +896,6 @@
     "src/components/projects/project-purchase-order-create-form.tsx": 1043,
     "src/components/projects/project-rfq-edit-form.tsx": 1069,
     "src/components/projects/projects-hub.tsx": 1670,
-    "src/components/schedule/schedule-list-view.tsx": 814,
     "src/components/schedule/work-calendar-event-dialog.tsx": 815,
     "src/components/schedule/work-calendar.tsx": 830,
     "src/components/settings/ai-model-tab.tsx": 1379,
