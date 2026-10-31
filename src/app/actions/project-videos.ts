@@ -33,6 +33,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
@@ -80,11 +81,9 @@ async function projectVideoDb(
   projectId: string,
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "project-photos", action)
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)

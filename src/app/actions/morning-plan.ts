@@ -14,6 +14,7 @@ import type { TodaysPlan, WeekLoad } from "@/lib/morning-plan/plan"
 import { loadPlanForUser, loadTeamWorkload, type TeamWorkloadRow } from "@/lib/morning-plan/server"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -50,11 +51,9 @@ async function myOtherNames(db: ReturnType<typeof getDb>, userId: string): Promi
 /** The signed-in staff member's plan for today; null when it doesn't apply. */
 export async function getMyTodaysPlan(): Promise<Result<{ readonly plan: TodaysPlan; readonly load: WeekLoad | null } | null>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = staffOrganization(user)
     if (!organizationId) return { success: true, data: null }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const data = await loadPlanForUser(db, organizationId, {
       id: user.id,
       email: user.email,
@@ -85,11 +84,9 @@ export async function getTeamWorkload(): Promise<Result<readonly TeamWorkloadRow
 
 export async function getMyMorningPlanPreferences(): Promise<Result<MorningPlanPreferences | null>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = staffOrganization(user)
     if (!organizationId) return { success: true, data: null }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const settings = await readFeatureSettings(db, organizationId, "morning-plan")
     if (!settings.enabled) return { success: true, data: null }
     const [row] = await db
@@ -115,14 +112,12 @@ export async function saveMyMorningPlanPreferences(input: {
   readonly digestHour: number
 }): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const organizationId = staffOrganization(user)
     if (!organizationId) return { success: false, error: "Today's plan is for staff only." }
     if (!Number.isInteger(input.digestHour) || input.digestHour < 5 || input.digestHour > 11) {
       return { success: false, error: "Pick a time between 5 AM and 11 AM." }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const settings = await readFeatureSettings(db, organizationId, "morning-plan")
     if (input.digestEnabled && (!settings.enabled || !settings.allowDailyDigest)) {
       return { success: false, error: "Your company has turned off the daily plan email." }

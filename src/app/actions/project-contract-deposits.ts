@@ -13,7 +13,6 @@ import {
 } from "@/db/schema"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
-import { requireAuth } from "@/lib/auth"
 import { contractDepositCents } from "@/lib/contracts/packet"
 import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -23,6 +22,7 @@ import { projectDepositRequests, type DepositRequestSummary } from "@/lib/deposi
 import { assertProjectAccess } from "@/lib/project-access"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ProjectContractDepositStatus = "requested" | "received" | "void"
 
@@ -78,12 +78,10 @@ type DepositActionResult =
 const PAYMENT_METHODS: ReadonlySet<string> = new Set(["check", "ach", "wire", "card", "cash", "other"])
 
 async function depositAccess(projectId: string, write: boolean) {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", write ? "update" : "read")
   if (!isInternalStaffRole(user.role)) throw new Error("Only staff can manage contract deposits.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const project = await db
     .select({ id: projects.id })
     .from(projects)

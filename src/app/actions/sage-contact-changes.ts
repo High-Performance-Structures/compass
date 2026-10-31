@@ -33,6 +33,7 @@ import {
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const kindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",
@@ -71,11 +72,9 @@ export type MySageContactProposalStatus = {
 }
 
 export async function listMySageContactProposalStatuses(): Promise<readonly MySageContactProposalStatus[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!user.isActive) return []
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return db.select({
     id: sageContactChangeProposals.id,
     kind: sageContactChangeProposals.kind,
@@ -314,11 +313,9 @@ export async function proposeSageContactChange(
 }
 
 export async function listSageContactChangeProposals(): Promise<readonly SageContactProposalListItem[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   const orgId = requireOrg(user)
   await requireFeaturePermission(user, "sage-contact-review", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const rows = await db.select().from(sageContactChangeProposals)
     .where(eq(sageContactChangeProposals.organizationId, orgId))
     .orderBy(desc(sageContactChangeProposals.requestedAt)).limit(100)

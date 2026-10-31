@@ -2,15 +2,12 @@
 
 import { and, eq, isNotNull, sql } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import {
   buildertrendArchiveFiles,
   buildertrendModuleAttestations,
   buildertrendSourceRecords,
 } from "@/db/schema-buildertrend"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import {
   moduleForArchiveFileType,
   moduleForSourceRecordType,
@@ -20,6 +17,7 @@ import {
 } from "@/lib/buildertrend/module-coverage"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type BuildertrendCutoverStatusCount = {
   readonly status: string
@@ -41,13 +39,11 @@ function numberValue(value: unknown): number {
 }
 
 export async function getBuildertrendCutoverCoverage(): Promise<BuildertrendCutoverCoverage> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!canManageProjectRegistry(user)) {
     throw new Error("Project administration permission is required")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const projectRows = await db
     .select({ id: projects.id, status: projects.status })

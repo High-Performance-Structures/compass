@@ -3,11 +3,8 @@
 import { and, asc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { estimateTermsTemplates } from "@/db/schema-estimates"
-import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
-import { getCloudflareContext } from "@/lib/db"
 import {
   BUILT_IN_ESTIMATE_TEXT_TEMPLATES,
   isEstimateTextTemplateType,
@@ -21,6 +18,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type EstimateTextTemplateLibraryItem = EstimateTextTemplateOption & {
   readonly builtIn: boolean
@@ -75,12 +73,10 @@ function databaseTemplateOption(
 export async function getEstimateTextTemplateLibrary(): Promise<
   readonly EstimateTextTemplateLibraryItem[]
 > {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "budget", "read")
   if (!isInternalStaffRole(user.role)) return []
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const rows = await db
     .select()
     .from(estimateTermsTemplates)
@@ -117,7 +113,7 @@ export async function saveEstimateTextTemplateLibraryItem(
   input: SaveEstimateTextTemplateLibraryInput
 ): Promise<SaveEstimateTextTemplateLibraryResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -126,8 +122,6 @@ export async function saveEstimateTextTemplateLibraryItem(
       throw new Error("Template management is limited to internal staff.")
     }
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const builtIn = input.templateId?.startsWith("builtin:")
       ? BUILT_IN_ESTIMATE_TEXT_TEMPLATES.find(

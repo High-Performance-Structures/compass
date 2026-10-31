@@ -1,10 +1,7 @@
 "use server"
 
 import { eq } from "drizzle-orm"
-import { getCloudflareContext } from "@/lib/db"
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { getCurrentUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { insertCustomDashboard, updateCustomDashboard } from "@/lib/domain/settings/store"
@@ -15,8 +12,15 @@ import {
   getCustomDashboardForUser,
   listCustomDashboardsForUser,
 } from "@/lib/dashboards/user-dashboards"
+import { userContext, type UserContext } from "@/lib/server/action-context"
 
 const MAX_DASHBOARDS = 5
+
+/** The signed-in user and database, or null when signed out ("not authenticated"). */
+async function dashboardContext(): Promise<UserContext | null> {
+  const context = await userContext()
+  return context.success ? context.data : null
+}
 
 interface SavedQuery {
   readonly key: string
@@ -38,11 +42,10 @@ export async function getCustomDashboards(): Promise<
     }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await dashboardContext()
+  if (!context) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const dashboards = await listCustomDashboardsForUser(getDb(env.DB), user.id)
+  const dashboards = await listCustomDashboardsForUser(context.db, context.user.id)
   return { success: true, data: dashboards }
 }
 
@@ -63,11 +66,10 @@ export async function getCustomDashboardById(
     }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await dashboardContext()
+  if (!context) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  return getCustomDashboardForUser(getDb(env.DB), user.id, dashboardId)
+  return getCustomDashboardForUser(context.db, context.user.id, dashboardId)
 }
 
 export async function saveCustomDashboard(
@@ -81,15 +83,13 @@ export async function saveCustomDashboard(
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await dashboardContext()
+  if (!context) return { success: false, error: "not authenticated" }
+  const { user, db } = context
 
   if (isDemoUser(user.id)) {
     return { success: false, error: "DEMO_READ_ONLY" }
   }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const now = new Date().toISOString()
   const id = existingId ?? crypto.randomUUID()
@@ -143,13 +143,12 @@ export async function deleteCustomDashboard(
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await dashboardContext()
+  if (!context) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
   const result = await deleteCustomDashboardForUser(
-    getDb(env.DB),
-    user.id,
+    context.db,
+    context.user.id,
     dashboardId,
   )
   if (result.success) revalidatePath("/", "layout")
@@ -165,13 +164,11 @@ export async function executeDashboardQueries(
     }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await dashboardContext()
+  if (!context) return { success: false, error: "not authenticated" }
+  const { user, db } = context
 
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   let queries: ReadonlyArray<SavedQuery>
   try {

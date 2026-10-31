@@ -4,7 +4,6 @@ import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { and, asc, desc, eq, gte, isNull, not, sql } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
@@ -19,9 +18,8 @@ import {
 import { sageBridgeStatus } from "@/db/schema-sage"
 import { selectSocialReminderProject, socialReadinessErrors } from "@/lib/social/readiness"
 import { socialPosts } from "@/db/schema-social"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
+import { requireUserContext } from "@/lib/server/action-context"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
@@ -265,16 +263,14 @@ function currentWeekStartIso(now = new Date()): string {
 
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   try {
-    const user = await requireAuth()
+    // Signed out or no database throws into the catch below: an empty overview, as before.
+    const { user, db, env } = await requireUserContext()
     const orgId = requireOrg(user)
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return emptyOverview()
     const sageBridgeConfig = getSageBridgeStatus(
       env as unknown as Record<string, string | undefined>
     )
 
-    const db = getDb(env.DB)
     const rankedDailyLogs = db
       .select({
         projectId: dailyLogs.projectId,

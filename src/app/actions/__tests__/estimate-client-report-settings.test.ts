@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({ getDb: vi.fn(), requireAuth: vi.fn(), getCloudflareContext: vi.fn(), requirePermission: vi.fn(), assertProjectAccess: vi.fn(), isInternalStaffRole: vi.fn(), revalidatePath: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))

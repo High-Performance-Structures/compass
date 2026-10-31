@@ -3,10 +3,7 @@
 import { and, asc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
-import { getDb } from "@/db"
 import { projectJobStatuses, projectSavedViews, userViewPreferences, users } from "@/db/schema"
-import { getCurrentUser, requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
   deleteOwnedProjectSavedView,
@@ -15,7 +12,6 @@ import {
   saveUserViewPreference,
   updateOwnedProjectSavedView,
 } from "@/lib/domain/settings/store"
-import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import {
@@ -27,6 +23,7 @@ import {
   type ProjectViewPreferences,
   type SavedProjectView,
 } from "@/lib/project-views"
+import { orgContext, type Db } from "@/lib/server/action-context"
 
 type MutationResult = { readonly success: true } | { readonly success: false; readonly error: string }
 type SaveViewInput = {
@@ -43,16 +40,17 @@ const saveSchema = z.object({
   definition: projectViewDefinitionSchema.nullable(),
 })
 
-async function viewContext(): Promise<{ readonly db: ReturnType<typeof getDb>; readonly userId: string; readonly organizationId: string }> {
-  const user = await requireAuth()
-  const organizationId = requireOrg(user)
+async function viewContext(): Promise<{ readonly db: Db; readonly userId: string; readonly organizationId: string }> {
+  // Throws "Unauthorized" / "No active organization" as requireAuth and requireOrg did.
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  const { user, organizationId, db } = context.data
   if (!isInternalStaffRole(user.role)) throw new Error("Only internal staff can save project views.")
   if (isDemoUser(user.id) || isDemoOrg(organizationId)) throw new Error("Demo accounts are read-only.")
-  const { env } = await getCloudflareContext()
-  return { db: getDb(env.DB), userId: user.id, organizationId }
+  return { db, userId: user.id, organizationId }
 }
 
-async function statusExists(db: ReturnType<typeof getDb>, organizationId: string, definition: ProjectViewDefinition): Promise<boolean> {
+async function statusExists(db: Db, organizationId: string, definition: ProjectViewDefinition): Promise<boolean> {
   if (definition.status.kind !== "job") return true
   const statusId = definition.status.jobStatusId
   if (PROJECT_JOB_STATUS_DEFINITIONS.some((item) => item.id === statusId)) return true
@@ -68,16 +66,16 @@ function refreshViews(): void {
 
 export async function getProjectViewPreferences(): Promise<ProjectViewPreferences> {
   try {
-    const user = await getCurrentUser()
-    if (!user?.organizationId || !isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(user.organizationId)) {
+    const context = await orgContext()
+    if (!context.success) return { defaultDefinition: null, canSave: false, error: null }
+    const { user, organizationId, db } = context.data
+    if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) {
       return { defaultDefinition: null, canSave: false, error: null }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const row = await db.select({ value: userViewPreferences.value }).from(userViewPreferences)
-      .where(and(eq(userViewPreferences.userId, user.id), eq(userViewPreferences.viewKey, projectDefaultViewKey(user.organizationId)))).get()
+      .where(and(eq(userViewPreferences.userId, user.id), eq(userViewPreferences.viewKey, projectDefaultViewKey(organizationId)))).get()
     const parsed = row ? parseProjectViewDefinition(row.value) : null
-    const definition = parsed && await statusExists(db, user.organizationId, parsed) ? parsed : row ? DEFAULT_PROJECT_VIEW : null
+    const definition = parsed && await statusExists(db, organizationId, parsed) ? parsed : row ? DEFAULT_PROJECT_VIEW : null
     return { defaultDefinition: definition, canSave: true, error: null }
   } catch (error) {
     console.warn("Unable to load project view preferences", error)
@@ -109,18 +107,18 @@ export async function setDefaultProjectView(definition: ProjectViewDefinition | 
 
 export async function getProjectSavedViews(): Promise<{ readonly views: readonly SavedProjectView[]; readonly error: string | null }> {
   try {
-    const user = await getCurrentUser()
-    if (!user?.organizationId || !isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(user.organizationId)) return { views: [], error: null }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await orgContext()
+    if (!context.success) return { views: [], error: null }
+    const { user, organizationId, db } = context.data
+    if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) return { views: [], error: null }
     const [rows, customStatuses] = await Promise.all([
       db.select({ view: projectSavedViews, ownerName: users.displayName }).from(projectSavedViews)
         .innerJoin(users, eq(users.id, projectSavedViews.ownerUserId)).where(and(
-        eq(projectSavedViews.organizationId, user.organizationId),
+        eq(projectSavedViews.organizationId, organizationId),
         or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
       )).orderBy(asc(projectSavedViews.name)),
       db.select({ id: projectJobStatuses.id }).from(projectJobStatuses)
-        .where(and(eq(projectJobStatuses.organizationId, user.organizationId), eq(projectJobStatuses.active, true))),
+        .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true))),
     ])
     const availableStatusIds = new Set([
       ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id),

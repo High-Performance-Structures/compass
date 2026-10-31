@@ -4,10 +4,8 @@ import { and, eq, inArray, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getProjects } from "@/app/actions/projects"
-import { getDb } from "@/db"
 import { customers, projectContacts, projects, vendors } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -15,6 +13,7 @@ import { requirePermission } from "@/lib/permissions"
 import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
 import { insertProjectContactsIfMissing } from "@/lib/domain/contacts/store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type CompanyDirectoryKind = "customer" | "vendor"
 type AssociationProject = { readonly id: string; readonly name: string; readonly projectNumber: string | null }
@@ -43,7 +42,7 @@ export async function addCompaniesToProject(input: {
   readonly projectId: string
 }): Promise<AssociationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const orgId = requireOrg(user)
     if (isDemoUser(user.id) || isDemoOrg(orgId)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "project-contacts", "update")
@@ -63,8 +62,6 @@ export async function addCompaniesToProject(input: {
       return { success: false, error: "Project is not available for assignment." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db.select({ id: projects.id }).from(projects).where(and(
       eq(projects.id, input.projectId), eq(projects.organizationId, orgId)
     )).get()

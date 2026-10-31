@@ -13,8 +13,7 @@ import {
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { insertProjectClientMeeting, updateProjectClientMeeting } from "@/lib/domain/media/store"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
@@ -34,6 +33,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 const MEET_SETTINGS_SCOPE = "https://www.googleapis.com/auth/meetings.space.settings"
@@ -130,13 +130,11 @@ async function meetingAccess(
   projectId: string,
   mutate: boolean
 ): Promise<MeetingAccess> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   if (mutate && isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
   if (!isInternalStaffRole(user.role)) throw new Error("Permission denied")
   await requireFeaturePermission(user, "schedule", mutate ? "update" : "read")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   await assertProjectAccess(db, user, projectId)
   const project = await db
     .select({

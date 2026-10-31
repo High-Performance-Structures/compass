@@ -2,15 +2,13 @@
 
 import { and, eq } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import type { ProjectTimeline } from "@/lib/project-timeline/model"
 import { loadProjectTimeline } from "@/lib/project-timeline/server"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -21,15 +19,13 @@ type Result<T> = { readonly success: true; readonly data: T } | { readonly succe
  */
 export async function getProjectTimeline(projectId: string, to?: string): Promise<Result<ProjectTimeline>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (!isInternalStaffRole(user.role) && user.role !== "developer") {
       return { success: false, error: "The project timeline is for staff." }
     }
     await requireFeaturePermission(user, "project-hub", "read")
     const organizationId = requireOrg(user)
     if (to !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return { success: false, error: "Choose a valid date." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)

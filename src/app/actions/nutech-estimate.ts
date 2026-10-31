@@ -4,7 +4,6 @@ import { readEstimateMode } from "@/lib/estimates/numbering"
 import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
 import { projectEstimateLines, projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { nuTechOrderItems, nuTechProducts } from "@/db/schema-nutech"
@@ -14,8 +13,6 @@ import {
   saveProjectEstimateLine,
   type ProjectEstimateLineInput,
 } from "@/app/actions/project-estimates"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { nuTechItemTaxable, nuTechShippingCents } from "@/lib/domain/nutech/rules"
 import { linkNuTechOrderEstimate } from "@/lib/domain/nutech/store"
@@ -27,6 +24,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { updateEstimates } from "@/lib/domain/estimates/store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -51,13 +49,11 @@ export async function createNuTechEstimateFromOrder(
   orderId?: string | null,
 ): Promise<Result<NuTechEstimateFromOrderResult>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     await requireFeaturePermission(user, "nutech-orders", "update")
     const organizationId = requireOrg(user)
     if (isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db
       .select({ id: projects.id, projectNumber: projects.projectNumber })
       .from(projects)

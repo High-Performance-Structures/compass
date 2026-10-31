@@ -19,7 +19,6 @@ import {
   projectContractBudgetLines,
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
-import { requireAuth } from "@/lib/auth"
 import {
   payApplicationChangeOrders,
   type PayApplicationChangeOrder,
@@ -67,6 +66,7 @@ import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
 } from "@/lib/project-budget-snapshot"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type ProjectFinancialWorkflowItem = {
   readonly id: string
@@ -206,11 +206,9 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
   readonly project: ProjectHeader
 }> {
   await assertAudiencePreviewWriteAllowed()
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", "update")
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const [project] = await db
     .select({

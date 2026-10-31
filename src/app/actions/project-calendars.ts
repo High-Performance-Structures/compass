@@ -11,8 +11,7 @@ import {
   projects,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { upsertProjectCalendarChoice } from "@/lib/domain/calendars/store"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
@@ -28,6 +27,7 @@ import {
 } from "@/lib/project-calendars/sync"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -67,12 +67,10 @@ type Context = {
 }
 
 async function context(projectId: string): Promise<Context | null> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   // Project calendars are staff-only; clients and vendors never see them.
   if (!isInternalStaffRole(user.role) && user.role !== "developer") return null
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const access = await getProjectAccessRecord(db, user, projectId)
   if (!access || access.organizationId !== organizationId) return null
   const project = await db

@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   readFeatureSettings: vi.fn(),
 }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/org-scope", () => ({ requireOrg: () => "org" }))
 vi.mock("@/lib/demo", () => ({ isDemoUser: (id: string) => id === "demo" }))
 vi.mock("@/lib/permissions", () => ({ can: mocks.can }))

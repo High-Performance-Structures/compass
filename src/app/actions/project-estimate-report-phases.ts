@@ -8,8 +8,7 @@ import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { projectEstimateLines, projectEstimateReportPhases, projectEstimates } from "@/db/schema-estimates"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import { validateEstimateReportPhase, type EstimateReportPhaseInput } from "@/lib/estimates/report-phases"
 import { estimateCanBeEdited, isEstimateStatus } from "@/lib/domain/estimates/rules"
 import {
@@ -23,6 +22,7 @@ import {
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type PhaseAccess = {
   readonly db: ReturnType<typeof getDb>
@@ -31,11 +31,9 @@ type PhaseAccess = {
 }
 
 async function phaseAccess(projectId: string, estimateId: string, deleting: boolean): Promise<PhaseAccess> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "budget", deleting ? "delete" : "update")
   if (!isInternalStaffRole(user.role)) throw new Error("Only authorized internal staff can edit estimate phases.")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   await assertProjectAccess(db, user, projectId)
   const [estimateRows, projectRows] = await Promise.all([
     db.select({ status: projectEstimates.status }).from(projectEstimates).where(and(eq(projectEstimates.id, estimateId), eq(projectEstimates.projectId, projectId))).limit(1),

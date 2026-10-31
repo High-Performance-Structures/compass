@@ -1,10 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq, and, or, sql, isNull } from "drizzle-orm"
-import { getDb } from "@/db"
 import { customers } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
@@ -32,6 +29,7 @@ import {
   changesSageLinkedCustomerIdentity,
 } from "@/lib/sage/contact-edit-gate"
 import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type CreateCustomerInput = {
   readonly name: string
@@ -77,12 +75,9 @@ const customerDirectoryUpdateSchema = z.strictObject({
 })
 
 export async function getCustomers() {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   return db.select().from(customers).where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
 }
@@ -91,7 +86,7 @@ export async function createCustomer(
   data: CreateCustomerInput
 ) {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -100,9 +95,6 @@ export async function createCustomer(
     requirePermission(user, "customer", "create")
     await requireFeaturePermission(user, "customers", "create")
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -182,7 +174,7 @@ export async function createCustomerDirectoryContact(
   data: CreateCustomerDirectoryContactInput
 ) {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -196,8 +188,6 @@ export async function createCustomerDirectoryContact(
       return { success: false, error: "Choose Client or Lead." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const company = data.company?.trim() || null
     const email = data.email?.trim() || null
     const phone = data.phone?.trim() || null
@@ -279,7 +269,7 @@ export async function updateCustomer(
   data: unknown
 ) {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -293,9 +283,6 @@ export async function updateCustomer(
     if (patch.name !== undefined && !patch.name.trim()) {
       return { success: false, error: "Client name is required." }
     }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select()
@@ -383,16 +370,13 @@ export async function updateCustomer(
 
 export async function deleteCustomer(id: string) {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     await requireFeaturePermission(user, "customers", "delete")
     requirePermission(user, "customer", "delete")
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db.select({ mergedIntoCustomerId: customers.mergedIntoCustomerId })
       .from(customers).where(and(eq(customers.id, id), eq(customers.organizationId, orgId))).get()

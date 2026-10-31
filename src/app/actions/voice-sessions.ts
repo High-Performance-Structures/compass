@@ -20,6 +20,7 @@ import {
   getVoiceChannelAccess,
   type VoiceChannelAccess,
 } from "@/lib/voice-channel-access"
+import { userContext } from "@/lib/server/action-context"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
@@ -647,12 +648,11 @@ export async function joinVoiceSession(
   }>
 > {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
@@ -770,11 +770,10 @@ export async function leaveVoiceSession(
   channelId: string
 ): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
@@ -811,11 +810,10 @@ export async function updateVoicePresence(
   state: { readonly isMuted: boolean; readonly isDeafened: boolean }
 ): Promise<VoiceActionResult<{ readonly participants: readonly VoiceParticipantData[] }>> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
@@ -854,8 +852,9 @@ export async function sendVoiceSignal(input: {
   readonly payloadJson: string
 }): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
 
     const signalType = normalizeSignalType(input.signalType)
@@ -864,8 +863,6 @@ export async function sendVoiceSignal(input: {
       return { success: false, error: "Signal payload is too large" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const channel = await getVoiceChannelAccess(db, user, input.channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
@@ -914,11 +911,10 @@ export async function pollVoiceSession(
   }>
 > {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { success: false, error: "Unauthorized" }
+    const context = await userContext()
+    if (!context.success) return { success: false, error: "Unauthorized" }
+    const { user, db } = context.data
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 

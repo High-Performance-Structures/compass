@@ -2,13 +2,11 @@
 
 import { and, eq } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type MyContactRecord = {
   readonly kind: SageContactKind
@@ -20,11 +18,9 @@ export type MyContactRecord = {
 
 /** Only explicit person-to-login foreign keys qualify for self-service. */
 export async function getMyContactRecords(): Promise<readonly MyContactRecord[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!user.isActive) return []
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [clients, vendorsList, employees] = await Promise.all([
     db.select({
       id: customerContacts.id, name: customerContacts.name,

@@ -2,12 +2,9 @@
 
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projectFieldCostCodes, projects } from "@/db/schema"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { deleteOrganizationFeatureSettingStatement, saveOrganizationFeatureSettingStatement } from "@/lib/domain/settings/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
@@ -19,6 +16,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 type SaveResult = { readonly success: true } | { readonly success: false; readonly error: string }
@@ -36,11 +34,9 @@ function settingsActor(user: { readonly id: string; readonly email: string; read
   return { id: user.id, email: user.email, displayName: user.displayName ?? null, firstName: null, lastName: null, role: user.role }
 }
 async function context(projectId?: string) {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!user.isActive || !isInternalStaffRole(user.role)) throw new Error("Field cost-code settings are available to active company staff.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   if (projectId) {
     await requireFeaturePermission(user, "project-hub", "read")
     const access = await getProjectAccessRecord(db, user, projectId)

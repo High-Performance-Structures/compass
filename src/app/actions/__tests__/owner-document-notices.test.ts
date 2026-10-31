@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   sendCompassEmail: vi.fn(),
 }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent, activityActorName: () => "Cassandra" }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {}, COMPASS_APP_URL: "https://compass.example.com/" } })) }))

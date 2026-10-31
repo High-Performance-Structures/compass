@@ -19,6 +19,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
 const fieldsSchema = z.record(z.string(), z.string().nullable())
@@ -120,11 +121,9 @@ export async function proposeSageContactCreate(
 }
 
 export async function listSageContactCreateProposals(): Promise<readonly SageContactCreateListItem[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "sage-contact-review", "read")
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const canSeeClients = await requireFeaturePermission(user, "customers", "read")
     .then(() => true).catch(() => false)
   const canSeeVendors = await requireFeaturePermission(user, "vendors", "read")

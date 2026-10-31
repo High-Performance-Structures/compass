@@ -3,10 +3,7 @@
 import { and, eq } from "drizzle-orm"
 import { headers } from "next/headers"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -17,15 +14,14 @@ import {
   type DrivePickerItem,
   type DrivePickerLocation,
 } from "@/lib/google/drive-picker"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
 async function pickerDrive() {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   if (!isInternalStaffRole(user.role)) throw new Error("Browsing Drive is for office staff.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const drive = await getOrganizationDriveContext({ db, environment: env, organizationId, user })
   return { ...drive, db, organizationId }
 }

@@ -1,19 +1,15 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
 import { userProviderConfig } from "@/db/schema-ai-config"
-import { getCurrentUser } from "@/lib/auth"
+import { userContext } from "@/lib/server/action-context"
 
 // Check if user already has OAuth configured
 export async function hasOAuthConfigured(): Promise<boolean> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return false
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await userContext()
+    if (!context.success) return false
+    const { user, db } = context.data
 
     const config = await db
       .select()

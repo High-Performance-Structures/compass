@@ -14,8 +14,7 @@ import {
   projectOperations,
   projectRfis,
 } from "@/db/schema"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import {
   notifyPurchaseOrderVendorUpdate,
   notifyRfiCreated,
@@ -45,6 +44,7 @@ import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { rfiInsertStatement } from "@/lib/domain/rfis/store"
 import { validRfiPriority } from "@/lib/rfis/status"
 import { resolveSubVendorRfiRecipient } from "@/lib/rfis/sub-vendor-recipient"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type SubVendorActionResult =
   | { readonly success: true; readonly id: string }
@@ -126,9 +126,7 @@ async function getSubVendorWriteContext(
   projectId: string
 ): Promise<SubVendorWriteContext> {
   await assertAudiencePreviewWriteAllowed()
-  const user = await requireAuth()
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { user, db } = await requireUserContext()
   const project = await assertProjectAccess(db, user, projectId)
   if (!project.organizationId) throw new Error("Project organization is missing.")
 

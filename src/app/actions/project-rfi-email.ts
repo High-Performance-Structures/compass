@@ -3,11 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectRfis, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
@@ -15,6 +12,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { rfiEmailText } from "@/lib/rfis/email"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type SendProjectRfiEmailInput = {
   readonly to: readonly string[]
@@ -43,7 +41,7 @@ export async function sendProjectRfiEmail(
   input: SendProjectRfiEmailInput
 ): Promise<SendProjectRfiEmailResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "The demo is read-only." }
     await requireFeaturePermission(user, "rfis", "update")
     const organizationId = requireOrg(user)
@@ -60,8 +58,6 @@ export async function sendProjectRfiEmail(
     if (!subject || subject.length > 300) return { success: false, error: "Enter a subject." }
     if (message.length > 10_000) return { success: false, error: "The message is too long." }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db
       .select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber })
       .from(projects)

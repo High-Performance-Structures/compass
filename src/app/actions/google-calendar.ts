@@ -9,7 +9,6 @@ import {
   googleCalendarSelections,
   googleProjectCalendars,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -33,6 +32,7 @@ import {
 import { syncGoogleCalendarSelection } from "@/lib/google/calendar/sync"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type GoogleCalendarSelectionStatus = {
   readonly id: string
@@ -114,11 +114,9 @@ async function connectionAccessToken(input: {
 }
 
 export async function getGoogleCalendarConnectionStatus(): Promise<GoogleCalendarConnectionStatus> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   requirePermission(user, "schedule", "read")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const connection = await db
     .select({
       id: googleCalendarConnections.id,
@@ -204,14 +202,12 @@ export async function getGoogleCalendarConnectionStatus(): Promise<GoogleCalenda
 
 export async function refreshGoogleCalendarList(): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     requirePermission(user, "schedule", "read")
     const organizationId = requireOrg(user)
     if (!canConnectGoogleCalendar({ userId: user.id, role: user.role })) {
       return { success: false, error: "Google Calendar is staff-only." }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const connection = await ownConnection(organizationId, user.id)
     if (!connection) return { success: false, error: "Connect Google Calendar first." }
     const token = await connectionAccessToken({
@@ -246,11 +242,9 @@ export async function configureGoogleCalendarSelection(
   input: GoogleCalendarSelectionConfiguration,
 ): Promise<ActionResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const selection = await db
       .select({
         id: googleCalendarSelections.id,
@@ -318,11 +312,9 @@ export async function syncSelectedGoogleCalendar(selectionId: string): Promise<
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     requirePermission(user, "schedule", "read")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const selection = await db
       .select({
         ownerUserId: googleCalendarConnections.userId,
@@ -362,14 +354,12 @@ export async function disconnectGoogleCalendar(): Promise<
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     requirePermission(user, "schedule", "read")
     if (!canConnectGoogleCalendar({ userId: user.id, role: user.role })) {
       return { success: false, error: "Google Calendar is staff-only." }
     }
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const connection = await ownConnection(organizationId, user.id)
     if (!connection) return { success: true, revoked: true }
     const managedProjectCalendar = await db
