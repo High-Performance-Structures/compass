@@ -4,6 +4,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 
+import ts from "typescript"
+
 const SOURCE_DIRS = ["src/app", "src/lib", "src/components", "src/hooks", "src/db"]
 const MAX_FILE_LINES = 800
 
@@ -66,6 +68,27 @@ function sorted(object) {
   return Object.fromEntries(Object.entries(object).sort(([a], [b]) => a.localeCompare(b)))
 }
 
+/** Real type escapes from the TypeScript AST (not `as const`, not imports or text). */
+function typeEscapes(path, text) {
+  const kind = path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, false, kind)
+  const counts = { assertions: 0, nonNull: 0, any: 0 }
+  const visit = (node) => {
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+      const type = node.type
+      const isConst = ts.isTypeReferenceNode(type) && type.typeName.getText(source) === "const"
+      if (!isConst) counts.assertions += 1
+    } else if (ts.isNonNullExpression(node)) {
+      counts.nonNull += 1
+    } else if (node.kind === ts.SyntaxKind.AnyKeyword) {
+      counts.any += 1
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  return counts
+}
+
 /** Every ratchet metric, keyed by rule. */
 function schemaTables(root, files) {
   const names = new Set()
@@ -97,6 +120,9 @@ export function computeArchitectureMetrics(root) {
   const actionImportsActions = {}
   const clientPages = {}
   const handRolledContext = {}
+  const typeAssertions = {}
+  const nonNullAssertions = {}
+  const explicitAny = {}
 
   for (const path of files) {
     const text = readFileSync(join(root, path), "utf8")
@@ -144,6 +170,11 @@ export function computeArchitectureMetrics(root) {
       clientPages[path] = 1
     }
 
+    const escapes = typeEscapes(path, text)
+    if (escapes.assertions > 0) typeAssertions[path] = escapes.assertions
+    if (escapes.nonNull > 0) nonNullAssertions[path] = escapes.nonNull
+    if (escapes.any > 0) explicitAny[path] = escapes.any
+
     if (path.startsWith("src/app/actions/") || path.startsWith("src/app/api/")) {
       const count = text.match(/getCloudflareContext\(\)/g)?.length ?? 0
       if (count > 0) handRolledContext[path] = count
@@ -161,6 +192,9 @@ export function computeArchitectureMetrics(root) {
     actionImportsActions: sorted(actionImportsActions),
     clientPages: sorted(clientPages),
     handRolledContext: sorted(handRolledContext),
+    typeAssertions: sorted(typeAssertions),
+    nonNullAssertions: sorted(nonNullAssertions),
+    explicitAny: sorted(explicitAny),
   }
 }
 
@@ -173,4 +207,7 @@ export const ARCHITECTURE_RULES = {
   actionImportsActions: "Server actions call domain modules, not other server action files (section 1).",
   clientPages: "page.tsx files are server components; load data on the server (section 6).",
   handRolledContext: "Start from the shared action context instead of calling getCloudflareContext() directly (section 2).",
+  typeAssertions: "No `as` type assertions (`as const` is fine): narrow with a type guard or fix the types (conventions: no `as`).",
+  nonNullAssertions: "No non-null `!` assertions: check for null explicitly (conventions: no `!`).",
+  explicitAny: "No `any`: use `unknown` and narrow (conventions: no `any`).",
 }

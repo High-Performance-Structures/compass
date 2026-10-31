@@ -9,7 +9,7 @@ Automated checks enforce the parts that can be tested:
 
 | Check | What it guards |
 |-------|----------------|
-| `src/lib/__tests__/architecture-standard.test.ts` | code ownership, shared helpers, layering, file size |
+| `src/lib/__tests__/architecture-standard.test.ts` | code ownership, shared helpers, layering, file size, type escapes (`as`, `!`, `any`) |
 | `src/db/__tests__/schema-integrity-standard.test.ts` | schema, foreign keys, indexes, migration drift |
 | `src/components/__tests__/polling-standard.test.ts` | network polling |
 | `bun run knip` (CI) | unused files and exports |
@@ -186,6 +186,13 @@ Use the shared modules for these jobs, and never define a local version:
   file already over the limit may not grow.
 - No new function over 300 lines. Split by responsibility.
 - No unused files or exports. Delete them; git keeps the history.
+
+## Type safety
+
+The TypeScript conventions in `conventions.md` are ratcheted. The parser,
+not a text search, counts each file's `x as T` assertions (`as const` is fine),
+non-null `!` assertions, and `any`. Existing counts may only fall. Narrow with a
+type guard (`src/lib/shared/guards.ts`) or fix the types instead.
 
 ## 8. Built for any company
 
