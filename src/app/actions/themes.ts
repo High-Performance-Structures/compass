@@ -1,12 +1,11 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
-  customThemes,
-  userThemePreference,
-} from "@/db/schema-theme"
+  deleteCustomTheme as deleteStoredCustomTheme,
+  resetUserThemePreference,
+} from "@/lib/domain/settings/store"
 import { getCurrentUser } from "@/lib/auth"
 import { listCustomThemesForUser, setThemePreferenceForUser } from "@/lib/theme/user-themes"
 import { revalidatePath } from "next/cache"
@@ -99,14 +98,7 @@ export async function deleteCustomTheme(
     return { success: false, error: "theme not found" }
   }
 
-  await db
-    .delete(customThemes)
-    .where(
-      and(
-        eq(customThemes.id, themeId),
-        eq(customThemes.userId, user.id),
-      ),
-    )
+  await deleteStoredCustomTheme(db, user.id, themeId)
 
   // reset preference if it was pointing to the deleted theme
   const pref = await db.query.userThemePreference.findFirst({
@@ -114,10 +106,7 @@ export async function deleteCustomTheme(
   })
   if (pref?.activeThemeId === themeId) {
     const now = new Date().toISOString()
-    await db
-      .update(userThemePreference)
-      .set({ activeThemeId: "native-compass", updatedAt: now })
-      .where(eq(userThemePreference.userId, user.id))
+    await resetUserThemePreference(db, user.id, "native-compass", now)
   }
 
   revalidatePath("/", "layout")

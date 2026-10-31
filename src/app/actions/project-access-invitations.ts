@@ -23,6 +23,12 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { cancelObsoleteInvitationEmails, deliverInvitationEmail } from "@/lib/email/invitation-delivery"
+import {
+  ensureExternalOrganizationMembership,
+  insertProjectAccessInvitation,
+  markProjectAccessInvitationExpired,
+  updateUser,
+} from "@/lib/domain/identity/store"
 import { invitationEmailNotice } from "@/lib/email/delivery-recovery"
 import { sendOrResendProjectWorkOSInvitation } from "@/lib/workos-invitations"
 import { requirePermission } from "@/lib/permissions"
@@ -109,46 +115,6 @@ async function ensureProjectMembership(input: {
     role: input.role,
     assignedAt: input.now,
   })
-}
-
-async function ensureExternalOrganizationMembership(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly userId: string
-  readonly role: string
-  readonly now: string
-}): Promise<void> {
-  const existing = await input.db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, input.userId),
-        eq(organizationMembers.organizationId, input.organizationId)
-      )
-    )
-    .get()
-  const role = input.role === "owner" ? "client" : input.role
-
-  if (existing) {
-    await input.db
-      .update(organizationMembers)
-      .set({ role })
-      .where(eq(organizationMembers.id, existing.id))
-      .run()
-    return
-  }
-
-  await input.db
-    .insert(organizationMembers)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId: input.organizationId,
-      userId: input.userId,
-      role,
-      joinedAt: input.now,
-    })
-    .run()
 }
 
 export async function sendProjectAccessInvitation(
@@ -455,11 +421,7 @@ export async function sendProjectAccessInvitation(
       // A pending invite may be lost in the recipient's inbox. Keep its send
       // history, then let WorkOS resend the current account invitation below.
       if (pendingStatus === "expired") {
-        await db
-          .update(projectAccessInvitations)
-          .set({ status: "expired", updatedAt: now })
-          .where(eq(projectAccessInvitations.id, pendingInvitation.id))
-          .run()
+        await markProjectAccessInvitationExpired(db, pendingInvitation.id, now)
       }
     }
     const internalMembership = activeExistingUser
@@ -527,19 +489,14 @@ export async function sendProjectAccessInvitation(
         !welcomeOnly && ((!activeExistingUser.phone && identity.phone) ||
         (!activeExistingUser.address && identity.address))
       ) {
-        await db
-          .update(users)
-          .set({
-            phone: activeExistingUser.phone ?? identity.phone,
-            address: activeExistingUser.address ?? identity.address,
-            updatedAt: now,
-          })
-          .where(eq(users.id, activeExistingUser.id))
-          .run()
+        await updateUser(db, activeExistingUser.id, {
+          phone: activeExistingUser.phone ?? identity.phone,
+          address: activeExistingUser.address ?? identity.address,
+          updatedAt: now,
+        })
       }
       if (!welcomeOnly && !verifiedOrganizationMembership) {
-        await ensureExternalOrganizationMembership({
-          db,
+        await ensureExternalOrganizationMembership(db, {
           organizationId: row.organizationId,
           userId: activeExistingUser.id,
           role: requestedRole,
@@ -602,31 +559,27 @@ export async function sendProjectAccessInvitation(
       ? projectNumberAndName({ projectNumber: row.projectNumber, name: row.projectName }, " - ")
       : row.projectName
     const invitationId = crypto.randomUUID()
-    const inserted = await db
-      .insert(projectAccessInvitations)
-      .values({
-        id: invitationId,
-        organizationId: row.organizationId,
-        projectId: parsed.data.projectId,
-        projectContactId: row.contact.id,
-        email: inviteEmail,
-        role: membershipRole,
-        status: accessStatus === "access_granted" ? "accepted" : "sent",
-        workosInvitationId,
-        workosExpiresAt,
-        emailStatus: "queued",
-        emailSubject: parsed.data.subject,
-        emailMessage: parsed.data.message,
-        emailNextAttemptAt: now,
-        invitedBy: currentUser.id,
-        invitedAt: now,
-        acceptedBy: activeExistingUser?.id ?? null,
-        acceptedAt: activeExistingUser ? now : null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .returning({ id: projectAccessInvitations.id })
+    const inserted = await insertProjectAccessInvitation(db, {
+      id: invitationId,
+      organizationId: row.organizationId,
+      projectId: parsed.data.projectId,
+      projectContactId: row.contact.id,
+      email: inviteEmail,
+      role: membershipRole,
+      status: accessStatus === "access_granted" ? "accepted" : "sent",
+      workosInvitationId,
+      workosExpiresAt,
+      emailStatus: "queued",
+      emailSubject: parsed.data.subject,
+      emailMessage: parsed.data.message,
+      emailNextAttemptAt: now,
+      invitedBy: currentUser.id,
+      invitedAt: now,
+      acceptedBy: activeExistingUser?.id ?? null,
+      acceptedAt: activeExistingUser ? now : null,
+      createdAt: now,
+      updatedAt: now,
+    })
     if (inserted.length === 0) return { success: true, accessStatus,
       warning: invitationEmailNotice("queued", null) }
 

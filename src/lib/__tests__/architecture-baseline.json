@@ -1,9 +1,7 @@
 {
   "tableWriters": {
     "accountDeletionRequests": [
-      "src/app/actions/account-deletion-admin.ts",
-      "src/app/actions/profile.ts",
-      "src/lib/account-deletion.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "activityEvents": [
       "src/app/actions/field-cost-codes.ts",
@@ -150,8 +148,7 @@
       "src/lib/domain/financials/store.ts"
     ],
     "customDashboards": [
-      "src/app/actions/dashboards.ts",
-      "src/lib/dashboards/user-dashboards.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "customerContacts": [
       "src/app/actions/contact-account-links.ts",
@@ -170,8 +167,7 @@
       "src/lib/sage/contact-canonical.ts"
     ],
     "customThemes": [
-      "src/app/actions/themes.ts",
-      "src/lib/theme/user-themes.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "dailyLogPhotos": [
       "src/lib/domain/field/store.ts"
@@ -309,8 +305,7 @@
       "src/lib/sync/engine.ts"
     ],
     "mcpApiKeys": [
-      "src/app/actions/mcp-keys.ts",
-      "src/lib/mcp/auth.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "mcpUsage": [
       "src/app/api/bridge/tools/route.ts"
@@ -328,12 +323,10 @@
       "src/lib/domain/conversations/store.ts"
     ],
     "morningPlanPreferences": [
-      "src/app/actions/morning-plan.ts",
-      "src/lib/morning-plan/server.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "mutationQueue": [
-      "src/lib/sync/queue/mutation-queue.ts",
-      "src/lib/sync/queue/processor.ts"
+      "src/lib/domain/settings/offline-queue/store.ts"
     ],
     "myCompassCalendarItems": [
       "src/lib/my-compass-calendar/sync.ts"
@@ -395,17 +388,13 @@
       "src/lib/domain/work-calendar/store.ts"
     ],
     "organizationFeatureSettings": [
-      "src/app/actions/feature-settings.ts",
-      "src/app/actions/field-cost-codes.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "organizationInvites": [
       "src/app/actions/invites.ts"
     ],
     "organizationMembers": [
-      "src/app/actions/invites.ts",
-      "src/app/actions/project-access-invitations.ts",
-      "src/app/actions/users.ts",
-      "src/lib/auth.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "organizations": [
       "src/lib/auth.ts"
@@ -433,10 +422,7 @@
       "src/app/actions/print-snapshots.ts"
     ],
     "projectAccessInvitations": [
-      "src/app/actions/project-access-invitations.ts",
-      "src/app/actions/project-contacts.ts",
-      "src/lib/auth.ts",
-      "src/lib/email/invitation-delivery.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "projectArchiveDocuments": [
       "src/app/actions/project-archives.ts",
@@ -640,8 +626,7 @@
       "src/lib/domain/project/store.ts"
     ],
     "projectSavedViews": [
-      "src/app/actions/project-views.ts",
-      "src/lib/account-deletion.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "projectSelectionProcurementLinks": [
       "src/app/actions/project-operations.ts"
@@ -694,8 +679,7 @@
       "src/lib/job-workflows/carryover.ts"
     ],
     "pushTokens": [
-      "src/app/api/push/register/route.ts",
-      "src/lib/push/send.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "rateBookEntries": [
       "src/app/actions/rate-book.ts"
@@ -898,24 +882,16 @@
       "src/app/actions/presence.ts"
     ],
     "userProviderConfig": [
-      "src/app/actions/anthropic-oauth.ts",
-      "src/app/actions/provider-config.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "users": [
-      "src/app/actions/google-drive.ts",
-      "src/app/actions/profile.ts",
-      "src/app/actions/project-access-invitations.ts",
-      "src/app/actions/users.ts",
-      "src/lib/account-deletion.ts",
-      "src/lib/auth.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "userThemePreference": [
-      "src/app/actions/themes.ts",
-      "src/lib/theme/user-themes.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "userViewPreferences": [
-      "src/app/actions/project-views.ts",
-      "src/app/actions/view-preferences.ts"
+      "src/lib/domain/settings/store.ts"
     ],
     "vendorBills": [
       "src/lib/domain/financials/store.ts"
@@ -991,7 +967,7 @@
     "src/app/actions/chat-messages.ts": 1333,
     "src/app/actions/cherish-pulse.ts": 919,
     "src/app/actions/contract-packets.ts": 1450,
-    "src/app/actions/google-drive.ts": 1468,
+    "src/app/actions/google-drive.ts": 1465,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1123,
     "src/app/actions/nutech-orders.ts": 980,
@@ -1036,7 +1012,7 @@
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/agent/render/registry.tsx": 1809,
-    "src/lib/auth.ts": 879,
+    "src/lib/auth.ts": 807,
     "src/lib/email/gmail-inbound.ts": 821,
     "src/lib/email/project-inbound-routing.ts": 1040,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,

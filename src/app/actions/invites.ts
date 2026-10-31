@@ -10,6 +10,7 @@ import {
   type NewOrganizationInvite,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { insertOrganizationMember } from "@/lib/domain/identity/store"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { userRoleSchema } from "@/lib/validations/common"
@@ -321,16 +322,13 @@ export async function acceptInvite(code: string): Promise<{
 
     const now = new Date().toISOString()
 
-    await db
-      .insert(organizationMembers)
-      .values({
-        id: crypto.randomUUID(),
-        organizationId: invite.organizationId,
-        userId: currentUser.id,
-        role: invite.role,
-        joinedAt: now,
-      })
-      .run()
+    await insertOrganizationMember(db, {
+      id: crypto.randomUUID(),
+      organizationId: invite.organizationId,
+      userId: currentUser.id,
+      role: invite.role,
+      joinedAt: now,
+    })
 
     const newUseCount = invite.useCount + 1
     const exhausted = invite.maxUses !== null && newUseCount >= invite.maxUses

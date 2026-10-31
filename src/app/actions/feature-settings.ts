@@ -7,6 +7,7 @@ import { organizationFeatureSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { deleteOrganizationFeatureSetting, saveOrganizationFeatureSetting } from "@/lib/domain/settings/store"
 import {
   FEATURE_SETTINGS,
   canEditFeatureSettings,
@@ -88,13 +89,13 @@ export async function saveFeatureSettings(key: string, value: unknown): Promise<
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Check the values and try again." }
     const now = new Date().toISOString()
     const json = JSON.stringify(parsed.data)
-    await ctx.db
-      .insert(organizationFeatureSettings)
-      .values({ organizationId: ctx.organizationId, featureKey: key, value: json, updatedAt: now, updatedBy: ctx.userId })
-      .onConflictDoUpdate({
-        target: [organizationFeatureSettings.organizationId, organizationFeatureSettings.featureKey],
-        set: { value: json, updatedAt: now, updatedBy: ctx.userId },
-      })
+    await saveOrganizationFeatureSetting(ctx.db, {
+      organizationId: ctx.organizationId,
+      featureKey: key,
+      value: json,
+      updatedAt: now,
+      updatedBy: ctx.userId,
+    })
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }
@@ -117,9 +118,7 @@ export async function resetFeatureSettings(key: string): Promise<Result<null>> {
         error: FEATURE_SETTINGS[key].editorRoles ? "Only the company owner can change these settings." : "Only admins can change company settings.",
       }
     }
-    await ctx.db
-      .delete(organizationFeatureSettings)
-      .where(and(eq(organizationFeatureSettings.organizationId, ctx.organizationId), eq(organizationFeatureSettings.featureKey, key)))
+    await deleteOrganizationFeatureSetting(ctx.db, ctx.organizationId, key)
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }

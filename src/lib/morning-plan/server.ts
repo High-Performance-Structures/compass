@@ -19,6 +19,7 @@ import {
 } from "@/db/schema"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import { isDemoUser } from "@/lib/demo"
+import { upsertMorningPlanPreferences } from "@/lib/domain/settings/store"
 import type { MorningPlanSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -441,11 +442,7 @@ async function saveSent(
   change: { readonly lastDigestOn?: string; readonly lastOverloadWeek?: string },
   now: Date,
 ): Promise<void> {
-  const at = now.toISOString()
-  await db
-    .insert(morningPlanPreferences)
-    .values({ userId, organizationId, ...change, createdAt: at, updatedAt: at })
-    .onConflictDoUpdate({ target: morningPlanPreferences.userId, set: { ...change, updatedAt: at } })
+  await upsertMorningPlanPreferences(db, { userId, organizationId, change, at: now.toISOString() })
 }
 
 /**
