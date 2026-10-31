@@ -13,7 +13,7 @@ import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { projectArchiveDocuments, projectArchiveRecipients } from "@/db/schema-project-archives"
 import { projectLinks } from "@/db/schema-project-links"
 import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -198,7 +198,7 @@ export function insertProjectDocumentStatement(db: Db, values: ProjectDocumentIn
  * each stays under D1's bound-parameter limit.
  */
 export async function insertProjectDocuments(db: Db, rows: readonly ProjectDocumentInsert[]): Promise<void> {
-  const [first, ...rest] = chunkD1Rows(rows).map((chunk) => db.insert(projectDocuments).values(chunk))
+  const [first, ...rest] = chunkD1InsertRows(projectDocuments, rows).map((chunk) => db.insert(projectDocuments).values(chunk))
   if (first) await db.batch([first, ...rest])
 }
 

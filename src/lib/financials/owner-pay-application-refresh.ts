@@ -8,7 +8,7 @@ import {
   projectOperations,
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { updateOperations } from "@/lib/domain/operations/store"
 import {
   deleteBudgetLinesStatement,
@@ -372,7 +372,7 @@ export async function syncDraftPayApplication(
     })
     for (const line of olds) statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
   }
-  for (const rows of chunkD1Rows(inserts)) statements.push(insertBudgetLinesStatement(db, rows))
+  for (const rows of chunkD1InsertRows(projectBudgetLines, inserts)) statements.push(insertBudgetLinesStatement(db, rows))
   statements.push(
     updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
       budgetRevisionId: revisionId,

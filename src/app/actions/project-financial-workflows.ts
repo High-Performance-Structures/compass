@@ -25,7 +25,7 @@ import {
   type PayApplicationChangeOrder,
 } from "@/lib/financials/pay-application-change-orders"
 import { getCloudflareContext } from "@/lib/db"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { budgetLineProgress, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
 import { insertOperations, operationDeleteQuery, operationUpdateQuery, updateOperations } from "@/lib/domain/operations/store"
 import {
@@ -1365,7 +1365,7 @@ export async function createProjectOwnerPayApplicationDraft(
       )
     )
     try {
-      for (const rows of chunkD1Rows(applicationLineRows)) {
+      for (const rows of chunkD1InsertRows(projectBudgetLines, applicationLineRows)) {
         await insertBudgetLines(db, rows)
       }
     } catch (error) {

@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type NewWorkflowCheck = typeof projectWorkflowChecks.$inferInsert
@@ -17,7 +17,7 @@ export async function insertWorkflowChecksIfAbsent(
   db: Db,
   rows: readonly NewWorkflowCheck[]
 ): Promise<void> {
-  const [first, ...rest] = chunkD1Rows(rows).map((chunk) =>
+  const [first, ...rest] = chunkD1InsertRows(projectWorkflowChecks, rows).map((chunk) =>
     db.insert(projectWorkflowChecks).values(chunk).onConflictDoNothing()
   )
   if (!first) return

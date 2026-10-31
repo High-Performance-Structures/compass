@@ -25,7 +25,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type Statement = BatchItem<"sqlite">
@@ -263,7 +263,7 @@ export async function insertProjectContactsIfMissing(
   db: Db,
   values: readonly ProjectContactInsert[]
 ): Promise<readonly { readonly id: string }[]> {
-  const [first, ...rest] = chunkD1Rows(values).map((rows) =>
+  const [first, ...rest] = chunkD1InsertRows(projectContacts, values).map((rows) =>
     db.insert(projectContacts).values(rows).onConflictDoNothing().returning({ id: projectContacts.id })
   )
   if (!first) return []

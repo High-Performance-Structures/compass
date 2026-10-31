@@ -19,7 +19,7 @@ import {
   nuTechProducts,
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { NUTECH_FREIGHT_CATEGORY, NUTECH_FREIGHT_SKU } from "@/lib/nutech/freight"
 import type { Db } from "@/lib/server/action-context"
 
@@ -127,7 +127,7 @@ export async function upsertNuTechCatalogProducts(
   }
   await runBatch(
     db,
-    chunkD1Rows(rows, 2).map((chunk) =>
+    chunkD1InsertRows(nuTechProducts, rows, 2).map((chunk) =>
       db
         .insert(nuTechProducts)
         .values(chunk)
@@ -144,7 +144,7 @@ export async function replaceNuTechCatalogPrices(
 ): Promise<void> {
   await db.batch([
     db.delete(nuTechCatalogPrices).where(eq(nuTechCatalogPrices.catalogVersionId, catalogVersionId)),
-    ...chunkD1Rows(rows).map((chunk) => db.insert(nuTechCatalogPrices).values(chunk)),
+    ...chunkD1InsertRows(nuTechCatalogPrices, rows).map((chunk) => db.insert(nuTechCatalogPrices).values(chunk)),
   ])
 }
 
