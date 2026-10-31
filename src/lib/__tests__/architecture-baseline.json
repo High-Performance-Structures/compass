@@ -1119,7 +1119,7 @@
     "src/lib/auth.ts": 885,
     "src/lib/buildertrend/staging-manifest.ts": 1162,
     "src/lib/email/gmail-inbound.ts": 851,
-    "src/lib/email/project-inbound-routing.ts": 1056,
+    "src/lib/email/project-inbound-routing.ts": 1050,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
     "src/lib/notifications/create-event.ts": 844,
