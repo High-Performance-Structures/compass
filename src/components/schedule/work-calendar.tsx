@@ -18,10 +18,10 @@ import {
 } from "@tabler/icons-react"
 
 import type {
-  WorkCalendarEntry,
-  WorkCalendarEntryKind,
+  WorkCalendarEntry, WorkCalendarEntryKind,
   WorkCalendarData,
 } from "@/lib/domain/work-calendar/types"
+import { workCalendarFilterHref, type WorkCalendarFilter } from "@/lib/work-calendar-navigation"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -40,7 +40,7 @@ import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
 import { WorkCalendarTodoDialog } from "./work-calendar-todo-dialog"
 import { PageHeader } from "@/components/page-header"
 
-export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
+export type WorkCalendarKindFilter = WorkCalendarFilter
 export type WorkCalendarView = "today" | "week" | "month" | "list"
 type CalendarEventEntry = Extract<WorkCalendarEntry, { kind: "event" }>
 
@@ -345,7 +345,7 @@ function WorkItem({
 
 export function WorkCalendar({
   data,
-  initialKind = "all",
+  initialKind = "event",
   initialItemId = null,
   initialView = "week",
   initialDate,
@@ -429,11 +429,7 @@ export function WorkCalendar({
     const params = new URLSearchParams(searchParams.toString())
     params.set("view", activeView)
     params.set("date", nextDateKey)
-    if (activeKind === "all") {
-      params.delete("kind")
-    } else {
-      params.set("kind", activeKind)
-    }
+    params.set("kind", activeKind)
     params.delete("item")
     setActiveDate(nextDateKey)
     setExpandedDay(null)
@@ -558,7 +554,11 @@ export function WorkCalendar({
                 type="button"
                 size="sm"
                 variant={activeKind === filter.id ? "default" : "outline"}
-                onClick={() => setActiveKind(filter.id)}
+                onClick={() => {
+                  setActiveKind(filter.id)
+                  router.replace(workCalendarFilterHref(searchParams, filter.id), { scroll: false })
+                }}
+                aria-pressed={activeKind === filter.id}
               >
                 {filter.icon}
                 {filter.label}

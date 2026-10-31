@@ -1266,11 +1266,22 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("work calendar opens to Events and preserves an explicit All work selection", async ({ page }) => {
+    const response = await page.goto("/dashboard/schedule?view=list")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+    await expect(page.getByRole("button", { name: "Events", exact: true })).toHaveAttribute("aria-pressed", "true")
+    const allWork = page.getByRole("button", { name: "All work", exact: true })
+    await allWork.click()
+    await page.waitForURL((url) => url.searchParams.get("kind") === "all")
+    await page.reload()
+    await expect(allWork).toHaveAttribute("aria-pressed", "true")
+  })
+
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=list")
+    const response = await page.goto("/dashboard/schedule?view=list&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const workQueue = page.locator("section").filter({
@@ -1359,21 +1370,24 @@ test.describe("usable Compass areas", () => {
     const periodLabel = page
       .getByTestId("work-calendar-period-label")
       .last()
+    const matchesPeriod = (url: string, view: string): boolean => {
+      const params = new URL(url).searchParams
+      return params.get("view") === view && params.get("kind") === "event" && /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "")
+    }
 
     let response = await page.goto("/dashboard/schedule?view=today")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialDay = await periodLabel.innerText()
     await page.getByRole("button", { name: "Events" }).click()
-    const dayPattern = /view=today&date=\d{4}-\d{2}-\d{2}&kind=event/
     await arrowCommitsUrl("Next day", "Previous day", (url) =>
-      dayPattern.test(url)
+      matchesPeriod(url, "today")
     )
     await expect(periodLabel).not.toHaveText(initialDay)
     const nextDayUrl = page.url()
     await arrowCommitsUrl(
       "Previous day",
       "Next day",
-      (url) => dayPattern.test(url) && url !== nextDayUrl
+      (url) => matchesPeriod(url, "today") && url !== nextDayUrl
     )
     await expect(periodLabel).toHaveText(initialDay)
     await expect(page).not.toHaveURL(nextDayUrl)
@@ -1381,16 +1395,15 @@ test.describe("usable Compass areas", () => {
     response = await page.goto("/dashboard/schedule?view=week")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialWeek = await periodLabel.innerText()
-    const weekPattern = /view=week&date=\d{4}-\d{2}-\d{2}/
     await arrowCommitsUrl("Next week", "Previous week", (url) =>
-      weekPattern.test(url)
+      matchesPeriod(url, "week")
     )
     await expect(periodLabel).not.toHaveText(initialWeek)
     const nextWeekUrl = page.url()
     await arrowCommitsUrl(
       "Previous week",
       "Next week",
-      (url) => weekPattern.test(url) && url !== nextWeekUrl
+      (url) => matchesPeriod(url, "week") && url !== nextWeekUrl
     )
     await expect(periodLabel).toHaveText(initialWeek)
     await expect(page).not.toHaveURL(nextWeekUrl)
@@ -1398,16 +1411,15 @@ test.describe("usable Compass areas", () => {
     response = await page.goto("/dashboard/schedule?view=month")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialMonth = await periodLabel.innerText()
-    const monthPattern = /view=month&date=\d{4}-\d{2}-\d{2}/
     await arrowCommitsUrl("Next month", "Previous month", (url) =>
-      monthPattern.test(url)
+      matchesPeriod(url, "month")
     )
     await expect(periodLabel).not.toHaveText(initialMonth)
     const nextMonthUrl = page.url()
     await arrowCommitsUrl(
       "Previous month",
       "Next month",
-      (url) => monthPattern.test(url) && url !== nextMonthUrl
+      (url) => matchesPeriod(url, "month") && url !== nextMonthUrl
     )
     await expect(periodLabel).toHaveText(initialMonth)
     await expect(page).not.toHaveURL(nextMonthUrl)
@@ -1417,7 +1429,7 @@ test.describe("usable Compass areas", () => {
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=month")
+    const response = await page.goto("/dashboard/schedule?view=month&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const overflowButton = page.getByRole("button", {
@@ -1443,7 +1455,7 @@ test.describe("usable Compass areas", () => {
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=list")
+    const response = await page.goto("/dashboard/schedule?view=list&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const todoLink = page

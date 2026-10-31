@@ -96,7 +96,7 @@ const PLANNING_NAV: ReadonlyArray<NavLinkItem> = [
   {
     kind: "link",
     title: "Work Calendar",
-    url: "/dashboard/schedule",
+    url: "/dashboard/schedule?kind=event",
     icon: IconCalendarStats,
   },
   {
