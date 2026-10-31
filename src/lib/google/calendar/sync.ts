@@ -12,6 +12,8 @@ import {
   workCalendarEvents,
 } from "@/db/schema"
 import { decrypt } from "@/lib/crypto"
+import { updateGoogleCalendarConnection, updateGoogleCalendarSelection } from "@/lib/domain/calendars/store"
+import { insertWorkCalendarEvent, updateWorkCalendarEvent } from "@/lib/domain/work-calendar/store"
 import {
   getGoogleCalendarOAuthConfig,
   googleCalendarTokenSalt,
@@ -232,32 +234,29 @@ async function syncOrganizationEvent(
     }
 
     const nextVersion = local.version + 1
-    await db
-      .update(workCalendarEvents)
-      .set({
-        title: event.summary,
-        eventType: event.meetingUrl ? "meeting" : "other",
-        visibility: localVisibility(selection, event),
-        description: event.description,
-        startDate: event.startDate,
-        endDateExclusive: event.endDateExclusive,
-        startsAt: event.startsAt,
-        endsAt: event.endsAt,
-        allDay: event.allDay,
-        timeZone: event.timeZone ?? "UTC",
-        location: event.location,
-        meetingUrl: event.meetingUrl,
-        recurrence: "none",
-        recurrenceUntil: null,
-        status: event.status === "cancelled" ? "cancelled" : "open",
-        version: nextVersion,
-        updatedBy: selection.connectionUserId,
-        cancelledBy:
-          event.status === "cancelled" ? selection.connectionUserId : null,
-        cancelledAt: event.status === "cancelled" ? now : null,
-        updatedAt: now,
-      })
-      .where(eq(workCalendarEvents.id, local.id))
+    await updateWorkCalendarEvent(db, local.id, {
+      title: event.summary,
+      eventType: event.meetingUrl ? "meeting" : "other",
+      visibility: localVisibility(selection, event),
+      description: event.description,
+      startDate: event.startDate,
+      endDateExclusive: event.endDateExclusive,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      allDay: event.allDay,
+      timeZone: event.timeZone ?? "UTC",
+      location: event.location,
+      meetingUrl: event.meetingUrl,
+      recurrence: "none",
+      recurrenceUntil: null,
+      status: event.status === "cancelled" ? "cancelled" : "open",
+      version: nextVersion,
+      updatedBy: selection.connectionUserId,
+      cancelledBy:
+        event.status === "cancelled" ? selection.connectionUserId : null,
+      cancelledAt: event.status === "cancelled" ? now : null,
+      updatedAt: now,
+    })
     await db
       .update(googleCalendarEntityLinks)
       .set({
@@ -282,7 +281,7 @@ async function syncOrganizationEvent(
     .limit(1)
     .then((rows) => rows[0] ?? null)
   const localId = crypto.randomUUID()
-  await db.insert(workCalendarEvents).values({
+  await insertWorkCalendarEvent(db, {
     id: localId,
     organizationId: await organizationIdForConnection(
       db,
@@ -416,26 +415,14 @@ export async function syncGoogleCalendarSelection(
         updated += 1
       }
     }
-    await db
-      .update(googleCalendarSelections)
-      .set({ lastSyncedAt: now, lastError: null, updatedAt: now })
-      .where(eq(googleCalendarSelections.id, selection.selectionId))
-    await db
-      .update(googleCalendarConnections)
-      .set({ lastSyncedAt: now, lastError: null, updatedAt: now })
-      .where(eq(googleCalendarConnections.id, selection.connectionId))
+    await updateGoogleCalendarSelection(db, selection.selectionId, { lastSyncedAt: now, lastError: null, updatedAt: now })
+    await updateGoogleCalendarConnection(db, selection.connectionId, { lastSyncedAt: now, lastError: null, updatedAt: now })
     return { imported, updated, conflicts }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Google Calendar sync failed."
-    await db
-      .update(googleCalendarSelections)
-      .set({ lastError: message, updatedAt: now })
-      .where(eq(googleCalendarSelections.id, selection.selectionId))
-    await db
-      .update(googleCalendarConnections)
-      .set({ lastError: message, updatedAt: now })
-      .where(eq(googleCalendarConnections.id, selection.connectionId))
+    await updateGoogleCalendarSelection(db, selection.selectionId, { lastError: message, updatedAt: now })
+    await updateGoogleCalendarConnection(db, selection.connectionId, { lastError: message, updatedAt: now })
     throw error
   }
 }
@@ -593,10 +580,7 @@ export async function publishWorkCalendarEventToGoogle(
     })
   }
   if (googleEvent.meetingUrl && googleEvent.meetingUrl !== event.meetingUrl) {
-    await db
-      .update(workCalendarEvents)
-      .set({ meetingUrl: googleEvent.meetingUrl })
-      .where(eq(workCalendarEvents.id, eventId))
+    await updateWorkCalendarEvent(db, eventId, { meetingUrl: googleEvent.meetingUrl })
   }
   return {
     meetingUrl: googleEvent.meetingUrl,

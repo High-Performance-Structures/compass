@@ -14,6 +14,7 @@ import {
   projectEstimates,
 } from "@/db/schema-estimates"
 import { projectLinks } from "@/db/schema-project-links"
+import { insertProjectLinkIfAbsentStatement } from "@/lib/domain/documents/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/domain/estimates/access"
 import { copyEstimateLines, markupBasisPoints, UNASSIGNED_ITEMS, UNASSIGNED_NAME } from "@/lib/estimates/assembly-copy"
@@ -364,7 +365,7 @@ export async function copyEstimateAssembliesToProject(input: {
       ))
       .get()
     if (!link) {
-      statements.push(db.insert(projectLinks).values({
+      statements.push(insertProjectLinkIfAbsentStatement(db, {
         id: crypto.randomUUID(),
         organizationId: source.organizationId,
         projectId: input.sourceProjectId,
@@ -372,7 +373,7 @@ export async function copyEstimateAssembliesToProject(input: {
         label: "Estimate items copied",
         createdBy: target.user.id,
         createdAt: now,
-      }).onConflictDoNothing())
+      }))
     }
 
     const [first, ...rest] = statements

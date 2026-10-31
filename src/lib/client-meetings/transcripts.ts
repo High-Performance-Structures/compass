@@ -5,6 +5,7 @@ import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectClientMeetings, projects, users } from "@/db/schema"
 import { insertDailyLogIfAbsent } from "@/lib/domain/field/store"
+import { updateProjectClientMeeting } from "@/lib/domain/media/store"
 import { isRecord } from "@/lib/shared/guards"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
@@ -256,10 +257,11 @@ async function markTranscript(
   values: Partial<typeof projectClientMeetings.$inferInsert>,
   now: Date
 ): Promise<void> {
-  await db
-    .update(projectClientMeetings)
-    .set({ ...values, transcriptCheckedAt: now.toISOString(), updatedAt: now.toISOString() })
-    .where(eq(projectClientMeetings.id, meetingId))
+  await updateProjectClientMeeting(db, meetingId, {
+    ...values,
+    transcriptCheckedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  })
 }
 
 /**

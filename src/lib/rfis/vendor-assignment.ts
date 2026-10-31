@@ -3,6 +3,7 @@ import type { SQLiteInsert } from "drizzle-orm/sqlite-core"
 import type { getDb } from "@/db"
 import { projectContacts, projectRfis } from "@/db/schema"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import { upsertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { canViewRfi, PARTICIPANT_CAPABILITIES } from "@/lib/participant-access"
 
 type Db = ReturnType<typeof getDb>
@@ -92,12 +93,11 @@ export function rfiVendorAssignmentStatement(db: Db, input: {
   if (input.contact === null) {
     // A new tombstone also suppresses historical assignees when staff clear
     // an imported assignment before any managed assignment has been created.
-    return db.insert(projectSourceRecordParticipants)
-      .values({ id: crypto.randomUUID(), ...key, participantRole: RFI_VENDOR_ASSIGNEE_ROLE, active: false, createdAt: input.now, updatedAt: input.now })
-      .onConflictDoUpdate({
-        target: [projectSourceRecordParticipants.organizationId, projectSourceRecordParticipants.projectId, projectSourceRecordParticipants.sourceRecordType, projectSourceRecordParticipants.sourceRecordId, projectSourceRecordParticipants.sourceParticipantId],
-        set: { active: false, updatedAt: input.now },
-      }).$dynamic()
+    return upsertSourceRecordParticipantStatement(
+      db,
+      { id: crypto.randomUUID(), ...key, participantRole: RFI_VENDOR_ASSIGNEE_ROLE, active: false, createdAt: input.now, updatedAt: input.now },
+      { active: false, updatedAt: input.now },
+    )
   }
   const assignment = {
     sourceContactId: input.contact.id,
@@ -112,18 +112,7 @@ export function rfiVendorAssignmentStatement(db: Db, input: {
     active: true,
     updatedAt: input.now,
   }
-  return db.insert(projectSourceRecordParticipants)
-    .values({ id: crypto.randomUUID(), ...key, ...assignment, createdAt: input.now })
-    .onConflictDoUpdate({
-      target: [
-        projectSourceRecordParticipants.organizationId,
-        projectSourceRecordParticipants.projectId,
-        projectSourceRecordParticipants.sourceRecordType,
-        projectSourceRecordParticipants.sourceRecordId,
-        projectSourceRecordParticipants.sourceParticipantId,
-      ],
-      set: assignment,
-    }).$dynamic()
+  return upsertSourceRecordParticipantStatement(db, { id: crypto.randomUUID(), ...key, ...assignment, createdAt: input.now }, assignment)
 }
 
 /** Current vendor company per RFI id, for the staff RFI queue. */

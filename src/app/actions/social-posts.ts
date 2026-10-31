@@ -15,6 +15,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { decrypt, encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { socialAccountUpdateStatement, updateSocialAccount } from "@/lib/domain/media/store"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -701,14 +702,14 @@ async function synchronizeXCredentials(input: {
     return { account, accessTokenEncrypted, refreshTokenEncrypted }
   }))
   const statements = credentialValues.map((value) =>
-    input.context.db.update(socialAccounts).set({
+    socialAccountUpdateStatement(input.context.db, value.account.id, {
       accessTokenEncrypted: value.accessTokenEncrypted,
       refreshTokenEncrypted: value.refreshTokenEncrypted,
       tokenExpiresAt: input.tokenExpiresAt,
       grantedScopes: input.grantedScopes,
       lastError: null,
       updatedAt: new Date().toISOString(),
-    }).where(eq(socialAccounts.id, value.account.id)),
+    }),
   )
   const [firstStatement, ...remainingStatements] = statements
   if (!firstStatement) throw new Error("Reconnect the X account before publishing.")
@@ -1020,11 +1021,11 @@ export async function publishSocialPost(input: {
           publishedAt: now,
           updatedAt: now,
         }).where(eq(socialPostTargets.id, row.target.id)).run()
-        await context.db.update(socialAccounts).set({
+        await updateSocialAccount(context.db, row.account.id, {
           lastPublishedAt: now,
           lastError: null,
           updatedAt: now,
-        }).where(eq(socialAccounts.id, row.account.id)).run()
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message.slice(0, 500) : "Publishing failed."
         await context.db.update(socialPostTargets).set({
@@ -1032,10 +1033,7 @@ export async function publishSocialPost(input: {
           error: message,
           updatedAt: now,
         }).where(eq(socialPostTargets.id, row.target.id)).run()
-        await context.db.update(socialAccounts).set({
-          lastError: message,
-          updatedAt: now,
-        }).where(eq(socialAccounts.id, row.account.id)).run()
+        await updateSocialAccount(context.db, row.account.id, { lastError: message, updatedAt: now })
       }
     }
     const previouslyPublished = allTargets.filter(

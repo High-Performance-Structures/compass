@@ -1,10 +1,11 @@
 {
   "tableWriters": {
     "accountDeletionRequests": [
-      "src/lib/domain/identity/store.ts"
+      "src/app/actions/account-deletion-admin.ts",
+      "src/app/actions/profile.ts",
+      "src/lib/account-deletion.ts"
     ],
     "activityEvents": [
-      "src/app/actions/field-cost-codes.ts",
       "src/lib/activity-log.ts"
     ],
     "agentActionConfirmations": [
@@ -26,10 +27,12 @@
       "src/app/actions/anthropic-oauth.ts"
     ],
     "buildertrendAccessCandidates": [
-      "src/lib/domain/buildertrend/store.ts"
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
     ],
     "buildertrendArchiveFiles": [
-      "src/lib/domain/buildertrend/store.ts"
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
     ],
     "buildertrendIdentityDecisions": [
       "src/lib/buildertrend/identity-reconciliation.ts"
@@ -41,13 +44,16 @@
       "src/lib/buildertrend/identity-reconciliation.ts"
     ],
     "buildertrendImportObservations": [
-      "src/lib/domain/buildertrend/store.ts"
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
     ],
     "buildertrendImportRuns": [
-      "src/lib/domain/buildertrend/store.ts"
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
     ],
     "buildertrendSourceRecords": [
-      "src/lib/domain/buildertrend/store.ts"
+      "src/lib/buildertrend/legacy-reconciliation.ts",
+      "src/lib/buildertrend/staging-manifest.ts"
     ],
     "channelMembers": [
       "src/lib/domain/conversations/store.ts"
@@ -77,8 +83,7 @@
       "src/lib/project-calendars/sync.ts"
     ],
     "compassProjectCalendars": [
-      "src/app/actions/project-calendars.ts",
-      "src/lib/project-calendars/sync.ts"
+      "src/lib/domain/calendars/store.ts"
     ],
     "contactAccountLinkEvents": [
       "src/app/actions/contact-account-links.ts"
@@ -93,11 +98,10 @@
       "src/app/actions/contract-templates.ts"
     ],
     "contractPacketDocuments": [
-      "src/app/actions/contract-packets.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "contractPackets": [
-      "src/app/actions/contract-packets.ts",
-      "src/app/api/integrations/foxit/webhook/route.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "correspondence": [
       "src/lib/domain/correspondence/store.ts"
@@ -148,7 +152,8 @@
       "src/lib/domain/financials/store.ts"
     ],
     "customDashboards": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/dashboards.ts",
+      "src/lib/dashboards/user-dashboards.ts"
     ],
     "customerContacts": [
       "src/app/actions/contact-account-links.ts",
@@ -167,7 +172,8 @@
       "src/lib/sage/contact-canonical.ts"
     ],
     "customThemes": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/themes.ts",
+      "src/lib/theme/user-themes.ts"
     ],
     "dailyLogPhotos": [
       "src/lib/domain/field/store.ts"
@@ -200,10 +206,10 @@
       "src/app/actions/equipment.ts"
     ],
     "estimateTemplateDefaults": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts"
     ],
     "estimateTemplateLines": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts"
     ],
     "estimateTermsTemplates": [
       "src/app/actions/estimate-text-templates.ts"
@@ -224,9 +230,7 @@
       "src/app/actions/google-drive.ts"
     ],
     "googleCalendarConnections": [
-      "src/app/actions/google-calendar.ts",
-      "src/app/api/google/calendar/callback/route.ts",
-      "src/lib/google/calendar/sync.ts"
+      "src/lib/domain/calendars/store.ts"
     ],
     "googleCalendarEntityLinks": [
       "src/lib/google/calendar/sync.ts"
@@ -235,8 +239,7 @@
       "src/lib/google/calendar/sync.ts"
     ],
     "googleCalendarSelections": [
-      "src/app/actions/google-calendar.ts",
-      "src/lib/google/calendar/sync.ts"
+      "src/lib/domain/calendars/store.ts"
     ],
     "googleStarredFiles": [
       "src/app/actions/google-drive.ts"
@@ -275,37 +278,32 @@
       "src/lib/domain/feedback/store.ts"
     ],
     "listeningPlaylistItems": [
-      "src/app/actions/listening-playlist-items.ts",
-      "src/app/actions/listening-playlists.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningPlaylists": [
-      "src/app/actions/listening-playlist-items.ts",
-      "src/app/actions/listening-playlists.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningPlaylistTrackLinks": [
-      "src/app/actions/listening-playlist-items.ts",
-      "src/app/actions/listening-playlists.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningQueueItems": [
-      "src/app/actions/listening-playlists.ts",
-      "src/app/actions/listening-room.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningRoomParticipants": [
-      "src/app/actions/listening-room.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningRooms": [
-      "src/app/actions/listening-playlists.ts",
-      "src/app/actions/listening-room.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "listeningTrackLinks": [
-      "src/app/actions/listening-playlists.ts",
-      "src/app/actions/listening-room.ts"
+      "src/lib/domain/listening/store.ts"
     ],
     "localSyncMetadata": [
       "src/lib/sync/engine.ts"
     ],
     "mcpApiKeys": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/mcp-keys.ts",
+      "src/lib/mcp/auth.ts"
     ],
     "mcpUsage": [
       "src/app/api/bridge/tools/route.ts"
@@ -323,17 +321,18 @@
       "src/lib/domain/conversations/store.ts"
     ],
     "morningPlanPreferences": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/morning-plan.ts",
+      "src/lib/morning-plan/server.ts"
     ],
     "mutationQueue": [
-      "src/lib/domain/settings/offline-queue/store.ts"
+      "src/lib/sync/queue/mutation-queue.ts",
+      "src/lib/sync/queue/processor.ts"
     ],
     "myCompassCalendarItems": [
       "src/lib/my-compass-calendar/sync.ts"
     ],
     "myCompassCalendars": [
-      "src/app/actions/my-compass-calendar.ts",
-      "src/lib/my-compass-calendar/sync.ts"
+      "src/lib/domain/calendars/store.ts"
     ],
     "netsuiteAuth": [
       "src/lib/netsuite/auth/token-manager.ts"
@@ -388,13 +387,17 @@
       "src/lib/domain/work-calendar/store.ts"
     ],
     "organizationFeatureSettings": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/feature-settings.ts",
+      "src/app/actions/field-cost-codes.ts"
     ],
     "organizationInvites": [
       "src/app/actions/invites.ts"
     ],
     "organizationMembers": [
-      "src/lib/domain/identity/store.ts"
+      "src/app/actions/invites.ts",
+      "src/app/actions/project-access-invitations.ts",
+      "src/app/actions/users.ts",
+      "src/lib/auth.ts"
     ],
     "organizations": [
       "src/lib/auth.ts"
@@ -422,14 +425,16 @@
       "src/app/actions/print-snapshots.ts"
     ],
     "projectAccessInvitations": [
-      "src/lib/domain/identity/store.ts"
+      "src/app/actions/project-access-invitations.ts",
+      "src/app/actions/project-contacts.ts",
+      "src/lib/auth.ts",
+      "src/lib/email/invitation-delivery.ts"
     ],
     "projectArchiveDocuments": [
-      "src/app/actions/project-archives.ts",
-      "src/lib/project-archives.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectArchiveRecipients": [
-      "src/lib/project-archives.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectBudgetApplications": [
       "src/lib/domain/budget/store.ts"
@@ -450,8 +455,7 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectClientMeetings": [
-      "src/app/actions/project-client-meetings.ts",
-      "src/lib/client-meetings/transcripts.ts"
+      "src/lib/domain/media/store.ts"
     ],
     "projectContacts": [
       "src/app/actions/contact-duplicates.ts",
@@ -474,8 +478,7 @@
       "src/app/actions/project-contract-deposits.ts"
     ],
     "projectDocuments": [
-      "src/app/actions/project-document-folders.ts",
-      "src/app/actions/project-documents.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectDuplicateDecisions": [
       "src/lib/domain/project/registry-store.ts"
@@ -502,6 +505,8 @@
       "src/lib/domain/estimates/store.ts"
     ],
     "projectEstimateLines": [
+      "src/app/actions/estimate-line-order.ts",
+      "src/app/actions/estimate-templates.ts",
       "src/lib/domain/estimates/store.ts"
     ],
     "projectEstimatePhaseDescriptions": [
@@ -517,6 +522,8 @@
       "src/lib/domain/operations/store.ts"
     ],
     "projectEstimates": [
+      "src/app/actions/estimate-line-order.ts",
+      "src/app/actions/estimate-templates.ts",
       "src/lib/domain/estimates/store.ts"
     ],
     "projectExternalLinks": [
@@ -550,8 +557,7 @@
       "src/lib/domain/project/store.ts"
     ],
     "projectLinks": [
-      "src/app/actions/estimate-project-copies.ts",
-      "src/app/actions/project-links.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectMembers": [
       "src/lib/domain/project/store.ts"
@@ -581,22 +587,16 @@
       "src/lib/domain/project-audit/store.ts"
     ],
     "projectProfileSyncOperations": [
-      "src/lib/domain/project/store.ts",
-      "src/lib/project-contact-tracker-refresh.ts"
+      "src/lib/domain/project/store.ts"
     ],
     "projectPurchaseOrderLines": [
       "src/lib/domain/operations/store.ts"
     ],
     "projectRecordDriveFiles": [
-      "src/app/actions/paper-trail.ts",
-      "src/lib/paper-trail/enqueue.ts",
-      "src/lib/paper-trail/processor.ts",
-      "src/lib/paper-trail/sweep.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectRecordDriveSnapshots": [
-      "src/lib/paper-trail/enqueue.ts",
-      "src/lib/paper-trail/processor.ts",
-      "src/lib/paper-trail/sweep.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectRegistryRemovals": [
       "src/lib/domain/project/registry-store.ts"
@@ -626,30 +626,41 @@
       "src/lib/domain/project/store.ts"
     ],
     "projectSavedViews": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/project-views.ts",
+      "src/lib/account-deletion.ts"
     ],
     "projectSelectionProcurementLinks": [
       "src/app/actions/project-operations.ts"
     ],
     "projectSourceRecordParticipants": [
-      "src/app/actions/project-audience-sub-vendor.ts",
-      "src/app/actions/project-rfis.ts",
-      "src/lib/rfis/vendor-assignment.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "projectTemplateApplicationItems": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-import.ts"
     ],
     "projectTemplateApplications": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-import.ts"
     ],
     "projectTemplateModules": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "projectTemplates": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts",
+      "src/lib/templates/buildertrend-template-inventory.ts"
     ],
     "projectTemplateVersions": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/estimate-templates.ts",
+      "src/app/actions/project-templates.ts",
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "projectTodoEvents": [
       "src/lib/domain/operations/store.ts"
@@ -658,28 +669,23 @@
       "src/app/actions/project-travel-charges.ts"
     ],
     "projectVideos": [
-      "src/app/actions/project-videos.ts",
-      "src/app/api/projects/[id]/videos/upload/complete/route.ts",
-      "src/lib/email/project-inbound-routing.ts"
+      "src/lib/domain/media/store.ts"
     ],
     "projectWarrantyClaimAttachments": [
-      "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts"
+      "src/lib/domain/warranty/store.ts"
     ],
     "projectWarrantyClaimEvents": [
-      "src/app/actions/project-warranty-vendor.ts",
-      "src/app/actions/project-warranty.ts"
+      "src/lib/domain/warranty/store.ts"
     ],
     "projectWarrantyClaims": [
-      "src/app/actions/project-warranty-vendor.ts",
-      "src/app/actions/project-warranty.ts",
-      "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts"
+      "src/lib/domain/warranty/store.ts"
     ],
     "projectWorkflowChecks": [
-      "src/app/actions/job-workflows.ts",
-      "src/lib/job-workflows/carryover.ts"
+      "src/lib/domain/workflows/store.ts"
     ],
     "pushTokens": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/api/push/register/route.ts",
+      "src/lib/push/send.ts"
     ],
     "rateBookEntries": [
       "src/app/actions/rate-book.ts"
@@ -810,10 +816,12 @@
       "src/lib/domain/schedule/store.ts"
     ],
     "scheduleTemplateDependencies": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "scheduleTemplateItems": [
-      "src/lib/domain/templates/store.ts"
+      "src/app/actions/schedule-template-export.ts",
+      "src/lib/templates/buildertrend-template-capture.ts"
     ],
     "shopTicketLaborClaims": [
       "src/app/actions/shop-tickets.ts"
@@ -828,13 +836,10 @@
       "src/lib/agent/memory.ts"
     ],
     "socialAccounts": [
-      "src/app/actions/social-connections.ts",
-      "src/app/actions/social-posts.ts",
-      "src/app/api/social/x/callback/route.ts"
+      "src/lib/domain/media/store.ts"
     ],
     "socialConnectionDrafts": [
-      "src/app/actions/social-connections.ts",
-      "src/app/api/social/meta/callback/route.ts"
+      "src/lib/domain/media/store.ts"
     ],
     "socialPostMedia": [
       "src/app/actions/social-posts.ts"
@@ -882,16 +887,24 @@
       "src/app/actions/presence.ts"
     ],
     "userProviderConfig": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/anthropic-oauth.ts",
+      "src/app/actions/provider-config.ts"
     ],
     "users": [
-      "src/lib/domain/identity/store.ts"
+      "src/app/actions/google-drive.ts",
+      "src/app/actions/profile.ts",
+      "src/app/actions/project-access-invitations.ts",
+      "src/app/actions/users.ts",
+      "src/lib/account-deletion.ts",
+      "src/lib/auth.ts"
     ],
     "userThemePreference": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/themes.ts",
+      "src/lib/theme/user-themes.ts"
     ],
     "userViewPreferences": [
-      "src/lib/domain/settings/store.ts"
+      "src/app/actions/project-views.ts",
+      "src/app/actions/view-preferences.ts"
     ],
     "vendorBills": [
       "src/lib/domain/financials/store.ts"
@@ -911,16 +924,10 @@
       "src/lib/sage/contact-canonical.ts"
     ],
     "vendorTradeDocLinks": [
-      "src/app/actions/vendor-trade-doc-link.ts",
-      "src/app/actions/vendor-trade-doc-requests.ts",
-      "src/app/vendor-docs/[token]/page.tsx",
-      "src/lib/trade-docs/link-delivery.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "vendorTradeDocuments": [
-      "src/app/actions/vendor-trade-doc-import.ts",
-      "src/app/actions/vendor-trade-docs.ts",
-      "src/lib/trade-docs/link-delivery.ts",
-      "src/lib/trade-letters/server.ts"
+      "src/lib/domain/documents/store.ts"
     ],
     "voiceParticipants": [
       "src/app/actions/voice-sessions.ts"
@@ -935,12 +942,10 @@
       "src/lib/weather/refresh-server.ts"
     ],
     "weatherCells": [
-      "src/lib/weather/read-server.ts",
-      "src/lib/weather/refresh-server.ts"
+      "src/lib/domain/weather/store.ts"
     ],
     "weatherPoints": [
-      "src/lib/weather/read-server.ts",
-      "src/lib/weather/refresh-server.ts"
+      "src/lib/domain/weather/store.ts"
     ],
     "weatherScheduleRisks": [
       "src/lib/weather/schedule-risk-server.ts"
@@ -952,31 +957,31 @@
       "src/lib/domain/work-calendar/store.ts"
     ],
     "workCalendarEvents": [
-      "src/lib/domain/work-calendar/store.ts",
-      "src/lib/google/calendar/sync.ts"
+      "src/lib/domain/work-calendar/store.ts"
     ],
     "workdayExceptions": [
       "src/lib/domain/schedule/store.ts"
     ],
     "youtubeChannelConnections": [
-      "src/app/actions/project-videos.ts",
-      "src/app/api/google/youtube/callback/route.ts"
+      "src/lib/domain/media/store.ts"
     ]
   },
   "largeFiles": {
     "src/app/actions/chat-messages.ts": 1333,
     "src/app/actions/cherish-pulse.ts": 919,
-    "src/app/actions/contract-packets.ts": 1450,
-    "src/app/actions/google-drive.ts": 1465,
+    "src/app/actions/contract-packets.ts": 1417,
+    "src/app/actions/estimate-templates.ts": 1134,
+    "src/app/actions/google-drive.ts": 1468,
     "src/app/actions/greeting-cards.ts": 1104,
-    "src/app/actions/listening-room.ts": 1123,
+    "src/app/actions/listening-room.ts": 1085,
     "src/app/actions/nutech-orders.ts": 980,
     "src/app/actions/project-audience-preview.ts": 1192,
     "src/app/actions/project-change-orders.ts": 1665,
-    "src/app/actions/project-documents.ts": 907,
+    "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1434,
+    "src/app/actions/project-templates.ts": 889,
     "src/app/actions/schedule-confirmations.ts": 1406,
-    "src/app/actions/social-posts.ts": 1126,
+    "src/app/actions/social-posts.ts": 1124,
     "src/app/actions/voice-sessions.ts": 986,
     "src/app/api/google/project-manager-handoff/route.ts": 816,
     "src/app/dashboard/contacts/page.tsx": 993,
@@ -1012,9 +1017,10 @@
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/agent/render/registry.tsx": 1809,
-    "src/lib/auth.ts": 807,
+    "src/lib/auth.ts": 879,
+    "src/lib/buildertrend/staging-manifest.ts": 1162,
     "src/lib/email/gmail-inbound.ts": 821,
-    "src/lib/email/project-inbound-routing.ts": 1040,
+    "src/lib/email/project-inbound-routing.ts": 1039,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1079,
     "src/lib/notifications/create-event.ts": 843,
@@ -1022,21 +1028,19 @@
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1350,
     "src/lib/sync/engine.ts": 864,
+    "src/lib/templates/buildertrend-template-capture.ts": 998,
     "src/lib/theme/presets.ts": 1942
   },
   "localHelpers": {
     "src/app/actions/cherish-cards.ts": 1,
-    "src/app/actions/contract-packets.ts": 1,
     "src/app/actions/contract-templates.ts": 1,
+    "src/app/actions/estimate-templates.ts": 1,
     "src/app/actions/greeting-cards.ts": 1,
     "src/app/actions/inbound-sms-review.ts": 1,
     "src/app/actions/project-access-invitations.ts": 1,
     "src/app/actions/project-audience-sub-vendor.ts": 1,
     "src/app/actions/project-contract-deposits.ts": 1,
-    "src/app/actions/project-document-folders.ts": 1,
-    "src/app/actions/project-documents.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 1,
-    "src/app/actions/project-warranty.ts": 1,
     "src/app/actions/social-connections.ts": 1,
     "src/app/actions/social-posts.ts": 1,
     "src/app/actions/voice-sessions.ts": 1,
@@ -1170,6 +1174,8 @@
     "src/lib/social/config.ts": 1,
     "src/lib/social/meta.ts": 1,
     "src/lib/social/x.ts": 1,
+    "src/lib/templates/buildertrend-template-capture.ts": 1,
+    "src/lib/templates/buildertrend-template-inventory.ts": 1,
     "src/lib/warranty/google-drive.ts": 1
   },
   "envCasts": {
@@ -1223,6 +1229,7 @@
     "src/app/actions/conversation-panel.ts": 3,
     "src/app/actions/estimate-assemblies.ts": 1,
     "src/app/actions/estimate-bids.ts": 1,
+    "src/app/actions/estimate-line-order.ts": 1,
     "src/app/actions/estimate-line-pricing.ts": 1,
     "src/app/actions/estimate-pricing-board.ts": 2,
     "src/app/actions/estimate-project-copies.ts": 1,
@@ -1276,7 +1283,6 @@
     "src/app/actions/contact-directory-access.ts": 1,
     "src/app/actions/contact-duplicates.ts": 1,
     "src/app/actions/contact-project-associations.ts": 1,
-    "src/app/actions/contract-packets.ts": 1,
     "src/app/actions/contract-templates.ts": 2,
     "src/app/actions/conversations-realtime.ts": 2,
     "src/app/actions/conversations.ts": 5,
@@ -1289,6 +1295,7 @@
     "src/app/actions/desktop-oauth-detection.ts": 1,
     "src/app/actions/drive-picker.ts": 1,
     "src/app/actions/equipment.ts": 1,
+    "src/app/actions/estimate-templates.ts": 1,
     "src/app/actions/estimate-text-templates.ts": 2,
     "src/app/actions/feature-settings.ts": 1,
     "src/app/actions/feedback-admin.ts": 6,
@@ -1318,7 +1325,7 @@
     "src/app/actions/office-alerts.ts": 1,
     "src/app/actions/organizations.ts": 3,
     "src/app/actions/owner-document-notices.ts": 1,
-    "src/app/actions/paper-trail.ts": 2,
+    "src/app/actions/paper-trail.ts": 1,
     "src/app/actions/pay-application-billing.ts": 1,
     "src/app/actions/permission-overrides.ts": 4,
     "src/app/actions/plugins.ts": 4,
@@ -1334,20 +1341,18 @@
     "src/app/actions/project-change-orders.ts": 1,
     "src/app/actions/project-client-meetings.ts": 1,
     "src/app/actions/project-contract-deposits.ts": 2,
-    "src/app/actions/project-document-folders.ts": 1,
-    "src/app/actions/project-documents.ts": 1,
     "src/app/actions/project-duplicates.ts": 1,
     "src/app/actions/project-estimate-report-phases.ts": 1,
     "src/app/actions/project-estimates.ts": 1,
     "src/app/actions/project-financial-workflows.ts": 3,
     "src/app/actions/project-historical-rfq-history.ts": 1,
-    "src/app/actions/project-links.ts": 1,
     "src/app/actions/project-messages.ts": 2,
     "src/app/actions/project-number-reviews.ts": 1,
     "src/app/actions/project-registry-archive.ts": 1,
     "src/app/actions/project-registry.ts": 2,
     "src/app/actions/project-rfi-email.ts": 1,
     "src/app/actions/project-site-weather.ts": 2,
+    "src/app/actions/project-templates.ts": 7,
     "src/app/actions/project-timeline.ts": 1,
     "src/app/actions/project-travel-charges.ts": 1,
     "src/app/actions/project-videos.ts": 3,
@@ -1367,6 +1372,7 @@
     "src/app/actions/sage-pay-applications.ts": 2,
     "src/app/actions/schedule-confirmations.ts": 8,
     "src/app/actions/schedule-phases.ts": 1,
+    "src/app/actions/schedule-template-export.ts": 2,
     "src/app/actions/shop-ticket-billing.ts": 1,
     "src/app/actions/shop-ticket-sage-labor.ts": 1,
     "src/app/actions/shop-tickets.ts": 1,

@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { contractPackets } from "@/db/schema-contracts"
@@ -10,6 +10,11 @@ import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
+import {
+  supersedeOtherExecutedPacketsStatement,
+  updateContractPacket,
+  updateContractPacketStatement,
+} from "@/lib/domain/documents/store"
 import {
   supersedeOtherContractEstimatesStatement,
   updateEstimates,
@@ -93,17 +98,14 @@ export async function POST(request: Request): Promise<Response> {
     if (event === "folder_sent") {
       if (packet.status === "draft" || packet.status === "internal_review") {
         await db.batch([
-          db
-            .update(contractPackets)
-            .set({
-              status: "signature_pending",
-              foxitStatus: "sent",
-              signatureRequestedAt: now,
-              sourceHash: packet.preparedSourceHash,
-              foxitEmbeddedSessionUrl: null,
-              updatedAt: now,
-            })
-            .where(eq(contractPackets.id, packet.id)),
+          updateContractPacketStatement(db, packet.id, {
+            status: "signature_pending",
+            foxitStatus: "sent",
+            signatureRequestedAt: now,
+            sourceHash: packet.preparedSourceHash,
+            foxitEmbeddedSessionUrl: null,
+            updatedAt: now,
+          }),
           updateEstimatesStatement(db, eq(projectEstimates.id, linkedEstimate.id), {
             status: "signature_pending",
             foxitStatus: "included_in_contract_packet",
@@ -117,11 +119,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (event === "folder_cancelled" || event === "folder_declined") {
       const outcome = event === "folder_declined" ? "declined" : "cancelled"
-      await db
-        .update(contractPackets)
-        .set({ foxitStatus: outcome, updatedAt: now })
-        .where(eq(contractPackets.id, packet.id))
-        .run()
+      await updateContractPacket(db, packet.id, { foxitStatus: outcome, updatedAt: now })
       if (packet.foxitStatus !== outcome) {
         await announceEsignOutcome({
           db,
@@ -161,11 +159,7 @@ export async function POST(request: Request): Promise<Response> {
       )
       if (await contractVersionBaseline(db, linkedEstimate, packetMode)) {
         if (packet.foxitStatus !== "completed") {
-          await db
-            .update(contractPackets)
-            .set({ foxitStatus: "completed", signaturePackageUrl: signedUrl, signedAt: now, updatedAt: now })
-            .where(eq(contractPackets.id, packet.id))
-            .run()
+          await updateContractPacket(db, packet.id, { foxitStatus: "completed", signaturePackageUrl: signedUrl, signedAt: now, updatedAt: now })
           await announceEsignOutcome({
             db,
             projectId: packet.projectId,
@@ -181,32 +175,20 @@ export async function POST(request: Request): Promise<Response> {
         return Response.json({ success: true, awaitingContractChoice: true })
       }
       await db.batch([
-        db
-          .update(contractPackets)
-          .set({ status: "superseded", updatedAt: now })
-          .where(
-            and(
-              eq(contractPackets.projectId, packet.projectId),
-              eq(contractPackets.status, "executed"),
-              ne(contractPackets.id, packet.id)
-            )
-          ),
+        supersedeOtherExecutedPacketsStatement(db, { projectId: packet.projectId, packetId: packet.id, now }),
         supersedeOtherContractEstimatesStatement(db, linkedEstimate.projectId, linkedEstimate.id, now),
-        db
-          .update(contractPackets)
-          .set({
-            status: "executed",
-            foxitStatus: "completed",
-            signaturePackageUrl: signedUrl,
-            signedAt: now,
-            acceptanceMethod: "foxit",
-            acceptanceEvidenceLabel: "Completed Foxit contract packet",
-            acceptanceRecordedByName: "Foxit eSign",
-            acceptedAt: now,
-            acceptedBy: packet.createdBy,
-            updatedAt: now,
-          })
-          .where(eq(contractPackets.id, packet.id)),
+        updateContractPacketStatement(db, packet.id, {
+          status: "executed",
+          foxitStatus: "completed",
+          signaturePackageUrl: signedUrl,
+          signedAt: now,
+          acceptanceMethod: "foxit",
+          acceptanceEvidenceLabel: "Completed Foxit contract packet",
+          acceptanceRecordedByName: "Foxit eSign",
+          acceptedAt: now,
+          acceptedBy: packet.createdBy,
+          updatedAt: now,
+        }),
         updateEstimatesStatement(db, eq(projectEstimates.id, linkedEstimate.id), {
           status: "accepted",
           foxitStatus: "completed_in_contract_packet",

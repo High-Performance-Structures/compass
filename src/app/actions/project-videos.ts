@@ -15,6 +15,13 @@ import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { dailyLogDeleteStatement, updateDailyLogFromVideo } from "@/lib/domain/field/store"
+import {
+  deleteYoutubeChannelConnection,
+  projectVideoDeleteStatement,
+  updateLiveProjectVideo,
+  updateProjectVideo,
+  updateYoutubeChannelConnection,
+} from "@/lib/domain/media/store"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
 import {
   getYoutubeOAuthConfig,
@@ -218,9 +225,10 @@ export async function updateProjectVideoReview(input: {
     }
     const user = await requireAuth()
     const now = new Date().toISOString()
-    await db
-      .update(projectVideos)
-      .set({
+    await updateLiveProjectVideo(db, {
+      videoId: input.videoId,
+      projectId: input.projectId,
+      values: {
         title,
         description: description.length > 0 ? description : null,
         compassAudience: normalizedAudience,
@@ -230,15 +238,8 @@ export async function updateProjectVideoReview(input: {
         reviewedAt: now,
         uploadError: null,
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectVideos.id, input.videoId),
-          eq(projectVideos.projectId, input.projectId),
-          isNull(projectVideos.deletedAt)
-        )
-      )
-      .run()
+      },
+    })
     revalidatePath(`/dashboard/projects/${input.projectId}/videos`)
     return { success: true }
   } catch (error) {
@@ -298,10 +299,7 @@ export async function disconnectYoutubeChannel(input: {
       revoked = false
     }
 
-    await db
-      .delete(youtubeChannelConnections)
-      .where(eq(youtubeChannelConnections.id, connection.id))
-      .run()
+    await deleteYoutubeChannelConnection(db, connection.id)
     revalidatePath(`/dashboard/projects/${input.projectId}/videos`)
     return { success: true, revoked }
   } catch (error) {
@@ -322,17 +320,11 @@ export async function archiveProjectVideo(input: {
   try {
     const db = await projectVideoDb(input.projectId, "update")
     const now = new Date().toISOString()
-    await db
-      .update(projectVideos)
-      .set({ publishStatus: "archived", archivedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(projectVideos.id, input.videoId),
-          eq(projectVideos.projectId, input.projectId),
-          isNull(projectVideos.deletedAt)
-        )
-      )
-      .run()
+    await updateLiveProjectVideo(db, {
+      videoId: input.videoId,
+      projectId: input.projectId,
+      values: { publishStatus: "archived", archivedAt: now, updatedAt: now },
+    })
     revalidatePath(`/dashboard/projects/${input.projectId}/videos`)
     return { success: true }
   } catch (error) {
@@ -366,15 +358,11 @@ export async function deleteProjectVideo(input: {
       )
       .limit(1)
     if (!video) return { success: false, error: "Video not found." }
-    const deleteVideo = db
-      .update(projectVideos)
-      .set({ publishStatus: "deleted", deletedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(projectVideos.id, input.videoId),
-          eq(projectVideos.projectId, input.projectId)
-        )
-      )
+    const deleteVideo = projectVideoDeleteStatement(db, {
+      videoId: input.videoId,
+      projectId: input.projectId,
+      now,
+    })
     if (
       video.publishStatus !== "published" &&
       video.linkedEntityType === "daily_log" &&
@@ -388,7 +376,7 @@ export async function deleteProjectVideo(input: {
         }),
       ])
     } else {
-      await deleteVideo.run()
+      await db.batch([deleteVideo])
     }
     revalidatePath(`/dashboard/projects/${input.projectId}/videos`)
     return { success: true }
@@ -447,11 +435,7 @@ export async function publishProjectVideo(input: {
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(projectVideos)
-      .set({ publishStatus: "uploading", uploadError: null, updatedAt: now })
-      .where(eq(projectVideos.id, video.id))
-      .run()
+    await updateProjectVideo(db, video.id, { publishStatus: "uploading", uploadError: null, updatedAt: now })
     const { env } = await getCloudflareContext()
     const config = getYoutubeOAuthConfig(
       env,
@@ -484,32 +468,24 @@ export async function publishProjectVideo(input: {
       fileSize: video.sourceFileSize,
       body: source.body,
       onSessionCreated: async (sessionUrl) => {
-        await db
-          ?.update(projectVideos)
-          .set({ youtubeUploadSessionUrl: sessionUrl, updatedAt: now })
-          .where(eq(projectVideos.id, video.id))
-          .run()
+        if (db) await updateProjectVideo(db, video.id, { youtubeUploadSessionUrl: sessionUrl, updatedAt: now })
       },
     })
     const publishedAt = new Date().toISOString()
-    await db
-      .update(projectVideos)
-      .set({
-        publishStatus: "published",
-        youtubeVideoId: uploaded.videoId,
-        youtubeUrl: uploaded.url,
-        youtubeUploadSessionUrl: null,
-        uploadError: null,
-        publishedAt,
-        updatedAt: publishedAt,
-      })
-      .where(eq(projectVideos.id, video.id))
-      .run()
-    await db
-      .update(youtubeChannelConnections)
-      .set({ lastUploadAt: publishedAt, lastError: null, updatedAt: publishedAt })
-      .where(eq(youtubeChannelConnections.id, connection.id))
-      .run()
+    await updateProjectVideo(db, video.id, {
+      publishStatus: "published",
+      youtubeVideoId: uploaded.videoId,
+      youtubeUrl: uploaded.url,
+      youtubeUploadSessionUrl: null,
+      uploadError: null,
+      publishedAt,
+      updatedAt: publishedAt,
+    })
+    await updateYoutubeChannelConnection(db, connection.id, {
+      lastUploadAt: publishedAt,
+      lastError: null,
+      updatedAt: publishedAt,
+    })
 
     if (video.linkedEntityType === "daily_log" && video.linkedEntityId) {
       const [dailyLog] = await db
@@ -571,11 +547,7 @@ export async function publishProjectVideo(input: {
     const message = error instanceof Error ? error.message : "Could not publish video."
     if (db) {
       const now = new Date().toISOString()
-      await db
-        .update(projectVideos)
-        .set({ publishStatus: "upload_failed", uploadError: message, updatedAt: now })
-        .where(eq(projectVideos.id, input.videoId))
-        .run()
+      await updateProjectVideo(db, input.videoId, { publishStatus: "upload_failed", uploadError: message, updatedAt: now })
     }
     return { success: false, error: message }
   }

@@ -1,10 +1,9 @@
 import "server-only"
 
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { users } from "@/db/schema"
-import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { vendorTradeDocsHref } from "@/lib/email/tracked-record-email"
@@ -12,6 +11,12 @@ import { createSystemNotificationEvent, notificationLink } from "@/lib/notificat
 import { hashQuoteLinkToken, newQuoteLinkToken } from "@/lib/rfqs/quote-links"
 import { tradeDocRequestHtml, tradeDocRequestText } from "@/lib/trade-docs/request-email"
 import { TRADE_DOC_LINK_PATH, tradeDocLinkExpiresAt, type TradeDocLinkAudience } from "@/lib/trade-docs/vendor-link"
+import {
+  insertTradeDocLink,
+  insertTradeDocumentStatement,
+  supersedeCurrentTradeDocumentStatement,
+  updateTradeDocLink,
+} from "@/lib/domain/documents/store"
 
 type Db = ReturnType<typeof getDb>
 
@@ -53,7 +58,7 @@ export async function sendTradeDocLink(input: {
   const linkId = crypto.randomUUID()
   const now = new Date()
   const expiresAt = tradeDocLinkExpiresAt(now, input.days)
-  await input.db.insert(vendorTradeDocLinks).values({
+  await insertTradeDocLink(input.db, {
     id: linkId,
     organizationId: input.organizationId,
     vendorId: input.vendor.id,
@@ -105,7 +110,7 @@ export async function sendTradeDocLink(input: {
   }
   if (error) {
     // The email never went out, so its link shouldn't work either.
-    await input.db.update(vendorTradeDocLinks).set({ revokedAt: new Date().toISOString() }).where(eq(vendorTradeDocLinks.id, linkId))
+    await updateTradeDocLink(input.db, linkId, { revokedAt: new Date().toISOString() })
     return { success: false, error }
   }
   const recipients = [...input.to, ...input.cc].join(", ")
@@ -181,11 +186,8 @@ export async function recordLinkTradeDoc(input: {
   const now = new Date().toISOString()
   const id = crypto.randomUUID()
   await input.db.batch([
-    input.db
-      .update(vendorTradeDocuments)
-      .set({ supersededAt: now, updatedAt: now })
-      .where(and(eq(vendorTradeDocuments.vendorId, input.vendorId), eq(vendorTradeDocuments.docType, input.docType), isNull(vendorTradeDocuments.supersededAt))),
-    input.db.insert(vendorTradeDocuments).values({
+    supersedeCurrentTradeDocumentStatement(input.db, { vendorId: input.vendorId, docType: input.docType, now }),
+    insertTradeDocumentStatement(input.db, {
       id,
       organizationId: input.organizationId,
       vendorId: input.vendorId,

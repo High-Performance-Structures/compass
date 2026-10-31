@@ -16,6 +16,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { insertProjectClientMeeting, updateProjectClientMeeting } from "@/lib/domain/media/store"
 import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
 import {
@@ -446,7 +447,7 @@ export async function scheduleProjectClientMeeting(
     })
 
     const now = new Date().toISOString()
-    await access.db.insert(projectClientMeetings).values({
+    await insertProjectClientMeeting(access.db, {
       id,
       organizationId: access.organizationId,
       projectId,
@@ -535,15 +536,12 @@ export async function cancelProjectClientMeeting(
       await deleteGoogleCalendarEvent(accessToken, "primary", meeting.googleEventId)
     }
     const now = new Date().toISOString()
-    await access.db
-      .update(projectClientMeetings)
-      .set({
-        status: "cancelled",
-        cancelledBy: access.user.id,
-        cancelledAt: now,
-        updatedAt: now,
-      })
-      .where(eq(projectClientMeetings.id, meetingId))
+    await updateProjectClientMeeting(access.db, meetingId, {
+      status: "cancelled",
+      cancelledBy: access.user.id,
+      cancelledAt: now,
+      updatedAt: now,
+    })
 
     await recordActivityEvent({
       db: access.db,

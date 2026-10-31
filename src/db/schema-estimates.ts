@@ -459,6 +459,9 @@ export const projectEstimateLines = sqliteTable(
       table.divisionCode,
       table.sortOrder
     ),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("project_estimate_lines_estimate_updated_idx").on(table.estimateId, table.updatedAt),
     index("project_estimate_lines_project_cost_code_idx").on(
       table.projectId,
       table.costCode

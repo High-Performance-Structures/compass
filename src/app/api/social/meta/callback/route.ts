@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 import { getDb } from "@/db"
-import { socialConnectionDrafts } from "@/db/schema-social"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { insertSocialConnectionDraft } from "@/lib/domain/media/store"
 import { can } from "@/lib/permissions"
 import { getSocialConfig } from "@/lib/social/config"
 import {
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const id = crypto.randomUUID()
     const now = new Date()
     const db = getDb(env.DB)
-    await db.insert(socialConnectionDrafts).values({
+    await insertSocialConnectionDraft(db, {
       id,
       organizationId: user.organizationId,
       userId: user.id,
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       ),
       expiresAt: new Date(now.getTime() + 15 * 60_000).toISOString(),
       createdAt: now.toISOString(),
-    }).run()
+    })
     return redirectAndClear(request, "select-meta-page", id)
   } catch (error) {
     console.error("Meta social connection failed", error)

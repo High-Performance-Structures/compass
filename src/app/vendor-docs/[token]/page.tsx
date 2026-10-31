@@ -1,10 +1,9 @@
 export const dynamic = "force-dynamic"
 
-import { eq } from "drizzle-orm"
 import type { Metadata } from "next"
 
 import { VendorDocsLinkForm } from "@/components/trade-docs/vendor-docs-link-form"
-import { vendorTradeDocLinks } from "@/db/schema-trade-docs"
+import { updateTradeDocLink } from "@/lib/domain/documents/store"
 import { getCloudflareContext } from "@/lib/db"
 import { TRADE_DOC_LINK_UPLOAD_LIMIT } from "@/lib/trade-docs/vendor-link"
 import { resolveTradeDocLink, tradeDocLinkView } from "@/lib/trade-docs/vendor-link-server"
@@ -36,7 +35,7 @@ export default async function VendorDocsLinkPage({
       </main>
     )
   }
-  await context.db.update(vendorTradeDocLinks).set({ lastOpenedAt: new Date().toISOString() }).where(eq(vendorTradeDocLinks.id, context.link.id))
+  await updateTradeDocLink(context.db, context.link.id, { lastOpenedAt: new Date().toISOString() })
   const view = await tradeDocLinkView(context, TRADE_DOC_LINK_UPLOAD_LIMIT)
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-8 sm:px-6 sm:py-12">

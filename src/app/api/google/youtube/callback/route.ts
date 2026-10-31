@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { upsertYoutubeChannelConnection } from "@/lib/domain/media/store"
 import { getGoogleAccountIdentity } from "@/lib/google/calendar/oauth"
 import {
   exchangeYoutubeAuthorizationCode,
@@ -123,44 +124,23 @@ export async function GET(request: NextRequest): Promise<Response> {
       return redirectAndClear(request, projectId, "missing-refresh-token")
     }
     const now = new Date().toISOString()
-    await db
-      .insert(youtubeChannelConnections)
-      .values({
-        id: existing?.id ?? crypto.randomUUID(),
-        organizationId: user.organizationId,
-        channelKey,
-        channelId: channel.id,
-        channelTitle: channel.title,
-        googleAccountEmail: identity.email,
-        refreshTokenEncrypted,
-        grantedScopes: [...grant.scopes].sort().join(" "),
-        status: "connected",
-        connectedBy: user.id,
-        connectedAt: now,
-        lastUploadAt: existing?.lastUploadAt ?? null,
-        lastError: null,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          youtubeChannelConnections.organizationId,
-          youtubeChannelConnections.channelKey,
-        ],
-        set: {
-          channelId: channel.id,
-          channelTitle: channel.title,
-          googleAccountEmail: identity.email,
-          refreshTokenEncrypted,
-          grantedScopes: [...grant.scopes].sort().join(" "),
-          status: "connected",
-          connectedBy: user.id,
-          connectedAt: now,
-          lastError: null,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await upsertYoutubeChannelConnection(db, {
+      id: existing?.id ?? crypto.randomUUID(),
+      organizationId: user.organizationId,
+      channelKey,
+      channelId: channel.id,
+      channelTitle: channel.title,
+      googleAccountEmail: identity.email,
+      refreshTokenEncrypted,
+      grantedScopes: [...grant.scopes].sort().join(" "),
+      status: "connected",
+      connectedBy: user.id,
+      connectedAt: now,
+      lastUploadAt: existing?.lastUploadAt ?? null,
+      lastError: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    })
     return redirectAndClear(request, projectId, "connected")
   } catch (error) {
     console.error("YouTube channel connection failed", error)

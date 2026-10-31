@@ -1,8 +1,8 @@
 /**
  * The work calendar's writes: Compass calendar events, their attendees, and
  * the organization calendar settings (architecture standard, section 1).
- * Google sync (src/lib/google/calendar/sync.ts) still updates synced event
- * fields itself. No auth logic here; callers resolve access first.
+ * Google sync (src/lib/google/calendar/sync.ts) writes synced event fields
+ * through here too. No auth logic here; callers resolve access first.
  */
 import { and, eq, inArray, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
@@ -37,6 +37,15 @@ export async function saveDefaultCalendarProject(
 
 export async function insertWorkCalendarEvent(db: Db, values: NewWorkCalendarEvent): Promise<void> {
   await db.insert(workCalendarEvents).values(values)
+}
+
+/** Writes fields Google sync owns (times, links, Meet URL) on one event. */
+export async function updateWorkCalendarEvent(
+  db: Db,
+  eventId: string,
+  values: Partial<NewWorkCalendarEvent>,
+): Promise<void> {
+  await db.update(workCalendarEvents).set(values).where(eq(workCalendarEvents.id, eventId))
 }
 
 type OpenEventVersion = {

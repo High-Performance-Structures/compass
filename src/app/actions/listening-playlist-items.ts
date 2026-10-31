@@ -6,11 +6,19 @@ import { z } from "zod/v4"
 import {
   listeningPlaylistItems,
   listeningPlaylists,
-  listeningPlaylistTrackLinks,
   listeningQueueItems,
   listeningRooms,
   listeningTrackLinks,
 } from "@/db/schema-conversations"
+import {
+  deleteListeningPlaylistItem,
+  insertListeningPlaylist,
+  insertListeningPlaylistItems,
+  insertListeningPlaylistTrackLinks,
+  moveListeningPlaylistItem,
+  reorderListeningPlaylistItems,
+  updateListeningPlaylist,
+} from "@/lib/domain/listening/store"
 import {
   activePlaylist,
   canEditPlaylist,
@@ -66,10 +74,7 @@ async function nextSortOrder(context: PlaylistContext, playlistId: string): Prom
 }
 
 async function touchPlaylist(context: PlaylistContext, playlistId: string, now: string): Promise<void> {
-  await context.db
-    .update(listeningPlaylists)
-    .set({ updatedBy: context.user.id, updatedAt: now })
-    .where(eq(listeningPlaylists.id, playlistId))
+  await updateListeningPlaylist(context.db, playlistId, { updatedBy: context.user.id, updatedAt: now })
 }
 
 /** An empty playlist that songs can be added to one at a time. */
@@ -86,7 +91,7 @@ export async function createEmptyListeningPlaylist(input: {
     const context = await playlistContext(channelId.data, true)
     const now = new Date().toISOString()
     const playlistId = crypto.randomUUID()
-    await context.db.insert(listeningPlaylists).values({
+    await insertListeningPlaylist(context.db, {
       id: playlistId,
       organizationId: context.channel.organizationId,
       name: name.data,
@@ -168,7 +173,7 @@ export async function addSongToListeningPlaylist(input: {
 
     const now = new Date().toISOString()
     const playlistItemId = crypto.randomUUID()
-    await context.db.insert(listeningPlaylistItems).values({
+    await insertListeningPlaylistItems(context.db, [{
       id: playlistItemId,
       playlistId: playlist.id,
       title: song.title,
@@ -177,19 +182,18 @@ export async function addSongToListeningPlaylist(input: {
       sortOrder: await nextSortOrder(context, playlist.id),
       addedBy: context.user.id,
       createdAt: now,
-    })
-    if (song.links.length > 0) {
-      await context.db.insert(listeningPlaylistTrackLinks).values(
-        song.links.map((link) => ({
-          id: crypto.randomUUID(),
-          playlistItemId,
-          provider: link.provider,
-          url: link.url,
-          addedBy: context.user.id,
-          createdAt: now,
-        }))
-      )
-    }
+    }])
+    await insertListeningPlaylistTrackLinks(
+      context.db,
+      song.links.map((link) => ({
+        id: crypto.randomUUID(),
+        playlistItemId,
+        provider: link.provider,
+        url: link.url,
+        addedBy: context.user.id,
+        createdAt: now,
+      }))
+    )
     await touchPlaylist(context, playlist.id, now)
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { playlistItemId } }
@@ -235,10 +239,10 @@ export async function moveListeningPlaylistSong(input: {
     await editablePlaylist(context, item.playlistId)
     const target = await editablePlaylist(context, toPlaylistId.data)
     const now = new Date().toISOString()
-    await context.db
-      .update(listeningPlaylistItems)
-      .set({ playlistId: target.id, sortOrder: await nextSortOrder(context, target.id) })
-      .where(eq(listeningPlaylistItems.id, item.id))
+    await moveListeningPlaylistItem(context.db, item.id, {
+      playlistId: target.id,
+      sortOrder: await nextSortOrder(context, target.id),
+    })
     await touchPlaylist(context, item.playlistId, now)
     await touchPlaylist(context, target.id, now)
     revalidatePlaylistPaths(context.channel.id)
@@ -260,7 +264,7 @@ export async function removeListeningPlaylistSong(input: {
     const item = await playlistItemInOrganization(context, itemId.data)
     if (!item) return { success: false, error: "Song not found" }
     await editablePlaylist(context, item.playlistId)
-    await context.db.delete(listeningPlaylistItems).where(eq(listeningPlaylistItems.id, item.id))
+    await deleteListeningPlaylistItem(context.db, item.id)
     await touchPlaylist(context, item.playlistId, new Date().toISOString())
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { removed: true } }
@@ -294,13 +298,7 @@ export async function reorderListeningPlaylist(input: {
     if (ids.length !== rows.length || new Set(ids).size !== ids.length || !ids.every((id) => known.has(id))) {
       return { success: false, error: "The playlist just changed. Try that move again." }
     }
-    const [first, ...rest] = ids.map((id, index) =>
-      context.db
-        .update(listeningPlaylistItems)
-        .set({ sortOrder: index })
-        .where(and(eq(listeningPlaylistItems.id, id), eq(listeningPlaylistItems.playlistId, playlist.id)))
-    )
-    if (first) await context.db.batch([first, ...rest])
+    await reorderListeningPlaylistItems(context.db, playlist.id, ids)
     await touchPlaylist(context, playlist.id, new Date().toISOString())
     revalidatePlaylistPaths(context.channel.id)
     return { success: true, data: { reordered: true } }

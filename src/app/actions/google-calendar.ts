@@ -12,6 +12,12 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  deleteGoogleCalendarConnection,
+  updateGoogleCalendarConnection,
+  updateGoogleCalendarSelection,
+  upsertGoogleCalendarSelections,
+} from "@/lib/domain/calendars/store"
 import { listGoogleCalendars } from "@/lib/google/calendar/client"
 import {
   getGoogleCalendarOAuthConfig,
@@ -215,44 +221,7 @@ export async function refreshGoogleCalendarList(): Promise<ActionResult> {
     })
     const calendars = await listGoogleCalendars(token)
     const now = new Date().toISOString()
-    for (const calendar of calendars) {
-      await db
-        .insert(googleCalendarSelections)
-        .values({
-          id: crypto.randomUUID(),
-          connectionId: connection.id,
-          googleCalendarId: calendar.id,
-          summary: calendar.summary,
-          description: calendar.description,
-          timeZone: calendar.timeZone,
-          backgroundColor: calendar.backgroundColor,
-          accessRole: calendar.accessRole,
-          isPrimary: calendar.primary,
-          selected: false,
-          importEvents: false,
-          exportCompassEvents: false,
-          isCompassDestination: false,
-          calendarScope: "personal",
-          internalVisibility: "busy",
-          internalCanCreate: false,
-          internalCanEdit: false,
-          internalCanDelete: false,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [googleCalendarSelections.connectionId, googleCalendarSelections.googleCalendarId],
-          set: {
-            summary: calendar.summary,
-            description: calendar.description,
-            timeZone: calendar.timeZone,
-            backgroundColor: calendar.backgroundColor,
-            accessRole: calendar.accessRole,
-            isPrimary: calendar.primary,
-            updatedAt: now,
-          },
-        })
-    }
+    await upsertGoogleCalendarSelections(db, { connectionId: connection.id, calendars, now })
     revalidatePath("/dashboard/settings")
     return { success: true }
   } catch (error) {
@@ -311,21 +280,18 @@ export async function configureGoogleCalendarSelection(
       return { success: false, error: "The connected Google account has read-only access to this calendar." }
     }
     const now = new Date().toISOString()
-    await db
-      .update(googleCalendarSelections)
-      .set({
-        selected: input.selected,
-        importEvents: input.selected && input.importEvents,
-        exportCompassEvents: input.selected && input.exportCompassEvents,
-        isCompassDestination: input.selected && input.isCompassDestination,
-        calendarScope: input.calendarScope,
-        internalVisibility: organizationCalendar ? input.internalVisibility : "busy",
-        internalCanCreate: organizationCalendar && input.internalCanCreate,
-        internalCanEdit: organizationCalendar && input.internalCanEdit,
-        internalCanDelete: organizationCalendar && input.internalCanDelete,
-        updatedAt: now,
-      })
-      .where(eq(googleCalendarSelections.id, selection.id))
+    await updateGoogleCalendarSelection(db, selection.id, {
+      selected: input.selected,
+      importEvents: input.selected && input.importEvents,
+      exportCompassEvents: input.selected && input.exportCompassEvents,
+      isCompassDestination: input.selected && input.isCompassDestination,
+      calendarScope: input.calendarScope,
+      internalVisibility: organizationCalendar ? input.internalVisibility : "busy",
+      internalCanCreate: organizationCalendar && input.internalCanCreate,
+      internalCanEdit: organizationCalendar && input.internalCanEdit,
+      internalCanDelete: organizationCalendar && input.internalCanDelete,
+      updatedAt: now,
+    })
     const enabled = await db
       .select({ id: googleCalendarSelections.id })
       .from(googleCalendarSelections)
@@ -338,10 +304,7 @@ export async function configureGoogleCalendarSelection(
       )
       .limit(1)
       .then((rows) => rows.length > 0)
-    await db
-      .update(googleCalendarConnections)
-      .set({ calendarSyncEnabled: enabled, updatedAt: now })
-      .where(eq(googleCalendarConnections.id, selection.connectionId))
+    await updateGoogleCalendarConnection(db, selection.connectionId, { calendarSyncEnabled: enabled, updatedAt: now })
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/schedule")
     return { success: true }
@@ -441,7 +404,7 @@ export async function disconnectGoogleCalendar(): Promise<
         revoked = false
       }
     }
-    await db.delete(googleCalendarConnections).where(eq(googleCalendarConnections.id, connection.id)).run()
+    await deleteGoogleCalendarConnection(db, connection.id)
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/schedule")
     return { success: true, revoked }

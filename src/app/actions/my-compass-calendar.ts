@@ -9,6 +9,7 @@ import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { insertMissingMyCompassCalendars, updateMyCompassCalendar } from "@/lib/domain/calendars/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -93,10 +94,7 @@ async function eligibility(
 
 async function ensureRow(ctx: Context): Promise<typeof myCompassCalendars.$inferSelect> {
   const now = new Date().toISOString()
-  await ctx.db
-    .insert(myCompassCalendars)
-    .values({ userId: ctx.user.id, organizationId: ctx.organizationId, createdAt: now, updatedAt: now })
-    .onConflictDoNothing()
+  await insertMissingMyCompassCalendars(ctx.db, { organizationId: ctx.organizationId, userIds: [ctx.user.id], now })
   const row = await ctx.db
     .select()
     .from(myCompassCalendars)
@@ -163,12 +161,9 @@ export async function setMyCompassCalendarEnabled(enabled: boolean): Promise<Res
     const now = new Date().toISOString()
     if (!enabled) {
       await removeMyCompassCalendar({ db: ctx.db, env: ctx.env, userId: ctx.user.id, status: "pending" })
-      await ctx.db.update(myCompassCalendars).set({ enabled: false, updatedAt: now }).where(eq(myCompassCalendars.userId, ctx.user.id))
+      await updateMyCompassCalendar(ctx.db, ctx.user.id, { enabled: false, updatedAt: now })
     } else {
-      await ctx.db
-        .update(myCompassCalendars)
-        .set({ enabled: true, status: "pending", lastError: null, updatedAt: now })
-        .where(eq(myCompassCalendars.userId, ctx.user.id))
+      await updateMyCompassCalendar(ctx.db, ctx.user.id, { enabled: true, status: "pending", lastError: null, updatedAt: now })
       await runSync(ctx, eligible.domain)
     }
     revalidatePath("/dashboard/settings")
@@ -202,15 +197,9 @@ export async function saveMyCompassCalendarNames(names: readonly string[]): Prom
     const cleaned = Array.from(new Set(names.map((name) => name.trim()).filter((name) => name.length >= 3))).slice(0, 10)
     if (cleaned.some((name) => name.length > 80)) return { success: false, error: "Keep each name under 80 characters." }
     await ensureRow(ctx)
-    await ctx.db
-      .update(myCompassCalendars)
-      .set({ otherNames: JSON.stringify(cleaned), updatedAt: new Date().toISOString() })
-      .where(eq(myCompassCalendars.userId, ctx.user.id))
+    await updateMyCompassCalendar(ctx.db, ctx.user.id, { otherNames: JSON.stringify(cleaned), updatedAt: new Date().toISOString() })
     // Pick up newly matched items on the next run.
-    await ctx.db
-      .update(myCompassCalendars)
-      .set({ lastSyncedAt: null })
-      .where(eq(myCompassCalendars.userId, ctx.user.id))
+    await updateMyCompassCalendar(ctx.db, ctx.user.id, { lastSyncedAt: null })
     revalidatePath("/dashboard/settings")
     return { success: true, data: null }
   } catch (error) {

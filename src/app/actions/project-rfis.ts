@@ -58,6 +58,7 @@ import {
 import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
+import { deleteSourceRecordParticipantsStatement } from "@/lib/domain/documents/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type {
@@ -478,12 +479,11 @@ export async function deleteProjectRfi(
     // the RFI id without a foreign key, so they are removed in the same batch.
     await db.batch([
       rfiDeleteStatement(db, projectId, rfiId),
-      db.delete(projectSourceRecordParticipants)
-        .where(and(
-          eq(projectSourceRecordParticipants.projectId, projectId),
-          eq(projectSourceRecordParticipants.sourceRecordType, "rfi"),
-          inJsonList(projectSourceRecordParticipants.sourceRecordId, existing.sourceRecordId ? [rfiId, existing.sourceRecordId] : [rfiId]),
-        )),
+      deleteSourceRecordParticipantsStatement(db, and(
+        eq(projectSourceRecordParticipants.projectId, projectId),
+        eq(projectSourceRecordParticipants.sourceRecordType, "rfi"),
+        inJsonList(projectSourceRecordParticipants.sourceRecordId, existing.sourceRecordId ? [rfiId, existing.sourceRecordId] : [rfiId]),
+      )),
     ])
 
     revalidatePath(`/dashboard/projects/${projectId}`)

@@ -6,6 +6,13 @@ import { revalidatePath } from "next/cache"
 
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import {
+  deleteTradeDocumentStatement,
+  insertTradeDocumentStatement,
+  supersedeCurrentTradeDocumentStatement,
+  updateTradeDocuments,
+  updateTradeDocumentsStatement,
+} from "@/lib/domain/documents/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateVendorById } from "@/lib/domain/contacts/store"
 import type { AuthUser } from "@/lib/auth"
@@ -240,11 +247,8 @@ export async function recordVendorTradeDoc(vendorId: string, input: RecordTradeD
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     await access.db.batch([
-      access.db
-        .update(vendorTradeDocuments)
-        .set({ supersededAt: now, updatedAt: now })
-        .where(and(eq(vendorTradeDocuments.vendorId, vendor.id), eq(vendorTradeDocuments.docType, type.id), isNull(vendorTradeDocuments.supersededAt))),
-      access.db.insert(vendorTradeDocuments).values({
+      supersedeCurrentTradeDocumentStatement(access.db, { vendorId: vendor.id, docType: type.id, now }),
+      insertTradeDocumentStatement(access.db, {
         id,
         organizationId: access.organizationId,
         vendorId: vendor.id,
@@ -297,17 +301,13 @@ export async function updateVendorTradeDoc(
     if (!row) return { success: false, error: "Document not found." }
     const type = access.settings.docTypes.find((item) => item.id === row.docType)
     const checks = input.checks.filter((check) => access.settings.certificateChecks.includes(check))
-    await access.db
-      .update(vendorTradeDocuments)
-      .set({
-        effectiveOn: cleanDate(input.effectiveOn),
-        expiresOn: type?.expires === false ? null : cleanDate(input.expiresOn),
-        checksJson: checks.length > 0 ? JSON.stringify(checks) : null,
-        notes: input.notes?.trim().slice(0, 1000) || null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(vendorTradeDocuments.id, row.id))
-      .run()
+    await updateTradeDocuments(access.db, eq(vendorTradeDocuments.id, row.id), {
+      effectiveOn: cleanDate(input.effectiveOn),
+      expiresOn: type?.expires === false ? null : cleanDate(input.expiresOn),
+      checksJson: checks.length > 0 ? JSON.stringify(checks) : null,
+      notes: input.notes?.trim().slice(0, 1000) || null,
+      updatedAt: new Date().toISOString(),
+    })
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {
@@ -341,14 +341,14 @@ export async function deleteVendorTradeDoc(documentId: string): Promise<Result<n
           .get()
       : null
     const now = new Date().toISOString()
-    const remove = access.db.delete(vendorTradeDocuments).where(eq(vendorTradeDocuments.id, row.id))
+    const remove = deleteTradeDocumentStatement(access.db, row.id)
     if (previous) {
       await access.db.batch([
         remove,
-        access.db.update(vendorTradeDocuments).set({ supersededAt: null, updatedAt: now }).where(eq(vendorTradeDocuments.id, previous.id)),
+        updateTradeDocumentsStatement(access.db, eq(vendorTradeDocuments.id, previous.id), { supersededAt: null, updatedAt: now }),
       ])
     } else {
-      await remove.run()
+      await access.db.batch([remove])
     }
     await recordActivityEvent({
       db: access.db,

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { insertTradeDocumentStatement, updateTradeDocumentsStatement } from "@/lib/domain/documents/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { tradeDocAccess, type TradeDocAccess } from "@/lib/trade-docs/access"
@@ -155,11 +156,11 @@ export async function importTradeDocs(input: {
       const becomesCurrent = !holder || !holder.expiresOn || (expiresOn !== null && expiresOn > holder.expiresOn)
       const id = crypto.randomUUID()
       if (becomesCurrent && holder) {
-        statements.push(access.db.update(vendorTradeDocuments).set({ supersededAt: now, updatedAt: now }).where(and(eq(vendorTradeDocuments.id, holder.id), isNull(vendorTradeDocuments.supersededAt))))
+        statements.push(updateTradeDocumentsStatement(access.db, and(eq(vendorTradeDocuments.id, holder.id), isNull(vendorTradeDocuments.supersededAt)), { supersededAt: now, updatedAt: now }))
       }
       if (becomesCurrent) currentByGroup.set(group, { id, vendorId: item.vendorId, docType: item.docType, driveFileId: file.id, expiresOn, supersededAt: null })
       statements.push(
-        access.db.insert(vendorTradeDocuments).values({
+        insertTradeDocumentStatement(access.db, {
           id,
           organizationId: access.organizationId,
           vendorId: item.vendorId,

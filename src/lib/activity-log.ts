@@ -17,6 +17,21 @@ export const ACTIVITY_CATEGORIES = [
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]
 
+/**
+ * Categories that are recorded but not listed on the Activity page (its
+ * filter and feed only show ACTIVITY_CATEGORIES). Company settings changes
+ * are kept for audit this way.
+ */
+type UnlistedActivityCategory = "settings"
+
+type ActivityMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ActivityMetadataValue[]
+  | { readonly [key: string]: ActivityMetadataValue }
+
 export type ActivityActor = {
   readonly id: string | null
   readonly email: string
@@ -34,12 +49,12 @@ type RecordActivityInput = {
   readonly organizationId: string
   readonly projectId?: string | null
   readonly actor: ActivityActor
-  readonly category: ActivityCategory
+  readonly category: ActivityCategory | UnlistedActivityCategory
   readonly action: string
   readonly entityType: string
   readonly entityId?: string | null
   readonly summary: string
-  readonly metadata?: Readonly<Record<string, string | number | boolean | null>>
+  readonly metadata?: Readonly<Record<string, ActivityMetadataValue>>
   readonly createdAt?: string
 }
 
