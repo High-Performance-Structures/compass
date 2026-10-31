@@ -26,7 +26,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { ReceivableRow, ReceivedPaymentView } from "@/lib/domain/financials/receivables"
-import { VOID_REASON_MAX } from "@/lib/domain/financials/rules"
+import { PrepaidDrawDialog, type PrepaidDrawTarget } from "@/components/financials/prepaid-draw-dialog"
+import {
+  VOID_REASON_MAX,
+  prepaidMarkBlocker,
+  prepaidUndoBlocker,
+  type ReceivableStaffStatus,
+} from "@/lib/domain/financials/rules"
 import { paymentMethodLabel, type ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import { formatCents, formatDate } from "@/lib/format"
 
@@ -73,8 +79,25 @@ function itemHref(projectId: string, item: ReceivableRow): string | null {
     : null
 }
 
+const STAFF_LABELS: Readonly<Record<ReceivableStaffStatus, string>> = {
+  ...PAID_LABELS,
+  prepaid: "Paid",
+  unconfirmed: "Imported – status unconfirmed",
+}
+
 function itemStatusLabel(item: ReceivableRow): string {
-  return item.paymentBlocker ? "Can't take payments" : PAID_LABELS[item.paidState]
+  return STAFF_LABELS[item.staffStatus]
+}
+
+function itemStatusVariant(item: ReceivableRow): "default" | "secondary" | "outline" {
+  if (item.staffStatus === "prepaid") return "default"
+  return item.staffStatus === "unconfirmed" ? "outline" : paidVariant(item.paidState)
+}
+
+function prepaidText(item: ReceivableRow): string | null {
+  if (!item.prepaid) return null
+  const by = item.prepaid.markedByName ? ` by ${item.prepaid.markedByName}` : ""
+  return `Paid before Compass · marked${by} ${formatDate(item.prepaid.markedAt, "medium", "")}${item.prepaid.note ? ` · ${item.prepaid.note}` : ""}`
 }
 
 function linkedTarget(data: ProjectReceivablesData, link: string | null): RecordPaymentTarget | null {
@@ -118,20 +141,56 @@ function SearchBox({
   )
 }
 
+function ItemActions({
+  item,
+  canRecord,
+  canSettle,
+  onRecord,
+  onPrepaid,
+}: {
+  readonly item: ReceivableRow
+  readonly canRecord: boolean
+  readonly canSettle: boolean
+  readonly onRecord: (item: ReceivableRow) => void
+  readonly onPrepaid: (target: PrepaidDrawTarget) => void
+}): React.ReactElement | null {
+  const record = canRecord && item.openCents > 0
+  const mark = canSettle && prepaidMarkBlocker(item) === null
+  const undo = canSettle && prepaidUndoBlocker(item) === null
+  if (!record && !mark && !undo) return null
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      {record && (
+        <Button size="sm" variant="outline" onClick={() => onRecord(item)}>
+          <IconCash className="size-4" />
+          Record payment
+        </Button>
+      )}
+      {mark && <Button size="sm" variant="ghost" onClick={() => onPrepaid({ mode: "mark", item })}>Paid before Compass</Button>}
+      {undo && <Button size="sm" variant="ghost" onClick={() => onPrepaid({ mode: "undo", item })}>Undo paid before Compass</Button>}
+    </div>
+  )
+}
+
 function BilledItemsList({
   projectId,
   items,
   canRecord,
+  canSettle,
   onRecord,
+  onPrepaid,
 }: {
   readonly projectId: string
   readonly items: readonly ReceivableRow[]
   readonly canRecord: boolean
+  /** Financials update: mark imported draws paid before Compass, or undo it. */
+  readonly canSettle: boolean
   readonly onRecord: (item: ReceivableRow) => void
+  readonly onPrepaid: (target: PrepaidDrawTarget) => void
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const visible = React.useMemo(
-    () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, item.sourceLabel, itemStatusLabel(item)])),
+    () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, item.sourceLabel, itemStatusLabel(item), prepaidText(item)])),
     [items, query],
   )
   const columns = React.useMemo<ColumnDef<ReceivableRow>[]>(() => [
@@ -146,7 +205,13 @@ function BilledItemsList({
             {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
             {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
             {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
-            {row.original.paymentBlocker && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
+            {row.original.paymentBlocker && !row.original.prepaid && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
+            {row.original.prepaid && <p className="text-xs text-muted-foreground">{prepaidText(row.original)}</p>}
+            {row.original.sharedSageInvoiceWith && (
+              <p className="text-xs text-warning">
+                Same Sage invoice number as {row.original.sharedSageInvoiceWith}. It may be the same billing: apply a payment to only one.
+              </p>
+            )}
           </div>
         )
       },
@@ -160,21 +225,17 @@ function BilledItemsList({
       header: "Status",
       accessorFn: itemStatusLabel,
       cell: ({ row }) => (
-        <Badge variant={row.original.paymentBlocker ? "outline" : paidVariant(row.original.paidState)}>{itemStatusLabel(row.original)}</Badge>
+        <Badge variant={itemStatusVariant(row.original)}>{itemStatusLabel(row.original)}</Badge>
       ),
     },
     {
       id: "actions",
       enableSorting: false,
-      cell: ({ row }) =>
-        canRecord && row.original.openCents > 0 ? (
-          <Button size="sm" variant="outline" onClick={() => onRecord(row.original)}>
-            <IconCash className="size-4" />
-            Record payment
-          </Button>
-        ) : null,
+      cell: ({ row }) => (
+        <ItemActions item={row.original} canRecord={canRecord} canSettle={canSettle} onRecord={onRecord} onPrepaid={onPrepaid} />
+      ),
     },
-  ], [projectId, canRecord, onRecord])
+  ], [projectId, canRecord, canSettle, onRecord, onPrepaid])
   const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query })
   return (
     <div className="space-y-3">
@@ -304,6 +365,7 @@ export function ReceivedPaymentsPanel({
     [data.payments, applicationId],
   )
   const onRecord = React.useCallback((item: ReceivableRow) => setTarget({ focus: { kind: item.kind, id: item.id } }), [])
+  const [prepaidTarget, setPrepaidTarget] = React.useState<PrepaidDrawTarget | null>(null)
   const onApply = React.useCallback((payment: ReceivedPaymentView) => setTarget({ paymentId: payment.id }), [])
   const onVoid = React.useCallback((payment: ReceivedPaymentView) => {
     setReason("")
@@ -334,7 +396,15 @@ export function ReceivedPaymentsPanel({
       </div>
       {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
 
-      <BilledItemsList projectId={projectId} items={receivables} canRecord={data.canRecord} onRecord={onRecord} />
+      <BilledItemsList
+        projectId={projectId}
+        items={receivables}
+        canRecord={data.canRecord}
+        canSettle={data.canVoid}
+        onRecord={onRecord}
+        onPrepaid={setPrepaidTarget}
+      />
+      <PrepaidDrawDialog projectId={projectId} target={prepaidTarget} onClose={() => setPrepaidTarget(null)} onMessage={setMessage} />
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Payments</h3>
         <PaymentsList payments={payments} canRecord={data.canRecord} canVoid={data.canVoid} onApply={onApply} onVoid={onVoid} />

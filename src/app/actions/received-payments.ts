@@ -19,9 +19,13 @@ import {
   invoicePaidValues,
   invoiceUnpaidStatus,
   paidCentsAfterRelease,
+  parsePrepaidNote,
+  parsePrepaidUndoReason,
   parseVoidReason,
   paymentVoidBlocker,
   planPaymentAllocations,
+  prepaidMarkBlocker,
+  prepaidUndoBlocker,
   receivablesForCustomer,
   storedDollarsToCents,
   type PlannedAllocation,
@@ -30,6 +34,8 @@ import {
 import { RECEIVABLE_ITEM_KINDS, RECEIVED_PAYMENT_METHODS, type ReceivableItemKind } from "@/lib/domain/financials/statuses"
 import {
   applyReceivedPayment,
+  markDrawPaidBeforeCompass,
+  undoDrawPaidBeforeCompass,
   voidReceivedPayment,
   type PaymentAllocationWrite,
 } from "@/lib/domain/financials/store"
@@ -421,6 +427,74 @@ export async function voidReceivedPaymentWithReason(projectId: string, paymentId
     return { success: true }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to void the payment."))
+  }
+}
+
+const DRAW_NOT_FOUND = "Pay application not found or access denied"
+
+async function findDraw(
+  context: ProjectContext & { readonly organizationId: string },
+  projectId: string,
+  applicationId: string,
+): Promise<ReceivableRow | null> {
+  const items = await readProjectReceivables(context.db, { organizationId: context.organizationId, projectId })
+  return items.find((item) => item.kind === "pay_application" && item.id === applicationId) ?? null
+}
+
+/** Marks an imported draw "Paid before Compass": settled outside Compass, with no payment details. */
+export async function markImportedDrawPaidBeforeCompass(projectId: string, applicationId: string, note: string): Promise<ActionDone> {
+  try {
+    const context = await staffContext(projectId, "update")
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    const draw = await findDraw(context.data, projectId, applicationId)
+    if (!draw) return actionFailure(DRAW_NOT_FOUND)
+    const blocker = prepaidMarkBlocker(draw)
+    if (blocker) return actionFailure(blocker)
+    const result = await markDrawPaidBeforeCompass(context.data.env.DB, {
+      organizationId, projectId, applicationId, actorId: user.id, now: new Date().toISOString(),
+      markId: crypto.randomUUID(),
+      note: parsePrepaidNote(note),
+    })
+    if (result === "stale") return actionFailure("This draw changed while you were marking it. Refresh and try again.")
+    await recordActivityEvent({
+      db, organizationId, projectId, actor: user, category: "financial",
+      action: "pay_application_prepaid_marked", entityType: "pay_application", entityId: applicationId,
+      summary: `Marked ${draw.label} paid before Compass.`,
+      metadata: { note: parsePrepaidNote(note) },
+    })
+    revalidatePayments(projectId, [applicationId])
+    return { success: true }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to mark the draw paid."))
+  }
+}
+
+/** Undoes a "Paid before Compass" mark with a reason, while no Compass payment is applied. The mark stays as history. */
+export async function undoImportedDrawPaidBeforeCompass(projectId: string, applicationId: string, reason: string): Promise<ActionDone> {
+  try {
+    const context = await staffContext(projectId, "update")
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    const parsed = parsePrepaidUndoReason(reason)
+    if (!parsed.ok) return actionFailure(parsed.error)
+    const draw = await findDraw(context.data, projectId, applicationId)
+    if (!draw) return actionFailure(DRAW_NOT_FOUND)
+    const blocker = prepaidUndoBlocker(draw)
+    if (blocker) return actionFailure(blocker)
+    const result = await undoDrawPaidBeforeCompass(context.data.env.DB, {
+      organizationId, projectId, applicationId, actorId: user.id, now: new Date().toISOString(), reason: parsed.reason,
+    })
+    if (result === "stale") return actionFailure("This draw changed while you were undoing the mark. Refresh and try again.")
+    await recordActivityEvent({
+      db, organizationId, projectId, actor: user, category: "financial",
+      action: "pay_application_prepaid_undone", entityType: "pay_application", entityId: applicationId,
+      summary: `Undid paid before Compass on ${draw.label}: ${parsed.reason}`,
+    })
+    revalidatePayments(projectId, [applicationId])
+    return { success: true }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to undo the mark."))
   }
 }
 

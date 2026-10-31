@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest"
 
 import {
   drawPaymentTarget,
+  drawSettled,
   focusCustomerId,
+  parsePrepaidNote,
+  parsePrepaidUndoReason,
+  prepaidMarkBlocker,
+  prepaidUndoBlocker,
+  receivableStaffStatus,
+  sharedSageInvoiceLinks,
   importedDrawSourceLabel,
   invoiceAcceptsPayments,
   isImportedDraw,
@@ -247,5 +254,53 @@ describe("voiding", () => {
   it("releases a voided payment without going below zero", () => {
     expect(paidCentsAfterRelease(50_000, 20_000)).toBe(30_000)
     expect(paidCentsAfterRelease(10_000, 20_000)).toBe(0)
+  })
+})
+
+describe("settling imported draws", () => {
+  const mark = { markedAt: "2026-10-31T12:00:00Z", markedByName: "Ana Staff", note: null }
+  const unsettled = { imported: true, paidCents: 0, prepaid: null }
+
+  it("treats an imported draw as settled only once paid in Compass or marked paid before Compass", () => {
+    expect(drawSettled(unsettled)).toBe(false)
+    expect(drawSettled({ ...unsettled, paidCents: 1 })).toBe(true)
+    expect(drawSettled({ ...unsettled, prepaid: mark })).toBe(true)
+    expect(drawSettled({ ...unsettled, prepaid: true })).toBe(true)
+    expect(drawSettled({ ...unsettled, prepaid: false })).toBe(false)
+    expect(drawSettled({ imported: false, paidCents: 0, prepaid: null })).toBe(true)
+  })
+
+  it("shows staff unconfirmed, paid before Compass, or the paid state", () => {
+    expect(receivableStaffStatus({ ...unsettled, paidState: "open" })).toBe("unconfirmed")
+    expect(receivableStaffStatus({ ...unsettled, prepaid: mark, paidState: "paid" })).toBe("prepaid")
+    expect(receivableStaffStatus({ ...unsettled, paidCents: 500, paidState: "partially_paid" })).toBe("partially_paid")
+    expect(receivableStaffStatus({ imported: false, paidCents: 0, prepaid: null, paidState: "open" })).toBe("open")
+  })
+
+  it("allows marking only an unmarked imported draw with no Compass payments", () => {
+    expect(prepaidMarkBlocker(unsettled)).toBeNull()
+    expect(prepaidMarkBlocker({ ...unsettled, imported: false })).toMatch(/Only an imported draw/)
+    expect(prepaidMarkBlocker({ ...unsettled, prepaid: mark })).toMatch(/already marked/)
+    expect(prepaidMarkBlocker({ ...unsettled, paidCents: 100 })).toMatch(/Payments are already applied/)
+  })
+
+  it("allows undoing only an active mark with no Compass payments, with a reason", () => {
+    expect(prepaidUndoBlocker({ ...unsettled, prepaid: mark })).toBeNull()
+    expect(prepaidUndoBlocker(unsettled)).toMatch(/not marked/)
+    expect(prepaidUndoBlocker({ ...unsettled, prepaid: mark, paidCents: 100 })).toMatch(/Void them/)
+    expect(parsePrepaidUndoReason("  ")).toEqual({ ok: false, error: "Say why the mark is being undone." })
+    expect(parsePrepaidUndoReason(" Wrong draw ")).toEqual({ ok: true, reason: "Wrong draw" })
+    expect(parsePrepaidNote("   ")).toBeNull()
+    expect(parsePrepaidNote(" Paid by check ")).toBe("Paid by check")
+  })
+
+  it("links a draw and an invoice sharing a Sage invoice number, ignoring case and blanks", () => {
+    const links = sharedSageInvoiceLinks([
+      { kind: "pay_application", id: "a", label: "Pay application 3", sageInvoiceNumber: " S-77 " },
+      { kind: "invoice", id: "i", label: "Invoice s-77", sageInvoiceNumber: "s-77" },
+      { kind: "invoice", id: "j", label: "Invoice 9", sageInvoiceNumber: "9" },
+      { kind: "pay_application", id: "b", label: "Pay application 4", sageInvoiceNumber: "  " },
+    ])
+    expect(Object.fromEntries(links)).toEqual({ "pay_application:a": "Invoice s-77", "invoice:i": "Pay application 3" })
   })
 })
