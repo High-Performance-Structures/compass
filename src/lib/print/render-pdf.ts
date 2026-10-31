@@ -1,6 +1,6 @@
 import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { getCloudflareContext } from "@/lib/db"
-import { PAGE_NUMBER_MAX_BYTES, numberPdfPages } from "@/lib/print/page-numbers"
+import { PAGE_NUMBER_MAX_BYTES, numberPdfStream } from "@/lib/print/page-numbers"
 
 export type PrintPdfRequest = {
   /** The incoming request; its cookie lets the renderer open the print page. */
@@ -61,8 +61,8 @@ export async function renderPrintPagePdf(input: PrintPdfRequest): Promise<PrintP
     const pdf = rendered.body
     return { ok: true, pdf, bytes: () => new Response(pdf).arrayBuffer() }
   }
-  const numbered = await numberPdfPages(await rendered.arrayBuffer())
-  return { ok: true, pdf: new Response(numbered).body ?? new ReadableStream(), bytes: async () => numbered.buffer }
+  const pdf = await numberPdfStream(rendered.body)
+  return { ok: true, pdf, bytes: () => new Response(pdf).arrayBuffer() }
 }
 
 /** A PDF shown in the browser's own viewer tab, not downloaded. */
