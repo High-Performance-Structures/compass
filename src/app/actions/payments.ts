@@ -22,9 +22,9 @@ const NOT_FOUND = "Payment not found or access denied"
 const APPLIED = "This payment is applied to a pay application or invoice. Void it with a reason instead."
 
 /** Voiding goes through the received-payment void action, never a plain edit. */
-function withoutVoidFields<T extends Partial<NewPayment>>(data: T): Omit<T, "voidedAt" | "voidedBy" | "voidReason"> {
-  const { voidedAt: _voidedAt, voidedBy: _voidedBy, voidReason: _voidReason, ...rest } = data
-  return rest
+function withoutVoidFields<T extends Partial<NewPayment>>(data: T): T & { voidedAt: undefined; voidedBy: undefined; voidReason: undefined } {
+  // Drizzle leaves undefined columns out of the insert or update.
+  return { ...data, voidedAt: undefined, voidedBy: undefined, voidReason: undefined }
 }
 
 export async function getPayments(): Promise<Payment[]> {
@@ -135,6 +135,14 @@ export async function updatePayment(
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
       return { success: false, error: BILLING_SCOPE_ERROR }
     }
+    if (
+      safeData.projectId !== undefined &&
+      safeData.projectId !== null &&
+      safeData.projectId !== existing.projectId &&
+      !(await isOrganizationProject(db, organizationId, safeData.projectId))
+    ) {
+      return { success: false, error: PROJECT_NOT_FOUND }
+    }
     // An applied payment keeps its amount, customer and project; void and re-record to change them.
     const changesApplication =
       (safeData.amount !== undefined && toCents(safeData.amount) !== toCents(existing.amount)) ||
@@ -145,14 +153,6 @@ export async function updatePayment(
       (safeData.billingScope !== undefined && safeData.billingScope !== existing.billingScope)
     if (changesApplication && (await paymentHasAllocations(db, id))) {
       return { success: false, error: APPLIED }
-    }
-    if (
-      safeData.projectId !== undefined &&
-      safeData.projectId !== null &&
-      safeData.projectId !== existing.projectId &&
-      !(await isOrganizationProject(db, organizationId, safeData.projectId))
-    ) {
-      return { success: false, error: PROJECT_NOT_FOUND }
     }
     await updatePaymentRow(db, id, { ...safeData, updatedAt: new Date().toISOString() })
 

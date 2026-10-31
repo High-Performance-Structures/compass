@@ -4,15 +4,14 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { IconCash } from "@tabler/icons-react"
+import { IconCash, IconSearch } from "@tabler/icons-react"
 
 import {
   voidReceivedPaymentWithReason,
   type ProjectReceivablesData,
 } from "@/app/actions/received-payments"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
-import { RecordsEmpty, searchInputClass } from "@/components/financials/record-columns"
 import { RecordPaymentDialog, type RecordPaymentTarget } from "@/components/financials/record-payment-dialog"
+import { RecordTable, useRecordTable } from "@/components/record-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { ReceivableRow, ReceivedPaymentView } from "@/lib/domain/financials/receivables"
@@ -31,10 +31,11 @@ import { paymentMethodLabel, type ReceivablePaidState } from "@/lib/domain/finan
 import { formatCents, formatDate } from "@/lib/format"
 
 /*
- * Billed items with their paid and open balances, and the payments received
- * against them. Shown on project financials (every item) and on a pay
- * application (that draw only). Payments are voided with a reason, never
- * deleted.
+ * Billed items with their paid and outstanding balances, and the payments
+ * received against them. Shown on project financials (every item) and on a
+ * pay application (that draw only). Both lists follow the record-list
+ * standard (shared RecordTable, sortable headers, search, 25/50/100 paging).
+ * Payments are voided with a reason, never deleted.
  */
 
 const PAID_LABELS: Readonly<Record<ReceivablePaidState, string>> = {
@@ -56,13 +57,13 @@ function paymentState(payment: ReceivedPaymentView): string {
 
 /** Compass never posts receipts to Sage; say where the receipt stands instead. */
 function sageStatus(payment: ReceivedPaymentView): string {
-  if (payment.sourceSystem === "sage") return "Square bridge (see Square receipts)"
+  if (payment.sourceSystem === "sage") return "Posted by the Square bridge"
+  if (payment.voidedAt) return "Reverse in Sage if entered"
   return "Enter in Sage"
 }
 
 function appliedTo(payment: ReceivedPaymentView): string {
-  const active = payment.allocations.filter((allocation) => !allocation.released || payment.voidedAt)
-  return active.map((allocation) => `${allocation.itemLabel} ${formatCents(allocation.cents)}`).join(", ") || "-"
+  return payment.allocations.map((allocation) => `${allocation.itemLabel} ${formatCents(allocation.cents)}`).join(", ") || "-"
 }
 
 function itemHref(projectId: string, item: ReceivableRow): string | null {
@@ -80,8 +81,185 @@ function centsColumn<T>(id: string, header: string, read: (row: T) => number): C
     id,
     header,
     accessorFn: read,
-    cell: ({ row }) => <span className="tabular-nums">{formatCents(read(row.original))}</span>,
+    cell: ({ row }) => <span className="block text-right tabular-nums">{formatCents(read(row.original))}</span>,
   }
+}
+
+function canChange(payment: ReceivedPaymentView): boolean {
+  return !payment.voidedAt && (payment.sourceSystem === "compass" || payment.sourceSystem === "manual")
+}
+
+function matches(query: string, values: readonly (string | null)[]): boolean {
+  const needle = query.trim().toLowerCase()
+  return !needle || values.some((value) => value?.toLowerCase().includes(needle))
+}
+
+function SearchBox({
+  value,
+  onChange,
+  label,
+}: {
+  readonly value: string
+  readonly onChange: (value: string) => void
+  readonly label: string
+}): React.ReactElement {
+  return (
+    <div className="relative w-full sm:max-w-sm">
+      <IconSearch aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input value={value} aria-label={label} placeholder={`${label}…`} onChange={(event) => onChange(event.target.value)} className="pl-9" />
+    </div>
+  )
+}
+
+function BilledItemsList({
+  projectId,
+  items,
+  canRecord,
+  onRecord,
+}: {
+  readonly projectId: string
+  readonly items: readonly ReceivableRow[]
+  readonly canRecord: boolean
+  readonly onRecord: (item: ReceivableRow) => void
+}): React.ReactElement {
+  const [query, setQuery] = React.useState("")
+  const visible = React.useMemo(
+    () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, PAID_LABELS[item.paidState]])),
+    [items, query],
+  )
+  const columns = React.useMemo<ColumnDef<ReceivableRow>[]>(() => [
+    {
+      id: "item",
+      header: "Item",
+      accessorFn: (item) => item.label,
+      cell: ({ row }) => {
+        const href = itemHref(projectId, row.original)
+        return (
+          <div className="min-w-0">
+            {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
+            {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
+          </div>
+        )
+      },
+    },
+    { id: "date", header: "Billed", accessorFn: (item) => item.date ?? undefined, cell: ({ row }) => formatDate(row.original.date, "medium", "-") },
+    centsColumn<ReceivableRow>("billed", "Amount", (item) => item.billedCents),
+    centsColumn<ReceivableRow>("paid", "Paid", (item) => item.paidCents),
+    centsColumn<ReceivableRow>("open", "Outstanding", (item) => item.openCents),
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (item) => PAID_LABELS[item.paidState],
+      cell: ({ row }) => <Badge variant={paidVariant(row.original.paidState)}>{PAID_LABELS[row.original.paidState]}</Badge>,
+    },
+    {
+      id: "actions",
+      enableSorting: false,
+      cell: ({ row }) =>
+        canRecord && row.original.openCents > 0 ? (
+          <Button size="sm" variant="outline" onClick={() => onRecord(row.original)}>
+            <IconCash className="size-4" />
+            Record payment
+          </Button>
+        ) : null,
+    },
+  ], [projectId, canRecord, onRecord])
+  const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query })
+  return (
+    <div className="space-y-3">
+      <SearchBox value={query} onChange={setQuery} label="Search billed items" />
+      <RecordTable table={table} itemLabel="billed items" emptyMessage="Nothing billed yet. Approve a pay application for billing or send an invoice first." rowIdPrefix="billed-item" />
+    </div>
+  )
+}
+
+function PaymentsList({
+  payments,
+  canRecord,
+  canVoid,
+  onApply,
+  onVoid,
+}: {
+  readonly payments: readonly ReceivedPaymentView[]
+  readonly canRecord: boolean
+  readonly canVoid: boolean
+  readonly onApply: (payment: ReceivedPaymentView) => void
+  readonly onVoid: (payment: ReceivedPaymentView) => void
+}): React.ReactElement {
+  const [query, setQuery] = React.useState("")
+  const visible = React.useMemo(
+    () => payments.filter((payment) => matches(query, [
+      payment.referenceNumber, paymentMethodLabel(payment.paymentMethod), appliedTo(payment), paymentState(payment), payment.voidReason,
+    ])),
+    [payments, query],
+  )
+  const columns = React.useMemo<ColumnDef<ReceivedPaymentView>[]>(() => [
+    {
+      id: "reference",
+      header: "Reference",
+      accessorFn: (payment) => payment.referenceNumber ?? undefined,
+      cell: ({ row }) => <span className="font-medium">{row.original.referenceNumber || "-"}</span>,
+    },
+    { id: "received", header: "Received", accessorFn: (payment) => payment.paymentDate, cell: ({ row }) => formatDate(row.original.paymentDate, "medium", "-") },
+    { id: "method", header: "Method", accessorFn: (payment) => paymentMethodLabel(payment.paymentMethod) },
+    centsColumn<ReceivedPaymentView>("amount", "Amount", (payment) => payment.amountCents),
+    {
+      id: "appliedTo",
+      header: "Applied to",
+      accessorFn: appliedTo,
+      cell: ({ row }) => (
+        <ul className="space-y-0.5 text-sm">
+          {row.original.allocations.map((allocation) => (
+            <li key={allocation.id} className={allocation.released ? "text-muted-foreground line-through" : undefined}>
+              {allocation.itemLabel} {formatCents(allocation.cents)}
+            </li>
+          ))}
+          {row.original.allocations.length === 0 && <li>-</li>}
+        </ul>
+      ),
+    },
+    centsColumn<ReceivedPaymentView>("unapplied", "Unapplied", (payment) => payment.unappliedCents),
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: paymentState,
+      cell: ({ row }) => (
+        <div>
+          <Badge variant={row.original.voidedAt ? "destructive" : "secondary"}>{paymentState(row.original)}</Badge>
+          {row.original.voidedAt && (
+            <p className="mt-1 max-w-56 text-xs text-muted-foreground">
+              {row.original.voidReason}
+              {row.original.voidedByName ? ` (${row.original.voidedByName})` : ""}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    { id: "sage", header: "Sage", accessorFn: sageStatus },
+    {
+      id: "actions",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const payment = row.original
+        if (!canChange(payment)) return null
+        return (
+          <div className="flex justify-end gap-2">
+            {canRecord && payment.unappliedCents > 0 && (
+              <Button size="sm" variant="outline" onClick={() => onApply(payment)}>Apply</Button>
+            )}
+            {canVoid && <Button size="sm" variant="outline" onClick={() => onVoid(payment)}>Void</Button>}
+          </div>
+        )
+      },
+    },
+  ], [canRecord, canVoid, onApply, onVoid])
+  const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query })
+  return (
+    <div className="space-y-3">
+      <SearchBox value={query} onChange={setQuery} label="Search payments" />
+      <RecordTable table={table} itemLabel="payments" emptyMessage="No payments recorded yet." rowIdPrefix="received-payment" />
+    </div>
+  )
 }
 
 export function ReceivedPaymentsPanel({
@@ -104,175 +282,52 @@ export function ReceivedPaymentsPanel({
   const [message, setMessage] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
 
-  const receivables = applicationId
-    ? data.receivables.filter((item) => item.kind === "pay_application" && item.id === applicationId)
-    : data.receivables
-  const payments = applicationId
-    ? data.payments.filter((payment) => payment.allocations.some((allocation) => allocation.itemId === applicationId))
-    : data.payments
+  const receivables = React.useMemo(
+    () => (applicationId ? data.receivables.filter((item) => item.kind === "pay_application" && item.id === applicationId) : data.receivables),
+    [data.receivables, applicationId],
+  )
+  const payments = React.useMemo(
+    () => (applicationId
+      ? data.payments.filter((payment) => payment.allocations.some((allocation) => allocation.itemId === applicationId))
+      : data.payments),
+    [data.payments, applicationId],
+  )
+  const onRecord = React.useCallback((item: ReceivableRow) => setTarget({ focus: { kind: item.kind, id: item.id } }), [])
+  const onApply = React.useCallback((payment: ReceivedPaymentView) => setTarget({ paymentId: payment.id }), [])
+  const onVoid = React.useCallback((payment: ReceivedPaymentView) => {
+    setReason("")
+    setVoiding(payment)
+  }, [])
 
   function confirmVoid(): void {
     if (!voiding) return
     const payment = voiding
     startTransition(async () => {
       const result = await voidReceivedPaymentWithReason(projectId, payment.id, reason)
-      setMessage(result.success ? "Payment voided. Its applied amounts are open again." : result.error)
+      setMessage(result.success ? "Payment voided. What it applied is outstanding again." : result.error)
       if (result.success) {
         setVoiding(null)
-        setReason("")
         router.refresh()
       }
     })
   }
 
-  const itemColumns: ColumnDef<ReceivableRow>[] = [
-    {
-      id: "item",
-      header: "Item",
-      accessorFn: (item) => `${item.label} ${item.sageInvoiceNumber ?? ""}`,
-      cell: ({ row }) => {
-        const href = itemHref(projectId, row.original)
-        return (
-          <div className="min-w-0">
-            {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
-            {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
-          </div>
-        )
-      },
-    },
-    { id: "date", header: "Billed", accessorFn: (item) => item.date ?? "", cell: ({ row }) => formatDate(row.original.date, "medium", "-") },
-    centsColumn<ReceivableRow>("billed", "Amount", (item) => item.billedCents),
-    centsColumn<ReceivableRow>("paid", "Paid", (item) => item.paidCents),
-    centsColumn<ReceivableRow>("open", "Outstanding", (item) => item.openCents),
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: (item) => PAID_LABELS[item.paidState],
-      cell: ({ row }) => <Badge variant={paidVariant(row.original.paidState)}>{PAID_LABELS[row.original.paidState]}</Badge>,
-    },
-    {
-      id: "actions",
-      enableSorting: false,
-      cell: ({ row }) =>
-        data.canRecord && row.original.openCents > 0 ? (
-          <Button size="sm" variant="outline" onClick={() => setTarget({ focus: { kind: row.original.kind, id: row.original.id } })}>
-            <IconCash className="size-4" />
-            Record payment
-          </Button>
-        ) : null,
-    },
-  ]
-
-  const paymentColumns: ColumnDef<ReceivedPaymentView>[] = [
-    {
-      id: "reference",
-      header: "Reference",
-      accessorFn: (payment) => `${payment.referenceNumber ?? ""} ${paymentMethodLabel(payment.paymentMethod)} ${appliedTo(payment)}`,
-      cell: ({ row }) => <span className="font-medium">{row.original.referenceNumber || "-"}</span>,
-    },
-    { id: "received", header: "Received", accessorFn: (payment) => payment.paymentDate, cell: ({ row }) => formatDate(row.original.paymentDate, "medium", "-") },
-    { id: "method", header: "Method", accessorFn: (payment) => paymentMethodLabel(payment.paymentMethod) },
-    centsColumn<ReceivedPaymentView>("amount", "Amount", (payment) => payment.amountCents),
-    { id: "appliedTo", header: "Applied to", accessorFn: appliedTo },
-    centsColumn<ReceivedPaymentView>("unapplied", "Unapplied", (payment) => payment.unappliedCents),
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: paymentState,
-      cell: ({ row }) => (
-        <div>
-          <Badge variant={row.original.voidedAt ? "destructive" : "secondary"}>{paymentState(row.original)}</Badge>
-          {row.original.voidedAt && (
-            <p className="mt-1 max-w-56 truncate text-xs text-muted-foreground" title={row.original.voidReason ?? ""}>
-              {row.original.voidReason}
-            </p>
-          )}
-        </div>
-      ),
-    },
-    { id: "sage", header: "Sage", accessorFn: sageStatus },
-    {
-      id: "actions",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const payment = row.original
-        const editable = !payment.voidedAt && (payment.sourceSystem === "compass" || payment.sourceSystem === "manual")
-        return (
-          <div className="flex justify-end gap-2">
-            {data.canRecord && editable && payment.unappliedCents > 0 && (
-              <Button size="sm" variant="outline" onClick={() => setTarget({ paymentId: payment.id })}>Apply</Button>
-            )}
-            {data.canVoid && editable && (
-              <Button size="sm" variant="outline" onClick={() => setVoiding(payment)}>Void</Button>
-            )}
-          </div>
-        )
-      },
-    },
-  ]
-
   return (
-    <section className="space-y-4 rounded-lg border p-4">
+    <section className="space-y-5 rounded-lg border p-4">
       <div>
         <h2 className="text-base font-semibold">Payments received</h2>
         <p className="text-sm text-muted-foreground">
-          What each billed item has been paid and still owes{data.clientName ? ` from ${data.clientName}` : ""}. Payments are entered in
-          Sage by accounting; Compass does not post them.
+          What each billed item has been paid and still owes{data.clientName ? ` from ${data.clientName}` : ""}. Accounting
+          enters receipts in Sage; Compass does not post them.
         </p>
       </div>
       {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
 
-      <EntityTable
-        data={receivables}
-        columns={itemColumns}
-        getRowId={(item) => `${item.kind}:${item.id}`}
-        mobileToolbar={({ table }) => <EntitySearchInput table={table} columnId="item" placeholder="Search billed items..." className={searchInputClass.mobile} />}
-        desktopToolbar={({ table }) => <EntitySearchInput table={table} columnId="item" placeholder="Search billed items..." className={searchInputClass.desktop} />}
-        mobileRow={(item) => (
-          <>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{item.label}</p>
-              <p className="text-xs text-muted-foreground">
-                {PAID_LABELS[item.paidState]} · {formatCents(item.openCents)} outstanding of {formatCents(item.billedCents)}
-              </p>
-            </div>
-            {data.canRecord && item.openCents > 0 && (
-              <Button size="sm" variant="outline" onClick={() => setTarget({ focus: { kind: item.kind, id: item.id } })}>Record</Button>
-            )}
-          </>
-        )}
-        mobileEmpty={<RecordsEmpty title="Nothing billed yet" hint="Approve a pay application for billing or send an invoice first." />}
-        desktopEmpty="Nothing billed yet. Approve a pay application for billing or send an invoice first."
-        itemLabel="billed items"
-        paginationId={applicationId ? "pay-app-billed-items" : "project-billed-items"}
-      />
-
-      <EntityTable
-        data={payments}
-        columns={paymentColumns}
-        getRowId={(payment) => payment.id}
-        mobileToolbar={({ table }) => <EntitySearchInput table={table} columnId="reference" placeholder="Search payments..." className={searchInputClass.mobile} />}
-        desktopToolbar={({ table }) => <EntitySearchInput table={table} columnId="reference" placeholder="Search payments..." className={searchInputClass.desktop} />}
-        mobileRow={(payment) => (
-          <>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {formatCents(payment.amountCents)} · {paymentMethodLabel(payment.paymentMethod)} {payment.referenceNumber ?? ""}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {formatDate(payment.paymentDate, "medium", "-")} · {paymentState(payment)} · {appliedTo(payment)}
-              </p>
-            </div>
-            {data.canVoid && !payment.voidedAt && payment.sourceSystem !== "sage" && (
-              <Button size="sm" variant="outline" onClick={() => setVoiding(payment)}>Void</Button>
-            )}
-          </>
-        )}
-        mobileEmpty={<RecordsEmpty title="No payments recorded" hint="Use Record payment on a billed item." />}
-        desktopEmpty="No payments recorded yet."
-        itemLabel="payments"
-        paginationId={applicationId ? "pay-app-received-payments" : "project-received-payments"}
-      />
+      <BilledItemsList projectId={projectId} items={receivables} canRecord={data.canRecord} onRecord={onRecord} />
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold">Payments</h3>
+        <PaymentsList payments={payments} canRecord={data.canRecord} canVoid={data.canVoid} onApply={onApply} onVoid={onVoid} />
+      </div>
 
       <RecordPaymentDialog
         projectId={projectId}
@@ -288,8 +343,8 @@ export function ReceivedPaymentsPanel({
           <DialogHeader>
             <DialogTitle>Void this {voiding ? formatCents(voiding.amountCents) : ""} payment?</DialogTitle>
             <DialogDescription>
-              It stays on record as void, and what it applied is open again on each pay application or invoice. If it was
-              already entered in Sage, reverse it there too.
+              It stays on record as void, and what it applied is outstanding again on each pay application or invoice. If it
+              was already entered in Sage, reverse it there too.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -298,7 +353,7 @@ export function ReceivedPaymentsPanel({
               id="void-reason"
               rows={3}
               maxLength={VOID_REASON_MAX}
-              placeholder="Check returned, entered twice, wrong job..."
+              placeholder="Check returned, entered twice, wrong job…"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
             />

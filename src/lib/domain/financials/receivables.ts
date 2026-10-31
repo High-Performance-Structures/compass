@@ -167,7 +167,7 @@ export async function readProjectReceivables(
   return rows
 }
 
-export type PaymentAllocationView = {
+type PaymentAllocationView = {
   readonly id: string
   readonly kind: ReceivableItemKind
   readonly itemId: string

@@ -299,7 +299,7 @@ const INVOICE_PAID_CENTS = `(SELECT CAST(ROUND(amount_paid * 100) AS INTEGER) FR
   WHERE id = ? AND organization_id = ? AND project_id = ?)`
 
 /** New invoice amount paid, amount due and status (computed by rules.ts). */
-export type InvoicePaidUpdate = {
+type InvoicePaidUpdate = {
   readonly amountPaid: number
   readonly amountDue: number
   readonly status: string

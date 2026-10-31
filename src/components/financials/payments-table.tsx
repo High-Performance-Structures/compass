@@ -51,6 +51,7 @@ export function PaymentsTable({
       header: "Type",
       cell: ({ row }) => {
         const type = row.original.paymentType
+        if (row.original.voidedAt) return <Badge variant="destructive">void</Badge>
         return (
           <Badge variant={type === "received" ? "default" : "secondary"}>
             {type}
