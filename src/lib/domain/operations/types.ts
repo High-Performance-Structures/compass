@@ -4,6 +4,7 @@
  * actions the server allows on it (architecture standard, section 5).
  */
 import type { ProjectTodoHistoryItem } from "@/lib/daily-logs/log-followups-server"
+import type { DirectoryVendorPick } from "@/lib/domain/contacts/rules"
 import type { DailyLogCostCodeOption } from "@/lib/daily-logs/daily-log-form"
 import type { ProjectTodoStatus } from "@/lib/project-todos"
 import type { PortalPurchaseOrderAcknowledgement } from "@/lib/purchase-orders/portal-response"
@@ -231,6 +232,8 @@ export type CreatePurchaseOrderRequestInput = {
   readonly lines: readonly CreatePurchaseOrderLineInput[]
   /** Set when the PO orders against an accepted supplier quote (Selected trades). */
   readonly awardedRfqId?: string | null
+  /** The vendor picked from the directory or the project's contacts; links project_operations.vendor_id. */
+  readonly vendorPick?: DirectoryVendorPick | null
 }
 
 export type UpdatePurchaseOrderRequestInput =
@@ -279,6 +282,8 @@ export type CreateRfqRequestInput = {
   readonly documentLinks: readonly CreateRfqDocumentLinkInput[]
   /** Set by the estimate pricing board so RFQs sent together stay grouped. */
   readonly estimatePackage?: { readonly id: string; readonly title: string; readonly estimateId: string } | null
+  /** The vendor picked from the directory or the project's contacts; links project_operations.vendor_id. */
+  readonly vendorPick?: DirectoryVendorPick | null
 }
 
 export type UpdateRfqRequestInput = CreateRfqRequestInput

@@ -6,6 +6,18 @@ type PurchaseOrderCostCodeOption = {
   readonly divisionCode: string
 }
 
+/** A typed amount or quantity ("1,250.00") as a number; blank or invalid is null. */
+export function numberFromText(value: string): number | null {
+  const trimmed = value.replaceAll(",", "").trim()
+  if (trimmed.length === 0) return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function textFromNumber(value: number): string {
+  return Number.isFinite(value) ? String(value) : ""
+}
+
 function normalizedDivisionCode(value: string): string | null {
   const match = /^\s*(\d{1,2})(?:\D|$)/.exec(value)
   if (match === null) return null

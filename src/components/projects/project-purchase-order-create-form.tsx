@@ -11,6 +11,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
+import { directoryVendorPick, vendorPickFor } from "@/lib/domain/contacts/rules"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { createPurchaseOrderRequest, updatePurchaseOrderRequest } from "@/app/actions/project-purchase-orders"
 import type { CreatePurchaseOrderLineInput, ProjectPurchaseOrderCostCodeOption, ProjectPurchaseOrderItem, ProjectPurchaseOrderPhaseOption } from "@/lib/domain/operations/types"
@@ -57,11 +58,7 @@ import {
   isStaleServerActionError,
   purchaseOrderSubmissionErrorMessage,
 } from "@/lib/purchase-orders/action-errors"
-import {
-  purchaseOrderCostCodesForPhase,
-  purchaseOrderSiteContactOptions,
-  purchaseOrderVendorOptions,
-} from "@/lib/purchase-orders/form-options"
+import { numberFromText, purchaseOrderCostCodesForPhase, purchaseOrderSiteContactOptions, purchaseOrderVendorOptions, textFromNumber } from "@/lib/purchase-orders/form-options"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import {
   initialPurchaseOrderShipToState,
@@ -238,10 +235,6 @@ function newLine(): DraftPurchaseOrderLine {
   }
 }
 
-function textFromNumber(value: number): string {
-  return Number.isFinite(value) ? String(value) : ""
-}
-
 /**
  * Starts a new PO from an accepted supplier quote: the supplier, the accepted
  * cost codes still left to order, and the running total against that price.
@@ -250,6 +243,7 @@ type PurchaseOrderPrefill = {
   readonly title: string
   readonly companyName: string
   readonly sageVendorId: string | null
+  readonly vendorId?: string | null
   readonly lines: readonly {
     readonly costCode: string | null
     readonly description: string
@@ -300,13 +294,6 @@ function draftLinesFromPurchaseOrder(
         : textFromNumber(line.amount),
     taxGroup: line.taxGroup ?? "",
   }))
-}
-
-function numberFromText(value: string): number | null {
-  const trimmed = value.replaceAll(",", "").trim()
-  if (trimmed.length === 0) return null
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 /** Preview only: the server prices the line again with the same rule when it saves. */
@@ -422,6 +409,7 @@ function ProjectPurchaseOrderForm(
   const [companyName, setCompanyName] = React.useState(
     purchaseOrder?.companyName ?? prefill?.companyName ?? ""
   )
+  const [vendorPick, setVendorPick] = React.useState(vendorPickFor(prefill?.vendorId)) // null keeps an unchanged PO's link
   const [assigneeName, setAssigneeName] = React.useState(
     purchaseOrder?.assigneeName ?? ""
   )
@@ -503,6 +491,7 @@ function ProjectPurchaseOrderForm(
         setLines(draftLinesFromPurchaseOrder(purchaseOrder))
         setSageVendorId(purchaseOrder.sageVendorId ?? "")
         setCompanyName(purchaseOrder.companyName ?? "")
+        setVendorPick(null)
         setAssigneeName(purchaseOrder.assigneeName ?? "")
         setSiteContactPhone(purchaseOrder.siteContactPhone ?? "")
         setShipTo(
@@ -515,6 +504,7 @@ function ProjectPurchaseOrderForm(
         setLines(draftLinesFromPrefill(prefill, costCodeOptions))
         setSageVendorId(prefill.sageVendorId ?? "")
         setCompanyName(prefill.companyName)
+        setVendorPick(vendorPickFor(prefill.vendorId))
       }
     }
     setOpen(nextOpen)
@@ -545,6 +535,7 @@ function ProjectPurchaseOrderForm(
         priority: String(formData.get("priority") ?? "normal"),
         lines: lines.map(toLineInput),
         awardedRfqId: prefill?.awardedRfqId ?? null,
+        vendorPick,
       }
       const result =
         purchaseOrder === null
@@ -674,9 +665,10 @@ function ProjectPurchaseOrderForm(
                 value={companyName}
                 options={vendorOptions}
                 placeholder="Choose vendor or type a name..."
-                onValueChange={(value, option) =>
+                onValueChange={(value, option) => {
                   setCompanyName(option?.companyName ?? value)
-                }
+                  setVendorPick(directoryVendorPick(option))
+                }}
                 className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
               />
             </Field>

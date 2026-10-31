@@ -96,6 +96,7 @@ export function TradePurchaseOrderButton({
         title: `${row.vendor?.name ?? row.trade.vendor}${quote}`,
         companyName: row.vendor?.name ?? row.trade.vendor,
         sageVendorId: row.vendor?.sageVendorId ?? null,
+        vendorId: row.vendor?.id ?? null,
         lines: row.leftToOrder.map((code) => ({ costCode: code.costCode, description: code.description, amount: code.amountCents / 100 })),
         awardedRfqId: row.trade.rfqId,
         acceptedAmount: row.trade.totalCents / 100,

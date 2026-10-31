@@ -115,8 +115,9 @@ export function shellRecordStatements(
   },
 ): readonly [Statement, ...Statement[]] {
   const { shell, id, organizationId, projectNumber, address, clientName, customerId, customerMatch, sageClientStatusId, now } = input
-  return [
-    insertProjectStatement(db, {
+  // A new client is written before the project, because the project links to
+  // it by foreign key (projects.client_customer_id).
+  const projectInsert = insertProjectStatement(db, {
       id,
       organizationId,
       projectNumber,
@@ -127,6 +128,7 @@ export function shellRecordStatements(
       status: input.status,
       address,
       clientName,
+      clientCustomerId: customerId,
       clientStatus: "customer",
       jobStatusId: input.jobStatus.id,
       sageJobStatusName: input.jobStatus.label,
@@ -136,9 +138,11 @@ export function shellRecordStatements(
       ownerUpdateCadence: "weekly",
       createdAt: now,
       updatedAt: now,
-    }),
-    ...(!customerMatch
-      ? [insertCustomerStatement(db, {
+    })
+  const head: readonly [Statement, ...Statement[]] = customerMatch
+    ? [projectInsert]
+    : [
+        insertCustomerStatement(db, {
           id: customerId,
           organizationId,
           name: clientName,
@@ -146,10 +150,14 @@ export function shellRecordStatements(
           sageClientStatusId,
           createdAt: now,
           updatedAt: now,
-        })]
-      : customerNeedsSageStatus(customerMatch)
-        ? [updateCustomerByIdStatement(db, { customerId, values: { sageClientStatusId, updatedAt: now } })]
-        : []),
+        }),
+        projectInsert,
+      ]
+  return [
+    ...head,
+    ...(customerMatch && customerNeedsSageStatus(customerMatch)
+      ? [updateCustomerByIdStatement(db, { customerId, values: { sageClientStatusId, updatedAt: now } })]
+      : []),
     insertProjectContactStatement(db, {
       id: crypto.randomUUID(),
       projectId: id,

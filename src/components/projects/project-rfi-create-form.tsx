@@ -70,6 +70,18 @@ function selectedOrTyped(
   )
 }
 
+/** The project contact behind a chosen name; a typed name links to none. */
+function pickedContactId(
+  formData: FormData,
+  options: readonly RfiContactOption[],
+  selectName: string,
+  customName: string
+): string | null {
+  if (cleanText(formText(formData, customName))) return null
+  const chosen = cleanText(formText(formData, selectName))
+  return chosen ? options.find((option) => option.value === chosen)?.projectContactId ?? null : null
+}
+
 function recordString(
   record: Readonly<Record<string, unknown>>,
   key: string
@@ -184,6 +196,12 @@ export function ProjectRfiCreateForm({
         ),
         dueDate: cleanText(formText(formData, "dueDate")),
         assignedVendorContactId: cleanText(formText(formData, "assignedVendorContactId")),
+        assignedProjectContactId: pickedContactId(
+          formData,
+          peopleOptions,
+          "assignedToNameSelect",
+          "assignedToNameCustom"
+        ),
         attachments,
       })
 

@@ -5,10 +5,11 @@ import { getDb } from "@/db"
 import { projectJobStatuses, projectMembers, projects } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { linkedProjectClientName } from "@/lib/domain/contacts/directory-links"
 import { requirePermission } from "@/lib/permissions"
-import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { activeRegistryProject } from "@/lib/project-registry-visibility"
+import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 export type ProjectListItem = {
   readonly id: string
@@ -63,7 +64,7 @@ async function loadProjectList(
         id: projects.id,
         name: projects.name,
         projectNumber: projects.projectNumber,
-        clientName: projects.clientName,
+        clientName: linkedProjectClientName,
         googleDriveFolderId: projects.googleDriveFolderId,
         status: projects.status,
         clientStatus: projects.clientStatus,
@@ -95,7 +96,7 @@ async function loadProjectList(
       id: projects.id,
       name: projects.name,
       projectNumber: projects.projectNumber,
-      clientName: projects.clientName,
+      clientName: linkedProjectClientName,
       googleDriveFolderId: projects.googleDriveFolderId,
       status: projects.status,
       clientStatus: projects.clientStatus,

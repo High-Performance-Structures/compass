@@ -71,6 +71,8 @@ export type CreateProjectRfiInput = {
   readonly dueDate: string | null
   /** Active subcontractor/supplier project contact whose company may see the RFI. */
   readonly assignedVendorContactId: string | null
+  /** The project contact picked as "Assigned to"; links project_rfis.assigned_project_contact_id. */
+  readonly assignedProjectContactId?: string | null
   readonly attachments: readonly ProjectRfiAttachmentInput[]
 }
 

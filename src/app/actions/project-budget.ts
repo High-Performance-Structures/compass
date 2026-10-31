@@ -11,6 +11,8 @@ import {
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
 import type { ProjectBudgetApplicationItem } from "@/lib/financials/project-budget-types"
+import { linkedVendorNames } from "@/lib/domain/contacts/directory-links"
+import { preferLinkedText } from "@/lib/domain/contacts/rules"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -163,6 +165,16 @@ function toApplicationItem(
   return audience === "owner"
     ? sanitizeBudgetApplicationForOwner(application)
     : application
+}
+
+/** Staff reads prefer the linked directory vendor's name over the imported text. */
+async function withLinkedVendorNames(
+  access: ProjectAccess,
+  rows: readonly (typeof projectBudgetLines.$inferSelect)[]
+): Promise<readonly (typeof projectBudgetLines.$inferSelect)[]> {
+  if (!access.organizationId) return rows
+  const names = await linkedVendorNames(access.db, access.organizationId, rows.map((row) => row.vendorId))
+  return rows.map((row) => ({ ...row, vendorName: preferLinkedText(row.vendorId ? names.get(row.vendorId) : null, row.vendorName) }))
 }
 
 function toLineItem(
@@ -663,7 +675,7 @@ export async function getProjectBudgetSummary(
         ).map((row) => sanitizeBudgetLineForOwner(row))
       : scopeBudgetLinesToApplication(
           (
-            await access.db
+            await withLinkedVendorNames(access, await access.db
               .select()
               .from(projectBudgetLines)
               .where(
@@ -675,7 +687,7 @@ export async function getProjectBudgetSummary(
               .orderBy(
                 asc(projectBudgetLines.sortOrder),
                 asc(projectBudgetLines.costCode)
-              )
+              ))
           ).map((row) => ({
             ...toLineItem(row, effectiveAudience),
             applicationId: row.applicationId,

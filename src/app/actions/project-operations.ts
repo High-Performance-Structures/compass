@@ -8,6 +8,8 @@ import { projectRfqBidApprovals, projectRfqEmailDeliveries, projectRfqManualResp
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
 import { errorMessage } from "@/lib/action-result"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
+import { resolveVendorLink } from "@/lib/domain/contacts/directory-links"
+import { nextVendorLink } from "@/lib/domain/contacts/rules"
 import { operationsContext } from "@/lib/domain/operations/access"
 import {
   countProjectOperations,
@@ -178,10 +180,11 @@ export async function createRfqRequest(
   input: CreateRfqRequestInput,
 ): Promise<ProjectOperationActionResult> {
   try {
-    const { db } = await operationsContext(projectId, "rfqs", true)
-    const [project, rfqCount] = await Promise.all([
+    const { db, organizationId } = await operationsContext(projectId, "rfqs", true)
+    const [project, rfqCount, vendorId] = await Promise.all([
       loadProjectSageNumbers(db, projectId),
       countProjectOperations(db, projectId, ["rfq"]),
+      resolveVendorLink(db, { organizationId, projectId }, input.vendorPick),
     ])
 
     const now = new Date().toISOString()
@@ -242,6 +245,8 @@ export async function createRfqRequest(
       assigneeType: "vendor",
       assigneeName: requestedFrom,
       companyName: requestedFrom ?? vendorCategory,
+      // A picked vendor links only while the RFQ names someone.
+      vendorId: requestedFrom ? vendorId : null,
       costCode: primaryLine?.costCode ?? null,
       dueDate: responseDueDate,
       sageJobId: project?.sageJobId ?? null,
@@ -338,6 +343,12 @@ export async function duplicateRfqRequest(
       assigneeName: requestedFrom,
       siteContactPhone: source.siteContactPhone,
       companyName: requestedFrom,
+      vendorId: nextVendorLink({
+        pickedVendorId: null,
+        existingVendorId: source.vendorId,
+        existingName: source.assigneeName,
+        nextName: requestedFrom,
+      }),
       costCode: source.costCode,
       startDate: source.startDate,
       dueDate: source.dueDate,
@@ -369,10 +380,11 @@ export async function updateRfqRequest(
   input: UpdateRfqRequestInput,
 ): Promise<ProjectOperationActionResult> {
   try {
-    const { db } = await operationsContext(projectId, "rfqs", true)
-    const [project, existing] = await Promise.all([
+    const { db, organizationId } = await operationsContext(projectId, "rfqs", true)
+    const [project, existing, pickedVendorId] = await Promise.all([
       loadProjectSageNumbers(db, projectId),
       loadProjectOperation(db, projectId, rfqId, "rfq"),
+      resolveVendorLink(db, { organizationId, projectId }, input.vendorPick),
     ])
     if (!existing) return { success: false, error: "RFQ not found." }
     const existingVendorResponse = parsePortalRfqPayload(existing.sagePayloadJson).vendorResponse
@@ -441,6 +453,12 @@ export async function updateRfqRequest(
       assigneeType: "vendor",
       assigneeName: requestedFrom,
       companyName: requestedFrom ?? vendorCategory,
+      vendorId: nextVendorLink({
+        pickedVendorId: requestedFrom ? pickedVendorId : null,
+        existingVendorId: existing.vendorId,
+        existingName: existing.assigneeName,
+        nextName: requestedFrom,
+      }),
       costCode: primaryLine?.costCode ?? null,
       dueDate: responseDueDate,
       sageJobId: project?.sageJobId ?? null,

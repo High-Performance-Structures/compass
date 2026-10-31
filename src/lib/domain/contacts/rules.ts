@@ -351,3 +351,55 @@ export function byPrimaryThenName(
 ): number {
   return Number(right.isPrimary) - Number(left.isPrimary) || left.name.localeCompare(right.name)
 }
+
+/**
+ * Which directory vendor a picker choice names, for records that link to the
+ * vendor (RFQs, purchase orders). A project contact is resolved to its vendor
+ * on the server; a directory option is the vendor itself; staff and typed
+ * names carry no vendor.
+ */
+export type DirectoryVendorPick = {
+  readonly projectContactId: string | null
+  readonly vendorId: string | null
+}
+
+export function directoryVendorPick(
+  option: Pick<ProjectTaskAssigneeOption, "source" | "projectContactId" | "directoryContactId"> | null | undefined
+): DirectoryVendorPick | null {
+  if (!option) return null
+  if (option.source === "directory") {
+    return option.directoryContactId ? { projectContactId: null, vendorId: option.directoryContactId } : null
+  }
+  return option.projectContactId ? { projectContactId: option.projectContactId, vendorId: null } : null
+}
+
+/** A pick of a known directory vendor (a prefill from an accepted quote). */
+export function vendorPickFor(vendorId: string | null | undefined): DirectoryVendorPick | null {
+  return vendorId ? { projectContactId: null, vendorId } : null
+}
+
+/**
+ * Reads prefer the linked directory record and fall back to the stored text,
+ * so nothing visible disappears when a link is missing or its record is gone.
+ */
+export function preferLinkedText(linked: string | null | undefined, stored: string | null): string | null {
+  const value = linked?.trim()
+  return value ? value : stored
+}
+
+/**
+ * The vendor link an edited record keeps: a resolved pick wins; otherwise the
+ * existing link survives only while the party text is unchanged, so retyping
+ * a different company never leaves a stale link behind.
+ */
+export function nextVendorLink(input: {
+  readonly pickedVendorId: string | null
+  readonly existingVendorId: string | null
+  readonly existingName: string | null
+  readonly nextName: string | null
+}): string | null {
+  if (input.pickedVendorId) return input.pickedVendorId
+  if (!input.existingVendorId) return null
+  const before = normalizeDirectoryKey(input.existingName)
+  return before.length > 0 && before === normalizeDirectoryKey(input.nextName) ? input.existingVendorId : null
+}

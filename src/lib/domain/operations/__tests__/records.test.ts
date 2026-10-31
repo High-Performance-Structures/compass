@@ -40,6 +40,7 @@ function row(overrides: Partial<OperationRow> = {}): OperationRow {
     syncStatus: "compass_only",
     lastSyncedAt: null,
     awardedRfqId: null,
+    vendorId: null,
     createdAt: "2026-10-31T00:00:00.000Z",
     updatedAt: "2026-10-31T00:00:00.000Z",
     ...overrides,
