@@ -1,3 +1,9 @@
+import {
+  setSquareInvoiceOperationStatus,
+  squareOwnerInvoiceOperationUpsertStatement,
+  squarePaymentOperationUpsertStatement,
+} from "@/lib/domain/operations/store";
+
 type SquareOwnerReceivableInput = {
   readonly organizationId: string;
   readonly projectId: string;
@@ -270,77 +276,33 @@ export async function upsertSquareOwnerReceivable(
       paymentAmountCents,
       now,
     ),
-    env.DB.prepare(
-      `INSERT INTO project_operations (
-         id, project_id, source_system, source_record_type, source_record_id,
-         source_record_number, title, description, status, priority,
-         assignee_type, company_name, start_date, due_date, amount,
-         sage_job_number, sage_write_status, sync_direction, sync_status,
-         last_synced_at, created_at, updated_at
-       ) VALUES (?, ?, 'sage', 'owner_invoice', ?, ?, ?, ?, 'open', 'normal',
-         'owner', ?, ?, ?, ?, ?, 'synced', 'read', 'synced', ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         source_record_number = excluded.source_record_number,
-         title = excluded.title,
-         description = excluded.description,
-         company_name = excluded.company_name,
-         start_date = excluded.start_date,
-         due_date = excluded.due_date,
-         amount = excluded.amount,
-         sage_job_number = excluded.sage_job_number,
-         last_synced_at = excluded.last_synced_at,
-         updated_at = excluded.updated_at`,
-    ).bind(
-      ids.invoiceOperationId,
-      input.projectId,
-      invoiceSourceId,
-      input.sageInvoiceNumber,
-      `Owner invoice ${input.sageInvoiceNumber}`,
-      `Imported from Sage and collected through Square invoice ${input.squareInvoiceId}.`,
-      input.customerName,
-      issueDate,
+    squareOwnerInvoiceOperationUpsertStatement(env.DB, {
+      id: ids.invoiceOperationId,
+      projectId: input.projectId,
+      sourceRecordId: invoiceSourceId,
+      sourceRecordNumber: input.sageInvoiceNumber,
+      title: `Owner invoice ${input.sageInvoiceNumber}`,
+      description: `Imported from Sage and collected through Square invoice ${input.squareInvoiceId}.`,
+      companyName: input.customerName,
+      startDate: issueDate,
       dueDate,
-      invoiceTotal,
-      input.sageJobShortName,
+      amount: invoiceTotal,
+      sageJobNumber: input.sageJobShortName,
       now,
+    }),
+    squarePaymentOperationUpsertStatement(env.DB, {
+      id: ids.paymentOperationId,
+      projectId: input.projectId,
+      sourceRecordId: paymentSourceId,
+      sourceRecordNumber: input.squarePaymentId,
+      title: `Square payment for ${input.sageInvoiceNumber}`,
+      description: `Received in Square and awaiting the supported Sage receipt posting step.`,
+      companyName: input.customerName,
+      startDate: paymentDate,
+      amount: paymentAmount,
+      sageJobNumber: input.sageJobShortName,
       now,
-      now,
-    ),
-    env.DB.prepare(
-      `INSERT INTO project_operations (
-         id, project_id, source_system, source_record_type, source_record_id,
-         source_record_number, title, description, status, priority,
-         assignee_type, company_name, start_date, due_date, amount,
-         sage_job_number, sage_write_status, sync_direction, sync_status,
-         last_synced_at, created_at, updated_at
-       ) VALUES (?, ?, 'sage', 'payment', ?, ?, ?, ?, 'received', 'normal',
-         'owner', ?, ?, NULL, ?, ?, 'manual_action_required', 'read', 'synced', ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         source_record_number = excluded.source_record_number,
-         title = excluded.title,
-         description = excluded.description,
-         company_name = excluded.company_name,
-         start_date = excluded.start_date,
-         amount = excluded.amount,
-         sage_job_number = excluded.sage_job_number,
-         sage_write_status = excluded.sage_write_status,
-         last_synced_at = excluded.last_synced_at,
-         updated_at = excluded.updated_at`,
-    ).bind(
-      ids.paymentOperationId,
-      input.projectId,
-      paymentSourceId,
-      input.squarePaymentId,
-      `Square payment for ${input.sageInvoiceNumber}`,
-      `Received in Square and awaiting the supported Sage receipt posting step.`,
-      input.customerName,
-      paymentDate,
-      paymentAmount,
-      input.sageJobShortName,
-      now,
-      now,
-      now,
-    ),
+    }),
   ]);
 
   await env.DB.prepare(
@@ -397,13 +359,12 @@ export async function upsertSquareOwnerReceivable(
     .first<{ status: string }>();
   if (!invoice) throw new Error("Compass owner receivable was not stored");
 
-  await env.DB.prepare(
-    `UPDATE project_operations
-     SET status = ?, updated_at = ?
-     WHERE id = ? AND project_id = ?`,
-  )
-    .bind(invoice.status, now, ids.invoiceOperationId, input.projectId)
-    .run();
+  await setSquareInvoiceOperationStatus(env.DB, {
+    status: invoice.status,
+    now,
+    operationId: ids.invoiceOperationId,
+    projectId: input.projectId,
+  });
 
   return ids;
 }

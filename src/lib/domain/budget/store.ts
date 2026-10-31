@@ -108,3 +108,48 @@ export async function discardBudgetApplication(db: Db, applicationId: string): P
 function isRows<T>(values: T | readonly T[]): values is readonly T[] {
   return Array.isArray(values)
 }
+
+type BoundValue = string | number | null
+
+/**
+ * A Sage pay application imported from a read snapshot, as raw D1 statements
+ * so the ingest commits it in one batch with its snapshot and run rows. The
+ * values bind in column order (SQL unchanged from the ingest).
+ */
+export function sageSnapshotApplicationInsertStatement(
+  database: D1Database,
+  values: readonly BoundValue[],
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_budget_applications (
+        id, project_id, source_system, source_record_id,
+        application_number, period_to, status,
+        original_contract_sum, net_changes, contract_sum_to_date,
+        total_completed_stored_to_date, retainage_held,
+        total_earned_less_retainage, previous_certificates,
+        current_payment_due, balance_to_finish, owner_visible,
+        sync_status, last_synced_at, created_at, updated_at
+      ) VALUES (?, ?, 'sage_read_snapshot', ?, ?, ?, 'imported_draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'synced', ?, ?, ?)`,
+    )
+    .bind(...values)
+}
+
+export function sageSnapshotBudgetLineInsertStatement(
+  database: D1Database,
+  values: readonly BoundValue[],
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_budget_lines (
+          id, project_id, application_id, source_system, source_record_id,
+          source_record_number, cost_code, csi_division, csi_division_name,
+          description, original_estimate, prior_changes, current_changes,
+          total_changes, adjusted_estimate, prior_costs, current_costs,
+          total_costs, percent_complete, balance_to_finish, retainage_held,
+          owner_visible, sort_order, sync_status, last_synced_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, 'sage_read_snapshot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'synced', ?, ?, ?)`,
+    )
+    .bind(...values)
+}

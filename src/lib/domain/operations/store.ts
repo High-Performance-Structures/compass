@@ -158,6 +158,264 @@ export function templateTodoInsertStatement(
     )
 }
 
+/** A to-do from a project template (template application batch). */
+export function templateStaffTodoInsertStatement(
+  database: D1Database,
+  todo: {
+    readonly id: string
+    readonly projectId: string
+    readonly sourceRecordId: string | null
+    readonly title: string
+    readonly description: string | null
+    readonly payloadJson: string
+    readonly now: string
+  },
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_operations (
+            id, project_id, source_system, source_record_type,
+            source_record_id, title, description, status, priority,
+            assignee_type, sage_write_status, sage_payload_json,
+            sync_direction, sync_status, created_at, updated_at
+          ) VALUES (?, ?, 'compass_template', 'staff_task', ?, ?, ?, 'open',
+            'normal', 'internal', 'not_ready', ?, 'write', 'compass_only', ?, ?)`,
+    )
+    .bind(todo.id, todo.projectId, todo.sourceRecordId, todo.title, todo.description, todo.payloadJson, todo.now, todo.now)
+}
+
+/** A draft RFQ (bid package) from a project template (template application batch). */
+export function templateBidPackageInsertStatement(
+  database: D1Database,
+  bidPackage: {
+    readonly id: string
+    readonly projectId: string
+    readonly sourceRecordId: string | null
+    readonly title: string
+    readonly description: string | null
+    readonly costCode: string | null
+    readonly payloadJson: string
+    readonly now: string
+  },
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_operations (
+            id, project_id, source_system, source_record_type,
+            source_record_id, title, description, status, priority,
+            assignee_type, cost_code, sage_cost_code, sage_write_status,
+            sage_payload_json, sync_direction, sync_status, created_at,
+            updated_at
+          ) VALUES (?, ?, 'compass_template', 'rfq', ?, ?, ?, 'draft',
+            'normal', 'vendor', ?, ?, 'not_ready', ?, 'write',
+            'compass_only', ?, ?)`,
+    )
+    .bind(
+      bidPackage.id,
+      bidPackage.projectId,
+      bidPackage.sourceRecordId,
+      bidPackage.title,
+      bidPackage.description,
+      bidPackage.costCode,
+      bidPackage.costCode,
+      bidPackage.payloadJson,
+      bidPackage.now,
+      bidPackage.now,
+    )
+}
+
+/**
+ * Moves a schedule item's linked to-dos by the same number of days as the
+ * item. Run before the schedule_tasks update so offsets come from the item's
+ * previous dates.
+ */
+export const LINKED_TODO_DATE_UPDATE_SQL = `UPDATE project_operations
+SET start_date = CASE
+  WHEN start_date IS NULL OR julianday(start_date) IS NULL THEN start_date
+  ELSE date(
+    ?,
+    printf(
+      '%+d days',
+      CAST(
+        julianday(start_date) - julianday((
+          SELECT start_date
+          FROM schedule_tasks
+          WHERE id = ?
+        )) AS INTEGER
+      )
+    )
+  )
+END,
+due_date = CASE
+  WHEN due_date IS NULL OR julianday(due_date) IS NULL THEN due_date
+  ELSE date(
+    ?,
+    printf(
+      '%+d days',
+      CAST(
+        julianday(due_date) - julianday((
+          SELECT end_date_calculated
+          FROM schedule_tasks
+          WHERE id = ?
+        )) AS INTEGER
+      )
+    )
+  )
+END,
+updated_at = ?
+WHERE source_record_id = ?
+  AND project_id = (
+    SELECT project_id FROM schedule_tasks WHERE id = ?
+  )
+  AND source_record_type IN (
+    'staff_task',
+    'subcontractor_task',
+    'supplier_task',
+    'schedule_task',
+    'todo',
+    'task'
+  )`
+
+export function linkedTodoDateUpdateStatement(
+  database: D1Database,
+  input: {
+    readonly scheduleTaskId: string
+    readonly nextStartDate: string
+    readonly nextEndDate: string
+    readonly updatedAt: string
+  },
+): D1PreparedStatement {
+  return database
+    .prepare(LINKED_TODO_DATE_UPDATE_SQL)
+    .bind(
+      input.nextStartDate,
+      input.scheduleTaskId,
+      input.nextEndDate,
+      input.scheduleTaskId,
+      input.updatedAt,
+      input.scheduleTaskId,
+      input.scheduleTaskId,
+    )
+}
+
+type SquareReceivableOperation = {
+  readonly id: string
+  readonly projectId: string
+  readonly sourceRecordId: string
+  readonly sourceRecordNumber: string
+  readonly title: string
+  readonly description: string
+  readonly companyName: string | null
+  readonly startDate: string
+  readonly amount: number
+  readonly sageJobNumber: string | null
+  readonly now: string
+}
+
+/** The Sage owner invoice row the Square receivable writer keeps in step (SQL unchanged). */
+export function squareOwnerInvoiceOperationUpsertStatement(
+  database: D1Database,
+  invoice: SquareReceivableOperation & { readonly dueDate: string | null },
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_operations (
+         id, project_id, source_system, source_record_type, source_record_id,
+         source_record_number, title, description, status, priority,
+         assignee_type, company_name, start_date, due_date, amount,
+         sage_job_number, sage_write_status, sync_direction, sync_status,
+         last_synced_at, created_at, updated_at
+       ) VALUES (?, ?, 'sage', 'owner_invoice', ?, ?, ?, ?, 'open', 'normal',
+         'owner', ?, ?, ?, ?, ?, 'synced', 'read', 'synced', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         source_record_number = excluded.source_record_number,
+         title = excluded.title,
+         description = excluded.description,
+         company_name = excluded.company_name,
+         start_date = excluded.start_date,
+         due_date = excluded.due_date,
+         amount = excluded.amount,
+         sage_job_number = excluded.sage_job_number,
+         last_synced_at = excluded.last_synced_at,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      invoice.id,
+      invoice.projectId,
+      invoice.sourceRecordId,
+      invoice.sourceRecordNumber,
+      invoice.title,
+      invoice.description,
+      invoice.companyName,
+      invoice.startDate,
+      invoice.dueDate,
+      invoice.amount,
+      invoice.sageJobNumber,
+      invoice.now,
+      invoice.now,
+      invoice.now,
+    )
+}
+
+/** The Square payment row awaiting the Sage receipt step (SQL unchanged). */
+export function squarePaymentOperationUpsertStatement(
+  database: D1Database,
+  payment: SquareReceivableOperation,
+): D1PreparedStatement {
+  return database
+    .prepare(
+      `INSERT INTO project_operations (
+         id, project_id, source_system, source_record_type, source_record_id,
+         source_record_number, title, description, status, priority,
+         assignee_type, company_name, start_date, due_date, amount,
+         sage_job_number, sage_write_status, sync_direction, sync_status,
+         last_synced_at, created_at, updated_at
+       ) VALUES (?, ?, 'sage', 'payment', ?, ?, ?, ?, 'received', 'normal',
+         'owner', ?, ?, NULL, ?, ?, 'manual_action_required', 'read', 'synced', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         source_record_number = excluded.source_record_number,
+         title = excluded.title,
+         description = excluded.description,
+         company_name = excluded.company_name,
+         start_date = excluded.start_date,
+         amount = excluded.amount,
+         sage_job_number = excluded.sage_job_number,
+         sage_write_status = excluded.sage_write_status,
+         last_synced_at = excluded.last_synced_at,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      payment.id,
+      payment.projectId,
+      payment.sourceRecordId,
+      payment.sourceRecordNumber,
+      payment.title,
+      payment.description,
+      payment.companyName,
+      payment.startDate,
+      payment.amount,
+      payment.sageJobNumber,
+      payment.now,
+      payment.now,
+      payment.now,
+    )
+}
+
+/** Mirrors the owner invoice's status onto its operation row (SQL unchanged). */
+export async function setSquareInvoiceOperationStatus(
+  database: D1Database,
+  input: { readonly status: string; readonly now: string; readonly operationId: string; readonly projectId: string },
+): Promise<void> {
+  await database
+    .prepare(
+      `UPDATE project_operations
+     SET status = ?, updated_at = ?
+     WHERE id = ? AND project_id = ?`,
+    )
+    .bind(input.status, input.now, input.operationId, input.projectId)
+    .run()
+}
+
 // ---------------------------------------------------------------------------
 // project_purchase_order_lines
 // ---------------------------------------------------------------------------
