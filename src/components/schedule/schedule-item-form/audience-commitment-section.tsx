@@ -1,9 +1,6 @@
 "use client"
 
-import { useState } from "react"
 import type { UseFormReturn } from "react-hook-form"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 import {
   FormControl,
@@ -13,7 +10,6 @@ import {
 } from "@/components/ui/form"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
-import { sendScheduleTaskReminder } from "@/app/actions/schedule-confirmations"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
 import { confirmationStatusLabel, type ScheduleItemFormValues } from "./form-model"
 import type { ChangeProposalState } from "./use-change-proposal"
@@ -28,9 +24,7 @@ export function AudienceCommitmentSection({
   readonly editingTask: ScheduleTaskData | null
   readonly proposal: ChangeProposalState
 }) {
-  const router = useRouter()
   const isEditing = !!editingTask
-  const [sendingReminder, setSendingReminder] = useState(false)
   const {
     changeProposal,
     proposalLoading,
@@ -38,20 +32,9 @@ export function AudienceCommitmentSection({
     acceptProposalOnSave,
     useProposedDates,
     rejectProposedDates,
+    sendingReminder,
+    handleSendReminder,
   } = proposal
-
-  async function handleSendReminder(): Promise<void> {
-    if (!editingTask) return
-    setSendingReminder(true)
-    const result = await sendScheduleTaskReminder(editingTask.id)
-    setSendingReminder(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Confirmation reminder sent.")
-    router.refresh()
-  }
 
   return (
     <div className="border-t pt-4">

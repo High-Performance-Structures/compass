@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import {
   getScheduleTaskChangeProposal,
   rejectScheduleTaskChangeProposal,
+  sendScheduleTaskReminder,
   type ScheduleTaskChangeProposal,
 } from "@/app/actions/schedule-confirmations"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
@@ -20,9 +21,15 @@ export interface ChangeProposalState {
   readonly setAcceptProposalOnSave: (accept: boolean) => void
   readonly useProposedDates: () => void
   readonly rejectProposedDates: () => Promise<void>
+  readonly sendingReminder: boolean
+  readonly handleSendReminder: () => Promise<void>
 }
 
-/** The assignee's pending date proposal for the item being edited. */
+/**
+ * The assignee's pending date proposal for the item being edited, and the
+ * confirmation reminder. Kept above the collapsible Details section so an
+ * in-flight action survives collapsing it.
+ */
 export function useChangeProposal(
   open: boolean,
   editingTask: ScheduleTaskData | null,
@@ -34,6 +41,7 @@ export function useChangeProposal(
   const [proposalLoading, setProposalLoading] = useState(false)
   const [proposalActionPending, setProposalActionPending] = useState(false)
   const [acceptProposalOnSave, setAcceptProposalOnSave] = useState(false)
+  const [sendingReminder, setSendingReminder] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -92,6 +100,19 @@ export function useChangeProposal(
     router.refresh()
   }
 
+  async function handleSendReminder(): Promise<void> {
+    if (!editingTask) return
+    setSendingReminder(true)
+    const result = await sendScheduleTaskReminder(editingTask.id)
+    setSendingReminder(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Confirmation reminder sent.")
+    router.refresh()
+  }
+
   return {
     changeProposal,
     proposalLoading,
@@ -100,5 +121,7 @@ export function useChangeProposal(
     setAcceptProposalOnSave,
     useProposedDates,
     rejectProposedDates,
+    sendingReminder,
+    handleSendReminder,
   }
 }
