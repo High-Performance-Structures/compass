@@ -64,6 +64,9 @@ const COUNT_RULES = [
   "actionImportsActions",
   "clientPages",
   "handRolledContext",
+  "typeAssertions",
+  "nonNullAssertions",
+  "explicitAny",
 ] as const
 
 describe("architecture standard", () => {
