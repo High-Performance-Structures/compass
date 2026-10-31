@@ -95,6 +95,7 @@ export const organizationMembers = sqliteTable("organization_members", {
   // Resolved on every authenticated request (current user's memberships).
   index("organization_members_user_idx").on(table.userId),
   index("organization_members_org_user_idx").on(table.organizationId, table.userId),
+  uniqueIndex("organization_members_org_user_unique").on(table.organizationId, table.userId),
 ])
 
 export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
@@ -617,6 +618,7 @@ export const teamMembers = sqliteTable("team_members", {
   (table) => [
     index("team_members_user_id_idx").on(table.userId),
     index("team_members_team_id_idx").on(table.teamId),
+    uniqueIndex("team_members_team_user_unique").on(table.teamId, table.userId),
   ])
 
 export const rolePermissionOverrides = sqliteTable(
@@ -787,6 +789,7 @@ export const groupMembers = sqliteTable("group_members", {
   (table) => [
     index("group_members_user_id_idx").on(table.userId),
     index("group_members_group_id_idx").on(table.groupId),
+    uniqueIndex("group_members_group_user_unique").on(table.groupId, table.userId),
   ])
 
 export const projects = sqliteTable("projects", {
@@ -2858,6 +2861,9 @@ export const projectRfis = sqliteTable("project_rfis", {
 },
   (table) => [
     index("project_rfis_project_id_idx").on(table.projectId),
+    uniqueIndex("project_rfis_source_record_unique")
+      .on(table.sourceSystem, table.sourceRecordId)
+      .where(sql`${table.sourceRecordId} IS NOT NULL`),
   ])
 
 export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
@@ -3265,6 +3271,7 @@ export const projectMembers = sqliteTable("project_members", {
   // Project access checks filter by project, by user, or both.
   index("project_members_user_idx").on(table.userId),
   index("project_members_project_user_idx").on(table.projectId, table.userId),
+  uniqueIndex("project_members_project_user_unique").on(table.projectId, table.userId),
 ])
 
 export const projectExternalResourceGrants = sqliteTable(
@@ -4204,6 +4211,7 @@ export const pushTokens = sqliteTable("push_tokens", {
 },
   (table) => [
     index("push_tokens_user_id_idx").on(table.userId),
+    uniqueIndex("push_tokens_token_unique").on(table.token),
   ])
 
 export type PushToken = typeof pushTokens.$inferSelect
