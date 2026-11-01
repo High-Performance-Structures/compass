@@ -8,6 +8,7 @@ import {
   recordWeatherCellFailure,
   saveWeatherCellForecast,
 } from "@/lib/domain/weather/store"
+import { parseReportingAreas, parseSmokeKml } from "@/lib/weather/air"
 import { parseAlerts, withZoneShapes, zonesNeedingShapes, ALERT_TOLERANCE_DEG, type WeatherAlert } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { weatherAreasInUse } from "@/lib/weather/areas-server"
@@ -28,6 +29,11 @@ const FETCH_TIMEOUT_MS = 8_000
 const MINUTE = 60 * 1000
 const ALERTS_EVERY_MS = 10 * MINUTE
 const FIRES_EVERY_MS = 15 * MINUTE
+// AirNow posts readings hourly; NOAA traces smoke a few times a day.
+const AIR_EVERY_MS = 30 * MINUTE
+const SMOKE_EVERY_MS = 60 * MINUTE
+const AIRNOW_REPORTING_AREAS = "https://files.airnowtech.org/airnow/today/reportingarea.dat"
+const HMS_SMOKE_KML = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/KML"
 const CELL_EVERY_MS = 60 * MINUTE
 /** Cells and points nobody has read for this long stop refreshing. */
 const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
@@ -41,6 +47,8 @@ const ZONES_PER_RUN = 8
 export type WeatherRefreshSummary = {
   readonly alerts: number
   readonly fires: number
+  readonly smoke: number
+  readonly air: number
   readonly points: number
   readonly cells: number
   readonly failures: number
@@ -183,6 +191,55 @@ async function refreshFires(db: Db, area: WeatherArea, nowMs: number): Promise<n
   return fires.length
 }
 
+async function getText(url: string): Promise<string | null> {
+  const response = await fetch(url, { headers: { "User-Agent": NWS_HEADERS["User-Agent"] }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`air source ${response.status}`)
+  return response.text()
+}
+
+/**
+ * The national smoke and air quality files, fetched at most once per run
+ * however many areas need them (each run's areas share one download).
+ */
+function nationalFiles(nowMs: number): { readonly smoke: () => Promise<string>; readonly air: () => Promise<string> } {
+  let smoke: Promise<string> | null = null
+  let air: Promise<string> | null = null
+  const smokeUrl = (ms: number): string => {
+    const day = new Date(ms).toISOString().slice(0, 10).replaceAll("-", "")
+    return `${HMS_SMOKE_KML}/${day.slice(0, 4)}/${day.slice(4, 6)}/hms_smoke${day}.kml`
+  }
+  // Today's file (UTC) appears after the first morning analysis; until then, yesterday's.
+  const loadSmoke = async (): Promise<string> => {
+    const today = await getText(smokeUrl(nowMs))
+    if (today && today.includes("<Placemark")) return today
+    return (await getText(smokeUrl(nowMs - 24 * 60 * MINUTE))) ?? ""
+  }
+  const loadAir = async (): Promise<string> => (await getText(AIRNOW_REPORTING_AREAS)) ?? ""
+  return {
+    smoke: () => {
+      smoke ??= loadSmoke()
+      return smoke
+    },
+    air: () => {
+      air ??= loadAir()
+      return air
+    },
+  }
+}
+
+async function refreshSmoke(db: Db, area: WeatherArea, kml: string): Promise<number> {
+  const plumes = parseSmokeKml(kml, area)
+  await storeSnapshot(db, area.key, "smoke", JSON.stringify(plumes), new Date().toISOString())
+  return plumes.length
+}
+
+async function refreshAir(db: Db, area: WeatherArea, text: string): Promise<number> {
+  const readings = parseReportingAreas(text, area)
+  await storeSnapshot(db, area.key, "air", JSON.stringify(readings), new Date().toISOString())
+  return readings.length
+}
+
 async function markSnapshotFailure(db: Db, areaKey: string, kind: string): Promise<void> {
   await db
     .update(weatherAreaSnapshots)
@@ -297,7 +354,10 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
   const now = new Date(nowMs).toISOString()
   let alerts = 0
   let fires = 0
+  let smoke = 0
+  let air = 0
   let failures = 0
+  const files = nationalFiles(nowMs)
   const areas = await weatherAreasInUse(db)
   for (const area of areas) {
     await seedAreaPoints(db, area, now)
@@ -317,12 +377,30 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
         await markSnapshotFailure(db, area.key, "fires")
       }
     }
+    if (Date.now() < deadline && (await snapshotAge(db, area.key, "smoke", nowMs)) >= SMOKE_EVERY_MS) {
+      try {
+        smoke += await refreshSmoke(db, area, await files.smoke())
+      } catch {
+        failures += 1
+        await markSnapshotFailure(db, area.key, "smoke")
+      }
+    }
+    if (Date.now() < deadline && (await snapshotAge(db, area.key, "air", nowMs)) >= AIR_EVERY_MS) {
+      try {
+        air += await refreshAir(db, area, await files.air())
+      } catch {
+        failures += 1
+        await markSnapshotFailure(db, area.key, "air")
+      }
+    }
   }
   const points = Date.now() < deadline ? await resolvePoints(db, deadline, nowMs) : { resolved: 0, failures: 0 }
   const cells = Date.now() < deadline ? await refreshCells(db, deadline, nowMs, Math.min(MAX_CELLS_PER_RUN, CELLS_PER_RUN * Math.max(1, areas.length))) : { refreshed: 0, failures: 0 }
   return {
     alerts,
     fires,
+    smoke,
+    air,
     points: points.resolved,
     cells: cells.refreshed,
     failures: failures + points.failures + cells.failures,

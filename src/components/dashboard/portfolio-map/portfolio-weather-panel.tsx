@@ -27,6 +27,8 @@ const FLAG_TOKEN: Readonly<Record<WeatherFlagKind, string>> = {
   warning: "--warning",
   fire: "--brand-compass-red",
   red_flag: "--destructive",
+  smoke: "--muted-foreground",
+  air: "--warning",
 }
 
 function stepTime(start: string, step: number): number {

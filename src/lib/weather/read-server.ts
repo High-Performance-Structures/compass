@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { weatherAreaSnapshots, weatherCells, weatherPoints } from "@/db/schema"
 import { insertWeatherPointsIfAbsent, touchWeatherPointsAndCells } from "@/lib/domain/weather/store"
+import { readAir, readSmoke } from "@/lib/weather/air"
 import { readAlerts } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { readFires } from "@/lib/weather/fires"
@@ -138,13 +139,20 @@ export async function readWeatherLayer(
   }
 }
 
-/** The Fire & smoke layer for an area: active fires and fire weather warnings. */
+/** The Fire & smoke layer for an area: active fires, fire weather warnings, smoke and air quality. */
 export async function readFireLayer(db: Db, area: WeatherArea): Promise<FireLayerData> {
-  const [fireRow, alertRow] = await Promise.all([snapshot(db, area.key, "fires"), snapshot(db, area.key, "alerts")])
+  const [fireRow, alertRow, smokeRow, airRow] = await Promise.all([
+    snapshot(db, area.key, "fires"),
+    snapshot(db, area.key, "alerts"),
+    snapshot(db, area.key, "smoke"),
+    snapshot(db, area.key, "air"),
+  ])
   return {
     areaKey: area.key,
     fires: readFires(fireRow?.payload ?? null),
     alerts: readAlerts(alertRow?.payload ?? null).filter((alert) => alert.kind === "fire"),
+    smoke: readSmoke(smokeRow?.payload ?? null),
+    air: readAir(airRow?.payload ?? null),
     updatedAt: fireRow?.fetchedAt ?? null,
   }
 }
@@ -188,13 +196,20 @@ export async function readSiteForecasts(
   return { byProject, markInUse }
 }
 
-/** Current warnings and fires for an area, for checks outside the map. */
+/** Current warnings, fires, smoke and air quality for an area, for checks outside the map. */
 export async function readAreaHazards(db: Db, area: WeatherArea) {
-  const [alertRow, fireRow] = await Promise.all([snapshot(db, area.key, "alerts"), snapshot(db, area.key, "fires")])
+  const [alertRow, fireRow, smokeRow, airRow] = await Promise.all([
+    snapshot(db, area.key, "alerts"),
+    snapshot(db, area.key, "fires"),
+    snapshot(db, area.key, "smoke"),
+    snapshot(db, area.key, "air"),
+  ])
   const alerts = readAlerts(alertRow?.payload ?? null)
   return {
     weatherAlerts: alerts.filter((alert) => alert.kind !== "fire"),
     fireAlerts: alerts.filter((alert) => alert.kind === "fire"),
     fires: readFires(fireRow?.payload ?? null),
+    smoke: readSmoke(smokeRow?.payload ?? null),
+    air: readAir(airRow?.payload ?? null),
   }
 }

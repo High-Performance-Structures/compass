@@ -280,14 +280,14 @@ export function PortfolioSection({
     const limits = weatherLayer.limits ?? fireLayer.limits ?? DEFAULT_WEATHER_LIMITS
     const step = Math.min(weatherStep, (weatherData?.steps ?? 1) - 1)
     return {
-      title: weatherOn ? "WEATHER ON YOUR JOBS" : "FIRE NEAR YOUR JOBS",
+      title: weatherOn ? "WEATHER ON YOUR JOBS" : "FIRE & SMOKE NEAR YOUR JOBS",
       emptyText: weatherOn
         ? weatherData
           ? "No job is over your company's limits in the 24 hours from this time."
           : "Loading weather…"
         : fireData
-          ? "No active fire is near a job."
-          : "Loading fires…",
+          ? "No fire, smoke or poor air near a job."
+          : "Loading fire and smoke…",
       rows: weatherData || fireData ? jobWeatherRows(jobs, weatherData, fireData, limits, step, Date.now()) : [],
     }
   }, [fireLayer.data, fireLayer.limits, fireOn, jobs, weatherLayer.data, weatherLayer.limits, weatherOn, weatherStep])

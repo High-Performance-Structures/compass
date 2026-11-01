@@ -7,7 +7,7 @@
   "summary": "Review approved project information, make owner decisions, contact the team, and follow warranty work.",
   "contextSummary": "Your Owner Workspace shows information the project team has published for owners. Confirm the active project and exact revision before approving or submitting anything.",
   "category": "Start Here",
-  "tags": ["weather", "wildfire", "owner", "client", "portal", "project dashboard", "selections", "G703", "pay applications", "change orders", "warranty"],
+  "tags": ["weather", "wildfire", "smoke", "air quality", "owner", "client", "portal", "project dashboard", "selections", "G703", "pay applications", "change orders", "warranty"],
   "audiences": ["owner"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
@@ -24,7 +24,7 @@ The navigation shows only the areas available for the active project and your as
 
 ## Use the Dashboard {#dashboard}
 
-**Dashboard** uses the same overall layout as the office workspace while showing only information shared with you. Open your project's map panel for site context and use **Messages** to find your unread items when available. Counts, summaries, and links remain limited to your project assignment and published owner information. Under **Layers** on the map, **Weather** shows the National Weather Service forecast (rain, snow, strong wind, extreme cold or heat, and weather warnings) from now to 48 hours ahead, and **Fire & smoke** shows active wildfires and Red Flag Warnings. The panel beside the map lists what is over the limits at your project. Follow local officials for evacuations and road closures.
+**Dashboard** uses the same overall layout as the office workspace while showing only information shared with you. Open your project's map panel for site context and use **Messages** to find your unread items when available. Counts, summaries, and links remain limited to your project assignment and published owner information. Under **Layers** on the map, **Weather** shows the National Weather Service forecast (rain, snow, strong wind, extreme cold or heat, and weather warnings) from now to 48 hours ahead, and **Fire & smoke** shows active wildfires, Red Flag Warnings, smoke and air quality (AQI). The panel beside the map lists what is over the limits at your project. Follow local officials for evacuations and road closures.
 
 Use the left navigation on a larger screen or project controls on a smaller screen. **Print Preview** opens a point-in-time copy in a new tab, with **Print / Save PDF**; it does not change or approve a record. A shared layout does not expose staff financials or internal messages.
 

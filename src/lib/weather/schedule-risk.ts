@@ -1,3 +1,4 @@
+import { AIR_CATEGORY_LABEL, airTimeLabel, airValue, type AirReading } from "@/lib/weather/air"
 import type { WeatherAlert } from "@/lib/weather/alerts"
 import { alertActiveBetween, type WeatherLimits } from "@/lib/weather/layer"
 import { STEP_MS, type CellSeries } from "@/lib/weather/series"
@@ -38,12 +39,12 @@ export type ScheduleItemForRisk = {
   readonly endDate: string
 }
 
-export type ScheduleRiskKind = "cold" | "heat" | "wind" | "rain" | "snow" | "warning"
+export type ScheduleRiskKind = "cold" | "heat" | "wind" | "rain" | "snow" | "warning" | "air"
 
 export type ScheduleRisk = {
   readonly taskId: string
   readonly taskTitle: string
-  /** The rule id, or "warning", "snow", "cold", "heat" for checks on every item. */
+  /** The rule id, or "warning", "snow", "cold", "heat", "air" for checks on every item. */
   readonly ruleId: string
   readonly kind: ScheduleRiskKind
   /** Short label, e.g. "COLD". */
@@ -187,6 +188,40 @@ export function scheduleWeatherRisks(input: {
       risks.push({ taskId: item.id, taskTitle: item.title, ruleId: "warning", kind: "warning", label: "WARNING", detail: alert.headline, date: input.localDate(onset) })
       break
     }
+  }
+  return risks
+}
+
+/**
+ * Scheduled items on days when the nearest reporting area's air quality
+ * (today's reading or a forecast) reaches the company's AQI limit.
+ */
+export function scheduleAirRisks(input: {
+  readonly items: readonly ScheduleItemForRisk[]
+  /** The job's nearest reporting area, or null when none is close. */
+  readonly reading: AirReading | null
+  readonly aqiLimit: number
+  readonly today: string
+}): ScheduleRisk[] {
+  const reading = input.reading
+  if (!reading) return []
+  const days = new Map<string, { readonly value: number; readonly text: string }>()
+  for (const forecast of reading.forecasts) {
+    if (forecast.date < input.today || airValue(forecast) < input.aqiLimit) continue
+    const value = forecast.aqi !== null ? `${forecast.aqi} ` : ""
+    days.set(forecast.date, { value: airValue(forecast), text: `Air quality forecast ${value}(${AIR_CATEGORY_LABEL[forecast.category]}) on ${dayLabel(forecast.date)} at ${reading.name}.` })
+  }
+  const now = reading.now
+  if (now && now.date === input.today && now.aqi >= input.aqiLimit && (days.get(input.today)?.value ?? 0) < now.aqi) {
+    days.set(input.today, { value: now.aqi, text: `Air quality ${now.aqi} (${AIR_CATEGORY_LABEL[now.category]}) at ${reading.name} as of ${airTimeLabel(now.time)}.` })
+  }
+  const dates = [...days.keys()].sort()
+  const risks: ScheduleRisk[] = []
+  for (const item of input.items) {
+    const date = dates.find((day) => day >= item.startDate && day <= item.endDate)
+    const day = date ? days.get(date) : undefined
+    if (!date || !day) continue
+    risks.push({ taskId: item.id, taskTitle: item.title, ruleId: "air", kind: "air", label: "AIR", detail: `${day.text} Your limit is AQI ${input.aqiLimit}.`, date })
   }
   return risks
 }

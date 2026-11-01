@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
 import type { TravelChargeSettings } from "@/lib/portfolio-map/travel-zones"
 import {
+  AIR_COLOR_TOKEN,
   FIRE_COLOR_TOKEN,
   WEATHER_COLOR_TOKEN,
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
@@ -289,9 +290,24 @@ export default function PortfolioTerrain({
     sceneRef.current?.setFire({
       fires: fireData.fires,
       alerts: fireData.alerts.map((alert) => ({ rings: alert.rings, solid: alert.level === "warning" })),
+      smoke: fireData.smoke.map((plume) => ({ density: plume.density, rings: plume.rings })),
+      air: fireData.air.flatMap((reading) => {
+        // Today's reading, else the first forecast, so every area shows a color.
+        const value = reading.now ?? reading.forecasts[0] ?? null
+        return value ? [{ id: reading.id, name: reading.name, lon: reading.lon, lat: reading.lat, aqi: value.aqi, category: value.category }] : []
+      }),
       colors: {
         fire: themeColorHex(FIRE_COLOR_TOKEN.fire, 0.15),
         redFlag: themeColorHex(FIRE_COLOR_TOKEN.redFlag, 0.2),
+        smoke: themeColorHex(FIRE_COLOR_TOKEN.smoke, 0.1),
+        air: {
+          good: themeColorHex(AIR_COLOR_TOKEN.good, 0.15),
+          moderate: themeColorHex(AIR_COLOR_TOKEN.moderate, 0.15),
+          sensitive: themeColorHex(AIR_COLOR_TOKEN.sensitive, 0.15),
+          unhealthy: themeColorHex(AIR_COLOR_TOKEN.unhealthy, 0.15),
+          very_unhealthy: themeColorHex(AIR_COLOR_TOKEN.very_unhealthy, 0.15),
+          hazardous: themeColorHex(AIR_COLOR_TOKEN.hazardous, 0.15),
+        },
       },
     })
   }, [fireData, ready, generation])
@@ -456,7 +472,7 @@ export default function PortfolioTerrain({
         Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) ·{" "}
         {mapState === "CO" ? "Roads © OpenStreetMap contributors" : "Outline and roads: U.S. Census Bureau"}
         {weatherOn ? " · Weather: NOAA National Weather Service" : ""}
-        {fireOn ? " · Fires: NIFC WFIGS" : ""}
+        {fireOn ? " · Fires: NIFC WFIGS · Smoke: NOAA HMS · Air quality: EPA AirNow" : ""}
       </p>
       </div>
     </div>
