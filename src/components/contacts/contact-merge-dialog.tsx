@@ -80,7 +80,7 @@ export function ContactMergeDialog({
         <DialogHeader>
           <DialogTitle>Merge duplicate {kind.endsWith("company") ? "companies" : "people"}</DialogTitle>
           <DialogDescription>
-            Choose the record to keep. The other is archived and its project links are moved.
+            Choose the record to keep. The other is archived and everything linked to it is moved.
             This does not merge Sage records, grant Compass access, or overwrite the survivor&apos;s contact fields.
           </DialogDescription>
         </DialogHeader>
@@ -104,6 +104,15 @@ export function ContactMergeDialog({
                   <p><span className="font-medium">Keep:</span> {preview.destinationName}{preview.destinationEmail ? ` · ${preview.destinationEmail}` : ""}</p>
                   <p><span className="font-medium">Archive:</span> {preview.sourceName}{preview.sourceEmail ? ` · ${preview.sourceEmail}` : ""}</p>
                   <p>{preview.peopleCount} people and {preview.projectContactCount} project contacts will be relinked.</p>
+                  {preview.moves.length > 0 ? (
+                    <div>
+                      <p className="font-medium">Moves to the kept record</p>
+                      <ul className="list-disc pl-5">
+                        {preview.moves.map((move) => <li key={move.category}>{move.label}: {move.count}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {preview.warnings.map((warning) => <p key={warning} className="text-muted-foreground">{warning}</p>)}
                   <p className="text-muted-foreground">Review any different phone, email, or address details before continuing; the survivor&apos;s fields stay unchanged.</p>
                   {preview.retainedIdentityNotice ? <p className="text-muted-foreground">{preview.retainedIdentityNotice}</p> : null}
                 </div>

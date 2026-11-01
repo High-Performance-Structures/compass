@@ -53,7 +53,8 @@ describe("contact duplicate merging", () => {
   const rawDb = {
     prepare: vi.fn((statement: string) => {
       sql.push(statement)
-      return { bind: vi.fn(() => ({ statement })) }
+      // Company merges also read reference counts and trade docs: nothing to move here.
+      return { bind: vi.fn(() => ({ statement, first: async () => null, all: async () => ({ results: [] }) })) }
     }),
     batch: vi.fn(async () => []),
   }
@@ -166,6 +167,12 @@ describe("contact duplicate merging", () => {
     })
     expect(result).toEqual({ success: true, keptId: "keep" })
     expect(sql.some((statement) => statement.includes("source_record_id = NULL"))).toBe(false)
+    // Every reference moves in the same batch, not only people and project contacts.
+    for (const table of ["vendor_trade_documents", "vendor_trade_doc_links", "project_operations", "vendor_bills", "project_warranty_claims"]) {
+      expect(sql.some((statement) => statement.includes(`UPDATE ${table} SET`))).toBe(true)
+    }
+    expect(sql.findLastIndex((statement) => statement.includes("directory_status = 'merged'")))
+      .toBeGreaterThan(sql.findIndex((statement) => statement.includes("UPDATE vendor_trade_documents SET vendor_id")))
   })
 
   it("archives the source, relinks people/projects, and records an immutable audit snapshot atomically", async () => {

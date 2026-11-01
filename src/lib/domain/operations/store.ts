@@ -25,6 +25,7 @@ import {
   projectRfqManualResponseEvents,
   projectRfqQuoteLinks,
 } from "@/db/schema-rfqs"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
 import { todoEventRow, type TodoEventInput } from "./rules"
@@ -600,4 +601,19 @@ export function rfqBidImportsForEstimatesDeleteQueries(
     ),
     db.delete(projectEstimateRfqBidImports).where(forEstimates),
   ]
+}
+
+/**
+ * Moves a merged vendor's POs, RFQs, bids and to-dos to the kept vendor. A
+ * row stamped with a Sage vendor (id or number) other than the kept vendor's
+ * stays put (the merge preview blocks on it), so one vendor never carries two
+ * Sage identities.
+ */
+export function companyMergeOperationStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE project_operations SET vendor_id = ?, updated_at = ? WHERE vendor_id = ?
+      AND (sage_vendor_id IS NULL OR trim(sage_vendor_id) = '' OR EXISTS (SELECT 1 FROM vendors k WHERE k.id = ?
+        AND (k.sage_vendor_id = project_operations.sage_vendor_id OR k.sage_vendor_number = project_operations.sage_vendor_id)))
+      AND ${guard.sql}`).bind(move.destinationId, move.now, move.sourceId, move.destinationId, ...guard.binds)]
 }

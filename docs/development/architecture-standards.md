@@ -103,6 +103,12 @@ The database is the source of truth, and each fact is stored once.
   its parent), or on the needs-review list, which may only shrink. Run
   `scripts/orphan-id-report.mjs` before adding a trigger to an existing column.
 - **Every foreign key is indexed.** The referencing column leads some index.
+- **Merges move every reference.** A column that points at a vendor or a
+  client company is listed in
+  `src/lib/domain/contacts/company-merge-references.ts`: moved to the kept
+  company by the owning store's `companyMerge*Statements` builder, or kept on
+  the archived company with a written reason.
+  `company-merge-references.test.ts` fails for a column that is not listed.
 - **Link tables are unique on their pair.** A membership or link row (two
   foreign keys, plus a role or timestamps) has a unique index on the pair.
   Imported rows are unique on `(source_system, source_*_id)`, so an import can
