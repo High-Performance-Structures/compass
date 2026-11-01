@@ -14,6 +14,7 @@ import {
   correspondenceEmailEvents,
   correspondenceEmailThreads,
 } from "@/db/schema-correspondence-email"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
 type DeliveryInsert = typeof correspondenceEmailDeliveries.$inferInsert
@@ -148,4 +149,12 @@ export async function dismissInboundEmailForReview(db: Db, emailId: string, orga
         eq(inboundEmails.matchedStatus, "needs_review")
       )
     )
+}
+
+/** Points tracked email threads about a merged company at the kept one, so later replies land on it. */
+export function companyMergeEmailThreadStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE email_reply_threads SET source_id = ?, updated_at = ?
+    WHERE source_type = ? AND source_id = ? AND organization_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.side, move.sourceId, move.organizationId, ...guard.binds)]
 }

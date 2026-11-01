@@ -12,6 +12,7 @@ import {
   projectWarrantyClaims,
 } from "@/db/schema-warranty"
 import { WARRANTY_CLAIM_STATUSES } from "@/lib/domain/warranty/statuses"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
@@ -67,4 +68,13 @@ export async function insertWarrantyClaimAttachment(
   values: NewWarrantyClaimAttachment
 ): Promise<void> {
   await db.insert(projectWarrantyClaimAttachments).values(values)
+}
+
+/** Moves warranty claims assigned to a merged vendor to the kept vendor. */
+export function companyMergeWarrantyStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE project_warranty_claims SET assigned_vendor_id = ?, updated_at = ?
+    WHERE assigned_vendor_id = ? AND organization_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.sourceId, move.organizationId, ...guard.binds)]
 }

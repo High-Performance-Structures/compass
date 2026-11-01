@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm"
 
 import { tradeLetters } from "@/db/schema-trade-docs"
 import { TRADE_LETTER_KINDS, TRADE_LETTER_STATUSES } from "@/lib/domain/trade-letters/statuses"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
@@ -28,4 +29,12 @@ export async function updateTradeLetter(db: Db, letterId: string, values: TradeL
 
 export async function deleteTradeLetter(db: Db, letterId: string): Promise<void> {
   await db.delete(tradeLetters).where(eq(tradeLetters.id, letterId)).run()
+}
+
+/** Moves a merged vendor's trade letters to the kept vendor; the name on each letter is what was sent and stays. */
+export function companyMergeTradeLetterStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE trade_letters SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND organization_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.sourceId, move.organizationId, ...guard.binds)]
 }

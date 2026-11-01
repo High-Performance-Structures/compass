@@ -28,6 +28,8 @@ import {
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
+import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
+import { resolvedAddress, resolvedCompanyName, resolvedDisplayName, resolvedEmail, resolvedPhone } from "./resolved-columns"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 
 type Statement = BatchItem<"sqlite">
@@ -55,96 +57,6 @@ type IdentityPatch = {
 // ---------------------------------------------------------------------------
 // Read model
 // ---------------------------------------------------------------------------
-
-type DirectoryValue = {
-  readonly customerContact: SQL | null
-  readonly vendorContact: SQL | null
-  readonly customer: SQL | null
-  readonly vendor: SQL | null
-  readonly internal: SQL | null
-  readonly user: SQL | null
-}
-
-/**
- * The linked record, in the order the project contact names it. When that
- * record is reachable its value wins, blank included (a linked record owns
- * its blanks). Only an unlinked contact, or one whose record is no longer
- * reachable (inactive, merged, another organization), falls back to the
- * copied column.
- */
-function linkedValue(value: DirectoryValue, copy: SQL): SQL {
-  const pick = (present: SQL, field: SQL | null): SQL =>
-    sql`case when ${present} then ${field ?? sql`null`} else ${copy} end`
-  return sql`case
-    when ${projectContacts.customerContactId} is not null
-      then ${pick(sql`${customerContacts.id} is not null`, value.customerContact)}
-    when ${projectContacts.vendorContactId} is not null
-      then ${pick(sql`${vendorContacts.id} is not null`, value.vendorContact)}
-    when ${projectContacts.customerId} is not null or ${projectContacts.sourceEntityType} = 'customer'
-      then ${pick(sql`${customers.id} is not null`, value.customer)}
-    when ${projectContacts.vendorId} is not null or ${projectContacts.sourceEntityType} = 'vendor'
-      then ${pick(sql`${vendors.id} is not null`, value.vendor)}
-    when ${projectContacts.internalContactId} is not null
-      then ${pick(sql`${internalContacts.id} is not null`, value.internal)}
-    when ${projectContacts.sourceEntityType} = 'user'
-      then ${pick(sql`${users.id} is not null`, value.user)}
-    else ${copy}
-  end`
-}
-
-function trimmed(column: SQL): SQL {
-  return sql`nullif(trim(${column}), '')`
-}
-
-const resolvedEmail = linkedValue(
-  {
-    customerContact: trimmed(sql`${customerContacts.email}`),
-    vendorContact: trimmed(sql`${vendorContacts.email}`),
-    customer: trimmed(sql`${customers.email}`),
-    vendor: trimmed(sql`${vendors.email}`),
-    internal: trimmed(sql`${internalContacts.email}`),
-    user: trimmed(sql`${users.email}`),
-  },
-  trimmed(sql`${projectContacts.email}`)
-)
-
-const resolvedPhone = linkedValue(
-  {
-    customerContact: trimmed(sql`${customerContacts.phone}`),
-    vendorContact: trimmed(sql`${vendorContacts.phone}`),
-    customer: trimmed(sql`${customers.phone}`),
-    vendor: trimmed(sql`${vendors.phone}`),
-    internal: trimmed(sql`${internalContacts.phone}`),
-    user: trimmed(sql`${users.phone}`),
-  },
-  trimmed(sql`${projectContacts.phone}`)
-)
-
-// People records carry no address: a client person uses the client's, and
-// vendor people, staff and Compass users have none on a project.
-const resolvedAddress = sql`case when ${projectContacts.contactType} = 'internal' then null else ${linkedValue(
-  {
-    customerContact: trimmed(sql`${customers.address}`),
-    vendorContact: null,
-    customer: trimmed(sql`${customers.address}`),
-    vendor: trimmed(sql`${vendors.address}`),
-    internal: null,
-    user: null,
-  },
-  trimmed(sql`${projectContacts.address}`)
-)} end`
-
-const resolvedDisplayName = sql`case
-  when ${projectContacts.contactType} = 'internal' and ${internalContacts.id} is not null then ${internalContacts.name}
-  when ${projectContacts.customerContactId} is not null then coalesce(${customerContacts.name}, ${projectContacts.displayName})
-  when ${projectContacts.vendorContactId} is not null then coalesce(${vendorContacts.name}, ${projectContacts.displayName})
-  when ${vendors.id} is not null then ${vendors.name}
-  when ${customers.id} is not null then ${customers.name}
-  when ${internalContacts.id} is not null then ${internalContacts.name}
-  else ${projectContacts.displayName}
-end`
-
-const resolvedCompanyName = sql`coalesce(${vendors.name}, ${customers.company}, ${projectContacts.companyName})`
 
 type ResolvedOrder = "summary" | "type_then_name" | "name"
 
@@ -724,28 +636,13 @@ export function sageClientDirectoryCandidateInsertSql(organization: string): str
   organization_id, created_at, updated_at
 )
 SELECT
-  'sage-customer-' || ${organization} || '-' || sc.client_number,
-  sc.name,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
+  'sage-customer-' || ${organization} || '-' || sc.client_number, sc.name, NULL, NULL, NULL, NULL,
   'Unverified Sage-number candidate. Reconcile the exact Sage ID and Compass customer before use; this import grants no portal access.',
-  NULL,
-  NULL,
-  sc.client_number,
-  NULL,
-  NULL,
-  'client',
-  ${organization},
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  NULL, NULL, sc.client_number, NULL, NULL, 'client', ${organization},
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM sage_clients sc
 WHERE NOT EXISTS (
-  SELECT 1
-  FROM customers c
-  WHERE c.organization_id = ${organization}
-    AND c.sage_client_number = sc.client_number
+  SELECT 1 FROM customers c WHERE c.organization_id = ${organization} AND c.sage_client_number = sc.client_number
 );
 `
 }
@@ -757,30 +654,74 @@ export type ContactMergeWrite = {
   readonly peopleCount: number; readonly projectContactCount: number; readonly userId: string; readonly now: string
 }
 
-/** One atomic batch: the audit event, then children before parents (the project-contact scope trigger checks the child's current parent). */
-export function contactMergeStatements(database: D1Database, input: ContactMergeWrite): D1PreparedStatement[] {
-  const customer = input.kind.startsWith("customer")
-  const people = customer ? "customer_contacts" : "vendor_contacts"
-  const parent = customer ? "customer" : "vendor"
-  const moveProjectContacts = (column: string, type: string): D1PreparedStatement =>
-    database.prepare(`UPDATE project_contacts SET ${column} = ?, source_entity_id = CASE WHEN source_entity_type = '${type}' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = '${type}' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE ${column} = ? OR (source_entity_type = '${type}' AND source_entity_id = ?)`)
-      .bind(input.destinationId, input.sourceId, input.destinationId, input.sourceId, input.destinationId, input.now, input.sourceId, input.sourceId)
-  const event = database.prepare(`INSERT INTO contact_merge_events (id, organization_id, kind, source_id, destination_id, source_snapshot_json,
+type MergeIds = { readonly sourceId: string; readonly destinationId: string; readonly now: string }
+type MergeGuard = { readonly sql: string; readonly binds: readonly unknown[] }
+
+/** Moves project contacts (and their directory provenance) between directory records; `guard` narrows company moves. */
+function projectContactMoveStatement(database: D1Database, column: string, type: string, ids: MergeIds, guard?: MergeGuard): D1PreparedStatement {
+  const where = `${column} = ? OR (source_entity_type = '${type}' AND source_entity_id = ?)`
+  return database.prepare(`UPDATE project_contacts SET ${column} = ?, source_entity_id = CASE WHEN source_entity_type = '${type}' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = '${type}' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE ${guard ? `(${where}) AND ${guard.sql}` : where}`)
+    .bind(ids.destinationId, ids.sourceId, ids.destinationId, ids.sourceId, ids.destinationId, ids.now, ids.sourceId, ids.sourceId, ...(guard?.binds ?? []))
+}
+
+/** The merge audit row; a company merge's source snapshot also records what moved and what was kept. */
+export function contactMergeEventStatement(database: D1Database, input: ContactMergeWrite): D1PreparedStatement {
+  return database.prepare(`INSERT INTO contact_merge_events (id, organization_id, kind, source_id, destination_id, source_snapshot_json,
     destination_snapshot_json, moved_people_count, moved_project_contacts_count, merged_by_user_id, merged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(crypto.randomUUID(), input.organizationId, input.kind, input.sourceId, input.destinationId,
       input.sourceSnapshot, input.destinationSnapshot, input.peopleCount, input.projectContactCount, input.userId, input.now)
-  if (input.kind.endsWith("company")) return [event,
-    database.prepare(`UPDATE ${people} SET ${parent}_id = ?, updated_at = ? WHERE ${parent}_id = ?`).bind(input.destinationId, input.now, input.sourceId),
-    moveProjectContacts(`${parent}_id`, parent),
-    database.prepare(customer
-      ? "UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL"
-      : "UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL")
-      .bind(input.destinationId, input.now, input.sourceId, input.organizationId)]
-  return [event, moveProjectContacts(`${parent}_contact_id`, `${parent}_contact`),
+}
+
+/** A people merge as one atomic batch: the audit event, then the moves (the project-contact scope trigger checks the child's current parent). */
+export function contactMergeStatements(
+  database: D1Database, input: ContactMergeWrite & { readonly kind: "customer_person" | "vendor_person" }
+): D1PreparedStatement[] {
+  const [people, parent] = input.kind === "customer_person" ? ["customer_contacts", "customer"] : ["vendor_contacts", "vendor"]
+  return [contactMergeEventStatement(database, input), projectContactMoveStatement(database, `${parent}_contact_id`, `${parent}_contact`, input),
     database.prepare(`UPDATE ${people} SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM ${people} WHERE id = ? AND is_primary = 1)`)
       .bind(input.now, input.destinationId, input.sourceId),
     database.prepare(`UPDATE ${people} SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL`)
       .bind(input.destinationId, input.now, input.sourceId)]
+}
+
+/**
+ * A company merge's directory moves, children before parents: people,
+ * project contacts, the trade-doc folder and bill choice when the kept vendor
+ * has none, and earlier duplicates that were merged into the archived company.
+ */
+export function companyContactMoveStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  const guard = companyMoveGuard(move)
+  const { destinationId: keep, sourceId: archive, now } = move
+  // A project that lists both companies keeps the kept company's row; the archived company's row there is retired
+  // (inactive, not deleted, so whatever points at it still resolves) and then moves with the rest.
+  const retireDuplicates = (column: string, type: string): D1PreparedStatement => database.prepare(`UPDATE project_contacts
+    SET active = 0, primary_contact = 0, updated_at = ? WHERE (${column} = ? OR (source_entity_type = '${type}' AND source_entity_id = ?)) AND active = 1
+      AND EXISTS (SELECT 1 FROM project_contacts k WHERE k.project_id = project_contacts.project_id AND k.id <> project_contacts.id
+        AND (k.${column} = ? OR (k.source_entity_type = '${type}' AND k.source_entity_id = ?))) AND ${guard.sql}`)
+    .bind(now, archive, archive, keep, keep, ...guard.binds)
+  if (move.side === "customer") return [
+    database.prepare(`UPDATE customer_contacts SET customer_id = ?, updated_at = ? WHERE customer_id = ? AND ${guard.sql}`).bind(keep, now, archive, ...guard.binds),
+    retireDuplicates("customer_id", "customer"),
+    projectContactMoveStatement(database, "customer_id", "customer", move, guard),
+    database.prepare(`UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE merged_into_customer_id = ? AND organization_id = ? AND ${guard.sql}`)
+      .bind(keep, now, archive, move.organizationId, ...guard.binds)]
+  return [
+    database.prepare(`UPDATE vendor_contacts SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND ${guard.sql}`).bind(keep, now, archive, ...guard.binds),
+    retireDuplicates("vendor_id", "vendor"),
+    projectContactMoveStatement(database, "vendor_id", "vendor", move, guard),
+    database.prepare(`UPDATE vendors SET trade_docs_folder_id = coalesce(trade_docs_folder_id, (SELECT a.trade_docs_folder_id FROM vendors a WHERE a.id = ?)),
+      trade_docs_bill_mode = coalesce(trade_docs_bill_mode, (SELECT a.trade_docs_bill_mode FROM vendors a WHERE a.id = ?)), updated_at = ? WHERE id = ? AND ${guard.sql}`)
+      .bind(archive, archive, now, keep, ...guard.binds),
+    database.prepare(`UPDATE vendors SET merged_into_vendor_id = ?, updated_at = ? WHERE merged_into_vendor_id = ? AND organization_id = ? AND ${guard.sql}`)
+      .bind(keep, now, archive, move.organizationId, ...guard.binds)]
+}
+
+/** Archives the merged company. It runs last, so every guarded move before it still saw the source live. */
+export function companyMarkMergedStatement(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement {
+  return database.prepare(move.side === "customer"
+    ? "UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL"
+    : "UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL")
+    .bind(move.destinationId, move.now, move.sourceId, move.organizationId)
 }
 
 /** Compare-and-set of a person's portal account, then its audit row only when that update changed one row. */

@@ -14,6 +14,7 @@ import { projectArchiveDocuments, projectArchiveRecipients } from "@/db/schema-p
 import { projectLinks } from "@/db/schema-project-links"
 import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
 import { chunkD1InsertRows } from "@/lib/d1-query"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -316,6 +317,41 @@ export function supersedeCurrentTradeDocumentStatement(
 
 export function deleteTradeDocumentStatement(db: Db, documentId: string): Statement {
   return db.delete(vendorTradeDocuments).where(eq(vendorTradeDocuments.id, documentId))
+}
+
+/**
+ * Moves a merged vendor's trade docs and doc request links to the kept
+ * vendor, keeping one current document per type:
+ *   1. a file both vendors hold, current only on the archived vendor, becomes
+ *      current again on the kept vendor (when it has no current doc of that type);
+ *   2. the archived vendor's current doc becomes history when the kept vendor
+ *      already has a current doc of that type (the kept vendor's wins);
+ *   3. every document moves, except a row for the same Drive file and type
+ *      the kept vendor already holds (the unique key): that copy stays on the
+ *      archived record, so nothing is deleted.
+ */
+export function companyMergeTradeDocStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  const { destinationId: keep, sourceId: archive, now } = move
+  return [
+    database.prepare(`UPDATE vendor_trade_documents SET superseded_at = NULL, updated_at = ?
+      WHERE vendor_id = ? AND superseded_at IS NOT NULL AND drive_file_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM vendor_trade_documents a WHERE a.vendor_id = ? AND a.doc_type = vendor_trade_documents.doc_type
+          AND a.drive_file_id = vendor_trade_documents.drive_file_id AND a.superseded_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM vendor_trade_documents k WHERE k.vendor_id = ? AND k.doc_type = vendor_trade_documents.doc_type AND k.superseded_at IS NULL)
+        AND ${guard.sql}`).bind(now, keep, archive, keep, ...guard.binds),
+    database.prepare(`UPDATE vendor_trade_documents SET superseded_at = ?, updated_at = ?
+      WHERE vendor_id = ? AND superseded_at IS NULL
+        AND EXISTS (SELECT 1 FROM vendor_trade_documents k WHERE k.vendor_id = ? AND k.doc_type = vendor_trade_documents.doc_type AND k.superseded_at IS NULL)
+        AND ${guard.sql}`).bind(now, now, archive, keep, ...guard.binds),
+    database.prepare(`UPDATE vendor_trade_documents SET vendor_id = ?, updated_at = ?
+      WHERE vendor_id = ?
+        AND NOT (drive_file_id IS NOT NULL AND EXISTS (SELECT 1 FROM vendor_trade_documents k WHERE k.vendor_id = ?
+          AND k.doc_type = vendor_trade_documents.doc_type AND k.drive_file_id = vendor_trade_documents.drive_file_id))
+        AND ${guard.sql}`).bind(keep, now, archive, keep, ...guard.binds),
+    database.prepare(`UPDATE vendor_trade_doc_links SET vendor_id = ? WHERE vendor_id = ? AND ${guard.sql}`).bind(keep, archive, ...guard.binds),
+  ]
 }
 
 // ---- project_source_record_participants

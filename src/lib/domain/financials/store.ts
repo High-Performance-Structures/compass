@@ -21,6 +21,7 @@ import {
   COMPASS_DRAW_SOURCE,
   IMPORTED_DRAW_UNBILLED_STATUSES,
 } from "@/lib/domain/financials/rules"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
 /**
@@ -577,4 +578,26 @@ export async function undoDrawPaidBeforeCompass(database: D1Database, input: Pre
     .bind(now, actorId, input.reason, applicationId, organizationId, projectId, applicationId)
     .run()
   return changedOne(result)
+}
+
+/**
+ * Moves a merged company's bills, invoices, credit memos and payments to the
+ * kept company. A row carrying a NetSuite id stays put (the merge preview
+ * blocks on it): it belongs to that accounting record.
+ */
+export function companyMergeFinancialStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  const guard = companyMoveGuard(move)
+  const { destinationId: keep, sourceId: archive, now } = move
+  if (move.side === "vendor") return [
+    database.prepare(`UPDATE vendor_bills SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND netsuite_id IS NULL AND ${guard.sql}`)
+      .bind(keep, now, archive, ...guard.binds),
+    database.prepare(`UPDATE payments SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND netsuite_id IS NULL AND ${guard.sql}`)
+      .bind(keep, now, archive, ...guard.binds)]
+  return [
+    database.prepare(`UPDATE invoices SET customer_id = ?, updated_at = ? WHERE customer_id = ? AND netsuite_id IS NULL AND ${guard.sql}`)
+      .bind(keep, now, archive, ...guard.binds),
+    database.prepare(`UPDATE credit_memos SET customer_id = ?, updated_at = ? WHERE customer_id = ? AND netsuite_id IS NULL AND ${guard.sql}`)
+      .bind(keep, now, archive, ...guard.binds),
+    database.prepare(`UPDATE payments SET customer_id = ?, updated_at = ? WHERE customer_id = ? AND netsuite_id IS NULL AND ${guard.sql}`)
+      .bind(keep, now, archive, ...guard.binds)]
 }

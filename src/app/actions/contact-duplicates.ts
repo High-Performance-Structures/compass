@@ -21,12 +21,14 @@ import {
 } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { companyMergeStatements, inspectCompanyMerge, type CompanyMergeCount } from "@/lib/domain/contacts/company-merge"
 import { contactMergeStatements } from "@/lib/domain/contacts/store"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 
 const mergeKind = z.enum(["customer_company", "vendor_company", "customer_person", "vendor_person"])
 type MergeKind = z.infer<typeof mergeKind>
@@ -46,6 +48,9 @@ export type ContactMergePreview = {
   readonly peopleCount: number
   readonly projectContactCount: number
   readonly retainedIdentityNotice: string | null
+  /** Company merges: how many rows of each kind move to the kept company. */
+  readonly moves: readonly CompanyMergeCount[]
+  readonly warnings: readonly string[]
   readonly blockers: readonly string[]
 }
 type PreviewResult =
@@ -79,8 +84,9 @@ async function inspect(input: MergeInput): Promise<{
   readonly sourceSnapshot: string
   readonly destinationSnapshot: string
   readonly affectedProjectIds: readonly string[]
+  readonly movesTradeDocs: boolean
 }> {
-  const { orgId, db } = await context(input.kind, false)
+  const { orgId, db, d1 } = await context(input.kind, false)
   const blockers: string[] = []
   const company = input.kind.endsWith("company")
   const customer = input.kind.startsWith("customer")
@@ -190,6 +196,7 @@ async function inspect(input: MergeInput): Promise<{
     projectId: projectContacts.projectId,
     sourceEntityType: projectContacts.sourceEntityType,
     sourceEntityId: projectContacts.sourceEntityId,
+    active: projectContacts.active,
   }).from(projectContacts).where(company
     ? customer
       ? or(eq(projectContacts.customerId, input.sourceId), and(eq(projectContacts.sourceEntityType, "customer"), eq(projectContacts.sourceEntityId, input.sourceId)))
@@ -211,7 +218,12 @@ async function inspect(input: MergeInput): Promise<{
       : or(eq(projectContacts.vendorContactId, input.destinationId),
           and(eq(projectContacts.sourceEntityType, "vendor_contact"), eq(projectContacts.sourceEntityId, input.destinationId))))
   const destinationProjectIds = new Set(destinationProjectRows.map((row) => row.projectId))
-  if (projectRows.some((row) => destinationProjectIds.has(row.projectId))) {
+  // Companies on the same project: the kept company's project contact stays, the archived one's is retired
+  // (companyContactMoveStatements) and listed in the merge snapshot. People still need a decision first.
+  const retiredProjectContacts = company
+    ? projectRows.filter((row) => row.active && destinationProjectIds.has(row.projectId)).map((row) => ({ id: row.id, projectId: row.projectId }))
+    : []
+  if (!company && projectRows.some((row) => destinationProjectIds.has(row.projectId))) {
     blockers.push("Both records occur on the same project. Resolve duplicate project contacts before merging.")
   }
 
@@ -250,6 +262,13 @@ async function inspect(input: MergeInput): Promise<{
   if (clientWrites.some((row) => activeProposal(row.status))) {
     blockers.push("A Sage client/project write is still active for the source.")
   }
+  // Everything else that points at the company moves too (trade docs, POs, bills, ...).
+  const details = company
+    ? await inspectCompanyMerge(d1, { side: customer ? "customer" : "vendor", organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId })
+    : null
+  if (details) blockers.push(...details.blockers)
+  const moves = (details?.moves ?? []).flatMap((entry) => entry.category !== "trade_docs" ? [entry]
+    : details && details.tradeDocs.moved.length > 0 ? [{ ...entry, count: details.tradeDocs.moved.length }] : [])
   return {
     preview: {
       kind: input.kind, sourceName, destinationName, sourceEmail, destinationEmail,
@@ -261,11 +280,19 @@ async function inspect(input: MergeInput): Promise<{
           : sourcePerson?.sourceRecordId
             ? "The imported person ID remains on the archived record, which points to the survivor. This does not merge records in the source system."
             : null,
+      moves,
+      warnings: [...(details?.warnings ?? []), ...(retiredProjectContacts.length > 0
+        ? [`${new Set(retiredProjectContacts.map((row) => row.projectId)).size} project(s) list both companies. On those projects the kept company's contact stays and the archived company's duplicate is retired.`]
+        : [])],
       blockers,
     },
-    sourceSnapshot: JSON.stringify(source),
+    // A company merge's snapshot also records what moved, which trade docs were kept where, and retired duplicates.
+    sourceSnapshot: JSON.stringify(details
+      ? { record: source, merge: { moves, tradeDocs: details.tradeDocs, retiredProjectContacts } }
+      : source),
     destinationSnapshot: JSON.stringify(destination),
     affectedProjectIds: Array.from(new Set(projectRows.map((row) => row.projectId))),
+    movesTradeDocs: (details?.tradeDocs.moved.length ?? 0) > 0,
   }
 }
 
@@ -282,16 +309,21 @@ export async function mergeDuplicateContacts(raw: MergeInput): Promise<MergeResu
   try {
     const input = mergeInput.parse(raw)
     const { user, orgId, d1 } = await context(input.kind, true)
-    const { preview, sourceSnapshot, destinationSnapshot, affectedProjectIds } = await inspect(input)
+    const { preview, sourceSnapshot, destinationSnapshot, affectedProjectIds, movesTradeDocs } = await inspect(input)
     if (preview.blockers.length > 0) return { success: false, error: preview.blockers.join(" ") }
     const now = new Date().toISOString()
-    const statements = contactMergeStatements(d1, {
-      kind: input.kind, organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId,
+    const write = {
+      organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId,
       sourceSnapshot, destinationSnapshot, peopleCount: preview.peopleCount,
       projectContactCount: preview.projectContactCount, userId: user.id, now,
-    })
+    }
+    const statements = input.kind === "customer_company" || input.kind === "vendor_company"
+      ? companyMergeStatements(d1, { ...write, kind: input.kind })
+      : contactMergeStatements(d1, { ...write, kind: input.kind })
     await d1.batch(statements)
     const db = getDb(d1)
+    // The kept vendor's trade docs changed, so its Sage certificates are refreshed (never fails the merge).
+    if (input.kind === "vendor_company" && movesTradeDocs) await requestVendorCertificateSyncs(db, orgId, [input.destinationId])
     let trackerWarning = false
     for (const projectId of affectedProjectIds) {
       try {

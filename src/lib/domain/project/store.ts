@@ -9,6 +9,7 @@ import {
   projectProfileSyncOperations,
   projects,
 } from "@/db/schema"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
@@ -302,4 +303,12 @@ WHERE NOT EXISTS (
   WHERE id = ${cutoverSqlText(project.projectId)}
     AND organization_id = ${cutoverSqlText(organizationId)}
 );`
+}
+
+/** Moves jobs whose client is a merged client company to the kept client. */
+export function companyMergeProjectStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "customer") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE projects SET client_customer_id = ?, updated_at = ? WHERE client_customer_id = ? AND organization_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.sourceId, move.organizationId, ...guard.binds)]
 }

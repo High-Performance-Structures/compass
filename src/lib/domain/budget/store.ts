@@ -3,6 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -152,4 +153,12 @@ export function sageSnapshotBudgetLineInsertStatement(
         ) VALUES (?, ?, ?, 'sage_read_snapshot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'synced', ?, ?, ?)`,
     )
     .bind(...values)
+}
+
+/** Moves budget lines linked to a merged vendor to the kept vendor. */
+export function companyMergeBudgetLineStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE project_budget_lines SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.sourceId, ...guard.binds)]
 }

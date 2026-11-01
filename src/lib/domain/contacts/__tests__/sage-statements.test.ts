@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import { expectedShape, recordingD1, statementShape } from "@/lib/domain/__tests__/recording-d1"
+import { companyMoveGuard } from "@/lib/domain/contacts/company-merge-references"
 import {
+  companyContactMoveStatements,
+  companyMarkMergedStatement,
   contactAccountLinkStatements,
   contactMergeStatements,
   insertSageCreatedPersonStatement,
@@ -157,17 +160,20 @@ describe("contacts store: duplicate merges", () => {
     return rest
   }
 
-  it("merges companies children first, as before", () => {
-    expect(withoutEventId("customer_company", contactMergeStatements(d1, { ...base, kind: "customer_company" }))).toEqual([
-      expectedShape("UPDATE customer_contacts SET customer_id = ?, updated_at = ? WHERE customer_id = ?", ["d", now, "s"]),
-      expectedShape("UPDATE project_contacts SET customer_id = ?, source_entity_id = CASE WHEN source_entity_type = 'customer' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'customer' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE customer_id = ? OR (source_entity_type = 'customer' AND source_entity_id = ?)", moveBinds),
-      expectedShape("UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL", ["d", now, "s", "org-1"]),
-    ])
-    expect(withoutEventId("vendor_company", contactMergeStatements(d1, { ...base, kind: "vendor_company" }))).toEqual([
-      expectedShape("UPDATE vendor_contacts SET vendor_id = ?, updated_at = ? WHERE vendor_id = ?", ["d", now, "s"]),
-      expectedShape("UPDATE project_contacts SET vendor_id = ?, source_entity_id = CASE WHEN source_entity_type = 'vendor' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'vendor' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE vendor_id = ? OR (source_entity_type = 'vendor' AND source_entity_id = ?)", moveBinds),
-      expectedShape("UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL", ["d", now, "s", "org-1"]),
-    ])
+  it("merges companies children first, every move guarded, archiving the source last", () => {
+    const move = { mode: "merge", organizationId: "org-1", sourceId: "s", destinationId: "d", now } as const
+    for (const side of ["customer", "vendor"] as const) {
+      const guard = companyMoveGuard({ ...move, side })
+      const [people, , projectLinks] = companyContactMoveStatements(d1, { ...move, side }).map(statementShape)
+      expect(people).toEqual(expectedShape(`UPDATE ${side}_contacts SET ${side}_id = ?, updated_at = ? WHERE ${side}_id = ? AND ${guard.sql}`,
+        ["d", now, "s", ...guard.binds]))
+      expect(projectLinks).toEqual(expectedShape(`UPDATE project_contacts SET ${side}_id = ?, source_entity_id = CASE WHEN source_entity_type = '${side}' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = '${side}' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE (${side}_id = ? OR (source_entity_type = '${side}' AND source_entity_id = ?)) AND ${guard.sql}`,
+        [...moveBinds, ...guard.binds]))
+    }
+    expect(statementShape(companyMarkMergedStatement(d1, { ...move, side: "customer" }))).toEqual(expectedShape(
+      "UPDATE customers SET merged_into_customer_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL", ["d", now, "s", "org-1"]))
+    expect(statementShape(companyMarkMergedStatement(d1, { ...move, side: "vendor" }))).toEqual(expectedShape(
+      "UPDATE vendors SET merged_into_vendor_id = ?, directory_status = 'merged', updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_vendor_id IS NULL", ["d", now, "s", "org-1"]))
   })
 
   it("merges people as before", () => {
