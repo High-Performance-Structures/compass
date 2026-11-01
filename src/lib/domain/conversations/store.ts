@@ -159,6 +159,27 @@ export async function removeMessageReaction(db: Db, messageId: string, userId: s
     .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId), eq(messageReactions.emoji, emoji)))
 }
 
+/**
+ * A directory contact who sent imported messages now has a Compass account:
+ * their imported messages move from the importing staff account to theirs.
+ * Scoped to one project's imported conversations.
+ */
+export async function adoptImportedSenderMessages(
+  db: Db,
+  input: { readonly projectId: string; readonly projectContactId: string; readonly userId: string }
+): Promise<void> {
+  await db
+    .update(messages)
+    .set({ userId: input.userId, importedSenderContactId: null })
+    .where(
+      and(
+        eq(messages.importedSenderContactId, input.projectContactId),
+        sql`${messages.sourceSystem} IS NOT NULL`,
+        sql`${messages.channelId} IN (SELECT c.id FROM channels c WHERE c.project_id = ${input.projectId})`
+      )
+    )
+}
+
 export async function insertMessageAttachment(db: Db, row: typeof messageAttachments.$inferInsert): Promise<void> {
   await db.insert(messageAttachments).values(row)
 }

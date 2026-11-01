@@ -549,6 +549,7 @@ export async function sendProjectAccessInvitation(
         organizationId: row.organizationId,
         audience,
         contactId: audience === "owner" ? null : row.contact.id,
+        importedContactId: row.contact.id,
         externalUserId: activeExistingUser?.id ?? null,
         createdBy: currentUser.id,
         now,

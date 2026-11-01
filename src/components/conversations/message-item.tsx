@@ -26,10 +26,15 @@ import {
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
-import { importedConversationContent } from "@/lib/conversations/imported-message-content"
+import {
+  importedConversationContent,
+  messageSenderDisplay,
+  type ImportedMessageFields,
+} from "@/lib/conversations/imported-message-content"
+import { SourceTag } from "@/components/shared/source-tag"
 import { getMessageAlignmentClass } from "./message-list-behavior"
 
-type MessageData = {
+type MessageData = ImportedMessageFields & {
   readonly id: string
   readonly channelId: string
   readonly threadId: string | null
@@ -106,12 +111,20 @@ export const MessageItem = React.memo(function MessageItem({
   const { openThread } = useConversations()
   const router = useRouter()
 
-  const user = message.user
-  const displayName = user?.displayName ?? user?.email.split("@")[0] ?? "Unknown"
+  // An imported message whose sender has no account yet shows the sender's
+  // directory name, not the importing staff account it is stored under.
+  const sender = messageSenderDisplay({
+    message,
+    userId: message.user?.id ?? null,
+    userDisplayName: message.user?.displayName ?? null,
+    currentUserId,
+  })
+  const user = sender.senderUserId === null ? null : message.user
+  const displayName = sender.displayName ?? user?.email.split("@")[0] ?? "Unknown"
   const avatarFallback = displayName.substring(0, 2).toUpperCase()
   const roleBadge = user ? getRoleBadge(user.email) : null
-  const isOwnMessage = currentUserId !== null && user?.id === currentUserId
-  const alignmentClass = getMessageAlignmentClass(currentUserId, user?.id ?? null)
+  const isOwnMessage = sender.isOwnMessage
+  const alignmentClass = getMessageAlignmentClass(currentUserId, sender.senderUserId)
 
   const timestamp = parseISO(message.createdAt)
   const isRecent = Date.now() - timestamp.getTime() < 24 * 60 * 60 * 1000
@@ -194,6 +207,7 @@ export const MessageItem = React.memo(function MessageItem({
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">{timeDisplay}</span>
+          {message.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
           {message.editedAt && (
             <span className="text-xs text-muted-foreground">(edited)</span>
           )}
@@ -205,6 +219,7 @@ export const MessageItem = React.memo(function MessageItem({
               importedConversationContent({
                 id: message.id,
                 content: message.content,
+                sourceSystem: message.sourceSystem,
               })
             )}
           </MarkdownRenderer>

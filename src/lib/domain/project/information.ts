@@ -88,6 +88,7 @@ export type ProjectInformation = {
     readonly jobStatusId: string
     readonly status: string
     readonly portfolioMapVisibility: PortfolioMapVisibility
+    readonly importedConversationsStaffOnly: boolean
     /** Internal workspace kind; null for client jobs. */
     readonly workspaceKind: WorkspaceKind | null
     readonly internalDepartment: boolean
@@ -137,6 +138,7 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       jobStatusId: projects.jobStatusId,
       status: projects.status,
       portfolioMapVisibility: projects.portfolioMapVisibility,
+      importedConversationsStaffOnly: projects.importedConversationsStaffOnly,
       workspaceKind: projects.workspaceKind,
       internalDepartment: projects.internalDepartment,
     })

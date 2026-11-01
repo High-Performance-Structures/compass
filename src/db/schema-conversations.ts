@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   sqliteTable,
   text,
@@ -5,7 +6,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
-import { organizations, projects, users } from "./schema"
+import { organizations, projectContacts, projects, users } from "./schema"
 
 // channels - text, voice, announcement channels
 export const channels = sqliteTable("channels", {
@@ -33,11 +34,18 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  /** Set when the conversation was created from an outside system's thread (0287). */
+  sourceSystem: text("source_system"),
+  sourceThreadId: text("source_thread_id"),
 },
   (table) => [
     index("channels_project_id_idx").on(table.projectId),
     index("channels_organization_id_idx").on(table.organizationId),
     index("channels_category_id_idx").on(table.categoryId),
+    // An outside thread becomes one conversation (migration 0287).
+    uniqueIndex("channels_source_thread_unique")
+      .on(table.organizationId, table.sourceSystem, table.sourceThreadId)
+      .where(sql`${table.sourceThreadId} IS NOT NULL`),
   ])
 
 // messages - chat messages with markdown support, threading, pins
@@ -60,8 +68,21 @@ export const messages = sqliteTable("messages", {
   replyCount: integer("reply_count").notNull().default(0),
   lastReplyAt: text("last_reply_at"),
   createdAt: text("created_at").notNull(),
+  /** Set on messages imported from an outside system; the pair is the import key (0287). */
+  sourceSystem: text("source_system"),
+  sourceMessageId: text("source_message_id"),
+  // snapshot: the sent date exactly as the source displayed it.
+  sourceSentAtSnapshot: text("source_sent_at_snapshot"),
+  /** The original sender while they are a directory contact without an account; cleared on adoption. */
+  importedSenderContactId: text("imported_sender_contact_id").references(() => projectContacts.id, {
+    onDelete: "set null",
+  }),
 },
   (table) => [
+    uniqueIndex("messages_source_message_unique")
+      .on(table.sourceSystem, table.sourceMessageId)
+      .where(sql`${table.sourceMessageId} IS NOT NULL`),
+    index("messages_imported_sender_contact_idx").on(table.importedSenderContactId),
     // Declared from drizzle/0274_hot_query_indexes.sql.
     index("messages_channel_thread_created_idx").on(table.channelId, table.threadId, table.createdAt),
     // Declared from drizzle/0274_hot_query_indexes.sql.
@@ -82,9 +103,16 @@ export const messageAttachments = sqliteTable("message_attachments", {
   width: integer("width"),
   height: integer("height"),
   uploadedAt: text("uploaded_at").notNull(),
+  /** Content hash; an import reuses a stored file with the same bytes (0287). */
+  contentSha256: text("content_sha256"),
+  sourceAttachmentId: text("source_attachment_id"),
 },
   (table) => [
     index("message_attachments_message_id_idx").on(table.messageId),
+    index("message_attachments_content_sha256_idx").on(table.contentSha256),
+    uniqueIndex("message_attachments_source_unique")
+      .on(table.messageId, table.sourceAttachmentId)
+      .where(sql`${table.sourceAttachmentId} IS NOT NULL`),
   ])
 
 // message_reactions - emoji reactions

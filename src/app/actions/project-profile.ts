@@ -29,6 +29,7 @@ import { correctProjectNumber, type ProjectNumberCorrectionInput } from "@/lib/d
 import {
   addCustomProjectJobStatus,
   changeProjectDeliveryMethod,
+  changeProjectImportedConversationsStaffOnly,
   changeProjectMapVisibility,
   loadProjectAgingStatusRows,
   type ProjectAgingStatusRow,
@@ -183,6 +184,23 @@ export async function updateProjectMapVisibility(input: {
   } catch (error) {
     console.error("Unable to update portfolio map visibility", error)
     return { success: false, error: "Unable to update the portfolio map setting." }
+  }
+}
+
+export async function updateProjectImportedConversationsStaffOnly(input: {
+  readonly projectId: string
+  readonly staffOnly: boolean
+}): Promise<ProjectProfileResult> {
+  try {
+    const result = await changeProjectImportedConversationsStaffOnly(input)
+    if (result.success && result.changed) {
+      revalidateProjectProfile(input.projectId)
+      revalidatePath("/dashboard/conversations")
+    }
+    return plainResult(result)
+  } catch (error) {
+    console.error("Unable to update the imported conversations setting", error)
+    return { success: false, error: "Unable to update the imported conversations setting." }
   }
 }
 

@@ -185,7 +185,7 @@ export async function sendProjectMessage(input: {
       return {
         success: false,
         error:
-          "Buildertrend archive conversations are internal Compass-only. Reply in the channel instead.",
+          "Archived conversations are internal only. Reply in the channel instead.",
       }
     }
 
