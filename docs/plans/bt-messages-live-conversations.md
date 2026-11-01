@@ -99,7 +99,15 @@ thread:
 | owners only | `clients` | all internal staff; owner members |
 | vendors only | `sub_vendors` | all internal staff; vendor members |
 | nobody | `staff` | all internal staff |
-| owners **and** vendors | held for review | stays in the staff archive |
+| owners **and** vendors | `staff` (kept internal) | all internal staff |
+
+Owner decision (2026-11-01): a thread with both owners and vendors is kept
+internal. It imports as a staff-only conversation on the project, still with
+the `[BT]` tag; staff can read and reply internally; no outside person is a
+member, and accepting an invitation never adds anyone to it (adoption only
+joins `clients` / `sub_vendors` conversations). The owner-history copies the
+owner can already see in their Owner Team channel are left in place for these
+threads. `summary.json` counts them as `mixed_kept_internal`.
 
 Rules (`canAccessImportedConversation` in
 `src/lib/conversations/channel-access.ts`):
@@ -116,6 +124,44 @@ Rules (`canAccessImportedConversation` in
   the switch off restores access for the people who were in the threads.
 - Legacy `bt-message-archive-*` channels keep their current staff-only rules
   until they are emptied and archived.
+
+## Legacy archives in production (shape check, 2026-11-01)
+
+The read-only `docs/plans/bt-messages-archive-shape-check.sql` was run
+against production before any apply. It found:
+
+- **11 numeric archives** `bt-message-archive-<digits>` holding 4,069
+  messages: 4,068 legacy rows `bt-message-<jobId>-<btMessageId>` (all top
+  level, no staff replies, no duplicates) and **one non-legacy top-level row**.
+- **82 `bt-message-archive-estimate-<id>` channels**, about one message each,
+  all created in one batch on 2026-08-29. Nothing in this repository creates
+  them; from the name and timing they are a one-time import of Buildertrend
+  estimate/lead-stage notes rather than BT message threads.
+- **219 owner-history copies**, all in owner channels, each with its source
+  row present and no replies.
+- **21 archives are private** (`is_private = 1`); all are `audience = 'staff'`.
+
+What the importer does with each:
+
+- **Only numeric archives are converted.** Capture ids must be numeric
+  (`btJobId`, `btMessageId`), so the importer can only ever address
+  `bt-message-archive-<digits>` channels and `bt-message-<digits>-<digits>`
+  rows. The estimate channels are never read, moved or archived.
+  Recommendation (no action now): leave them staff-only as they are; once the
+  lead/estimate capture is reviewed, either import them through the same
+  importer as their own source or move their notes to the project's notes,
+  then archive the channels.
+- **Non-legacy rows stay put.** Conversion only updates the exact legacy row
+  id, so the one other row in a numeric archive stays in that staff-only
+  archive, which is then not retired (it is not empty). Shape-check A4 lists
+  it by id prefix for staff to look at.
+- **Private archives stay private.** The access code treats a private archive
+  as closed even to staff (`canAccessConversationChannel` requires a
+  non-private archive), so private is a deliberate lock, not a default. Every
+  thread of a job whose archive is private goes to review
+  (`private_archive`, from the pre-check), and every statement for a thread
+  also carries a SQL guard that does nothing if the job's archive is private,
+  so a stale pre-check cannot expose one.
 
 ### Replies and notifications
 
@@ -170,14 +216,14 @@ threads whose `thread` line count matches the messages it holds).
 
 ```json
 {"schema":"bt-message-capture/v1","type":"message",
- "btJobId":"5072748","btThreadId":"9100","btMessageId":"9101","btParentMessageId":null,
+ "btJobId":"1234567","btThreadId":"9100","btMessageId":"9101","btParentMessageId":null,
  "subject":"Kitchen tile","body":"Full message text, exactly as shown",
  "sentAtDisplay":"Oct 3, 2025 4:12 PM","sentAtZone":null,
  "sender":{"participantId":"111","namespace":"builder","role":"Project Manager","displayName":"Pat PM"},
  "recipients":[{"participantId":"222","namespace":"owner","role":"Owner","displayName":"Olive Owner","kind":"to"}],
  "attachments":[{"btAttachmentId":"77","fileName":"tile.jpg","mimeType":"image/jpeg","sizeBytes":183211,"sha256":"<64 hex>"}],
  "capturedAt":"2026-11-02T15:04:05Z","captureRunId":"run-1"}
-{"schema":"bt-message-capture/v1","type":"thread","btJobId":"5072748","btThreadId":"9100","messageCount":1}
+{"schema":"bt-message-capture/v1","type":"thread","btJobId":"1234567","btThreadId":"9100","messageCount":1}
 ```
 
 - `namespace` is BT's participant namespace (for example `builder`, `owner`,
@@ -202,7 +248,10 @@ Inputs:
   decision `user` (a Compass account), `contact` (existing directory contact
   ids per project) or `new_contact` (add without inviting). Keys that are
   absent are unmatched;
-- `--projects` `{ organizationId, actorUserId, timeZone, jobs: { btJobId: projectId } }`;
+- `--projects` `{ organizationId, actorUserId, timeZone, jobs: { btJobId: projectId }, staffOnlyProjects: [projectId] }`;
+  `staffOnlyProjects` lists the projects that must be staff-only (legal hold);
+- `--precheck` required `{ schema: "bt-import-precheck/v1", staffOnlyProjectIds, privateArchiveJobIds }`,
+  filled from shape-check B1 (after 0287) and A8 just before the run;
 - `--files` optional `{ files: { sha256: { driveFileId } } }` for newly
   uploaded attachment bytes;
 - `--out` the output folder; `--batch-size` threads per batch (default 40).
@@ -212,7 +261,9 @@ Flow:
 1. Parse and validate every line (malformed input stops the run).
 2. Group by thread; skip threads whose `thread` line is missing or whose
    count does not match (`pending.jsonl`, not an error).
-3. Hold a whole thread for review when any message has an unmatched
+3. Hold a whole thread for review when its job's archive is private, when its
+   project must be staff-only but the pre-check does not show the switch on
+   (`staff_only_not_verified`), or when any message has an unmatched
    participant, a Bcc recipient, an unreadable date, an unverified attachment,
    an unmapped job, or the thread mixes owners and vendors (`review.jsonl`).
    A conversation is never shown with gaps or to the wrong audience.
@@ -260,7 +311,8 @@ parameters) and every statement stays at or under 100 values. A
 `review.jsonl` lists held threads with a reason:
 `participant_unmatched`, `bcc_recipient`, `sent_at_unreadable`,
 `attachment_unverified`, `job_not_mapped`, `thread_spans_jobs`,
-`mixed_owner_and_vendor`. Held messages stay where they are today (in the
+`private_archive`, `staff_only_not_verified`. (Threads with both owners and
+vendors are not held; they are kept internal.) Held messages stay where they are today (in the
 staff archive, if they were already imported there). Resolving a reason
 (adding the participant id to the map, mapping the job) and re-running the
 importer imports the thread; nothing else changes.
@@ -287,7 +339,14 @@ rows, move legacy archive rows and delete reviewed duplicate copies).
    against production and confirm the archive shape the importer assumes
    (archive channel ids, legacy message ids, owner-history copies, rows with
    staff replies). Stop if any "must be 0" check is not 0.
-3. Turn on **Imported conversations staff only** for the legal-hold project
+3. **Before any batch is applied**, turn on **Imported conversations staff
+   only** for the legal-hold project (its Buildertrend job is named in the rollout ticket),
+   re-run shape-check B1/B2 and confirm it is listed. List the project in
+   `staffOnlyProjects` in the projects map: the importer then refuses that
+   project's threads unless the pre-check shows the switch on, emits no
+   outside memberships for it, and every statement for it requires the
+   switch to still be on in the database.
+   Turn on **Imported conversations staff only** for any other held project
    on its Information page.
 4. Build the participant map: a read-only query of
    `buildertrend_staging_access_candidates` and existing `project_contacts`
@@ -295,7 +354,8 @@ rows, move legacy archive rows and delete reviewed duplicate copies).
    everything else is decided by a person (`user`, `contact` or
    `new_contact`).
 5. Capture phases 0–3 (above).
-6. Importer dry run; review `summary.json`, `review.jsonl`,
+6. Build `precheck.json` from shape-check A8 and B1 just before the run, then
+   the importer dry run; review `summary.json` (including `mixed_kept_internal`), `review.jsonl`,
    `attachments-unmapped.jsonl`; upload unmapped attachment bytes and add
    them to `--files`.
 7. Backup, then apply batches one at a time (`--apply` prints the commands),
@@ -339,8 +399,7 @@ WHERE content_sha256 IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT r2_path) > 1;
 
 ## Open items
 
-- Threads that mix owners and vendors are held. If they turn out to be
-  common, a follow-up can split them per audience (owner part and vendor
-  part) with the owner's approval.
+- The 82 estimate archives and the one non-legacy row in a numeric archive
+  stay as they are (see "Legacy archives in production").
 - Legacy archive rows with staff thread replies are not exposed. Staff decide
   per thread whether to move the replies too (a separate, reviewed step).

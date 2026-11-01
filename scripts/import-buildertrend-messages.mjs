@@ -14,7 +14,7 @@
  * Usage:
  *   node scripts/import-buildertrend-messages.mjs \
  *     --capture capture.jsonl --participants participants.json \
- *     --projects projects.json [--files files.json] --out out-dir \
+ *     --projects projects.json --precheck precheck.json [--files files.json] --out out-dir \
  *     [--batch-size 40] [--apply] [--mark-applied batch-0001.sql]
  *
  * Rules (owner-approved 2026-11-01):
@@ -67,6 +67,18 @@ function sourceId(value, label) {
   const text = typeof value === "number" ? String(value) : value
   if (typeof text !== "string" || !SOURCE_ID.test(text.trim())) throw new Error(`${label} must be a Buildertrend id`)
   return text.trim()
+}
+
+/**
+ * Buildertrend job and message ids are numbers. Only numeric ids are accepted,
+ * so conversion can only ever touch `bt-message-archive-<digits>` channels and
+ * `bt-message-<digits>-<digits>` rows, never other archives such as the
+ * `bt-message-archive-estimate-*` channels.
+ */
+function numericId(value, label) {
+  const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : ""
+  if (!/^\d+$/.test(text)) throw new Error(`${label} must be a numeric Buildertrend id`)
+  return text
 }
 
 function participantKey(participant) {
@@ -168,15 +180,15 @@ export function parseCaptureLine(line, lineNumber) {
   const record = JSON.parse(line)
   if (record?.schema !== CAPTURE_SCHEMA) throw new Error(`line ${lineNumber}: schema must be ${CAPTURE_SCHEMA}`)
   if (record.type === "thread") {
-    return { type: "thread", btJobId: sourceId(record.btJobId, "btJobId"), btThreadId: sourceId(record.btThreadId, "btThreadId"), messageCount: Number(record.messageCount) }
+    return { type: "thread", btJobId: numericId(record.btJobId, "btJobId"), btThreadId: sourceId(record.btThreadId, "btThreadId"), messageCount: Number(record.messageCount) }
   }
   if (record.type !== "message") throw new Error(`line ${lineNumber}: type must be message or thread`)
   if (typeof record.body !== "string") throw new Error(`line ${lineNumber}: body must be the full message text`)
   if (typeof record.sentAtDisplay !== "string" || record.sentAtDisplay.trim() === "") throw new Error(`line ${lineNumber}: sentAtDisplay is required`)
   return {
     type: "message",
-    btJobId: sourceId(record.btJobId, "btJobId"),
-    btMessageId: sourceId(record.btMessageId, "btMessageId"),
+    btJobId: numericId(record.btJobId, "btJobId"),
+    btMessageId: numericId(record.btMessageId, "btMessageId"),
     btThreadId: sourceId(record.btThreadId, "btThreadId"),
     btParentMessageId: record.btParentMessageId == null ? null : sourceId(record.btParentMessageId, "btParentMessageId"),
     subject: typeof record.subject === "string" ? record.subject : "",
@@ -239,14 +251,35 @@ export function parseParticipantMap(value) {
   return map
 }
 
+export const PRECHECK_SCHEMA = "bt-import-precheck/v1"
+
+/**
+ * Facts read from production just before a run (the "after 0287" part of
+ * docs/plans/bt-messages-archive-shape-check.sql): projects whose
+ * imported-conversations switch is on, and jobs whose legacy archive channel
+ * is private. The importer trusts nothing else about the live database.
+ */
+export function parsePrecheck(value) {
+  if (value?.schema !== PRECHECK_SCHEMA) throw new Error(`pre-check schema must be ${PRECHECK_SCHEMA}`)
+  const list = (key) => {
+    if (!Array.isArray(value[key]) || value[key].some((item) => typeof item !== "string" || item === "")) throw new Error(`pre-check ${key} must be a list of ids`)
+    return new Set(value[key])
+  }
+  return { staffOnlyProjectIds: list("staffOnlyProjectIds"), privateArchiveJobIds: list("privateArchiveJobIds") }
+}
+
 // ---------------------------------------------------------------------------
 // Planning: pure, so the tests can check every rule without a database.
 // ---------------------------------------------------------------------------
 
+/**
+ * A conversation has one outside audience. Owner decision 2026-11-01: a thread
+ * with both owners and vendors is kept internal (staff-only), not shared.
+ */
 function audienceFor(kinds) {
   const owner = kinds.has("owner")
   const vendor = kinds.has("vendor")
-  if (owner && vendor) return null
+  if (owner && vendor) return "staff"
   if (owner) return "clients"
   if (vendor) return "sub_vendors"
   return "staff"
@@ -263,6 +296,8 @@ function review(reason, message, detail = {}) {
  */
 export function planImport(input) {
   const { capture, participants, projects, timeZone, organizationId } = input
+  const precheck = input.precheck
+  const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
   const reviews = []
   const pending = []
   const byThread = new Map()
@@ -283,6 +318,14 @@ export function planImport(input) {
     const projectId = projects[first.btJobId] ?? null
     const threadReviews = []
     if (!projectId) threadReviews.push(review("job_not_mapped", first))
+    // A private legacy archive was deliberately closed even to most staff:
+    // none of that job's threads may reach an outside audience.
+    if (precheck.privateArchiveJobIds.has(first.btJobId)) threadReviews.push(review("private_archive", first))
+    // A project that must be staff-only (legal hold) is only imported once the
+    // pre-check shows its switch is on.
+    if (projectId && expectedStaffOnly.has(projectId) && !precheck.staffOnlyProjectIds.has(projectId)) {
+      threadReviews.push(review("staff_only_not_verified", first, { projectId }))
+    }
     if (messages.some((m) => m.btJobId !== first.btJobId)) threadReviews.push(review("thread_spans_jobs", first))
     const seen = new Set()
     const kinds = new Set()
@@ -312,7 +355,7 @@ export function planImport(input) {
       planned.push({ ...message, createdAt })
     }
     const audience = audienceFor(kinds)
-    if (audience === null) threadReviews.push(review("mixed_owner_and_vendor", first))
+    const mixedKeptInternal = kinds.has("owner") && kinds.has("vendor")
     if (threadReviews.length > 0) {
       reviews.push(...threadReviews)
       continue
@@ -323,9 +366,11 @@ export function planImport(input) {
       btJobId: first.btJobId,
       projectId,
       organizationId,
+      staffOnly: precheck.staffOnlyProjectIds.has(projectId),
       channelId: conversationId(organizationId, btThreadId),
       name: (planned.find((m) => m.subject.trim() !== "")?.subject.trim() ?? "Buildertrend conversation").slice(0, 120),
       audience,
+      mixedKeptInternal,
       people: [...people.values()],
       messages: planned,
     })
@@ -336,11 +381,6 @@ export function planImport(input) {
 // ---------------------------------------------------------------------------
 // SQL
 // ---------------------------------------------------------------------------
-
-function insert(table, row, tail = "ON CONFLICT DO NOTHING") {
-  const columns = Object.keys(row)
-  return `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map((column) => sqlValue(row[column])).join(", ")}) ${tail};`
-}
 
 function insertSelect(table, row, where) {
   const columns = Object.keys(row)
@@ -358,34 +398,46 @@ function contactFor(person, projectId) {
 const NOT_STAFF_ONLY = (projectId) =>
   `NOT EXISTS (SELECT 1 FROM projects WHERE id = ${sqlValue(projectId)} AND imported_conversations_staff_only = 1)`
 
+/**
+ * Every statement for a thread runs only while the database still matches the
+ * pre-check: the job's legacy archive is not private, and a staff-only
+ * project still has its switch on. Run out of order, the batch does nothing.
+ */
+export function threadGuard(thread) {
+  const archiveOpen = `NOT EXISTS (SELECT 1 FROM channels WHERE id = ${sqlValue(legacyArchiveChannelId(thread.btJobId))} AND is_private = 1)`
+  if (!thread.staffOnly) return archiveOpen
+  return `${archiveOpen} AND EXISTS (SELECT 1 FROM projects WHERE id = ${sqlValue(thread.projectId)} AND imported_conversations_staff_only = 1)`
+}
+
 /** Every statement for one thread, in dependency order. */
 export function threadStatements(thread, input) {
   const { actorUserId, now, driveFiles } = input
   const statements = []
+  const guard = threadGuard(thread)
   const lastAt = thread.messages[thread.messages.length - 1].createdAt
-  statements.push(insert("channels", {
+  statements.push(insertSelect("channels", {
     id: thread.channelId, name: thread.name, type: "text", description: null,
     organization_id: thread.organizationId, project_id: thread.projectId, category_id: null,
     is_private: 1, audience: thread.audience, created_by: actorUserId, sort_order: 0, archived_at: null,
     created_at: thread.messages[0].createdAt, updated_at: lastAt,
     source_system: SOURCE_SYSTEM, source_thread_id: thread.btThreadId,
-  }))
+  }, guard))
   const contactByKey = new Map()
   for (const person of thread.people) {
     const contact = person.entry.kind === "staff" ? null : contactFor(person, thread.projectId)
     contactByKey.set(person.key, contact?.id ?? null)
     if (contact?.create) {
       // Added to the directory without an invitation (owner decision 1).
-      statements.push(insert("project_contacts", {
+      statements.push(insertSelect("project_contacts", {
         id: contact.id, project_id: thread.projectId,
         contact_type: person.entry.kind === "owner" ? "owner" : "subcontractor",
         source_system: SOURCE_SYSTEM, source_entity_type: "buildertrend_participant", source_entity_id: person.key,
         display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
         owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: 1,
         created_at: now, updated_at: now,
-      }))
+      }, guard))
     }
-    statements.push(insert("project_source_record_participants", {
+    statements.push(insertSelect("project_source_record_participants", {
       id: shortId("bt-participant", thread.projectId, THREAD_RECORD_TYPE, thread.btThreadId, person.key),
       organization_id: thread.organizationId, project_id: thread.projectId,
       source_record_type: THREAD_RECORD_TYPE, source_record_id: thread.btThreadId, source_participant_id: person.key,
@@ -394,10 +446,12 @@ export function threadStatements(thread, input) {
       project_contact_id: contactByKey.get(person.key), user_id: person.entry.userId,
       identity_status: "matched", membership_status: "active", review_status: "reviewed", active: 1,
       created_at: now, updated_at: now,
-    }))
-    if (person.entry.userId) {
-      // Outside people join only when the project is not staff-only.
-      const where = person.entry.kind === "staff" ? "1 = 1" : NOT_STAFF_ONLY(thread.projectId)
+    }, guard))
+    // Outside people never join a staff-only project's threads: not emitted
+    // at all when the pre-check shows the switch on, and guarded in SQL too.
+    // A staff-audience thread (including a mixed owner + vendor one) adds staff only.
+    if (person.entry.userId && (person.entry.kind === "staff" || (!thread.staffOnly && thread.audience !== "staff"))) {
+      const where = person.entry.kind === "staff" ? guard : `${guard} AND ${NOT_STAFF_ONLY(thread.projectId)}`
       statements.push(insertSelect("channel_members", {
         id: shortId("bt-member", thread.channelId, person.entry.userId), channel_id: thread.channelId, user_id: person.entry.userId,
         role: person.entry.kind === "staff" ? "moderator" : "member", notify_level: "all", joined_at: now,
@@ -409,11 +463,11 @@ export function threadStatements(thread, input) {
       }, where))
     }
   }
-  for (const message of thread.messages) statements.push(...messageStatements(thread, message, contactByKey, { actorUserId, now, driveFiles }))
+  for (const message of thread.messages) statements.push(...messageStatements(thread, message, contactByKey, { actorUserId, now, driveFiles, guard }))
   return statements
 }
 
-function messageStatements(thread, message, contactByKey, { actorUserId, now, driveFiles }) {
+function messageStatements(thread, message, contactByKey, { actorUserId, now, driveFiles, guard }) {
   const statements = []
   const senderKey = participantKey(message.sender)
   const senderPerson = thread.people.find((person) => person.key === senderKey)
@@ -426,21 +480,23 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
     source_system: SOURCE_SYSTEM, source_message_id: message.btMessageId, source_sent_at_snapshot: message.sentAtDisplay,
     imported_sender_contact_id: senderContactId, created_at: message.createdAt,
   }
-  // 1. Convert: move the legacy archive row in place (same id, no copy). A
-  //    legacy row with staff replies stays in the archive unless this thread
-  //    is staff-only, so internal notes are never exposed; it goes to review.
+  // 1. Convert: move the legacy archive row in place (same id, no copy). Only
+  //    the numeric legacy row in its numeric archive is ever touched; any other
+  //    row in the archive stays there, staff-only. A legacy row with staff
+  //    replies stays too unless this thread is staff-only, so internal notes
+  //    are never exposed.
   const set = Object.entries(values).map(([column, value]) => `${column} = ${sqlValue(value)}`).join(", ")
-  statements.push(`UPDATE messages SET ${set} WHERE id = ${sqlValue(legacyId)} AND channel_id = ${sqlValue(archiveId)} AND source_message_id IS NULL AND (${sqlValue(thread.audience)} = 'staff' OR NOT EXISTS (SELECT 1 FROM messages r WHERE r.thread_id = ${sqlValue(legacyId)}));`)
+  statements.push(`UPDATE messages SET ${set} WHERE id = ${sqlValue(legacyId)} AND channel_id = ${sqlValue(archiveId)} AND source_message_id IS NULL AND (${sqlValue(thread.audience)} = 'staff' OR NOT EXISTS (SELECT 1 FROM messages r WHERE r.thread_id = ${sqlValue(legacyId)})) AND ${guard};`)
   // 2. Otherwise insert it once; the unique (source_system, source_message_id)
   //    index makes a re-run a no-op.
   statements.push(insertSelect("messages", {
     id: importedMessageId(message.btMessageId), thread_id: null, edited_at: null, deleted_at: null, deleted_by: null,
     is_pinned: 0, reply_count: 0, last_reply_at: null, ...values,
-  }, `NOT EXISTS (SELECT 1 FROM messages WHERE id = ${sqlValue(legacyId)}) AND NOT EXISTS (SELECT 1 FROM messages WHERE source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_message_id = ${sqlValue(message.btMessageId)})`))
+  }, `${guard} AND NOT EXISTS (SELECT 1 FROM messages WHERE id = ${sqlValue(legacyId)}) AND NOT EXISTS (SELECT 1 FROM messages WHERE source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_message_id = ${sqlValue(message.btMessageId)})`))
   const messageRow = `(SELECT id FROM messages WHERE source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_message_id = ${sqlValue(message.btMessageId)})`
   for (const ref of [{ ...message.sender, kind: "sender" }, ...message.recipients]) {
     const person = thread.people.find((entry) => entry.key === participantKey(ref))
-    statements.push(insert("project_source_record_participants", {
+    statements.push(insertSelect("project_source_record_participants", {
       id: shortId("bt-participant", thread.projectId, MESSAGE_RECORD_TYPE, message.btMessageId, participantKey(ref)),
       organization_id: thread.organizationId, project_id: thread.projectId,
       source_record_type: MESSAGE_RECORD_TYPE, source_record_id: message.btMessageId, source_participant_id: participantKey(ref),
@@ -449,20 +505,23 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
       project_contact_id: contactByKey.get(participantKey(ref)) ?? null, user_id: person?.entry.userId ?? null,
       identity_status: "matched", membership_status: "active", review_status: "reviewed", active: 1,
       created_at: now, updated_at: now,
-    }))
+    }, guard))
   }
   for (const attachment of message.attachments) {
     const mapped = driveFiles.get(attachment.sha256) ?? null
     // Reuse a stored file with the same bytes: an earlier attachment, or a
     // daily-log photo with a verified hash, before any newly uploaded file.
     const storage = `COALESCE((SELECT a.r2_path FROM message_attachments a WHERE a.content_sha256 = ${sqlValue(attachment.sha256)} LIMIT 1), (SELECT p.drive_file_id FROM daily_log_photo_aliases x JOIN daily_log_photos p ON p.id = x.canonical_photo_id WHERE x.content_sha256 = ${sqlValue(attachment.sha256)} AND x.content_size_bytes = ${sqlValue(attachment.sizeBytes)} AND p.drive_file_id IS NOT NULL LIMIT 1), ${sqlValue(mapped)})`
-    statements.push(`INSERT INTO message_attachments (id, message_id, file_name, mime_type, file_size, r2_path, width, height, uploaded_at, content_sha256, source_attachment_id) SELECT ${sqlValue(shortId("bt-attachment", message.btMessageId, attachment.btAttachmentId))}, ${messageRow}, ${sqlValue(attachment.fileName)}, ${sqlValue(attachment.mimeType)}, ${sqlValue(attachment.sizeBytes)}, ${storage}, NULL, NULL, ${sqlValue(now)}, ${sqlValue(attachment.sha256)}, ${sqlValue(attachment.btAttachmentId)} WHERE ${messageRow} IS NOT NULL AND ${storage} IS NOT NULL ON CONFLICT DO NOTHING;`)
+    statements.push(`INSERT INTO message_attachments (id, message_id, file_name, mime_type, file_size, r2_path, width, height, uploaded_at, content_sha256, source_attachment_id) SELECT ${sqlValue(shortId("bt-attachment", message.btMessageId, attachment.btAttachmentId))}, ${messageRow}, ${sqlValue(attachment.fileName)}, ${sqlValue(attachment.mimeType)}, ${sqlValue(attachment.sizeBytes)}, ${storage}, NULL, NULL, ${sqlValue(now)}, ${sqlValue(attachment.sha256)}, ${sqlValue(attachment.btAttachmentId)} WHERE ${guard} AND ${messageRow} IS NOT NULL AND ${storage} IS NOT NULL ON CONFLICT DO NOTHING;`)
   }
   return statements
 }
 
 /** Retire owner-history copies once their source message is live (no duplicates). */
 export function ownerHistoryRetirement(thread) {
+  // Only when the live thread is the owner's own conversation; otherwise the
+  // owner would lose a message they can see today (e.g. a thread kept internal).
+  if (thread.audience !== "clients") return []
   return thread.messages.map((message) => {
     const copyId = legacyOwnerHistoryMessageId(message.btJobId, message.btMessageId)
     return `DELETE FROM messages WHERE id = ${sqlValue(copyId)} AND channel_id = ${sqlValue(`project-owner-${thread.projectId}`)} AND NOT EXISTS (SELECT 1 FROM messages r WHERE r.thread_id = ${sqlValue(copyId)}) AND EXISTS (SELECT 1 FROM messages m WHERE m.source_system = ${sqlValue(SOURCE_SYSTEM)} AND m.source_message_id = ${sqlValue(message.btMessageId)} AND m.channel_id = ${sqlValue(thread.channelId)});`
@@ -471,7 +530,7 @@ export function ownerHistoryRetirement(thread) {
 
 /** Archive an emptied legacy channel; held messages keep it open for staff. */
 export function archiveRetirement(btJobIds, now) {
-  return [...new Set(btJobIds)].map((btJobId) => {
+  return [...new Set(btJobIds)].filter((btJobId) => /^\d+$/.test(btJobId)).map((btJobId) => {
     const id = legacyArchiveChannelId(btJobId)
     return `UPDATE channels SET archived_at = ${sqlValue(now)} WHERE id = ${sqlValue(id)} AND archived_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages WHERE channel_id = ${sqlValue(id)});`
   })
@@ -542,6 +601,7 @@ function args(argv) {
     else if (flag === "--participants") out.participants = next()
     else if (flag === "--projects") out.projects = next()
     else if (flag === "--files") out.files = next()
+    else if (flag === "--precheck") out.precheck = next()
     else if (flag === "--out") out.out = next()
     else if (flag === "--batch-size") out.batchSize = Number(next())
     else if (flag === "--mark-applied") out.markApplied.push(next())
@@ -589,7 +649,14 @@ function main() {
   const filesInput = options.files ? readJson(options.files) : {}
   const driveFiles = new Map(Object.entries(filesInput.files ?? {}).map(([sha, entry]) => [sha.toLowerCase(), entry.driveFileId]))
   const now = new Date().toISOString()
-  const plan = planImport({ capture, participants, projects: projectsInput.jobs ?? {}, timeZone: config.timeZone, organizationId: config.organizationId })
+  if (!options.precheck) throw new Error("--precheck is required (see the plan's pre-check step)")
+  const precheck = parsePrecheck(readJson(options.precheck))
+  const plan = planImport({
+    capture, participants, precheck,
+    projects: projectsInput.jobs ?? {},
+    expectedStaffOnlyProjects: projectsInput.staffOnlyProjects ?? [],
+    timeZone: config.timeZone, organizationId: config.organizationId,
+  })
   const { batches, tail } = buildBatches(plan, { actorUserId: config.actorUserId, now, driveFiles, batchSize: options.batchSize })
 
   const files = []
@@ -613,6 +680,7 @@ function main() {
     dryRun: true,
     threads: plan.threads.length,
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
+    mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
     attachmentsNeedingStoredFile: attachmentsWithoutFile.length,
