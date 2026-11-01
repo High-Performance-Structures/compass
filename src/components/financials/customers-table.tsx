@@ -4,11 +4,11 @@ import * as React from "react"
 import { IconDotsVertical } from "@tabler/icons-react"
 import type { ColumnDef } from "@tanstack/react-table"
 
-import type { Customer } from "@/db/schema"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { getCustomerDirectoryPage } from "@/app/actions/contact-directory"
+import type { CustomerDirectoryRow } from "@/lib/domain/contacts/directory-page"
+import type { RecordPage } from "@/lib/record-page"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { SourceTag } from "@/components/shared/source-tag"
 import {
   DropdownMenu,
@@ -18,313 +18,199 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
-import { DirectorySortSelect } from "@/components/financials/directory-sort-select"
-import { RecordsEmpty } from "@/components/financials/record-columns"
+import { RecordSearchInput, RecordTable, recordSelectionColumn } from "@/components/record-table"
+import { useServerRecordTable } from "@/components/use-server-record-table"
 
-interface CustomersTableProps {
-  customers: Customer[]
-  onEdit?: (customer: Customer) => void
-  onDelete?: (id: string) => void
-  onViewPeople?: (customer: Customer) => void
-  selectedIds?: readonly string[]
-  onSelectionChange?: (ids: readonly string[]) => void
-}
-
-const EMPTY_SELECTION: readonly string[] = []
-const INITIAL_SORTING = [{ id: "name", desc: false }]
-
-function nameInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-}
-
-function CustomerMenu({
-  customer,
-  onEdit,
-  onDelete,
-  onViewPeople,
-  mobile,
-}: {
-  readonly customer: Customer
-  readonly onEdit?: (customer: Customer) => void
+type CustomerRowActions = {
+  readonly onEdit?: (customer: CustomerDirectoryRow) => void
   readonly onDelete?: (id: string) => void
-  readonly onViewPeople?: (customer: Customer) => void
-  readonly mobile: boolean
-}) {
+  readonly onViewPeople?: (customer: CustomerDirectoryRow) => void
+  /** Opens the merge dialog with this client chosen and a search for the other. */
+  readonly onMergeWith?: (customer: CustomerDirectoryRow) => void
+}
+
+type CustomersTableProps = CustomerRowActions & {
+  readonly initialPage: RecordPage<CustomerDirectoryRow> | null
+  readonly reloadToken: number
+  readonly onSelectionChange?: (customers: readonly CustomerDirectoryRow[]) => void
+  readonly clearSelectionToken?: number
+}
+
+const customerRowId = (customer: CustomerDirectoryRow): string => customer.id
+
+function Blank(): React.ReactElement {
+  return <span className="text-muted-foreground/40">—</span>
+}
+
+function CustomerMenu({ customer, actions }: { readonly customer: CustomerDirectoryRow; readonly actions: CustomerRowActions }): React.ReactElement {
+  const { onViewPeople, onEdit, onMergeWith, onDelete } = actions
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {mobile ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
-          >
-            <IconDotsVertical className="size-4" />
-          </Button>
-        ) : (
-          <Button variant="ghost" className="size-8 p-0">
-            <span className="sr-only">open menu</span>
-            <IconDotsVertical className="size-4" />
-          </Button>
-        )}
+        <Button variant="ghost" className="size-8 p-0">
+          <span className="sr-only">Actions for {customer.name}</span>
+          <IconDotsVertical className="size-4" />
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
         {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
-        {onEdit && onDelete && <DropdownMenuSeparator />}
-        {onDelete && <DropdownMenuItem
-          className="text-destructive"
-          onClick={() => onDelete(customer.id)}
-        >
-          Delete
-        </DropdownMenuItem>}
+        {onMergeWith && <DropdownMenuItem onClick={() => onMergeWith(customer)}>Merge with…</DropdownMenuItem>}
+        {onDelete && (onEdit || onMergeWith) && <DropdownMenuSeparator />}
+        {onDelete && (
+          <DropdownMenuItem className="text-destructive" onClick={() => onDelete(customer.id)}>
+            Delete
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-export function CustomersTable({
-  customers,
-  onEdit,
-  onDelete,
-  onViewPeople,
-  selectedIds = EMPTY_SELECTION,
-  onSelectionChange,
-}: CustomersTableProps) {
-  const { developerModeEnabled } = useDeveloperMode()
+function CustomerSource({ customer }: { readonly customer: CustomerDirectoryRow }): React.ReactElement {
+  const sageLinked = Boolean(customer.sageClientId)
+  const sageCandidate = !sageLinked && Boolean(customer.sageClientNumber)
+  const buildertrend = Boolean(customer.buildertrendContactId)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {sageLinked ? <Badge variant="outline">Sage{customer.sageClientNumber ? ` #${customer.sageClientNumber}` : ""}</Badge> : null}
+      {sageCandidate ? <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge> : null}
+      {buildertrend ? <SourceTag source="buildertrend" /> : null}
+      {!sageLinked && !sageCandidate && !buildertrend ? <Badge variant="outline">Compass</Badge> : null}
+    </div>
+  )
+}
 
-  const columns = React.useMemo<ColumnDef<Customer>[]>(() => [
+function customerColumns(
+  actions: CustomerRowActions,
+  options: { readonly selectable: boolean; readonly developerMode: boolean },
+): ColumnDef<CustomerDirectoryRow>[] {
+  const open = actions.onViewPeople ?? actions.onEdit
+  const hasActions = Boolean(actions.onEdit || actions.onDelete || actions.onViewPeople || actions.onMergeWith)
+  const columns: (ColumnDef<CustomerDirectoryRow> | null)[] = [
+    options.selectable ? recordSelectionColumn((customer: CustomerDirectoryRow) => customer.name) : null,
     {
-      id: "select",
-      header: ({ table }) => <Checkbox
-        checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
-        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
-        aria-label="Select all clients on this page"
-      />,
-      cell: ({ row }) => <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
-        aria-label={`Select ${row.original.name}`}
-      />,
-      enableSorting: false,
-      enableHiding: false,
-    },
-    {
-      accessorKey: "name",
+      id: "name",
+      accessorFn: (customer) => customer.name,
       header: "Name",
-      cell: ({ row }) => {
-        const c = row.original
-        return (
-          <div className="flex items-center gap-3">
-            <Avatar size="sm">
-              <AvatarFallback className="text-[10px]">
-                {nameInitials(c.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <span className="font-medium block truncate">
-                {c.name}
-              </span>
-              {c.company ? (
-                <span className="text-xs text-muted-foreground block truncate">
-                  {c.company}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          {open ? (
+            <button type="button" className="block text-left font-medium hover:underline" onClick={() => open(row.original)}>
+              {row.original.name}
+            </button>
+          ) : <span className="block font-medium">{row.original.name}</span>}
+          {row.original.company ? <span className="block text-xs text-muted-foreground">{row.original.company}</span> : null}
+        </div>
+      ),
     },
     {
-      accessorKey: "email",
+      id: "email",
+      accessorFn: (customer) => customer.primaryEmail || customer.email,
       header: "Email",
       cell: ({ row }) => {
-        const email = row.original.email
-        if (!email) {
-          return (
-            <span className="text-muted-foreground/40">—</span>
-          )
-        }
-        return (
-          <a
-            href={`mailto:${email}`}
-            className="text-sm hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {email}
-          </a>
-        )
+        const email = row.original.primaryEmail || row.original.email
+        return email ? <a href={`mailto:${email}`} className="text-sm hover:underline">{email}</a> : <Blank />
       },
     },
     {
-      accessorKey: "phone",
+      id: "phone",
+      accessorFn: (customer) => customer.phone,
       header: "Phone",
-      cell: ({ row }) => {
-        const phone = row.original.phone
-        if (!phone) {
-          return (
-            <span className="text-muted-foreground/40">—</span>
-          )
-        }
-        return (
-          <a
-            href={`tel:${phone}`}
-            className="text-sm tabular-nums hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {phone}
-          </a>
-        )
-      },
+      cell: ({ row }) => row.original.phone
+        ? <a href={`tel:${row.original.phone}`} className="text-sm tabular-nums hover:underline">{row.original.phone}</a>
+        : <Blank />,
     },
     {
-      accessorKey: "relationshipType",
+      id: "people",
+      accessorFn: (customer) => customer.peopleCount,
+      header: "People",
+      cell: ({ row }) => row.original.peopleCount === 0 ? <Blank /> : (
+        <span className="text-sm tabular-nums">{row.original.peopleCount}</span>
+      ),
+    },
+    {
+      id: "relationshipType",
+      accessorFn: (customer) => customer.relationshipType,
       header: "Status",
       cell: ({ row }) => (
-        <Badge
-          variant={
-            row.original.relationshipType === "lead" ? "secondary" : "outline"
-          }
-        >
+        <Badge variant={row.original.relationshipType === "lead" ? "secondary" : "outline"}>
           {row.original.relationshipType === "lead" ? "Lead" : "Client"}
         </Badge>
       ),
     },
-    {
+    options.developerMode ? {
       id: "source",
       header: "Source",
-      cell: ({ row }) => {
-        const customer = row.original
-        const isSageLinked = Boolean(customer.sageClientId)
-        const isSageCandidate = !isSageLinked && Boolean(customer.sageClientNumber)
-        const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
-        return (
-          <div className="flex flex-wrap gap-1">
-            {isSageLinked ? (
-              <Badge variant="outline">
-                Sage
-                {customer.sageClientNumber
-                  ? ` #${customer.sageClientNumber}`
-                  : ""}
-              </Badge>
-            ) : null}
-            {isSageCandidate ? (
-              <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
-            ) : null}
-            {isBuildertrendLinked ? (
-              <SourceTag source="buildertrend" />
-            ) : null}
-            {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
-              <Badge variant="outline">Compass</Badge>
-            ) : null}
-          </div>
-        )
-      },
-    },
+      enableSorting: false,
+      cell: ({ row }) => <CustomerSource customer={row.original} />,
+    } : null,
     {
-      accessorKey: "createdAt",
+      id: "createdAt",
+      accessorFn: (customer) => customer.createdAt,
       header: "Added",
       cell: ({ row }) => (
-        <span className="text-muted-foreground text-xs tabular-nums">
-          {new Date(row.original.createdAt).toLocaleDateString("en-US", {
-            month: "short",
-            year: "numeric",
-          })}
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {new Date(row.original.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
         </span>
       ),
     },
-    {
+    hasActions ? {
       id: "actions",
-      cell: ({ row }) => {
-        if (!onEdit && !onDelete && !onViewPeople) return null
-        return (
-          <CustomerMenu
-            customer={row.original}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onViewPeople={onViewPeople}
-            mobile={false}
-          />
-        )
-      },
-    },
-  ], [onEdit, onDelete, onViewPeople])
-  const visibleColumns = React.useMemo(() => columns.filter((column) =>
-    (developerModeEnabled || column.id !== "source") &&
-    (onSelectionChange !== undefined || column.id !== "select") &&
-    (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
-  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople, onSelectionChange])
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      size: 48,
+      cell: ({ row }) => <CustomerMenu customer={row.original} actions={actions} />,
+    } : null,
+  ]
+  return columns.filter((column): column is ColumnDef<CustomerDirectoryRow> => column !== null)
+}
+
+/** Clients and leads, searched, sorted and paged on the server. */
+export function CustomersTable({
+  initialPage,
+  reloadToken,
+  onSelectionChange,
+  clearSelectionToken = 0,
+  onEdit,
+  onDelete,
+  onViewPeople,
+  onMergeWith,
+}: CustomersTableProps): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
+  const selectable = onSelectionChange !== undefined
+  const columns = React.useMemo(
+    () => customerColumns({ onEdit, onDelete, onViewPeople, onMergeWith }, { selectable, developerMode: developerModeEnabled }),
+    [onEdit, onDelete, onViewPeople, onMergeWith, selectable, developerModeEnabled],
+  )
+  const list = useServerRecordTable({
+    columns,
+    getRowId: customerRowId,
+    load: getCustomerDirectoryPage,
+    reloadToken,
+    initialPage,
+    enableSelection: selectable,
+  })
+  const { selectedRows, clearSelection } = list
+  React.useEffect(() => { onSelectionChange?.(selectedRows) }, [selectedRows, onSelectionChange])
+  React.useEffect(() => { if (clearSelectionToken > 0) clearSelection() }, [clearSelectionToken, clearSelection])
 
   return (
-    <EntityTable
-      data={customers}
-      columns={visibleColumns}
-      getRowId={(customer) => customer.id}
-      initialSorting={INITIAL_SORTING}
-      selection={{ selectedIds, onSelectionChange }}
-      layout="fill"
-      mobileToolbar={({ table, sorting, sortBy }) => (
-        <>
-          <EntitySearchInput
-            table={table}
-            columnId="name"
-            placeholder="Search clients and leads..."
-            className="w-full"
-          />
-          <DirectorySortSelect sorting={sorting} sortBy={sortBy} triggerClassName="w-[150px]" />
-        </>
-      )}
-      desktopToolbar={({ table }) => (
-        <EntitySearchInput
-          table={table}
-          columnId="name"
-          placeholder="Search customers..."
-          className="h-8 w-full sm:max-w-sm shrink-0"
-        />
-      )}
-      mobileRow={(c) => (
-        <>
-          <Avatar size="sm">
-            <AvatarFallback className="text-[10px]">
-              {nameInitials(c.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">
-              {c.name}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {[c.company, c.email, c.phone]
-                .filter(Boolean)
-                .join(" · ") || "No contact info"}
-            </p>
-          </div>
-          {(onEdit || onDelete || onViewPeople) && (
-            <CustomerMenu
-              customer={c}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onViewPeople={onViewPeople}
-              mobile
-            />
-          )}
-        </>
-      )}
-      mobileEmpty={
-        <RecordsEmpty
-          title="No client or lead contacts yet"
-          hint="Add a contact to associate them with projects when ready."
-        />
-      }
-      desktopEmpty="No customers found"
-      itemLabel="contacts"
-      paginationId="customers"
-    />
+    <div className="flex min-w-0 flex-col gap-3">
+      <RecordSearchInput
+        value={list.search}
+        onChange={list.setSearch}
+        label="Search clients and leads"
+        placeholder="Search name, company, person, email or phone…"
+        className="sm:max-w-md"
+      />
+      <RecordTable
+        table={list.table}
+        itemLabel="clients and leads"
+        emptyMessage={list.search ? "No clients or leads match this search." : "No client or lead contacts yet."}
+        state={list.state}
+        rowIdPrefix="customer"
+      />
+    </div>
   )
 }

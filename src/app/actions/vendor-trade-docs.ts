@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull, isNotNull } from "drizzle-orm"
+import { and, desc, eq, isNotNull } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 
@@ -39,14 +39,6 @@ export type VendorTradeDocsView = {
   readonly certificateChecks: readonly string[]
   readonly billModeDefault: TradeDocBillMode
   readonly canEdit: boolean
-}
-
-export type VendorTradeDocStatus = {
-  readonly label: string
-  readonly requiredCount: number
-  readonly goodCount: number
-  readonly owedCount: number
-  readonly expiringCount: number
 }
 
 export type RecordTradeDocInput = {
@@ -141,45 +133,6 @@ export async function getVendorTradeDocs(vendorId: string): Promise<Result<Vendo
     }
   } catch (error) {
     return { success: false, error: message(error, "Could not load the trade docs.") }
-  }
-}
-
-/** Trade doc standing for every vendor in the directory, for the vendors table. */
-export async function getVendorTradeDocStatuses(): Promise<Result<Readonly<Record<string, VendorTradeDocStatus>>>> {
-  try {
-    const access = await tradeDocAccess(false)
-    const [vendorRows, docRows] = await Promise.all([
-      access.db
-        .select({ id: vendors.id, category: vendors.category })
-        .from(vendors)
-        .where(and(eq(vendors.organizationId, access.organizationId), eq(vendors.directoryStatus, "active"))),
-      access.db
-        .select()
-        .from(vendorTradeDocuments)
-        .where(and(eq(vendorTradeDocuments.organizationId, access.organizationId), isNull(vendorTradeDocuments.supersededAt))),
-    ])
-    const docsByVendor = new Map<string, TradeDocOnFile[]>()
-    for (const row of docRows) {
-      const list = docsByVendor.get(row.vendorId) ?? []
-      list.push(toTradeDocOnFile(row))
-      docsByVendor.set(row.vendorId, list)
-    }
-    const date = today()
-    const statuses: Record<string, VendorTradeDocStatus> = {}
-    for (const vendor of vendorRows) {
-      const summary = summarizeTradeDocs({ docTypes: access.settings.docTypes, vendorCategory: vendor.category, docs: docsByVendor.get(vendor.id) ?? [], today: date })
-      if (summary.requiredCount === 0 && summary.lines.length === 0) continue
-      statuses[vendor.id] = {
-        label: summary.requiredCount === 0 ? "On file" : `${summary.goodCount} of ${summary.requiredCount}`,
-        requiredCount: summary.requiredCount,
-        goodCount: summary.goodCount,
-        owedCount: summary.owed.length,
-        expiringCount: summary.expiringCount,
-      }
-    }
-    return { success: true, data: statuses }
-  } catch (error) {
-    return { success: false, error: message(error, "Could not load trade doc status.") }
   }
 }
 

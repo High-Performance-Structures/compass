@@ -149,6 +149,11 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
     signed contracts) are never freely deletable from a list. They follow
     their own void or reversal rules.
 - **Paging.** Page sizes are 25, 50 and 100, using `DataTablePagination`.
+  A list that can reach hundreds of records (contacts, vendors, clients)
+  is paged on the server with `useServerRecordTable`: the server searches,
+  sorts and pages in one query per page, and the browser holds only the
+  visible rows. Secondary data (such as trade doc standing or a company's
+  people) is read for the visible rows, or when a record is opened.
 - **Responsive and theme.** On mobile the table scrolls horizontally inside
   its own container, never the page. It must read well in light and dark
   themes using theme tokens only.

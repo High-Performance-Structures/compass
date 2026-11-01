@@ -1,4 +1,4 @@
-import type { VendorTradeDocStatus } from "@/app/actions/vendor-trade-docs"
+import type { VendorTradeDocStatus } from "@/lib/trade-docs/directory-status"
 import { Badge } from "@/components/ui/badge"
 
 /** "3 of 5", marked when something is owed or expiring soon. */

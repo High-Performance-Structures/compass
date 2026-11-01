@@ -27,11 +27,14 @@ export function ContactMergeDialog({
   choices,
   onOpenChange,
   onMerged,
+  picker,
 }: {
   readonly kind: MergeKind
   readonly choices: readonly [Choice, Choice] | null
   readonly onOpenChange: (open: boolean) => void
   readonly onMerged: () => void
+  /** "Merge with…": finds the second record; the dialog stays open while choices is null. */
+  readonly picker?: React.ReactNode
 }): React.ReactElement {
   const [keepId, setKeepId] = React.useState("")
   const [preview, setPreview] = React.useState<ContactMergePreview | null>(null)
@@ -75,7 +78,7 @@ export function ContactMergeDialog({
   }
 
   return (
-    <Dialog open={choices !== null} onOpenChange={onOpenChange}>
+    <Dialog open={choices !== null || picker !== undefined} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Merge duplicate {kind.endsWith("company") ? "companies" : "people"}</DialogTitle>
@@ -84,6 +87,7 @@ export function ContactMergeDialog({
             This does not merge Sage records, grant Compass access, or overwrite the survivor&apos;s contact fields.
           </DialogDescription>
         </DialogHeader>
+        {picker}
         {choices ? (
           <div className="space-y-4 text-sm">
             <div>
