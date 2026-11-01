@@ -62,9 +62,9 @@ function render(record: ProjectChangeOrderItem, internal: boolean): readonly str
 describe("imported change-order provenance in shared list and detail", () => {
   it("preserves the same provenance boundary in printed reports", () => {
     const imported = JSON.stringify(changeOrderReport([item()]))
-    expect(imported).toContain("Not verified from Buildertrend")
-    expect(imported).toContain("Not classified")
-    expect(imported).toContain("Approved · Buildertrend")
+    expect(imported).toContain("Approved [BT]")
+    expect(imported).not.toContain("Not verified from Buildertrend")
+    expect(imported).not.toContain("Not classified")
     expect(imported).toContain("$123.45")
     expect(imported).not.toContain("Legacy project owner")
     expect(imported).not.toContain("Legacy company")
@@ -72,13 +72,16 @@ describe("imported change-order provenance in shared list and detail", () => {
     const native = JSON.stringify(changeOrderReport([item({ sourceType: "owner_request" })]))
     expect(native).toContain("Legacy project owner")
     expect(native).toContain("Requested by")
-    expect(native).not.toContain("Not verified from Buildertrend")
+    expect(native).not.toContain("[BT]")
   })
-  it.each([true, false])("separates unverified initiation and purpose from approval (internal=%s)", (internal) => {
+  it.each([true, false])("shows only the [BT] tag inline, with evidence caveats in the tooltip (internal=%s)", (internal) => {
     for (const markup of render(item(), internal)) {
-      expect(markup).toContain("Initiator: Not verified from Buildertrend")
-      expect(markup).toContain("Purpose: Not classified")
-      expect(markup).toContain("Approved · Buildertrend")
+      expect(markup).toContain(">[BT]<")
+      expect(markup).toContain('aria-label="Imported from Buildertrend"')
+      expect(markup).toContain("Initiator not verified; purpose not classified.")
+      expect(markup).not.toContain("Initiator: Not verified from Buildertrend")
+      expect(markup).not.toContain("Purpose: Not classified")
+      expect(markup).toContain("Approved")
       expect(markup).toContain("$123.45")
       expect(markup).not.toContain("Requested by")
       expect(markup).not.toContain("Legacy project owner")
@@ -93,20 +96,21 @@ describe("imported change-order provenance in shared list and detail", () => {
   it.each(["owner", "internal", "subcontractor", "unknown"] satisfies readonly ProjectChangeOrderItem["requesterType"][])(
     "does not treat legacy requester type %s as evidence", (requesterType) => {
       for (const markup of render(item({ requesterType, budgetTreatment: "baseline_replacement" }), false)) {
-        expect(markup).toContain("Initiator: Not verified from Buildertrend")
-        expect(markup).toContain("Purpose: Not classified")
+        expect(markup).toContain(">[BT]<")
+        expect(markup).not.toContain("Requested by")
         expect(markup).toContain("Baseline replacement")
       }
     },
   )
 
-  it("states provenance on each imported row but shows the long context once", () => {
+  it("tags each imported row with [BT] and shows no long provenance text inline", () => {
     const list = renderToStaticMarkup(React.createElement(ProjectChangeOrderList, {
       projectId: "project-1", items: [item({ id: "co-1" }), item({ id: "co-2" }), item({ id: "co-3" })],
       detailBaseHref: "/change-orders", internal: true, formOptions, canCreate: false,
     }))
-    expect(list.split("Initiator: Not verified from Buildertrend").length - 1).toBe(3)
-    expect(list.split("does not independently verify initiation").length - 1).toBe(1)
+    expect(list.split(">[BT]<").length - 1).toBe(3)
+    expect(list).not.toContain("Imported change orders:")
+    expect(list).not.toContain("Initiator: Not verified")
   })
 
   it("retains native requester, approval label, and creation history", () => {
@@ -116,8 +120,7 @@ describe("imported change-order provenance in shared list and detail", () => {
     for (const markup of render(native, false)) {
       expect(markup).toContain("Requested by Legacy project owner")
       expect(markup).toContain("Executed")
-      expect(markup).not.toContain("Not verified from Buildertrend")
-      expect(markup).not.toContain("Purpose: Not classified")
+      expect(markup).not.toContain("[BT]")
     }
     expect(render(native, false)[1]).toContain("Request created")
   })

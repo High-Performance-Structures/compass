@@ -12,6 +12,7 @@ import type { ProjectDailyLogItem } from "@/lib/domain/field/daily-log-workspace
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { DailyLogFollowUpSetup } from "@/lib/daily-logs/log-followups-server"
 import { Badge } from "@/components/ui/badge"
+import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { PhotoStrip } from "@/components/projects/daily-log/daily-log-photo-strip"
@@ -156,11 +157,13 @@ function DailyLogCardHeader({
             <h2 className="text-base font-semibold">
               {formatDate(log.logDate)}
             </h2>
-            {developerModeEnabled && (
+            {log.sourceSystem === "buildertrend" ? (
+              <SourceTag source="buildertrend" />
+            ) : developerModeEnabled ? (
               <Badge variant="outline">
                 {sourceLabel(log.sourceSystem)}
               </Badge>
-            )}
+            ) : null}
             <Badge
               variant={
                 log.reviewStatus === "approved"

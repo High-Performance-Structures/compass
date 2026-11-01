@@ -62,8 +62,10 @@ export function changeOrderDisplayStatus(
   if (sourceType !== "buildertrend_import") {
     return changeOrderStatusLabel(status)
   }
-  if (status === "executed") return "Approved · Buildertrend"
-  return `${changeOrderStatusLabel(status)} · Buildertrend`
+  // Imported "executed" means approved in the source system, not signed in
+  // Compass. The source itself is shown with the shared [BT] tag, not here.
+  if (status === "executed") return "Approved"
+  return changeOrderStatusLabel(status)
 }
 
 export function allowedChangeOrderTransitions(

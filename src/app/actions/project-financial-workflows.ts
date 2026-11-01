@@ -1,5 +1,6 @@
 "use server"
 
+import type { RecordSource } from "@/lib/record-source"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
@@ -90,7 +91,10 @@ export type ProjectFinancialWorkflowItem = {
   readonly sageWriteStatus: string
   readonly supportingPackageUrl: string | null
   readonly readOnly: boolean
+  /** Short source text for non-Buildertrend sources (e.g. Sage / Square). */
   readonly sourceLabel: string | null
+  /** Imported records show the shared source tag, e.g. [BT]. */
+  readonly importedFrom: RecordSource | null
   readonly updatedAt: string
 }
 
@@ -453,12 +457,8 @@ export async function getProjectFinancialWorkflowItems(
         safeHttpUrl(row.externalUrl) ??
         safeHttpUrl(application?.sourceUrl ?? null),
       readOnly: isReadOnlyImportedFinancial,
-      sourceLabel:
-        row.sourceSystem === "buildertrend"
-          ? "Buildertrend history"
-          : row.sourceSystem === "sage"
-            ? "Sage / Square"
-            : null,
+      sourceLabel: row.sourceSystem === "sage" ? "Sage / Square" : null,
+      importedFrom: row.sourceSystem === "buildertrend" ? "buildertrend" : null,
       updatedAt: row.updatedAt,
     }
   })
