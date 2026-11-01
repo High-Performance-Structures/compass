@@ -159,6 +159,33 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   purpose. Examples are estimate and document line items, ranked queues and
   hand-arranged lists.
 
+### Imported-record source tag (owner-approved standard)
+
+Records imported from another system look like native Compass records. The
+only sign of where they came from is a small source tag. The owner approved
+this on 2026-11-01.
+
+- **Tag.** Render `<SourceTag source="buildertrend" />` from
+  `src/components/shared/source-tag.tsx`. It shows a muted inline `[BT]` with
+  no badge chrome. "Imported from Buildertrend" appears only in its tooltip
+  and screen-reader label.
+- **No long labels.** Don't write "Imported from Buildertrend", "From
+  Buildertrend", "Initiator: Not verified from Buildertrend", "Purpose: Not
+  classified" or similar sentences on record displays. This covers to-dos,
+  change orders, daily logs, photos, documents, schedules, estimates,
+  financial records and messages.
+- **Extra facts.** If staff genuinely need extra provenance facts, pass them
+  as the tag's `detail` (tooltip only), or put them on a detail view. They
+  are never inline. Plain-text output such as print uses
+  `recordSourceTag()` from `src/lib/record-source.ts`, which gives `[BT]`.
+- **New sources.** Add a source by adding one entry (key, short code, name)
+  to `src/lib/record-source.ts`. Don't hard-code company or product names in
+  components.
+- **Not covered.** Feature names, settings sections, import tools and their
+  instructions, such as "Buildertrend Archive delivery" or "Export the
+  estimate from Buildertrend…", are features, not record labels.
+  `source-tag-standard.test.ts` enforces this rule with a reasoned allowlist.
+
 ## Layout and visual language
 
 - Use shadcn/ui with the New York style and the shared UI primitives.

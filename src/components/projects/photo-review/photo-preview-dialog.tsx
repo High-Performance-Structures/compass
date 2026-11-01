@@ -10,6 +10,7 @@ import {
 
 import type { ProjectPhotoLibraryItem } from "@/app/actions/project-photos"
 import { Badge } from "@/components/ui/badge"
+import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -149,11 +150,13 @@ function PhotoPreviewBody({
               of {filteredPhotos.length}
             </p>
             <div className="flex flex-wrap gap-1">
-              {developerModeEnabled && (
+              {previewPhoto.sourceSystem === "buildertrend" ? (
+                <SourceTag source="buildertrend" />
+              ) : developerModeEnabled ? (
                 <Badge variant="outline">
                   {sourceLabel(previewPhoto.sourceSystem)}
                 </Badge>
-              )}
+              ) : null}
               <Badge variant="outline">
                 {kindLabel(previewPhoto.photoKind)}
               </Badge>

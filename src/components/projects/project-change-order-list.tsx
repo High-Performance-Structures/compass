@@ -8,7 +8,6 @@ import type {
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
 import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
-import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/provenance"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
@@ -66,11 +65,6 @@ export function ProjectChangeOrderList({
         }
       />
 
-      {items.some((item) => item.sourceType === "buildertrend_import") ? (
-        <p className="text-xs text-muted-foreground">
-          Imported change orders: {HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT}
-        </p>
-      ) : null}
       {items.length > 0 ? (
         <div className="divide-y border-y bg-background">
           {items.map((item) => (
@@ -86,7 +80,9 @@ export function ProjectChangeOrderList({
                   <Badge variant="outline">
                     {changeOrderDisplayStatus(item.status, item.sourceType)}
                   </Badge>
-                  {item.sourceType !== "buildertrend_import" && (
+                  {item.sourceType === "buildertrend_import" ? (
+                    <ProjectChangeOrderProvenance />
+                  ) : (
                     <Badge variant="secondary">{item.requesterType}</Badge>
                   )}
                   {item.budgetTreatment === "baseline_replacement" && (
@@ -106,7 +102,6 @@ export function ProjectChangeOrderList({
                     ? ` · ${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`
                     : ""}
                 </p>
-                {item.sourceType === "buildertrend_import" && <ProjectChangeOrderProvenance variant="compact" />}
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link

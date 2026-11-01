@@ -26,6 +26,7 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { SourceTag } from "@/components/shared/source-tag"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,8 +67,8 @@ function cleanValue(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function sourceLabel(item: ProjectTodoItem): string {
-  if (item.sourceSystem === "buildertrend") return "Imported from Buildertrend"
+function sourceLabel(item: ProjectTodoItem): React.ReactNode {
+  if (item.sourceSystem === "buildertrend") return <SourceTag source="buildertrend" />
   if (item.sourceSystem === "compass_template") return "Created from a Compass template"
   if (item.sourceSystem === "compass") return "Created in Compass"
   if (item.sourceSystem === "sage") return "Imported from Sage"
@@ -220,7 +221,10 @@ export function ProjectTodoEditDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={save} className="space-y-5">
           <DialogHeader>
-            <DialogTitle>Edit to-do</DialogTitle>
+            <DialogTitle>
+              Edit to-do{" "}
+              {item.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
+            </DialogTitle>
             <DialogDescription>
               {developerModeEnabled ? (
                 <>

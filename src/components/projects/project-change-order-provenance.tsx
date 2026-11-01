@@ -1,28 +1,16 @@
 import type * as React from "react"
+import { SourceTag } from "@/components/shared/source-tag"
 import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/provenance"
 
 /**
- * Legacy import requester fields are project-level defaults, not initiator
- * evidence. Every imported record states that; the list uses one compact line
- * per row and shows the longer context once (see ProjectChangeOrderList).
+ * Imported change orders show only the owner-approved "[BT]" source tag
+ * (docs/development/ui-standards.md). Legacy requester fields are
+ * project-level defaults, not initiator evidence, so callers never show them
+ * for imported records; the evidence caveats stay in the tooltip for staff.
  */
-export function ProjectChangeOrderProvenance({
-  variant = "full",
-}: {
-  readonly variant?: "full" | "compact"
-}): React.ReactElement {
-  if (variant === "compact") {
-    return (
-      <p className="mt-2 text-xs text-muted-foreground">
-        Imported from Buildertrend · Initiator: Not verified from Buildertrend · Purpose: Not classified
-      </p>
-    )
-  }
-  return (
-    <p className="mt-2 text-xs text-muted-foreground">
-      <span className="block">Initiator: Not verified from Buildertrend</span>
-      <span className="block">Purpose: Not classified</span>
-      <span className="mt-1 block">{HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT}</span>
-    </p>
-  )
+const IMPORTED_CHANGE_ORDER_DETAIL =
+  `Initiator not verified; purpose not classified. ${HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT}`
+
+export function ProjectChangeOrderProvenance(): React.ReactElement {
+  return <SourceTag source="buildertrend" detail={IMPORTED_CHANGE_ORDER_DETAIL} />
 }

@@ -8,7 +8,7 @@ import type { PortalReport, PortalReportItem } from "./portal-report"
 import type { ProjectChangeOrderItem } from "@/lib/change-orders/types"
 import type { WarrantyClaimItem } from "@/lib/domain/warranty/types"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
-import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/provenance"
+import { recordSourceTag } from "@/lib/record-source"
 
 function label(value: string): string {
   return value.replaceAll("_", " ")
@@ -211,15 +211,16 @@ export function changeOrderReport(
       items: [
         {
           title: "Change details",
-          status: changeOrderDisplayStatus(item.status, item.sourceType),
+          status:
+            item.sourceType === "buildertrend_import"
+              ? `${changeOrderDisplayStatus(item.status, item.sourceType)} ${recordSourceTag("buildertrend")}`
+              : changeOrderDisplayStatus(item.status, item.sourceType),
           fields: [
             // Historical requester fields are project defaults, not evidence
             // of who initiated this change. Match the shared detail view.
+            // Imported records omit them; the status carries the [BT] tag.
             ...(item.sourceType === "buildertrend_import"
-              ? ([
-                  ["Initiator", "Not verified from Buildertrend"],
-                  ["Purpose", "Not classified"],
-                ] satisfies PortalReportItem["fields"])
+              ? ([] satisfies PortalReportItem["fields"])
               : ([
                   ["Requested by", item.requesterName],
                   ["Company", item.requesterCompany],
@@ -234,7 +235,6 @@ export function changeOrderReport(
           paragraphs: [
             ...(item.sourceType === "buildertrend_import"
               ? ([
-                  ["Historical text", HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT],
                   ["Recorded scope", item.scope],
                   ["Recorded reason", item.reason],
                 ] satisfies NonNullable<PortalReportItem["paragraphs"]>)

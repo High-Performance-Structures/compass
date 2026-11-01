@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { SourceTag } from "@/components/shared/source-tag"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -217,7 +218,7 @@ export function CustomersTable({
               <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
             ) : null}
             {isBuildertrendLinked ? (
-              <Badge variant="outline">Buildertrend</Badge>
+              <SourceTag source="buildertrend" />
             ) : null}
             {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
               <Badge variant="outline">Compass</Badge>

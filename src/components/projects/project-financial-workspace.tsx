@@ -25,6 +25,7 @@ import {
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
+import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -382,6 +383,9 @@ export function ProjectFinancialWorkspace({
                         <span className="font-medium">
                           {workflowLabel(item.type)}
                         </span>
+                        {item.importedFrom && (
+                          <SourceTag source={item.importedFrom} />
+                        )}
                         {item.sourceLabel && (
                           <Badge variant="secondary">{item.sourceLabel}</Badge>
                         )}

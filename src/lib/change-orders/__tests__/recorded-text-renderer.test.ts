@@ -75,14 +75,16 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
   }
 }
 
+// Owner standard: imported records carry only the short [BT] tag inline, and
+// legacy requester defaults are never shown as initiator evidence.
 function expectHistoricalContext(markup: string): void {
-  expect(markup).toContain("Not verified from Buildertrend")
-  expect(markup).toContain("Not classified")
-  expect(markup).toContain("retained as recorded")
-  expect(markup).toContain("does not independently verify initiation, owner acceptance or signature, staff approval, or purpose")
+  expect(markup).toContain("[BT]")
+  expect(markup).toContain("Approved")
+  expect(markup).not.toContain("Not verified from Buildertrend")
+  expect(markup).not.toContain("Not classified")
   expect(markup).not.toContain("Requested by")
   expect(markup).not.toContain("Unverified project owner")
-  expect(markup).toContain("Approved · Buildertrend")
+  expect(markup).not.toContain("Approved · Buildertrend")
 }
 
 describe("recorded historical CO text is preserved without evidentiary claims", () => {

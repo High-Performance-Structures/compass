@@ -22,6 +22,7 @@ import {
 import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
+import { SourceTag } from "@/components/shared/source-tag"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   AlertDialog,
@@ -75,10 +76,12 @@ type UploadedFile = {
   readonly mimeType: string | null
 }
 
-function sourceLabel(value: string): string {
-  if (value.toLowerCase().includes("buildertrend")) return "Buildertrend"
-  if (value.toLowerCase().includes("compass")) return "Compass"
-  return value
+// Imported items show the shared [BT] tag; other sources only in developer mode.
+function DraftSource({ value, developerMode }: { readonly value: string; readonly developerMode: boolean }): React.ReactNode {
+  const source = value.toLowerCase()
+  if (source.includes("buildertrend")) return <SourceTag source="buildertrend" />
+  if (!developerMode) return null
+  return <span className="text-xs text-muted-foreground">{source.includes("compass") ? "Compass" : value}</span>
 }
 
 function formatBytes(value: number): string {
@@ -818,11 +821,7 @@ export function OwnerUpdateDraftEditor({
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{log.logDate}</span>
-                      {developerModeEnabled && (
-                        <Badge variant="outline">
-                          {sourceLabel(log.sourceSystem)}
-                        </Badge>
-                      )}
+                      <DraftSource value={log.sourceSystem} developerMode={developerModeEnabled} />
                       {!log.isClientVisible && (
                         <Badge variant="secondary">Staff-only log</Badge>
                       )}
@@ -938,11 +937,9 @@ export function OwnerUpdateDraftEditor({
                       <p className="truncate text-xs font-medium">
                         {photo.caption ?? photo.fileName}
                       </p>
-                      {developerModeEnabled && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {sourceLabel(photo.sourceSystem)}
-                        </p>
-                      )}
+                      <p className="mt-1 leading-none">
+                        <DraftSource value={photo.sourceSystem} developerMode={developerModeEnabled} />
+                      </p>
                     </div>
                   </article>
                 )
@@ -992,11 +989,7 @@ export function OwnerUpdateDraftEditor({
                     <span className="block truncate text-sm font-medium">
                       {file.caption ?? file.fileName}
                     </span>
-                    {developerModeEnabled && (
-                      <span className="text-xs text-muted-foreground">
-                        {sourceLabel(file.sourceSystem)}
-                      </span>
-                    )}
+                    <DraftSource value={file.sourceSystem} developerMode={developerModeEnabled} />
                   </span>
                 </label>
               ))}
