@@ -3,6 +3,7 @@ import { CorrespondenceAttachmentRow } from "./correspondence-attachment"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SourceTag } from "@/components/shared/source-tag"
 import { cn } from "@/lib/utils"
 import type {
   CorrespondenceMessage,
@@ -30,7 +31,8 @@ export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit
         <Avatar className="shrink-0"><AvatarFallback>{initials}</AvatarFallback></Avatar>
         <div className="min-w-0"><p className="break-words font-medium">{message.authorName}</p><p className="text-sm text-muted-foreground">{sourceSentLabel === null ? <time dateTime={message.sentAt}>{formatDate(message.sentAt)}</time> : <span title="Source-local timestamp; timezone not proven">Source time: {sourceSentLabel}</span>}{message.editedAt !== null && " · Edited"}{message.retractedAt !== null && " · Retracted"}</p></div>
       </div>
-      <Badge variant={message.delivery === "imported" ? "outline" : "secondary"}>{message.emailDeliveryStatus ? emailStatusLabel(message.emailDeliveryStatus) : message.delivery === "imported" ? sourceName(message.source) : "Saved in Compass"}</Badge>
+      {/* Buildertrend history carries only the shared [BT] tag (source-tag standard). */}
+      {message.delivery === "imported" && message.source === "buildertrend" && !message.emailDeliveryStatus ? <SourceTag source="buildertrend" /> : <Badge variant={message.delivery === "imported" ? "outline" : "secondary"}>{message.emailDeliveryStatus ? emailStatusLabel(message.emailDeliveryStatus) : message.delivery === "imported" ? sourceName(message.source) : "Saved in Compass"}</Badge>}
     </div>
     <details className="mt-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Original headers</summary><div className="mt-2 border-l-2 pl-3 text-muted-foreground"><p>From: {message.authorName}</p><p>To: {recipientNames(message)}</p>{message.emailBcc.length > 0 && <p>Bcc (only you can see this): {message.emailBcc.join(", ")}</p>}</div></details>
     {message.retractedAt === null ? <p className="mt-3 break-words whitespace-pre-wrap text-sm leading-6">{message.body}</p> : <p className="mt-3 text-sm italic text-muted-foreground">This message was retracted.</p>}
@@ -39,7 +41,7 @@ export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit
     {(message.emailDeliveryStatus === "unknown" || message.emailDeliveryStatus === "dispatching") && <p className="mt-3 text-xs text-muted-foreground">Delivery may have occurred. Check the provider outcome before attempting another email.</p>}
     {message.attachments.length > 0 && <ul className="mt-3 grid gap-2">{message.attachments.map((attachment) => <CorrespondenceAttachmentRow key={attachment.id} projectId={projectId} attachment={attachment} projectHistory={projectHistory} />)}</ul>}
     {message.sourceAttachmentReadiness !== null && message.sourceAttachmentReadiness !== undefined && message.sourceAttachmentReadiness.pendingFileCount > 0 && <p className="mt-3 text-xs text-muted-foreground">{message.sourceAttachmentReadiness.pendingFileCount} original {message.sourceAttachmentReadiness.pendingFileCount === 1 ? "file is" : "files are"} pending migration. Message text is available.</p>}
-    {message.delivery === "imported" ? <p className="mt-3 text-xs text-muted-foreground">Original {sourceName(message.source)} message · Historical read status not available</p> : <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Delivery details</summary><ul className="mt-2 grid gap-1">{message.readReceipts.map((receipt) => <li key={receipt.userId}>{receipt.name} · {receiptLabel(receipt)}</li>)}</ul></details>}
+    {message.delivery === "imported" ? <p className="mt-3 text-xs text-muted-foreground">{message.source === "buildertrend" ? "" : `Original ${sourceName(message.source)} message · `}Historical read status not available</p> : <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Delivery details</summary><ul className="mt-2 grid gap-1">{message.readReceipts.map((receipt) => <li key={receipt.userId}>{receipt.name} · {receiptLabel(receipt)}</li>)}</ul></details>}
     {!readOnly && message.canEdit && message.retractedAt === null && <div className="mt-3 flex gap-2"><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => void onEdit(message)}>Edit</Button><Button variant="ghost" size="sm" disabled={editDisabled} onClick={() => onRetract(message)}>Retract</Button></div>}
     {!readOnly && !projectHistory && message.emailDeliveryStatus === "failed" && message.authorUserId === viewerId && <Button className="mt-3" variant="outline" size="sm" disabled={editDisabled} onClick={() => void onRetryEmail(message)}>Retry failed email</Button>}
   </article>

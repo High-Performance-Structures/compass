@@ -415,7 +415,7 @@ export async function sendMessage(data: {
     ) {
       return {
         success: false,
-        error: "Buildertrend archive replies can only mention internal teammates.",
+        error: "Replies in an archived conversation can only mention internal teammates.",
       }
     }
     const mentionedUserIds = Array.from(
@@ -460,7 +460,7 @@ export async function sendMessage(data: {
       ) {
         return {
           success: false,
-          error: "Buildertrend archive replies can only mention internal teammates.",
+          error: "Replies in an archived conversation can only mention internal teammates.",
         }
       }
     }

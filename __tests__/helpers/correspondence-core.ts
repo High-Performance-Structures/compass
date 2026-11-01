@@ -229,6 +229,13 @@ export function openCorrespondenceTestDatabase(): CorrespondenceTestDatabase {
   return { sqlite, d1, db, failures, close: () => sqlite.close() }
 }
 
+/** A Drizzle handle over any better-sqlite3 database (for example one built from every migration). */
+export function drizzleOverSqlite(sqlite: Sqlite): ReturnType<typeof getDb> {
+  const failures: FailureController = { failNextMatching: () => {}, setBindLimit: () => {}, setBeforeBatchHook: () => {} }
+  // @ts-expect-error The SQLite adapter implements the D1 methods exercised by these integration tests.
+  return getDb(createD1(sqlite, failures))
+}
+
 function user(id: string, email: string, role: string, organizationId: string): CorrespondenceContext["user"] {
   return {
     id, email, firstName: null, lastName: null, displayName: id, avatarUrl: null,

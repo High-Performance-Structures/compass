@@ -31,6 +31,7 @@ import {
   messageSenderDisplay,
   type ImportedMessageFields,
 } from "@/lib/conversations/imported-message-content"
+import { SourceTag } from "@/components/shared/source-tag"
 import { getMessageAlignmentClass } from "./message-list-behavior"
 
 type MessageData = ImportedMessageFields & {
@@ -206,10 +207,7 @@ export const MessageItem = React.memo(function MessageItem({
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">{timeDisplay}</span>
-          {/* TODO(source-tag): render <SourceTag source="buildertrend" /> from
-              "@/components/shared/source-tag" when message.sourceSystem is
-              "buildertrend" (the small "[BT]" tag). That shared component lands
-              in a separate PR; wire it here after rebasing onto it. */}
+          {message.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
           {message.editedAt && (
             <span className="text-xs text-muted-foreground">(edited)</span>
           )}

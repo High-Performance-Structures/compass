@@ -17,8 +17,8 @@ only in threads and may mention only staff. After this work:
   a Compass account yet; the threads are simply there when they first log in;
 - replies work like any other conversation (staff in the app; owners and
   vendors in the app, or by replying to the normal notification email);
-- the only visible difference is a small, muted **`[BT]`** tag next to the
-  timestamp (accessible name "Imported from Buildertrend"). Nothing is added
+- the only visible difference is the shared `<SourceTag source="buildertrend" />`:
+  a small, muted **`[BT]`** next to the timestamp (accessible name "Imported from Buildertrend"). Nothing is added
   to the message body, so a first login feels like a seamless continuation.
 
 ### Owner decisions (final)
@@ -283,21 +283,23 @@ rows, move legacy archive rows and delete reviewed duplicate copies).
 
 1. Merge this PR; apply migration 0287 to production from the PR's
    main-based worktree after checking the pending list. Additive only.
-2. Turn on **Imported conversations staff only** for the legal-hold project
+2. Run the read-only `docs/plans/bt-messages-archive-shape-check.sql`
+   against production and confirm the archive shape the importer assumes
+   (archive channel ids, legacy message ids, owner-history copies, rows with
+   staff replies). Stop if any "must be 0" check is not 0.
+3. Turn on **Imported conversations staff only** for the legal-hold project
    on its Information page.
-3. Build the participant map: a read-only query of
+4. Build the participant map: a read-only query of
    `buildertrend_staging_access_candidates` and existing `project_contacts`
    with `source_system = 'buildertrend'` gives exact ids that already map;
    everything else is decided by a person (`user`, `contact` or
    `new_contact`).
-4. Capture phases 0–3 (above).
-5. Importer dry run; review `summary.json`, `review.jsonl`,
+5. Capture phases 0–3 (above).
+6. Importer dry run; review `summary.json`, `review.jsonl`,
    `attachments-unmapped.jsonl`; upload unmapped attachment bytes and add
    them to `--files`.
-6. Backup, then apply batches one at a time (`--apply` prints the commands),
+7. Backup, then apply batches one at a time (`--apply` prints the commands),
    then `retire-legacy.sql`. Spot-check each project after its batch.
-7. Wire the shared `SourceTag` component (`[BT]`) in `message-item.tsx`
-   where the TODO marks it, once that component is on main.
 
 ## Verification queries (read only)
 
@@ -337,8 +339,6 @@ WHERE content_sha256 IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT r2_path) > 1;
 
 ## Open items
 
-- The `[BT]` tag renders through the shared `SourceTag` component from a
-  separate PR; `message-item.tsx` carries a TODO at the call site.
 - Threads that mix owners and vendors are held. If they turn out to be
   common, a follow-up can split them per audience (owner part and vendor
   part) with the owner's approval.
