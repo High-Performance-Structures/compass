@@ -1,0 +1,17 @@
+flowchart TD
+  A([Customer pays a check,<br/>cash, ACH or card]) --> B{financials create,<br/>not demo?}
+  B -->|no| B1[Refused]
+  B -->|yes| C[Record payment: amount, date,<br/>method, reference; pick open items]
+  C --> D{planPaymentAllocations:<br/>same customer, open items,<br/>no over-application,<br/>one billing scope?}
+  D -->|no| D1[Error shown;<br/>nothing written]
+  D -->|yes| E[[One D1 batch: payment +<br/>allocations + invoice updates]]
+  E --> F{Guards still true?<br/>billed, balances unchanged}
+  F -->|no| F1[0-cent row fails CHECK:<br/>batch rolls back, refresh]
+  F -->|yes| G[Balances update: pay app,<br/>invoices, owner billing page]
+  G --> H[Staff enter the receipt<br/>in accounting by hand]
+  G --> I{Unapplied amount left?}
+  I -->|yes| J[Apply later: same checks]
+  G --> K{Void? financials update,<br/>reason required}
+  K -->|bridge payment<br/>or already void| K1[Refused]
+  K -->|yes| L[Stamp payment void;<br/>release allocations as history]
+  L --> M[Reverse in accounting<br/>if it was entered]

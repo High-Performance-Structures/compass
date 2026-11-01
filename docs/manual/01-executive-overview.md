@@ -60,7 +60,7 @@ These principles are enforced in code review and, where possible, by CI (chapter
 |---|---|
 | Web application | Next.js 15 App Router and React 19, TypeScript (strict), shadcn/ui on Tailwind CSS v4 |
 | Hosting | Cloudflare Workers through the OpenNext adapter (`@opennextjs/cloudflare`) |
-| Database | Cloudflare D1 (SQLite) through Drizzle ORM; 314 tables; migrations in `drizzle/` |
+| Database | Cloudflare D1 (SQLite) through Drizzle ORM; 318 tables; migrations in `drizzle/` |
 | Files | The company's shared drive (Google Drive adapter); private R2 bucket for help videos |
 | Identity | WorkOS adapter (hosted sign-in, SSO, invitations) |
 | Background work | Two Cloudflare cron triggers fan out to 16 jobs (Appendix C) |

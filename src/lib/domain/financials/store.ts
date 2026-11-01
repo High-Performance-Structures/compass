@@ -16,11 +16,16 @@ import {
   projectContractBudgetLines,
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
+import {
+  BUDGET_PROJECTION_SOURCE,
+  COMPASS_DRAW_SOURCE,
+  IMPORTED_DRAW_UNBILLED_STATUSES,
+} from "@/lib/domain/financials/rules"
 import type { Db } from "@/lib/server/action-context"
 
 /**
  * The only writer of the financial tables: invoices, vendor bills, payments,
- * credit memos, payment allocations (invoices and pay applications), and the contract budget (revisions, their lines and their
+ * credit memos, payment allocations (invoices and pay applications), "Paid before Compass" marks on imported draws, and the contract budget (revisions, their lines and their
  * change order adjustments) (architecture standard, section 1). Callers resolve
  * access and compute totals (rules.ts) first; this module only writes.
  */
@@ -295,6 +300,26 @@ const PAYMENT_GUARD = `(SELECT COUNT(*) FROM payments WHERE id = ? AND voided_at
      + COALESCE((SELECT SUM(allocation_cents) FROM invoice_payment_allocations
                  WHERE payment_id = ? AND released_at IS NULL), 0)) = ?`
 
+const SQL_LIST = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(", ")
+
+/**
+ * The draw can take payments (same rule as rules.ts `drawPaymentTarget`): a
+ * billed Compass draw, or an imported Sage/Drive draw that is not a draft,
+ * budget view or void, has a positive current payment due and is not marked
+ * paid before Compass. The applied
+ * total must also stay within the draw's billed amount. Binds: application
+ * id, project id, expected paid cents, allocation cents.
+ */
+const PAYABLE_DRAW_GUARD = `(SELECT COUNT(*) FROM project_budget_applications
+    WHERE id = ? AND project_id = ?
+      AND ((source_system = '${COMPASS_DRAW_SOURCE}' AND status = 'billed')
+        OR (source_system NOT IN (${SQL_LIST([COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE])})
+          AND status NOT IN (${SQL_LIST(IMPORTED_DRAW_UNBILLED_STATUSES)})
+          AND current_payment_due > 0
+          AND NOT EXISTS (SELECT 1 FROM pay_application_prepaid_marks
+            WHERE application_id = project_budget_applications.id AND released_at IS NULL)))
+      AND CAST(ROUND(current_payment_due * 100) AS INTEGER) >= ? + ?) = 1`
+
 const INVOICE_PAID_CENTS = `(SELECT CAST(ROUND(amount_paid * 100) AS INTEGER) FROM invoices
   WHERE id = ? AND organization_id = ? AND project_id = ?)`
 
@@ -353,15 +378,15 @@ function allocationStatements(
         .prepare(`INSERT INTO pay_application_payment_allocations (
             id, organization_id, project_id, application_id, payment_id, allocation_cents, created_by, created_at
           ) SELECT ?, ?, ?, ?, ?, CASE WHEN
-              (SELECT COUNT(*) FROM project_budget_applications
-                WHERE id = ? AND project_id = ? AND source_system = 'compass_contract_budget' AND status = 'billed') = 1
+              ${PAYABLE_DRAW_GUARD}
               AND COALESCE((SELECT SUM(allocation_cents) FROM pay_application_payment_allocations
                 WHERE application_id = ? AND released_at IS NULL), 0) = ?
               AND ${PAYMENT_GUARD}
             THEN ? ELSE 0 END, ?, ?`)
         .bind(
           allocation.allocationId, organizationId, projectId, allocation.applicationId, paymentId,
-          allocation.applicationId, projectId, allocation.applicationId, allocation.expectedPaidCents,
+          allocation.applicationId, projectId, allocation.expectedPaidCents, allocation.cents,
+          allocation.applicationId, allocation.expectedPaidCents,
           ...paymentBinds, allocation.cents, actorId, now,
         ),
     ]
@@ -488,4 +513,68 @@ export async function voidReceivedPayment(database: D1Database, input: PaymentSc
       .bind(paymentId),
   )
   return runGuardedBatch(database, statements)
+}
+
+type PrepaidScope = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly applicationId: string
+  readonly actorId: string
+  readonly now: string
+}
+
+/** No Compass payment is applied to the draw (voided payments are released). Binds: application id. */
+const NO_ACTIVE_DRAW_PAYMENTS = `NOT EXISTS (SELECT 1 FROM pay_application_payment_allocations
+  WHERE application_id = ? AND released_at IS NULL)`
+
+function changedOne(result: D1Result): PaymentWriteResult {
+  return Number(result.meta.changes) === 1 ? "saved" : "stale"
+}
+
+/**
+ * Marks an imported draw "Paid before Compass". Written only while the draw
+ * is a listed imported draw of the project, has no Compass payment applied,
+ * and has no active mark (the partial unique index backs that up).
+ */
+export async function markDrawPaidBeforeCompass(database: D1Database, input: PrepaidScope & {
+  readonly markId: string
+  readonly note: string | null
+}): Promise<PaymentWriteResult> {
+  const { organizationId, projectId, applicationId, actorId, now } = input
+  try {
+    const result = await database
+      .prepare(`INSERT INTO pay_application_prepaid_marks (
+          id, organization_id, project_id, application_id, note, marked_by, marked_at
+        ) SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE (SELECT COUNT(*) FROM project_budget_applications
+            WHERE id = ? AND project_id = ?
+              AND source_system NOT IN (${SQL_LIST([COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE])})
+              AND status NOT IN (${SQL_LIST(IMPORTED_DRAW_UNBILLED_STATUSES)})) = 1
+          AND ${NO_ACTIVE_DRAW_PAYMENTS}
+          AND NOT EXISTS (SELECT 1 FROM pay_application_prepaid_marks WHERE application_id = ? AND released_at IS NULL)`)
+      .bind(
+        input.markId, organizationId, projectId, applicationId, input.note, actorId, now,
+        applicationId, projectId, applicationId, applicationId,
+      )
+      .run()
+    return changedOne(result)
+  } catch (error) {
+    if (isGuardFailure(error)) return "stale"
+    throw error
+  }
+}
+
+/** Undoes a draw's active "Paid before Compass" mark with a reason, while no Compass payment is applied. The row stays as history. */
+export async function undoDrawPaidBeforeCompass(database: D1Database, input: PrepaidScope & {
+  readonly reason: string
+}): Promise<PaymentWriteResult> {
+  const { organizationId, projectId, applicationId, actorId, now } = input
+  const result = await database
+    .prepare(`UPDATE pay_application_prepaid_marks
+      SET released_at = ?, released_by = ?, release_reason = ?
+      WHERE application_id = ? AND organization_id = ? AND project_id = ? AND released_at IS NULL
+        AND ${NO_ACTIVE_DRAW_PAYMENTS}`)
+    .bind(now, actorId, input.reason, applicationId, organizationId, projectId, applicationId)
+    .run()
+  return changedOne(result)
 }

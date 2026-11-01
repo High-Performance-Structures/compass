@@ -296,6 +296,46 @@ export const payApplicationPaymentAllocations = sqliteTable(
   ],
 )
 
+/**
+ * Staff marks that an imported (Sage or Drive) draw was paid before Compass,
+ * so it counts as settled without payment details. Undoing a mark releases
+ * it with a reason; released rows stay as history (drizzle/0286).
+ */
+export const payApplicationPrepaidMarks = sqliteTable(
+  "pay_application_prepaid_marks",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "restrict" }),
+    note: text("note"),
+    markedBy: text("marked_by").references(() => users.id, { onDelete: "set null" }),
+    markedAt: text("marked_at").notNull(),
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
+    releaseReason: text("release_reason"),
+  },
+  (table) => [
+    uniqueIndex("pay_application_prepaid_marks_active_unique").on(table.applicationId).where(sql`${table.releasedAt} IS NULL`),
+    index("pay_application_prepaid_marks_application_idx").on(table.applicationId),
+    index("pay_application_prepaid_marks_scope_idx").on(table.organizationId, table.projectId),
+    index("pay_application_prepaid_marks_project_id_idx").on(table.projectId),
+    index("pay_application_prepaid_marks_marked_by_idx").on(table.markedBy),
+    index("pay_application_prepaid_marks_released_by_idx").on(table.releasedBy),
+    check(
+      "pay_application_prepaid_marks_release_check",
+      sql`(${table.releasedAt} IS NULL AND ${table.releaseReason} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0)`,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [projects.organizationId, projects.id],
+      name: "pay_application_prepaid_marks_project_scope_fk",
+    }).onDelete("restrict"),
+  ],
+)
+
 export const invoiceCreditAllocations = sqliteTable(
   "invoice_credit_allocations",
   {

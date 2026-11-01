@@ -51,6 +51,7 @@ The rules are in chapter 5 (section 5.3). The procedure:
 4. **Watch for drift.** Production may already have columns that came from migrations on unmerged branches. Read the live schema before any `ALTER`, and use `IF NOT EXISTS` wherever SQLite allows it.
 5. Apply the same migrations to the demo database: `bunx wrangler d1 migrations apply compass-demo-db --env demo --remote`.
 6. To apply migrations locally: `bun run db:migrate:local`, or `bun run db:init-local` for a fresh local database.
+7. **Backfills write in small `--command` batches.** A backfill script (for example `relational-links-backfill.mjs`, `saved-views-backfill.mjs`, `schedule-task-people-backfill.mjs`) runs as a dry run by default and writes a JSON report; `--apply` first writes a backup. When it applies, it must send its writes as many small `wrangler d1 execute --command "<sql>"` calls (a few dozen guarded statements each, every statement within the 100-parameter limit), never as one large `--file` import. A remote `--file` import pauses the database briefly while it loads, which stalls every request in production. Keep each statement idempotent (`WHERE … IS NULL`, `NOT EXISTS`, `ON CONFLICT DO NOTHING`) so a re-run or an interrupted run is safe. Run the dry run, review the report, then apply, and apply to the demo database too.
 
 ## 9.3 Scheduled jobs: are they still writing?
 

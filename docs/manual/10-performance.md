@@ -29,6 +29,7 @@ These were found with `wrangler d1 insights` over seven days of production traff
 | The registry visibility filter was copied into five files; follow-up aging re-read every project | Duplicated logic and over-reading | One `activeRegistryProject()` filter; aging reads only the jobs the caller did not already load (#1046) |
 | Many browser timers polled in hidden tabs; components fetched the same data twice | Ad-hoc `setInterval` | One `useVisibleInterval` hook; shared providers for notifications and the project list; `getProjects` cached per request (#1049) |
 | About 200 foreign-key columns had no index | Schema drift | `0275_fk_indexes.sql` (additive `CREATE INDEX IF NOT EXISTS`) and a CI rule that every foreign key leads an index (#1050) |
+| All Projects took 4 s or more before anything rendered | Worker CPU in the duplicate detector, and non-essential panels on the critical path, not D1 | Duplicate detector profiles each project once (about 3,950 ms → 40 ms); non-essential panels stream; payload cut from about 690 KB to 140 KB (#1090, worked example below) |
 
 **Remaining work.** Phases 4 and 5 of the performance plan are still pending. Likely candidates, not yet measured:
 
@@ -36,6 +37,24 @@ These were found with `wrangler d1 insights` over seven days of production traff
 - trim the dashboard's first-load queries.
 
 Re-run the insights command after each change, and compare total time and rows read.
+
+### Worked example: All Projects (measure first)
+
+The hub page (`/dashboard/projects`) was reported slow. Before the change it awaited six loaders in one `Promise.all` and rendered nothing until all of them finished. The obvious guess was a missing index. Measuring showed otherwise.
+
+1. **Measure D1.** `wrangler d1 insights --sort-by time` and `--sort-by reads` (read only) over production traffic. Every query the page ran was already fast: the project list read about 2,800 rows in about 7 ms, the overview statements 1–9 ms each, the duplicate identities about 5 ms.
+2. **Check the plans.** `EXPLAIN QUERY PLAN` on a local replay of all migrations, never on production. Every statement used an index; the only leftover was a temporary B-tree to sort about 1,100 rows. **No index was missing, so no migration was written.**
+3. **Measure the Worker.** The cost was CPU and payload, not the database:
+   - `findProjectDuplicateCandidates` compared every pair of projects (about 600,000 pairs at 1,100 projects) and re-normalized both projects' text on every comparison: about 3,950 ms per run on 1,100 synthetic projects, on the critical path for owners and registry managers.
+   - The page waited for the whole dashboard overview batch (10 statements, about 15,000 rows), then, for admins, about three more sequential round trips for missing daily logs.
+   - It sent the entire dashboard overview to the browser (about 690 KB of JSON at 1,253 projects) although the cards read four fields and one photo, and re-sent the project list (about 420 KB) that the layout already provides.
+4. **Fix what was measured.**
+   - **Duplicate detector** (`src/lib/project-duplicate-detector.ts`). Each project is normalized once into a profile. Pairs that share no value stop before any allocation, because their best possible score (35) is below the threshold (60). The scan is still pairwise, but each comparison is cheap: about 3,950 ms → about 40 ms on the same input. An equivalence test compares the new detector with a frozen copy of the old one on seeded registries covering every collision type.
+   - **Streaming** (`src/app/dashboard/projects/page.tsx`). The page awaits only the small queries it needs to render the list (intake assignees, the internal department name and saved views). The overview, the duplicate scan and the number-review exceptions start at once but are passed to the client as promises. Card health, next step and photo read them with React `use()` inside small `<Suspense>` boundaries, with a muted bar and the existing photo placeholder as fallbacks. Number-review flags wait for the approved exceptions, so a project is never flagged early.
+   - **Slim payload** (`src/components/projects/project-hub-signals.ts`). The page sends only `progress`, `openRfiCount`, `openPoCount` and `nextTaskTitle` per project plus the first field photo (about 140 KB), and the hub reads the project list from `useProjectList()`, the request-cached list the layout already shares.
+5. **Compare.** The number of D1 queries and rows read did not change (about 20,000 rows per load). Only about two small round trips now block the first render, so the estimated time to first list render fell from 4 s or more to under 200 ms after the layout. Filters, saved views, search, paging, permissions and demo rules are unchanged.
+
+The lesson for this codebase: check `d1 insights` and the query plan before adding an index, and when the database is already fast, look at Worker CPU, sequential awaits and payload size. Keep the first render on the smallest set of queries and stream the rest.
 
 ## 10.3 Growth options
 

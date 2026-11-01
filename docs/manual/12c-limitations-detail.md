@@ -18,17 +18,19 @@
 5. freeze the old writers;
 6. keep the old tables.
 
-| Order | Area | Problem | Effort (hours) | Risk |
-|---|---|---|---|---|
-| 1 | Saved views | Project views, schedule views and view preferences are three stores for one concept | 8–10 | Low |
-| 2 | JSON id lists | Owner-update source logs and photos, draft recipients and attachments, meeting attendees, RFQ cc and links, cost codes, template departments, signers. Deleting a log or photo can leave a dangling id in a draft | 27–36 | Low–medium |
-| 3 | Audit and activity | Several event and audit tables, some written outside their owners | 22–28 | Medium–low |
-| 4 | Calendars | Overlapping calendar tables, three of them unused | 28–36 | Medium |
-| 5 | Email transport | Reply threads, inbound mail, correspondence deliveries, RFQ deliveries and campaigns overlap | 36–48 | High |
+| Order | Area | Problem | Effort (hours) | Risk | Status at this edition |
+|---|---|---|---|---|---|
+| 1 | Saved views | Project views, schedule views and view preferences are three stores for one concept | 8–10 | Low | Steps 1–4 done (migration 0282): `saved_views` and `saved_view_defaults` exist, every write goes to old and new tables in one batch from the settings store, the backfill script exists, and reads use the new table once it covers every visible legacy id (section 5.3). Next: freeze the legacy writers and reads, then keep the old tables as archive |
+| 2 | JSON id lists | Owner-update source logs and photos, draft recipients and attachments, meeting attendees, RFQ cc and links, cost codes, template departments, signers. Deleting a log or photo can leave a dangling id in a draft | 27–36 | Low–medium | Not started |
+| 3 | Audit and activity | Several event and audit tables, some written outside their owners | 22–28 | Medium–low | Not started |
+| 4 | Calendars | Overlapping calendar tables, three of them unused | 28–36 | Medium | Not started |
+| 5 | Email transport | Reply threads, inbound mail, correspondence deliveries, RFQ deliveries and campaigns overlap | 36–48 | High | Not started |
+
+Two known quirks are kept on purpose while saved views are dual-written: the schedule save action still finds an existing view by `(owner, name)` on the legacy table, which is its upsert key and is not scoped by organization, and legacy schedule rows with free-text visibility stay hidden and are never copied.
 
 The plan also lists what must stay separate and why. For example, a client meeting is a business record, not a calendar slot, and a project's correspondence is the record while email is only how it travels.
 
-**Copied party text.** Migration 0280 linked client, vendor and RFI-assignee copies to the contacts directory. Other copied fields remain (for example names and emails on meetings, contracts and correspondence) and should follow the same pattern: a nullable foreign key, an exact-match backfill, and the old text kept as a fallback or named snapshot.
+**Copied party text.** Migration 0280 linked client, vendor and RFI-assignee copies to the contacts directory, and `scripts/relational-links-backfill.mjs` fills the links for existing rows by exact match only. The shared project list, the staff budget summary and the RFI list read through the links; about 35 other direct reads of `projects.client_name` still show the stored text and should move to `linkedProjectClientName`. Some writers do not know a directory id and leave the link empty (the estimate pricing board's RFQ batch, a settings-configured supplier PO in the product sales module, the accounting handoff's client review and the legacy-system import). Other copied fields remain (for example names and emails on meetings, contracts and correspondence) and should follow the same pattern: a nullable foreign key, an exact-match backfill, and the old text kept as a fallback or named snapshot.
 
 ## 12.4 Company-neutrality gaps
 
@@ -50,6 +52,8 @@ Compass is meant to be adopted by any company. The following values are still bu
 - **Two status columns.** `projects.status` (default `OPEN`) sits beside `job_status_id`, and how the two relate is not documented. Treat `job_status_id` as authoritative.
 - **Incomplete accounting connector.** Change orders and purchase orders can be marked as waiting for accounting sync, but no automated writer consumes those queues yet. The handoff is manual.
 - **No payments interface.** There is no generic payments interface. The card-payment adapter is wired directly into the accounting-bridge modules.
+- **Received payments are not posted to accounting.** Check, cash and ACH receipts recorded in Compass (section 6.10) are entered in the accounting system by staff, because the accounting system restricts automated payment posting. A posting path would need a new, approval-gated operation type in the bridge with the receipt mapping. Open product decisions: whether pay applications imported from accounting or the shared drive should take payments; whether voiding should need a stronger permission than `update`; and whether one payment may cover items on several jobs (today a payment belongs to one project).
+- **Schedule assignees.** Owner and vendor commitment confirmation is still one response per schedule item, from the first linked person, and weather-risk notices name only the first person. Letting every assignee confirm needs changes in the audience preview and the portal. Template application still writes only `assigned_to`, so its items show the placeholder name until edited.
 - **Retired offline sync.** The desktop offline queue still exists, but the server sync endpoints are retired.
 - **Stale docs.** Older docs disagree with the code in places: the assistant's provider file, conversation mentions, paper-trail record types and a public `/demo` session. This manual follows the code.
 
