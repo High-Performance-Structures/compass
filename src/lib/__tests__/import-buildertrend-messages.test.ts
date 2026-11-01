@@ -273,8 +273,17 @@ describe("Buildertrend messages importer", () => {
     delete line.btThreadId
     const { plan } = run(db, [JSON.stringify(line)])
     expect(plan.pending).toEqual([])
-    expect(plan.threads).toEqual([expect.objectContaining({ btThreadId: "1301" })])
-    expect(all(db, `SELECT source_thread_id FROM channels WHERE id = '${conversationId(ORG, "1301")}'`)).toEqual([{ source_thread_id: "1301" }])
+    expect(plan.threads).toEqual([expect.objectContaining({ btThreadId: "msg-1301" })])
+    expect(all(db, `SELECT source_thread_id FROM channels WHERE id = '${conversationId(ORG, "msg-1301")}'`)).toEqual([{ source_thread_id: "msg-1301" }])
+  })
+
+  it("never merges a message without a thread id into a real thread with the same number", () => {
+    const own = JSON.parse(captured("1301"))
+    own.btThreadId = null
+    const { plan } = run(db, [JSON.stringify(own), captured("1401", { btThreadId: "1301" }), thread("1301", 1)])
+    expect(plan.threads.map((item: Row) => item.btThreadId).sort()).toEqual(["1301", "msg-1301"])
+    expect(count(db, `SELECT COUNT(*) AS n FROM channels WHERE source_thread_id IN ('1301', 'msg-1301')`)).toBe(2)
+    expect(() => parseCapture(captured("1501", { btThreadId: "msg-9" }))).toThrow(/reserved/)
   })
 
   it("keeps a thread with both owners and vendors internal: staff-only, no outside members", () => {

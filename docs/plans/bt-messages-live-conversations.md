@@ -35,10 +35,11 @@ only in threads and may mention only staff. After this work:
 
 Further rules: the import sends no notifications and no email; it keeps the
 original sender, recipients, sent date and attachments; people are matched
-only by exact BT participant ids (never by name, initials or order), and
-anyone unmatched goes to a review list; attachments are deduplicated by
-sha256 (BT client-update photos are often the same bytes as daily-log
-photos); the import is idempotent by BT message id.
+only by the exact rules in "Participant matching" below (never fuzzy,
+initials, nicknames or order), and anyone unmatched or ambiguous goes to a
+review list; attachments are deduplicated by sha256 and byte size (BT
+client-update photos are often the same bytes as daily-log photos); the
+import is idempotent by BT message id.
 
 ## Data model (migration `0287_imported_live_conversations.sql`)
 
@@ -214,10 +215,12 @@ One JSON object per line. A `message` line per BT message, and a `thread`
 line written after the last message of each thread (the importer only imports
 threads whose `thread` line count matches the messages it holds).
 
-When Buildertrend exposes no thread id for a message, the capture omits
-`btThreadId` (or sends `null`); the rule is then `btThreadId = btMessageId`:
-each such message is its own one-message conversation and needs no `thread`
-line.
+When Buildertrend exposes no thread id for a message, the capture leaves
+`btThreadId` out (or `null`). The importer then derives the thread id
+`msg-<btMessageId>`: each such message is its own one-message conversation and
+needs no `thread` line. Real BT thread ids are stored unprefixed and may not
+start with `msg-`, so the two can never collide. The capture never writes the
+prefix itself.
 
 ```json
 {"schema":"bt-message-capture/v1","type":"message",
@@ -232,7 +235,12 @@ line.
 ```
 
 - `namespace` is BT's participant namespace (for example `builder`, `owner`,
-  `sub`) so ids from different BT user tables never collide.
+  `sub`) so ids from different BT user tables never collide; `unknown` when
+  the page does not say.
+- `participantId` is `null` when the page does not show it (message pages
+  usually show only names). Add `email` on the sender or a recipient whenever
+  the page shows one. Each participant needs at least an id, an email or a
+  display name.
 - `kind` on recipients is `to`, `cc` or `bcc`. A thread with any `bcc`
   recipient is held for review.
 - `sentAtDisplay` is the literal text BT shows. `sentAtZone` is set only when
@@ -248,11 +256,19 @@ Dry run by default; it never connects to a database.
 Inputs:
 
 - `--capture` the JSONL above;
-- `--participants` the reviewed participant map
+- `--participants` optional reviewed participant map
   (`bt-participant-map/v1`): exact `namespace:participantId` keys with a
   decision `user` (a Compass account), `contact` (existing directory contact
-  ids per project) or `new_contact` (add without inviting). Keys that are
-  absent are unmatched;
+  ids per project) or `new_contact` (add without inviting);
+- `--directory` optional directory snapshot (`bt-directory-snapshot/v1`),
+  exported read-only just before the run: one row per Compass person
+  `{ personKey, kind: staff|owner|vendor, displayName, emails[], userId?,
+  projectIds[], projectContactIds{projectId: id}, vendorId?, vendorContactId?,
+  customerId?, customerContactId?, btIds["<catalog type>:<btId>"] }`, with a
+  user and the contacts that are the same person grouped into one row;
+- `--people-catalog` optional BT people catalog captured from Buildertrend
+  (JSONL rows `{ btId, type: internal_user|vendor_company|vendor_contact|customer,
+  parentBtId, displayName, email? }`);
 - `--projects` `{ organizationId, actorUserId, timeZone, jobs: { btJobId: projectId }, staffOnlyProjects: [projectId] }`;
   `staffOnlyProjects` lists the projects that must be staff-only (legal hold);
 - `--precheck` required `{ schema: "bt-import-precheck/v1", staffOnlyProjectIds, privateArchiveJobIds }`,
@@ -269,8 +285,8 @@ Flow:
 3. Hold a whole thread for review when its job's archive is private, when its
    project must be staff-only but the pre-check does not show the switch on
    (`staff_only_not_verified`), or when any message has an unmatched
-   participant, a Bcc recipient, an unreadable date, an unverified attachment,
-   an unmapped job, or the thread mixes owners and vendors (`review.jsonl`).
+   or ambiguous participant, a Bcc recipient, an unreadable date, an unverified attachment,
+   or an unmapped job (`review.jsonl`). A thread with both owners and vendors is kept internal.
    A conversation is never shown with gaps or to the wrong audience.
 4. For each importable thread write, in order: the conversation, new
    directory contacts, thread participant rows, memberships and read state
@@ -313,15 +329,46 @@ parameters) and every statement stays at or under 100 values. A
 | directory contact | id `bt-contact-<sha256(project, namespace:id)[:32]>` |
 | membership / read state | unique `(channel_id, user_id)` |
 
+## Participant matching
+
+Buildertrend message pages show participant names (sometimes emails) but not
+BT participant ids. Owner decision (2026-11-01); the importer
+(`scripts/import-buildertrend-participants.mjs`) applies these in order and
+stops at the first that decides:
+
+0. **Reviewed map.** When the capture saw a BT participant id and the
+   reviewed map has that exact `namespace:participantId`, it wins.
+1. **Email** (`by_email`). The email shown, trimmed and case-insensitive,
+   matching exactly one person in the organization's directory snapshot
+   (users, vendor contacts, customer contacts, project contacts). More than
+   one person with that email: review (`participant_ambiguous`).
+2. **Name in the project** (`by_name_project`). The exact full display name,
+   case-insensitive with whitespace normalized (no fuzzy matching, initials
+   or nicknames), matching exactly one of the project's own people (its
+   staff and project contacts). Two or more: review.
+3. **Name in the BT catalog** (`by_name_catalog`). Otherwise the same exact
+   name matching exactly one row of the BT people catalog. That row must then
+   resolve to exactly one Compass person by its exact BT id registered in the
+   directory (`<type>:<btId>`), else by the catalog row's email. Anything
+   else: review.
+4. Otherwise the participant is unmatched (`participant_unmatched`) or
+   ambiguous (`participant_ambiguous`) and the whole thread goes to review.
+
+A matched person without a Compass account is added to the project as a
+directory contact without an invitation (linked to their vendor or customer
+contact when the snapshot has one), once per person however the pages named
+them. `summary.json` reports `participant_matches` per thread participant:
+`by_map`, `by_email`, `by_name_project`, `by_name_catalog`, `review`.
+
 ## Review queue
 
 `review.jsonl` lists held threads with a reason:
-`participant_unmatched`, `bcc_recipient`, `sent_at_unreadable`,
+`participant_unmatched`, `participant_ambiguous`, `bcc_recipient`, `sent_at_unreadable`,
 `attachment_unverified`, `job_not_mapped`, `thread_spans_jobs`,
 `private_archive`, `staff_only_not_verified`. (Threads with both owners and
 vendors are not held; they are kept internal.) Held messages stay where they are today (in the
 staff archive, if they were already imported there). Resolving a reason
-(adding the participant id to the map, mapping the job) and re-running the
+(adding the person to the reviewed map or the directory, mapping the job) and re-running the
 importer imports the thread; nothing else changes.
 
 ## Backups
@@ -355,11 +402,9 @@ rows, move legacy archive rows and delete reviewed duplicate copies).
    switch to still be on in the database.
    Turn on **Imported conversations staff only** for any other held project
    on its Information page.
-4. Build the participant map: a read-only query of
-   `buildertrend_staging_access_candidates` and existing `project_contacts`
-   with `source_system = 'buildertrend'` gives exact ids that already map;
-   everything else is decided by a person (`user`, `contact` or
-   `new_contact`).
+4. Export the directory snapshot (read only) and capture the BT people
+   catalog. Optionally build a reviewed participant map for people whose BT
+   ids were seen (`user`, `contact` or `new_contact`).
 5. Capture phases 0–3 (above).
 6. Build `precheck.json` from shape-check A8 and B1 just before the run, then
    the importer dry run; review `summary.json` (including `mixed_kept_internal`), `review.jsonl`,

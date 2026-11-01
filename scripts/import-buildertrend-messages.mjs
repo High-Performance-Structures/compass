@@ -13,7 +13,8 @@
  *
  * Usage:
  *   node scripts/import-buildertrend-messages.mjs \
- *     --capture capture.jsonl --participants participants.json \
+ *     --capture capture.jsonl [--participants participants.json] \
+ *     [--directory directory.json] [--people-catalog catalog.jsonl] \
  *     --projects projects.json --precheck precheck.json [--files files.json] --out out-dir \
  *     [--batch-size 40] [--apply] [--mark-applied batch-0001.sql]
  *
@@ -29,6 +30,8 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+
+import { createParticipantResolver, normalizeEmail, normalizeName, parseDirectory, parsePeopleCatalog } from "./import-buildertrend-participants.mjs"
 
 export const CAPTURE_SCHEMA = "bt-message-capture/v1"
 export const PARTICIPANT_MAP_SCHEMA = "bt-participant-map/v1"
@@ -81,8 +84,16 @@ function numericId(value, label) {
   return text
 }
 
+/**
+ * The source identity recorded for a participant: the BT id when the page
+ * showed one, else the email, else the normalized name (BT message pages often
+ * show only names).
+ */
 function participantKey(participant) {
-  return `${participant.namespace}:${participant.participantId}`
+  if (participant.participantId) return `${participant.namespace}:${participant.participantId}`
+  const email = normalizeEmail(participant.email)
+  if (email) return `${participant.namespace}:email:${email}`
+  return `${participant.namespace}:name:${normalizeName(participant.displayName) ?? "unknown"}`
 }
 
 // ---------------------------------------------------------------------------
@@ -164,23 +175,44 @@ export function sentAtIso(display, timeZone) {
 
 function participantRef(value, label) {
   if (value === null || typeof value !== "object") throw new Error(`${label} must be an object`)
-  const namespace = typeof value.namespace === "string" ? value.namespace.trim() : ""
+  const namespace = typeof value.namespace === "string" && value.namespace.trim() !== "" ? value.namespace.trim() : "unknown"
   if (!/^[a-z_]+$/.test(namespace)) throw new Error(`${label}.namespace must be a Buildertrend participant namespace`)
+  // BT pages often show no participant id; then email or name identifies them.
+  const participantId = value.participantId == null || value.participantId === "" ? null : sourceId(value.participantId, `${label}.participantId`)
+  const email = normalizeEmail(value.email)
+  const displayName = typeof value.displayName === "string" && value.displayName.trim() !== "" ? value.displayName : null
+  if (!participantId && !email && !displayName) throw new Error(`${label} needs a participantId, email or displayName`)
   return {
-    participantId: sourceId(value.participantId, `${label}.participantId`),
+    participantId,
+    email,
     namespace,
     role: typeof value.role === "string" ? value.role : null,
-    displayName: typeof value.displayName === "string" ? value.displayName : null,
+    displayName,
     kind: typeof value.kind === "string" ? value.kind : "to",
   }
 }
 
 /** One capture line. Throws on a malformed record; review handles the rest. */
+/**
+ * A message with no BT thread id is its own conversation. Its thread id is
+ * derived here as `msg-<btMessageId>`, so it can never collide with a real BT
+ * thread id (those are stored unprefixed and may not start with `msg-`).
+ */
+export function selfThreadId(btMessageId) {
+  return `msg-${btMessageId}`
+}
+
+function realThreadId(value) {
+  const id = sourceId(value, "btThreadId")
+  if (id.startsWith("msg-")) throw new Error("btThreadId may not start with msg- (reserved for messages without a thread)")
+  return id
+}
+
 export function parseCaptureLine(line, lineNumber) {
   const record = JSON.parse(line)
   if (record?.schema !== CAPTURE_SCHEMA) throw new Error(`line ${lineNumber}: schema must be ${CAPTURE_SCHEMA}`)
   if (record.type === "thread") {
-    return { type: "thread", btJobId: numericId(record.btJobId, "btJobId"), btThreadId: sourceId(record.btThreadId, "btThreadId"), messageCount: Number(record.messageCount) }
+    return { type: "thread", btJobId: numericId(record.btJobId, "btJobId"), btThreadId: realThreadId(record.btThreadId), messageCount: Number(record.messageCount) }
   }
   if (record.type !== "message") throw new Error(`line ${lineNumber}: type must be message or thread`)
   if (typeof record.body !== "string") throw new Error(`line ${lineNumber}: body must be the full message text`)
@@ -193,7 +225,7 @@ export function parseCaptureLine(line, lineNumber) {
     type: "message",
     btJobId: numericId(record.btJobId, "btJobId"),
     btMessageId,
-    btThreadId: ownThread ? btMessageId : sourceId(record.btThreadId, "btThreadId"),
+    btThreadId: ownThread ? selfThreadId(btMessageId) : realThreadId(record.btThreadId),
     ownThread,
     btParentMessageId: record.btParentMessageId == null ? null : sourceId(record.btParentMessageId, "btParentMessageId"),
     subject: typeof record.subject === "string" ? record.subject : "",
@@ -300,7 +332,9 @@ function review(reason, message, detail = {}) {
  * conversation is never shown with gaps or to the wrong audience.
  */
 export function planImport(input) {
-  const { capture, participants, projects, timeZone, organizationId } = input
+  const { capture, projects, timeZone, organizationId } = input
+  const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
+  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_name_catalog: 0, review: 0 }
   const precheck = input.precheck
   const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
   const reviews = []
@@ -317,7 +351,7 @@ export function planImport(input) {
     const summary = capture.threads.get(btThreadId)
     // Capture writes a thread record after the thread's last message. A
     // message without a thread id is its own complete, one-message thread.
-    const selfThread = messages.every((m) => m.ownThread && m.btMessageId === btThreadId)
+    const selfThread = messages.every((m) => m.ownThread && selfThreadId(m.btMessageId) === btThreadId)
     const complete = selfThread
       ? !summary || summary.messageCount === 1
       : summary !== undefined && summary.messageCount === new Set(messages.map((m) => m.btMessageId)).size
@@ -338,6 +372,7 @@ export function planImport(input) {
     }
     if (messages.some((m) => m.btJobId !== first.btJobId)) threadReviews.push(review("thread_spans_jobs", first))
     const seen = new Set()
+    const resolved = new Map()
     const kinds = new Set()
     const people = new Map()
     const planned = []
@@ -347,11 +382,14 @@ export function planImport(input) {
       const refs = [{ ...message.sender, kind: "sender" }, ...message.recipients]
       for (const ref of refs) {
         if (ref.kind === "bcc") threadReviews.push(review("bcc_recipient", message, { participant: participantKey(ref) }))
-        const entry = participants.get(participantKey(ref))
-        if (!entry) {
-          threadReviews.push(review("participant_unmatched", message, { participant: participantKey(ref), displayName: ref.displayName, role: ref.role }))
+        const key = participantKey(ref)
+        if (!resolved.has(key)) resolved.set(key, projectId ? resolve(ref, projectId) : { reason: "participant_unmatched" })
+        const match = resolved.get(key)
+        if (!match.entry) {
+          threadReviews.push(review(match.reason, message, { participant: key, displayName: ref.displayName, role: ref.role }))
           continue
         }
+        const entry = match.entry
         if (entry.kind !== "staff") kinds.add(entry.kind)
         people.set(participantKey(ref), { key: participantKey(ref), ref, entry })
       }
@@ -364,6 +402,7 @@ export function planImport(input) {
       }
       planned.push({ ...message, createdAt })
     }
+    for (const match of resolved.values()) matches[match.rule ?? "review"] += 1
     const audience = audienceFor(kinds)
     const mixedKeptInternal = kinds.has("owner") && kinds.has("vendor")
     if (threadReviews.length > 0) {
@@ -385,7 +424,7 @@ export function planImport(input) {
       messages: planned,
     })
   }
-  return { threads, reviews, pending }
+  return { threads, reviews, pending, matches }
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +441,8 @@ function contactFor(person, projectId) {
   const mapped = person.entry.contactIds?.[projectId]
   if (typeof mapped === "string" && mapped !== "") return { id: mapped, create: false }
   if (person.entry.decision === "user") return null
-  return { id: importedContactId(projectId, person.key), create: true }
+  // One contact per person, however many ways the pages named them.
+  return { id: importedContactId(projectId, person.entry.identity ?? person.key), create: true }
 }
 
 const NOT_STAFF_ONLY = (projectId) =>
@@ -443,6 +483,9 @@ export function threadStatements(thread, input) {
         contact_type: person.entry.kind === "owner" ? "owner" : "subcontractor",
         source_system: SOURCE_SYSTEM, source_entity_type: "buildertrend_participant", source_entity_id: person.key,
         display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
+        // Linked to the matched directory company/contact when there is one.
+        vendor_id: person.entry.links?.vendorId ?? null, vendor_contact_id: person.entry.links?.vendorContactId ?? null,
+        customer_id: person.entry.links?.customerId ?? null, customer_contact_id: person.entry.links?.customerContactId ?? null,
         owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: 1,
         created_at: now, updated_at: now,
       }, guard))
@@ -611,6 +654,8 @@ function args(argv) {
     }
     if (flag === "--capture") out.capture = next()
     else if (flag === "--participants") out.participants = next()
+    else if (flag === "--directory") out.directory = next()
+    else if (flag === "--people-catalog") out.peopleCatalog = next()
     else if (flag === "--projects") out.projects = next()
     else if (flag === "--files") out.files = next()
     else if (flag === "--precheck") out.precheck = next()
@@ -657,14 +702,19 @@ function main() {
   }
   for (const key of ["organizationId", "actorUserId"]) if (typeof config[key] !== "string" || config[key] === "") throw new Error(`projects map needs ${key}`)
   const capture = parseCapture(readFileSync(options.capture, "utf8"))
-  const participants = parseParticipantMap(readJson(options.participants))
+  const participants = options.participants ? parseParticipantMap(readJson(options.participants)) : new Map()
+  const resolveParticipant = createParticipantResolver({
+    participantMap: participants,
+    directory: options.directory ? parseDirectory(readJson(options.directory)) : null,
+    catalog: options.peopleCatalog ? parsePeopleCatalog(readFileSync(options.peopleCatalog, "utf8")) : [],
+  })
   const filesInput = options.files ? readJson(options.files) : {}
   const driveFiles = new Map(Object.entries(filesInput.files ?? {}).map(([sha, entry]) => [sha.toLowerCase(), entry.driveFileId]))
   const now = new Date().toISOString()
   if (!options.precheck) throw new Error("--precheck is required (see the plan's pre-check step)")
   const precheck = parsePrecheck(readJson(options.precheck))
   const plan = planImport({
-    capture, participants, precheck,
+    capture, resolveParticipant, precheck,
     projects: projectsInput.jobs ?? {},
     expectedStaffOnlyProjects: projectsInput.staffOnlyProjects ?? [],
     timeZone: config.timeZone, organizationId: config.organizationId,
@@ -693,6 +743,8 @@ function main() {
     threads: plan.threads.length,
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
+    // How each thread participant was matched (per thread); review = unmatched or ambiguous.
+    participant_matches: plan.matches,
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
     attachmentsNeedingStoredFile: attachmentsWithoutFile.length,
