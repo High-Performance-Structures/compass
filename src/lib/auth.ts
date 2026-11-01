@@ -303,8 +303,8 @@ async function claimProjectAccessInvitations(
         projectId: invitation.projectId,
         organizationId: invitation.organizationId,
         audience,
-        contactId:
-          audience === "owner" ? null : invitation.projectContactId,
+        contactId: audience === "owner" ? null : invitation.projectContactId,
+        importedContactId: invitation.projectContactId,
         externalUserId: userId,
         createdBy: invitation.invitedBy,
         now,

@@ -155,7 +155,8 @@ function createBaseSchema(sqlite: Sqlite): void {
     );
     CREATE TABLE projects (
       id TEXT PRIMARY KEY NOT NULL, organization_id TEXT, name TEXT NOT NULL,
-      project_number TEXT, FOREIGN KEY (organization_id) REFERENCES organizations(id)
+      project_number TEXT, imported_conversations_staff_only INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (organization_id) REFERENCES organizations(id)
     );
     CREATE TABLE organization_members (
       id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL,

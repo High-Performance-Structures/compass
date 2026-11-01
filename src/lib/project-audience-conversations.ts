@@ -17,6 +17,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
+import { adoptImportedConversationsForContact } from "@/lib/conversations/imported-conversation-adoption"
 import {
   insertChannel,
   insertChannelMembers,
@@ -251,6 +252,8 @@ export async function ensureProjectAudienceConversation(input: {
   readonly externalUserId: string | null
   readonly createdBy: string
   readonly now: string
+  /** The directory contact the external user was invited as; joins their imported threads. */
+  readonly importedContactId?: string | null
 }): Promise<string> {
   const project = await input.db
     .select({
@@ -332,6 +335,17 @@ export async function ensureProjectAudienceConversation(input: {
     })
   }
   await ensureMembers(input.db, channelId, desiredMembers, input.now)
+
+  if (input.externalUserId && input.importedContactId) {
+    await adoptImportedConversationsForContact({
+      db: input.db,
+      projectId: input.projectId,
+      projectContactId: input.importedContactId,
+      userId: input.externalUserId,
+      audience: input.audience,
+      now: input.now,
+    })
+  }
 
   return channelId
 }

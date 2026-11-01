@@ -1,10 +1,9 @@
 "use server"
 
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
-
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-
+import { importedMessageColumns } from "@/lib/domain/conversations/imported"
 import { getCloudflareContext } from "@/lib/db"
 import {
   eq,
@@ -893,6 +892,7 @@ export async function getThreadMessages(
         replyCount: messages.replyCount,
         lastReplyAt: messages.lastReplyAt,
         createdAt: messages.createdAt,
+        ...importedMessageColumns,
         user: {
           id: users.id,
           displayName: users.displayName,

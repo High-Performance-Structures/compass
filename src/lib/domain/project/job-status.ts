@@ -49,7 +49,7 @@ export async function validJobStatus(input: {
   return custom.length === 1
 }
 
-type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility"
+type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility" | "importedConversationsStaffOnly"
 
 /**
  * Reads one project setting, and when the value changes writes it with an
@@ -136,6 +136,24 @@ export async function changeProjectMapVisibility(input: {
     value: isPortfolioMapVisibility(visibility) ? visibility : null,
     eventType: "project_map_visibility_updated",
     validate: () => (isPortfolioMapVisibility(visibility) ? null : "Choose a portfolio map setting."),
+  })
+}
+
+/**
+ * Keep this project's imported (e.g. Buildertrend) conversations internal:
+ * owners and vendors lose access to them at once, even if they were members,
+ * and imports add no outside people. Used for projects under a legal hold.
+ */
+export async function changeProjectImportedConversationsStaffOnly(input: {
+  readonly projectId: string
+  readonly staffOnly: boolean
+}): Promise<ProjectProfileResult & { readonly changed?: boolean }> {
+  return changeProjectSetting({
+    projectId: input.projectId,
+    column: "importedConversationsStaffOnly",
+    value: input.staffOnly,
+    eventType: "project_imported_conversations_staff_only_updated",
+    validate: () => null,
   })
 }
 

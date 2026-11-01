@@ -11,6 +11,7 @@ import { getDb } from "@/db"
 import { messages, typingSessions } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { importedMessageColumns } from "@/lib/domain/conversations/imported"
 
 
 type TypingUser = {
@@ -30,6 +31,8 @@ type MessageWithUser = {
   replyCount: number
   lastReplyAt: string | null
   createdAt: string
+  sourceSystem: string | null
+  importedSenderName: string | null
   user: {
     id: string
     displayName: string | null
@@ -55,6 +58,7 @@ const messageSelectFields = {
   replyCount: messages.replyCount,
   lastReplyAt: messages.lastReplyAt,
   createdAt: messages.createdAt,
+  ...importedMessageColumns,
   user: {
     id: users.id,
     displayName: users.displayName,

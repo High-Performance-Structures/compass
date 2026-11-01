@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { getCloudflareContext } from "@/lib/db"
+import { importedMessageColumns } from "./imported"
 
 /*
  * Conversation message reads shared by the chat actions and the screens that
@@ -148,6 +149,7 @@ export async function readChannelMessages(
         replyCount: messages.replyCount,
         lastReplyAt: messages.lastReplyAt,
         createdAt: messages.createdAt,
+        ...importedMessageColumns,
         user: {
           id: users.id,
           displayName: users.displayName,

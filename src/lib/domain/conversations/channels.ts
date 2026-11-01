@@ -1,9 +1,10 @@
 import { and, eq, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
+import { projects } from "@/db/schema"
 import { channelMembers, channelReadState, channels } from "@/db/schema-conversations"
 import { getCurrentUser } from "@/lib/auth"
-import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
+import { canAccessImportedConversation, importedConversationAccess, isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -77,7 +78,9 @@ export async function readVisibleChannels() {
             ? sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`
             : and(
                 sql`${channelMembers.userId} IS NOT NULL`,
-                sql`${channels.id} NOT LIKE 'bt-message-archive-%'`
+                sql`${channels.id} NOT LIKE 'bt-message-archive-%'`,
+                // Imported conversations on a staff-only project stay internal.
+                sql`NOT (${channels.sourceSystem} IS NOT NULL AND EXISTS (SELECT 1 FROM projects p WHERE p.id = ${channels.projectId} AND p.imported_conversations_staff_only = 1))`
               ),
           // not archived
           sql`${channels.archivedAt} IS NULL`
@@ -136,10 +139,23 @@ export async function readChannelForViewer(channelId: string) {
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
+    const imported = importedConversationAccess({
+      sourceSystem: channel.sourceSystem,
+      projectStaffOnly: channel.projectId === null || channel.sourceSystem === null
+        ? false
+        : await db
+            .select({ staffOnly: projects.importedConversationsStaffOnly })
+            .from(projects)
+            .where(eq(projects.id, channel.projectId))
+            .get()
+            .then((row) => row?.staffOnly ?? false),
+    })
     if (
-      isBuildertrendArchiveChannelId(channel.id)
-        ? !isInternalStaffRole(user.role)
-        : (channel.isPrivate || !isInternalStaffRole(user.role)) && !membership
+      imported
+        ? !canAccessImportedConversation({ hasMembership: membership !== null, audience: channel.audience, role: user.role, imported })
+        : isBuildertrendArchiveChannelId(channel.id)
+          ? !isInternalStaffRole(user.role)
+          : (channel.isPrivate || !isInternalStaffRole(user.role)) && !membership
     ) {
       return { success: false, error: "Access denied" }
     }

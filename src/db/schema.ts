@@ -880,6 +880,10 @@ export const projects = sqliteTable("projects", {
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),
+  /** Imported (e.g. Buildertrend) conversations stay internal-staff only, e.g. under a legal hold (0287). */
+  importedConversationsStaffOnly: integer("imported_conversations_staff_only", { mode: "boolean" })
+    .notNull()
+    .default(false),
   /**
    * Geocoded site and its ground elevation, cached for zone and mountain
    * charges. `siteLocationAddress` is the address that was looked up, so an
