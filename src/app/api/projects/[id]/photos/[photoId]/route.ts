@@ -7,6 +7,7 @@ import { NextRequest } from "next/server"
 import {
   dailyLogPhotos,
   projectMembers,
+  projects,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
@@ -115,20 +116,31 @@ export async function GET(
       if (audience === null || projectOrganizationId === null) {
         return new Response("Photo not found", { status: 404 })
       }
-      const granted = await hasActiveExternalProjectResourceGrant({
-        db,
-        organizationId: projectOrganizationId,
-        projectId,
-        recipientUserId: user.id,
-        resourceId: photoId,
-        resourceType,
-        audience,
-      })
-      if (!granted) return new Response("Photo not found", { status: 404 })
+      // Gallery photos are shared by their Owner/Vendor visibility flags
+      // (checked below). Only owner-update attachments need a publish grant.
+      if (resourceType === "owner_update_document") {
+        const granted = await hasActiveExternalProjectResourceGrant({
+          db,
+          organizationId: projectOrganizationId,
+          projectId,
+          recipientUserId: user.id,
+          resourceId: photoId,
+          resourceType,
+          audience,
+        })
+        if (!granted) return new Response("Photo not found", { status: 404 })
+      }
 
       const [membership] = await db
         .select({ role: projectMembers.role })
         .from(projectMembers)
+        .innerJoin(
+          projects,
+          and(
+            eq(projects.id, projectMembers.projectId),
+            eq(projects.organizationId, projectOrganizationId)
+          )
+        )
         .where(
           and(
             eq(projectMembers.projectId, projectId),

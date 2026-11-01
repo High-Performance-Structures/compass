@@ -97,6 +97,9 @@ function query(result: unknown) {
     from() {
       return chain
     },
+    innerJoin() {
+      return chain
+    },
     where() {
       return chain
     },
@@ -251,9 +254,8 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("does not fetch a print rendition without the external resource grant", async () => {
-    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: photo })
-    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
+  it("does not fetch a print rendition of a photo the audience cannot see", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: null })
     expect((await getPhoto("owner", undefined, "print")).status).toBe(404)
     expect(mocks.getFile).not.toHaveBeenCalled()
     expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
@@ -287,15 +289,7 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     expect(response.status).toBe(200)
     expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
-    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith({
-      db: expect.anything(),
-      organizationId: "org-1",
-      projectId: "project-1",
-      recipientUserId: "viewer-1",
-      resourceId: "photo-1",
-      resourceType: "photo",
-      audience: "owner",
-    })
+    expect(mocks.hasActiveExternalProjectResourceGrant).not.toHaveBeenCalled()
   })
 
   it("serves an approved owner-visible composer document with its exact grant type", async () => {
@@ -497,19 +491,18 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("denies an ungranted external photo before project or Drive lookup", async () => {
-    configureDb({
-      viewerRole: "client",
-      membershipRole: "client",
-      visiblePhoto: photo,
-    })
+  it.each([
+    ["owner", "client"],
+    ["sub_vendor", "subcontractor"],
+  ] as const)("serves a %s-visible gallery photo without an owner-update grant", async (audience, role) => {
+    configureDb({ viewerRole: role, membershipRole: role, visiblePhoto: photo })
     mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
 
-    const response = await getPhoto("owner")
+    const response = await getPhoto(audience)
 
-    expect(response.status).toBe(404)
+    expect(response.status).toBe(200)
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
-    expect(mocks.downloadFile).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
   })
 
   it("denies a revoked composer document before Drive access", async () => {
@@ -543,27 +536,19 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     ["a cross-project request", "project-2"],
     ["a cross-organization request", "project-from-org-2"],
   ] as const)("stops %s at the project-access boundary", async (_label, resolvedProjectId) => {
+    // The membership lookup is scoped to the viewer's organization's projects,
+    // so another project or organization yields no membership row.
     configureDb({
       viewerRole: "client",
-      membershipRole: "client",
+      membershipRole: null,
       visiblePhoto: photo,
       projectAccessError: new Error("Project not found"),
     })
     mocks.resolveProjectRouteId.mockResolvedValue(resolvedProjectId)
-    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
 
     const response = await getPhoto("owner")
 
-    // Access-helper rejection must have the same not-found semantics as the
-    // route's other external denial paths, without touching photo or Drive.
     expect(response.status).toBe(404)
-    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: resolvedProjectId,
-        resourceId: "photo-1",
-        audience: "owner",
-      })
-    )
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
