@@ -13,8 +13,11 @@ import {
   type Table as TableInstance,
 } from "@tanstack/react-table"
 
+import { IconSearch } from "@tabler/icons-react"
+
 import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table-pagination"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import {
   ariaSort,
   compareSortValues,
@@ -226,6 +229,38 @@ export function RecordTable<T>({
         </TableBody>
       </Table>
       <DataTablePagination table={table} itemLabel={itemLabel} id={paginationId} />
+    </div>
+  )
+}
+
+/** The search box over a record list's text columns. */
+export function RecordSearchInput({
+  value,
+  onChange,
+  label,
+  placeholder,
+  className,
+}: {
+  readonly value: string
+  readonly onChange: (value: string) => void
+  readonly label: string
+  readonly placeholder: string
+  readonly className?: string
+}): React.ReactElement {
+  return (
+    <div className={cn("relative w-full", className)}>
+      <IconSearch
+        aria-hidden
+        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        type="search"
+        value={value}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-8 pl-9"
+      />
     </div>
   )
 }
