@@ -292,15 +292,23 @@ function RequestEditor({
   )
 }
 
-export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdminOverview }>) {
+export function FeedbackDeskAdmin({
+  overview,
+  requestId,
+}: Readonly<{ overview: FeedbackAdminOverview; requestId: string | null }>) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [view, setView] = useState<FeedbackDeskQueueViewId>("attention")
+  // A notification links here with ?request=<id>; open that request under
+  // "All requests" so no queue filter can hide it.
+  const linkedRequestId = requestId && overview.items.some((item) => item.id === requestId)
+    ? requestId
+    : null
+  const [view, setView] = useState<FeedbackDeskQueueViewId>(linkedRequestId ? "all" : "attention")
   const [kind, setKind] = useState("all")
   const [status, setStatus] = useState("all")
   const [github, setGithub] = useState<FeedbackDeskQueueGithubFilter>("all")
   const [query, setQuery] = useState("")
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(linkedRequestId)
   const openItems = overview.items.filter((item) => !feedbackIsResolved(item.status))
   const overdue = openItems.filter((item) => item.overdue).length
   const unassigned = openItems.filter((item) => !item.assignedToUserId).length
@@ -316,6 +324,12 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdm
       setSelectedId(selectedItem.id)
     }
   }, [selectedId, selectedItem])
+
+  useEffect(() => {
+    if (linkedRequestId) {
+      document.getElementById("feedback-request-editor")?.scrollIntoView({ block: "start" })
+    }
+  }, [linkedRequestId])
 
   function reconcile(): void {
     startTransition(async () => {
@@ -379,7 +393,7 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdm
           {filteredItems.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No requests match these filters. Try a broader queue or clear the search.</p> : <label className="block space-y-1 text-xs font-medium">Selected request<SearchableCombobox ariaLabel="Choose feedback request" options={filteredItems.map((item) => ({ value: item.id, label: item.title, description: `${item.kind} · ${feedbackStatusLabel(item.status)}` }))} value={selectedItem?.id ?? ""} onValueChange={setSelectedId} placeholder="Choose request" searchPlaceholder="Search requests..." emptyMessage="No matching requests." groupHeading="Requests" /></label>}
         </div>
 
-      {selectedItem && <RequestEditor key={selectedItem.id} item={selectedItem} assignees={overview.assignees} />}
+      {selectedItem && <div id="feedback-request-editor" className="scroll-mt-4"><RequestEditor key={selectedItem.id} item={selectedItem} assignees={overview.assignees} /></div>}
       </section>
 
       <section className="space-y-3" aria-labelledby="feedback-health-heading">

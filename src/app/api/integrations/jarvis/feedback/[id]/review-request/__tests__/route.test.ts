@@ -92,7 +92,7 @@ describe("POST /api/integrations/jarvis/feedback/:id/review-request", () => {
       eventType: "feedback.review_requested",
       sourceId: "feedback-1",
       body: "Looks partly built.",
-      href: "/dashboard/requests/manage",
+      href: "/dashboard/requests/manage?request=feedback-1",
       recipients: [
         { userId: "admin-1", email: "admin@example.com" },
         { userId: "second-1", email: "second@example.com" },

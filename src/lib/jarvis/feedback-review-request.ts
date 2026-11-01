@@ -133,7 +133,7 @@ export async function handleFeedbackReviewRequest(
       sourceId: item.id,
       title: `${item.kind === "feature" ? "Feature request" : "Request"} needs your review: ${item.title.slice(0, 80)}`,
       body: parsed.data.summary,
-      href: "/dashboard/requests/manage",
+      href: `/dashboard/requests/manage?request=${encodeURIComponent(item.id)}`,
       priority: "normal",
       audience: "feedback_admins",
       recipients: reviewers,
