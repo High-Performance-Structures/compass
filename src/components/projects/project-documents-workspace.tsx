@@ -336,11 +336,11 @@ export function ProjectDocumentsWorkspacePanel({
               const isInternalOnly =
                 !docVisibility.owner && !docVisibility.subVendor
               return (
-              <article key={document.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <article key={document.id} className="grid gap-3 py-4 lg:grid-cols-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <IconFileDescription className="size-4 shrink-0 text-muted-foreground" />
-                    <h3 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                    <h3 className="min-w-0 flex-1 break-words font-medium [overflow-wrap:anywhere]">
                       {document.title}
                     </h3>
                     <Badge variant={document.status === "current" ? "default" : "outline"}>
@@ -397,7 +397,7 @@ export function ProjectDocumentsWorkspacePanel({
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col gap-3 lg:items-end">
+                <div className="min-w-0 flex flex-col gap-3 lg:items-end">
                   <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
