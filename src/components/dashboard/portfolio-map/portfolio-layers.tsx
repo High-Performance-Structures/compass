@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Layers } from "lucide-react"
+import type { AirCategory } from "@/lib/weather/air"
 import {
   rateLabel,
   zoneRangeLabel,
@@ -30,7 +31,7 @@ const LAYERS: readonly { readonly id: PortfolioLayerId; readonly label: string; 
   { id: "elevation", label: "Mountain charge", hint: "Ground above each elevation band" },
   { id: "messages", label: "Messages", hint: "Your unread items, stacked on each job" },
   { id: "weather", label: "Weather", hint: "Rain, snow, wind, cold and heat, now to 48 hours" },
-  { id: "fire", label: "Fire & smoke", hint: "Active wildfires and Red Flag Warnings" },
+  { id: "fire", label: "Fire & smoke", hint: "Wildfires, Red Flag Warnings, smoke and air quality" },
 ]
 
 /** Weather layer colors (theme tokens); the scene lifts them for the dark terrain. */
@@ -42,7 +43,25 @@ export const WEATHER_COLOR_TOKEN = {
   heat: "--warning",
 } as const
 
-export const FIRE_COLOR_TOKEN = { fire: "--brand-compass-red", redFlag: "--destructive" } as const
+export const FIRE_COLOR_TOKEN = { fire: "--brand-compass-red", redFlag: "--destructive", smoke: "--muted-foreground" } as const
+
+/** Air quality dots by EPA category, echoing the EPA's green-to-maroon scale. */
+export const AIR_COLOR_TOKEN: Readonly<Record<AirCategory, string>> = {
+  good: "--success",
+  moderate: "--brand-nutech-gold",
+  sensitive: "--warning",
+  unhealthy: "--destructive",
+  very_unhealthy: "--brand-compass-violet",
+  hazardous: "--brand-orc-brown",
+}
+
+const AIR_LEGEND: readonly { readonly label: string; readonly category: AirCategory }[] = [
+  { label: "Good", category: "good" },
+  { label: "Moderate", category: "moderate" },
+  { label: "Sensitive", category: "sensitive" },
+  { label: "Unhealthy", category: "unhealthy" },
+  { label: "Very unhealthy+", category: "very_unhealthy" },
+]
 
 const WEATHER_LEGEND: readonly { readonly label: string; readonly token: string }[] = [
   { label: "Rain", token: WEATHER_COLOR_TOKEN.rain },
@@ -247,7 +266,7 @@ export function PortfolioLayerLegend({
       ) : null}
       {state.fire ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="text-muted-foreground">FIRE &amp; SMOKE · NIFC, NWS</span>
+          <span className="text-muted-foreground">FIRE &amp; SMOKE · NIFC, NWS, NOAA, AIRNOW</span>
           <span className="flex items-center gap-1.5 whitespace-nowrap">
             <span className="size-2.5" style={{ background: `var(${FIRE_COLOR_TOKEN.fire})` }} aria-hidden="true" />
             Active fire and outline
@@ -255,6 +274,16 @@ export function PortfolioLayerLegend({
           <span className="flex items-center gap-1.5 whitespace-nowrap">
             <span className="size-2.5 border-2 border-dashed" style={{ borderColor: `var(${FIRE_COLOR_TOKEN.redFlag})` }} aria-hidden="true" />
             Red Flag Warning / Fire Weather Watch
+          </span>
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="size-2.5 opacity-60" style={{ background: `var(${FIRE_COLOR_TOKEN.smoke})` }} aria-hidden="true" />
+            Smoke (darker = heavier)
+          </span>
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
+            AQI
+            {AIR_LEGEND.map((entry) => (
+              <span key={entry.category} className="size-2.5 rounded-full" title={entry.label} style={{ background: `var(${AIR_COLOR_TOKEN[entry.category]})` }} aria-label={entry.label} />
+            ))}
           </span>
         </p>
       ) : null}

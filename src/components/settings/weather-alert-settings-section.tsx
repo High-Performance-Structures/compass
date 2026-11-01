@@ -9,17 +9,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import {
-  FEATURE_SETTINGS,
-  weatherAlertSettingsSchema,
-  type WeatherAlertSettings,
-} from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
+import { weatherAlertSettingsSchema, type WeatherAlertSettings } from "@/lib/weather/settings"
+import { SMOKE_LEVEL_LABEL, SMOKE_LEVELS, type SmokeLevel } from "@/lib/weather/air"
 import { WEATHER_RULE_CHECK_LABEL, WEATHER_RULE_CHECKS, type WeatherRuleCheck } from "@/lib/weather/schedule-risk"
 
 const KEY = "weather-alerts"
 const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
 
-type LimitField = "snowIn" | "rainIn" | "gustMph" | "coldF" | "heatF" | "fireMiles"
+type LimitField = "snowIn" | "rainIn" | "gustMph" | "coldF" | "heatF" | "fireMiles" | "aqi"
 
 /** A work rule as edited: keywords and numbers as typed. */
 type RuleDraft = {
@@ -52,7 +50,12 @@ const FIELDS: readonly { readonly key: LimitField; readonly label: string; reado
   { key: "coldF", label: "Extreme cold: a low at or below", unit: "°F", min: -60, max: 50, step: 1 },
   { key: "heatF", label: "Extreme heat: a high at or above", unit: "°F", min: 60, max: 130, step: 1 },
   { key: "fireMiles", label: "Wildfire: an active fire within", unit: "miles of a job", min: 1, max: 200, step: 1 },
+  { key: "aqi", label: "Air quality: an AQI at or above", unit: "now or forecast near a job (151 = Unhealthy)", min: 51, max: 500, step: 1 },
 ]
+
+function isSmokeLevel(value: string): value is SmokeLevel {
+  return SMOKE_LEVELS.some((level) => level === value)
+}
 
 const asText = (settings: WeatherAlertSettings): Readonly<Record<LimitField, string>> => ({
   snowIn: String(settings.snowIn),
@@ -61,6 +64,7 @@ const asText = (settings: WeatherAlertSettings): Readonly<Record<LimitField, str
   coldF: String(settings.coldF),
   heatF: String(settings.heatF),
   fireMiles: String(settings.fireMiles),
+  aqi: String(settings.aqi),
 })
 
 /** Company limits that flag jobs on the map's Weather and Fire & smoke layers. */
@@ -72,6 +76,7 @@ export function WeatherAlertSettingsSection(): React.ReactElement {
   const [values, setValues] = React.useState<Readonly<Record<LimitField, string>>>(asText(DEFAULTS))
   const [rules, setRules] = React.useState<readonly RuleDraft[]>(toDrafts(DEFAULTS))
   const [notify, setNotify] = React.useState(DEFAULTS.notifyScheduleRisks)
+  const [smokeLevel, setSmokeLevel] = React.useState<SmokeLevel>(DEFAULTS.smokeLevel)
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
@@ -85,6 +90,7 @@ export function WeatherAlertSettingsSection(): React.ReactElement {
     setValues(asText(settings))
     setRules(toDrafts(settings))
     setNotify(settings.notifyScheduleRisks)
+    setSmokeLevel(settings.smokeLevel)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -105,6 +111,8 @@ export function WeatherAlertSettingsSection(): React.ReactElement {
       coldF: Number(values.coldF),
       heatF: Number(values.heatF),
       fireMiles: Number(values.fireMiles),
+      aqi: Number(values.aqi),
+      smokeLevel,
       workRules: rules.map((rule) => ({
         id: rule.id,
         label: rule.label.trim(),
@@ -149,8 +157,8 @@ export function WeatherAlertSettingsSection(): React.ReactElement {
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{FEATURE_SETTINGS[KEY].description}</p>
         <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
           Forecasts come from the National Weather Service for each job site&apos;s own forecast area, so a job in the mountains
-          gets the mountain forecast. Wildfires come from the national interagency fire map. Turn the layers on from Layers on
-          the dashboard map.
+          gets the mountain forecast. Wildfires come from the national interagency fire map, smoke from NOAA satellite smoke
+          mapping and air quality from EPA AirNow. Turn the layers on from Layers on the dashboard map.
         </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -176,13 +184,27 @@ export function WeatherAlertSettingsSection(): React.ReactElement {
                 <span className="text-sm text-muted-foreground">{field.unit}</span>
               </li>
             ))}
+            <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <Label htmlFor="weather-smokeLevel" className="min-w-56 font-normal">Smoke: over a job at</Label>
+              <Select value={smokeLevel} disabled={disabled} onValueChange={(value) => { if (isSmokeLevel(value)) setSmokeLevel(value) }}>
+                <SelectTrigger id="weather-smokeLevel" className="h-9 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SMOKE_LEVELS.map((level) => (
+                    <SelectItem key={level} value={level}>{SMOKE_LEVEL_LABEL[level]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-muted-foreground">density or heavier</span>
+            </li>
           </ul>
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium">Scheduled work</legend>
             <p className="text-xs text-muted-foreground">
               Schedule items starting in the next 5 days are checked against their job site&apos;s forecast. An item matches a
               rule when its title contains one of the rule&apos;s words. Every item is also checked for weather warnings, heavy
-              snow and extreme cold or heat using the limits above. At-risk items show on the job&apos;s overview.
+              snow, extreme cold or heat and the air quality forecast using the limits above. At-risk items show on the job&apos;s overview.
             </p>
             <ul className="space-y-3">
               {rules.map((rule, index) => {

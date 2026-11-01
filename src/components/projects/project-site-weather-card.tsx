@@ -16,6 +16,7 @@ const RISK_TOKEN: Readonly<Record<ScheduleRiskKind, string>> = {
   rain: "--info",
   snow: "--info",
   warning: "--warning",
+  air: "--muted-foreground",
 }
 
 function dayName(date: string, index: number): string {

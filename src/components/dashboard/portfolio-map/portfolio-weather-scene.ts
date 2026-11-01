@@ -14,7 +14,8 @@ import {
   type Scene,
   type Vector3,
 } from "three"
-import type { FlatRing } from "@/lib/weather/geometry"
+import { SMOKE_LEVELS, type AirCategory, type SmokeLevel } from "@/lib/weather/air"
+import { pointInRing, ringBounds, type FlatRing } from "@/lib/weather/geometry"
 
 /** One forecast cell at the time bar's step, ready to draw. */
 type WeatherSceneCell = {
@@ -49,8 +50,15 @@ export type WeatherSceneView = {
 export type FireSceneView = {
   readonly fires: readonly { readonly id: string; readonly name: string; readonly lon: number; readonly lat: number; readonly acres: number | null; readonly rings: readonly FlatRing[] }[]
   readonly alerts: readonly { readonly rings: readonly FlatRing[]; readonly solid: boolean }[]
-  readonly colors: { readonly fire: number; readonly redFlag: number }
+  readonly smoke: readonly { readonly density: SmokeLevel; readonly rings: readonly FlatRing[] }[]
+  readonly air: readonly { readonly id: string; readonly name: string; readonly lon: number; readonly lat: number; readonly aqi: number | null; readonly category: AirCategory }[]
+  readonly colors: { readonly fire: number; readonly redFlag: number; readonly smoke: number; readonly air: Readonly<Record<AirCategory, number>> }
 }
+
+/** Haze strength per smoke density. */
+const SMOKE_STRENGTH: Readonly<Record<SmokeLevel, number>> = { light: 0.2, medium: 0.36, heavy: 0.56 }
+/** Most haze puffs drawn at once, across all plumes. */
+const MAX_SMOKE_PUFFS = 6000
 
 export type OverlayLabel = { readonly key: string; readonly title: string; readonly sub: string; readonly point: Vector3 }
 
@@ -155,6 +163,17 @@ void main() {
   if (d > 0.5) discard;
   float pulse = 0.8 + 0.2 * sin(uTime * 1.8);
   gl_FragColor = vec4(vColor, (1.0 - d * 2.0) * uStrength * pulse);
+}`
+
+/** A solid round dot with a soft edge and a darker rim, for air quality readings. */
+const DOT_FRAGMENT = /* glsl */ `
+uniform float uStrength;
+varying vec3 vColor;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if (d > 0.5) discard;
+  vec3 color = mix(vColor, vColor * 0.45, smoothstep(0.32, 0.42, d));
+  gl_FragColor = vec4(color, smoothstep(0.5, 0.44, d) * uStrength);
 }`
 
 /**
@@ -431,7 +450,102 @@ export class WeatherOverlay {
     this.add(lines, kind)
   }
 
+  /** Smoke as soft gray haze puffs on a grid inside each plume, denser plumes more opaque. */
+  private buildSmoke(view: FireSceneView): void {
+    if (view.smoke.length === 0) return
+    let area = 0
+    for (const plume of view.smoke) for (const ring of plume.rings) {
+      const box = ringBounds(ring)
+      area += (box.east - box.west) * (box.north - box.south)
+    }
+    // Grid spacing so the whole picture stays under the puff budget.
+    const step = Math.max(0.06, Math.sqrt(area / MAX_SMOKE_PUFFS))
+    const puffUnits = step * Math.min(this.host.unitsPerDegree.lon, this.host.unitsPerDegree.lat) * 2.4
+    const color = new Color(view.colors.smoke)
+    for (const density of SMOKE_LEVELS) {
+      const position: number[] = []
+      const size: number[] = []
+      const colors: number[] = []
+      for (const plume of view.smoke) {
+        if (plume.density !== density) continue
+        for (const ring of plume.rings) {
+          const box = ringBounds(ring)
+          for (let lon = Math.ceil(box.west / step) * step; lon <= box.east; lon += step) {
+            for (let lat = Math.ceil(box.south / step) * step; lat <= box.north; lat += step) {
+              if (!this.host.inBounds(lon, lat) || !pointInRing(lon, lat, ring)) continue
+              const point = this.host.ground(lon, lat, 0.08)
+              position.push(point.x, point.y, point.z)
+              size.push(puffUnits)
+              colors.push(color.r, color.g, color.b)
+            }
+          }
+        }
+      }
+      if (position.length === 0) continue
+      const geometry = this.own(new BufferGeometry(), "fire")
+      geometry.setAttribute("position", new Float32BufferAttribute(position, 3))
+      geometry.setAttribute("aSize", new Float32BufferAttribute(size, 1))
+      geometry.setAttribute("aColor", new Float32BufferAttribute(colors, 3))
+      const material = this.shader("fire", {
+        uniforms: { uTime: { value: 0 }, uScale: { value: 1 }, uStrength: { value: SMOKE_STRENGTH[density] } },
+        vertexShader: GLOW_VERTEX,
+        fragmentShader: GLOW_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        blending: NormalBlending,
+      }, true, true)
+      this.add(new Points(geometry, material), "fire")
+    }
+  }
+
+  /** Air quality: one dot per reporting area in its EPA category color; poor air is labeled. */
+  private buildAir(view: FireSceneView): OverlayLabel[] {
+    if (view.air.length === 0) return []
+    const position: number[] = []
+    const size: number[] = []
+    const colors: number[] = []
+    for (const reading of view.air) {
+      if (!this.host.inBounds(reading.lon, reading.lat)) continue
+      const point = this.host.ground(reading.lon, reading.lat, 0.05)
+      const color = new Color(view.colors.air[reading.category])
+      position.push(point.x, point.y, point.z)
+      size.push(0.24)
+      colors.push(color.r, color.g, color.b)
+    }
+    if (position.length > 0) {
+      const geometry = this.own(new BufferGeometry(), "fire")
+      geometry.setAttribute("position", new Float32BufferAttribute(position, 3))
+      geometry.setAttribute("aSize", new Float32BufferAttribute(size, 1))
+      geometry.setAttribute("aColor", new Float32BufferAttribute(colors, 3))
+      const material = this.shader("fire", {
+        uniforms: { uTime: { value: 0 }, uScale: { value: 1 }, uStrength: { value: 1 } },
+        vertexShader: GLOW_VERTEX,
+        fragmentShader: DOT_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        blending: NormalBlending,
+      }, true, true)
+      this.add(new Points(geometry, material), "fire")
+    }
+    // Label only air past "Moderate" (AQI over 100), worst first.
+    return view.air
+      .filter((reading) => reading.aqi !== null && reading.aqi > 100 && this.host.inBounds(reading.lon, reading.lat))
+      .sort((a, b) => (b.aqi ?? 0) - (a.aqi ?? 0))
+      .slice(0, 6)
+      .map((reading) => ({
+        key: `air:${reading.id}`,
+        title: `AQI ${reading.aqi ?? ""}`,
+        sub: reading.name.toUpperCase(),
+        point: this.host.ground(reading.lon, reading.lat, 0.06),
+      }))
+  }
+
   private buildFire(view: FireSceneView): void {
+    this.buildSmoke(view)
+    const airLabels = this.buildAir(view)
+    this.fireLabels = airLabels
     this.addOutline(view.alerts.filter((alert) => alert.solid).flatMap((alert) => alert.rings), view.colors.redFlag, true, "fire")
     this.addOutline(view.alerts.filter((alert) => !alert.solid).flatMap((alert) => alert.rings), view.colors.redFlag, false, "fire")
     this.addOutline(view.fires.flatMap((fire) => fire.rings), view.colors.fire, true, "fire")
@@ -463,7 +577,7 @@ export class WeatherOverlay {
     }, true, true)
     this.add(new Points(geometry, material), "fire")
     // Name the largest fires; the label placer drops any that overlap.
-    this.fireLabels = [...view.fires]
+    const fireLabels = [...view.fires]
       .sort((a, b) => (b.acres ?? 0) - (a.acres ?? 0))
       .slice(0, 8)
       .map((fire) => ({
@@ -472,5 +586,7 @@ export class WeatherOverlay {
         sub: fire.acres !== null ? `${Math.round(fire.acres).toLocaleString("en-US")} ACRES` : "FIRE",
         point: this.host.ground(fire.lon, fire.lat, 0.05),
       }))
+    // Fires first: the label placer keeps earlier labels when two overlap.
+    this.fireLabels = [...fireLabels, ...airLabels]
   }
 }

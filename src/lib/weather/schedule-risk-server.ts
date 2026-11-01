@@ -2,13 +2,14 @@ import { and, eq, gte, inArray, isNotNull, lte, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { organizationCalendarSettings, projects, scheduleTasks, weatherScheduleRisks } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import type { WeatherAlertSettings } from "@/lib/feature-settings/registry"
+import type { WeatherAlertSettings } from "@/lib/weather/settings"
 import { notifyProjectStaffOfOutsideEvent } from "@/lib/notifications/events"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import { organizationWeatherArea } from "@/lib/weather/areas-server"
 import { alertActiveBetween, alertCovers, fireFlags, type WeatherFlag } from "@/lib/weather/layer"
 import { readAreaHazards, readSiteForecasts, type WeatherJobSite } from "@/lib/weather/read-server"
-import { addDays, scheduleWeatherRisks, type ScheduleRisk } from "@/lib/weather/schedule-risk"
+import { nearestAirReading } from "@/lib/weather/air"
+import { addDays, scheduleAirRisks, scheduleWeatherRisks, type ScheduleRisk } from "@/lib/weather/schedule-risk"
 import { SERIES_STEPS, STEP_MS, type CellSeries } from "@/lib/weather/series"
 
 type Db = ReturnType<typeof getDb>
@@ -132,7 +133,10 @@ export async function projectSiteWeather(db: Db, organizationId: string, project
   const today = localDate(nowMs)
   const items = await upcomingItems(db, [projectId], today)
   const siteAlerts = hazards.weatherAlerts.filter((alert) => alertCovers(alert, site.lon, site.lat))
-  const risks = scheduleWeatherRisks({ items, series: forecast.series, alerts: siteAlerts, limits, rules: limits.workRules, localDate, nowMs })
+  const risks = [
+    ...scheduleWeatherRisks({ items, series: forecast.series, alerts: siteAlerts, limits, rules: limits.workRules, localDate, nowMs }),
+    ...scheduleAirRisks({ items, reading: nearestAirReading(hazards.air, site.lon, site.lat)?.reading ?? null, aqiLimit: limits.aqi, today }),
+  ]
   const startById = new Map(items.map((item) => [item.id, item.startDate]))
   const dayMs = 24 * 60 * 60 * 1000
   const nowWarnings: WeatherFlag[] = siteAlerts
@@ -145,7 +149,7 @@ export async function projectSiteWeather(db: Db, organizationId: string, project
       forecastElevationFt: forecast.forecastElevationFt,
       days: dailySummary(forecast.series, localDate, today, 3),
       risks: risks.map((risk) => ({ ...risk, startDate: startById.get(risk.taskId) ?? risk.date })),
-      hazards: [...nowWarnings, ...fireFlags({ fires: hazards.fires, alerts: hazards.fireAlerts }, site.lon, site.lat, limits, nowMs)],
+      hazards: [...nowWarnings, ...fireFlags({ fires: hazards.fires, alerts: hazards.fireAlerts, smoke: hazards.smoke, air: hazards.air }, site.lon, site.lat, limits, nowMs)],
       updatedAt: forecast.fetchedAt,
     },
     markInUse: forecasts.markInUse,
@@ -234,7 +238,10 @@ export async function sweepScheduleWeatherRisks(db: Db, options: { readonly budg
     const lon = project.lon
     const lat = project.lat
     const siteAlerts = org.hazards.weatherAlerts.filter((alert) => alertCovers(alert, lon, lat))
-    const risks = scheduleWeatherRisks({ items: projectItems, series: forecast.series, alerts: siteAlerts, limits: org.limits, rules: org.limits.workRules, localDate, nowMs })
+    const risks = [
+      ...scheduleWeatherRisks({ items: projectItems, series: forecast.series, alerts: siteAlerts, limits: org.limits, rules: org.limits.workRules, localDate, nowMs }),
+      ...scheduleAirRisks({ items: projectItems, reading: nearestAirReading(org.hazards.air, lon, lat)?.reading ?? null, aqiLimit: org.limits.aqi, today }),
+    ]
     const label = project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
     for (const risk of risks) {
       const firstSeenAt = new Date(nowMs).toISOString()

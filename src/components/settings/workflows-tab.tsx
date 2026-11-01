@@ -224,7 +224,7 @@ const WORKFLOW_AREAS = [
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "portfolio-map", label: "Portfolio map", description: "Which state the dashboard map shows, and which job statuses and departments appear on it, in which phase." },
-  { value: "weather-alerts", label: "Weather & fire alerts", description: "Snow, rain, wind, cold, heat and wildfire distance that flag a job on the map's Weather and Fire & smoke layers." },
+  { value: "weather-alerts", label: "Weather & fire alerts", description: "Snow, rain, wind, cold, heat, wildfire distance, smoke and air quality that flag a job on the map's Weather and Fire & smoke layers." },
   { value: "client-interactions", label: "Client interactions", description: "How client contact is logged." },
   { value: "project-duplicates", label: "Duplicate project check", description: "Departments whose customers place repeat orders." },
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },

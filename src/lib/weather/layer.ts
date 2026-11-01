@@ -1,3 +1,4 @@
+import { AIR_CATEGORY_LABEL, SMOKE_LEVEL_LABEL, airTimeLabel, airValue, nearestAirReading, smokeAt, smokeAtLeast, type AirReading, type SmokeLevel, type SmokePlume } from "@/lib/weather/air"
 import type { WeatherAlert } from "@/lib/weather/alerts"
 import type { ActiveFire } from "@/lib/weather/fires"
 import { milesBetween, milesToRing, pointInRing } from "@/lib/weather/geometry"
@@ -41,6 +42,10 @@ export type FireLayerData = {
   readonly fires: readonly ActiveFire[]
   /** Red Flag Warnings and Fire Weather Watches. */
   readonly alerts: readonly WeatherAlert[]
+  /** Smoke traced on today's satellite images. */
+  readonly smoke: readonly SmokePlume[]
+  /** Air quality readings and forecasts by reporting area. */
+  readonly air: readonly AirReading[]
   readonly updatedAt: string | null
 }
 
@@ -57,6 +62,10 @@ export type WeatherLimits = {
   readonly heatF: number
   /** Active fire within this many miles of a job. */
   readonly fireMiles: number
+  /** Air quality: an AQI at or above this, now or forecast, at the nearest reporting area. */
+  readonly aqi: number
+  /** Smoke over a job at this density or heavier. */
+  readonly smokeLevel: SmokeLevel
 }
 
 export const DEFAULT_WEATHER_LIMITS: WeatherLimits = {
@@ -66,9 +75,12 @@ export const DEFAULT_WEATHER_LIMITS: WeatherLimits = {
   coldF: 0,
   heatF: 95,
   fireMiles: 25,
+  // 151 is where the EPA's "Unhealthy" (for everyone) starts.
+  aqi: 151,
+  smokeLevel: "medium",
 }
 
-export type WeatherFlagKind = "snow" | "rain" | "wind" | "cold" | "heat" | "warning" | "fire" | "red_flag"
+export type WeatherFlagKind = "snow" | "rain" | "wind" | "cold" | "heat" | "warning" | "fire" | "red_flag" | "smoke" | "air"
 
 export type WeatherFlag = {
   readonly kind: WeatherFlagKind
@@ -160,12 +172,42 @@ function bearingWord(fromLon: number, fromLat: number, toLon: number, toLat: num
   return COMPASS_POINTS[index] ?? "north"
 }
 
-/** Fire flags for a job: Red Flag Warnings over it and fires within the company's distance. */
+function dayName(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
+}
+
+/** Smoke over the job at the company's density or heavier. */
+export function smokeFlags(plumes: readonly SmokePlume[], lon: number, lat: number, limits: Pick<WeatherLimits, "smokeLevel">): WeatherFlag[] {
+  const plume = smokeAt(plumes, lon, lat)
+  if (!plume || !smokeAtLeast(plume.density, limits.smokeLevel)) return []
+  const label = SMOKE_LEVEL_LABEL[plume.density]
+  return [{ kind: "smoke", label: `${label.toUpperCase()} SMOKE`, detail: `${label} smoke over the site on today's satellite images.` }]
+}
+
+/** Air quality at the nearest reporting area: the current reading, else the worst forecast, at or above the company's AQI. */
+export function airFlags(readings: readonly AirReading[], lon: number, lat: number, limits: Pick<WeatherLimits, "aqi">): WeatherFlag[] {
+  const nearest = nearestAirReading(readings, lon, lat)
+  if (!nearest) return []
+  const { reading, miles } = nearest
+  const where = miles < 2 ? `in ${reading.name}` : `at ${reading.name}, ${Math.round(miles)} mi away,`
+  const now = reading.now
+  if (now && now.aqi >= limits.aqi) {
+    const pollutant = now.parameter ? `, ${now.parameter}` : ""
+    return [{ kind: "air", label: `AQI ${now.aqi}`, detail: `Air quality ${now.aqi} (${AIR_CATEGORY_LABEL[now.category]}${pollutant}) ${where} as of ${airTimeLabel(now.time)}.` }]
+  }
+  const worst = [...reading.forecasts].sort((a, b) => airValue(b) - airValue(a))[0]
+  if (!worst || airValue(worst) < limits.aqi) return []
+  const value = worst.aqi !== null ? `${worst.aqi} ` : ""
+  const label = worst.aqi !== null ? `AQI ${worst.aqi} FORECAST` : `${AIR_CATEGORY_LABEL[worst.category].toUpperCase()} AIR`
+  return [{ kind: "air", label, detail: `Air quality forecast ${value}(${AIR_CATEGORY_LABEL[worst.category]}) for ${dayName(worst.date)} ${where.replace(/,$/, "")}.` }]
+}
+
+/** Fire & smoke flags for a job: Red Flag Warnings over it, fires within the company's distance, smoke and air quality. */
 export function fireFlags(
-  data: Pick<FireLayerData, "fires" | "alerts">,
+  data: Pick<FireLayerData, "fires" | "alerts" | "smoke" | "air">,
   lon: number,
   lat: number,
-  limits: Pick<WeatherLimits, "fireMiles">,
+  limits: Pick<WeatherLimits, "fireMiles" | "aqi" | "smokeLevel">,
   nowMs: number,
 ): WeatherFlag[] {
   const flags: WeatherFlag[] = []
@@ -183,5 +225,6 @@ export function fireFlags(
     const contained = fire.containedPercent !== null ? `, ${Math.round(fire.containedPercent)}% contained` : ""
     flags.push({ kind: "fire", label: `${fire.name.toUpperCase()} · ${miles < 0.5 ? "AT SITE" : `${Math.round(miles)} MI`}`, detail: `${fire.name}, ${where} (${size}${contained}).` })
   }
+  flags.push(...smokeFlags(data.smoke, lon, lat, limits), ...airFlags(data.air, lon, lat, limits))
   return flags
 }
