@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   decrypt: vi.fn(),
   parseServiceAccountKey: vi.fn(),
   downloadFile: vi.fn(),
+  getFile: vi.fn(),
+  downloadThumbnail: vi.fn(),
   exportFile: vi.fn(),
   isGoogleNativeFile: vi.fn(),
   getExportMimeType: vi.fn(),
@@ -50,6 +52,8 @@ vi.mock("@/lib/google/mapper", () => ({
 vi.mock("@/lib/google/client/drive-client", () => ({
   DriveClient: class {
     downloadFile = mocks.downloadFile
+    getFile = mocks.getFile
+    downloadThumbnail = mocks.downloadThumbnail
     exportFile = mocks.exportFile
   },
 }))
@@ -143,6 +147,8 @@ function configureDb({
   mocks.parseServiceAccountKey.mockReturnValue({ type: "service_account" })
   mocks.isGoogleNativeFile.mockReturnValue(false)
   mocks.downloadFile.mockResolvedValue(new Response("jpeg-bytes", { status: 200 }))
+  mocks.getFile.mockResolvedValue({ mimeType: "image/jpeg", thumbnailLink: "https://drive.google.com/thumbnail=s220" })
+  mocks.downloadThumbnail.mockResolvedValue(new Response("print-jpeg", { headers: { "Content-Type": "image/jpeg" } }))
 
   let selectCount = 0
   mocks.getDb.mockReturnValue({
@@ -166,11 +172,13 @@ function configureDb({
 
 async function getPhoto(
   audience?: string,
-  resourceType?: string
+  resourceType?: string,
+  size?: string
 ): Promise<Response> {
   const search = new URLSearchParams()
   if (audience !== undefined) search.set("audience", audience)
   if (resourceType !== undefined) search.set("resourceType", resourceType)
+  if (size !== undefined) search.set("size", size)
   const suffix = search.toString().length > 0 ? `?${search.toString()}` : ""
   return GET(
     new NextRequest(
@@ -230,6 +238,42 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
       "drive@example.com",
       "drive-document-1"
     )
+  })
+
+  it.each(["admin", "client"])("serves a print-size rendition after %s authorization", async (viewerRole) => {
+    configureDb({ viewerRole, membershipRole: "client", visiblePhoto: photo })
+    const response = await getPhoto("owner", undefined, "print")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("print-jpeg")
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg")
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(mocks.downloadThumbnail).toHaveBeenCalledWith("drive@example.com", "https://drive.google.com/thumbnail=s220", 800)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("does not fetch a print rendition without the external resource grant", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: photo })
+    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
+    expect((await getPhoto("owner", undefined, "print")).status).toBe(404)
+    expect(mocks.getFile).not.toHaveBeenCalled()
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("falls back to the original when Drive has no print rendition", async () => {
+    mocks.downloadThumbnail.mockResolvedValue(null)
+    const response = await getPhoto("owner", undefined, "print")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("jpeg-bytes")
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps non-image document downloads intact for a print-size request", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: document })
+    mocks.getFile.mockResolvedValue({ mimeType: "application/pdf", thumbnailLink: "https://drive.google.com/thumbnail=s220" })
+    const response = await getPhoto("owner", "owner_update_document", "print")
+    expect(response.headers.get("Content-Type")).toBe("application/pdf")
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
   })
 
   it("serves an approved owner-visible photo only to an owner member", async () => {
