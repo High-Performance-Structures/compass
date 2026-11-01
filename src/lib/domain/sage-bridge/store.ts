@@ -13,7 +13,7 @@
  * before, and raw statements come back bound but not run. No auth here:
  * bridge routes verify the HMAC signature first.
  */
-import type { SQL } from "drizzle-orm"
+import { and, eq, lt, or, sql, type SQL } from "drizzle-orm"
 import type { SQLiteInsertValue, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import {
@@ -21,9 +21,14 @@ import {
   sageClientDirectoryRefreshes,
   sageClientProjectWriteOperations,
   sagePayApplicationSyncRuns,
+  sageVendorCertificateSyncs,
+  sageVendorDirectoryEntries,
 } from "@/db/schema-sage"
 import { sageLaborRequests } from "@/db/schema-shop-tickets"
+import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
 import type { SageBridgeHeartbeatId } from "@/lib/domain/sage-bridge/rules"
+import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES, type SageVendorCertificateSyncStatus } from "@/lib/domain/sage-bridge/statuses"
+import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 // ---------------------------------------------------------------------------
@@ -327,4 +332,80 @@ export function updateSageLaborRequests(
   where: SQL | undefined
 ): ReturnType<typeof laborRequestUpdate> {
   return laborRequestUpdate(db, changes, where)
+}
+
+// sage_vendor_certificate_syncs: one sync row per vendor (Sage vendor certificates).
+
+const LISTS = { status: SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES }
+
+/**
+ * Queues each vendor's sync. A sync already claimed by the writer keeps
+ * running; its newer requested time sends it round again when it reports.
+ */
+export async function queueVendorCertificateSyncs(db: Db, organizationId: string, vendorIds: readonly string[], now: string): Promise<void> {
+  for (const ids of chunkD1Values([...new Set(vendorIds)])) {
+    if (ids.length === 0) continue
+    await db
+      .insert(sageVendorCertificateSyncs)
+      .values(ids.map((vendorId) => ({ id: crypto.randomUUID(), organizationId, vendorId, status: "queued" as const, requestedAt: now, updatedAt: now })))
+      .onConflictDoUpdate({
+        target: sageVendorCertificateSyncs.vendorId,
+        set: {
+          status: sql`CASE WHEN ${sageVendorCertificateSyncs.status} = 'running' THEN 'running' ELSE 'queued' END`,
+          requestedAt: now,
+          updatedAt: now,
+        },
+      })
+  }
+}
+
+/** Claims one queued (or stale running) sync for the writer; false when another poll got it first. */
+export async function claimVendorCertificateSync(db: Db, id: string, claimToken: string, now: string, staleBefore: string): Promise<boolean> {
+  const claimed = await db
+    .update(sageVendorCertificateSyncs)
+    .set({ status: "running", claimToken, claimedAt: now, attemptCount: sql`${sageVendorCertificateSyncs.attemptCount} + 1`, updatedAt: now })
+    .where(
+      and(
+        eq(sageVendorCertificateSyncs.id, id),
+        or(
+          eq(sageVendorCertificateSyncs.status, "queued"),
+          and(eq(sageVendorCertificateSyncs.status, "running"), lt(sageVendorCertificateSyncs.claimedAt, staleBefore))
+        )
+      )
+    )
+    .returning({ id: sageVendorCertificateSyncs.id })
+  return claimed.length > 0
+}
+
+export type VendorCertificateSyncPatch = {
+  readonly status: SageVendorCertificateSyncStatus
+  readonly payloadJson?: string | null
+  readonly resultJson?: string | null
+  readonly errorMessage?: string | null
+  readonly completedAt?: string | null
+  readonly updatedAt: string
+}
+
+/** Updates syncs matching the caller's fence (for example id plus claim token). */
+export async function updateVendorCertificateSyncs(db: Db, where: SQL | undefined, patch: VendorCertificateSyncPatch): Promise<number> {
+  assertListFields("sage_vendor_certificate_syncs", patch, LISTS)
+  const rows = await db.update(sageVendorCertificateSyncs).set(patch).where(where).returning({ id: sageVendorCertificateSyncs.id })
+  return rows.length
+}
+
+// sage_vendor_directory_entries: the read-only copy of Sage's vendor records.
+
+export type SageVendorDirectoryRow = {
+  readonly sageRecordId: string
+  readonly sageVendorNumber: string
+  readonly name: string
+  readonly email: string | null
+}
+
+/** Replaces the organization's copy of Sage's vendors in one atomic batch. */
+export async function replaceSageVendorDirectory(db: Db, organizationId: string, rows: readonly SageVendorDirectoryRow[], now: string): Promise<void> {
+  const inserts = chunkD1Rows(rows.map((row) => ({ organizationId, ...row, capturedAt: now }))).map((chunk) =>
+    db.insert(sageVendorDirectoryEntries).values(chunk)
+  )
+  await db.batch([db.delete(sageVendorDirectoryEntries).where(eq(sageVendorDirectoryEntries.organizationId, organizationId)), ...inserts])
 }

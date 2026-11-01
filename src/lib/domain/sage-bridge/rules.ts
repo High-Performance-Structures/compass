@@ -12,6 +12,7 @@ export const SAGE_BRIDGE_HEARTBEAT_IDS = [
   "labor-hours-poller",
   "square-payment-writer",
   "tax-catalog-poller",
+  "vendor-certificate-writer",
 ] as const
 
 export type SageBridgeHeartbeatId = (typeof SAGE_BRIDGE_HEARTBEAT_IDS)[number]

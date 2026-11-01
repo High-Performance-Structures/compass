@@ -707,6 +707,12 @@
     "sageTaxEntities": [
       "src/lib/sage/tax-catalog-ingest.ts"
     ],
+    "sageVendorCertificateSyncs": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageVendorDirectoryEntries": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
     "savedViewDefaults": [
       "src/lib/domain/settings/store.ts"
     ],

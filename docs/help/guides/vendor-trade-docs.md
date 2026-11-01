@@ -58,6 +58,27 @@ The same list shows every link you've sent, when it was opened and when files ca
 
 The info sheet's answers, including tax IDs, are kept only in the PDF in the vendor's Drive folder, not in Compass.
 
+## Sage Certificates {#sage}
+
+Sage keeps each vendor's certificates under **Vendors > Options > Certificates**, with an expiration date, **Warning** and **Stop Pay**. Compass can keep those rows matched to the documents on file here.
+
+1. In **Settings > Workflows > Trade docs > Sage certificates**, turn on **Keep Sage's vendor certificates in step**.
+2. Under **Name in Sage**, enter the description your Sage rows already use for each document, such as "General Liability". Compass then updates those rows instead of adding new ones.
+3. Link vendors to Sage. Once a day the Sage writer sends Compass Sage's vendor list. **Link N vendors** links every exact match: the same company name or email, with no second candidate. Link the rest from each vendor's record.
+
+For each linked vendor, every required document becomes one certificate row in Sage:
+
+- A document on file sends its received and expiration dates.
+- A document never received goes to Sage as already expired, so Sage treats it as overdue.
+- An accepted alternative, such as a no-employees declaration, turns that row's Warning and Stop Pay off.
+- The vendor's bill choice sets the flags. **Flag the bill** turns Warning on. **Hold payment** also turns Stop Pay on. **Do nothing** turns both off.
+
+**Warn only while we catch up on documents** is on to start. While it's on, every vendor gets a warning and no stop, even vendors set to hold payment. Turn it off once documents are collected, and Compass sets Stop Pay for the vendors set to hold.
+
+Compass sends a vendor again whenever their documents or bill choice change. It changes only the rows it recognizes by name, and leaves other rows in Sage alone. If Sage has two rows for the same document, Compass keeps the newest and turns the older row's Warning and Stop Pay off.
+
+Sage applies Stop Pay only in **4-3 Vendor Payments** with **Exclude Vendors with Overdue Certificates** selected. Choose **Warn on Vendors with Overdue Certificates** there to see warnings instead.
+
 ## Bring In Documents You Already Have {#bring-in}
 
 If your company already keeps W-9s, certificates, licenses, and signed agreements in Google Drive, choose **Bring in from Drive** under **Documents you already have** in **Settings > Workflows > Trade docs**.
