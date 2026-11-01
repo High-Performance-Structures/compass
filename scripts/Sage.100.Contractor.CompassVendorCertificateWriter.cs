@@ -158,6 +158,13 @@ namespace CompassSageClientProjectWriter
                         while (reader.Read()) columns.Append(columns.Length == 0 ? "" : ",").Append(Convert.ToString(reader[0]));
                     using (SqlCommand count = new SqlCommand("SELECT COUNT(*) FROM dbo.vndcrt", connection))
                         columns.Append(" rows=").Append(Convert.ToString(count.ExecuteScalar()));
+                    // The descriptions staff already use, so Compass can be given the same names.
+                    using (SqlCommand names = new SqlCommand("SELECT TOP 20 LTRIM(RTRIM(dscrpt)) AS d, COUNT(*) AS n, SUM(CASE WHEN stppay = 'Y' THEN 1 ELSE 0 END) AS s FROM dbo.vndcrt GROUP BY LTRIM(RTRIM(dscrpt)) ORDER BY COUNT(*) DESC", connection))
+                    using (SqlDataReader reader = names.ExecuteReader())
+                    {
+                        columns.Append(" descriptions=");
+                        while (reader.Read()) columns.Append('[').Append(Convert.ToString(reader["d"])).Append(" x").Append(Convert.ToString(reader["n"])).Append(" stop=").Append(Convert.ToString(reader["s"])).Append(']');
+                    }
                 }
                 CertificateLine sample = new CertificateLine { desc = "Compass diagnostic", receivedDate = "2026-01-01", expiryDate = "2026-12-31", warn = "Y", stopPay = "N", memo = "Schema validation only" };
                 StringBuilder children = new StringBuilder();
@@ -322,7 +329,7 @@ namespace CompassSageClientProjectWriter
                 string key = columns.Contains("_idref") ? "_idref" : "recnum";
                 string line = columns.Contains("linnum") ? "linnum" : null;
                 string desc = FirstColumn(columns, "dscrpt", "crtdsc", "crtnme");
-                string received = FirstColumn(columns, "rcvdte", "recdte", "dterec", "datrcv");
+                string received = FirstColumn(columns, "dtercv", "rcvdte", "recdte", "dterec", "datrcv");
                 string job = FirstColumn(columns, "jobnum", "jobref");
                 if (line == null || desc == null || !columns.Contains("expdte") || !columns.Contains("cntwrn") || !columns.Contains("stppay"))
                     throw new InvalidOperationException("Sage's certificate table doesn't have the expected columns. Run --vendor-certificate-diagnose.");
