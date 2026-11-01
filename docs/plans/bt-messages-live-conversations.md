@@ -348,19 +348,41 @@ stops at the first that decides:
    case-insensitive with whitespace normalized (no fuzzy matching, initials
    or nicknames), matching exactly one of the project's own people (its
    staff and project contacts). Two or more: review.
-3. **Name in the BT catalog** (`by_name_catalog`). Otherwise the same exact
-   name matching exactly one row of the BT people catalog. That row must then
-   resolve to exactly one Compass person by its exact BT id registered in the
-   directory (`<type>:<btId>`), else by the catalog row's email. Anything
-   else: review.
-4. Otherwise the participant is unmatched (`participant_unmatched`) or
-   ambiguous (`participant_ambiguous`) and the whole thread goes to review.
+3. **The BT catalog** (`by_email_catalog`, `by_name_catalog`). Otherwise
+   exactly one row of the BT people catalog, found by the email shown, else
+   by the same exact name. That row resolves to exactly one Compass person by
+   its exact BT id registered in the directory (`<type>:<btId>`), else by the
+   catalog row's email.
+4. **New to Compass** (`new_contact_from_catalog`, owner decision 1). When
+   that unique catalog row resolves to no Compass record, the person is added
+   to the directory without an invitation:
+   - `vendor_contact` / `vendor_company`: a vendor contact under the Compass
+     vendor registered with the catalog parent's exact BT id (for a company
+     participant, the company itself). When no vendor has that BT id, the
+     vendor is created too (`source_system = 'buildertrend'`,
+     `source_record_id = <company BT id>`), named from the catalog's company
+     row; if the catalog has no company row either: review. A company
+     participant is recorded as the company's own contact.
+   - `customer`: a customer contact under the project's client customer when
+     the project has exactly one (its client plus the customers of its owner
+     contacts); none: review; more than one: review (`participant_ambiguous`).
+   - `internal_user`: review. Staff must be real Compass users.
+   Ids come from the organization and the exact BT ids, so a re-run never
+   creates a second vendor or contact. Each is listed once in
+   `new-contacts.jsonl` for review.
+5. Otherwise (not in the catalog at all, or ambiguous) the participant is
+   unmatched (`participant_unmatched`) or ambiguous (`participant_ambiguous`)
+   and the whole thread goes to review.
 
 A matched person without a Compass account is added to the project as a
 directory contact without an invitation (linked to their vendor or customer
 contact when the snapshot has one), once per person however the pages named
 them. `summary.json` reports `participant_matches` per thread participant:
-`by_map`, `by_email`, `by_name_project`, `by_name_catalog`, `review`.
+`by_map`, `by_email`, `by_name_project`, `by_email_catalog`,
+`by_name_catalog`, `new_contact_from_catalog`, `review`, and
+`new_contact_from_catalog` (people listed in `new-contacts.jsonl`). The
+directory snapshot also carries `vendors` (BT-registered vendors) and
+`projects` (each project's client customers) for this step.
 
 ## Review queue
 

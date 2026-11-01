@@ -334,7 +334,7 @@ function review(reason, message, detail = {}) {
 export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
-  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_name_catalog: 0, review: 0 }
+  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0, review: 0 }
   const precheck = input.precheck
   const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
   const reviews = []
@@ -445,6 +445,50 @@ function contactFor(person, projectId) {
   return { id: importedContactId(projectId, person.entry.identity ?? person.key), create: true }
 }
 
+/** Vendor, vendor contact and customer contact rows for a person new to Compass. */
+function directoryStatements(create, organizationId, now, guard) {
+  if (!create) return []
+  const statements = []
+  if (create.vendor) {
+    statements.push(insertSelect("vendors", {
+      id: create.vendor.id, name: create.vendor.name, organization_id: organizationId,
+      source_system: SOURCE_SYSTEM, source_record_id: create.vendor.btId, created_at: now,
+    }, `${guard} AND NOT EXISTS (SELECT 1 FROM vendors WHERE organization_id = ${sqlValue(organizationId)} AND source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_record_id = ${sqlValue(create.vendor.btId)})`))
+  }
+  if (create.vendorContact) {
+    statements.push(insertSelect("vendor_contacts", {
+      id: create.vendorContact.id, vendor_id: create.vendorContact.vendorId, name: create.vendorContact.name, email: create.vendorContact.email ?? null,
+      source_system: SOURCE_SYSTEM, source_record_id: create.vendorContact.btId, created_at: now, updated_at: now,
+    }, `${guard} AND EXISTS (SELECT 1 FROM vendors WHERE id = ${sqlValue(create.vendorContact.vendorId)} AND organization_id = ${sqlValue(organizationId)})`))
+  }
+  if (create.customerContact) {
+    statements.push(insertSelect("customer_contacts", {
+      id: create.customerContact.id, customer_id: create.customerContact.customerId, name: create.customerContact.name, email: create.customerContact.email ?? null,
+      source_system: SOURCE_SYSTEM, source_record_id: create.customerContact.btId, created_at: now, updated_at: now,
+    }, `${guard} AND EXISTS (SELECT 1 FROM customers WHERE id = ${sqlValue(create.customerContact.customerId)} AND organization_id = ${sqlValue(organizationId)})`))
+  }
+  return statements
+}
+
+/** People added to the directory from the BT catalog, once each, for review. */
+export function newCatalogContacts(plan) {
+  const seen = new Map()
+  for (const thread of plan.threads) {
+    for (const person of thread.people) {
+      const create = person.entry.createDirectory
+      if (!create || seen.has(`${thread.projectId}\u0000${person.entry.identity}`)) continue
+      seen.set(`${thread.projectId}\u0000${person.entry.identity}`, {
+        identity: person.entry.identity, projectId: thread.projectId, kind: person.entry.kind,
+        displayName: person.entry.displayName, email: person.entry.email ?? null,
+        vendorCreated: create.vendor ? { id: create.vendor.id, name: create.vendor.name, btId: create.vendor.btId } : null,
+        vendorContactId: create.vendorContact?.id ?? null, customerContactId: create.customerContact?.id ?? null,
+        customerId: create.customerContact?.customerId ?? null,
+      })
+    }
+  }
+  return [...seen.values()]
+}
+
 const NOT_STAFF_ONLY = (projectId) =>
   `NOT EXISTS (SELECT 1 FROM projects WHERE id = ${sqlValue(projectId)} AND imported_conversations_staff_only = 1)`
 
@@ -477,6 +521,9 @@ export function threadStatements(thread, input) {
     const contact = person.entry.kind === "staff" ? null : contactFor(person, thread.projectId)
     contactByKey.set(person.key, contact?.id ?? null)
     if (contact?.create) {
+      // A catalog person new to Compass also gets its company directory
+      // records first (ids from the BT ids, so a re-run adds nothing).
+      statements.push(...directoryStatements(person.entry.createDirectory, thread.organizationId, now, guard))
       // Added to the directory without an invitation (owner decision 1).
       statements.push(insertSelect("project_contacts", {
         id: contact.id, project_id: thread.projectId,
@@ -705,6 +752,7 @@ function main() {
   const participants = options.participants ? parseParticipantMap(readJson(options.participants)) : new Map()
   const resolveParticipant = createParticipantResolver({
     participantMap: participants,
+    organizationId: config.organizationId,
     directory: options.directory ? parseDirectory(readJson(options.directory)) : null,
     catalog: options.peopleCatalog ? parsePeopleCatalog(readFileSync(options.peopleCatalog, "utf8")) : [],
   })
@@ -734,6 +782,8 @@ function main() {
   writeFileSync(join(options.out, "review.jsonl"), plan.reviews.map((item) => JSON.stringify(item)).join("\n") + (plan.reviews.length ? "\n" : ""))
   writeFileSync(join(options.out, "pending.jsonl"), plan.pending.map((item) => JSON.stringify(item)).join("\n") + (plan.pending.length ? "\n" : ""))
   const attachmentsWithoutFile = plan.threads.flatMap((thread) => thread.messages.flatMap((message) => message.attachments.filter((a) => !driveFiles.has(a.sha256)).map((a) => ({ btMessageId: message.btMessageId, ...a }))))
+  const newContacts = newCatalogContacts(plan)
+  writeFileSync(join(options.out, "new-contacts.jsonl"), newContacts.map((item) => JSON.stringify(item)).join("\n") + (newContacts.length ? "\n" : ""))
   writeFileSync(join(options.out, "attachments-unmapped.jsonl"), attachmentsWithoutFile.map((item) => JSON.stringify(item)).join("\n") + (attachmentsWithoutFile.length ? "\n" : ""))
   checkpoint.batches = files
   checkpoint.applied = checkpoint.applied.filter((file) => files.includes(file))
@@ -745,6 +795,7 @@ function main() {
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
     // How each thread participant was matched (per thread); review = unmatched or ambiguous.
     participant_matches: plan.matches,
+    new_contact_from_catalog: newContacts.length,
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
     attachmentsNeedingStoredFile: attachmentsWithoutFile.length,

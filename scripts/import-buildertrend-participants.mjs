@@ -12,11 +12,19 @@
  *      person: first among the project's own people, then among the BT people
  *      catalog, whose single hit must resolve to exactly one Compass person by
  *      its exact BT id, else by its email;
- *   c. otherwise the participant is unmatched or ambiguous and the whole
+ *   c. a unique catalog match (by email, else exact name) that resolves to no
+ *      Compass record becomes a new, uninvited directory contact (owner
+ *      decision 1): a vendor contact under the vendor matched by the catalog
+ *      parent's exact BT id (the vendor is created too when it is missing), or
+ *      a customer contact under the project's single client. Staff
+ *      (internal_user) must be real users, so they go to review;
+ *   d. otherwise the participant is unmatched or ambiguous and the whole
  *      thread goes to review.
  * Used by scripts/import-buildertrend-messages.mjs; see
  * docs/plans/bt-messages-live-conversations.md.
  */
+
+import { createHash } from "node:crypto"
 
 export const DIRECTORY_SCHEMA = "bt-directory-snapshot/v1"
 const KINDS = new Set(["staff", "owner", "vendor"])
@@ -42,6 +50,8 @@ function text(value) {
  *     userId?, projectIds: [] (projects the person is staff on or a contact of),
  *     projectContactIds: { projectId: contactId }, vendorId?, vendorContactId?,
  *     customerId?, customerContactId?, btIds: ["vendor_contact:123", ...] }
+ * plus optional `vendors: [{ vendorId, btId }]` (vendors registered with a BT
+ * company id) and `projects: [{ projectId, clientCustomerIds: [] }]`.
  */
 export function parseDirectory(value) {
   if (value?.schema !== DIRECTORY_SCHEMA) throw new Error(`directory schema must be ${DIRECTORY_SCHEMA}`)
@@ -67,7 +77,18 @@ export function parseDirectory(value) {
       btIds: new Set(Array.isArray(row.btIds) ? row.btIds : []),
     }
   })
-  return { people }
+  const vendorsByBtId = new Map()
+  for (const row of Array.isArray(value.vendors) ? value.vendors : []) {
+    const btId = text(row?.btId == null ? null : String(row.btId))
+    const vendorId = text(row?.vendorId)
+    if (!btId || !vendorId) continue
+    vendorsByBtId.set(btId, [...(vendorsByBtId.get(btId) ?? []), vendorId])
+  }
+  const projectClients = new Map()
+  for (const row of Array.isArray(value.projects) ? value.projects : []) {
+    if (text(row?.projectId)) projectClients.set(row.projectId, [...new Set((row.clientCustomerIds ?? []).filter((id) => text(id)))])
+  }
+  return { people, vendorsByBtId, projectClients }
 }
 
 /** The BT people catalog captured from Buildertrend (JSONL rows). */
@@ -81,6 +102,7 @@ export function parsePeopleCatalog(textValue) {
       btId, type: row.type,
       parentBtId: row.parentBtId == null ? null : String(row.parentBtId),
       name: normalizeName(row.displayName),
+      displayName: text(row.displayName),
       email: normalizeEmail(row.email),
     }
   })
@@ -96,6 +118,67 @@ function entryFor(person) {
   }
 }
 
+function shortId(prefix, ...parts) {
+  return `${prefix}-${createHash("sha256").update(parts.join("\u0000"), "utf8").digest("hex").slice(0, 32)}`
+}
+
+/**
+ * A catalog person with no Compass record becomes a new, uninvited directory
+ * contact. Ids come from the organization and the exact BT ids, so re-runs
+ * never create a second copy.
+ */
+function newContactFromCatalog(input) {
+  const { row, catalog, directory, organizationId, projectId } = input
+  if (!row.displayName) return { reason: "participant_unmatched" }
+  const base = { decision: "new_contact", userId: null, contactIds: {}, displayName: row.displayName, email: row.email, companyName: null }
+  if (row.type === "vendor_contact" || row.type === "vendor_company") {
+    const companyBtId = row.type === "vendor_company" ? row.btId : row.parentBtId
+    if (!companyBtId) return { reason: "participant_unmatched" }
+    const vendors = directory?.vendorsByBtId.get(companyBtId) ?? []
+    if (vendors.length > 1) return { reason: "participant_ambiguous" }
+    const parent = catalog.find((entry) => entry.type === "vendor_company" && entry.btId === companyBtId)
+    const vendor = vendors.length === 1
+      ? { id: vendors[0], create: false }
+      : parent?.displayName
+        ? { id: shortId("bt-vendor", organizationId, companyBtId), create: true, name: parent.displayName, btId: companyBtId }
+        : null
+    if (!vendor) return { reason: "participant_unmatched" }
+    const vendorContactId = shortId("bt-vendor-contact", organizationId, row.type, row.btId)
+    return {
+      entry: {
+        ...base, kind: "vendor", identity: `catalog:${row.type}:${row.btId}`,
+        companyName: parent?.displayName ?? null,
+        links: { vendorId: vendor.id, vendorContactId },
+        createDirectory: {
+          vendor: vendor.create ? { id: vendor.id, name: vendor.name, btId: vendor.btId } : null,
+          // A company participant is recorded as the company's own contact.
+          vendorContact: { id: vendorContactId, vendorId: vendor.id, name: row.displayName, email: row.email, btId: row.type === "vendor_contact" ? row.btId : null },
+          customerContact: null,
+        },
+      },
+      rule: "new_contact_from_catalog",
+    }
+  }
+  if (row.type === "customer") {
+    const clients = directory?.projectClients.get(projectId) ?? []
+    if (clients.length !== 1) return { reason: clients.length > 1 ? "participant_ambiguous" : "participant_unmatched" }
+    const customerContactId = shortId("bt-customer-contact", organizationId, row.btId)
+    return {
+      entry: {
+        ...base, kind: "owner", identity: `catalog:customer:${row.btId}`,
+        links: { customerId: clients[0], customerContactId },
+        createDirectory: {
+          vendor: null, vendorContact: null,
+          customerContact: { id: customerContactId, customerId: clients[0], name: row.displayName, email: row.email, btId: row.btId },
+        },
+      },
+      rule: "new_contact_from_catalog",
+    }
+  }
+  // internal_user: staff must already be real Compass users.
+  return { reason: "participant_unmatched" }
+}
+
 function one(list) {
   return list.length === 1 ? list[0] : list.length === 0 ? null : "ambiguous"
 }
@@ -105,7 +188,9 @@ function one(list) {
  * `{ entry, rule }` or `{ reason: "participant_unmatched" | "participant_ambiguous" }`.
  */
 export function createParticipantResolver(input) {
-  const { participantMap, directory, catalog } = input
+  const { participantMap, directory } = input
+  const catalog = input.catalog ?? []
+  const organizationId = input.organizationId ?? null
   const people = directory?.people ?? []
   const byEmail = (email) => people.filter((person) => person.emails.has(email))
   return function resolve(ref, projectId) {
@@ -120,19 +205,25 @@ export function createParticipantResolver(input) {
       if (hit) return { entry: entryFor(hit), rule: "by_email" }
     }
     const name = normalizeName(ref.displayName)
-    if (!name) return { reason: "participant_unmatched" }
-    const named = people.filter((person) => person.names.has(name))
-    const inProject = one(named.filter((person) => person.projectIds.has(projectId) || person.projectContactIds[projectId]))
-    if (inProject === "ambiguous") return { reason: "participant_ambiguous" }
-    if (inProject) return { entry: entryFor(inProject), rule: "by_name_project" }
-    const catalogHit = one((catalog ?? []).filter((row) => row.name === name))
+    if (name) {
+      const named = people.filter((person) => person.names.has(name))
+      const inProject = one(named.filter((person) => person.projectIds.has(projectId) || person.projectContactIds[projectId]))
+      if (inProject === "ambiguous") return { reason: "participant_ambiguous" }
+      if (inProject) return { entry: entryFor(inProject), rule: "by_name_project" }
+    }
+    // The BT catalog: by the email shown first, else by the exact name.
+    const byCatalogEmail = email ? catalog.filter((row) => row.email === email) : []
+    const catalogHit = one(byCatalogEmail.length > 0 ? byCatalogEmail : name ? catalog.filter((row) => row.name === name) : [])
     if (catalogHit === "ambiguous") return { reason: "participant_ambiguous" }
     if (!catalogHit) return { reason: "participant_unmatched" }
     // The catalog hit must be exactly one Compass person: by exact BT id, else by email.
     const byId = people.filter((person) => person.btIds.has(`${catalogHit.type}:${catalogHit.btId}`))
     const resolved = byId.length > 0 ? one(byId) : catalogHit.email ? one(byEmail(catalogHit.email)) : null
     if (resolved === "ambiguous") return { reason: "participant_ambiguous" }
-    if (!resolved) return { reason: "participant_unmatched" }
-    return { entry: entryFor(resolved), rule: "by_name_catalog" }
+    if (!resolved) {
+      if (!organizationId) return { reason: "participant_unmatched" }
+      return newContactFromCatalog({ row: catalogHit, catalog, directory, organizationId, projectId })
+    }
+    return { entry: entryFor(resolved), rule: byCatalogEmail.length > 0 ? "by_email_catalog" : "by_name_catalog" }
   }
 }

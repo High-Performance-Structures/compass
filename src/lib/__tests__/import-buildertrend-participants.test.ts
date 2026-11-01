@@ -124,6 +124,6 @@ describe("Buildertrend participant matching", () => {
     })
     expect(plan.threads.map((item: { btThreadId: string }) => item.btThreadId)).toEqual(["9001", "9002"])
     expect(plan.reviews).toEqual([expect.objectContaining({ reason: "participant_ambiguous", btThreadId: "9003" })])
-    expect(plan.matches).toEqual({ by_map: 0, by_email: 3, by_name_project: 1, by_name_catalog: 1, review: 1 })
+    expect(plan.matches).toEqual({ by_map: 0, by_email: 3, by_name_project: 1, by_email_catalog: 0, by_name_catalog: 1, new_contact_from_catalog: 0, review: 1 })
   })
 })
