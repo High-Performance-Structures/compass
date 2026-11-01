@@ -214,6 +214,11 @@ One JSON object per line. A `message` line per BT message, and a `thread`
 line written after the last message of each thread (the importer only imports
 threads whose `thread` line count matches the messages it holds).
 
+When Buildertrend exposes no thread id for a message, the capture omits
+`btThreadId` (or sends `null`); the rule is then `btThreadId = btMessageId`:
+each such message is its own one-message conversation and needs no `thread`
+line.
+
 ```json
 {"schema":"bt-message-capture/v1","type":"message",
  "btJobId":"1234567","btThreadId":"9100","btMessageId":"9101","btParentMessageId":null,
@@ -278,9 +283,11 @@ Flow:
    - **or insert** a new row only when neither the legacy row nor a row with
      the same `source_message_id` exists;
    - message participant rows (sender / to / cc);
-   - attachments, reusing the first stored file with the same sha256 (an
-     earlier message attachment, then a daily-log photo with a verified
-     hash, then the uploaded file from `--files`). An attachment with no
+   - attachments, reusing a stored file only when both the sha256 **and** the
+     byte size match, within the same scope: an earlier message attachment in
+     the same organization and conversation audience, then a daily-log photo
+     with a verified hash in the same organization, then the uploaded file
+     from `--files`. An attachment with no
      stored file is skipped and listed in `attachments-unmapped.jsonl`; a
      re-run after upload adds it.
 5. `retire-legacy.sql` (run last): deletes reviewed owner-history copies

@@ -258,6 +258,25 @@ describe("Buildertrend messages importer", () => {
     ])
   })
 
+  it("reuses a stored file only when sha256 and byte size match, in the same audience", () => {
+    run(db, [
+      // Same hash, different size: not the same file.
+      captured("1001", { attachments: [{ btAttachmentId: "61", fileName: "a.jpg", mimeType: "image/jpeg", sizeBytes: 11, sha256: SHA_A }] }), thread("9001", 1),
+      // Same hash and size, but a staff-only thread: the owner-channel file is not reused.
+      captured("1101", { btThreadId: "9002", recipients: [{ ...staff, kind: "to" }], attachments: [{ btAttachmentId: "62", fileName: "b.jpg", mimeType: "image/jpeg", sizeBytes: 10, sha256: SHA_A }] }), thread("9002", 1),
+    ])
+    expect(count(db, `SELECT COUNT(*) AS n FROM message_attachments WHERE source_attachment_id IN ('61', '62')`)).toBe(0)
+  })
+
+  it("treats a message without a thread id as its own conversation", () => {
+    const line = JSON.parse(captured("1301"))
+    delete line.btThreadId
+    const { plan } = run(db, [JSON.stringify(line)])
+    expect(plan.pending).toEqual([])
+    expect(plan.threads).toEqual([expect.objectContaining({ btThreadId: "1301" })])
+    expect(all(db, `SELECT source_thread_id FROM channels WHERE id = '${conversationId(ORG, "1301")}'`)).toEqual([{ source_thread_id: "1301" }])
+  })
+
   it("keeps a thread with both owners and vendors internal: staff-only, no outside members", () => {
     const { plan, built } = run(db, [captured("1001", { recipients: [{ ...owner, kind: "to" }, { ...vendor, kind: "cc" }] }), thread("9001", 1)])
     expect(plan.reviews).toEqual([])

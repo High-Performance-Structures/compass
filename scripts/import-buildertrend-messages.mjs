@@ -185,11 +185,16 @@ export function parseCaptureLine(line, lineNumber) {
   if (record.type !== "message") throw new Error(`line ${lineNumber}: type must be message or thread`)
   if (typeof record.body !== "string") throw new Error(`line ${lineNumber}: body must be the full message text`)
   if (typeof record.sentAtDisplay !== "string" || record.sentAtDisplay.trim() === "") throw new Error(`line ${lineNumber}: sentAtDisplay is required`)
+  const btMessageId = numericId(record.btMessageId, "btMessageId")
+  // Contract: when Buildertrend exposes no thread id, the message is its own
+  // conversation (btThreadId = btMessageId) and needs no thread record.
+  const ownThread = record.btThreadId === undefined || record.btThreadId === null || record.btThreadId === ""
   return {
     type: "message",
     btJobId: numericId(record.btJobId, "btJobId"),
-    btMessageId: numericId(record.btMessageId, "btMessageId"),
-    btThreadId: sourceId(record.btThreadId, "btThreadId"),
+    btMessageId,
+    btThreadId: ownThread ? btMessageId : sourceId(record.btThreadId, "btThreadId"),
+    ownThread,
     btParentMessageId: record.btParentMessageId == null ? null : sourceId(record.btParentMessageId, "btParentMessageId"),
     subject: typeof record.subject === "string" ? record.subject : "",
     body: record.body,
@@ -310,8 +315,13 @@ export function planImport(input) {
   for (const [btThreadId, messages] of byThread) {
     const first = messages[0]
     const summary = capture.threads.get(btThreadId)
-    // Capture writes a thread record after the thread's last message.
-    if (!summary || summary.messageCount !== new Set(messages.map((m) => m.btMessageId)).size) {
+    // Capture writes a thread record after the thread's last message. A
+    // message without a thread id is its own complete, one-message thread.
+    const selfThread = messages.every((m) => m.ownThread && m.btMessageId === btThreadId)
+    const complete = selfThread
+      ? !summary || summary.messageCount === 1
+      : summary !== undefined && summary.messageCount === new Set(messages.map((m) => m.btMessageId)).size
+    if (!complete) {
       pending.push({ reason: "thread_incomplete", btJobId: first.btJobId, btThreadId, captured: messages.length, expected: summary?.messageCount ?? null })
       continue
     }
@@ -511,7 +521,9 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
     const mapped = driveFiles.get(attachment.sha256) ?? null
     // Reuse a stored file with the same bytes: an earlier attachment, or a
     // daily-log photo with a verified hash, before any newly uploaded file.
-    const storage = `COALESCE((SELECT a.r2_path FROM message_attachments a WHERE a.content_sha256 = ${sqlValue(attachment.sha256)} LIMIT 1), (SELECT p.drive_file_id FROM daily_log_photo_aliases x JOIN daily_log_photos p ON p.id = x.canonical_photo_id WHERE x.content_sha256 = ${sqlValue(attachment.sha256)} AND x.content_size_bytes = ${sqlValue(attachment.sizeBytes)} AND p.drive_file_id IS NOT NULL LIMIT 1), ${sqlValue(mapped)})`
+    // Reuse only on identical sha256 AND byte size, within the same
+    // organization and audience (attachments) or organization (daily-log photos).
+    const storage = `COALESCE((SELECT a.r2_path FROM message_attachments a JOIN messages am ON am.id = a.message_id JOIN channels ac ON ac.id = am.channel_id WHERE a.content_sha256 = ${sqlValue(attachment.sha256)} AND a.file_size = ${sqlValue(attachment.sizeBytes)} AND ac.organization_id = ${sqlValue(thread.organizationId)} AND ac.audience = ${sqlValue(thread.audience)} LIMIT 1), (SELECT p.drive_file_id FROM daily_log_photo_aliases x JOIN daily_log_photos p ON p.id = x.canonical_photo_id JOIN projects xp ON xp.id = x.project_id WHERE x.content_sha256 = ${sqlValue(attachment.sha256)} AND x.content_size_bytes = ${sqlValue(attachment.sizeBytes)} AND xp.organization_id = ${sqlValue(thread.organizationId)} AND p.drive_file_id IS NOT NULL LIMIT 1), ${sqlValue(mapped)})`
     statements.push(`INSERT INTO message_attachments (id, message_id, file_name, mime_type, file_size, r2_path, width, height, uploaded_at, content_sha256, source_attachment_id) SELECT ${sqlValue(shortId("bt-attachment", message.btMessageId, attachment.btAttachmentId))}, ${messageRow}, ${sqlValue(attachment.fileName)}, ${sqlValue(attachment.mimeType)}, ${sqlValue(attachment.sizeBytes)}, ${storage}, NULL, NULL, ${sqlValue(now)}, ${sqlValue(attachment.sha256)}, ${sqlValue(attachment.btAttachmentId)} WHERE ${guard} AND ${messageRow} IS NOT NULL AND ${storage} IS NOT NULL ON CONFLICT DO NOTHING;`)
   }
   return statements
