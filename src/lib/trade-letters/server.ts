@@ -1,5 +1,6 @@
 import "server-only"
 
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
@@ -245,6 +246,7 @@ export async function fileSignedTradeLetter(input: { readonly db: Db; readonly e
         updateTradeDocumentsStatement(db, eq(vendorTradeDocuments.id, row.id), { supersededAt: input.now, updatedAt: input.now }),
       ),
     ])
+    await requestVendorCertificateSyncs(db, letter.organizationId, [vendor.id])
   }
   return file.id
 }

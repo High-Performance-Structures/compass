@@ -13,6 +13,7 @@ import {
   updateTradeDocuments,
   updateTradeDocumentsStatement,
 } from "@/lib/domain/documents/store"
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateVendorById } from "@/lib/domain/contacts/store"
 import type { AuthUser } from "@/lib/auth"
@@ -279,6 +280,7 @@ export async function recordVendorTradeDoc(vendorId: string, input: RecordTradeD
       summary: `${input.kind === "waiver" ? `${type.label} alternative` : type.label} recorded for ${vendor.name}`,
       metadata: { documentId: id, docType: type.id },
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [vendor.id])
     revalidateVendors()
     return { success: true, data: { id } }
   } catch (error) {
@@ -308,6 +310,7 @@ export async function updateVendorTradeDoc(
       notes: input.notes?.trim().slice(0, 1000) || null,
       updatedAt: new Date().toISOString(),
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [row.vendorId])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {
@@ -361,6 +364,7 @@ export async function deleteVendorTradeDoc(documentId: string): Promise<Result<n
       summary: `Removed ${row.fileName ?? "a trade document"} from the vendor's trade docs`,
       metadata: { documentId: row.id, docType: row.docType, driveFileId: row.driveFileId },
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [row.vendorId])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {
@@ -388,6 +392,7 @@ export async function setVendorTradeDocBillMode(vendorId: string, mode: TradeDoc
       entityId: vendor.id,
       summary: `Bills for ${vendor.name} while docs are missing: ${mode ?? "company default"}`,
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [vendor.id])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {

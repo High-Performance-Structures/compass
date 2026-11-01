@@ -1,5 +1,6 @@
 "use server"
 
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -186,6 +187,7 @@ export async function importTradeDocs(input: {
       if (first) await access.db.batch([first, ...rest])
     }
     const imported = items.length - skipped
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [...new Set(items.map((item) => item.vendorId))])
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,

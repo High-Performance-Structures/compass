@@ -104,6 +104,21 @@ export const DEFAULT_TRADE_LETTER_SETTINGS: TradeLetterSettings = {
   companySignerTitle: "",
 }
 
+/**
+ * Keeping Sage's vendor certificates in step with the trade docs. While
+ * warnOnly is on, every vendor gets warnings only, even those set to hold
+ * payment, so payments aren't stopped before documents are collected.
+ */
+const tradeDocSageSettingsSchema = z.object({
+  enabled: z.boolean(),
+  warnOnly: z.boolean(),
+  /** Sage's certificate description per document type id, when it differs from the label. */
+  names: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.string().trim().max(50)),
+})
+export type TradeDocSageSettings = z.infer<typeof tradeDocSageSettingsSchema>
+
+export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = { enabled: false, warnOnly: true, names: {} }
+
 export const tradeDocSettingsSchema = z.object({
   docTypes: z.array(tradeDocTypeSchema).min(1).max(30),
   /** What staff confirm on an insurance certificate before accepting it. */
@@ -122,6 +137,7 @@ export const tradeDocSettingsSchema = z.object({
   certificateHolder: z.string().trim().max(800).default(""),
   infoSheet: infoSheetSettingsSchema.default(() => DEFAULT_INFO_SHEET),
   letters: tradeLetterSettingsSchema.default(() => DEFAULT_TRADE_LETTER_SETTINGS),
+  sage: tradeDocSageSettingsSchema.default(() => DEFAULT_TRADE_DOC_SAGE_SETTINGS),
 })
 export type TradeDocSettings = z.infer<typeof tradeDocSettingsSchema>
 
@@ -190,6 +206,7 @@ export const DEFAULT_TRADE_DOC_SETTINGS: TradeDocSettings = {
   certificateHolder: "",
   infoSheet: DEFAULT_INFO_SHEET,
   letters: DEFAULT_TRADE_LETTER_SETTINGS,
+  sage: DEFAULT_TRADE_DOC_SAGE_SETTINGS,
 }
 
 /** Accepts a Drive folder link or a bare id; returns the id or null. */

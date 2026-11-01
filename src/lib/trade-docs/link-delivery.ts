@@ -1,5 +1,6 @@
 import "server-only"
 
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
@@ -207,5 +208,6 @@ export async function recordLinkTradeDoc(input: {
       updatedAt: now,
     }),
   ])
+  await requestVendorCertificateSyncs(input.db, input.organizationId, [input.vendorId])
   return id
 }
