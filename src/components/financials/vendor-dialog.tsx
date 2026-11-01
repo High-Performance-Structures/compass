@@ -2,11 +2,8 @@
 
 import * as React from "react"
 import { IconPlus, IconTrash } from "@tabler/icons-react"
-import type {
-  VendorCompanyMutationInput,
-  VendorDirectoryCompany,
-  VendorContactItem,
-} from "@/app/actions/vendors"
+import type { VendorCompanyMutationInput } from "@/app/actions/vendors"
+import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"

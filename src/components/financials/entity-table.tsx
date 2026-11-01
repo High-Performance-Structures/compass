@@ -49,7 +49,7 @@ type EntityTableControls<T> = {
 }
 
 /** A column's text filter value, or `fallback` when none is set. */
-export function columnFilterText<T>(table: TanstackTable<T>, columnId: string, fallback = ""): string {
+function columnFilterText<T>(table: TanstackTable<T>, columnId: string, fallback = ""): string {
   const value = table.getColumn(columnId)?.getFilterValue()
   return typeof value === "string" ? value : fallback
 }

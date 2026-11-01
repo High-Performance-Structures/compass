@@ -7,7 +7,6 @@ import {
   users,
   vendorContacts,
   vendors,
-  type Vendor,
 } from "@/db/schema"
 import { requirePermission } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -36,6 +35,7 @@ import {
 } from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
+import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -49,25 +49,6 @@ export type InternalDirectoryContact = {
   readonly accessStatus: "active" | "invited" | "no_access"
   readonly sageEmployeeId: string | null
   readonly sageEmployeeNumber: string | null
-}
-
-export type VendorContactItem = {
-  readonly id: string
-  readonly vendorId: string
-  readonly name: string
-  readonly title: string | null
-  readonly email: string | null
-  readonly phone: string | null
-  readonly isPrimary: boolean
-  readonly active: boolean
-  readonly sourceSystem: string
-  readonly userId: string | null
-  readonly sageContactId: string | null
-  readonly sageLineNumber: number | null
-}
-
-export type VendorDirectoryCompany = Vendor & {
-  readonly contacts: readonly VendorContactItem[]
 }
 
 export type VendorContactMutationInput = {
