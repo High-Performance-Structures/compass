@@ -92,6 +92,9 @@ describe("export-bt-directory-snapshot", () => {
     const pm = snapshot.people.find((person: { personKey: string }) => person.personKey === "user:u-pm")
     expect(pm).toMatchObject({ kind: "staff", emails: ["pat@example.com", "pm@example.com"], btIds: ["internal_user:555"], names: ["Pat PM", "Patricia PM"] })
     expect(snapshot.people.some((person: { userId: string | null }) => person.userId === "u-other")).toBe(false)
+    // Vendors registered with a BT company id, and each project's clients.
+    expect(snapshot.vendors).toEqual([{ vendorId: "v-1", btId: "7" }])
+    expect(snapshot.projects).toEqual([{ projectId: PROJECT, clientCustomerIds: ["c-1"] }])
     expect(snapshot.people.map((person: { personKey: string }) => person.personKey).sort()).toEqual([
       "project_contact:pc-elec", "user:u-owner", "user:u-pm", "vendor_contact:vc-1",
     ])
