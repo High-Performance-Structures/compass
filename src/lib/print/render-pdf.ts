@@ -1,6 +1,5 @@
 import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { getCloudflareContext } from "@/lib/db"
-import { PAGE_NUMBER_MAX_BYTES, numberPdfStream } from "@/lib/print/page-numbers"
 
 export type PrintPdfRequest = {
   /** The incoming request; its cookie lets the renderer open the print page. */
@@ -11,7 +10,7 @@ export type PrintPdfRequest = {
   /** Rendering waits for this selector so the PDF has the whole document. */
   readonly waitForSelector: string
   readonly landscape?: boolean
-  /** "Page X of N" on documents longer than a page; on unless the caller numbers pages itself. */
+  /** Browser-rendered "Page X of N"; on unless the caller numbers pages itself. */
   readonly pageNumbers?: boolean
 }
 
@@ -49,19 +48,19 @@ export async function renderPrintPagePdf(input: PrintPdfRequest): Promise<PrintP
         landscape: input.landscape ?? false,
         printBackground: true,
         preferCSSPageSize: true,
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+        displayHeaderFooter: input.pageNumbers !== false,
+        headerTemplate: "<span></span>",
+        footerTemplate: '<div style="width:100%;text-align:center;font:7pt Arial,sans-serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+        margin: { top: "0", right: "0", bottom: input.pageNumbers === false ? "0" : "0.25in", left: "0" },
       },
     },
   ])
   if (!(rendered instanceof Response) || !rendered.ok || !rendered.body) {
     return { ok: false, status: 502, error: "Unable to render PDF." }
   }
-  const size = Number(rendered.headers.get("Content-Length") ?? "0")
-  if (input.pageNumbers === false || size > PAGE_NUMBER_MAX_BYTES) {
-    const pdf = rendered.body
-    return { ok: true, pdf, bytes: () => new Response(pdf).arrayBuffer() }
-  }
-  const pdf = await numberPdfStream(rendered.body)
+  // Keep the app Worker out of PDF parsing entirely. Even a small compressed
+  // document can exceed its memory limit when expanded for page numbering.
+  const pdf = rendered.body
   return { ok: true, pdf, bytes: () => new Response(pdf).arrayBuffer() }
 }
 

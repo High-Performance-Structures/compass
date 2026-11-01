@@ -15,7 +15,6 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/project-audience-request-server", () => ({ getProjectAudienceRequestScope: mocks.scope }))
 
 import { renderPrintPagePdf } from "../render-pdf"
-import { PAGE_NUMBER_MAX_BYTES } from "../page-numbers"
 
 const input = {
   request: new Request("https://compass.example/api/projects/p/print/owner-update", { headers: { Cookie: "session=viewer" } }),
@@ -30,7 +29,7 @@ describe("renderPrintPagePdf", () => {
     mocks.scope.mockResolvedValue(null)
   })
 
-  it("numbers small PDFs without Content-Length and preserves viewer scope", async () => {
+  it("requests browser page numbering and preserves viewer scope without modifying PDF bytes", async () => {
     const document = await PDFDocument.create()
     document.addPage()
     document.addPage()
@@ -42,16 +41,22 @@ describe("renderPrintPagePdf", () => {
     if (!result.ok) throw new Error(result.error)
     const bytes = await result.bytes()
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(2)
-    expect(bytes.byteLength).toBeGreaterThan(original.byteLength)
+    expect(new Uint8Array(bytes)).toEqual(original)
     expect(mocks.quickAction).toHaveBeenCalledWith("pdf", expect.objectContaining({
       url: "https://compass.example/print/projects/p/owner-update/source?updateId=update-1&previewProject=p&previewAudience=owner&previewAs=owner-1",
       setExtraHTTPHeaders: { Cookie: "session=viewer" },
+      pdfOptions: expect.objectContaining({
+        displayHeaderFooter: true,
+        footerTemplate: expect.stringContaining('class="totalPages"'),
+        headerTemplate: "<span></span>",
+        margin: { top: "0", right: "0", bottom: "0.25in", left: "0" },
+      }),
     }))
   })
 
   it.each([undefined, "1"])("streams a large PDF when Content-Length is %s, preserving every byte", async (length) => {
     const chunkSize = 1024 * 1024
-    const count = PAGE_NUMBER_MAX_BYTES / chunkSize + 4
+    const count = 12
     let produced = 0
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -67,7 +72,7 @@ describe("renderPrintPagePdf", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.error)
     // The renderer returns before reading the entire body or parsing it as a PDF.
-    expect(produced).toBeLessThan(count)
+    expect(produced).toBeLessThanOrEqual(1)
     expect(readWholeBody).not.toHaveBeenCalled()
     const bytes = new Uint8Array(await result.bytes())
     expect(bytes.byteLength).toBe(count * chunkSize)
@@ -93,5 +98,11 @@ describe("renderPrintPagePdf", () => {
     const result = await renderPrintPagePdf({ ...input, pageNumbers: false })
     if (!result.ok) throw new Error(result.error)
     expect(new TextDecoder().decode(await result.bytes())).toBe("already numbered")
+    expect(mocks.quickAction).toHaveBeenCalledWith("pdf", expect.objectContaining({
+      pdfOptions: expect.objectContaining({
+        displayHeaderFooter: false,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      }),
+    }))
   })
 })
