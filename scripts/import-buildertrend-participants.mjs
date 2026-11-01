@@ -38,7 +38,7 @@ function text(value) {
  * The organization's people, exported read-only just before a run. One row
  * per person; the export groups a user with the project/vendor/customer
  * contacts that are the same person.
- *   { personKey, kind: staff|owner|vendor, displayName, emails: [],
+ *   { personKey, kind: staff|owner|vendor, displayName, names: [], emails: [],
  *     userId?, projectIds: [] (projects the person is staff on or a contact of),
  *     projectContactIds: { projectId: contactId }, vendorId?, vendorContactId?,
  *     customerId?, customerContactId?, btIds: ["vendor_contact:123", ...] }
@@ -55,7 +55,7 @@ export function parseDirectory(value) {
       personKey,
       kind: row.kind,
       displayName: text(row.displayName) ?? personKey,
-      names: new Set([normalizeName(row.displayName)].filter(Boolean)),
+      names: new Set([row.displayName, ...(Array.isArray(row.names) ? row.names : [])].map(normalizeName).filter(Boolean)),
       emails: new Set((Array.isArray(row.emails) ? row.emails : []).map(normalizeEmail).filter(Boolean)),
       userId: text(row.userId),
       projectIds: new Set(Array.isArray(row.projectIds) ? row.projectIds : []),

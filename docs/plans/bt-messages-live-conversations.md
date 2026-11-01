@@ -261,7 +261,9 @@ Inputs:
   decision `user` (a Compass account), `contact` (existing directory contact
   ids per project) or `new_contact` (add without inviting);
 - `--directory` optional directory snapshot (`bt-directory-snapshot/v1`),
-  exported read-only just before the run: one row per Compass person
+  exported read-only just before the run by
+  `scripts/export-bt-directory-snapshot.mjs` (its header lists the BT id
+  registry it uses): one row per Compass person
   `{ personKey, kind: staff|owner|vendor, displayName, emails[], userId?,
   projectIds[], projectContactIds{projectId: id}, vendorId?, vendorContactId?,
   customerId?, customerContactId?, btIds["<catalog type>:<btId>"] }`, with a
@@ -402,7 +404,11 @@ rows, move legacy archive rows and delete reviewed duplicate copies).
    switch to still be on in the database.
    Turn on **Imported conversations staff only** for any other held project
    on its Information page.
-4. Export the directory snapshot (read only) and capture the BT people
+4. Export the directory snapshot (read only) with
+   `node scripts/export-bt-directory-snapshot.mjs --org <organizationId>`
+   (prints its SELECTs) and then `--run --out directory.json` (runs them with
+   `wrangler d1 execute --remote --json --command`; organization-scoped,
+   paged, no bound parameters, no message content). Capture the BT people
    catalog. Optionally build a reviewed participant map for people whose BT
    ids were seen (`user`, `contact` or `new_contact`).
 5. Capture phases 0–3 (above).
