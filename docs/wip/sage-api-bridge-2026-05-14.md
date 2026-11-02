@@ -85,6 +85,16 @@ consumes poll request IDs once, rejects replayed polls, and only reports the
 bridge online after a recent authenticated poll. Production and
 non-production environments must use distinct `SAGE_BRIDGE_SECRET` values.
 
+Vendor certificate writes (Vendors > Certificates) use the same pull shape.
+Compass queues a vendor in `sage_vendor_certificate_syncs` when their trade
+docs, bill choice, or the company's trade-doc settings change. The installed
+Sage writer claims syncs from `/api/integrations/sage/vendor-certificates/requests`,
+writes the rows through MBXML `VendorModRq`, and reports to `/results`. The
+rows come from `planSageCertificates`: one per required document type the
+company sends to Sage (`sage.send` in the trade-docs settings marks types
+kept in Compass only). `SAGE_VENDOR_CERTIFICATE_DRY_RUN=true` on the writer
+reports the plan as a failed sync without writing anything.
+
 ### Private poller deployment
 
 The reference poller is `scripts/sage_pay_application_poller.py`; its systemd
