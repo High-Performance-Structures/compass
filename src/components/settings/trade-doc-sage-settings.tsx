@@ -10,10 +10,12 @@ import {
   type SageVendorCertificateOverview,
 } from "@/app/actions/sage-vendor-certificates"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { formatDateTime } from "@/lib/format"
+import { sendsToSage } from "@/lib/domain/sage-bridge/certificate-rules"
 import type { TradeDocSageSettings, TradeDocType } from "@/lib/trade-docs/settings"
 
 const PREVIEW_MATCHES = 8
@@ -141,6 +143,13 @@ export function TradeDocSageSettingsFields({
     else names[typeId] = name.slice(0, 50)
     set({ names })
   }
+  function setSend(typeId: string, on: boolean): void {
+    // Sent is the default, so only the types kept in Compass are stored.
+    const send = { ...value.send }
+    if (on) delete send[typeId]
+    else send[typeId] = false
+    set({ send })
+  }
   const active = docTypes.filter((type) => type.active && type.requiredFor.length > 0)
   return (
     <fieldset className="grid gap-4 border-t pt-4 sm:max-w-2xl" disabled={disabled}>
@@ -171,23 +180,35 @@ export function TradeDocSageSettingsFields({
       </div>
       {active.length > 0 && (
         <div className="grid gap-2">
-          <span className="text-sm font-medium">Name in Sage</span>
+          <span className="text-sm font-medium">Documents sent to Sage</span>
           <p className="text-xs text-muted-foreground">
-            The certificate description Compass uses in Sage. Use the name your Sage rows already have, so Compass updates them
-            instead of adding new ones.
+            Untick a document to keep it in Compass only; Sage rows for it are left alone. For the rest, use the name your Sage
+            rows already have, so Compass updates them instead of adding new ones.
           </p>
-          {active.map((type) => (
-            <div key={type.id} className="grid gap-1 sm:grid-cols-[14rem_1fr] sm:items-center">
-              <Label htmlFor={`trade-doc-sage-name-${type.id}`} className="font-normal">{type.label}</Label>
-              <Input
-                id={`trade-doc-sage-name-${type.id}`}
-                value={value.names[type.id] ?? ""}
-                maxLength={50}
-                placeholder={type.label.slice(0, 50)}
-                onChange={(event) => setName(type.id, event.target.value)}
-              />
-            </div>
-          ))}
+          {active.map((type) => {
+            const sent = sendsToSage(type.id, value.send)
+            return (
+              <div key={type.id} className="grid gap-1 sm:grid-cols-[14rem_1fr] sm:items-center">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`trade-doc-sage-send-${type.id}`}
+                    checked={sent}
+                    onCheckedChange={(checked) => setSend(type.id, checked === true)}
+                  />
+                  <Label htmlFor={`trade-doc-sage-send-${type.id}`} className="font-normal">{type.label}</Label>
+                </div>
+                <Input
+                  id={`trade-doc-sage-name-${type.id}`}
+                  aria-label={`Name in Sage for ${type.label}`}
+                  value={value.names[type.id] ?? ""}
+                  maxLength={50}
+                  placeholder={sent ? type.label.slice(0, 50) : "Kept in Compass only"}
+                  disabled={!sent}
+                  onChange={(event) => setName(type.id, event.target.value)}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
       <SageVendorLinks disabled={disabled} syncEnabled={value.enabled} />

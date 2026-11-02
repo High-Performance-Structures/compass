@@ -63,10 +63,10 @@ The info sheet's answers, including tax IDs, are kept only in the PDF in the ven
 Sage keeps each vendor's certificates under **Vendors > Options > Certificates**, with an expiration date, **Warning** and **Stop Pay**. Compass can keep those rows matched to the documents on file here.
 
 1. In **Settings > Workflows > Trade docs > Sage certificates**, turn on **Keep Sage's vendor certificates in step**.
-2. Under **Name in Sage**, enter the description your Sage rows already use for each document, such as "General Liability". Compass then updates those rows instead of adding new ones.
+2. Under **Documents sent to Sage**, untick any document you keep in Compass only, such as a business license. For the rest, enter the description your Sage rows already use, such as "General Liability". Compass then updates those rows instead of adding new ones.
 3. Link vendors to Sage. Once a day the Sage writer sends Compass Sage's vendor list. **Link N vendors** links every exact match: the same company name or email, with no second candidate. Link the rest from each vendor's record.
 
-For each linked vendor, every required document becomes one certificate row in Sage:
+For each linked vendor, every required document that's sent to Sage becomes one certificate row there:
 
 - A document on file sends its received and expiration dates.
 - A document never received goes to Sage as already expired, so Sage treats it as overdue.

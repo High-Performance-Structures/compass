@@ -123,6 +123,7 @@ export async function buildVendorCertificatePayload(
     billMode: isTradeDocBillMode(vendor.billMode) ? vendor.billMode : settings.billModeDefault,
     warnOnly: settings.sage.warnOnly,
     sageNames: settings.sage.names,
+    sendToSage: settings.sage.send,
     missingExpiresOn: dayBefore(today),
   })
   const payload = sageVendorCertificatePayloadSchema.safeParse({

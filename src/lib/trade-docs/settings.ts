@@ -114,10 +114,12 @@ const tradeDocSageSettingsSchema = z.object({
   warnOnly: z.boolean(),
   /** Sage's certificate description per document type id, when it differs from the label. */
   names: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.string().trim().max(50)),
+  /** Document types kept in Compass only (false); every other required type goes to Sage. */
+  send: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.boolean()).default({}),
 })
 export type TradeDocSageSettings = z.infer<typeof tradeDocSageSettingsSchema>
 
-export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = { enabled: false, warnOnly: true, names: {} }
+export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = { enabled: false, warnOnly: true, names: {}, send: {} }
 
 export const tradeDocSettingsSchema = z.object({
   docTypes: z.array(tradeDocTypeSchema).min(1).max(30),

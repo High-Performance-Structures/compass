@@ -34,6 +34,8 @@ export type SageCertificatePlanInput = {
   readonly warnOnly: boolean
   /** Sage's description for a document type, when it differs from the Compass label. */
   readonly sageNames: Readonly<Record<string, string>>
+  /** Document types set to stay in Compass only (false). */
+  readonly sendToSage: Readonly<Record<string, boolean>>
   /**
    * The expiry Sage gets for a document never received, so Sage treats it as
    * overdue (Sage only warns or stops payment on expired certificates).
@@ -86,9 +88,18 @@ function lineFor(line: TradeDocLine, input: SageCertificatePlanInput): SageCerti
   }
 }
 
-/** The certificate rows Sage should have for one vendor: one per required document. */
+/** Whether a document type's certificate goes to Sage; types are sent unless turned off. */
+export function sendsToSage(docTypeId: string, sendToSage: Readonly<Record<string, boolean>>): boolean {
+  return sendToSage[docTypeId] !== false
+}
+
+/**
+ * The certificate rows Sage should have for one vendor: one per required
+ * document the company sends to Sage. Sage rows for types kept in Compass
+ * only aren't recognised, so the writer leaves them alone.
+ */
 export function planSageCertificates(input: SageCertificatePlanInput): readonly SageCertificateLine[] {
-  return input.summary.lines.filter((line) => line.required).map((line) => lineFor(line, input))
+  return input.summary.lines.filter((line) => line.required && sendsToSage(line.type.id, input.sendToSage)).map((line) => lineFor(line, input))
 }
 
 /** The day before `today` ("YYYY-MM-DD"), in UTC calendar days. */
