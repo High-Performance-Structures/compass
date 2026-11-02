@@ -24,9 +24,12 @@ function doc(docType: string, patch: Partial<TradeDocOnFile> = {}): TradeDocOnFi
   }
 }
 
-function plan(docs: readonly TradeDocOnFile[], billMode: "flag" | "hold" | "off", warnOnly: boolean, sageNames: Readonly<Record<string, string>> = {}) {
+function plan(
+  docs: readonly TradeDocOnFile[], billMode: "flag" | "hold" | "off", warnOnly: boolean,
+  sageNames: Readonly<Record<string, string>> = {}, sendToSage: Readonly<Record<string, boolean>> = {}
+) {
   const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", docs, today })
-  return planSageCertificates({ summary, billMode, warnOnly, sageNames, missingExpiresOn: dayBefore(today) })
+  return planSageCertificates({ summary, billMode, warnOnly, sageNames, sendToSage, missingExpiresOn: dayBefore(today) })
 }
 
 describe("Sage certificate flags", () => {
@@ -50,6 +53,13 @@ describe("planSageCertificates", () => {
     const missing = rows.filter((row) => row.docTypeId !== "w9" && row.docTypeId !== "gl-certificate")
     expect(missing.length).toBeGreaterThan(0)
     for (const row of missing) expect(row).toMatchObject({ receivedDate: null, expiryDate: "2026-10-31", warn: "Y", stopPay: "Y" })
+  })
+
+  it("leaves out document types kept in Compass only", () => {
+    const all = plan([], "flag", true)
+    const rows = plan([], "flag", true, {}, { "business-license": false, "w9": true })
+    expect(rows.map((row) => row.docTypeId)).not.toContain("business-license")
+    expect(rows).toHaveLength(all.length - 1)
   })
 
   it("uses the company's Sage names and still matches the Compass label", () => {
