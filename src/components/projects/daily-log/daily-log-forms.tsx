@@ -23,7 +23,14 @@ export function DailyLogNewForm({
   readonly form: DailyLogFormSetup
   readonly isPending: boolean
 }): React.ReactElement {
-  const { newLog, isWeatherPending } = forms
+  const { newLog, isWeatherPending, prefillWeather } = forms
+  // Today's site forecast fills the weather when the form opens and when the
+  // date changes, until someone types weather in.
+  const prefill = React.useRef(prefillWeather)
+  prefill.current = prefillWeather
+  React.useEffect(() => {
+    prefill.current()
+  }, [newLog.draft.logDate])
   return (
     <section className="border-y py-4">
       <form onSubmit={forms.submitDailyLog} className="grid gap-4">
@@ -53,7 +60,8 @@ export function DailyLogNewForm({
           <div>
             <p className="text-sm font-medium">Weather reference</p>
             <p className="text-xs text-muted-foreground">
-              Uses the project address and selected log date.
+              Filled from the job site's forecast when there is one. Fill weather
+              looks it up again for the selected date.
             </p>
           </div>
           <Button

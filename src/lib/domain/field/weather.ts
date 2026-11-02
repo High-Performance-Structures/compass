@@ -1,6 +1,7 @@
 /**
- * Weather for a daily log: live National Weather Service observations for
- * today, the Open-Meteo archive for past dates.
+ * Weather for a daily log: the job site's stored forecast for today and the
+ * next two days, else live National Weather Service observations for today
+ * and the Open-Meteo archive for past dates.
  */
 import { eq } from "drizzle-orm"
 
@@ -12,6 +13,7 @@ import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
 import { DEFAULT_MAP_STATE } from "@/lib/portfolio-map/states"
 import type { Db } from "@/lib/server/action-context"
 import { isRecord } from "@/lib/shared/guards"
+import { siteForecastLogWeather } from "@/lib/weather/daily-log-server"
 
 import {
   fahrenheitFromCelsius,
@@ -220,6 +222,21 @@ export async function projectWeatherSnapshot(
     return { success: false, error: "Project not found." }
   }
 
+  const today = new Date().toISOString().slice(0, 10)
+  const logDate =
+    requestedLogDate && requestedLogDate.trim().length > 0
+      ? normalizedLogDate(requestedLogDate)
+      : today
+  const forecast = project.organizationId
+    ? await siteForecastLogWeather(db, project.organizationId, projectId, logDate, Date.now())
+    : null
+  if (forecast) {
+    return {
+      success: true,
+      weather: { ...forecast, station: null, locationLabel: null, source: "the job site's forecast" },
+    }
+  }
+
   const address = optionalText(project.address ?? "")
   if (!address) {
     return {
@@ -249,11 +266,6 @@ export async function projectWeatherSnapshot(
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
-  const logDate =
-    requestedLogDate && requestedLogDate.trim().length > 0
-      ? normalizedLogDate(requestedLogDate)
-      : today
   const weather = isTodayOrFuture(logDate, today)
     ? await fetchProjectWeather(coordinates)
     : await fetchHistoricalProjectWeather(coordinates, logDate)

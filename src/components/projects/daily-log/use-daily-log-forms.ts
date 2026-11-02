@@ -4,6 +4,7 @@ import * as React from "react"
 
 import {
   createProjectDailyLog,
+  getProjectForecastLogWeather,
   getProjectWeatherSnapshot,
   updateProjectDailyLog,
 } from "@/app/actions/project-field"
@@ -70,6 +71,8 @@ export type DailyLogForms = {
   readonly submitDailyLog: (event: React.FormEvent<HTMLFormElement>) => void
   readonly submitDailyLogEdit: (event: React.FormEvent<HTMLFormElement>, log: ProjectDailyLogItem) => void
   readonly fillWeather: () => void
+  /** Fills blank weather from the site forecast; quiet when there is none. */
+  readonly prefillWeather: () => void
 }
 
 /** The new-log and edit-log forms: drafts, validation, saving and weather. */
@@ -294,8 +297,29 @@ export function useDailyLogForms({
         weatherTempF:
           result.weather.tempF === null ? "" : String(result.weather.tempF),
         weatherConditions: result.weather.conditions,
+        weatherPrecipitation: result.weather.precipitation ?? current.weatherPrecipitation,
       }))
       setMessage(weatherFilledMessage(result.weather))
+    })
+  }
+
+  function prefillWeather(): void {
+    const logDate = draft.logDate
+    if (draft.weatherTempF || draft.weatherConditions || draft.weatherPrecipitation) return
+    void getProjectForecastLogWeather(workspace.project.id, logDate).then((result) => {
+      if (!result.success || !result.weather) return
+      const { weather } = result
+      // Leaves anything typed or a changed date alone while this was loading.
+      setDraft((current) =>
+        current.logDate !== logDate || current.weatherTempF || current.weatherConditions || current.weatherPrecipitation
+          ? current
+          : {
+              ...current,
+              weatherTempF: weather.tempF === null ? "" : String(weather.tempF),
+              weatherConditions: weather.conditions,
+              weatherPrecipitation: weather.precipitation,
+            },
+      )
     })
   }
 
@@ -362,5 +386,6 @@ export function useDailyLogForms({
     submitDailyLog,
     submitDailyLogEdit,
     fillWeather,
+    prefillWeather,
   }
 }

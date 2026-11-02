@@ -18,7 +18,7 @@
 
 ## Create a Daily Log {#create-log}
 
-Open the project's **Daily Logs**, confirm the project and log date, and create a new log. Use **Fill weather** when available, then review the retrieved conditions. Record work completed, crews, materials, deliveries, inspections, delays, safety information, visitors, and specific next steps as applicable.
+Open the project's **Daily Logs**, confirm the project and log date, and create a new log. When the job has a located site, the weather fills in from the site's forecast as the form opens: the high, the conditions with the low and any strong gusts, and the day's rain or snow. On today's log it also notes weather warnings, heavy smoke or poor air quality at the site. Use **Fill weather** to look it up again for another date (past dates use recorded weather), and edit the line if the day turned out differently. A log saved from a phone without weather gets the site forecast too. Record work completed, crews, materials, deliveries, inspections, delays, safety information, visitors, and specific next steps as applicable.
 
 Write facts another team member can understand later. Avoid unexplained abbreviations, personal commentary, and unapproved promises.
 

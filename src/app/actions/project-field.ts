@@ -58,6 +58,8 @@ import {
   updateDailyLogContent,
 } from "@/lib/domain/field/store"
 import { projectWeatherSnapshot, type ProjectWeatherSnapshotResult } from "@/lib/domain/field/weather"
+import { siteForecastLogWeather } from "@/lib/weather/daily-log-server"
+import type { ForecastLogWeather } from "@/lib/weather/daily-log-line"
 import type { OwnerUpdateDraftWriteInput } from "@/lib/owner-updates/draft-recovery"
 import type {
   OwnerUpdateMutationResult,
@@ -157,6 +159,24 @@ export async function getProjectWeatherSnapshot(
     return await projectWeatherSnapshot(db, projectId, input?.logDate)
   } catch (error) {
     return failure(error, "Unable to pull project weather.")
+  }
+}
+
+/**
+ * The new-log form's weather when it opens: the job site's stored forecast
+ * for the date, or null when there is none. Calls no weather service.
+ */
+export async function getProjectForecastLogWeather(
+  projectId: string,
+  logDate: string
+): Promise<{ readonly success: true; readonly weather: ForecastLogWeather | null } | { readonly success: false; readonly error: string }> {
+  try {
+    const { db, viewer } = await verifyProjectDailyLogWorkspaceAccess(projectId)
+    if (!viewer.organizationId) return { success: true, weather: null }
+    const weather = await siteForecastLogWeather(db, viewer.organizationId, projectId, logDate, Date.now())
+    return { success: true, weather }
+  } catch (error) {
+    return failure(error, "Unable to read the site forecast.")
   }
 }
 

@@ -17,6 +17,7 @@ import {
 } from "@/lib/daily-logs/log-followups-server"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import type { Db } from "@/lib/server/action-context"
+import { siteForecastLogWeather } from "@/lib/weather/daily-log-server"
 
 import {
   dailyLogFormValues,
@@ -96,6 +97,30 @@ function dailyLogContent(
   } as const
 }
 
+function hasWeather(input: CreateDailyLogInput): boolean {
+  return (
+    input.weatherTempF !== null ||
+    optionalText(input.weatherConditions) !== null ||
+    optionalText(input.weatherPrecipitation) !== null
+  )
+}
+
+/**
+ * A new log saved without weather gets the job site's forecast for its date.
+ * A forecast that can't be read never stops the log from saving.
+ */
+async function forecastWeatherColumns(db: Db, orgId: string, projectId: string, logDate: string, input: CreateDailyLogInput) {
+  if (hasWeather(input)) return {}
+  const weather = await siteForecastLogWeather(db, orgId, projectId, logDate, Date.now()).catch(() => null)
+  if (!weather) return {}
+  return {
+    weatherTempF: weather.tempF,
+    weatherConditions: weather.conditions,
+    weatherPrecipitation: weather.precipitation,
+    weatherSource: "site_forecast",
+  } as const
+}
+
 /**
  * `existing`: a retried submission whose log is already saved (nothing to
  * revalidate). `followUpsApplied`: to-dos changed too.
@@ -149,6 +174,7 @@ export async function createDailyLog(
   const lines = checked?.ok
     ? linkedWorkLines(checked.lines, new Set(followUps?.ok ? followUps.todos.keys() : []))
     : []
+  const forecastWeather = await forecastWeatherColumns(db, orgId, projectId, logDate, input)
 
   await insertDailyLog(db, {
     id: dailyLogId,
@@ -158,6 +184,7 @@ export async function createDailyLog(
     sourceExternalId: null,
     logDate,
     ...dailyLogContent(input, workCompleted, checked?.ok ? checked.lines : null),
+    ...forecastWeather,
     tags: null,
     createdAt: now,
     updatedAt: now,
