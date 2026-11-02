@@ -9,6 +9,7 @@ vi.mock("next/link", () => ({ default: (props: React.ComponentProps<"a">) => Rea
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 vi.mock("@/components/conversations/conversation-panel-provider", () => ({ useConversationPanelOptional: mocks.panel }))
 vi.mock("@/app/actions/notifications", () => ({ getNotificationCenter: mocks.center, markNotificationRead: mocks.mark, markAllNotificationsRead: vi.fn() }))
+vi.mock("@/components/background-requests", () => ({ fetchNotificationCenter: mocks.center }))
 vi.mock("@/components/ui/popover", () => ({
   Popover: (props: {readonly children: React.ReactNode}) => React.createElement(React.Fragment, null, props.children),
   PopoverTrigger: (props: {readonly children: React.ReactNode}) => React.createElement(React.Fragment, null, props.children),
