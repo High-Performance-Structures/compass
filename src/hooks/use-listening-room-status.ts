@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { getListeningRoomStatus, type ListeningRoomStatus } from "@/app/actions/listening-room"
+import type { ListeningRoomStatus } from "@/app/actions/listening-room"
+import { fetchListeningRoomStatus } from "@/components/background-requests"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 const STATUS_POLL_MS = 30_000
@@ -24,7 +25,7 @@ export function useListeningRoomStatus(
   const check = React.useCallback((): void => {
     if (document.visibilityState !== "visible") return
     const request = generation.current
-    void getListeningRoomStatus(channelId)
+    void fetchListeningRoomStatus(channelId)
       .then((result) => {
         if (request === generation.current && result.success) setStatus(result.data)
       })

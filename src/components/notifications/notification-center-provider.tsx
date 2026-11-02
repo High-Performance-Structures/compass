@@ -1,11 +1,8 @@
 "use client"
 
 import * as React from "react"
-import {
-  getNotificationCenter,
-  type NotificationCenterItem,
-  type NotificationCenterScope,
-} from "@/app/actions/notifications"
+import type { NotificationCenterItem, NotificationCenterScope } from "@/app/actions/notifications"
+import { fetchNotificationCenter } from "@/components/background-requests"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { NOTIFICATIONS_CHANGED_EVENT } from "@/lib/notifications/client-events"
 import {
@@ -51,7 +48,7 @@ function useNotificationCenterDriver(store: NotificationCenterStore | null): voi
  */
 export function NotificationCenterProvider({
   children,
-  loader = getNotificationCenter,
+  loader = fetchNotificationCenter,
 }: {
   readonly children: React.ReactNode
   /** Tests only. */
@@ -92,7 +89,7 @@ export function useNotificationCenter(
 ): NotificationCenterView {
   const shared = React.useContext(NotificationCenterContext)
   const [local] = React.useState(() =>
-    shared ? null : new NotificationCenterStore(getNotificationCenter),
+    shared ? null : new NotificationCenterStore(fetchNotificationCenter),
   )
   useNotificationCenterDriver(local)
   const store = shared ?? local
