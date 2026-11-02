@@ -41,6 +41,9 @@ const sageBridgePaths = [
   "/api/integrations/sage/square-payments/requests",
   "/api/integrations/sage/square-payments/results",
   "/api/integrations/sage/square-invoice-creators",
+  "/api/integrations/sage/vendor-certificates/requests",
+  "/api/integrations/sage/vendor-certificates/results",
+  "/api/integrations/sage/vendor-certificates/directory",
   "/api/integrations/square/auth-health",
 ]
 
