@@ -7,12 +7,12 @@
   "summary": "Manage directory contacts, project assignments, invitations, and access verification.",
   "contextSummary": "A contact record, a project assignment, and a Compass login are separate. Search first, assign the correct project, then invite and verify access.",
   "category": "Start Here",
-  "tags": ["contacts", "access", "permissions", "invitations", "users"],
+  "tags": ["contacts", "access", "permissions", "invitations", "users", "unassigned people", "imported messages", "Buildertrend"],
   "audiences": ["staff"],
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-02"
 }
 ---
 
@@ -46,6 +46,12 @@ For an unlinked contact, **Verify Sage link** looks up the exact Sage number wit
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
 
 Linking a person to a Compass account is a separate, deliberate administrator action. Use **Compass account** beside the named person and choose the exact login. Never decide a match by email alone; the account link does not grant project access by itself.
+
+## Resolve People Imported from Messages {#unassigned-imported-people}
+
+The **Unassigned** tab in **Contacts** lists people discovered in imported messages who are not yet connected to a client or vendor company. Search the list by name, email, or project, then open the linked project's **Contacts** page to identify the person in project context.
+
+Confirm the person's email, company, role, and project before connecting them to an existing directory record or creating a new one. Search first and avoid turning a source-system spelling variation into a duplicate. An imported conversation with an unidentified outside participant remains staff-only until staff explicitly confirm its audience and share it from the conversation options. Connecting a directory contact and granting that person Compass project access remain separate actions.
 
 ## Verify Access {#verify-access}
 
