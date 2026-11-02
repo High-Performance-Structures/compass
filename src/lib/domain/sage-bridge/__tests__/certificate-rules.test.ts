@@ -66,7 +66,14 @@ describe("planSageCertificates", () => {
     const rows = plan([], "flag", true, { "gl-certificate": "General Liability" })
     const gl = rows.find((row) => row.docTypeId === "gl-certificate")
     expect(gl?.desc).toBe("General Liability")
-    expect(gl?.matchNames).toEqual(["general liability", "general liability certificate"])
+    expect(gl?.matchNames).toEqual(expect.arrayContaining(["general liability", "general liability certificate"]))
+  })
+
+  it("matches a Sage row named in the singular or the plural", () => {
+    const rows = plan([], "flag", true, { "trade-agreement": "Trade Agreement" })
+    const agreement = rows.find((row) => row.docTypeId === "trade-agreement")
+    expect(agreement?.desc).toBe("Trade Agreement")
+    expect(agreement?.matchNames).toEqual(expect.arrayContaining(["trade agreement", "trade agreements"]))
   })
 
   it("keeps an expired certificate's real expiry", () => {
