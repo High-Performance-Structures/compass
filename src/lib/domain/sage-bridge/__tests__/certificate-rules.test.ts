@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { dayBefore, planSageCertificates, sageCertificateFlags } from "@/lib/domain/sage-bridge/certificate-rules"
+import { dayBefore, planSageCertificates, SAGE_NEVER_EXPIRES, sageCertificateFlags } from "@/lib/domain/sage-bridge/certificate-rules"
 import { DEFAULT_TRADE_DOC_TYPES } from "@/lib/trade-docs/settings"
 import { summarizeTradeDocs, type TradeDocOnFile } from "@/lib/trade-docs/status"
 
@@ -47,7 +47,7 @@ describe("planSageCertificates", () => {
     const required = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", docs: [], today }).lines.filter((line) => line.required)
     expect(rows).toHaveLength(required.length)
     const w9 = rows.find((row) => row.docTypeId === "w9")
-    expect(w9).toMatchObject({ desc: "W-9", expiryDate: null, receivedDate: "2026-01-15", warn: "Y", stopPay: "Y" })
+    expect(w9).toMatchObject({ desc: "W-9", expiryDate: SAGE_NEVER_EXPIRES, receivedDate: "2026-01-15", warn: "Y", stopPay: "Y" })
     const gl = rows.find((row) => row.docTypeId === "gl-certificate")
     expect(gl).toMatchObject({ expiryDate: "2027-03-01", stopPay: "Y" })
     const missing = rows.filter((row) => row.docTypeId !== "w9" && row.docTypeId !== "gl-certificate")
