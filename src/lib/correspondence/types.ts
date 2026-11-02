@@ -1,3 +1,5 @@
+import type { RecordSource } from "@/lib/record-source"
+
 export type CorrespondenceResult<T> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: string }
@@ -31,6 +33,8 @@ export type CorrespondenceSummary = {
   readonly lastSentAt?: string | null
   readonly closed: boolean
   readonly shareReadReceipts: boolean
+  /** Set for a project conversation that lives in a channel (see channel-thread-id.ts). */
+  readonly origin?: { readonly kind: "channel"; readonly source: RecordSource | null }
 }
 export type CorrespondenceAttachment = {
   readonly id: string
@@ -38,6 +42,8 @@ export type CorrespondenceAttachment = {
   readonly size: number
   readonly contentType: string
   readonly available: boolean
+  /** Download path when the file is not a correspondence attachment (channel attachments). */
+  readonly href?: string
 }
 export type CorrespondenceMessage = {
   readonly id: string

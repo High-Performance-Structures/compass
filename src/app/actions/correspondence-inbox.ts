@@ -5,6 +5,8 @@ import {
   authorizedConversation,
   correspondenceContext,
 } from "@/lib/correspondence/access"
+import { channelIdFromConversationId, CHANNEL_THREAD_STATE_UNAVAILABLE } from "@/lib/correspondence/channel-thread-id"
+import { markChannelThreadsRead } from "@/lib/correspondence/channel-threads"
 import type { CorrespondenceResult } from "@/lib/correspondence/types"
 import { inboxStatePatch } from "@/lib/domain/correspondence/rules"
 import { markConversationReadStatement, upsertConversationStateStatement } from "@/lib/domain/correspondence/store"
@@ -42,10 +44,17 @@ export async function updateCorrespondenceInbox(
         error: "Choose up to 100 conversations and a valid inbox action.",
       }
     }
-    const ids = [...new Set(conversationIds)]
+    const selection = [...new Set(conversationIds)]
+    // Imported project conversations (channels) keep only read state; other inbox state is correspondence-only.
+    const channelIds = selection.flatMap((id) => channelIdFromConversationId(id) ?? [])
+    const ids = selection.filter((id) => channelIdFromConversationId(id) === null)
+    if (channelIds.length > 0 && action !== "read") {
+      return { success: false, error: `${CHANNEL_THREAD_STATE_UNAVAILABLE} Deselect them and try again.` }
+    }
     const ctx = await correspondenceContext(projectId)
     // Authorize the entire selection before any write; a forged ID cannot cause a partial update.
     for (const id of ids) await authorizedConversation(ctx, id)
+    if (channelIds.length > 0) await markChannelThreadsRead(ctx, channelIds)
     const now = new Date().toISOString()
     const writes = ids.map((conversationId) =>
       action === "read"

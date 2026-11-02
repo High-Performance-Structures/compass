@@ -34,7 +34,9 @@ export function ConversationMenu({
   readonly onState: (state: CorrespondenceStateInput) => Promise<void>
   readonly onClosed: () => Promise<void>
   readonly onReceiptPreference: (share: boolean) => Promise<void>
-}): React.ReactElement {
+}): React.ReactElement | null {
+  // Imported project conversations keep no inbox state, close flag or receipt preference.
+  if (conversation.origin?.kind === "channel") return null
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Conversation actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">

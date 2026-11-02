@@ -27,8 +27,9 @@ export function CorrespondenceAttachmentRow({
   const [open, setOpen] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
   const scopedHref = useAudiencePreviewHref()
-  const href = scopedHref(`/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}${projectHistory ? "&scope=project" : ""}`)
-  const previewHref = `${href}&preview=1`
+  // Channel attachments (imported conversations) carry their own authorized route.
+  const href = scopedHref(attachment.href ?? `/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}${projectHistory ? "&scope=project" : ""}`)
+  const previewHref = `${href}${href.includes("?") ? "&" : "?"}preview=1`
   const kind = attachmentPreviewKind(attachment.contentType)
   const size =
     attachment.size < 1024 * 1024
