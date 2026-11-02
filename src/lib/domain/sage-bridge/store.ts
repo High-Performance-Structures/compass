@@ -25,7 +25,7 @@ import {
   sageVendorDirectoryEntries,
 } from "@/db/schema-sage"
 import { sageLaborRequests } from "@/db/schema-shop-tickets"
-import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Rows } from "@/lib/d1-query"
 import type { SageBridgeHeartbeatId } from "@/lib/domain/sage-bridge/rules"
 import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES, type SageVendorCertificateSyncStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
@@ -343,11 +343,12 @@ const LISTS = { status: SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES }
  * running; its newer requested time sends it round again when it reports.
  */
 export async function queueVendorCertificateSyncs(db: Db, organizationId: string, vendorIds: readonly string[], now: string): Promise<void> {
-  for (const ids of chunkD1Values([...new Set(vendorIds)])) {
-    if (ids.length === 0) continue
+  const rows = [...new Set(vendorIds)].map((vendorId) => ({ id: crypto.randomUUID(), organizationId, vendorId, status: "queued" as const, requestedAt: now, updatedAt: now }))
+  // Each row binds one parameter per column, so chunk by row width, not by vendor count.
+  for (const chunk of chunkD1InsertRows(sageVendorCertificateSyncs, rows, 2)) {
     await db
       .insert(sageVendorCertificateSyncs)
-      .values(ids.map((vendorId) => ({ id: crypto.randomUUID(), organizationId, vendorId, status: "queued" as const, requestedAt: now, updatedAt: now })))
+      .values(chunk)
       .onConflictDoUpdate({
         target: sageVendorCertificateSyncs.vendorId,
         set: {
