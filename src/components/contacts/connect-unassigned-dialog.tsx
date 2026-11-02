@@ -109,6 +109,12 @@ export function ConnectUnassignedDialog({
               Connected to <span className="font-medium">{outcome.companyName}</span>
               {outcome.createdPerson ? " and added to its people." : " as the person already listed there."}
             </p>
+            {outcome.compassOnlyOnSageLinked ? (
+              <p>
+                This company is linked to Sage. The person was added in Compass only and is not in Sage. Use Propose Sage
+                person on the company when they should be added to Sage.
+              </p>
+            ) : null}
             {outcome.failed.length > 0 ? (
               <div role="alert" className="space-y-1 text-destructive">
                 <p>Not connected on:</p>

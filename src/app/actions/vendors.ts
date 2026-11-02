@@ -542,6 +542,7 @@ export async function createVendorContact(
       vendorId,
       person: input,
       now: new Date().toISOString(),
+      onSageLinkedVendor: "refuse",
     })
     if (!result.success) return result
     const { contact } = result

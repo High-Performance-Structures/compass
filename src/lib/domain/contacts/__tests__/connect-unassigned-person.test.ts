@@ -25,6 +25,8 @@ vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: async () => undefined,
 }))
 
+import { getVendorDirectoryCompany } from "@/app/actions/contact-directory"
+import { createVendorContact, updateVendor } from "@/app/actions/vendors"
 import {
   connectUnassignedPersonToCompany,
   getUnassignedCompanySuggestion,
@@ -48,6 +50,13 @@ function insert(table: string, row: Record<string, string | number | null>): voi
 
 function rows(query: string, ...binds: readonly unknown[]): Row[] {
   return sqlite.prepare(query).all(...binds).filter(isRecord)
+}
+
+/** Row counts of every Sage table, to prove nothing was written to Sage or queued for it. */
+function sageTableRows(): Record<string, unknown> {
+  const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'sage%' ORDER BY name")
+  expect(tables.length).toBeGreaterThan(0)
+  return Object.fromEntries(tables.map((table) => [String(table.name), rows(`SELECT count(*) AS n FROM "${String(table.name)}"`)[0]?.n]))
 }
 
 function importedContact(id: string, projectId: string, overrides: Record<string, string | number | null> = {}): void {
@@ -156,11 +165,50 @@ describe("Connect to company…", () => {
     expect(rows("SELECT name, email FROM customer_contacts")).toEqual([{ name: "Jane Doe", email: "jane@acme.example" }])
   })
 
-  it("follows the vendor add rules: a Sage-linked vendor needs Sage review, and nothing changes", async () => {
-    vendor("vendor-sage", "Sage Framing", { sage_vendor_number: "V100" })
+  it("adds the person to a Sage-linked vendor in Compass only: no Sage ids, no Sage writes, primary untouched", async () => {
+    vendor("vendor-sage", "Sage Framing", { sage_vendor_id: "S-1", sage_vendor_number: "V100" })
+    insert("vendor_contacts", { id: "vp-sage", vendor_id: "vendor-sage", name: "Sage Person", sage_contact_id: "SC-1", sage_line_number: 1, is_primary: 1, active: 1, created_at: NOW, updated_at: NOW })
+    const sageBefore = sageTableRows()
     const result = await connectUnassignedPersonToCompany({ identity: IDENTITY, kind: "vendor", companyId: "vendor-sage" })
-    expect(result).toEqual({ success: false, error: "This vendor is linked to Sage. Add its contact through the reviewed Sage workflow." })
-    expect(rows("SELECT vendor_id FROM project_contacts")).toEqual([{ vendor_id: null }, { vendor_id: null }])
+    expect(result.success && result.data).toMatchObject({ createdPerson: true, compassOnlyOnSageLinked: true, failed: [] })
+    if (!result.success) return
+    expect(rows("SELECT id, name, sage_contact_id, sage_line_number, is_primary FROM vendor_contacts ORDER BY name")).toEqual([
+      { id: result.data.personId, name: "Jane Doe", sage_contact_id: null, sage_line_number: null, is_primary: 0 },
+      { id: "vp-sage", name: "Sage Person", sage_contact_id: "SC-1", sage_line_number: 1, is_primary: 1 },
+    ])
+    expect(sageTableRows()).toEqual(sageBefore)
+    expect(rows("SELECT vendor_id FROM project_contacts")).toEqual([{ vendor_id: "vendor-sage" }, { vendor_id: "vendor-sage" }])
+    expect(rows("SELECT summary FROM activity_events")).toEqual([
+      { summary: "Added a person from imported BT messages to Sage Framing, Compass only (not in Sage)." },
+    ])
+
+    // The vendor's other edits still work with the extra Compass-only person:
+    // the full form resubmits every person unchanged, and a category change is local.
+    const people = await getVendorDirectoryCompany("vendor-sage")
+    expect(people.success).toBe(true)
+    if (!people.success) return
+    const resubmitted = people.data.contacts.map((person) => ({
+      id: person.id, name: person.name, title: person.title ?? "", email: person.email ?? "", phone: person.phone ?? "", isPrimary: person.isPrimary,
+    }))
+    await expect(updateVendor("vendor-sage", { category: "Supplier", contacts: resubmitted })).resolves.toEqual({ success: true })
+    await expect(updateVendor("vendor-sage", { category: "Subcontractor" })).resolves.toEqual({ success: true })
+    expect(rows("SELECT count(*) AS n FROM vendor_contacts WHERE vendor_id = 'vendor-sage' AND active = 1")).toEqual([{ n: 2 }])
+    expect(sageTableRows()).toEqual(sageBefore)
+
+    // The normal add form keeps the Sage review rule.
+    await expect(createVendorContact("vendor-sage", { id: null, name: "Someone Else", title: "", email: "", phone: "", isPrimary: false })).resolves.toEqual({
+      success: false,
+      error: "This vendor is linked to Sage. Add its contact through the reviewed Sage workflow.",
+    })
+  })
+
+  it("adds the person to a Sage-linked client in Compass only", async () => {
+    insert("customers", { id: "cust-sage", organization_id: ORG, name: "Bob Owner", company: "Owner Holdings", sage_client_id: "C-1", sage_client_number: "100", relationship_type: "client", created_at: NOW, updated_at: NOW })
+    const sageBefore = sageTableRows()
+    const result = await connectUnassignedPersonToCompany({ identity: IDENTITY, kind: "customer", companyId: "cust-sage" })
+    expect(result.success && result.data).toMatchObject({ createdPerson: true, compassOnlyOnSageLinked: true })
+    expect(rows("SELECT name, sage_contact_id, sage_line_number FROM customer_contacts")).toEqual([{ name: "Jane Doe", sage_contact_id: null, sage_line_number: null }])
+    expect(sageTableRows()).toEqual(sageBefore)
   })
 
   it("needs the permission the add path needs", async () => {
