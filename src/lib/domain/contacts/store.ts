@@ -501,6 +501,45 @@ export async function updateVendor(
     .where(and(eq(vendors.id, input.vendorId), eq(vendors.organizationId, input.organizationId)))
 }
 
+/**
+ * "Use Sage name": renames a Sage-linked client or vendor company to the name
+ * Sage holds. Fenced on the name and Sage link the caller read, so a
+ * concurrent edit or relink is not overwritten; false when the fence failed.
+ * Ids, Sage ids and numbers, and source columns are untouched.
+ */
+export async function adoptSageCompanyName(
+  db: Db,
+  input: {
+    readonly kind: "client_company" | "vendor_company"
+    readonly id: string
+    readonly organizationId: string
+    readonly sageRecordId: string
+    readonly previousName: string
+    readonly name: string
+    readonly now: string
+  }
+): Promise<boolean> {
+  if (input.kind === "client_company") {
+    const rows = await db.update(customers).set({ name: input.name, updatedAt: input.now }).where(and(
+      eq(customers.id, input.id), eq(customers.organizationId, input.organizationId),
+      isNull(customers.mergedIntoCustomerId), eq(customers.sageClientId, input.sageRecordId),
+      eq(customers.name, input.previousName)
+    )).returning({ id: customers.id })
+    return rows.length === 1
+  }
+  const rows = await db.update(vendors).set({ name: input.name, updatedAt: input.now }).where(and(
+    eq(vendors.id, input.id), eq(vendors.organizationId, input.organizationId),
+    eq(vendors.directoryStatus, "active"), eq(vendors.sageVendorId, input.sageRecordId),
+    eq(vendors.name, input.previousName)
+  )).returning({ id: vendors.id })
+  if (rows.length !== 1) return false
+  // Project contacts read a linked vendor's name from the directory; the
+  // copied company name is refreshed for readers that still use it.
+  await db.update(projectContacts).set({ companyName: input.name, updatedAt: input.now })
+    .where(eq(projectContacts.vendorId, input.id))
+  return true
+}
+
 export async function deleteVendor(db: Db, input: { readonly vendorId: string; readonly organizationId: string }): Promise<void> {
   await db.delete(vendors).where(and(eq(vendors.id, input.vendorId), eq(vendors.organizationId, input.organizationId)))
 }
