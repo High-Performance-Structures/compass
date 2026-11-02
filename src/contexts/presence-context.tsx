@@ -8,7 +8,7 @@ import React, {
   useCallback,
   useRef,
 } from "react"
-import { updatePresence } from "@/app/actions/presence"
+import { sendPresence } from "@/components/background-requests"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 type PresenceStatus = "online" | "idle" | "dnd" | "offline"
@@ -65,7 +65,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        await updatePresence(
+        await sendPresence(
           newStatus,
           effectiveMessage ?? undefined,
           newStatus !== "offline"
@@ -93,7 +93,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         setIsIdle(true)
         setStatus("idle")
         statusRef.current = "idle"
-        updatePresence("idle", statusMessageRef.current ?? undefined).catch(
+        sendPresence("idle", statusMessageRef.current ?? undefined).catch(
           () => {}
         )
       }
@@ -107,7 +107,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     if (statusRef.current === "offline" || statusRef.current === "dnd") return
 
     try {
-      await updatePresence(statusRef.current, statusMessageRef.current ?? undefined)
+      await sendPresence(statusRef.current, statusMessageRef.current ?? undefined)
     } catch {
       // silently fail - presence updates are non-critical
     }
@@ -140,7 +140,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
 
     if (now - lastActivitySyncRef.current >= ACTIVITY_SYNC_INTERVAL_MS) {
       lastActivitySyncRef.current = now
-      updatePresence(
+      sendPresence(
         "online",
         statusMessageRef.current ?? undefined,
         true
@@ -176,7 +176,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
           setIsIdle(true)
           setStatus("idle")
           statusRef.current = "idle"
-          updatePresence("idle", statusMessageRef.current ?? undefined).catch(
+          sendPresence("idle", statusMessageRef.current ?? undefined).catch(
             () => {}
           )
         } else {
@@ -198,7 +198,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   // send initial presence on mount
   useEffect(() => {
     lastActivitySyncRef.current = Date.now()
-    updatePresence("online", undefined, true).catch(() => {})
+    sendPresence("online", undefined, true).catch(() => {})
   }, [])
 
   const value: PresenceContextValue = {
