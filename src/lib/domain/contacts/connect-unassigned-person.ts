@@ -6,7 +6,9 @@
  * 1. The person on that company is reused when one already has the same
  *    name; otherwise it is added through the directory's own add path
  *    (`addVendorPerson` / `saveCustomerPerson`). A client whose own record is
- *    this person (same name) is used as is.
+ *    this person (same name) is used as is. On a Sage-linked vendor or client
+ *    the person is added in Compass only (owner decision 2026-11-02): no
+ *    Sage ids, no Sage write, no proposal. Staff can propose them to Sage later.
  * 2. Each of the person's imported project contacts is then linked to that
  *    directory person through the project contact save (`planProjectContactSave`
  *    / `commitProjectContactSave`), keeping its id, so every imported message
@@ -44,6 +46,8 @@ export type ConnectUnassignedOutcome = {
   /** The directory person now linked; null when a client's own record is the person. */
   readonly personId: string | null
   readonly createdPerson: boolean
+  /** The person was added in Compass only to a Sage-linked company; Sage does not have them. */
+  readonly compassOnlyOnSageLinked: boolean
   readonly connected: readonly { readonly projectId: string; readonly contactId: string; readonly archivedDuplicate: boolean }[]
   readonly failed: readonly { readonly projectId: string; readonly error: string }[]
 }
@@ -85,11 +89,11 @@ type CompanyPerson =
 async function resolveCompanyPerson(
   db: Db,
   input: { readonly organizationId: string; readonly kind: ConnectCompanyKind; readonly companyId: string; readonly name: string }
-): Promise<{ readonly success: true; readonly companyName: string; readonly person: CompanyPerson } | ActionFailure> {
+): Promise<{ readonly success: true; readonly companyName: string; readonly sageLinked: boolean; readonly person: CompanyPerson } | ActionFailure> {
   const nameKey = normalizeDirectoryKey(input.name)
   if (input.kind === "vendor") {
     const vendor = await db
-      .select({ id: vendors.id, name: vendors.name, category: vendors.category })
+      .select({ id: vendors.id, name: vendors.name, category: vendors.category, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
       .from(vendors)
       .where(and(eq(vendors.id, input.companyId), eq(vendors.organizationId, input.organizationId), eq(vendors.directoryStatus, "active")))
       .get()
@@ -103,18 +107,20 @@ async function resolveCompanyPerson(
     return {
       success: true,
       companyName: vendor.name,
+      sageLinked: Boolean(vendor.sageVendorId || vendor.sageVendorNumber),
       person: same ? { kind: "existing", personId: same.id } : { kind: "new", isPrimary: people.length === 0 },
     }
   }
   const customer = await db
-    .select({ id: customers.id, name: customers.name, company: customers.company })
+    .select({ id: customers.id, name: customers.name, company: customers.company, sageClientId: customers.sageClientId, sageClientNumber: customers.sageClientNumber })
     .from(customers)
     .where(and(eq(customers.id, input.companyId), eq(customers.organizationId, input.organizationId), isNull(customers.mergedIntoCustomerId)))
     .get()
   if (!customer) return fail("Client was not found.")
   const companyName = customer.company?.trim() || customer.name
+  const sageLinked = Boolean(customer.sageClientId || customer.sageClientNumber)
   if (normalizeDirectoryKey(customer.name) === nameKey) {
-    return { success: true, companyName, person: { kind: "existing", personId: null } }
+    return { success: true, companyName, sageLinked, person: { kind: "existing", personId: null } }
   }
   const people = await db
     .select({ id: customerContacts.id, name: customerContacts.name })
@@ -124,6 +130,7 @@ async function resolveCompanyPerson(
   return {
     success: true,
     companyName,
+    sageLinked,
     person: same ? { kind: "existing", personId: same.id } : { kind: "new", isPrimary: people.length === 0 },
   }
 }
@@ -228,11 +235,12 @@ export async function connectUnassignedPerson(
       title: "",
       email: firstText(rows, (row) => row.email),
       phone: firstText(rows, (row) => row.phone),
-      isPrimary: resolved.person.isPrimary,
+      // Primary stays with the people Sage manages.
+      isPrimary: resolved.person.isPrimary && !resolved.sageLinked,
     }
     const added =
       input.kind === "vendor"
-        ? await addVendorPerson(db, { organizationId, vendorId: input.companyId, person, now })
+        ? await addVendorPerson(db, { organizationId, vendorId: input.companyId, person, now, onSageLinkedVendor: "add_compass_only" })
         : await saveCustomerPerson(db, { organizationId, customerId: input.companyId, personId: null, person, now })
     if (!added.success) return added
     personId = "contact" in added ? added.contact.id : added.id
@@ -276,5 +284,6 @@ export async function connectUnassignedPerson(
     await commitProjectContactSave(db, { organizationId, plan: planned.plan })
     connected.push({ projectId: row.projectId, contactId: row.id, archivedDuplicate: false })
   }
-  return { success: true, data: { companyName: resolved.companyName, personId, createdPerson, connected, failed } }
+  const compassOnlyOnSageLinked = createdPerson && resolved.sageLinked
+  return { success: true, data: { companyName: resolved.companyName, personId, createdPerson, compassOnlyOnSageLinked, connected, failed } }
 }

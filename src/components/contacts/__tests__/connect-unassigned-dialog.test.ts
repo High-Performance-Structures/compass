@@ -44,7 +44,7 @@ describe("Connect to company… dialog", () => {
     mocks.suggest.mockResolvedValue({ kind: "vendor", id: "vendor-acme", name: "ACME Framing Inc" })
     mocks.connect.mockResolvedValue({
       success: true,
-      data: { companyName: "ACME Framing Inc", personId: "vp-1", createdPerson: true, connected: [{ projectId: "project-1", contactId: "pc-1", archivedDuplicate: false }], failed: [] },
+      data: { companyName: "ACME Framing Inc", personId: "vp-1", createdPerson: true, compassOnlyOnSageLinked: false, connected: [{ projectId: "project-1", contactId: "pc-1", archivedDuplicate: false }], failed: [] },
     })
     host = document.createElement("div")
     document.body.appendChild(host)

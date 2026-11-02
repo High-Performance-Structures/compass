@@ -114,8 +114,13 @@ export async function connectUnassignedPersonToCompany(
         action: "unassigned_person.connected",
         entityType: input.kind === "vendor" ? "vendor_contact" : data.personId ? "customer_contact" : "customer",
         entityId: data.personId ?? input.companyId,
-        summary: `Connected a person from imported messages to ${data.companyName}.`,
-        metadata: { companyId: input.companyId, kind: input.kind, createdPerson: data.createdPerson, projectIds },
+        summary: data.compassOnlyOnSageLinked
+          ? `Added a person from imported BT messages to ${data.companyName}, Compass only (not in Sage).`
+          : `Connected a person from imported messages to ${data.companyName}.`,
+        metadata: {
+          companyId: input.companyId, kind: input.kind, createdPerson: data.createdPerson,
+          compassOnly: data.compassOnlyOnSageLinked, projectIds,
+        },
       })
     }
     revalidatePath("/dashboard/contacts")
