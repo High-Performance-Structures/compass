@@ -311,6 +311,7 @@ export async function getProjectAudiencePreview(
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
       capturedAt: dailyLogPhotos.capturedAt,
+      sourceSystem: dailyLogPhotos.sourceSystem,
       sourceDate: projectPhotoSourceDates.sourceDate,
       createdAt: dailyLogPhotos.createdAt,
       logDate: dailyLogs.logDate,
@@ -973,11 +974,7 @@ export async function getProjectAudiencePreview(
     upcomingMeetings,
     ownerUpdates: ownerUpdateRows,
     photos: photoRows.filter(isImage).map((photo) => {
-      const resolvedPhotoDate = resolveProjectPhotoDate({
-        capturedAt: photo.capturedAt,
-        sourceDate: photo.sourceDate,
-        logDate: photo.logDate,
-      })
+      const resolvedPhotoDate = resolveProjectPhotoDate(photo)
       const schedulePhase = photo.schedulePhaseOverride?.trim() ?? ""
 
       return {

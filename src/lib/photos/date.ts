@@ -1,11 +1,23 @@
+/**
+ * Source systems whose imported rows carry an import-time `capturedAt` and a
+ * best-effort daily-log link, so only the preserved source date is trustworthy.
+ */
+const SOURCE_DATE_ONLY_SYSTEMS: ReadonlySet<string> = new Set(["buildertrend"])
+
 /** Record creation is an import/upload event, not evidence of when a photo was taken. */
 export function resolveProjectPhotoDate(value: {
+  readonly sourceSystem: string | null
   readonly sourceDate?: string | null
   readonly capturedAt: string | null
   readonly logDate: string | null
 }): string | null {
   // A preserved source-system date is the requested import chronology.
   if (value.sourceDate) return value.sourceDate
+  // Imported photos without a preserved source date have an unknown date;
+  // never substitute the import time or log date (no guessed dates).
+  if (value.sourceSystem !== null && SOURCE_DATE_ONLY_SYSTEMS.has(value.sourceSystem)) {
+    return null
+  }
   if (value.capturedAt) return value.capturedAt.slice(0, 10)
   if (value.logDate) return value.logDate
   return null
