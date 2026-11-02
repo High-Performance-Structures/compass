@@ -1,14 +1,16 @@
 /**
  * The only code that inserts, updates, or deletes the conversation tables:
- * channels, channel_members, channel_read_state, messages, message_mentions,
- * message_reactions and message_attachments (architecture standard,
+ * channels, channel_members, channel_read_state, channel_thread_user_state,
+ * messages, message_mentions, message_reactions and message_attachments (architecture standard,
  * section 1). No auth here: callers check channel membership first.
  */
 import { and, eq, inArray, ne, sql } from "drizzle-orm"
+import type { BatchItem } from "drizzle-orm/batch"
 
 import {
   channelMembers,
   channelReadState,
+  channelThreadUserState,
   channels,
   messageAttachments,
   messageMentions,
@@ -34,6 +36,35 @@ export async function insertChannel(db: Db, row: ChannelInsert): Promise<void> {
 /** Orders conversation lists by real activity. */
 export async function touchChannel(db: Db, channelId: string, updatedAt: string): Promise<void> {
   await db.update(channels).set({ updatedAt }).where(eq(channels.id, channelId))
+}
+
+/** Staff closed (a time) or reopened (null) a conversation in the project messages inbox. */
+export async function setChannelThreadClosed(db: Db, channelId: string, closedAt: string | null): Promise<void> {
+  await db.update(channels).set({ threadClosedAt: closedAt }).where(eq(channels.id, channelId))
+}
+
+/** One person's inbox flag change: each set flag is turned on (now) or off (null); others are kept. */
+export type ChannelThreadStatePatch = {
+  readonly saved?: boolean
+  readonly needsReply?: boolean
+  readonly archived?: boolean
+}
+
+export function upsertChannelThreadStateStatement(
+  db: Db,
+  input: { readonly organizationId: string; readonly channelId: string; readonly userId: string; readonly patch: ChannelThreadStatePatch; readonly now: string }
+): BatchItem<"sqlite"> {
+  const flag = (value: boolean): string | null => value ? input.now : null
+  const changes = {
+    ...(input.patch.saved === undefined ? {} : { savedAt: flag(input.patch.saved) }),
+    ...(input.patch.needsReply === undefined ? {} : { needsReplyAt: flag(input.patch.needsReply) }),
+    ...(input.patch.archived === undefined ? {} : { archivedAt: flag(input.patch.archived) }),
+    updatedAt: input.now,
+  }
+  return db
+    .insert(channelThreadUserState)
+    .values({ id: crypto.randomUUID(), organizationId: input.organizationId, channelId: input.channelId, userId: input.userId, ...changes })
+    .onConflictDoUpdate({ target: [channelThreadUserState.channelId, channelThreadUserState.userId], set: changes })
 }
 
 // ---------------------------------------------------------------------------

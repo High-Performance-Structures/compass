@@ -1,12 +1,12 @@
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 import { organizationMembers, projectMembers, projects, users } from "@/db/schema"
-import { channelMembers, channelReadState, channels, messageAttachments, messages } from "@/db/schema-conversations"
+import { channelMembers, channelReadState, channelThreadUserState, channels, messageAttachments, messages } from "@/db/schema-conversations"
 import { canAccessConversationChannel, importedConversationAccess } from "@/lib/conversations/channel-access"
 import { importedConversationContent, messageSenderDisplay } from "@/lib/conversations/imported-message-content"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import { chunkD1Values } from "@/lib/d1-query"
 import { importedMessageColumns } from "@/lib/domain/conversations/imported"
-import { upsertChannelReadForUser } from "@/lib/domain/conversations/store"
+import { setChannelThreadClosed, upsertChannelReadForUser, upsertChannelThreadStateStatement, type ChannelThreadStatePatch } from "@/lib/domain/conversations/store"
 import { markChannelNotificationsRead } from "@/lib/notifications/clear-on-read"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondenceContext } from "./access"
@@ -17,9 +17,10 @@ import type { CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbo
  * Read adapter: project conversations stored as channels (Buildertrend threads
  * imported into live conversations, migration 0287) shown in the project
  * messages inbox as ordinary subjects. Nothing is copied into correspondence
- * tables; replies go through the conversation's own send action, and the
- * only write here is the viewer's channel read state (owned by the
- * conversations store). Access is the conversation rule
+ * tables; replies go through the conversation's own send action. Writes here
+ * (read state, the viewer's Saved / Needs reply / Archive flags from
+ * migration 0289, staff Close) all go through the conversations store.
+ * Access is the conversation rule
  * (canAccessConversationChannel), narrowed to the inbox's own audience.
  * See docs/plans/bt-messages-live-conversations.md.
  */
@@ -29,7 +30,10 @@ type ChannelThread = {
   readonly name: string
   readonly audience: string
   readonly isPrivate: boolean
-  readonly archivedAt: string | null
+  readonly closedAt: string | null
+  readonly saved: boolean
+  readonly needsReply: boolean
+  readonly archived: boolean
   readonly sourceSystem: string | null
   readonly unreadCount: number
 }
@@ -82,17 +86,21 @@ async function accessibleChannelThreads(ctx: CorrespondenceContext, channelId?: 
   if (role === null) return []
   const rows = await ctx.db.select({
     id: channels.id, name: channels.name, audience: channels.audience, isPrivate: channels.isPrivate,
-    archivedAt: channels.archivedAt, sourceSystem: channels.sourceSystem,
+    closedAt: channels.threadClosedAt, sourceSystem: channels.sourceSystem,
+    savedAt: channelThreadUserState.savedAt, needsReplyAt: channelThreadUserState.needsReplyAt, archivedAt: channelThreadUserState.archivedAt,
     projectStaffOnly: projects.importedConversationsStaffOnly,
     memberId: channelMembers.id, unreadCount: channelReadState.unreadCount,
   }).from(channels)
     .innerJoin(projects, eq(projects.id, channels.projectId))
     .leftJoin(channelMembers, and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.user.id)))
     .leftJoin(channelReadState, and(eq(channelReadState.channelId, channels.id), eq(channelReadState.userId, ctx.user.id)))
+    .leftJoin(channelThreadUserState, and(eq(channelThreadUserState.channelId, channels.id), eq(channelThreadUserState.userId, ctx.user.id)))
     .where(and(
       eq(channels.organizationId, ctx.organizationId),
       eq(channels.projectId, ctx.projectId),
       isNotNull(channels.sourceSystem),
+      // A retired (archived) channel is gone from the chat too.
+      isNull(channels.archivedAt),
       channelId === undefined ? undefined : eq(channels.id, channelId),
     ))
   const threads = new Map<string, ChannelThread>()
@@ -102,7 +110,8 @@ async function accessibleChannelThreads(ctx: CorrespondenceContext, channelId?: 
       workspace: ctx.workspace, role, isActive: ctx.user.isActive, hasMembership: row.memberId !== null,
       channel: { id: row.id, audience: row.audience, isPrivate: row.isPrivate, sourceSystem: row.sourceSystem, projectStaffOnly: row.projectStaffOnly },
     })
-    if (allowed) threads.set(row.id, { id: row.id, name: row.name, audience: row.audience, isPrivate: row.isPrivate, archivedAt: row.archivedAt, sourceSystem: row.sourceSystem, unreadCount: row.unreadCount ?? 0 })
+    if (allowed) threads.set(row.id, { id: row.id, name: row.name, audience: row.audience, isPrivate: row.isPrivate, sourceSystem: row.sourceSystem, unreadCount: row.unreadCount ?? 0,
+      closedAt: row.closedAt, saved: row.savedAt !== null, needsReply: row.needsReplyAt !== null, archived: row.archivedAt !== null })
   }
   return [...threads.values()]
 }
@@ -168,7 +177,9 @@ async function summarize(ctx: CorrespondenceContext, threads: readonly ChannelTh
       lastActivitySourceLocal: last.snapshot !== null,
       people: [...people.values()],
       unread: thread.unreadCount > 0,
-      saved: false, followUp: false, archived: thread.archivedAt !== null, closed: false, shareReadReceipts: false,
+      saved: thread.saved, followUp: thread.needsReply, archived: thread.archived, shareReadReceipts: false,
+      // As in correspondence, a newer message reopens a closed conversation.
+      closed: thread.closedAt !== null && last.createdAt <= thread.closedAt,
       lastSentAt: sent?.createdAt ?? null, lastSentExcerpt: sent ? messageText(sent).slice(0, EXCERPT_LENGTH) : null, lastSentMessageId: sent?.id ?? null,
       origin: { kind: "channel", source: thread.sourceSystem === "buildertrend" ? "buildertrend" : null },
     }]
@@ -268,6 +279,22 @@ async function markThreadsRead(ctx: CorrespondenceContext, reads: readonly { rea
     .catch((error: unknown) => console.error("channel_thread_notification_clear_failed", error instanceof Error ? error.message : error))
 }
 
+/** Saved / Needs reply / Archive for the viewer, per person as in correspondence. The whole selection is authorized before any write. */
+export async function setChannelThreadsState(ctx: CorrespondenceContext, channelIds: readonly string[], patch: ChannelThreadStatePatch): Promise<void> {
+  const allowed = new Set((await accessibleChannelThreads(ctx)).map((thread) => thread.id))
+  if (channelIds.some((id) => !allowed.has(id))) throw new Error("Conversation not found.")
+  const now = new Date().toISOString()
+  const [first, ...rest] = channelIds.map((channelId) => upsertChannelThreadStateStatement(ctx.db, { organizationId: ctx.organizationId, channelId, userId: ctx.user.id, patch, now }))
+  if (first) await ctx.db.batch([first, ...rest])
+}
+
+/** Close or reopen for everyone; project staff only, as in correspondence. */
+export async function setChannelThreadClosedByStaff(ctx: CorrespondenceContext, channelId: string, closed: boolean): Promise<void> {
+  if (ctx.workspace !== "staff") throw new Error("Only project staff can close or reopen a conversation.")
+  const thread = await authorizedChannelThread(ctx, channelId)
+  await setChannelThreadClosed(ctx.db, thread.id, closed ? new Date().toISOString() : null)
+}
+
 export type ChannelThreadSearchHit = {
   readonly conversationId: string
   readonly messageId: string
@@ -280,10 +307,11 @@ export type ChannelThreadSearchHit = {
 
 /** Subject and message search across the viewer's imported conversations, newest first. */
 export async function searchChannelThreads(ctx: CorrespondenceContext, term: string, filter: CorrespondenceInboxFilter | undefined): Promise<readonly ChannelThreadSearchHit[]> {
-  // No saved or follow-up state is kept for channel conversations.
-  if (filter === "saved" || filter === "follow-up" || filter === "drafts") return []
+  if (filter === "drafts") return []
+  // The same tab rules as correspondence search.
   const threads = (await accessibleChannelThreads(ctx)).filter((thread) =>
-    (filter === undefined || filter === "sent" || (thread.archivedAt !== null) === (filter === "archived")) &&
+    (filter === undefined || filter === "sent" || thread.archived === (filter === "archived")) &&
+    (filter !== "saved" || thread.saved) && (filter !== "follow-up" || thread.needsReply) &&
     (filter !== "unread" || thread.unreadCount > 0))
   const hits: ChannelThreadSearchHit[] = []
   for (const ids of chunkD1Values(threads.map((thread) => thread.id))) {

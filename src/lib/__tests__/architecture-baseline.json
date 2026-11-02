@@ -54,6 +54,9 @@
     "channelReadState": [
       "src/lib/domain/conversations/store.ts"
     ],
+    "channelThreadUserState": [
+      "src/lib/domain/conversations/store.ts"
+    ],
     "channels": [
       "src/lib/domain/conversations/store.ts"
     ],
