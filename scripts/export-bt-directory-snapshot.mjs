@@ -63,6 +63,7 @@ export function directoryQueries(organizationId) {
     { name: "customerContacts", sql: page(`SELECT cc.id AS cursor, cc.id, cc.customer_id, cc.user_id, cc.name, cc.email, cc.source_system, cc.source_record_id, c.buildertrend_contact_id AS customer_bt_id FROM customer_contacts cc JOIN customers c ON c.id = cc.customer_id WHERE c.organization_id = ${org} AND cc.active = 1 AND cc.merged_into_person_id IS NULL AND c.merged_into_customer_id IS NULL`, "cc.id") },
     { name: "projectContacts", sql: page(`SELECT pc.id AS cursor, pc.id, pc.project_id, pc.contact_type, pc.display_name, pc.email, pc.source_entity_type, pc.source_entity_id, pc.internal_contact_id, pc.vendor_contact_id, pc.customer_id, pc.customer_contact_id FROM project_contacts pc JOIN projects p ON p.id = pc.project_id WHERE p.organization_id = ${org} AND pc.active = 1`, "pc.id") },
     { name: "btVendors", sql: page(`SELECT v.id AS cursor, v.id, v.source_record_id FROM vendors v WHERE v.organization_id = ${org} AND v.source_system = 'buildertrend' AND v.source_record_id IS NOT NULL AND v.merged_into_vendor_id IS NULL`, "v.id") },
+    { name: "vendorNames", sql: page(`SELECT v.id AS cursor, v.id, v.name FROM vendors v WHERE v.organization_id = ${org} AND v.directory_status = 'active' AND v.merged_into_vendor_id IS NULL AND lower(trim(COALESCE(v.category, ''))) <> 'internal'`, "v.id") },
     { name: "projects", sql: page(`SELECT p.id AS cursor, p.id, p.client_customer_id FROM projects p WHERE p.organization_id = ${org}`, "p.id") },
     { name: "btInternal", sql: page(`SELECT a.id AS cursor, a.matched_user_id AS user_id, a.buildertrend_contact_id FROM buildertrend_staging_access_candidates a WHERE a.organization_id = ${org} AND a.matched_user_id IS NOT NULL AND a.buildertrend_contact_id IS NOT NULL AND a.review_status IN ('approved', 'verified')`, "a.id") },
   ]
@@ -174,6 +175,8 @@ export function buildDirectorySnapshot(rows) {
   return {
     schema: DIRECTORY_SCHEMA,
     vendors: (rows.btVendors ?? []).map((row) => ({ vendorId: row.id, btId: String(row.source_record_id) })),
+    // Active vendors by name, for connecting new people by the company the source showed.
+    vendorNames: (rows.vendorNames ?? []).map((row) => ({ vendorId: row.id, name: row.name })),
     projects: [...clients.entries()].map(([projectId, ids]) => ({ projectId, clientCustomerIds: [...ids].sort() })).sort((a, b) => a.projectId.localeCompare(b.projectId)),
     people: [...people.values()]
       .filter((entry) => entry.names.length > 0 || entry.emails.size > 0)

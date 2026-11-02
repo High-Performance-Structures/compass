@@ -86,20 +86,24 @@ describe("new directory contacts from the Buildertrend catalog", () => {
   })
 
   it("sends a vendor contact whose company is unknown everywhere to review", () => {
-    expect(resolve(ref({ displayName: "Orphan Person" }), PROJECT)).toEqual({ reason: "participant_unmatched" })
+    // Owner decision 2026-11-02: they are still added, as a person not yet connected to a company.
+    expect(resolve(ref({ displayName: "Orphan Person" }), PROJECT)).toMatchObject({ rule: "new_person_by_name", entry: { unassigned: true, identity: "new:name:orphan person" } })
   })
 
   it("adds a customer contact under the project's single client, else review", () => {
     expect(resolve(ref({ displayName: "Olive Owner" }), PROJECT)).toMatchObject({
       rule: "new_contact_from_catalog", entry: { kind: "owner", links: { customerId: "c-owens" } },
     })
-    expect(resolve(ref({ displayName: "Olive Owner" }), NO_CLIENT_PROJECT)).toEqual({ reason: "participant_unmatched" })
+    expect(resolve(ref({ displayName: "Olive Owner" }), NO_CLIENT_PROJECT)).toMatchObject({ rule: "new_person_by_name", entry: { unassigned: true } })
     expect(resolve(ref({ displayName: "Olive Owner" }), TWO_CLIENT_PROJECT)).toEqual({ reason: "participant_ambiguous" })
   })
 
   it("never invents staff, and still reviews people missing from the catalog", () => {
-    expect(resolve(ref({ displayName: "New Hire" }), PROJECT)).toEqual({ reason: "participant_unmatched" })
-    expect(resolve(ref({ displayName: "Nobody Known" }), PROJECT)).toEqual({ reason: "participant_unmatched" })
+    // A BT employee with no Compass user is a former employee, archived; never a user.
+    expect(resolve(ref({ displayName: "New Hire" }), PROJECT)).toMatchObject({ rule: "former_employee_archived", entry: { kind: "former_staff", userId: null } })
+    // Not in the catalog at all: a new person, unless it is not a full name.
+    expect(resolve(ref({ displayName: "Nobody Known" }), PROJECT)).toMatchObject({ rule: "new_person_by_name" })
+    expect(resolve(ref({ displayName: "Nobody" }), PROJECT)).toEqual({ reason: "participant_unmatched" })
   })
 })
 

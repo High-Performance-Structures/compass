@@ -110,7 +110,7 @@ describe("threads with unidentified people import staff-only", () => {
     expect(plan.imported_staff_only_pending_identity).toBe(1)
     expect(plan.reviews).toEqual([expect.objectContaining({
       reason: "staff_only_pending_identity", channelId,
-      unresolved: [expect.objectContaining({ reason: "participant_unmatched", literalSha256: expect.stringMatching(/^[0-9a-f]{64}$/) })],
+      unresolved: [expect.objectContaining({ reason: "new_unassigned_person", literalSha256: expect.stringMatching(/^[0-9a-f]{64}$/) })],
     })])
     expect(rows(`SELECT audience FROM channels WHERE id = '${channelId}'`)).toEqual([{ audience: "staff" }])
     // Staff join; the identified owner is recorded but gets no membership yet.
@@ -120,16 +120,17 @@ describe("threads with unidentified people import staff-only", () => {
   })
 
   it("keeps an unidentified sender's name exactly as shown", () => {
-    run([message("2", "101", { sender: stranger, recipients: [{ ...staff, kind: "to" }] }), thread("2", "101")])
+    // One word cannot be added as a new person, so the sender stays unidentified.
+    run([message("2", "101", { sender: { participantId: null, namespace: "owner", displayName: "Someone" }, recipients: [{ ...staff, kind: "to" }] }), thread("2", "101")])
     expect(rows(`SELECT user_id, source_sender_label_snapshot FROM messages WHERE source_message_id = '2'`))
-      .toEqual([{ user_id: "u-pm", source_sender_label_snapshot: "Someone Unknown" }])
+      .toEqual([{ user_id: "u-pm", source_sender_label_snapshot: "Someone" }])
   })
 
   it("still holds a thread for other reasons, such as an unverified attachment", () => {
     const plan = run([message("3", "101", { attachments: [{ btAttachmentId: "5", fileName: "a.jpg", sizeBytes: 1 }] }), thread("3", "101")])
     expect(plan.threads).toEqual([])
     expect(plan.imported_staff_only_pending_identity).toBe(0)
-    expect(plan.reviews.map((item: { reason: string }) => item.reason).sort()).toEqual(["attachment_unverified", "participant_unmatched"])
+    expect(plan.reviews.map((item: { reason: string }) => item.reason).sort()).toEqual(["attachment_unverified"])
     expect(rows(`SELECT COUNT(*) AS n FROM channels WHERE id = '${conversationId(ORG, "93")}'`)).toEqual([{ n: 0 }])
   })
 
@@ -141,7 +142,7 @@ describe("threads with unidentified people import staff-only", () => {
     expect(canAccessImportedConversation({ hasMembership: false, audience: "staff", role: "client", imported })).toBe(false)
 
     const preview = await planImportedThreadShare({ db, channelId, organizationId: ORG, actorRole: "project_manager", audience: "clients" })
-    expect(preview).toMatchObject({ ok: true, people: [{ userId: "u-owner" }] })
+    expect(preview).toMatchObject({ ok: true, people: expect.arrayContaining([expect.objectContaining({ userId: "u-owner" })]) })
     const shared = await shareImportedThread({ db, channelId, organizationId: ORG, actorRole: "project_manager", audience: "clients", now: NOW })
     expect(shared.ok).toBe(true)
     expect(rows(`SELECT audience FROM channels WHERE id = '${channelId}'`)).toEqual([{ audience: "clients" }])

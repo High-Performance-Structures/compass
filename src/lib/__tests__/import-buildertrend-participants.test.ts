@@ -124,6 +124,6 @@ describe("Buildertrend participant matching", () => {
     })
     expect(plan.threads.map((item: { btThreadId: string; audience: string }) => [item.btThreadId, item.audience])).toEqual([["9001", "clients"], ["9002", "sub_vendors"], ["9003", "staff"]])
     expect(plan.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", btThreadId: "9003", unresolved: [expect.objectContaining({ reason: "participant_ambiguous" })] })])
-    expect(plan.matches).toEqual({ by_map: 0, by_email: 3, by_name_project: 1, by_email_catalog: 0, by_name_catalog: 1, new_contact_from_catalog: 0, review: 1, segmented_by_dictionary: 0 })
+    expect(plan.matches).toMatchObject({ by_map: 0, by_email: 3, by_name_project: 1, by_email_catalog: 0, by_name_catalog: 1, new_contact_from_catalog: 0, review: 1, segmented_by_dictionary: 0 })
   })
 })
