@@ -13,9 +13,9 @@ const SAGE_DESC_MAX = 50
 
 /**
  * Sage requires an expiry on every certificate row, so documents that don't
- * expire (a W-9, an accepted alternative) get one far in the future.
+ * expire (a W-9, an accepted alternative) get one about 100 years out. It is a fixed date so rows aren't rewritten every day.
  */
-export const SAGE_NEVER_EXPIRES = "2099-12-31"
+export const SAGE_NEVER_EXPIRES = "2126-12-31"
 
 export type SageYesNo = "Y" | "N"
 
