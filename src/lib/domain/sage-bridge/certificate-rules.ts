@@ -54,6 +54,15 @@ function sageDesc(line: TradeDocLine, sageNames: Readonly<Record<string, string>
   return (named && named.length > 0 ? named : line.type.label).slice(0, SAGE_DESC_MAX)
 }
 
+/**
+ * A name and its singular/plural twin ("trade agreement" and "trade
+ * agreements"), so a row named either way counts as the same document and
+ * Sage never ends up with both.
+ */
+function withPlural(name: string): readonly string[] {
+  return [name, name.endsWith("s") ? name.slice(0, -1) : `${name}s`]
+}
+
 function receivedOn(line: TradeDocLine): string | null {
   const doc = line.doc
   if (!doc) return null
@@ -68,7 +77,8 @@ export function sageCertificateFlags(billMode: TradeDocBillMode, warnOnly: boole
 
 function lineFor(line: TradeDocLine, input: SageCertificatePlanInput): SageCertificateLine {
   const desc = sageDesc(line, input.sageNames)
-  const matchNames = [...new Set([desc, line.type.label.slice(0, SAGE_DESC_MAX)].map((name) => name.trim().toLowerCase()))]
+  const names = [desc, line.type.label.slice(0, SAGE_DESC_MAX)].map((name) => name.trim().toLowerCase())
+  const matchNames = [...new Set(names.flatMap(withPlural))]
   const base = { docTypeId: line.type.id, desc, matchNames }
   if (line.state === "waived") {
     return {
