@@ -52,8 +52,10 @@ import { MyContactInformationDialog } from "@/components/contacts/my-contact-inf
 import { ProjectAssociationConfirmDialog } from "@/components/contacts/project-association-confirm-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 import { addCompaniesToProject } from "@/app/actions/contact-project-associations"
+import { getUnassignedPeople } from "@/app/actions/unassigned-people"
 import { contactsTabAccess, toContactsTab, type ContactsBootstrap, type ContactsTab } from "@/components/contacts/contacts-bootstrap"
 import { UnassignedPeopleTable } from "@/components/contacts/unassigned-people-table"
+import type { ConnectCompanyKind } from "@/lib/domain/contacts/connect-unassigned-person"
 
 type Tab = ContactsTab
 type MergeKind = "customer_company" | "vendor_company" | "customer_person" | "vendor_person"
@@ -166,6 +168,19 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
     if (internal) setInternalContactsList(internal)
   }, [directoryAccess])
   const reloadLists = React.useCallback(() => { void refresh() }, [refresh])
+
+  // Unassigned people leave the list once connected to a company. Connecting
+  // adds a vendor or client person, so it needs the same grant as adding one.
+  const [unassigned, setUnassigned] = React.useState(bootstrap.unassigned)
+  const connectKinds = React.useMemo<readonly ConnectCompanyKind[]>(() => [
+    ...(directoryAccess?.vendors.edit ? ["vendor" as const] : []),
+    ...(directoryAccess?.customers.create ? ["customer" as const] : []),
+  ], [directoryAccess])
+  const unassignedConnected = React.useCallback((identity: string, complete: boolean) => {
+    if (complete) setUnassigned((current) => current.filter((person) => person.identity !== identity))
+    else void getUnassignedPeople().then(setUnassigned)
+    reloadLists()
+  }, [reloadLists])
 
   const openMyContacts = React.useCallback(async () => {
     setMyContactsOpen(true)
@@ -409,7 +424,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               </TabsTrigger>
               <TabsTrigger value="unassigned" disabled={!directoryAccess?.vendors.read} className="text-xs sm:text-sm">
                 Unassigned
-                <span className="ml-1.5 text-muted-foreground tabular-nums">{bootstrap.unassigned.length}</span>
+                <span className="ml-1.5 text-muted-foreground tabular-nums">{unassigned.length}</span>
               </TabsTrigger>
             </TabsList>
 
@@ -502,7 +517,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           </TabsContent>
 
           <TabsContent value="unassigned" className="mt-3 flex-1 min-h-0 flex flex-col">
-            <UnassignedPeopleTable people={bootstrap.unassigned} />
+            <UnassignedPeopleTable people={unassigned} connectKinds={connectKinds} onConnected={unassignedConnected} />
           </TabsContent>
         </Tabs>
       </div>

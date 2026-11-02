@@ -214,6 +214,26 @@ export function normalizeDirectoryKey(value: string | null): string {
     .trim()
 }
 
+/**
+ * Legal-entity suffixes ignored when comparing company names (owner decision
+ * 2026-11-02: "ABC Plumbing" and "ABC Plumbing LLC" are the same company).
+ * Same list as the Buildertrend participant importer's `COMPANY_NAME_SUFFIXES`.
+ */
+export const COMPANY_NAME_SUFFIXES = ["llc", "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "lp", "llp", "pllc", "pc"] as const
+
+/**
+ * A company name for exact comparison, as the importer compares them:
+ * lowercased, punctuation (. , ' ") removed, whitespace collapsed, trailing
+ * legal-entity suffixes dropped. No fuzzy matching. Null when empty.
+ */
+export function normalizeCompanyName(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null
+  const words = value.toLowerCase().replace(/[.,'"]/g, "").trim().split(/\s+/).filter(Boolean)
+  const suffixes: readonly string[] = COMPANY_NAME_SUFFIXES
+  while (words.length > 1 && suffixes.includes(words[words.length - 1] ?? "")) words.pop()
+  return words.length > 0 ? words.join(" ") : null
+}
+
 /** Lowercased, trimmed email; empty when missing. */
 export function normalizeEmailKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? ""
