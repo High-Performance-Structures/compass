@@ -164,6 +164,28 @@ What the importer does with each:
   also carries a SQL guard that does nothing if the job's archive is private,
   so a stale pre-check cannot expose one.
 
+### Where they appear
+
+Imported conversations are listed in the project's **Project messages**
+inbox next to correspondence, as ordinary subjects (owner request,
+2026-11-01). `src/lib/correspondence/channel-threads.ts` is a read adapter:
+nothing is copied into correspondence tables. Inbox ids are
+`channel:<channelId>` (`channel-thread-id.ts`), so each project messages
+action routes them to the channel model:
+
+- the list, detail, search and unread counts read `channels` / `messages`
+  under the access rule above, narrowed to the inbox's audience (an owner
+  inbox shows only `clients` threads, a vendor inbox only `sub_vendors`);
+- the date label is `source_sent_at_snapshot`; ordering is `created_at`;
+  imported messages carry the `[BT]` tag;
+- opening messages updates `channel_read_state` through the conversations
+  store; replies are sent by the conversation's own `sendMessage`;
+- Saved, Needs reply, Archive, Close, read receipts, reply drafts and reply
+  attachments are correspondence-only and are refused with a clear message.
+
+Other project channels and direct messages stay under "Existing channels and
+direct messages".
+
 ### Replies and notifications
 
 Converted conversations use the normal send path, so replies, mentions,

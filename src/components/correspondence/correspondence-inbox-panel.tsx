@@ -24,6 +24,7 @@ import { filterConversations } from "./correspondence-workspace-utils"
 import { ProjectDraftList } from "./project-draft-list"
 import type { ProjectDraft } from "@/lib/correspondence/types"
 import { ConversationTags } from "./correspondence-workspace-parts"
+import { SourceTag } from "@/components/shared/source-tag"
 
 type SearchHit = {
   readonly conversationId: string
@@ -362,6 +363,9 @@ export function CorrespondenceInboxPanel(props: {
                     >
                       {conversation.subject}
                     </span>
+                    {conversation.origin?.source && (
+                      <SourceTag className="shrink-0" source={conversation.origin.source} />
+                    )}
                   </div>
                   {!searching && (
                     <p
