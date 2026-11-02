@@ -241,6 +241,10 @@ prefix itself.
   usually show only names). Add `email` on the sender or a recipient whenever
   the page shows one. Each participant needs at least an id, an email or a
   display name.
+- Buildertrend renders a whole envelope field as one string. The capture then
+  writes that literal as one participant with `requiresReview: true` and
+  `participantBoundaryProven: false`; the importer keeps both flags (see
+  "Undivided recipient fields").
 - `kind` on recipients is `to`, `cc` or `bcc`. A thread with any `bcc`
   recipient is held for review.
 - `sentAtDisplay` is the literal text BT shows. `sentAtZone` is set only when
@@ -330,6 +334,30 @@ parameters) and every statement stays at or under 100 values. A
 | participant | `project_source_record_participants (organization_id, project_id, source_record_type, source_record_id, source_participant_id)` |
 | directory contact | id `bt-contact-<sha256(project, namespace:id)[:32]>` |
 | membership / read state | unique `(channel_id, user_id)` |
+
+## Undivided recipient fields
+
+A participant marked `requiresReview: true` or
+`participantBoundaryProven: false` fails closed: before any map, email, name
+or catalog matching it goes to review (`participant_boundary_unproven`)
+unless exact dictionary segmentation resolves it:
+
+- The literal (whitespace normalized) is cut only at its own `", "` or `"; "`
+  separators. Every piece must be the exact full name (case-insensitive) or
+  exact email of exactly one known person: the project's people first, then
+  the whole directory snapshot, then the BT catalog (the first tier with any
+  match decides; two there is no match).
+- It is accepted only if exactly one complete way to cut the literal exists.
+  A known "Smith, John" keeps its comma. Zero ways, a leftover unknown piece
+  (`participant_boundary_unproven`) or two or more ways
+  (`participant_ambiguous`) send the whole thread to review.
+- A sender is one entity, so an undivided sender must be exactly one known
+  person.
+- Each resulting piece is then matched by the rules below. `summary.json`
+  counts `segmented_by_dictionary` (fields split).
+- The original field is kept whole as a message participant row
+  (`participant_role = '<kind>_literal'`, `source_contact_name` = the literal,
+  inactive) next to the people it was split into.
 
 ## Participant matching
 

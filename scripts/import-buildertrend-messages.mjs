@@ -189,7 +189,47 @@ function participantRef(value, label) {
     role: typeof value.role === "string" ? value.role : null,
     displayName,
     kind: typeof value.kind === "string" ? value.kind : "to",
+    // BT renders a whole envelope field as one string; the capture marks
+    // such a participant as not proven to be one person.
+    requiresReview: value.requiresReview === true,
+    participantBoundaryProven: typeof value.participantBoundaryProven === "boolean" ? value.participantBoundaryProven : null,
   }
+}
+
+/** A participant the capture could not prove is one person (an undivided literal). */
+export function isUndividedParticipant(ref) {
+  return ref.requiresReview === true || ref.participantBoundaryProven === false
+}
+
+/**
+ * Fails closed on undivided literals: each is split into known people by exact
+ * dictionary segmentation, else the thread goes to review. A sender is one
+ * entity, so it must resolve to exactly one person. Proven participants pass
+ * through unchanged. The original literal is kept for the stored snapshot.
+ */
+export function expandParticipants(message, projectId, resolve) {
+  const literals = []
+  const reviews = []
+  let segmented = 0
+  const expand = (ref, kind) => {
+    if (!isUndividedParticipant(ref)) return [{ ...ref, kind }]
+    const literal = ref.displayName ?? ref.email ?? ""
+    literals.push({ kind, namespace: ref.namespace, literal })
+    const result = projectId && typeof resolve.segment === "function" ? resolve.segment(literal, projectId) : { reason: "participant_boundary_unproven" }
+    if (!result.tokens || (kind === "sender" && result.tokens.length !== 1)) {
+      reviews.push({ reason: result.tokens ? "participant_boundary_unproven" : result.reason, literal, kind })
+      return []
+    }
+    segmented += 1
+    return result.tokens.map((token) => ({
+      participantId: null, namespace: ref.namespace, role: ref.role, kind,
+      email: token.email ?? null, displayName: token.displayName ?? null,
+      requiresReview: false, participantBoundaryProven: true, segmentedFrom: literal,
+    }))
+  }
+  const [sender] = expand(message.sender, "sender")
+  const recipients = message.recipients.flatMap((ref) => expand(ref, ref.kind))
+  return { sender: sender ?? null, recipients, literals, reviews, segmented }
 }
 
 /** One capture line. Throws on a malformed record; review handles the rest. */
@@ -334,7 +374,7 @@ function review(reason, message, detail = {}) {
 export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
-  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0, review: 0 }
+  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0, review: 0, segmented_by_dictionary: 0 }
   const precheck = input.precheck
   const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
   const reviews = []
@@ -379,7 +419,11 @@ export function planImport(input) {
     for (const message of messages) {
       if (seen.has(message.btMessageId)) continue
       seen.add(message.btMessageId)
-      const refs = [{ ...message.sender, kind: "sender" }, ...message.recipients]
+      const expanded = expandParticipants(message, projectId, resolve)
+      matches.segmented_by_dictionary += expanded.segmented
+      matches.review += expanded.reviews.length
+      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind }))
+      const refs = [...(expanded.sender ? [expanded.sender] : []), ...expanded.recipients]
       for (const ref of refs) {
         if (ref.kind === "bcc") threadReviews.push(review("bcc_recipient", message, { participant: participantKey(ref) }))
         const key = participantKey(ref)
@@ -400,7 +444,7 @@ export function planImport(input) {
           threadReviews.push(review("attachment_unverified", message, { btAttachmentId: attachment.btAttachmentId }))
         }
       }
-      planned.push({ ...message, createdAt })
+      planned.push({ ...message, sender: expanded.sender ?? message.sender, recipients: expanded.recipients, literals: expanded.literals, createdAt })
     }
     for (const match of resolved.values()) matches[match.rule ?? "review"] += 1
     const audience = audienceFor(kinds)
@@ -594,6 +638,19 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
     is_pinned: 0, reply_count: 0, last_reply_at: null, ...values,
   }, `${guard} AND NOT EXISTS (SELECT 1 FROM messages WHERE id = ${sqlValue(legacyId)}) AND NOT EXISTS (SELECT 1 FROM messages WHERE source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_message_id = ${sqlValue(message.btMessageId)})`))
   const messageRow = `(SELECT id FROM messages WHERE source_system = ${sqlValue(SOURCE_SYSTEM)} AND source_message_id = ${sqlValue(message.btMessageId)})`
+  // The original undivided envelope field, kept whole as it was shown.
+  for (const item of message.literals ?? []) {
+    const literalKey = `${item.namespace}:literal:${hash(item.literal).slice(0, 32)}`
+    statements.push(insertSelect("project_source_record_participants", {
+      id: shortId("bt-participant", thread.projectId, MESSAGE_RECORD_TYPE, message.btMessageId, item.kind, literalKey),
+      organization_id: thread.organizationId, project_id: thread.projectId,
+      source_record_type: MESSAGE_RECORD_TYPE, source_record_id: message.btMessageId, source_participant_id: `${item.kind}:${literalKey}`,
+      source_contact_name: item.literal, participant_role: `${item.kind}_literal`, audience: "external",
+      project_contact_id: null, user_id: null,
+      identity_status: "unmatched", membership_status: "pending", review_status: "reviewed", active: 0,
+      created_at: now, updated_at: now,
+    }, guard))
+  }
   for (const ref of [{ ...message.sender, kind: "sender" }, ...message.recipients]) {
     const person = thread.people.find((entry) => entry.key === participantKey(ref))
     statements.push(insertSelect("project_source_record_participants", {
