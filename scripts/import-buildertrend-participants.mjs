@@ -38,6 +38,25 @@ export function normalizeName(value) {
   return typeof value === "string" && value.trim() !== "" ? value.trim().replace(/\s+/g, " ").toLowerCase() : null
 }
 
+/**
+ * Legal-entity suffixes ignored when comparing company names (owner decision
+ * 2026-11-02: "ABC Plumbing" and "ABC Plumbing LLC" are the same company).
+ * Compared after punctuation is removed, so "L.L.C." is "llc".
+ */
+export const COMPANY_NAME_SUFFIXES = ["llc", "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "lp", "llp", "pllc", "pc"]
+
+/**
+ * A company name for exact comparison: lowercased, punctuation (. , ' ")
+ * removed, whitespace collapsed, and trailing legal-entity suffixes dropped.
+ * Nothing else is changed: no fuzzy matching.
+ */
+export function normalizeCompanyName(value) {
+  if (typeof value !== "string") return null
+  const words = value.toLowerCase().replace(/[.,'"]/g, "").trim().split(/\s+/).filter(Boolean)
+  while (words.length > 1 && COMPANY_NAME_SUFFIXES.includes(words[words.length - 1])) words.pop()
+  return words.length > 0 ? words.join(" ") : null
+}
+
 function text(value) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null
 }
@@ -51,7 +70,8 @@ function text(value) {
  *     projectContactIds: { projectId: contactId }, vendorId?, vendorContactId?,
  *     customerId?, customerContactId?, btIds: ["vendor_contact:123", ...] }
  * plus optional `vendors: [{ vendorId, btId }]` (vendors registered with a BT
- * company id) and `projects: [{ projectId, clientCustomerIds: [] }]`.
+ * company id), `vendorNames: [{ vendorId, name }]` (active vendors) and
+ * `projects: [{ projectId, clientCustomerIds: [] }]`.
  */
 export function parseDirectory(value) {
   if (value?.schema !== DIRECTORY_SCHEMA) throw new Error(`directory schema must be ${DIRECTORY_SCHEMA}`)
@@ -84,11 +104,19 @@ export function parseDirectory(value) {
     if (!btId || !vendorId) continue
     vendorsByBtId.set(btId, [...(vendorsByBtId.get(btId) ?? []), vendorId])
   }
+  // Active vendors by normalized company name (see normalizeCompanyName).
+  const vendorsByName = new Map()
+  for (const row of Array.isArray(value.vendorNames) ? value.vendorNames : []) {
+    const name = normalizeCompanyName(row?.name)
+    const vendorId = text(row?.vendorId)
+    if (!name || !vendorId) continue
+    vendorsByName.set(name, [...new Set([...(vendorsByName.get(name) ?? []), vendorId])])
+  }
   const projectClients = new Map()
   for (const row of Array.isArray(value.projects) ? value.projects : []) {
     if (text(row?.projectId)) projectClients.set(row.projectId, [...new Set((row.clientCustomerIds ?? []).filter((id) => text(id)))])
   }
-  return { people, vendorsByBtId, projectClients }
+  return { people, vendorsByBtId, vendorsByName, projectClients }
 }
 
 /** The BT people catalog captured from Buildertrend (JSONL rows). */
@@ -137,9 +165,12 @@ function newContactFromCatalog(input) {
     const vendors = directory?.vendorsByBtId.get(companyBtId) ?? []
     if (vendors.length > 1) return { reason: "participant_ambiguous" }
     const parent = catalog.find((entry) => entry.type === "vendor_company" && entry.btId === companyBtId)
+    const namedVendor = vendors.length === 0 ? vendorByExactName(directory, parent?.displayName ?? null) : null
     const vendor = vendors.length === 1
       ? { id: vendors[0], create: false }
-      : parent?.displayName
+      : namedVendor
+        ? { id: namedVendor, create: false }
+        : parent?.displayName
         ? { id: shortId("bt-vendor", organizationId, companyBtId), create: true, name: parent.displayName, btId: companyBtId }
         : null
     if (!vendor) return { reason: "participant_unmatched" }
@@ -175,8 +206,84 @@ function newContactFromCatalog(input) {
       rule: "new_contact_from_catalog",
     }
   }
-  // internal_user: staff must already be real Compass users.
+  // internal_user with no active Compass user: a former employee (owner
+  // decision 2026-11-02). Added as an archived internal contact so they never
+  // show in employee lists or pickers, but still read as the sender.
+  if (row.type === "internal_user") return formerEmployee({ row, organizationId })
   return { reason: "participant_unmatched" }
+}
+
+function formerEmployee({ row, organizationId }) {
+  const key = row.btId ? `bt:${row.btId}` : row.email ? `email:${row.email}` : `name:${row.name}`
+  const internalContactId = shortId("bt-former-employee", organizationId, key)
+  return {
+    entry: {
+      decision: "new_contact", kind: "former_staff", userId: null, contactIds: {}, identity: `former:${key}`,
+      displayName: row.displayName, email: row.email, companyName: null,
+      links: { internalContactId },
+      createDirectory: {
+        vendor: null, vendorContact: null, customerContact: null,
+        internalContact: { id: internalContactId, name: row.displayName, email: row.email, btId: row.btId },
+      },
+    },
+    rule: "former_employee_archived",
+  }
+}
+
+/**
+ * The one active vendor whose normalized name matches exactly (see
+ * normalizeCompanyName). Zero or several matches: none.
+ */
+function vendorByExactName(directory, companyName) {
+  const name = normalizeCompanyName(companyName)
+  const ids = name ? directory?.vendorsByName?.get(name) ?? [] : []
+  return ids.length === 1 ? ids[0] : null
+}
+
+/** Looks like one whole person: an exact email, or a name of two or more words. */
+export function isFullPersonText(value) {
+  const textValue = typeof value === "string" ? value.trim() : ""
+  if (textValue.includes("@") && !/\s/.test(textValue)) return normalizeEmail(textValue) !== null
+  return textValue.split(/\s+/).filter(Boolean).length >= 2 && !/[,;]/.test(textValue)
+}
+
+/**
+ * Nobody in Compass matches: a new, uninvited directory person (owner decision
+ * 2026-11-02), not yet connected to any company. Keyed by the exact email,
+ * else the exact full name, so every message and project reuses one person.
+ */
+function newUnassignedPerson(ref, context) {
+  const email = normalizeEmail(ref.email)
+  const name = normalizeName(ref.displayName)
+  if (!email && !(name && isFullPersonText(ref.displayName))) return { reason: "participant_unmatched" }
+  const identity = email ? `new:email:${email}` : `new:name:${name}`
+  const displayName = ref.displayName?.trim().replace(/\s+/g, " ") ?? email
+  // The source named their company and it is exactly one Compass vendor:
+  // connect them as that vendor's contact (owner decision 2026-11-02).
+  const vendorId = vendorByExactName(context.directory, ref.companyName ?? context.companyName ?? null)
+  if (vendorId) {
+    const vendorContactId = shortId("bt-vendor-contact", context.organizationId, identity)
+    return {
+      entry: {
+        decision: "new_contact", kind: "vendor", userId: null, contactIds: {}, identity,
+        displayName, email, companyName: ref.companyName ?? context.companyName ?? null,
+        links: { vendorId, vendorContactId },
+        createDirectory: {
+          vendor: null, customerContact: null, internalContact: null,
+          vendorContact: { id: vendorContactId, vendorId, name: displayName, email, btId: null },
+        },
+      },
+      rule: "connected_by_vendor_name",
+    }
+  }
+  return {
+    entry: {
+      decision: "new_contact", kind: ref.namespace === "owner" ? "owner" : "vendor", unassigned: true,
+      userId: null, contactIds: {}, identity,
+      displayName, email, companyName: null, links: {},
+    },
+    rule: email ? "new_person_by_email" : "new_person_by_name",
+  }
 }
 
 function one(list) {
@@ -217,6 +324,11 @@ export function createParticipantResolver(input) {
     return tier?.length === 1 ? { displayName: token.trim().replace(/\s+/g, " ") } : null
   }
 
+  function newPieceToken(piece) {
+    const value = piece.trim()
+    return value.includes("@") ? { email: normalizeEmail(value) } : { displayName: value.replace(/\s+/g, " ") }
+  }
+
   /**
    * Splits an undivided recipient literal (BT renders a whole envelope field
    * as one string) into known people, exactly: the literal is cut only at
@@ -240,7 +352,10 @@ export function createParticipantResolver(input) {
       for (let to = from + 1; to <= words.length; to += 1) {
         const rest = ways[to]
         if (!rest || rest.count === 0) continue
-        const token = knownToken(text(from, to), projectId)
+        const piece = text(from, to)
+        // An unknown piece may be a new person, but only a single, separator-free
+        // piece that looks like one whole person; known people may keep a comma.
+        const token = knownToken(piece, projectId) ?? (to === from + 1 && isFullPersonText(piece) ? newPieceToken(piece) : null)
         if (!token) continue
         count += rest.count
         tokens ??= [token, ...rest.tokens]
@@ -249,7 +364,9 @@ export function createParticipantResolver(input) {
     }
     const result = ways[0]
     if (result.count === 1 && result.tokens) return { tokens: result.tokens }
-    return { reason: result.count > 1 ? "participant_ambiguous" : "participant_boundary_unproven" }
+    // Owner decision 2026-11-02: a literal that does not split in exactly one
+    // way (an unknown one-word piece, or two valid cuts) holds the thread.
+    return { reason: "participant_ambiguous", hold: true }
   }
 
   const resolve = function resolve(ref, projectId) {
@@ -274,14 +391,19 @@ export function createParticipantResolver(input) {
     const byCatalogEmail = email ? catalog.filter((row) => row.email === email) : []
     const catalogHit = one(byCatalogEmail.length > 0 ? byCatalogEmail : name ? catalog.filter((row) => row.name === name) : [])
     if (catalogHit === "ambiguous") return { reason: "participant_ambiguous" }
-    if (!catalogHit) return { reason: "participant_unmatched" }
+    if (!catalogHit) return organizationId ? newUnassignedPerson(ref, { directory, organizationId }) : { reason: "participant_unmatched" }
     // The catalog hit must be exactly one Compass person: by exact BT id, else by email.
     const byId = people.filter((person) => person.btIds.has(`${catalogHit.type}:${catalogHit.btId}`))
     const resolved = byId.length > 0 ? one(byId) : catalogHit.email ? one(byEmail(catalogHit.email)) : null
     if (resolved === "ambiguous") return { reason: "participant_ambiguous" }
     if (!resolved) {
       if (!organizationId) return { reason: "participant_unmatched" }
-      return newContactFromCatalog({ row: catalogHit, catalog, directory, organizationId, projectId })
+      const created = newContactFromCatalog({ row: catalogHit, catalog, directory, organizationId, projectId })
+      // No company to attach them to: still add them, unassigned.
+      const parent = catalog.find((row) => row.type === "vendor_company" && row.btId === catalogHit.parentBtId)
+      return created.reason === "participant_unmatched"
+        ? newUnassignedPerson(ref, { directory, organizationId, companyName: parent?.displayName ?? null })
+        : created
     }
     return { entry: entryFor(resolved), rule: byCatalogEmail.length > 0 ? "by_email_catalog" : "by_name_catalog" }
   }

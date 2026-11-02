@@ -13,7 +13,9 @@ import { messages } from "@/db/schema-conversations"
 /** Extra message columns every conversation read selects alongside the message. */
 export const importedMessageColumns = {
   sourceSystem: messages.sourceSystem,
-  importedSenderName: sql<string | null>`(SELECT pc.display_name FROM project_contacts pc WHERE pc.id = ${messages.importedSenderContactId})`,
+  // The sender's directory name, else the sender exactly as the source showed
+  // it when they could not be matched (0290).
+  importedSenderName: sql<string | null>`COALESCE((SELECT pc.display_name FROM project_contacts pc WHERE pc.id = ${messages.importedSenderContactId}), ${messages.sourceSenderLabelSnapshot})`,
 }
 
 /**

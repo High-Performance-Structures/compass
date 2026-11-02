@@ -52,7 +52,8 @@ import { MyContactInformationDialog } from "@/components/contacts/my-contact-inf
 import { ProjectAssociationConfirmDialog } from "@/components/contacts/project-association-confirm-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 import { addCompaniesToProject } from "@/app/actions/contact-project-associations"
-import { toContactsTab, type ContactsBootstrap, type ContactsTab } from "@/components/contacts/contacts-bootstrap"
+import { contactsTabAccess, toContactsTab, type ContactsBootstrap, type ContactsTab } from "@/components/contacts/contacts-bootstrap"
+import { UnassignedPeopleTable } from "@/components/contacts/unassigned-people-table"
 
 type Tab = ContactsTab
 type MergeKind = "customer_company" | "vendor_company" | "customer_person" | "vendor_person"
@@ -106,7 +107,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
 
   const [tab, setTab] = React.useState<Tab>(() => {
     const requested = toContactsTab(searchParams.get("tab"))
-    if (!directoryAccess || directoryAccess[requested].read) return requested
+    if (!directoryAccess || directoryAccess[contactsTabAccess(requested)].read) return requested
     return (["customers", "vendors", "internal"] as const).find((candidate) => directoryAccess[candidate].read) ?? requested
   })
   const [summary, setSummary] = React.useState(bootstrap.summary)
@@ -209,7 +210,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
   }, [])
 
   const pageActions = React.useMemo(() => {
-    if (tab === "internal" || !directoryAccess?.[tab].create) return []
+    if (tab === "internal" || tab === "unassigned" || !directoryAccess?.[tab].create) return []
     return [tab === "customers"
       ? { id: "add-customer", label: "Add Client / Lead", onSelect: openCustomer, icon: Plus }
       : { id: "add-vendor", label: "Add Vendor", onSelect: openVendor, icon: Plus }]
@@ -342,7 +343,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
     <CompassAccessDialog
       open={accessDialogOpen}
       onOpenChange={setAccessDialogOpen}
-      initialSection={tab === "customers" ? "clients" : tab}
+      initialSection={tab === "customers" ? "clients" : tab === "unassigned" ? "vendors" : tab}
     />
   ) : null
 
@@ -406,6 +407,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
                 Internal
                 <span className="ml-1.5 text-muted-foreground tabular-nums">{summary.internalCount}</span>
               </TabsTrigger>
+              <TabsTrigger value="unassigned" disabled={!directoryAccess?.vendors.read} className="text-xs sm:text-sm">
+                Unassigned
+                <span className="ml-1.5 text-muted-foreground tabular-nums">{bootstrap.unassigned.length}</span>
+              </TabsTrigger>
             </TabsList>
 
             <div className="flex items-center gap-2">
@@ -421,7 +426,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
                   Manage Compass access
                 </Button>
               )}
-              {tab !== "internal" && directoryAccess?.[tab].create ? (
+              {tab !== "internal" && tab !== "unassigned" && directoryAccess?.[tab].create ? (
                 <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
                   <IconPlus className="size-3.5" />
                   <span className="hidden sm:inline ml-1.5">{addLabel}</span>
@@ -494,6 +499,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               onSageEdit={directoryAccess?.internal.edit ? (contact) => setSageEditorTarget({ kind: "employee", entityId: contact.id, name: contact.name }) : undefined}
               onSageLink={directoryAccess?.canReadSageReview && directoryAccess.canReadEmployeePrivate && directoryAccess.internal.read ? (contact) => setSageLinkTarget({ kind: "employee", entityId: contact.id, name: contact.name, sageRecordNumber: contact.sageEmployeeNumber }) : undefined}
             />
+          </TabsContent>
+
+          <TabsContent value="unassigned" className="mt-3 flex-1 min-h-0 flex flex-col">
+            <UnassignedPeopleTable people={bootstrap.unassigned} />
           </TabsContent>
         </Tabs>
       </div>

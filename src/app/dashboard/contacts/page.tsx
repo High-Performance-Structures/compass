@@ -8,6 +8,7 @@ import {
 import { getContactDirectoryAccess } from "@/app/actions/contact-directory-access"
 import { getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
 import { getInternalDirectoryContacts } from "@/app/actions/vendors"
+import { getUnassignedPeople } from "@/app/actions/unassigned-people"
 import { ContactsPageClient, ContactsSkeleton } from "@/components/contacts/contacts-page"
 import type { ContactsBootstrap } from "@/components/contacts/contacts-bootstrap"
 import { DEFAULT_RECORD_PAGE_QUERY } from "@/lib/record-page"
@@ -22,12 +23,13 @@ const EMPTY_SUMMARY = { customerCount: 0, vendorCount: 0, internalCount: 0, vend
 async function loadContacts(): Promise<ContactsBootstrap> {
   try {
     const access = await getContactDirectoryAccess()
-    const [summary, associationProjects, vendors, customers, internal] = await Promise.all([
+    const [summary, associationProjects, vendors, customers, internal, unassigned] = await Promise.all([
       getContactDirectorySummary(),
       getCompanyAssociationProjects(),
       access.vendors.read ? getVendorDirectoryPage(DEFAULT_RECORD_PAGE_QUERY, null) : null,
       access.customers.read ? getCustomerDirectoryPage(DEFAULT_RECORD_PAGE_QUERY) : null,
       access.internal.read ? getInternalDirectoryContacts() : [],
+      access.vendors.read ? getUnassignedPeople() : [],
     ])
     return {
       loadFailed: !summary.success || vendors?.success === false || customers?.success === false,
@@ -37,6 +39,7 @@ async function loadContacts(): Promise<ContactsBootstrap> {
       vendors: vendors?.success ? vendors.data : null,
       customers: customers?.success ? customers.data : null,
       internal,
+      unassigned,
     }
   } catch {
     return {
@@ -47,6 +50,7 @@ async function loadContacts(): Promise<ContactsBootstrap> {
       vendors: null,
       customers: null,
       internal: [],
+      unassigned: [],
     }
   }
 }

@@ -33,6 +33,21 @@ export async function insertChannel(db: Db, row: ChannelInsert): Promise<void> {
   await db.insert(channels).values(row)
 }
 
+/**
+ * Opens a staff-only imported conversation to its owner or vendor audience.
+ * Only when it is still staff-only and imported, so a stale request does nothing.
+ */
+export async function openImportedChannelAudience(
+  db: Db,
+  input: { readonly channelId: string; readonly audience: "clients" | "sub_vendors" }
+): Promise<void> {
+  // updated_at is left alone: sharing history is not new conversation activity.
+  await db
+    .update(channels)
+    .set({ audience: input.audience })
+    .where(and(eq(channels.id, input.channelId), eq(channels.audience, "staff"), sql`${channels.sourceSystem} IS NOT NULL`))
+}
+
 /** Orders conversation lists by real activity. */
 export async function touchChannel(db: Db, channelId: string, updatedAt: string): Promise<void> {
   await db.update(channels).set({ updatedAt }).where(eq(channels.id, channelId))

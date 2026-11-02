@@ -188,6 +188,8 @@ function participantRef(value, label) {
     namespace,
     role: typeof value.role === "string" ? value.role : null,
     displayName,
+    // The company the page showed for this person, literal text only.
+    companyName: typeof value.companyName === "string" && value.companyName.trim() !== "" ? value.companyName.trim() : null,
     kind: typeof value.kind === "string" ? value.kind : "to",
     // BT renders a whole envelope field as one string; the capture marks
     // such a participant as not proven to be one person.
@@ -217,7 +219,8 @@ export function expandParticipants(message, projectId, resolve) {
     literals.push({ kind, namespace: ref.namespace, literal })
     const result = projectId && typeof resolve.segment === "function" ? resolve.segment(literal, projectId) : { reason: "participant_boundary_unproven" }
     if (!result.tokens || (kind === "sender" && result.tokens.length !== 1)) {
-      reviews.push({ reason: result.tokens ? "participant_boundary_unproven" : result.reason, literal, kind })
+      // A literal that does not split into people in exactly one way holds the thread.
+      reviews.push({ reason: result.tokens ? "participant_ambiguous" : result.reason, literal, kind, hold: result.tokens ? true : result.hold === true })
       return []
     }
     segmented += 1
@@ -353,6 +356,9 @@ export function parsePrecheck(value) {
  * A conversation has one outside audience. Owner decision 2026-11-01: a thread
  * with both owners and vendors is kept internal (staff-only), not shared.
  */
+/** Review reasons about who a participant is; alone, they import staff-only. */
+const IDENTITY_REASONS = new Set(["participant_boundary_unproven", "participant_unmatched", "participant_ambiguous"])
+
 function audienceFor(kinds) {
   const owner = kinds.has("owner")
   const vendor = kinds.has("vendor")
@@ -374,7 +380,12 @@ function review(reason, message, detail = {}) {
 export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
-  const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0, review: 0, segmented_by_dictionary: 0 }
+  let imported_staff_only_pending_identity = 0
+  const matches = {
+    by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0,
+    connected_by_vendor_name: 0, new_person_by_email: 0, new_person_by_name: 0, former_employee_archived: 0,
+    review: 0, segmented_by_dictionary: 0,
+  }
   const precheck = input.precheck
   const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
   const reviews = []
@@ -414,6 +425,7 @@ export function planImport(input) {
     const seen = new Set()
     const resolved = new Map()
     const kinds = new Set()
+    const unassignedPeople = new Map()
     const people = new Map()
     const planned = []
     for (const message of messages) {
@@ -422,7 +434,7 @@ export function planImport(input) {
       const expanded = expandParticipants(message, projectId, resolve)
       matches.segmented_by_dictionary += expanded.segmented
       matches.review += expanded.reviews.length
-      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind }))
+      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind, hold: item.hold }))
       const refs = [...(expanded.sender ? [expanded.sender] : []), ...expanded.recipients]
       for (const ref of refs) {
         if (ref.kind === "bcc") threadReviews.push(review("bcc_recipient", message, { participant: participantKey(ref) }))
@@ -434,8 +446,11 @@ export function planImport(input) {
           continue
         }
         const entry = match.entry
-        if (entry.kind !== "staff") kinds.add(entry.kind)
-        people.set(participantKey(ref), { key: participantKey(ref), ref, entry })
+        // Only company-connected owners and vendors decide the audience; a new
+        // person not yet connected to a company keeps the thread staff-only.
+        if (entry.unassigned) unassignedPeople.set(participantKey(ref), ref)
+        else if (entry.kind === "owner" || entry.kind === "vendor") kinds.add(entry.kind)
+        people.set(participantKey(ref), { key: participantKey(ref), ref, entry, rule: match.rule })
       }
       const createdAt = sentAtIso(message.sentAtDisplay, message.sentAtZone ?? timeZone)
       if (!createdAt) threadReviews.push(review("sent_at_unreadable", message, { sentAtDisplay: message.sentAtDisplay }))
@@ -447,11 +462,33 @@ export function planImport(input) {
       planned.push({ ...message, sender: expanded.sender ?? message.sender, recipients: expanded.recipients, literals: expanded.literals, createdAt })
     }
     for (const match of resolved.values()) matches[match.rule ?? "review"] += 1
-    const audience = audienceFor(kinds)
     const mixedKeptInternal = kinds.has("owner") && kinds.has("vendor")
-    if (threadReviews.length > 0) {
+    // Owner decision 2026-11-02: a thread whose only problems are people who
+    // could not be identified exactly is imported now, staff-only, and flagged
+    // so staff can open it to the owner or vendor later. Anything else holds.
+    const identityReviews = threadReviews.filter((item) => IDENTITY_REASONS.has(item.reason) && item.hold !== true)
+    if (threadReviews.length > identityReviews.length) {
       reviews.push(...threadReviews)
       continue
+    }
+    const pendingIdentity = identityReviews.length > 0 || unassignedPeople.size > 0
+    const audience = pendingIdentity ? "staff" : audienceFor(kinds)
+    if (pendingIdentity) {
+      imported_staff_only_pending_identity += 1
+      reviews.push({
+        reason: "staff_only_pending_identity", btJobId: first.btJobId, btThreadId, projectId,
+        channelId: conversationId(organizationId, btThreadId),
+        unresolved: [
+          ...identityReviews.map((item) => ({
+            reason: item.reason, kind: item.participantKind ?? item.role ?? null,
+            literalSha256: hash(String(item.literal ?? item.displayName ?? item.participant ?? "")),
+          })),
+          ...[...unassignedPeople.values()].map((ref) => ({
+            reason: "new_unassigned_person", kind: ref.kind,
+            literalSha256: hash(String(ref.displayName ?? ref.email ?? "")),
+          })),
+        ],
+      })
     }
     planned.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.btMessageId.localeCompare(b.btMessageId))
     threads.push({
@@ -464,11 +501,12 @@ export function planImport(input) {
       name: (planned.find((m) => m.subject.trim() !== "")?.subject.trim() ?? "Buildertrend conversation").slice(0, 120),
       audience,
       mixedKeptInternal,
+      pendingIdentity,
       people: [...people.values()],
       messages: planned,
     })
   }
-  return { threads, reviews, pending, matches }
+  return { threads, reviews, pending, matches, imported_staff_only_pending_identity }
 }
 
 // ---------------------------------------------------------------------------
@@ -505,6 +543,15 @@ function directoryStatements(create, organizationId, now, guard) {
       source_system: SOURCE_SYSTEM, source_record_id: create.vendorContact.btId, created_at: now, updated_at: now,
     }, `${guard} AND EXISTS (SELECT 1 FROM vendors WHERE id = ${sqlValue(create.vendorContact.vendorId)} AND organization_id = ${sqlValue(organizationId)})`))
   }
+  if (create.internalContact) {
+    // Archived (active = 0): kept out of the employee list and every picker.
+    statements.push(insertSelect("internal_contacts", {
+      id: create.internalContact.id, organization_id: organizationId, user_id: null,
+      name: create.internalContact.name, email: create.internalContact.email ?? null,
+      source_system: SOURCE_SYSTEM, source_record_id: create.internalContact.btId ?? null, active: 0,
+      created_at: now, updated_at: now,
+    }, guard))
+  }
   if (create.customerContact) {
     statements.push(insertSelect("customer_contacts", {
       id: create.customerContact.id, customer_id: create.customerContact.customerId, name: create.customerContact.name, email: create.customerContact.email ?? null,
@@ -531,6 +578,26 @@ export function newCatalogContacts(plan) {
     }
   }
   return [...seen.values()]
+}
+
+/** Project contact type for a new directory person. */
+const CONTACT_TYPE_FOR_KIND = { owner: "owner", vendor: "subcontractor", former_staff: "internal" }
+
+/** New people, reuse and former employees across the imported threads. */
+export function newPeopleCounts(plan) {
+  const occurrences = { new_person_by_email: [], new_person_by_name: [], former_employee_archived: [] }
+  for (const thread of plan.threads) {
+    for (const person of thread.people) {
+      if (occurrences[person.rule]) occurrences[person.rule].push(person.entry.identity)
+    }
+  }
+  const byEmail = new Set(occurrences.new_person_by_email)
+  const byName = new Set(occurrences.new_person_by_name)
+  return {
+    new_people_created: { by_email: byEmail.size, by_name: byName.size },
+    reused_new_people: occurrences.new_person_by_email.length + occurrences.new_person_by_name.length - byEmail.size - byName.size,
+    former_employees_archived: new Set(occurrences.former_employee_archived).size,
+  }
 }
 
 const NOT_STAFF_ONLY = (projectId) =>
@@ -571,13 +638,19 @@ export function threadStatements(thread, input) {
       // Added to the directory without an invitation (owner decision 1).
       statements.push(insertSelect("project_contacts", {
         id: contact.id, project_id: thread.projectId,
-        contact_type: person.entry.kind === "owner" ? "owner" : "subcontractor",
-        source_system: SOURCE_SYSTEM, source_entity_type: "buildertrend_participant", source_entity_id: person.key,
+        contact_type: CONTACT_TYPE_FOR_KIND[person.entry.kind] ?? "subcontractor",
+        source_system: SOURCE_SYSTEM,
+        // New people and former employees are keyed by their identity, so one
+        // person is one row per project however the pages named them.
+        source_entity_type: person.entry.unassigned ? "buildertrend_new_person" : person.entry.kind === "former_staff" ? "buildertrend_former_employee" : "buildertrend_participant",
+        source_entity_id: person.entry.unassigned || person.entry.kind === "former_staff" ? person.entry.identity : person.key,
+        internal_contact_id: person.entry.links?.internalContactId ?? null,
         display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
         // Linked to the matched directory company/contact when there is one.
         vendor_id: person.entry.links?.vendorId ?? null, vendor_contact_id: person.entry.links?.vendorContactId ?? null,
         customer_id: person.entry.links?.customerId ?? null, customer_contact_id: person.entry.links?.customerContactId ?? null,
-        owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: 1,
+        // A former employee is archived: never listed, only named on messages.
+        owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: person.entry.kind === "former_staff" ? 0 : 1,
         created_at: now, updated_at: now,
       }, guard))
     }
@@ -586,7 +659,7 @@ export function threadStatements(thread, input) {
       organization_id: thread.organizationId, project_id: thread.projectId,
       source_record_type: THREAD_RECORD_TYPE, source_record_id: thread.btThreadId, source_participant_id: person.key,
       source_contact_name: person.ref.displayName ?? null,
-      participant_role: person.entry.kind, audience: person.entry.kind === "staff" ? "internal" : "external",
+      participant_role: person.entry.kind, audience: person.entry.kind === "staff" || person.entry.kind === "former_staff" ? "internal" : "external",
       project_contact_id: contactByKey.get(person.key), user_id: person.entry.userId,
       identity_status: "matched", membership_status: "active", review_status: "reviewed", active: 1,
       created_at: now, updated_at: now,
@@ -617,12 +690,14 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
   const senderPerson = thread.people.find((person) => person.key === senderKey)
   const senderUserId = senderPerson?.entry.userId ?? null
   const senderContactId = senderUserId ? null : contactByKey.get(senderKey) ?? null
+  // A sender who could not be matched keeps the name exactly as shown (0290).
+  const senderLabel = senderPerson ? null : message.sender.displayName ?? message.sender.email ?? null
   const legacyId = legacyArchiveMessageId(message.btJobId, message.btMessageId)
   const archiveId = legacyArchiveChannelId(message.btJobId)
   const values = {
     channel_id: thread.channelId, user_id: senderUserId ?? actorUserId, content: message.body, content_html: null,
     source_system: SOURCE_SYSTEM, source_message_id: message.btMessageId, source_sent_at_snapshot: message.sentAtDisplay,
-    imported_sender_contact_id: senderContactId, created_at: message.createdAt,
+    imported_sender_contact_id: senderContactId, source_sender_label_snapshot: senderLabel, created_at: message.createdAt,
   }
   // 1. Convert: move the legacy archive row in place (same id, no copy). Only
   //    the numeric legacy row in its numeric archive is ever touched; any other
@@ -660,7 +735,9 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
       source_contact_name: ref.displayName ?? null, participant_role: ref.kind,
       audience: person?.entry.kind === "staff" ? "internal" : "external",
       project_contact_id: contactByKey.get(participantKey(ref)) ?? null, user_id: person?.entry.userId ?? null,
-      identity_status: "matched", membership_status: "active", review_status: "reviewed", active: 1,
+      // An unidentified person is recorded as shown and left for review.
+      identity_status: person ? "matched" : "unmatched", membership_status: person ? "active" : "pending",
+      review_status: person ? "reviewed" : "unreviewed", active: person ? 1 : 0,
       created_at: now, updated_at: now,
     }, guard))
   }
@@ -850,9 +927,14 @@ function main() {
     threads: plan.threads.length,
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
+    imported_staff_only_pending_identity: plan.imported_staff_only_pending_identity,
     // How each thread participant was matched (per thread); review = unmatched or ambiguous.
     participant_matches: plan.matches,
     new_contact_from_catalog: newContacts.length,
+    ...newPeopleCounts(plan),
+    staff_only_pending_identity: plan.imported_staff_only_pending_identity,
+    still_held: plan.reviews.filter((item) => item.reason !== "staff_only_pending_identity")
+      .reduce((counts, item) => ({ ...counts, [item.reason]: (counts[item.reason] ?? 0) + 1 }), {}),
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
     attachmentsNeedingStoredFile: attachmentsWithoutFile.length,

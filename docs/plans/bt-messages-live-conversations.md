@@ -57,6 +57,7 @@ changes. Every column is declared in `src/db/schema.ts` and
 | `messages` | `source_sent_at_snapshot` | The sent date exactly as BT displayed it. `created_at` holds the ISO instant used for ordering. |
 | `messages` | `imported_sender_contact_id` → `project_contacts.id` (indexed) | Set only while the sender is a directory contact without an account. |
 | `message_attachments` | `content_sha256` (indexed), `source_attachment_id` | Hash-based reuse; unique `(message_id, source_attachment_id)`. |
+| `messages` | `source_sender_label_snapshot` (migration 0290) | The sender exactly as shown, set only when the sender could not be identified (the message is then stored under the importing staff account). |
 
 Existing tables are reused instead of adding parallel ones (architecture
 standard: one concept, one table):
@@ -265,6 +266,8 @@ prefix itself.
 - `namespace` is BT's participant namespace (for example `builder`, `owner`,
   `sub`) so ids from different BT user tables never collide; `unknown` when
   the page does not say.
+- `companyName` (optional) is the company the page showed for the person,
+  literal text only.
 - `participantId` is `null` when the page does not show it (message pages
   usually show only names). Add `email` on the sender or a recipient whenever
   the page shows one. Each participant needs at least an id, an email or a
@@ -372,15 +375,16 @@ unless exact dictionary segmentation resolves it:
 
 - The literal (whitespace normalized) is cut only at its own `", "` or `"; "`
   separators. Every piece must be the exact full name (case-insensitive) or
-  exact email of exactly one known person: the project's people first, then
-  the whole directory snapshot, then the BT catalog (the first tier with any
-  match decides; two there is no match).
+  exact email of exactly one known person (the project's people first, then
+  the whole directory snapshot, then the BT catalog; the first tier with any
+  match decides; two there is no match), **or** (owner decision 2026-11-02)
+  an unknown piece that looks like one whole person: an exact email, or a
+  name of two or more words, with no separator inside it. Only known people
+  may keep a comma ("Smith, John").
 - It is accepted only if exactly one complete way to cut the literal exists.
-  A known "Smith, John" keeps its comma. Zero ways, a leftover unknown piece
-  (`participant_boundary_unproven`) or two or more ways
-  (`participant_ambiguous`) send the whole thread to review.
-- A sender is one entity, so an undivided sender must be exactly one known
-  person.
+  An unknown one-word piece, zero ways or two or more ways hold the whole
+  thread (`participant_ambiguous`).
+- A sender is one entity, so an undivided sender must be exactly one person.
 - Each resulting piece is then matched by the rules below. `summary.json`
   counts `segmented_by_dictionary` (fields split).
 - The original field is kept whole as a message participant row
@@ -422,13 +426,46 @@ stops at the first that decides:
    - `customer`: a customer contact under the project's client customer when
      the project has exactly one (its client plus the customers of its owner
      contacts); none: review; more than one: review (`participant_ambiguous`).
-   - `internal_user`: review. Staff must be real Compass users.
+   - `internal_user` with no active Compass user: a **former employee**
+     (owner decision 2026-11-02). They are added as an archived internal
+     contact (`internal_contacts.active = 0`, keyed by BT id, else email, else
+     name) with an inactive project contact of type `internal`, so they never
+     appear in the employee list, staff pickers, schedule assignee pickers or
+     mention lists, but still show as the named sender or recipient. No user
+     account, membership or invitation is ever created for them, and as an
+     internal person they do not make a thread staff-only
+     (`former_employee_archived`).
    Ids come from the organization and the exact BT ids, so a re-run never
    creates a second vendor or contact. Each is listed once in
    `new-contacts.jsonl` for review.
-5. Otherwise (not in the catalog at all, or ambiguous) the participant is
-   unmatched (`participant_unmatched`) or ambiguous (`participant_ambiguous`)
-   and the whole thread goes to review.
+5. **No match in Compass: add them** (owner decision 2026-11-02). A
+   participant not found anywhere (or a catalog person with no company to
+   attach to) becomes a new, uninvited directory person: a project contact
+   (`source_system = 'buildertrend'`, `source_entity_type =
+   'buildertrend_new_person'`) named exactly as shown, with the exact email
+   when one is shown. Their identity is the exact normalized email, else the
+   exact normalized full name, so every message and project reuses the same
+   person and a re-run never duplicates them (`new_person_by_email`,
+   `new_person_by_name`). A name of one word is not enough
+   (`participant_unmatched`).
+   - **Connected by vendor name** (`connected_by_vendor_name`). When the
+     source shows the person's company (`companyName` in the capture, or the
+     catalog parent's company name) and it matches exactly one active Compass
+     vendor, the new person is created as that vendor's contact instead.
+     Names are compared lowercased, with whitespace collapsed, punctuation
+     `. , ' "` removed and a trailing legal-entity suffix dropped
+     (`COMPANY_NAME_SUFFIXES`: llc, inc, incorporated, corp, corporation, co,
+     company, ltd, limited, lp, llp, pllc, pc), so "ABC Plumbing" and "ABC
+     Plumbing, LLC" are the same; "ABC Plumbing & Heating" is not. Zero or
+     two matches: the person stays unassigned.
+   - A thread with any new person **not connected to a company** imports
+     staff-only and is listed as `staff_only_pending_identity`; staff connect
+     the person to their company (Contacts → **Unassigned**, then the
+     project's contacts) and use **Share with owner…/vendor…**. Connecting a
+     person never opens a thread by itself.
+6. Otherwise (ambiguous) the participant is ambiguous
+   (`participant_ambiguous`): the thread imports staff-only, pending review
+   (below).
 
 A matched person without a Compass account is added to the project as a
 directory contact without an invitation (linked to their vendor or customer
@@ -437,19 +474,57 @@ them. `summary.json` reports `participant_matches` per thread participant:
 `by_map`, `by_email`, `by_name_project`, `by_email_catalog`,
 `by_name_catalog`, `new_contact_from_catalog`, `review`, and
 `new_contact_from_catalog` (people listed in `new-contacts.jsonl`). The
-directory snapshot also carries `vendors` (BT-registered vendors) and
-`projects` (each project's client customers) for this step.
+directory snapshot also carries `vendors` (BT-registered vendors),
+`vendorNames` (active vendors) and `projects` (each project's client
+customers) for these steps. `summary.json` also reports `new_people_created`
+(`by_email`, `by_name`), `reused_new_people`, `former_employees_archived`,
+`staff_only_pending_identity` and `still_held` (counts by reason).
 
 ## Review queue
 
-`review.jsonl` lists held threads with a reason:
-`participant_unmatched`, `participant_ambiguous`, `bcc_recipient`, `sent_at_unreadable`,
-`attachment_unverified`, `job_not_mapped`, `thread_spans_jobs`,
-`private_archive`, `staff_only_not_verified`. (Threads with both owners and
-vendors are not held; they are kept internal.) Held messages stay where they are today (in the
-staff archive, if they were already imported there). Resolving a reason
-(adding the person to the reviewed map or the directory, mapping the job) and re-running the
-importer imports the thread; nothing else changes.
+`review.jsonl` lists held threads with a reason: `bcc_recipient`,
+`sent_at_unreadable`, `attachment_unverified`, `job_not_mapped`,
+`thread_spans_jobs`, `private_archive`, `staff_only_not_verified`. Held
+messages stay where they are today (in the staff archive, if they were
+already imported there). Resolving a reason and re-running the importer
+imports the thread; nothing else changes. (Threads with both owners and
+vendors are not held; they are kept internal.)
+
+### People who could not be identified (owner decision 2026-11-02)
+
+A thread whose only problems are participants that could not be identified
+exactly (`participant_unmatched`, `participant_ambiguous`,
+`participant_boundary_unproven`) is **not held**. It is imported now as a
+staff-only conversation (`audience = 'staff'`), whatever its owner or vendor
+audience would have been:
+
+- identified staff become members; identified owners and vendors are recorded
+  as participants but get no membership, and accepting an invitation does not
+  add them while the thread is staff-only;
+- unidentified participants are recorded exactly as shown (inactive,
+  `identity_status = 'unmatched'`), and undivided envelope fields are kept
+  whole as `<kind>_literal` rows, so staff see exactly who it went to;
+- an unidentified sender is stored under the importing staff account with
+  the name as shown in `messages.source_sender_label_snapshot` (migration
+  0290), which the conversation shows as the sender;
+- `review.jsonl` gets one `staff_only_pending_identity` item per thread with
+  its channel id and the sha256 of each unresolved literal;
+  `summary.json` counts `imported_staff_only_pending_identity`.
+
+Any other reason (attachments, job mapping, Bcc, legal-hold verification,
+incomplete threads, ...) still holds the whole thread.
+
+**Opening a thread later.** On a staff-only imported conversation, staff see
+a menu in the conversation header with **Share with owner…** and **Share
+with vendor…**. The confirm dialog lists exactly who gets access: the
+identified owners (or vendors) of that thread. Confirming sets the audience to
+`clients` (or `sub_vendors`), adds those with Compass accounts as members
+with nothing unread, and lets the rest join when they are given access. It
+sends no notification or email and records an Activity event. It refuses
+non-staff, projects marked **Imported conversations staff only** (legal
+hold), threads with both owners and vendors, and an audience with nobody
+identified. (`src/lib/domain/conversations/imported-sharing.ts`, action
+`src/app/actions/imported-conversations.ts`.)
 
 ## Backups
 
