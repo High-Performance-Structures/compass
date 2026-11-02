@@ -225,15 +225,19 @@ describe("Buildertrend messages importer", () => {
     expect(count(db, `SELECT COUNT(*) AS n FROM channel_read_state WHERE unread_count <> 0`)).toBe(0)
   })
 
-  it("matches people only by exact Buildertrend participant ids; others go to review", () => {
+  it("matches people only by exact Buildertrend participant ids; an unmatched one imports the thread staff-only", () => {
     const stranger = { participantId: "99", namespace: "owner", role: "Owner", displayName: "Olive Owner" }
     const { plan } = run(db, [captured("1001", { recipients: [{ ...stranger, kind: "to" }] }), thread("9001", 1)])
     // Same display name as a mapped owner, but a different id: never matched.
-    expect(plan.threads).toHaveLength(0)
-    expect(plan.reviews).toEqual([expect.objectContaining({ reason: "participant_unmatched", participant: "owner:99" })])
-    expect(count(db, `SELECT COUNT(*) AS n FROM messages WHERE source_system = 'buildertrend'`)).toBe(0)
-    // The unreviewed message stays in the staff archive.
-    expect(count(db, `SELECT COUNT(*) AS n FROM messages WHERE channel_id = '${legacyArchiveChannelId(JOB)}'`)).toBe(1)
+    expect(plan.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true })])
+    expect(plan.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", btThreadId: "9001", unresolved: [expect.objectContaining({ reason: "participant_unmatched" })] })])
+    expect(plan.imported_staff_only_pending_identity).toBe(1)
+    const channelId = conversationId(ORG, "9001")
+    expect(all(db, `SELECT audience FROM channels WHERE id = '${channelId}'`)).toEqual([{ audience: "staff" }])
+    expect(all(db, `SELECT user_id FROM channel_members WHERE channel_id = '${channelId}'`).map((row) => row.user_id)).toEqual([ACTOR])
+    // The unidentified recipient is recorded as shown, unmatched and inactive.
+    expect(all(db, `SELECT source_contact_name, identity_status, active FROM project_source_record_participants WHERE source_participant_id = 'owner:99'`))
+      .toEqual([{ source_contact_name: "Olive Owner", identity_status: "unmatched", active: 0 }])
   })
 
   it("adds unknown participants as directory contacts without inviting them", () => {

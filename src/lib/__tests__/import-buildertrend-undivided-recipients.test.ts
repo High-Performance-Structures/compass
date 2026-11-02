@@ -93,28 +93,28 @@ describe("undivided Buildertrend recipient literals", () => {
 
   it("sends a literal that splits more than one way to review", () => {
     const result = plan([line("1", [undivided("Smith, John")]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_ambiguous", literal: "Smith, John" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true })])
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_ambiguous" })] })])
   })
 
   it("sends a literal with an unknown piece to review", () => {
     const result = plan([line("1", [undivided("Olive Owner, Someone Unknown")]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff" })])
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven" })] })])
   })
 
   it("fails closed when requiresReview is set and nothing resolves it, even with a matching email", () => {
     const flagged = { namespace: "owner", displayName: "Somebody", email: "owner@example.com", kind: "to", requiresReview: true }
     const result = plan([line("1", [flagged]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff" })])
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven" })] })])
   })
 
   it("requires an undivided sender to be exactly one known person", () => {
     const sender = { namespace: "builder", displayName: "Pat PM, Olive Owner", requiresReview: true, participantBoundaryProven: false }
     const result = plan([line("1", [{ namespace: "owner", displayName: "Olive Owner", kind: "to" }], sender), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven", participantKind: "sender" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff" })])
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven", kind: "sender" })] })])
   })
 
   it("keeps the original literal whole in the stored participant snapshot", () => {

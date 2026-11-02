@@ -79,6 +79,9 @@ export const messages = sqliteTable("messages", {
   importedSenderContactId: text("imported_sender_contact_id").references(() => projectContacts.id, {
     onDelete: "set null",
   }),
+  // snapshot: the sender exactly as the source showed it, set only when the
+  // sender could not be matched to a person (migration 0290).
+  sourceSenderLabelSnapshot: text("source_sender_label_snapshot"),
 },
   (table) => [
     uniqueIndex("messages_source_message_unique")

@@ -57,6 +57,7 @@ changes. Every column is declared in `src/db/schema.ts` and
 | `messages` | `source_sent_at_snapshot` | The sent date exactly as BT displayed it. `created_at` holds the ISO instant used for ordering. |
 | `messages` | `imported_sender_contact_id` → `project_contacts.id` (indexed) | Set only while the sender is a directory contact without an account. |
 | `message_attachments` | `content_sha256` (indexed), `source_attachment_id` | Hash-based reuse; unique `(message_id, source_attachment_id)`. |
+| `messages` | `source_sender_label_snapshot` (migration 0290) | The sender exactly as shown, set only when the sender could not be identified (the message is then stored under the importing staff account). |
 
 Existing tables are reused instead of adding parallel ones (architecture
 standard: one concept, one table):
@@ -442,14 +443,49 @@ directory snapshot also carries `vendors` (BT-registered vendors) and
 
 ## Review queue
 
-`review.jsonl` lists held threads with a reason:
-`participant_unmatched`, `participant_ambiguous`, `bcc_recipient`, `sent_at_unreadable`,
-`attachment_unverified`, `job_not_mapped`, `thread_spans_jobs`,
-`private_archive`, `staff_only_not_verified`. (Threads with both owners and
-vendors are not held; they are kept internal.) Held messages stay where they are today (in the
-staff archive, if they were already imported there). Resolving a reason
-(adding the person to the reviewed map or the directory, mapping the job) and re-running the
-importer imports the thread; nothing else changes.
+`review.jsonl` lists held threads with a reason: `bcc_recipient`,
+`sent_at_unreadable`, `attachment_unverified`, `job_not_mapped`,
+`thread_spans_jobs`, `private_archive`, `staff_only_not_verified`. Held
+messages stay where they are today (in the staff archive, if they were
+already imported there). Resolving a reason and re-running the importer
+imports the thread; nothing else changes. (Threads with both owners and
+vendors are not held; they are kept internal.)
+
+### People who could not be identified (owner decision 2026-11-02)
+
+A thread whose only problems are participants that could not be identified
+exactly (`participant_unmatched`, `participant_ambiguous`,
+`participant_boundary_unproven`) is **not held**. It is imported now as a
+staff-only conversation (`audience = 'staff'`), whatever its owner or vendor
+audience would have been:
+
+- identified staff become members; identified owners and vendors are recorded
+  as participants but get no membership, and accepting an invitation does not
+  add them while the thread is staff-only;
+- unidentified participants are recorded exactly as shown (inactive,
+  `identity_status = 'unmatched'`), and undivided envelope fields are kept
+  whole as `<kind>_literal` rows, so staff see exactly who it went to;
+- an unidentified sender is stored under the importing staff account with
+  the name as shown in `messages.source_sender_label_snapshot` (migration
+  0290), which the conversation shows as the sender;
+- `review.jsonl` gets one `staff_only_pending_identity` item per thread with
+  its channel id and the sha256 of each unresolved literal;
+  `summary.json` counts `imported_staff_only_pending_identity`.
+
+Any other reason (attachments, job mapping, Bcc, legal-hold verification,
+incomplete threads, ...) still holds the whole thread.
+
+**Opening a thread later.** On a staff-only imported conversation, staff see
+a menu in the conversation header with **Share with owner…** and **Share
+with vendor…**. The confirm dialog lists exactly who gets access: the
+identified owners (or vendors) of that thread. Confirming sets the audience to
+`clients` (or `sub_vendors`), adds those with Compass accounts as members
+with nothing unread, and lets the rest join when they are given access. It
+sends no notification or email and records an Activity event. It refuses
+non-staff, projects marked **Imported conversations staff only** (legal
+hold), threads with both owners and vendors, and an audience with nobody
+identified. (`src/lib/domain/conversations/imported-sharing.ts`, action
+`src/app/actions/imported-conversations.ts`.)
 
 ## Backups
 

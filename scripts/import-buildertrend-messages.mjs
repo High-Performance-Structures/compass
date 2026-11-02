@@ -353,6 +353,9 @@ export function parsePrecheck(value) {
  * A conversation has one outside audience. Owner decision 2026-11-01: a thread
  * with both owners and vendors is kept internal (staff-only), not shared.
  */
+/** Review reasons about who a participant is; alone, they import staff-only. */
+const IDENTITY_REASONS = new Set(["participant_boundary_unproven", "participant_unmatched", "participant_ambiguous"])
+
 function audienceFor(kinds) {
   const owner = kinds.has("owner")
   const vendor = kinds.has("vendor")
@@ -374,6 +377,7 @@ function review(reason, message, detail = {}) {
 export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
+  let imported_staff_only_pending_identity = 0
   const matches = { by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0, review: 0, segmented_by_dictionary: 0 }
   const precheck = input.precheck
   const expectedStaffOnly = new Set(input.expectedStaffOnlyProjects ?? [])
@@ -447,11 +451,27 @@ export function planImport(input) {
       planned.push({ ...message, sender: expanded.sender ?? message.sender, recipients: expanded.recipients, literals: expanded.literals, createdAt })
     }
     for (const match of resolved.values()) matches[match.rule ?? "review"] += 1
-    const audience = audienceFor(kinds)
     const mixedKeptInternal = kinds.has("owner") && kinds.has("vendor")
-    if (threadReviews.length > 0) {
+    // Owner decision 2026-11-02: a thread whose only problems are people who
+    // could not be identified exactly is imported now, staff-only, and flagged
+    // so staff can open it to the owner or vendor later. Anything else holds.
+    const identityReviews = threadReviews.filter((item) => IDENTITY_REASONS.has(item.reason))
+    if (threadReviews.length > identityReviews.length) {
       reviews.push(...threadReviews)
       continue
+    }
+    const pendingIdentity = identityReviews.length > 0
+    const audience = pendingIdentity ? "staff" : audienceFor(kinds)
+    if (pendingIdentity) {
+      imported_staff_only_pending_identity += 1
+      reviews.push({
+        reason: "staff_only_pending_identity", btJobId: first.btJobId, btThreadId, projectId,
+        channelId: conversationId(organizationId, btThreadId),
+        unresolved: identityReviews.map((item) => ({
+          reason: item.reason, kind: item.participantKind ?? item.role ?? null,
+          literalSha256: hash(String(item.literal ?? item.displayName ?? item.participant ?? "")),
+        })),
+      })
     }
     planned.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.btMessageId.localeCompare(b.btMessageId))
     threads.push({
@@ -464,11 +484,12 @@ export function planImport(input) {
       name: (planned.find((m) => m.subject.trim() !== "")?.subject.trim() ?? "Buildertrend conversation").slice(0, 120),
       audience,
       mixedKeptInternal,
+      pendingIdentity,
       people: [...people.values()],
       messages: planned,
     })
   }
-  return { threads, reviews, pending, matches }
+  return { threads, reviews, pending, matches, imported_staff_only_pending_identity }
 }
 
 // ---------------------------------------------------------------------------
@@ -617,12 +638,14 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
   const senderPerson = thread.people.find((person) => person.key === senderKey)
   const senderUserId = senderPerson?.entry.userId ?? null
   const senderContactId = senderUserId ? null : contactByKey.get(senderKey) ?? null
+  // A sender who could not be matched keeps the name exactly as shown (0290).
+  const senderLabel = senderPerson ? null : message.sender.displayName ?? message.sender.email ?? null
   const legacyId = legacyArchiveMessageId(message.btJobId, message.btMessageId)
   const archiveId = legacyArchiveChannelId(message.btJobId)
   const values = {
     channel_id: thread.channelId, user_id: senderUserId ?? actorUserId, content: message.body, content_html: null,
     source_system: SOURCE_SYSTEM, source_message_id: message.btMessageId, source_sent_at_snapshot: message.sentAtDisplay,
-    imported_sender_contact_id: senderContactId, created_at: message.createdAt,
+    imported_sender_contact_id: senderContactId, source_sender_label_snapshot: senderLabel, created_at: message.createdAt,
   }
   // 1. Convert: move the legacy archive row in place (same id, no copy). Only
   //    the numeric legacy row in its numeric archive is ever touched; any other
@@ -660,7 +683,9 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
       source_contact_name: ref.displayName ?? null, participant_role: ref.kind,
       audience: person?.entry.kind === "staff" ? "internal" : "external",
       project_contact_id: contactByKey.get(participantKey(ref)) ?? null, user_id: person?.entry.userId ?? null,
-      identity_status: "matched", membership_status: "active", review_status: "reviewed", active: 1,
+      // An unidentified person is recorded as shown and left for review.
+      identity_status: person ? "matched" : "unmatched", membership_status: person ? "active" : "pending",
+      review_status: person ? "reviewed" : "unreviewed", active: person ? 1 : 0,
       created_at: now, updated_at: now,
     }, guard))
   }
@@ -850,6 +875,7 @@ function main() {
     threads: plan.threads.length,
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
+    imported_staff_only_pending_identity: plan.imported_staff_only_pending_identity,
     // How each thread participant was matched (per thread); review = unmatched or ambiguous.
     participant_matches: plan.matches,
     new_contact_from_catalog: newContacts.length,
