@@ -3,6 +3,12 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { requestSageClientDirectoryRefresh } from "@/app/actions/sage-client-directory"
+import {
+  adoptSageCompanyName,
+  getSageCompanyNameState,
+  type SageCompanyNameState,
+} from "@/app/actions/sage-company-names"
 import {
   getSageContactEditorState,
   proposeSageContactChange,
@@ -37,6 +43,89 @@ export type SageContactEditorTarget = {
   readonly kind: SageContactKind
   readonly entityId: string
   readonly name: string
+}
+
+/**
+ * Compass's and Sage's company names side by side, with "Use Sage name" when
+ * they differ. Copies Sage's value into Compass; nothing is sent to Sage.
+ */
+function SageCompanyNameRow({
+  kind,
+  entityId,
+  onChanged,
+}: {
+  readonly kind: "client_company" | "vendor_company"
+  readonly entityId: string
+  readonly onChanged?: () => void
+}): React.ReactElement | null {
+  const [state, setState] = React.useState<SageCompanyNameState | null>(null)
+  const [busy, setBusy] = React.useState(false)
+
+  const load = React.useCallback(async () => {
+    const result = await getSageCompanyNameState(kind, entityId)
+    setState(result.success ? result.data : null)
+  }, [kind, entityId])
+
+  React.useEffect(() => { void load() }, [load])
+
+  if (!state || state.status === "unlinked") return null
+
+  const adopt = async () => {
+    setBusy(true)
+    try {
+      const result = await adoptSageCompanyName(kind, entityId)
+      if (!result.success) toast.error(result.error)
+      else if (result.data.changed) {
+        toast.success(`Compass name is now ${result.data.name}`)
+        onChanged?.()
+      }
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const refreshList = async () => {
+    setBusy(true)
+    try {
+      const result = await requestSageClientDirectoryRefresh()
+      if (!result.success) toast.error(result.error)
+      else toast.success("Sage client list refresh queued. Check again after the bridge processes it.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-b pb-4 text-sm">
+      <div className="grid gap-1 sm:grid-cols-2">
+        <p><span className="text-muted-foreground">Compass name: </span>{state.compassName}</p>
+        <p><span className="text-muted-foreground">Sage name: </span>{state.sageName ?? "Not available"}</p>
+      </div>
+      {state.status === "differs" ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => void adopt()} disabled={busy}>
+          Use Sage name
+        </Button>
+      ) : null}
+      {state.status === "stale" || state.status === "missing" ? (
+        <div className="space-y-2">
+          <p className="text-muted-foreground">
+            {kind === "client_company"
+              ? "Sage's client list needs a refresh before Compass can use the Sage name."
+              : "Sage's vendor list is out of date or does not include this vendor. The Sage writer re-sends it daily."}
+          </p>
+          <div className="flex gap-2">
+            {kind === "client_company" ? (
+              <Button type="button" size="sm" variant="outline" onClick={() => void refreshList()} disabled={busy}>
+                Refresh Sage client list
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" variant="ghost" onClick={() => void load()} disabled={busy}>Check again</Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 export function SageContactEditorDialog({
@@ -110,6 +199,9 @@ export function SageContactEditorDialog({
             {target?.name}. Sage remains authoritative; a different authorized reviewer must approve the change.
           </DialogDescription>
         </DialogHeader>
+        {target && (target.kind === "client_company" || target.kind === "vendor_company") ? (
+          <SageCompanyNameRow kind={target.kind} entityId={target.entityId} onChanged={onSubmitted} />
+        ) : null}
         {loading && !state ? <p className="text-sm text-muted-foreground">Loading contact…</p> : null}
         {state && !state.linked ? (
           <p className="text-sm text-muted-foreground">This contact has no verified Sage record link yet.</p>
