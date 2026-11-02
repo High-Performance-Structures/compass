@@ -196,6 +196,7 @@ export async function getProjectPhotoLibrary(
 
   const photos = rows.filter(isImage).map((row) => {
     const resolvedPhotoDate = resolveProjectPhotoDate({
+      sourceSystem: row.sourceSystem,
       capturedAt: row.capturedAt,
       sourceDate: row.sourceDate,
       logDate: row.logDate,
