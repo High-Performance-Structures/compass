@@ -193,7 +193,66 @@ export function createParticipantResolver(input) {
   const organizationId = input.organizationId ?? null
   const people = directory?.people ?? []
   const byEmail = (email) => people.filter((person) => person.emails.has(email))
-  return function resolve(ref, projectId) {
+  /**
+   * Is this exact text (a full name or an email) exactly one known person?
+   * Project people first, then the whole directory, then the BT catalog; the
+   * first tier with any match decides, and two matches there mean no.
+   */
+  function knownToken(token, projectId) {
+    const email = token.includes("@") && !/\s/.test(token) ? normalizeEmail(token) : null
+    if (email) {
+      const tiers = [people.filter((person) => person.emails.has(email)), catalog.filter((row) => row.email === email)]
+      const tier = tiers.find((list) => list.length > 0)
+      return tier?.length === 1 ? { email } : null
+    }
+    const name = normalizeName(token)
+    if (!name) return null
+    const named = people.filter((person) => person.names.has(name))
+    const tiers = [
+      named.filter((person) => person.projectIds.has(projectId) || person.projectContactIds[projectId]),
+      named,
+      catalog.filter((row) => row.name === name),
+    ]
+    const tier = tiers.find((list) => list.length > 0)
+    return tier?.length === 1 ? { displayName: token.trim().replace(/\s+/g, " ") } : null
+  }
+
+  /**
+   * Splits an undivided recipient literal (BT renders a whole envelope field
+   * as one string) into known people, exactly: the literal is cut only at
+   * ", " or "; ", every piece must be the exact name or email of exactly one
+   * known person, and exactly one complete way to cut it may exist. A known
+   * "Smith, John" can keep its comma. Anything else: review.
+   */
+  function segment(literal, projectId) {
+    const normalized = typeof literal === "string" ? literal.trim().replace(/\s+/g, " ") : ""
+    if (!normalized) return { reason: "participant_boundary_unproven" }
+    const pieces = normalized.split(/(, |; )/)
+    const words = pieces.filter((_, index) => index % 2 === 0)
+    const seps = pieces.filter((_, index) => index % 2 === 1)
+    const text = (from, to) => words.slice(from, to).map((word, index) => (index === 0 ? word : `${seps[from + index - 1]}${word}`)).join("")
+    // ways[i]: complete cuttings of words[i..] (counted up to 2) and one of them.
+    const ways = new Array(words.length + 1).fill(null)
+    ways[words.length] = { count: 1, tokens: [] }
+    for (let from = words.length - 1; from >= 0; from -= 1) {
+      let count = 0
+      let tokens = null
+      for (let to = from + 1; to <= words.length; to += 1) {
+        const rest = ways[to]
+        if (!rest || rest.count === 0) continue
+        const token = knownToken(text(from, to), projectId)
+        if (!token) continue
+        count += rest.count
+        tokens ??= [token, ...rest.tokens]
+      }
+      ways[from] = { count: Math.min(count, 2), tokens }
+    }
+    const result = ways[0]
+    if (result.count === 1 && result.tokens) return { tokens: result.tokens }
+    return { reason: result.count > 1 ? "participant_ambiguous" : "participant_boundary_unproven" }
+  }
+
+  const resolve = function resolve(ref, projectId) {
     if (ref.participantId) {
       const mapped = participantMap.get(`${ref.namespace}:${ref.participantId}`)
       if (mapped) return { entry: mapped, rule: "by_map" }
@@ -226,4 +285,6 @@ export function createParticipantResolver(input) {
     }
     return { entry: entryFor(resolved), rule: byCatalogEmail.length > 0 ? "by_email_catalog" : "by_name_catalog" }
   }
+  resolve.segment = segment
+  return resolve
 }
