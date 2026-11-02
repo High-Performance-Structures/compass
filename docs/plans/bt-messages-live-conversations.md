@@ -180,8 +180,14 @@ action routes them to the channel model:
   imported messages carry the `[BT]` tag;
 - opening messages updates `channel_read_state` through the conversations
   store; replies are sent by the conversation's own `sendMessage`;
-- Saved, Needs reply, Archive, Close, read receipts, reply drafts and reply
-  attachments are correspondence-only and are refused with a clear message.
+- Saved, Needs reply and Archive work exactly as for correspondence: per
+  person, in the row's menu and the bulk actions, stored in
+  `channel_thread_user_state` (migration 0289, written only by the
+  conversations store). Close / Reopen is per conversation and staff only,
+  stored in `channels.thread_closed_at`; as in correspondence, a message
+  created after it reopens the conversation;
+- read receipts, message edits, reply drafts and reply attachments are
+  correspondence-only and are refused with a clear message.
 
 Other project channels and direct messages stay under "Existing channels and
 direct messages".

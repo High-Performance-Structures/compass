@@ -5,8 +5,8 @@ import {
   authorizedConversation,
   correspondenceContext,
 } from "@/lib/correspondence/access"
-import { channelIdFromConversationId, CHANNEL_THREAD_STATE_UNAVAILABLE } from "@/lib/correspondence/channel-thread-id"
-import { markChannelThreadsRead } from "@/lib/correspondence/channel-threads"
+import { channelIdFromConversationId } from "@/lib/correspondence/channel-thread-id"
+import { markChannelThreadsRead, setChannelThreadsState } from "@/lib/correspondence/channel-threads"
 import type { CorrespondenceResult } from "@/lib/correspondence/types"
 import { inboxStatePatch } from "@/lib/domain/correspondence/rules"
 import { markConversationReadStatement, upsertConversationStateStatement } from "@/lib/domain/correspondence/store"
@@ -45,16 +45,19 @@ export async function updateCorrespondenceInbox(
       }
     }
     const selection = [...new Set(conversationIds)]
-    // Imported project conversations (channels) keep only read state; other inbox state is correspondence-only.
+    // Imported project conversations (channels) keep their inbox state in the conversations store.
     const channelIds = selection.flatMap((id) => channelIdFromConversationId(id) ?? [])
     const ids = selection.filter((id) => channelIdFromConversationId(id) === null)
-    if (channelIds.length > 0 && action !== "read") {
-      return { success: false, error: `${CHANNEL_THREAD_STATE_UNAVAILABLE} Deselect them and try again.` }
-    }
     const ctx = await correspondenceContext(projectId)
     // Authorize the entire selection before any write; a forged ID cannot cause a partial update.
     for (const id of ids) await authorizedConversation(ctx, id)
-    if (channelIds.length > 0) await markChannelThreadsRead(ctx, channelIds)
+    if (channelIds.length > 0) {
+      if (action === "read") await markChannelThreadsRead(ctx, channelIds)
+      else {
+        const patch = inboxStatePatch(action)
+        await setChannelThreadsState(ctx, channelIds, "followUp" in patch ? { needsReply: patch.followUp } : patch)
+      }
+    }
     const now = new Date().toISOString()
     const writes = ids.map((conversationId) =>
       action === "read"

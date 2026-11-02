@@ -22,6 +22,6 @@ export function isChannelThreadId(conversationId: string | null): boolean {
   return channelIdFromConversationId(conversationId) !== null
 }
 
-/** Inbox state (Saved, Needs reply, Archive, Close, receipts) is stored only for correspondence. */
+/** Read receipts and message edits exist only for correspondence. */
 export const CHANNEL_THREAD_STATE_UNAVAILABLE =
-  "Saved, Needs reply, Archive and Close aren't available for imported conversations yet."
+  "Read receipts and edits aren't available for imported conversations."

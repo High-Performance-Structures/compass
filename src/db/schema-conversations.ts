@@ -37,6 +37,8 @@ export const channels = sqliteTable("channels", {
   /** Set when the conversation was created from an outside system's thread (0287). */
   sourceSystem: text("source_system"),
   sourceThreadId: text("source_thread_id"),
+  /** When staff closed this conversation in the project messages inbox; a newer message reopens it (0289). */
+  threadClosedAt: text("thread_closed_at"),
 },
   (table) => [
     index("channels_project_id_idx").on(table.projectId),
@@ -237,6 +239,31 @@ export const channelReadState = sqliteTable("channel_read_state", {
     uniqueIndex("channel_read_state_channel_user_unique").on(table.channelId, table.userId),
     // Declared from drizzle/0281_id_reference_triggers.sql.
     index("channel_read_state_last_read_message_id_idx").on(table.lastReadMessageId),
+  ])
+
+// channel_thread_user_state - a person's project messages inbox flags for a
+// channel conversation (Saved, Needs reply, Archive), as correspondence keeps
+// them (migration 0289). Null means off; the time is when it was turned on.
+export const channelThreadUserState = sqliteTable("channel_thread_user_state", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  channelId: text("channel_id")
+    .notNull()
+    .references(() => channels.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  savedAt: text("saved_at"),
+  needsReplyAt: text("needs_reply_at"),
+  archivedAt: text("archived_at"),
+  updatedAt: text("updated_at").notNull(),
+},
+  (table) => [
+    uniqueIndex("channel_thread_user_state_channel_user_unique").on(table.channelId, table.userId),
+    index("channel_thread_user_state_user_id_idx").on(table.userId),
+    index("channel_thread_user_state_organization_id_idx").on(table.organizationId),
   ])
 
 export const voiceParticipants = sqliteTable(

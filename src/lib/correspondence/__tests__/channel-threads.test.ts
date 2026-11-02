@@ -22,7 +22,7 @@ vi.mock("@/lib/correspondence/access", async (original) => {
 })
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
-import { getCorrespondenceDetail, getCorrespondenceInbox, markCorrespondenceOpened, saveCorrespondenceDraft, searchCorrespondence, setCorrespondenceState } from "@/app/actions/project-correspondence"
+import { getCorrespondenceDetail, getCorrespondenceInbox, markCorrespondenceOpened, saveCorrespondenceDraft, searchCorrespondence, setCorrespondenceClosed, setCorrespondenceReceiptPreference, setCorrespondenceState } from "@/app/actions/project-correspondence"
 import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
 import { MessageCard } from "@/components/correspondence/correspondence-message-card"
 
@@ -226,15 +226,73 @@ describe("imported project conversations in the project messages inbox", () => {
     expect(sqlite.prepare("SELECT last_read_message_id AS id, unread_count AS n FROM channel_read_state WHERE user_id = 'user-owner'").get()).toEqual({ id: "m-owner-2", n: 0 })
   })
 
-  it("supports bulk Mark as read and refuses inbox state it cannot keep", async () => {
+  it("supports bulk Mark as read", async () => {
     mocks.context.mockImplementation(async () => context(sqlite, "owner"))
     const id = channelThreadConversationId("bt-thread-owner")
     expect(await updateCorrespondenceInbox(OPEN, [id], "read")).toEqual({ success: true, data: null })
     expect(sqlite.prepare("SELECT unread_count AS n FROM channel_read_state WHERE user_id = 'user-owner'").get()).toEqual({ n: 0 })
-    expect((await updateCorrespondenceInbox(OPEN, [id], "archive")).success).toBe(false)
-    expect((await setCorrespondenceState(OPEN, id, { saved: true, followUp: false, archived: false })).success).toBe(false)
     // Another audience's thread cannot be marked read by id.
     expect((await updateCorrespondenceInbox(OPEN, [channelThreadConversationId("bt-thread-vendor")], "read")).success).toBe(false)
+  })
+
+  it("keeps Saved, Needs reply and Archive per person, from the menu and the bulk actions", async () => {
+    const id = channelThreadConversationId("bt-thread-owner")
+    mocks.context.mockImplementation(async () => context(sqlite, "owner"))
+    expect(await setCorrespondenceState(OPEN, id, { saved: true, followUp: true, archived: false })).toEqual({ success: true, data: null })
+    let inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations[0]).toMatchObject({ id, saved: true, followUp: true, archived: false })
+    for (const tab of ["saved", "follow-up"] as const) {
+      expect(await searchCorrespondence(OPEN, "grout", tab)).toMatchObject({ success: true, data: { hits: [{ messageId: "m-owner-1" }] } })
+    }
+
+    expect(await updateCorrespondenceInbox(OPEN, [id], "archive")).toEqual({ success: true, data: null })
+    expect(await updateCorrespondenceInbox(OPEN, [id], "unsave")).toEqual({ success: true, data: null })
+    inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations[0]).toMatchObject({ id, saved: false, followUp: true, archived: true })
+    const archivedSearch = await searchCorrespondence(OPEN, "grout", "archived")
+    expect(archivedSearch.success && archivedSearch.data.hits.map((hit) => hit.messageId)).toEqual(["m-owner-1"])
+    const inboxSearch = await searchCorrespondence(OPEN, "grout", "inbox")
+    expect(inboxSearch.success && inboxSearch.data.hits).toEqual([])
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM channel_thread_user_state").get()).toEqual({ n: 1 })
+
+    // Another person's inbox is untouched.
+    mocks.context.mockImplementation(async () => context(sqlite, "staff"))
+    inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations.find((row) => row.id === id)).toMatchObject({ saved: false, followUp: false, archived: false })
+    expect(await updateCorrespondenceInbox(OPEN, [id, channelThreadConversationId("bt-thread-vendor")], "follow-up")).toEqual({ success: true, data: null })
+    inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations.filter((row) => row.followUp).map((row) => row.subject)).toEqual(["Tile delivery", "Kitchen tile"])
+  })
+
+  it("never writes inbox state for a thread the viewer cannot open", async () => {
+    mocks.context.mockImplementation(async () => context(sqlite, "owner"))
+    const own = channelThreadConversationId("bt-thread-owner")
+    expect((await updateCorrespondenceInbox(OPEN, [own, channelThreadConversationId("bt-thread-vendor")], "save")).success).toBe(false)
+    expect((await setCorrespondenceState(OPEN, channelThreadConversationId("bt-thread-internal"), { saved: true, followUp: false, archived: false })).success).toBe(false)
+    mocks.context.mockImplementation(async () => context(sqlite, "owner", HOLD))
+    expect((await setCorrespondenceState(HOLD, channelThreadConversationId("bt-thread-hold"), { saved: true, followUp: false, archived: false })).success).toBe(false)
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM channel_thread_user_state").get()).toEqual({ n: 0 })
+  })
+
+  it("lets staff close and reopen a conversation for everyone; a newer message reopens it", async () => {
+    const id = channelThreadConversationId("bt-thread-owner")
+    mocks.context.mockImplementation(async () => context(sqlite, "owner"))
+    expect((await setCorrespondenceClosed(OPEN, id, true)).success).toBe(false)
+    mocks.context.mockImplementation(async () => context(sqlite, "staff"))
+    expect(await setCorrespondenceClosed(OPEN, id, true)).toEqual({ success: true, data: null })
+    mocks.context.mockImplementation(async () => context(sqlite, "owner"))
+    let inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations[0]?.closed).toBe(true)
+    mocks.context.mockImplementation(async () => context(sqlite, "staff"))
+    expect(await setCorrespondenceClosed(OPEN, id, false)).toEqual({ success: true, data: null })
+    inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations.find((row) => row.id === id)?.closed).toBe(false)
+    expect(await setCorrespondenceClosed(OPEN, id, true)).toEqual({ success: true, data: null })
+    message(sqlite, { id: "m-owner-3", channelId: "bt-thread-owner", userId: "user-owner", content: "One more question", createdAt: "2999-01-01T00:00:00.000Z", imported: false })
+    inbox = await getCorrespondenceInbox(OPEN)
+    expect(inbox.success && inbox.data.conversations.find((row) => row.id === id)?.closed).toBe(false)
+    // Receipts stay correspondence-only.
+    expect((await setCorrespondenceReceiptPreference(OPEN, id, false)).success).toBe(false)
   })
 
   it("keeps no reply drafts: empty text clears, unsent text is refused instead of silently dropped", async () => {

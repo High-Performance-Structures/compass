@@ -8,7 +8,7 @@ import { authorizedConversation, correspondenceContacts, correspondenceContext, 
 import { releaseRejectedComposition, validateDraftAttachments } from "@/lib/correspondence/saved-drafts"
 import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/read"
 import { channelIdFromConversationId, CHANNEL_THREAD_STATE_UNAVAILABLE } from "@/lib/correspondence/channel-thread-id"
-import { listChannelThreads, markChannelThreadOpened, readChannelThread, searchChannelThreads } from "@/lib/correspondence/channel-threads"
+import { listChannelThreads, markChannelThreadOpened, readChannelThread, searchChannelThreads, setChannelThreadClosedByStaff, setChannelThreadsState } from "@/lib/correspondence/channel-threads"
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
@@ -22,7 +22,7 @@ function failure(error: unknown): { readonly success: false; readonly error: str
   return { success: false, error: safe ? error.message : "Messaging is temporarily unavailable. Your draft has been retained." }
 }
 function refresh(projectId: string): void { revalidatePath(`/dashboard/projects/${projectId}/messages`) }
-/** Inbox state, close, receipts and edits are correspondence-only; refuse them clearly for imported conversations. */
+/** Read receipts and message edits are correspondence-only; refuse them clearly for imported conversations. */
 function assertCorrespondenceThread(conversationId: string): void {
   if (channelIdFromConversationId(conversationId) !== null) throw new Error(CHANNEL_THREAD_STATE_UNAVAILABLE)
 }
@@ -73,8 +73,13 @@ export async function sendCorrespondence(input: SendCorrespondenceInput): Promis
 export async function setCorrespondenceState(projectId: string, conversationId: string, state: CorrespondenceStateInput): Promise<CorrespondenceResult<null>> {
   try {
     if ([state.saved, state.followUp, state.archived].some((v) => typeof v !== "boolean")) throw new Error("Invalid inbox state.")
-    assertCorrespondenceThread(conversationId)
     const ctx = await correspondenceContext(projectId)
+    const channelId = channelIdFromConversationId(conversationId)
+    if (channelId !== null) {
+      await setChannelThreadsState(ctx, [channelId], { saved: state.saved, needsReply: state.followUp, archived: state.archived })
+      refresh(projectId)
+      return { success: true, data: null }
+    }
     await authorizedConversation(ctx, conversationId)
     await upsertConversationState(ctx.db, conversationId, ctx.user.id, { saved: state.saved, followUp: state.followUp, archived: state.archived })
     refresh(projectId)
@@ -154,9 +159,14 @@ export async function reviseCorrespondenceMessage(projectId: string, conversatio
 export async function setCorrespondenceClosed(projectId: string, conversationId: string, closed: boolean): Promise<CorrespondenceResult<null>> {
   try {
     if (typeof closed !== "boolean") throw new Error("Invalid conversation state.")
-    assertCorrespondenceThread(conversationId)
     const ctx = await correspondenceContext(projectId)
     if (ctx.workspace !== "staff") throw new Error("Only project staff can close or reopen a conversation.")
+    const channelId = channelIdFromConversationId(conversationId)
+    if (channelId !== null) {
+      await setChannelThreadClosedByStaff(ctx, channelId, closed)
+      refresh(projectId)
+      return { success: true, data: null }
+    }
     await authorizedConversation(ctx, conversationId)
     await setConversationClosed(ctx.db, conversationId, closed)
     refresh(projectId)
