@@ -36,6 +36,7 @@ import {
 import { userRoleLabel } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
+import { addVendorPerson } from "@/lib/domain/contacts/directory-people"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -536,53 +537,14 @@ export async function createVendorContact(
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
-    const name = input.name.trim()
-    if (!name) return { success: false, error: "Contact name is required" }
-
-    const vendor = await db
-      .select({ id: vendors.id, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
-      .from(vendors)
-      .where(
-        and(
-          eq(vendors.id, vendorId),
-          eq(vendors.organizationId, orgId),
-          eq(vendors.directoryStatus, "active")
-        )
-      )
-      .get()
-    if (!vendor) return { success: false, error: "Vendor company not found" }
-    if (vendor.sageVendorId || vendor.sageVendorNumber) {
-      return {
-        success: false,
-        error: "This vendor is linked to Sage. Add its contact through the reviewed Sage workflow.",
-      }
-    }
-
-    const now = new Date().toISOString()
-    const id = crypto.randomUUID()
-    if (input.isPrimary) {
-      await clearVendorPrimaryPeople(db, { vendorId, now })
-    }
-    const contact: VendorContactItem = {
-      id,
+    const result = await addVendorPerson(db, {
+      organizationId: orgId,
       vendorId,
-      name,
-      title: nullableText(input.title),
-      email: nullableText(input.email),
-      phone: nullableText(input.phone),
-      isPrimary: input.isPrimary,
-      active: true,
-      sourceSystem: "manual",
-      userId: null,
-      sageContactId: null,
-      sageLineNumber: null,
-    }
-    await insertVendorPeople(db, [{
-      ...contact,
-      sourceRecordId: null,
-      createdAt: now,
-      updatedAt: now,
-    }])
+      person: input,
+      now: new Date().toISOString(),
+    })
+    if (!result.success) return result
+    const { contact } = result
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
     return { success: true, contact }

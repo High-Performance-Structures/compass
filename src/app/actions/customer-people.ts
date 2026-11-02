@@ -1,15 +1,12 @@
 "use server"
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customerContacts, customers, projectContacts } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
-import {
-  clearOtherCustomerPrimaryPeople,
-  insertCustomerPerson,
-  updateCustomerPerson,
-} from "@/lib/domain/contacts/store"
+import { saveCustomerPerson } from "@/lib/domain/contacts/directory-people"
+import { updateCustomerPerson } from "@/lib/domain/contacts/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
@@ -61,16 +58,6 @@ export async function getCustomerDirectoryPeople(customerId: string): Promise<re
     .orderBy(asc(customerContacts.name))
 }
 
-function normalized(input: CustomerPersonInput): CustomerPersonInput {
-  return {
-    name: input.name.trim(),
-    title: input.title.trim(),
-    email: input.email.trim().toLowerCase(),
-    phone: input.phone.trim(),
-    isPrimary: input.isPrimary,
-  }
-}
-
 export async function saveCustomerDirectoryPerson(
   customerId: string,
   personId: string | null,
@@ -81,48 +68,11 @@ export async function saveCustomerDirectoryPerson(
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "customers", personId ? "update" : "create")
     const orgId = requireOrg(user)
-    const value = normalized(input)
-    if (!value.name) return { success: false, error: "Contact name is required." }
-    const company = await db.select({ id: customers.id })
-      .from(customers).where(and(eq(customers.id, customerId), eq(customers.organizationId, orgId),
-        isNull(customers.mergedIntoCustomerId))).get()
-    if (!company) return { success: false, error: "Client was not found." }
-    // A named Compass contact is not a Sage write. Sage child creation still
-    // requires its separate reviewed proposal, even for a verified client.
-    const now = new Date().toISOString()
-    const id = personId ?? crypto.randomUUID()
-    const existingName = await db.select({ id: customerContacts.id })
-      .from(customerContacts).where(and(
-        eq(customerContacts.customerId, customerId),
-        eq(customerContacts.active, true),
-        sql`lower(trim(${customerContacts.name})) = ${value.name.toLowerCase()}`,
-        sql`${customerContacts.id} <> ${id}`
-      )).limit(1).get()
-    if (existingName) {
-      return { success: false, error: "This person is already listed for this client. Select the existing name instead." }
-    }
-    if (personId) {
-      const existing = await db.select({ sageContactId: customerContacts.sageContactId })
-        .from(customerContacts).where(and(
-          eq(customerContacts.id, personId), eq(customerContacts.customerId, customerId),
-          eq(customerContacts.active, true)
-        )).get()
-      if (!existing) return { success: false, error: "Contact was not found." }
-      if (existing.sageContactId) return { success: false, error: "Use Sage review for a linked contact." }
-      await updateCustomerPerson(db, { personId, values: {
-        name: value.name, title: value.title || null, email: value.email || null,
-        phone: value.phone || null, isPrimary: value.isPrimary, updatedAt: now,
-      } })
-    } else {
-      await insertCustomerPerson(db, {
-        id, customerId, name: value.name, title: value.title || null,
-        email: value.email || null, phone: value.phone || null,
-        isPrimary: value.isPrimary, sourceSystem: "manual", createdAt: now, updatedAt: now,
-      })
-    }
-    if (value.isPrimary) {
-      await clearOtherCustomerPrimaryPeople(db, { customerId, keepPersonId: id, now })
-    }
+    const saved = await saveCustomerPerson(db, {
+      organizationId: orgId, customerId, personId, person: input, now: new Date().toISOString(),
+    })
+    if (!saved.success) return saved
+    const { id } = saved
     await recordActivityEvent({
       db, organizationId: orgId,
       actor: { id: user.id, email: user.email, displayName: user.displayName,

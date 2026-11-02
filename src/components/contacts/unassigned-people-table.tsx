@@ -12,18 +12,31 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
+import { ConnectUnassignedDialog } from "@/components/contacts/connect-unassigned-dialog"
 import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table-pagination"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+import type { ConnectCompanyKind } from "@/lib/domain/contacts/connect-unassigned-person"
 import type { UnassignedPerson } from "@/lib/domain/contacts/unassigned-people"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
 /**
  * People added from imported messages who are not connected to a vendor or
- * customer yet. Staff open the project's contacts to connect each person to
- * the company they work for.
+ * customer yet. Staff connect each person to the company they work for with
+ * "Connect to company…", or open the project's contacts.
  */
-export function UnassignedPeopleTable({ people }: { readonly people: readonly UnassignedPerson[] }): React.ReactElement {
+export function UnassignedPeopleTable({
+  people,
+  connectKinds,
+  onConnected,
+}: {
+  readonly people: readonly UnassignedPerson[]
+  /** The company kinds this user may connect people to; none hides the action. */
+  readonly connectKinds: readonly ConnectCompanyKind[]
+  readonly onConnected: (identity: string, complete: boolean) => void
+}): React.ReactElement {
+  const [connecting, setConnecting] = React.useState<UnassignedPerson | null>(null)
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: DEFAULT_TABLE_PAGE_SIZE })
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [search, setSearch] = React.useState("")
@@ -32,6 +45,7 @@ export function UnassignedPeopleTable({ people }: { readonly people: readonly Un
     () => [
       { id: "name", header: "Name", accessorFn: (person) => person.name },
       { id: "email", header: "Email", accessorFn: (person) => person.email ?? "", sortUndefined: "last" },
+      { id: "company", header: "Imported company", accessorFn: (person) => person.companyName ?? "", sortUndefined: "last" },
       { id: "projects", header: "Projects", accessorFn: (person) => person.projects.map((project) => project.projectName).join(", ") },
     ],
     []
@@ -85,6 +99,7 @@ export function UnassignedPeopleTable({ people }: { readonly people: readonly Un
                   <TanstackSortableHeader header={header} />
                 </th>
               ))}
+              {connectKinds.length > 0 ? <th className="px-3 py-2 text-right font-medium"><span className="sr-only">Actions</span></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -96,6 +111,7 @@ export function UnassignedPeopleTable({ people }: { readonly people: readonly Un
                   <td className="px-3 py-2 text-muted-foreground">
                     {person.email ? <a href={`mailto:${person.email}`} className="hover:underline">{person.email}</a> : "No email"}
                   </td>
+                  <td className="px-3 py-2 text-muted-foreground">{person.companyName ?? ""}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-0.5">
                       {person.projects.map((project) => (
@@ -105,6 +121,13 @@ export function UnassignedPeopleTable({ people }: { readonly people: readonly Un
                       ))}
                     </div>
                   </td>
+                  {connectKinds.length > 0 ? (
+                    <td className="px-3 py-2 text-right">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setConnecting(person)}>
+                        Connect to company…
+                      </Button>
+                    </td>
+                  ) : null}
                 </tr>
               )
             })}
@@ -112,6 +135,12 @@ export function UnassignedPeopleTable({ people }: { readonly people: readonly Un
         </table>
       </div>
       <DataTablePagination table={table} itemLabel="unassigned people" id="unassigned-people-items-per-page" />
+      <ConnectUnassignedDialog
+        person={connecting}
+        kinds={connectKinds}
+        onOpenChange={(open) => { if (!open) setConnecting(null) }}
+        onConnected={onConnected}
+      />
     </div>
   )
 }
