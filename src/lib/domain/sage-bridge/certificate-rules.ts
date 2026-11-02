@@ -11,6 +11,12 @@ import type { TradeDocBillMode } from "@/lib/trade-docs/settings"
 /** Sage's certificate description is at most 50 characters. */
 const SAGE_DESC_MAX = 50
 
+/**
+ * Sage requires an expiry on every certificate row, so documents that don't
+ * expire (a W-9, an accepted alternative) get one far in the future.
+ */
+export const SAGE_NEVER_EXPIRES = "2099-12-31"
+
 export type SageYesNo = "Y" | "N"
 
 /** One certificate row Compass wants on the vendor in Sage. */
@@ -20,7 +26,7 @@ export type SageCertificateLine = {
   /** Descriptions (lowercased) that identify this row among the vendor's existing Sage certificates. */
   readonly matchNames: readonly string[]
   readonly receivedDate: string | null
-  readonly expiryDate: string | null
+  readonly expiryDate: string
   readonly warn: SageYesNo
   readonly stopPay: SageYesNo
   readonly memo: string
@@ -68,7 +74,7 @@ function lineFor(line: TradeDocLine, input: SageCertificatePlanInput): SageCerti
     return {
       ...base,
       receivedDate: receivedOn(line),
-      expiryDate: null,
+      expiryDate: SAGE_NEVER_EXPIRES,
       warn: "N",
       stopPay: "N",
       memo: `Alternative accepted in Compass${line.type.waiverLabel ? `: ${line.type.waiverLabel}` : ""}.`,
@@ -82,7 +88,7 @@ function lineFor(line: TradeDocLine, input: SageCertificatePlanInput): SageCerti
   return {
     ...base,
     receivedDate: receivedOn(line),
-    expiryDate: line.type.expires ? doc?.expiresOn ?? null : null,
+    expiryDate: line.type.expires ? doc?.expiresOn ?? SAGE_NEVER_EXPIRES : SAGE_NEVER_EXPIRES,
     ...flags,
     memo: `On file in Compass${doc?.fileName ? ` (${doc.fileName})` : ""}. Kept by Compass.`.slice(0, 500),
   }
