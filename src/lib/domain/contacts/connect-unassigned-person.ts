@@ -55,7 +55,7 @@ type ImportedContact = typeof projectContacts.$inferSelect
 const fail = (error: string): ActionFailure => ({ success: false, error })
 
 /** Every still-unassigned imported project contact for one person. */
-export async function loadUnassignedPersonContacts(
+async function loadUnassignedPersonContacts(
   db: Db,
   organizationId: string,
   identity: string
@@ -137,13 +137,13 @@ function firstText(rows: readonly ImportedContact[], pick: (row: ImportedContact
 }
 
 /** The contact type a connected person gets: vendors keep subcontractor/supplier, clients are owners. */
-export function connectedContactType(kind: ConnectCompanyKind, current: ProjectContactType): ProjectContactType {
+function connectedContactType(kind: ConnectCompanyKind, current: ProjectContactType): ProjectContactType {
   if (kind === "customer") return "owner"
   return current === "supplier" ? "supplier" : "subcontractor"
 }
 
 /** The same save staff make when they pick a directory person for a project contact. */
-export function connectMutationInput(
+function connectMutationInput(
   row: ImportedContact,
   link: { readonly kind: ConnectCompanyKind; readonly companyId: string; readonly personId: string | null }
 ): ProjectContactMutationInput {
