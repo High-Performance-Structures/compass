@@ -7,10 +7,11 @@ import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
   resolveImportedParticipant,
-  reviewCandidates,
-  type ReviewCandidate,
+  reviewPeopleSearch,
+  reviewSuggestions,
   type ReviewDecision,
   type ReviewOutcome,
+  type ReviewPerson,
   type SplitPieceOutcome,
 } from "@/lib/domain/conversations/imported-participant-resolve"
 import {
@@ -48,24 +49,53 @@ export async function getImportedParticipantReviewPage(raw: unknown): Promise<Ac
 
 const rowIdInput = z.string().trim().min(1).max(200)
 
-/** The exact-match people an ambiguous participant may be (no fuzzy search). */
-export async function getImportedParticipantCandidates(rowId: string): Promise<ActionResult<readonly ReviewCandidate[]>> {
+/**
+ * People whose full name or email is exactly what the row (or a split line)
+ * shows: offered first as "Suggested", a hint only.
+ */
+export async function getImportedParticipantSuggestions(rowId: string, text: string | null): Promise<ActionResult<readonly ReviewPerson[]>> {
   try {
     const id = rowIdInput.parse(rowId)
+    const line = z.string().trim().max(300).nullable().parse(text)
     const context = await orgContext()
     if (!context.success) return context
     const { db, user, organizationId } = context.data
     if (!isInternalStaffRole(user.role)) return actionFailure(STAFF_ONLY)
-    return await reviewCandidates(db, organizationId, id)
+    return await reviewSuggestions(db, organizationId, id, line || null)
   } catch (error) {
-    console.error("Failed to load imported participant candidates", error)
-    return actionFailure("Could not load the matching people.")
+    console.error("Failed to load imported participant suggestions", error)
+    return actionFailure("Could not load suggested people.")
+  }
+}
+
+/** Anyone in the company directory by name, email or phone (server-side, bounded). */
+export async function searchImportedParticipantPeople(rowId: string, search: string): Promise<ActionResult<readonly ReviewPerson[]>> {
+  try {
+    const id = rowIdInput.parse(rowId)
+    const term = z.string().trim().max(100).parse(search)
+    const context = await orgContext()
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    if (!isInternalStaffRole(user.role)) return actionFailure(STAFF_ONLY)
+    return await reviewPeopleSearch(db, organizationId, id, term)
+  } catch (error) {
+    console.error("Failed to search people for imported participant review", error)
+    return actionFailure("Could not search people.")
   }
 }
 
 const decisionInput = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("pick"), personKey: z.string().trim().min(1).max(300) }),
-  z.object({ type: z.literal("split"), pieces: z.array(z.string().max(300)).min(1).max(30) }),
+  z.object({ type: z.literal("pick"), ref: z.string().trim().min(1).max(300) }),
+  z.object({
+    type: z.literal("split"),
+    pieces: z.array(z.object({
+      text: z.string().max(300),
+      choice: z.discriminatedUnion("type", [
+        z.object({ type: z.literal("person"), ref: z.string().trim().min(1).max(300) }),
+        z.object({ type: z.literal("new") }),
+      ]),
+    })).min(1).max(30),
+  }),
   z.object({ type: z.literal("leave") }),
 ])
 
@@ -82,7 +112,7 @@ const ACTIVITY: Readonly<Record<ReviewDecision["type"], string>> = {
 function activitySummary(outcome: ReviewOutcome): string {
   const where = outcome.channelName ? ` in ${outcome.channelName}` : ""
   if (outcome.decision === "leave") return `Left imported participant "${outcome.literal}"${where} as is (no person).`
-  return `Resolved imported participant "${outcome.literal}"${where} to ${outcome.people.join(", ")}. Conversation visibility unchanged.`
+  return `Manually resolved imported participant "${outcome.literal}"${where} to ${outcome.people.join(", ")}. Conversation visibility unchanged.`
 }
 
 /**
@@ -113,7 +143,8 @@ export async function resolveImportedParticipantAction(raw: z.input<typeof resol
       entityType: outcome.channelId ? "channel" : "project",
       entityId: outcome.channelId ?? outcome.projectId,
       summary: activitySummary(outcome),
-      metadata: { decision: outcome.decision, people: outcome.people.length, rows: outcome.rowsReviewed, stillStaffOnly: outcome.stillStaffOnly },
+      // A manual staff choice: who was picked (directory references) is kept with the actor.
+      metadata: { decision: outcome.decision, manual: true, refs: outcome.refs, people: outcome.people.length, rows: outcome.rowsReviewed, stillStaffOnly: outcome.stillStaffOnly },
     })
     revalidatePath("/dashboard/contacts")
     revalidatePath(`/dashboard/projects/${outcome.projectId}/contacts`)

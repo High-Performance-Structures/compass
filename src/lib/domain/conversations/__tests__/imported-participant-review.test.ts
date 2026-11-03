@@ -8,7 +8,8 @@ import {
   checkPieces,
   parsePiece,
   resolveImportedParticipant,
-  reviewCandidates,
+  reviewPeopleSearch,
+  reviewSuggestions,
   type ReviewDecision,
 } from "@/lib/domain/conversations/imported-participant-resolve"
 import { listUnresolvedParticipants } from "@/lib/domain/conversations/imported-participant-review"
@@ -99,6 +100,19 @@ beforeEach(() => {
   contact("pc-dan-b", PROJECT, "Daniel  vogel")
   contact("pc-dan-near", PROJECT, "Dan Vogel")
   contact("pc-jane", PROJECT, "Jane Doe")
+  // The same Daniel Vogel in the directory several ways, and another company's people.
+  insert("users", { id: "staff-dan", email: "dan@hps.example", display_name: "Daniel Vogel", role: "admin", is_active: 1, created_at: NOW, updated_at: NOW })
+  insert("organization_members", { id: "om-dan", organization_id: ORG, user_id: "staff-dan", role: "admin", joined_at: NOW })
+  insert("internal_contacts", { id: "ic-dan", organization_id: ORG, user_id: "staff-dan", name: "Daniel Vogel", email: "dan@hps.example", phone: "719-555-0100", active: 1, created_at: NOW, updated_at: NOW })
+  insert("internal_contacts", { id: "ic-dan-old", organization_id: ORG, name: "Daniel Vogel", email: "dvogel@old.example", active: 0, created_at: NOW, updated_at: NOW })
+  insert("vendors", { id: "vendor-vogel", organization_id: ORG, name: "Vogel Framing", category: "Subcontractor", directory_status: "active", created_at: NOW, updated_at: NOW })
+  insert("vendor_contacts", { id: "vc-dan", vendor_id: "vendor-vogel", name: "Dan Vogel", email: "dan@vogelframing.example", active: 1, created_at: NOW, updated_at: NOW })
+  insert("organizations", { id: "org-other", name: "Other", slug: "other", type: "company", is_active: 1, created_at: NOW, updated_at: NOW })
+  insert("internal_contacts", { id: "ic-other", organization_id: "org-other", name: "Daniel Vogel other", active: 1, created_at: NOW, updated_at: NOW })
+  insert("vendors", { id: "vendor-other", organization_id: "org-other", name: "Other Vogel", category: "Subcontractor", directory_status: "active", created_at: NOW, updated_at: NOW })
+  insert("vendor_contacts", { id: "vc-other", vendor_id: "vendor-other", name: "Daniel Vogel other", active: 1, created_at: NOW, updated_at: NOW })
+  insert("users", { id: "staff-other", email: "x@other.example", display_name: "Daniel Vogel other", role: "admin", is_active: 1, created_at: NOW, updated_at: NOW })
+  insert("organization_members", { id: "om-other", organization_id: "org-other", user_id: "staff-other", role: "admin", joined_at: NOW })
   contact("pc-lacasse-a", LACASSE, "Pat Lee")
   contact("pc-lacasse-b", LACASSE, "Pat Lee")
 
@@ -134,45 +148,71 @@ describe("listing", () => {
 })
 
 describe("pick person", () => {
-  it("offers only the exact-name candidates", async () => {
-    const result = await reviewCandidates(db, ORG, "p-dan")
+  it("suggests exact name matches first, as a hint", async () => {
+    const result = await reviewSuggestions(db, ORG, "p-dan", null)
     expect(result.success).toBe(true)
     if (!result.success) return
-    expect(result.data.map((candidate) => candidate.personKey).sort()).toEqual(["project_contact:pc-dan-a", "project_contact:pc-dan-b"])
+    // Exact full name (any directory source); near names such as "Dan Vogel" are only found by searching.
+    expect(result.data.map((person) => person.ref).sort()).toEqual(["internal:ic-dan", "internal:ic-dan-old", "project_contact:pc-dan-a"])
   })
 
-  it("links the person without sharing the conversation, and a repeat is a no-op", async () => {
-    const result = await resolve("p-dan", { type: "pick", personKey: "project_contact:pc-dan-a" })
-    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true, people: ["Daniel Vogel"] } })
-    expect(rows("SELECT project_contact_id, identity_status, review_status, active, source_contact_name FROM project_source_record_participants WHERE id = 'p-dan'")[0])
-      .toEqual({ project_contact_id: "pc-dan-a", identity_status: "matched", review_status: "reviewed", active: 0, source_contact_name: "Daniel Vogel" })
+  it("searches anyone in the directory with what tells duplicates apart", async () => {
+    const result = await reviewPeopleSearch(db, ORG, "p-dan", "vogel")
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    const byRef = new Map(result.data.map((person) => [person.ref, person]))
+    expect(byRef.get("internal:ic-dan")).toMatchObject({ name: "Daniel Vogel", label: "Staff", email: "dan@hps.example", phone: "719-555-0100" })
+    expect(byRef.get("internal:ic-dan-old")).toMatchObject({ label: "Archived staff" })
+    expect(byRef.get("vendor_contact:vc-dan")).toMatchObject({ label: "Vendor: Vogel Framing" })
+    expect(byRef.has("project_contact:pc-dan-near")).toBe(true)
+    // Another company's people never appear.
+    expect([...byRef.keys()].some((ref) => ref.includes("other"))).toBe(false)
+    const byPhone = await reviewPeopleSearch(db, ORG, "p-dan", "(719) 555-0100")
+    expect(byPhone.success && byPhone.data.map((person) => person.ref)).toEqual(["internal:ic-dan"])
+  })
+
+  it("accepts a person who is not a suggestion, without sharing the conversation, and a repeat is a no-op", async () => {
+    const result = await resolve("p-dan", { type: "pick", ref: "internal:ic-dan" })
+    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true, people: ["Daniel Vogel"], refs: ["internal:ic-dan"] } })
+    expect(rows("SELECT user_id, project_contact_id, identity_status, review_status, active, source_contact_name FROM project_source_record_participants WHERE id = 'p-dan'")[0])
+      .toEqual({ user_id: "staff-dan", project_contact_id: null, identity_status: "matched", review_status: "reviewed", active: 0, source_contact_name: "Daniel Vogel" })
     // The thread row lets "Share with owner/vendor…" include them later; the conversation stays staff-only.
-    expect(rows("SELECT project_contact_id, active FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread'"))
-      .toEqual([{ project_contact_id: "pc-dan-a", active: 1 }])
+    expect(rows("SELECT user_id, participant_role, active FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread'"))
+      .toEqual([{ user_id: "staff-dan", participant_role: "staff", active: 1 }])
     expect(rows("SELECT audience FROM channels WHERE id = 'channel-t-1'")).toEqual([{ audience: "staff" }])
     expect(rows("SELECT count(*) AS n FROM channel_members")).toEqual([{ n: 0 }])
     expect(nothingSent()).toEqual([{ n: 0 }])
 
-    const again = await resolve("p-dan", { type: "pick", personKey: "project_contact:pc-dan-a" })
+    const again = await resolve("p-dan", { type: "pick", ref: "internal:ic-dan" })
     expect(again).toMatchObject({ success: true, data: { changed: false } })
     expect(rows("SELECT count(*) AS n FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread'")).toEqual([{ n: 1 }])
+    // A different decision on a reviewed row is refused.
+    expect(await resolve("p-dan", { type: "pick", ref: "project_contact:pc-dan-a" })).toMatchObject({ success: false })
     expect(await resolve("p-dan", { type: "leave" })).toMatchObject({ success: false })
   })
 
-  it("refuses a person who is not an exact candidate", async () => {
-    expect(await resolve("p-dan", { type: "pick", personKey: "project_contact:pc-dan-near" })).toMatchObject({ success: false })
+  it("adds a vendor person to the project uninvited", async () => {
+    expect(await resolve("p-dan", { type: "pick", ref: "vendor_contact:vc-dan" })).toMatchObject({ success: true })
+    expect(rows("SELECT vendor_id, vendor_contact_id, owner_portal_visible, sub_vendor_portal_visible FROM project_contacts WHERE id LIKE 'bt-contact-%'"))
+      .toEqual([{ vendor_id: "vendor-vogel", vendor_contact_id: "vc-dan", owner_portal_visible: 0, sub_vendor_portal_visible: 0 }])
+    expect(nothingSent()).toEqual([{ n: 0 }])
+  })
+
+  it("refuses a person from another company", async () => {
+    for (const ref of ["internal:ic-other", "vendor_contact:vc-other", "user:staff-other", "nonsense"]) {
+      expect(await resolve("p-dan", { type: "pick", ref })).toMatchObject({ success: false })
+    }
     expect(rows("SELECT review_status FROM project_source_record_participants WHERE id = 'p-dan'")).toEqual([{ review_status: "unreviewed" }])
   })
 })
 
 describe("split into people", () => {
-  it("checks names without writing, then links exact matches and adds new people uninvited", async () => {
-    const preview = await resolve("p-literal", { type: "split", pieces: ["Jane Doe", "Bob Smith <bob@example.com>"] }, false)
-    expect(preview).toMatchObject({ success: true, data: { changed: false, pieces: [{ piece: "Jane Doe", outcome: "linked" }, { piece: "Bob Smith <bob@example.com>", outcome: "new_contact" }] } })
-    expect(rows("SELECT count(*) AS n FROM project_source_record_participants")).toEqual([{ n: 5 }])
-
-    const result = await resolve("p-literal", { type: "split", pieces: ["Jane Doe", "Bob Smith <bob@example.com>"] })
-    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true } })
+  it("lets staff keep a match, pick anyone, or add a new uninvited person for each name", async () => {
+    const result = await resolve("p-literal", { type: "split", pieces: [
+      { text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } },
+      { text: "Bob Smith <bob@example.com>", choice: { type: "new" } },
+    ] })
+    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true, pieces: [{ piece: "Jane Doe", outcome: "linked" }, { piece: "Bob Smith <bob@example.com>", outcome: "new_contact" }] } })
     // The original literal is kept exactly as written.
     expect(rows("SELECT source_contact_name, identity_status, review_status FROM project_source_record_participants WHERE id = 'p-literal'")[0])
       .toEqual({ source_contact_name: LITERAL, identity_status: "boundary_split", review_status: "reviewed" })
@@ -189,26 +229,29 @@ describe("split into people", () => {
 
     // Idempotent: the same split again adds nothing.
     const before = rows("SELECT count(*) AS n FROM project_source_record_participants")
-    expect(await resolve("p-literal", { type: "split", pieces: ["Jane Doe", "Bob Smith <bob@example.com>"] })).toMatchObject({ success: true, data: { changed: false } })
+    expect(await resolve("p-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "new" } }] })).toMatchObject({ success: true, data: { changed: false } })
     expect(rows("SELECT count(*) AS n FROM project_source_record_participants")).toEqual(before)
   })
 
-  it("matches each name exactly: an ambiguous name or text not in the original is refused", async () => {
+  it("follows staff's choice even for an ambiguous name, but keeps names to the original text", async () => {
     insert("project_source_record_participants", {
       id: "p-literal-2", organization_id: ORG, project_id: PROJECT, source_record_type: "buildertrend_message", source_record_id: "m-2",
       source_participant_id: "cc:owner:literal:xyz", source_contact_name: "Daniel Vogel, Jane Doe", participant_role: "cc_literal",
       identity_status: "boundary_unproven:several", audience: "external", membership_status: "pending", review_status: "unreviewed", active: 0,
       created_at: NOW, updated_at: NOW,
     })
-    expect(await resolve("p-literal-2", { type: "split", pieces: ["Daniel Vogel", "Jane Doe"] }))
-      .toMatchObject({ success: false, error: expect.stringContaining("matches more than one contact") })
-    expect(await resolve("p-literal", { type: "split", pieces: ["Janet Doe"] })).toMatchObject({ success: false })
-    expect(rows("SELECT count(*) AS n FROM project_contacts WHERE id LIKE 'bt-contact-%'")).toEqual([{ n: 0 }])
+    expect(await resolve("p-literal", { type: "split", pieces: [{ text: "Janet Doe", choice: { type: "new" } }] })).toMatchObject({ success: false })
+    expect(await resolve("p-literal-2", { type: "split", pieces: [{ text: "Daniel Vogel", choice: { type: "person", ref: "vendor_contact:vc-other" } }] })).toMatchObject({ success: false })
+    expect(await resolve("p-literal-2", { type: "split", pieces: [
+      { text: "Daniel Vogel", choice: { type: "person", ref: "internal:ic-dan" } },
+      { text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } },
+    ] })).toMatchObject({ success: true, data: { people: ["Daniel Vogel", "Jane Doe"] } })
   })
 
-  it("resolves an undivided sender's plain sender row with it", async () => {
-    expect(await resolve("p-sender-literal", { type: "split", pieces: ["Jane Doe", "Someone"] })).toMatchObject({ success: false, error: expect.stringContaining("one person") })
-    expect(await resolve("p-sender-literal", { type: "split", pieces: ["Jane Doe"] })).toMatchObject({ success: true })
+  it("resolves an undivided sender's plain sender row with it, and a sender is one person", async () => {
+    expect(await resolve("p-sender-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "new" } }, { text: "Someone", choice: { type: "new" } }] }))
+      .toMatchObject({ success: false, error: expect.stringContaining("one person") })
+    expect(await resolve("p-sender-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } }] })).toMatchObject({ success: true })
     expect(rows("SELECT project_contact_id, review_status FROM project_source_record_participants WHERE id = 'p-sender-plain'"))
       .toEqual([{ project_contact_id: "pc-jane", review_status: "reviewed" }])
   })
@@ -225,7 +268,7 @@ describe("leave as is", () => {
 
 describe("legal hold", () => {
   it("never changes participants on a project that keeps imported conversations staff-only", async () => {
-    for (const decision of [{ type: "leave" }, { type: "pick", personKey: "project_contact:pc-lacasse-a" }] as const) {
+    for (const decision of [{ type: "leave" }, { type: "pick", ref: "project_contact:pc-lacasse-a" }] as const) {
       expect(await resolve("p-lacasse", decision)).toEqual({ success: false, error: LEGAL_HOLD_ERROR })
     }
     expect(rows("SELECT review_status, project_contact_id FROM project_source_record_participants WHERE id = 'p-lacasse'"))

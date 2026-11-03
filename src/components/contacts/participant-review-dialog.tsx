@@ -5,9 +5,11 @@ import Link from "next/link"
 import { toast } from "sonner"
 
 import {
-  getImportedParticipantCandidates,
+  getImportedParticipantSuggestions,
   resolveImportedParticipantAction,
+  searchImportedParticipantPeople,
 } from "@/app/actions/imported-participant-review"
+import { CompanySearchPicker } from "@/components/contacts/company-merge-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -18,10 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
-import type { ReviewCandidate, ReviewOutcome, SplitPieceOutcome } from "@/lib/domain/conversations/imported-participant-resolve"
+import type { ActionResult } from "@/lib/action-result"
+import type { CompanyMergeCandidate } from "@/lib/domain/contacts/directory-page"
+import type { ReviewOutcome, ReviewPerson, SplitChoice } from "@/lib/domain/conversations/imported-participant-resolve"
 import type { ImportedParticipantReviewRow } from "@/lib/domain/conversations/imported-participant-review"
+import { cn } from "@/lib/utils"
 
 export type ReviewAction = "pick" | "split" | "leave"
 
@@ -31,22 +35,94 @@ const TITLES: Record<ReviewAction, string> = {
   leave: "Leave as is",
 }
 
-type Candidates =
+type Suggestions =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly list: readonly ReviewCandidate[] }
+  | { readonly kind: "ready"; readonly list: readonly ReviewPerson[] }
   | { readonly kind: "error"; readonly message: string }
+
+type Chosen = { readonly ref: string; readonly name: string }
+
+type Line = {
+  readonly text: string
+  readonly suggestions: Suggestions
+  /** null: a new uninvited contact. */
+  readonly person: Chosen | null
+  readonly searching: boolean
+}
 
 /** Initial split: the literal cut at ";" and ", " (staff adjust it). */
 function initialPieces(literal: string): string {
   return literal.split(/;\s*|,\s+/).map((piece) => piece.trim()).filter(Boolean).join("\n")
 }
 
+function detail(person: ReviewPerson): string {
+  return [person.label, person.email, person.phone].filter(Boolean).join(" · ")
+}
+
+/** Suggested people (exact name or email) as choices; a hint, never the only option. */
+function SuggestedPeople({ suggestions, selectedRef, onSelect }: {
+  readonly suggestions: Suggestions
+  readonly selectedRef: string | null
+  readonly onSelect: (person: Chosen) => void
+}): React.ReactElement | null {
+  if (suggestions.kind === "loading") return <p className="text-xs text-muted-foreground">Looking for people with this exact name or email…</p>
+  if (suggestions.kind === "error") return <p role="alert" className="text-xs text-destructive">{suggestions.message}</p>
+  if (suggestions.list.length === 0) return null
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">Suggested</p>
+      <div role="listbox" aria-label="Suggested people" className="border-y">
+        {suggestions.list.map((person) => (
+          <button
+            key={person.ref}
+            type="button"
+            role="option"
+            aria-selected={person.ref === selectedRef}
+            onClick={() => onSelect({ ref: person.ref, name: person.name })}
+            className={cn("block w-full px-2 py-2 text-left text-sm hover:bg-accent", person.ref === selectedRef && "bg-accent")}
+          >
+            <span className="block font-medium">{person.name}</span>
+            <span className="block text-xs text-muted-foreground">{detail(person)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Anyone in the company directory, through the server-side people search. */
+function PeopleSearch({ rowId, selectedRef, onSelect }: {
+  readonly rowId: string
+  readonly selectedRef: string | null
+  readonly onSelect: (person: Chosen) => void
+}): React.ReactElement {
+  const find = React.useCallback(async (search: string): Promise<ActionResult<readonly CompanyMergeCandidate[]>> => {
+    const result = await searchImportedParticipantPeople(rowId, search)
+    if (!result.success) return result
+    return {
+      success: true,
+      data: result.data.map((person) => ({ id: person.ref, name: person.name, email: person.email, detail: [person.label, person.phone].filter(Boolean).join(" · "), blockedReason: null })),
+    }
+  }, [rowId])
+  return (
+    <CompanySearchPicker
+      find={find}
+      label="Find anyone in the directory"
+      idleText="Type a name, email or phone to find staff, vendors, clients or unassigned people."
+      emptyText="Nobody in the directory matches this search."
+      selectedId={selectedRef}
+      onSelect={(choice) => onSelect({ ref: choice.id, name: choice.name })}
+    />
+  )
+}
+
 /**
- * One review decision for an unresolved imported participant. "Pick person"
- * shows only the exact-match candidates; "Split into people" lets staff mark
- * the names (one per line, text from the original only) and checks each
- * name before saving. After saving, a staff-only conversation stays
- * staff-only, and the dialog says so.
+ * One review decision for an unresolved imported participant. Staff may
+ * choose anyone in the directory; people whose exact name or email matches
+ * are suggested first. "Split into people" lets staff mark the names (one
+ * per line, text from the original only) and choose, for each, a suggested
+ * person, anyone else, or a new uninvited contact. After saving, a
+ * staff-only conversation stays staff-only, and the dialog says so.
  */
 export function ParticipantReviewDialog({
   row,
@@ -59,49 +135,71 @@ export function ParticipantReviewDialog({
   readonly onOpenChange: (open: boolean) => void
   readonly onReviewed: () => void
 }): React.ReactElement {
-  const [candidates, setCandidates] = React.useState<Candidates>({ kind: "loading" })
-  const [picked, setPicked] = React.useState("")
+  const [suggestions, setSuggestions] = React.useState<Suggestions>({ kind: "loading" })
+  const [picked, setPicked] = React.useState<Chosen | null>(null)
   const [pieces, setPieces] = React.useState("")
-  const [preview, setPreview] = React.useState<readonly SplitPieceOutcome[] | null>(null)
+  const [lines, setLines] = React.useState<readonly Line[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
   const [done, setDone] = React.useState<ReviewOutcome | null>(null)
 
   const rowId = row?.id ?? null
+  const literal = row?.literal ?? ""
   React.useEffect(() => {
-    setPicked("")
-    setPreview(null)
+    setPicked(null)
+    setLines(null)
     setError(null)
     setDone(null)
-    setPieces(row ? initialPieces(row.literal) : "")
+    setPieces(initialPieces(literal))
     if (!rowId || action !== "pick") return
     let current = true
-    setCandidates({ kind: "loading" })
-    void getImportedParticipantCandidates(rowId).then((result) => {
+    setSuggestions({ kind: "loading" })
+    void getImportedParticipantSuggestions(rowId, null).then((result) => {
       if (!current) return
-      setCandidates(result.success ? { kind: "ready", list: result.data } : { kind: "error", message: result.error })
+      setSuggestions(result.success ? { kind: "ready", list: result.data } : { kind: "error", message: result.error })
     })
     return () => { current = false }
-  }, [rowId, action, row])
+  }, [rowId, action, literal])
 
   const splitPieces = pieces.split("\n").map((piece) => piece.trim()).filter(Boolean)
 
-  async function submit(apply: boolean): Promise<void> {
+  const updateLine = React.useCallback((index: number, change: Partial<Line>) => {
+    setLines((current) => current ? current.map((line, at) => (at === index ? { ...line, ...change } : line)) : current)
+  }, [])
+
+  /** Step two of a split: each marked name with its suggestions; one exact match is chosen by default. */
+  async function chooseForLines(): Promise<void> {
+    if (!rowId) return
+    const texts = splitPieces
+    setError(null)
+    setLines(texts.map((text) => ({ text, suggestions: { kind: "loading" }, person: null, searching: false })))
+    const results = await Promise.all(texts.map((text) => getImportedParticipantSuggestions(rowId, text)))
+    setLines(texts.map((text, index) => {
+      const result = results[index]
+      const list = result?.success ? result.data : []
+      const only = list.length === 1 ? list[0] : undefined
+      return {
+        text,
+        suggestions: result?.success ? { kind: "ready", list } : { kind: "error", message: result?.error ?? "Could not load suggestions." },
+        person: only ? { ref: only.ref, name: only.name } : null,
+        searching: false,
+      }
+    }))
+  }
+
+  async function save(): Promise<void> {
     if (!row) return
     const decision = action === "pick"
-      ? { type: "pick" as const, personKey: picked }
-      : action === "split" ? { type: "split" as const, pieces: splitPieces } : { type: "leave" as const }
+      ? { type: "pick" as const, ref: picked?.ref ?? "" }
+      : action === "split"
+        ? { type: "split" as const, pieces: (lines ?? []).map((line) => ({ text: line.text, choice: line.person ? { type: "person" as const, ref: line.person.ref } satisfies SplitChoice : { type: "new" as const } })) }
+        : { type: "leave" as const }
     setSaving(true)
     setError(null)
-    const result = await resolveImportedParticipantAction({ rowId: row.id, decision, apply })
+    const result = await resolveImportedParticipantAction({ rowId: row.id, decision, apply: true })
     setSaving(false)
     if (!result.success) {
       setError(result.error)
-      setPreview(null)
-      return
-    }
-    if (!apply) {
-      setPreview(result.data.pieces)
       return
     }
     toast.success(action === "leave" ? "Marked as reviewed" : "Participant resolved")
@@ -109,11 +207,11 @@ export function ParticipantReviewDialog({
     onReviewed()
   }
 
-  const canSave = !saving && (action === "leave" || (action === "pick" && picked !== "") || (action === "split" && preview !== null))
+  const canSave = !saving && (action === "leave" || (action === "pick" && picked !== null) || (action === "split" && lines !== null && lines.length > 0))
 
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{TITLES[action]}</DialogTitle>
           <DialogDescription className="break-words">
@@ -131,46 +229,44 @@ export function ParticipantReviewDialog({
               </p>
             ) : null}
           </div>
-        ) : action === "pick" ? (
-          candidates.kind === "loading" ? <p className="text-sm text-muted-foreground">Finding people with this exact name or email…</p>
-          : candidates.kind === "error" ? <p role="alert" className="text-sm text-destructive">{candidates.message}</p>
-          : candidates.list.length === 0 ? <p className="text-sm text-muted-foreground">No contact has this exact name or email now. Leave it as is instead.</p>
-          : (
-            <RadioGroup value={picked} onValueChange={setPicked} aria-label="People with this exact name or email">
-              {candidates.list.map((candidate) => (
-                <div key={candidate.personKey} className="flex items-start gap-2">
-                  <RadioGroupItem value={candidate.personKey} id={`candidate-${candidate.personKey}`} className="mt-0.5" />
-                  <Label htmlFor={`candidate-${candidate.personKey}`} className="flex flex-col items-start gap-0.5 font-normal">
-                    <span className="font-medium">{candidate.name}</span>
-                    <span className="text-xs text-muted-foreground">{[candidate.kind, ...candidate.emails].join(" · ")}</span>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          )
-        ) : action === "split" ? (
-          <div className="space-y-2">
-            <Label htmlFor="participant-split">One person per line, using only text from the original</Label>
-            <Textarea
-              id="participant-split"
-              value={pieces}
-              rows={Math.min(Math.max(splitPieces.length + 1, 3), 10)}
-              onChange={(event) => { setPieces(event.target.value); setPreview(null) }}
-            />
-            <p className="text-xs text-muted-foreground">
-              Each name is matched exactly. A name with one exact match is linked; a name with none is added as a new contact without an invitation.
-            </p>
-            {preview ? (
-              <ul className="space-y-1 text-sm">
-                {preview.map((item) => (
-                  <li key={item.piece}>
-                    <span className="font-medium">{item.piece}</span>
-                    <span className="text-muted-foreground"> — {item.outcome === "linked" ? `links to ${item.name}` : "new contact, not invited"}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+        ) : action === "pick" && rowId ? (
+          <div className="space-y-3">
+            <SuggestedPeople suggestions={suggestions} selectedRef={picked?.ref ?? null} onSelect={setPicked} />
+            <PeopleSearch rowId={rowId} selectedRef={picked?.ref ?? null} onSelect={setPicked} />
+            {picked ? <p className="text-sm">Selected: <span className="font-medium">{picked.name}</span></p> : null}
           </div>
+        ) : action === "split" && rowId ? (
+          lines === null ? (
+            <div className="space-y-2">
+              <Label htmlFor="participant-split">One person per line, using only text from the original</Label>
+              <Textarea
+                id="participant-split"
+                value={pieces}
+                rows={Math.min(Math.max(splitPieces.length + 1, 3), 10)}
+                onChange={(event) => setPieces(event.target.value)}
+              />
+            </div>
+          ) : (
+            <ol className="space-y-4">
+              {lines.map((line, index) => (
+                <li key={line.text} className="space-y-2 border-b pb-3 last:border-b-0">
+                  <p className="text-sm"><span className="font-medium">{line.text}</span>
+                    <span className="text-muted-foreground"> — {line.person ? `links to ${line.person.name}` : "new contact, not invited"}</span>
+                  </p>
+                  <SuggestedPeople suggestions={line.suggestions} selectedRef={line.person?.ref ?? null} onSelect={(person) => updateLine(index, { person })} />
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => updateLine(index, { searching: !line.searching })}>
+                      {line.searching ? "Hide search" : "Pick someone else…"}
+                    </Button>
+                    <Button type="button" size="sm" variant={line.person ? "outline" : "secondary"} onClick={() => updateLine(index, { person: null, searching: false })}>
+                      New contact (not invited)
+                    </Button>
+                  </div>
+                  {line.searching ? <PeopleSearch rowId={rowId} selectedRef={line.person?.ref ?? null} onSelect={(person) => updateLine(index, { person })} /> : null}
+                </li>
+              ))}
+            </ol>
+          )
         ) : (
           <p className="text-sm text-muted-foreground">Mark this as reviewed with no person. The text stays exactly as written.</p>
         )}
@@ -179,12 +275,15 @@ export function ParticipantReviewDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{done ? "Close" : "Cancel"}</Button>
-          {done ? null : action === "split" && preview === null ? (
-            <Button type="button" disabled={saving || splitPieces.length === 0} onClick={() => void submit(false)}>Check names</Button>
+          {done ? null : action === "split" && lines === null ? (
+            <Button type="button" disabled={splitPieces.length === 0} onClick={() => void chooseForLines()}>Next: choose people</Button>
           ) : (
-            <Button type="button" disabled={!canSave} onClick={() => void submit(true)}>
-              {action === "leave" ? "Leave as is" : action === "pick" ? "Link to this person" : "Save people"}
-            </Button>
+            <>
+              {action === "split" ? <Button type="button" variant="ghost" onClick={() => setLines(null)}>Back</Button> : null}
+              <Button type="button" disabled={!canSave} onClick={() => void save()}>
+                {action === "leave" ? "Leave as is" : action === "pick" ? "Link to this person" : "Save people"}
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>
