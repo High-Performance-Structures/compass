@@ -31,6 +31,8 @@ import {
   type VisibilityFilter,
 } from "@/lib/photos/review"
 
+const PHOTO_CARD_BATCH_SIZE = 100
+
 /** The photo, review and visibility counts under the page title. */
 function PhotoReviewCountsMeta({
   counts,
@@ -87,6 +89,7 @@ export function ProjectPhotoReview({
   const [photoSort, setPhotoSort] = React.useState<PhotoSort>("newest")
   const [visibilityFilter, setVisibilityFilter] =
     React.useState<VisibilityFilter>("all")
+  const [visiblePhotoCount, setVisiblePhotoCount] = React.useState(PHOTO_CARD_BATCH_SIZE)
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
   const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null)
   const [photoKind, setPhotoKind] = React.useState("progress")
@@ -110,6 +113,10 @@ export function ProjectPhotoReview({
   )
 
   const counts = React.useMemo(() => photoReviewCounts(photos), [photos])
+  // Large archives must not server-render thousands of cards. Keep the full
+  // library for filters, selection and the carousel; expand only the card grid.
+  const visiblePhotos = filteredPhotos.slice(0, visiblePhotoCount)
+  const remainingPhotoCount = filteredPhotos.length - visiblePhotos.length
 
   function togglePhoto(photoId: string, event: React.MouseEvent): void {
     setSelectedIds((current) =>
@@ -251,13 +258,25 @@ export function ProjectPhotoReview({
           phases={library.phases}
           filters={{
             dateFilter,
-            setDateFilter,
+            setDateFilter: (value) => {
+              setDateFilter(value)
+              setVisiblePhotoCount(PHOTO_CARD_BATCH_SIZE)
+            },
             phaseFilter,
-            setPhaseFilter,
+            setPhaseFilter: (value) => {
+              setPhaseFilter(value)
+              setVisiblePhotoCount(PHOTO_CARD_BATCH_SIZE)
+            },
             photoSort,
-            setPhotoSort,
+            setPhotoSort: (value) => {
+              setPhotoSort(value)
+              setVisiblePhotoCount(PHOTO_CARD_BATCH_SIZE)
+            },
             visibilityFilter,
-            setVisibilityFilter,
+            setVisibilityFilter: (value) => {
+              setVisibilityFilter(value)
+              setVisiblePhotoCount(PHOTO_CARD_BATCH_SIZE)
+            },
           }}
           batch={{
             photoKind,
@@ -285,7 +304,7 @@ export function ProjectPhotoReview({
               No photos match the selected date, phase, and visibility filters.
             </div>
           )}
-          {filteredPhotos.map((photo) => (
+          {visiblePhotos.map((photo) => (
             <PhotoReviewCard
               key={photo.id}
               photo={photo}
@@ -300,6 +319,22 @@ export function ProjectPhotoReview({
             />
           ))}
         </section>
+
+        {filteredPhotos.length > PHOTO_CARD_BATCH_SIZE && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p role="status" className="text-sm text-muted-foreground">
+              Showing {visiblePhotos.length} of {filteredPhotos.length} photos
+            </p>
+            {remainingPhotoCount > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setVisiblePhotoCount((current) => current + PHOTO_CARD_BATCH_SIZE)}
+              >
+                Show {Math.min(PHOTO_CARD_BATCH_SIZE, remainingPhotoCount)} more photos
+              </Button>
+            )}
+          </div>
+        )}
 
         <PhotoPreviewDialog
           previewPhoto={previewPhoto}
