@@ -11,7 +11,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import {
   Popover,
   PopoverContent,
@@ -25,14 +24,13 @@ import {
   removeReaction,
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
-import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import {
-  importedConversationContent,
   messageSenderDisplay,
   type ImportedMessageFields,
 } from "@/lib/conversations/imported-message-content"
 import { SourceTag } from "@/components/shared/source-tag"
 import { getMessageAlignmentClass } from "./message-list-behavior"
+import { MessageContent } from "./message-content"
 
 type MessageData = ImportedMessageFields & {
   readonly id: string
@@ -87,6 +85,8 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
   return (
     prevMsg.id === nextMsg.id &&
     prevMsg.content === nextMsg.content &&
+    prevMsg.sourceSystem === nextMsg.sourceSystem &&
+    prevMsg.importedSenderName === nextMsg.importedSenderName &&
     prevMsg.editedAt === nextMsg.editedAt &&
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
@@ -214,15 +214,11 @@ export const MessageItem = React.memo(function MessageItem({
         </div>
 
         <div className="chat-markdown mt-1 break-words text-sm">
-          <MarkdownRenderer>
-            {normalizeConversationMentions(
-              importedConversationContent({
-                id: message.id,
-                content: message.content,
-                sourceSystem: message.sourceSystem,
-              })
-            )}
-          </MarkdownRenderer>
+          <MessageContent
+            id={message.id}
+            content={message.content}
+            sourceSystem={message.sourceSystem}
+          />
         </div>
 
         {message.attachments && message.attachments.length > 0 && (
