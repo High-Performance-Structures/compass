@@ -186,6 +186,28 @@ describe("help registry", () => {
     expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
   })
 
+  it("documents workflow changes added after the October help review", () => {
+    const conversations = getHelpGuide("conversations-and-notifications")
+    const contacts = getHelpGuide("contacts-project-access-invitations")
+    const schedule = getHelpGuide("schedules-and-tasks")
+    const financials = getHelpGuide("financial-workflows")
+    const support = getHelpGuide("requesting-help")
+
+    expect(conversations?.content).toContain("Imported Buildertrend message threads")
+    expect(conversations?.content).toContain("**Share with owner…**")
+    expect(conversations?.content).toContain("**Existing channels and direct messages**")
+    expect(conversations?.content).toContain("A new message after a close reopens")
+    expect(contacts?.content).toContain("The **Unassigned** tab")
+    expect(schedule?.content).toContain("all listed people are equal")
+    expect(schedule?.content).toContain("use the first listed person who has a linked Compass account")
+    expect(financials?.content).toContain("## Record Payments Received")
+    expect(financials?.content).toContain("**Paid before Compass**")
+    expect(support?.content).toContain("ask Feedback Desk administrators to review it")
+    expect(
+      getHelpGuidesForRoute("/dashboard/requests/request-123").map((guide) => guide.id)
+    ).toContain("support")
+  })
+
   it("retains canonical audience and resource-permission metadata", () => {
     expect(helpAudienceForRole("client")).toBe("owner")
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")

@@ -7,12 +7,12 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "payments received", "unapplied payment", "Paid before Compass", "Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-02"
 }
 ---
 
@@ -192,6 +192,16 @@ Every Compass document prints the same way: **Print Preview** opens it in a new 
 **Print Preview** opens the client copy in a new tab at any status, without changing the draw. It prints in landscape: page 1 is the G702 application and certificate for payment, with the contractor certification and a **Reviewed and approved** block for the reviewer's amount certified, signature, printed name and date. The G703 continuation sheet follows, with columns for original contract sum, prior and current changes, adjusted estimate, prior and current costs, completed to date, percent complete and balance. Its first column follows **Client sees**: the percent levels print one combined row per assembly or division, Assembly and Division also list the cost codes under each group, and Cost code lists every cost code. **Print / Save PDF** opens the PDF in a browser tab; **Email report link** starts an email with the preview link.
 
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
+
+## Record Payments Received {#payments-received}
+
+Use **Payments received** on the project **Financials** page or a billed pay application's page. Under **Billed items**, choose **Record payment** for a billed pay application or an invoice that is not draft or void. Enter the amount received, date, method, reference, and optional memo, then apply it to that item. A single payment can be split across the same customer's other open construction items on that project. Construction and preconstruction billing cannot share one payment.
+
+The **Payments** list shows what each payment was applied to and any unapplied balance. Choose **Apply** to allocate an unapplied remainder later. Compass refuses an allocation above an item's outstanding balance or the payment's available amount. If a pay application and invoice carry the same Sage invoice number, treat the warning as a possible duplicate billing and apply the payment to only one after confirming the accounting record.
+
+Imported billed draws from Sage or Drive can take a payment when Compass has a positive current-payment-due amount. Until staff record a payment or use **Paid before Compass**, an imported draw shows **Imported – status unconfirmed**, and the owner does not see a paid or outstanding balance for it. Use **Paid before Compass** only when the imported draw was settled outside Compass and no payment details belong here; the owner sees it as paid, but Compass still creates no Sage receipt. Undoing that mark requires a reason and is blocked while a Compass payment is applied.
+
+Payments are retained as accounting history. Use **Void** with a reason instead of deleting one; its applied amounts become outstanding again. If the receipt was entered in Sage, reverse it there too. Compass-recorded payments do not post receipts to Sage, and these actions do not send an email or notification.
 
 ## Sage Status {#sage-status}
 
