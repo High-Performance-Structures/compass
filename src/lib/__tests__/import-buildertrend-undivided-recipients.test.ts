@@ -78,7 +78,7 @@ describe("undivided Buildertrend recipient literals", () => {
   })
 
   it("lets a known \"Last, First\" name keep its comma", () => {
-    expect(resolve.segment("Olive Owner; Smith, John", "other-project")).toEqual({ reason: "participant_boundary_unproven", hold: true, split: "several" })
+    expect(resolve.segment("Olive Owner; Smith, John", "other-project")).toEqual({ reason: "participant_boundary_unproven", split: "several" })
     const narrow = createParticipantResolver({
       participantMap: new Map(),
       directory: parseDirectory({ schema: DIRECTORY_SCHEMA, people: [
@@ -91,10 +91,11 @@ describe("undivided Buildertrend recipient literals", () => {
     expect(narrow.segment("Olive Owner; Smith,   John", PROJECT)).toEqual({ tokens: [{ displayName: "Olive Owner" }, { displayName: "Smith, John" }] })
   })
 
-  it("holds a literal that splits more than one way", () => {
+  it("imports a literal that splits more than one way staff-only, deriving nobody from it", () => {
     const result = plan([line("1", [undivided("Smith, John")]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven", literal: "Smith, John", hold: true, split: "several" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true, people: [expect.objectContaining({ entry: expect.objectContaining({ userId: "u-pm" }) })] })])
+    expect(result.imported_staff_only_boundary_unproven).toBe(1)
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven", split: "several" })] })])
   })
 
   it("adds an unknown full-name piece as a new person, staff-only until connected", () => {
@@ -103,24 +104,27 @@ describe("undivided Buildertrend recipient literals", () => {
     expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "new_unassigned_person" })] })])
   })
 
-  it("holds a literal with an unknown one-word piece", () => {
+  it("imports a literal with an unknown one-word piece staff-only, without using the partial split", () => {
     const result = plan([line("1", [undivided("Olive Owner, Bob")]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven", hold: true, split: "none" })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true, people: [expect.objectContaining({ entry: expect.objectContaining({ userId: "u-pm" }) })] })])
+    expect(result.imported_staff_only_boundary_unproven).toBe(1)
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven", split: "none" })] })])
   })
 
   it("fails closed when requiresReview is set and nothing resolves it, even with a matching email", () => {
     const flagged = { namespace: "owner", displayName: "Somebody", email: "owner@example.com", kind: "to", requiresReview: true }
     const result = plan([line("1", [flagged]), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven", literal: "Somebody", hold: true })])
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true, people: [expect.objectContaining({ entry: expect.objectContaining({ userId: "u-pm" }) })] })])
+    expect(result.imported_staff_only_boundary_unproven).toBe(1)
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven", split: "none" })] })])
   })
 
   it("requires an undivided sender to be exactly one person", () => {
     const sender = { namespace: "builder", displayName: "Pat PM, Olive Owner", requiresReview: true, participantBoundaryProven: false }
     const result = plan([line("1", [{ namespace: "owner", displayName: "Olive Owner", kind: "to" }], sender), thread("1")])
-    expect(result.threads).toEqual([])
-    expect(result.reviews).toEqual([expect.objectContaining({ reason: "participant_boundary_unproven", participantKind: "sender", hold: true })])
+    // Staff-only; the undivided sender yields nobody, Olive (separately proven) is still recorded.
+    expect(result.threads).toEqual([expect.objectContaining({ audience: "staff", pendingIdentity: true, people: [expect.objectContaining({ entry: expect.objectContaining({ userId: "u-owner" }) })] })])
+    expect(result.reviews).toEqual([expect.objectContaining({ reason: "staff_only_pending_identity", unresolved: [expect.objectContaining({ reason: "participant_boundary_unproven", kind: "sender", split: "sender_several" })] })])
   })
 
   it("keeps the original literal whole in the stored participant snapshot", () => {

@@ -382,12 +382,25 @@ unless exact dictionary segmentation resolves it:
   name of two or more words, with no separator inside it. Only known people
   may keep a comma ("Smith, John").
 - It is accepted only if exactly one complete way to cut the literal exists.
-  An unknown one-word piece, zero ways or two or more ways hold the whole
-  thread (`participant_boundary_unproven` with `hold: true` and `split`:
-  `none` or `several`). These are never imported, not even staff-only.
+  Otherwise its person boundaries are unproven
+  (`participant_boundary_unproven`, `split`: `none` for an unknown one-word
+  piece or no complete cut, `several` for two or more cuts).
 - A sender is one entity, so an undivided sender must be exactly one person;
-  one that splits into several people holds the thread
-  (`participant_boundary_unproven`, `split: "sender_several"`).
+  one that splits into several people is unproven too
+  (`split: "sender_several"`).
+- Lead decision 2026-11-02: an unproven literal does **not** hold the thread.
+  The thread imports staff-only (only staff join). No person is derived from
+  the literal (not even from a partial split): nothing is attached, joined or
+  created as a contact from it. The literal is kept whole as its
+  `<kind>_literal` participant row with `identity_status =
+  'boundary_unproven:<split>'` and `review_status = 'unreviewed'` so staff can
+  resolve it; an unproven sender shows the literal in
+  `messages.source_sender_label_snapshot` with no contact link. Other,
+  separately proven participants of the message are matched normally
+  (zero-match people still become new uninvited contacts), but the thread
+  stays staff-only. `summary.json` counts these threads in
+  `imported_staff_only_boundary_unproven` (a subset of
+  `imported_staff_only_pending_identity`).
 - Each resulting piece is then matched by the rules below. `summary.json`
   counts `segmented_by_dictionary` (fields split).
 - The original field is kept whole as a message participant row
@@ -488,8 +501,8 @@ directory snapshot also carries `vendors` (BT-registered vendors),
 `vendorNames` (active vendors) and `projects` (each project's client
 customers) for these steps. `summary.json` also reports `new_people_created`
 (`by_email`, `by_name`), `reused_new_people`, `former_employees_archived`,
-`staff_only_pending_identity`, `imported_staff_only_ambiguous` and
-`still_held` (counts by reason, only reasons that hold a thread: identity
+`staff_only_pending_identity`, `imported_staff_only_ambiguous`,
+`imported_staff_only_boundary_unproven` and `still_held` (counts by reason, only reasons that hold a thread: identity
 reasons that import staff-only are not counted there).
 
 ## Review queue

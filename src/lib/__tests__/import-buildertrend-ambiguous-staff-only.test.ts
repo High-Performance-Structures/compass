@@ -25,8 +25,8 @@ import {
  * audience until staff verify. A proven single participant that matches more
  * than one exact candidate (participant_ambiguous) imports STAFF-ONLY, kept
  * exactly as shown: joined to no candidate and never turned into a new
- * contact. An undivided literal whose person boundaries are unproven still
- * holds its thread.
+ * contact. An undivided literal whose person boundaries are unproven imports
+ * staff-only the same way, kept whole and flagged; nobody is derived from it.
  */
 
 type Sqlite = InstanceType<typeof Database>
@@ -172,22 +172,48 @@ describe("participants matching several exact candidates import staff-only", () 
       .toEqual([{ user_id: "u-owner" }, { user_id: "u-pm" }])
   })
 
-  it("still holds an undivided literal whose person boundaries are unproven", () => {
+  it("imports undivided literals with unproven boundaries staff-only, kept whole and flagged, deriving nobody", () => {
     const undivided = (literal: string) => ({ namespace: "owner", displayName: literal, kind: "to", requiresReview: true, participantBoundaryProven: false })
     const { result } = run([
       message("4", { recipients: [undivided("Smith, John")] }), thread("4"),
-      message("5", { recipients: [undivided("Olive Owner, Bob")] }), thread("5"),
+      // A zero-match, separately proven person in the same message still becomes a contact.
+      message("5", { recipients: [undivided("Olive Owner, Bob"), { namespace: "owner", displayName: "Someone Unknown", kind: "cc" }] }), thread("5"),
       message("6", { sender: { namespace: "builder", displayName: "Pat PM, Olive Owner", requiresReview: true }, recipients: [{ ...olive, kind: "to" }] }), thread("6"),
     ])
-    expect(result.threads).toEqual([])
+    expect(result.threads.map((item: { btThreadId: string; audience: string }) => [item.btThreadId, item.audience])).toEqual([["94", "staff"], ["95", "staff"], ["96", "staff"]])
+    expect(result.imported_staff_only_boundary_unproven).toBe(3)
     expect(result.imported_staff_only_ambiguous).toBe(0)
-    expect(result.reviews).toEqual([
-      expect.objectContaining({ reason: "participant_boundary_unproven", btThreadId: "94", hold: true, split: "several" }),
-      expect.objectContaining({ reason: "participant_boundary_unproven", btThreadId: "95", hold: true, split: "none" }),
-      expect.objectContaining({ reason: "participant_boundary_unproven", btThreadId: "96", hold: true, split: "sender_several" }),
-    ])
-    expect(result.reviews.every(isHoldingReview)).toBe(true)
-    expect(rows("SELECT COUNT(*) AS n FROM channels")).toEqual([{ n: 0 }])
+    expect(result.reviews.filter(isHoldingReview)).toEqual([])
+    expect(result.reviews).toEqual(["several", "none", "sender_several"].map((split) => expect.objectContaining({
+      reason: "staff_only_pending_identity",
+      unresolved: expect.arrayContaining([expect.objectContaining({ reason: "participant_boundary_unproven", split })]),
+    })))
+    // Only staff join; nobody derived from a literal (not Olive from "Olive Owner, Bob").
+    expect(rows("SELECT DISTINCT user_id FROM channel_members")).toEqual([{ user_id: "u-pm" }])
+    expect(rows("SELECT display_name FROM project_contacts")).toEqual([{ display_name: "Someone Unknown" }])
+    expect(rows(`SELECT source_record_id, user_id FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread' AND user_id IS NOT NULL ORDER BY source_record_id, user_id`))
+      .toEqual([{ source_record_id: "94", user_id: "u-pm" }, { source_record_id: "95", user_id: "u-pm" }, { source_record_id: "96", user_id: "u-owner" }])
+    // Each literal kept whole, unresolved and flagged with its split.
+    expect(rows(`SELECT source_record_id, source_contact_name, participant_role, identity_status, review_status, project_contact_id, user_id
+      FROM project_source_record_participants WHERE participant_role LIKE '%_literal' ORDER BY source_record_id`))
+      .toEqual([
+        { source_record_id: "4", source_contact_name: "Smith, John", participant_role: "to_literal", identity_status: "boundary_unproven:several", review_status: "unreviewed", project_contact_id: null, user_id: null },
+        { source_record_id: "5", source_contact_name: "Olive Owner, Bob", participant_role: "to_literal", identity_status: "boundary_unproven:none", review_status: "unreviewed", project_contact_id: null, user_id: null },
+        { source_record_id: "6", source_contact_name: "Pat PM, Olive Owner", participant_role: "sender_literal", identity_status: "boundary_unproven:sender_several", review_status: "unreviewed", project_contact_id: null, user_id: null },
+      ])
+    // The unproven sender shows the literal label with no contact link.
+    expect(rows(`SELECT user_id, imported_sender_contact_id, source_sender_label_snapshot FROM messages WHERE source_message_id = '6'`))
+      .toEqual([{ user_id: "u-pm", imported_sender_contact_id: null, source_sender_label_snapshot: "Pat PM, Olive Owner" }])
+  })
+
+  it("re-runs unproven-boundary threads idempotently", () => {
+    const lines = [message("9", { recipients: [{ namespace: "owner", displayName: "Olive Owner, Bob", kind: "to", requiresReview: true }] }), thread("9")]
+    const first = run(lines)
+    const count = () => rows(`SELECT (SELECT COUNT(*) FROM messages) AS m, (SELECT COUNT(*) FROM project_source_record_participants) AS p, (SELECT COUNT(*) FROM project_contacts) AS c, (SELECT COUNT(*) FROM channel_members) AS cm`)
+    const before = count()
+    const second = run(lines)
+    expect(second.built).toEqual(first.built)
+    expect(count()).toEqual(before)
   })
 
   it("leaves attachment holds unchanged and does not count the ambiguous person as a hold", () => {
