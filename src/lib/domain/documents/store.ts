@@ -387,6 +387,15 @@ export function upsertSourceRecordParticipantStatement(
     .$dynamic()
 }
 
+/** Inserts a participant unless one with the same source identity exists. */
+export function insertSourceRecordParticipantIfMissingStatement(db: Db, values: ParticipantInsert): Statement {
+  return db.insert(projectSourceRecordParticipants).values(values).onConflictDoNothing()
+}
+
+export function updateSourceRecordParticipantsStatement(db: Db, where: SQL | undefined, set: ParticipantPatch): Statement {
+  return db.update(projectSourceRecordParticipants).set(set).where(where)
+}
+
 export function deleteSourceRecordParticipantsStatement(db: Db, where: SQL | undefined): Statement {
   return db.delete(projectSourceRecordParticipants).where(where)
 }
