@@ -46,6 +46,24 @@ const undatedPhoto: ProjectPhotoLibraryItem = {
 }
 
 describe("photo gallery date labels", () => {
+  it("bounds the initial staff card render while retaining the full gallery count", () => {
+    const photos = Array.from({ length: 5762 }, (_, index) => ({
+      ...undatedPhoto,
+      id: `photo-${index}`,
+      fileName: `historical-photo-${index}.jpg`,
+    }))
+    const markup = renderToStaticMarkup(React.createElement(ProjectPhotoReview, {
+      library: {
+        project: { id: "project-1", name: "Example project", projectNumber: "P-001" },
+        photos,
+        phases: [],
+      },
+    }))
+    expect((markup.match(/<article\b/g) ?? []).length).toBe(100)
+    expect(markup).toContain("5762")
+    expect(markup).toContain("Show 100 more photos")
+  })
+
   it("shows unknown capture dates in the staff gallery alongside known dates", () => {
     const knownPhoto = {
       ...undatedPhoto,
