@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { formatDateTime } from "@/lib/format"
 import { sendsToSage } from "@/lib/domain/sage-bridge/certificate-rules"
@@ -20,11 +21,15 @@ import type { TradeDocSageSettings, TradeDocType } from "@/lib/trade-docs/settin
 
 const PREVIEW_MATCHES = 8
 
-function SageVendorLinks({ disabled, syncEnabled }: { readonly disabled: boolean; readonly syncEnabled: boolean }): React.ReactElement {
+type SageOverviewState = {
+  readonly overview: SageVendorCertificateOverview | null
+  readonly error: string | null
+  readonly load: () => Promise<void>
+}
+
+function useSageOverview(): SageOverviewState {
   const [overview, setOverview] = React.useState<SageVendorCertificateOverview | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [showAll, setShowAll] = React.useState(false)
-  const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
     const result = await getSageVendorCertificateOverview()
@@ -39,6 +44,103 @@ function SageVendorLinks({ disabled, syncEnabled }: { readonly disabled: boolean
   React.useEffect(() => {
     void load()
   }, [load])
+  return { overview, error, load }
+}
+
+/** Leaves a vendor's Compass category alone; Select items can't be blank. */
+const KEEP_CATEGORY = "__keep__"
+
+/**
+ * Sage's vendor list also updates linked vendors' name, owner, address,
+ * phone and email, and their category through Sage's vendor type.
+ */
+function SageVendorUpdates({
+  value,
+  onChange,
+  overview,
+}: {
+  readonly value: TradeDocSageSettings
+  readonly onChange: (next: TradeDocSageSettings) => void
+  readonly overview: SageVendorCertificateOverview | null
+}): React.ReactElement {
+  const categories = [...new Set([...(overview?.compassCategories ?? []), ...Object.values(value.vendorTypes)])]
+  function setType(sageType: string, category: string): void {
+    const vendorTypes = { ...value.vendorTypes }
+    if (category === KEEP_CATEGORY) delete vendorTypes[sageType]
+    else vendorTypes[sageType] = category
+    onChange({ ...value, vendorTypes })
+  }
+  function shown(sageType: string): string {
+    const mapped = value.vendorTypes[sageType]
+    if (mapped) return mapped
+    // A type with no mapping uses the Compass category of the same name.
+    return categories.find((category) => category.toLowerCase() === sageType.toLowerCase()) ?? KEEP_CATEGORY
+  }
+  const types = overview?.sageVendorTypes ?? []
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-start gap-3">
+        <Switch
+          id="trade-doc-sage-update-vendors"
+          checked={value.updateVendors}
+          onCheckedChange={(checked) => onChange({ ...value, updateVendors: checked })}
+        />
+        <Label htmlFor="trade-doc-sage-update-vendors" className="grid gap-0.5 font-normal">
+          <span className="font-medium">Update vendors from Sage</span>
+          <span className="text-muted-foreground">
+            Each time Sage&apos;s vendor list arrives (daily), linked vendors take Sage&apos;s name, owner, address, phone and
+            email. A blank in Sage leaves Compass&apos;s value alone. Changes show on the vendor&apos;s Activity.
+          </span>
+        </Label>
+      </div>
+      {value.updateVendors && (
+        <div className="grid gap-2">
+          <span className="text-sm font-medium">Category from Sage&apos;s vendor type</span>
+          <p className="text-xs text-muted-foreground">
+            A vendor whose type changes in Sage moves to the Compass category below, and its Sage certificates are re-sent.
+            Vendors with no type in Sage keep their Compass category.
+          </p>
+          {overview && !overview.detailsReceived && (
+            <p className="text-xs text-muted-foreground">
+              Sage&apos;s vendor types arrive once the Sage writer&apos;s update is installed.
+            </p>
+          )}
+          {types.map((type) => (
+            <div key={type.name} className="grid gap-1 sm:grid-cols-[14rem_1fr] sm:items-center">
+              <span className="text-sm">
+                {type.name} <span className="text-muted-foreground">({type.count})</span>
+              </span>
+              <Select value={shown(type.name)} onValueChange={(next) => setType(type.name, next)}>
+                <SelectTrigger aria-label={`Compass category for Sage type ${type.name}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={KEEP_CATEGORY}>Keep Compass&apos;s category</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SageVendorLinks({
+  disabled,
+  syncEnabled,
+  state,
+}: {
+  readonly disabled: boolean
+  readonly syncEnabled: boolean
+  readonly state: SageOverviewState
+}): React.ReactElement {
+  const { overview, error, load } = state
+  const [showAll, setShowAll] = React.useState(false)
+  const [pending, startTransition] = React.useTransition()
 
   function link(): void {
     startTransition(async () => {
@@ -150,6 +252,7 @@ export function TradeDocSageSettingsFields({
     else send[typeId] = false
     set({ send })
   }
+  const overviewState = useSageOverview()
   const active = docTypes.filter((type) => type.active && type.requiredFor.length > 0)
   return (
     <fieldset className="grid gap-4 border-t pt-4 sm:max-w-2xl" disabled={disabled}>
@@ -211,7 +314,8 @@ export function TradeDocSageSettingsFields({
           })}
         </div>
       )}
-      <SageVendorLinks disabled={disabled} syncEnabled={value.enabled} />
+      <SageVendorLinks disabled={disabled} syncEnabled={value.enabled} state={overviewState} />
+      <SageVendorUpdates value={value} onChange={onChange} overview={overviewState.overview} />
     </fieldset>
   )
 }

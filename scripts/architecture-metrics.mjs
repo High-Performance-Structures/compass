@@ -108,6 +108,8 @@ export const STATUS_COLUMN_EXEMPTIONS = {
   "customers.state": "postal address state or region",
   "customers.billing_state": "postal address state or region",
   "vendors.state": "postal address state or region",
+  "sage_vendor_directory_entries.state": "postal address state or region, as Sage holds it",
+  "sage_vendor_directory_entries.vendor_type": "the company's own Sage vendor type names, mapped to categories in Settings",
   "internal_contact_private_addresses.state": "postal address state or region",
   "cherish_card_fulfillments.recipient_state": "postal address state or region",
   "greeting_card_requests.recipient_state": "postal address state or region",

@@ -396,16 +396,37 @@ export async function updateVendorCertificateSyncs(db: Db, where: SQL | undefine
 
 // sage_vendor_directory_entries: the read-only copy of Sage's vendor records.
 
+/** What Sage holds for a vendor beyond its name, from writers new enough to read it. */
+export type SageVendorDirectoryDetails = {
+  readonly ownerName: string | null
+  readonly addressLine1: string | null
+  readonly addressLine2: string | null
+  readonly city: string | null
+  readonly state: string | null
+  readonly postalCode: string | null
+  readonly phone: string | null
+  readonly vendorType: string | null
+}
+
+const NO_SAGE_VENDOR_DETAILS: SageVendorDirectoryDetails = {
+  ownerName: null, addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null, phone: null, vendorType: null,
+}
+
 export type SageVendorDirectoryRow = {
   readonly sageRecordId: string
   readonly sageVendorNumber: string
   readonly name: string
   readonly email: string | null
+  readonly details: SageVendorDirectoryDetails | null
 }
 
 /** Replaces the organization's copy of Sage's vendors in one atomic batch. */
 export async function replaceSageVendorDirectory(db: Db, organizationId: string, rows: readonly SageVendorDirectoryRow[], now: string): Promise<void> {
-  const inserts = chunkD1Rows(rows.map((row) => ({ organizationId, ...row, capturedAt: now }))).map((chunk) =>
+  // Every row carries every column so the chunk size counts them all.
+  const values = rows.map(({ details, ...row }) => ({
+    organizationId, ...row, ...(details ?? NO_SAGE_VENDOR_DETAILS), detailsReceived: details !== null, capturedAt: now,
+  }))
+  const inserts = chunkD1Rows(values).map((chunk) =>
     db.insert(sageVendorDirectoryEntries).values(chunk)
   )
   await db.batch([db.delete(sageVendorDirectoryEntries).where(eq(sageVendorDirectoryEntries.organizationId, organizationId)), ...inserts])

@@ -1,6 +1,7 @@
 import { activityEvents } from "@/db/schema"
 import type { getDb } from "@/db"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import { chunkD1Rows } from "@/lib/d1-query"
 
 export const ACTIVITY_CATEGORIES = [
   "access",
@@ -99,6 +100,33 @@ export async function recordActivityEvent(
       .run()
   } catch (error) {
     console.error("Unable to record Compass activity event", error)
+  }
+}
+
+/**
+ * Many events in a few calls, for a bridge that changes many records at once.
+ * Never fails the caller, like recordActivityEvent.
+ */
+export async function recordActivityEvents(db: ActivityDb, inputs: readonly Omit<RecordActivityInput, "db">[]): Promise<void> {
+  try {
+    const rows = inputs.map((input) => ({
+      id: input.id ?? crypto.randomUUID(),
+      organizationId: input.organizationId,
+      projectId: input.projectId ?? null,
+      actorUserId: input.actor.id,
+      actorName: activityActorName(input.actor).slice(0, 200),
+      actorRole: input.actor.role.slice(0, 80),
+      category: input.category,
+      action: input.action.slice(0, 120),
+      entityType: input.entityType.slice(0, 120),
+      entityId: input.entityId ?? null,
+      summary: input.summary.trim().slice(0, 500),
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      createdAt: input.createdAt ?? new Date().toISOString(),
+    }))
+    for (const chunk of chunkD1Rows(rows)) await db.insert(activityEvents).values(chunk).run()
+  } catch (error) {
+    console.error("Unable to record Compass activity events", error)
   }
 }
 

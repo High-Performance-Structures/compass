@@ -164,6 +164,18 @@ export const sageVendorDirectoryEntries = sqliteTable("sage_vendor_directory_ent
   sageVendorNumber: text("sage_vendor_number").notNull(),
   name: text("name").notNull(),
   email: text("email"),
+  // Sent by writers new enough to read them; false means the columns below
+  // were never read, not that Sage holds blanks.
+  detailsReceived: integer("details_received", { mode: "boolean" }).notNull().default(false),
+  ownerName: text("owner_name"),
+  addressLine1: text("address_line_1"),
+  addressLine2: text("address_line_2"),
+  city: text("city"),
+  state: text("state"),
+  postalCode: text("postal_code"),
+  phone: text("phone"),
+  /** Sage's vendor type name (Vendor Types list), when the vendor has one. */
+  vendorType: text("vendor_type"),
   capturedAt: text("captured_at").notNull(),
 }, (table) => [
   uniqueIndex("sage_vendor_directory_org_id_unique").on(table.organizationId, table.sageRecordId),
