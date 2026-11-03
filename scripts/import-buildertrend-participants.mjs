@@ -18,8 +18,11 @@
  *      parent's exact BT id (the vendor is created too when it is missing), or
  *      a customer contact under the project's single client. Staff
  *      (internal_user) must be real users, so they go to review;
- *   d. otherwise the participant is unmatched or ambiguous and the whole
- *      thread goes to review.
+ *   d. otherwise the participant is unmatched or ambiguous. Owner decision
+ *      2026-11-02: the thread imports STAFF-ONLY with the participant kept
+ *      exactly as shown and unresolved. An ambiguous participant (several
+ *      exact candidates) is never attached to any candidate and never becomes
+ *      a new contact; only a zero-match person may become a new contact.
  * Used by scripts/import-buildertrend-messages.mjs; see
  * docs/plans/bt-messages-live-conversations.md.
  */
@@ -366,7 +369,10 @@ export function createParticipantResolver(input) {
     if (result.count === 1 && result.tokens) return { tokens: result.tokens }
     // Owner decision 2026-11-02: a literal that does not split in exactly one
     // way (an unknown one-word piece, or two valid cuts) holds the thread.
-    return { reason: "participant_ambiguous", hold: true }
+    // Its person boundaries are unproven, so it is never imported, not even
+    // staff-only (`participant_ambiguous` is kept for one proven person who
+    // matches several candidates, which imports staff-only).
+    return { reason: "participant_boundary_unproven", hold: true, split: result.count === 0 ? "none" : "several" }
   }
 
   const resolve = function resolve(ref, projectId) {

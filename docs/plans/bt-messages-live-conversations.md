@@ -383,8 +383,11 @@ unless exact dictionary segmentation resolves it:
   may keep a comma ("Smith, John").
 - It is accepted only if exactly one complete way to cut the literal exists.
   An unknown one-word piece, zero ways or two or more ways hold the whole
-  thread (`participant_ambiguous`).
-- A sender is one entity, so an undivided sender must be exactly one person.
+  thread (`participant_boundary_unproven` with `hold: true` and `split`:
+  `none` or `several`). These are never imported, not even staff-only.
+- A sender is one entity, so an undivided sender must be exactly one person;
+  one that splits into several people holds the thread
+  (`participant_boundary_unproven`, `split: "sender_several"`).
 - Each resulting piece is then matched by the rules below. `summary.json`
   counts `segmented_by_dictionary` (fields split).
 - The original field is kept whole as a message participant row
@@ -464,8 +467,15 @@ stops at the first that decides:
      project's contacts) and use **Share with owner…/vendor…**. Connecting a
      person never opens a thread by itself.
 6. Otherwise (ambiguous) the participant is ambiguous
-   (`participant_ambiguous`): the thread imports staff-only, pending review
-   (below).
+   (`participant_ambiguous`: one proven participant matching more than one
+   exact candidate): the thread imports staff-only, pending review (below).
+   The participant is kept exactly as shown (unmatched source participant
+   row, no contact id, no user id); no candidate is attached or joined, and
+   no new contact is created (new contacts are only for zero matches). An
+   ambiguous sender shows the label as shown
+   (`source_sender_label_snapshot`). `summary.json` counts these threads in
+   `imported_staff_only_ambiguous` (a subset of
+   `imported_staff_only_pending_identity`).
 
 A matched person without a Compass account is added to the project as a
 directory contact without an invitation (linked to their vendor or customer
@@ -478,7 +488,9 @@ directory snapshot also carries `vendors` (BT-registered vendors),
 `vendorNames` (active vendors) and `projects` (each project's client
 customers) for these steps. `summary.json` also reports `new_people_created`
 (`by_email`, `by_name`), `reused_new_people`, `former_employees_archived`,
-`staff_only_pending_identity` and `still_held` (counts by reason).
+`staff_only_pending_identity`, `imported_staff_only_ambiguous` and
+`still_held` (counts by reason, only reasons that hold a thread: identity
+reasons that import staff-only are not counted there).
 
 ## Review queue
 

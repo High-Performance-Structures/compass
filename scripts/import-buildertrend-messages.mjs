@@ -219,8 +219,12 @@ export function expandParticipants(message, projectId, resolve) {
     literals.push({ kind, namespace: ref.namespace, literal })
     const result = projectId && typeof resolve.segment === "function" ? resolve.segment(literal, projectId) : { reason: "participant_boundary_unproven" }
     if (!result.tokens || (kind === "sender" && result.tokens.length !== 1)) {
-      // A literal that does not split into people in exactly one way holds the thread.
-      reviews.push({ reason: result.tokens ? "participant_ambiguous" : result.reason, literal, kind, hold: result.tokens ? true : result.hold === true })
+      // A literal that does not split into people in exactly one way holds the
+      // thread: its person boundaries are unproven (fail closed). An undivided
+      // sender that splits into several people is the same.
+      reviews.push(result.tokens
+        ? { reason: "participant_boundary_unproven", literal, kind, hold: true, split: "sender_several" }
+        : { reason: result.reason, literal, kind, hold: result.hold === true, ...(result.split ? { split: result.split } : {}) })
       return []
     }
     segmented += 1
@@ -359,6 +363,17 @@ export function parsePrecheck(value) {
 /** Review reasons about who a participant is; alone, they import staff-only. */
 const IDENTITY_REASONS = new Set(["participant_boundary_unproven", "participant_unmatched", "participant_ambiguous"])
 
+/**
+ * Does this review item hold its thread? Identity reasons do not (the thread
+ * imports staff-only), unless marked `hold` (an undivided literal whose person
+ * boundaries are unproven). The per-thread `staff_only_pending_identity` item
+ * records an import, not a hold.
+ */
+export function isHoldingReview(item) {
+  if (item.reason === "staff_only_pending_identity") return false
+  return !(IDENTITY_REASONS.has(item.reason) && item.hold !== true)
+}
+
 function audienceFor(kinds) {
   const owner = kinds.has("owner")
   const vendor = kinds.has("vendor")
@@ -381,6 +396,8 @@ export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
   let imported_staff_only_pending_identity = 0
+  // Of those, threads with a participant who matched several exact candidates.
+  let imported_staff_only_ambiguous = 0
   const matches = {
     by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0,
     connected_by_vendor_name: 0, new_person_by_email: 0, new_person_by_name: 0, former_employee_archived: 0,
@@ -434,7 +451,7 @@ export function planImport(input) {
       const expanded = expandParticipants(message, projectId, resolve)
       matches.segmented_by_dictionary += expanded.segmented
       matches.review += expanded.reviews.length
-      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind, hold: item.hold }))
+      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind, hold: item.hold, ...(item.split ? { split: item.split } : {}) }))
       const refs = [...(expanded.sender ? [expanded.sender] : []), ...expanded.recipients]
       for (const ref of refs) {
         if (ref.kind === "bcc") threadReviews.push(review("bcc_recipient", message, { participant: participantKey(ref) }))
@@ -466,7 +483,9 @@ export function planImport(input) {
     // Owner decision 2026-11-02: a thread whose only problems are people who
     // could not be identified exactly is imported now, staff-only, and flagged
     // so staff can open it to the owner or vendor later. Anything else holds.
-    const identityReviews = threadReviews.filter((item) => IDENTITY_REASONS.has(item.reason) && item.hold !== true)
+    // A participant matching several exact candidates is the same: kept as
+    // shown, joined to nobody, no contact created, thread staff-only.
+    const identityReviews = threadReviews.filter((item) => !isHoldingReview(item))
     if (threadReviews.length > identityReviews.length) {
       reviews.push(...threadReviews)
       continue
@@ -475,6 +494,7 @@ export function planImport(input) {
     const audience = pendingIdentity ? "staff" : audienceFor(kinds)
     if (pendingIdentity) {
       imported_staff_only_pending_identity += 1
+      if (identityReviews.some((item) => item.reason === "participant_ambiguous")) imported_staff_only_ambiguous += 1
       reviews.push({
         reason: "staff_only_pending_identity", btJobId: first.btJobId, btThreadId, projectId,
         channelId: conversationId(organizationId, btThreadId),
@@ -506,7 +526,7 @@ export function planImport(input) {
       messages: planned,
     })
   }
-  return { threads, reviews, pending, matches, imported_staff_only_pending_identity }
+  return { threads, reviews, pending, matches, imported_staff_only_pending_identity, imported_staff_only_ambiguous }
 }
 
 // ---------------------------------------------------------------------------
@@ -928,12 +948,16 @@ function main() {
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
     imported_staff_only_pending_identity: plan.imported_staff_only_pending_identity,
+    // Subset of the above: threads with a participant matching several exact candidates.
+    imported_staff_only_ambiguous: plan.imported_staff_only_ambiguous,
     // How each thread participant was matched (per thread); review = unmatched or ambiguous.
     participant_matches: plan.matches,
     new_contact_from_catalog: newContacts.length,
     ...newPeopleCounts(plan),
     staff_only_pending_identity: plan.imported_staff_only_pending_identity,
-    still_held: plan.reviews.filter((item) => item.reason !== "staff_only_pending_identity")
+    // Only reasons that hold a thread; identity reasons in a thread held for
+    // something else would import staff-only once that is fixed.
+    still_held: plan.reviews.filter(isHoldingReview)
       .reduce((counts, item) => ({ ...counts, [item.reason]: (counts[item.reason] ?? 0) + 1 }), {}),
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
