@@ -64,23 +64,48 @@ type ExistingVendorContact = {
   readonly phone: string | null
   readonly isPrimary: boolean
   readonly active: boolean
+  readonly sageContactId: string | null
+  readonly sageLineNumber: number | null
 }
 
-/** The full-form vendor dialog resubmits unchanged child contacts. */
-export function sameSageLinkedVendorContacts(
+/** A person Sage knows: it carries a Sage contact id or line number. */
+export function isSageLinkedPerson(person: { readonly sageContactId: string | null; readonly sageLineNumber: number | null }): boolean {
+  return Boolean(person.sageContactId?.trim()) || person.sageLineNumber !== null
+}
+
+/**
+ * Why a people edit on a Sage-linked vendor cannot be saved in Compass, or
+ * null when it can. Sage people are identity: each must be resubmitted
+ * unchanged. Compass-only people (no Sage ids) may be added, edited or
+ * removed locally (owner decision 2026-11-02), but never become primary,
+ * since primary belongs to the people Sage manages.
+ */
+export function sageLinkedVendorPeopleChangeError(
   submitted: readonly VendorContactInput[],
   existing: readonly ExistingVendorContact[]
-): boolean {
+): string | null {
   const active = existing.filter((contact) => contact.active)
-  if (submitted.length !== active.length) return false
   const byId = new Map(active.map((contact) => [contact.id, contact]))
-  return submitted.every((contact) => {
-    const row = contact.id ? byId.get(contact.id) : null
-    return row !== null && row !== undefined &&
+  const submittedById = new Map(submitted.flatMap((contact) => (contact.id ? [[contact.id, contact] as const] : [])))
+  for (const contact of submitted) {
+    const row = contact.id ? byId.get(contact.id) : undefined
+    if (contact.id && !row) return "Vendor contact not found"
+    if (row && isSageLinkedPerson(row)) continue
+    // A Compass-only person keeps the primary flag it already had, and never gains it.
+    if (contact.isPrimary && !row?.isPrimary) return COMPASS_ONLY_PRIMARY_ERROR
+  }
+  for (const row of active.filter(isSageLinkedPerson)) {
+    const contact = submittedById.get(row.id)
+    const unchanged = contact !== undefined &&
       row.name.trim() === contact.name &&
       (row.title?.trim() ?? "") === contact.title &&
       (row.email?.trim().toLowerCase() ?? "") === contact.email &&
       (row.phone?.trim() ?? "") === contact.phone &&
       row.isPrimary === contact.isPrimary
-  })
+    if (!unchanged) return SAGE_PEOPLE_ERROR
+  }
+  return null
 }
+
+const SAGE_PEOPLE_ERROR = "This vendor is linked to Sage. Contact changes need Sage review before Compass can update the directory."
+export const COMPASS_ONLY_PRIMARY_ERROR = "A Compass-only person cannot be the primary contact of a Sage-linked vendor."

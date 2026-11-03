@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   changesSageLinkedCustomerIdentity,
   changesSageLinkedVendorIdentity,
-  sameSageLinkedVendorContacts,
+  COMPASS_ONLY_PRIMARY_ERROR,
+  sageLinkedVendorPeopleChangeError,
 } from "@/lib/sage/contact-edit-gate"
 
 describe("Sage-linked contact edit gate", () => {
@@ -37,14 +38,29 @@ describe("Sage-linked contact edit gate", () => {
   it("allows a category-only vendor edit when the dialog resubmits unchanged contacts", () => {
     const existing = [{
       id: "contact-1", name: "Alex", title: "Owner", email: "alex@example.com",
-      phone: "555-0100", isPrimary: true, active: true,
+      phone: "555-0100", isPrimary: true, active: true, sageContactId: "S-1", sageLineNumber: 1,
     }]
     const submitted = [{
       id: "contact-1", name: "Alex", title: "Owner", email: "alex@example.com",
       phone: "555-0100", isPrimary: true,
     }]
-    expect(sameSageLinkedVendorContacts(submitted, existing)).toBe(true)
-    expect(sameSageLinkedVendorContacts([{ ...submitted[0], phone: "555-0200" }], existing)).toBe(false)
-    expect(sameSageLinkedVendorContacts([], existing)).toBe(false)
+    expect(sageLinkedVendorPeopleChangeError(submitted, existing)).toBeNull()
+    expect(sageLinkedVendorPeopleChangeError([{ ...submitted[0], phone: "555-0200" }], existing)).toContain("Sage review")
+    expect(sageLinkedVendorPeopleChangeError([], existing)).toContain("Sage review")
+  })
+
+  it("lets Compass-only people be added, edited and removed, but never made primary", () => {
+    const sage = { id: "sage-1", name: "Alex", title: "", email: "", phone: "", isPrimary: true }
+    const local = { id: "local-1", name: "Jane", title: "", email: "", phone: "", isPrimary: false }
+    const existing = [
+      { ...sage, title: null, email: null, phone: null, active: true, sageContactId: null, sageLineNumber: 4 },
+      { ...local, title: null, email: null, phone: null, active: true, sageContactId: null, sageLineNumber: null },
+    ]
+    expect(sageLinkedVendorPeopleChangeError([sage, { ...local, phone: "555-0300", title: "PM" }], existing)).toBeNull()
+    expect(sageLinkedVendorPeopleChangeError([sage], existing)).toBeNull()
+    expect(sageLinkedVendorPeopleChangeError([sage, local, { ...local, id: null, name: "New" }], existing)).toBeNull()
+    expect(sageLinkedVendorPeopleChangeError([{ ...sage, isPrimary: false }, { ...local, isPrimary: true }], existing)).toBe(COMPASS_ONLY_PRIMARY_ERROR)
+    expect(sageLinkedVendorPeopleChangeError([sage, { ...local, id: null, isPrimary: true }], existing)).toBe(COMPASS_ONLY_PRIMARY_ERROR)
+    expect(sageLinkedVendorPeopleChangeError([local], existing)).toContain("Sage review")
   })
 })
