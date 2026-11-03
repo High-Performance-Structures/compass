@@ -367,12 +367,11 @@ export function createParticipantResolver(input) {
     }
     const result = ways[0]
     if (result.count === 1 && result.tokens) return { tokens: result.tokens }
-    // Owner decision 2026-11-02: a literal that does not split in exactly one
-    // way (an unknown one-word piece, or two valid cuts) holds the thread.
-    // Its person boundaries are unproven, so it is never imported, not even
-    // staff-only (`participant_ambiguous` is kept for one proven person who
-    // matches several candidates, which imports staff-only).
-    return { reason: "participant_boundary_unproven", hold: true, split: result.count === 0 ? "none" : "several" }
+    // A literal that does not split in exactly one way (an unknown one-word
+    // piece, or two valid cuts) has unproven person boundaries. Lead decision
+    // 2026-11-02: its thread imports staff-only with the literal kept whole;
+    // no person is derived from it (not even from a partial split).
+    return { reason: "participant_boundary_unproven", split: result.count === 0 ? "none" : "several" }
   }
 
   const resolve = function resolve(ref, projectId) {
