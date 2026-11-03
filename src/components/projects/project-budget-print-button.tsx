@@ -4,7 +4,7 @@ import * as React from "react"
 import { IconEye } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
-import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
+import { openPrintSnapshot } from "@/components/print/open-print-snapshot"
 
 /** Print Preview for the G703 budget exactly as shown on this page. */
 export function ProjectBudgetPrintButton({

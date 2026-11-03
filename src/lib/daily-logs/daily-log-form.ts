@@ -71,7 +71,7 @@ export type DailyLogFormValues = {
 } & { readonly [K in DailyLogOptionalField]: string }
 
 /** Where an error belongs: a field, a work line's part, or the lines as a whole. */
-export type DailyLogFormErrorKey =
+type DailyLogFormErrorKey =
   | "logDate"
   | "workCompleted"
   | "workLines"

@@ -4,7 +4,7 @@ import { and, eq, isNull, or, sql, type AnyColumn } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customerContacts, customers, emailReplyThreads, internalContacts, projectContacts, vendors, vendorContacts } from "@/db/schema"
-import { correspondence, correspondenceAttachments, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
+import { correspondence, correspondenceMessages } from "@/db/schema-correspondence"
 import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { correspondenceContacts, correspondenceContext } from "@/lib/correspondence/access"
 import type { CorrespondenceContext } from "@/lib/correspondence/access"
@@ -18,6 +18,8 @@ import { validateProjectEmailAudience, type ProjectEmailAudience } from "@/lib/e
 import { createReplyToken, trackedReplyAddress } from "@/lib/email/reply-tracking"
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientCategory, type EmailRecipientOption } from "@/lib/email/recipient-options"
+import { replyThreadInsertStatement } from "@/lib/domain/correspondence/email-store"
+import { attachToMessageStatement, conversationInsertStatement, messageInsertStatement, outboxInsertStatement, participantInsertStatement, recipientInsertStatement } from "@/lib/domain/correspondence/store"
 
 type RecipientScope = "project" | "directory"
 type SearchResult = { readonly success: true; readonly data: readonly EmailRecipientOption[] } | { readonly success: false; readonly error: string }
@@ -171,13 +173,13 @@ async function sendProjectEmailRequest(input: ProjectEmailInput): Promise<SendRe
       try {
         await ctx.db.batch([
         correspondenceWriteGuard(ctx, { id: guardId, conversationId: null, participantVersion: null, people, extra: and(emailAttachmentGuard(ctx, attachmentIds), savedDraftGuard(ctx, input.draft, {kind:"email",subject,body:input.body,...audience.data,attachmentIds,requestId:input.requestId})) }),
-        ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: input.projectId, subject, createdAt: now }),
-        ...people.map((person) => ctx.db.insert(correspondenceParticipants).values({ id: crypto.randomUUID(), conversationId, userId: person.userId, name: person.name, email: person.email, role: person.role })),
-        ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: senderName, source: "email", body: input.body, sentAt: now, requestHash }),
-        ...people.map((person) => ctx.db.insert(correspondenceRecipients).values({ id: crypto.randomUUID(), messageId, userId: person.userId, name: person.name, kind: person.userId === ctx.user.id ? "author" : "to", openedAt: person.userId === ctx.user.id ? now : null })),
-        ...people.filter((person) => person.userId !== ctx.user.id).map((person) => ctx.db.insert(correspondenceOutbox).values({ id: crypto.randomUUID(), messageId, recipientUserId: person.userId, transport: "compass", status: "available", createdAt: now })),
-        ...attachments.map((file) => ctx.db.update(correspondenceAttachments).set({ messageId }).where(and(eq(correspondenceAttachments.id, file.id), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt)))),
-        ctx.db.insert(emailReplyThreads).values({ id: replyThreadId, token, organizationId: ctx.organizationId, projectId: input.projectId, channelId: null, sourceType: "project_correspondence", sourceId: conversationId, sourceNumber: null, replyToAddress: trackedReplyAddress({ env: ctx.env, token }), subject, status: "active", createdBy: ctx.user.id, lastInboundAt: null, createdAt: now, updatedAt: now }),
+        conversationInsertStatement(ctx.db, { id: conversationId, organizationId: ctx.organizationId, projectId: input.projectId, subject, createdAt: now }),
+        ...people.map((person) => participantInsertStatement(ctx.db, [{ id: crypto.randomUUID(), conversationId, userId: person.userId, name: person.name, email: person.email, role: person.role }])),
+        messageInsertStatement(ctx.db, { id: messageId, conversationId, authorUserId: ctx.user.id, authorName: senderName, source: "email", body: input.body, sentAt: now, requestHash }),
+        ...people.map((person) => recipientInsertStatement(ctx.db, [{ id: crypto.randomUUID(), messageId, userId: person.userId, name: person.name, kind: person.userId === ctx.user.id ? "author" : "to", openedAt: person.userId === ctx.user.id ? now : null }])),
+        ...people.filter((person) => person.userId !== ctx.user.id).map((person) => outboxInsertStatement(ctx.db, [{ id: crypto.randomUUID(), messageId, recipientUserId: person.userId, transport: "compass", status: "available", createdAt: now }])),
+        ...attachments.map((file) => attachToMessageStatement(ctx.db, file.id, messageId)),
+        replyThreadInsertStatement(ctx.db, { id: replyThreadId, token, organizationId: ctx.organizationId, projectId: input.projectId, channelId: null, sourceType: "project_correspondence", sourceId: conversationId, sourceNumber: null, replyToAddress: trackedReplyAddress({ env: ctx.env, token }), subject, status: "active", createdBy: ctx.user.id, lastInboundAt: null, createdAt: now, updatedAt: now }),
         ctx.db.insert(projectEmailCampaigns).values({ id: campaignId, organizationId: ctx.organizationId, projectId: input.projectId, conversationId, messageId, senderUserId: ctx.user.id, requestHash, replyThreadId, status: "queued", createdAt: now, updatedAt: now }),
         ...members.map((member) => ctx.db.insert(projectEmailRecipients).values({ id: crypto.randomUUID(), campaignId, email: member.email, kind: member.kind })),
         ...(input.draft ? [retireSentComposition(ctx, input.draft)] : []),

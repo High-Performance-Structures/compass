@@ -1,8 +1,7 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { customThemes, userThemePreference } from "@/db/schema-theme"
+import { insertCustomTheme, saveUserThemePreference, updateCustomTheme } from "@/lib/domain/settings/store"
 import { findPreset } from "@/lib/theme/presets"
 import { isDemoUser } from "@/lib/demo"
 
@@ -39,13 +38,7 @@ export async function setThemePreferenceForUser(
   const now = new Date().toISOString()
 
   try {
-    await db
-      .insert(userThemePreference)
-      .values({ userId, activeThemeId: themeId, updatedAt: now })
-      .onConflictDoUpdate({
-        target: userThemePreference.userId,
-        set: { activeThemeId: themeId, updatedAt: now },
-      })
+    await saveUserThemePreference(db, userId, themeId, now)
   } catch {
     return { success: false, error: "Unable to save theme preference." }
   }
@@ -137,22 +130,9 @@ export async function saveCustomThemeForUser(
     if (!existing) {
       return { success: false, error: "theme not found" }
     }
-    await db
-      .update(customThemes)
-      .set({ name, description, themeData, updatedAt: now })
-      .where(
-        and(eq(customThemes.id, existingId), eq(customThemes.userId, userId)),
-      )
+    await updateCustomTheme(db, { id: existingId, userId, name, description, themeData, updatedAt: now })
   } else {
-    await db.insert(customThemes).values({
-      id,
-      userId,
-      name,
-      description,
-      themeData,
-      createdAt: now,
-      updatedAt: now,
-    })
+    await insertCustomTheme(db, { id, userId, name, description, themeData, now })
   }
 
   return { success: true, id }

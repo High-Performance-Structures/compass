@@ -1,10 +1,10 @@
 "use server"
 
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
-import { assertAudiencePreviewWriteAllowed, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, sql, ne, inArray } from "drizzle-orm"
+import { eq, and, ne, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   channels,
@@ -21,11 +21,12 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import {
   directChannelId,
   directParticipantIds,
 } from "@/lib/conversations/direct-channel"
+import { insertChannel, insertChannelMembers, insertReadStates } from "@/lib/domain/conversations/store"
+import { readChannelForViewer, readVisibleChannels } from "@/lib/domain/conversations/channels"
 
 async function ensureChannelMember(
   db: ReturnType<typeof getDb>,
@@ -45,14 +46,14 @@ async function ensureChannelMember(
     .get()
 
   if (!existingMember) {
-    await db.insert(channelMembers).values({
+    await insertChannelMembers(db, [{
       id: crypto.randomUUID(),
       channelId,
       userId,
       role: "member",
       notifyLevel: "all",
       joinedAt: now,
-    })
+    }], { ignoreConflict: true })
   }
 
   const existingReadState = await db
@@ -67,14 +68,14 @@ async function ensureChannelMember(
     .get()
 
   if (!existingReadState) {
-    await db.insert(channelReadState).values({
+    await insertReadStates(db, [{
       id: crypto.randomUUID(),
       channelId,
       userId,
       lastReadMessageId: null,
       lastReadAt: now,
       unreadCount: 0,
-    })
+    }], { ignoreConflict: true })
   }
 }
 
@@ -191,7 +192,7 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
         user.displayName ?? user.email,
         ...targets.map((target) => target.name ?? target.email),
       ].sort((first, second) => first.localeCompare(second))
-      await db.insert(channels).values({
+      await insertChannel(db, {
         id: channelId,
         name: participantNames.join(" · "),
         type: "text",
@@ -228,151 +229,11 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
 }
 
 export async function listChannels() {
-  try {
-    const user = await conversationRequestViewer(await getCurrentUser())
-    if (!user || !user.isActive) {
-      return { success: false, error: "Unauthorized" }
-    }
-    const scope = await getProjectAudienceRequestScope()
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const viewerIsInternal = isInternalStaffRole(user.role)
-
-    // get all channels the user can access:
-    // - public channels in their org
-    // - private channels they're a member of
-    const allChannels = await db
-      .select({
-        id: channels.id,
-        name: channels.name,
-        type: channels.type,
-        description: channels.description,
-        organizationId: channels.organizationId,
-        projectId: channels.projectId,
-        categoryId: channels.categoryId,
-        isPrivate: channels.isPrivate,
-        audience: channels.audience,
-        sortOrder: channels.sortOrder,
-        archivedAt: channels.archivedAt,
-        createdAt: channels.createdAt,
-        updatedAt: channels.updatedAt,
-        memberRole: channelMembers.role,
-        unreadCount: channelReadState.unreadCount,
-      })
-      .from(channels)
-      .leftJoin(
-        channelMembers,
-        and(
-          eq(channelMembers.channelId, channels.id),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .leftJoin(
-        channelReadState,
-        and(
-          eq(channelReadState.channelId, channels.id),
-          eq(channelReadState.userId, user.id)
-        )
-      )
-      .where(
-        and(
-          // must be in user's org
-          eq(channels.organizationId, orgId),
-          scope ? eq(channels.projectId, scope.projectId) : undefined,
-          scope ? eq(channels.audience, scope.audience === "owner" ? "clients" : "sub_vendors") : undefined,
-          // External project users only discover conversations they belong to.
-          viewerIsInternal
-            ? sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`
-            : and(
-                sql`${channelMembers.userId} IS NOT NULL`,
-                sql`${channels.id} NOT LIKE 'bt-message-archive-%'`
-              ),
-          // not archived
-          sql`${channels.archivedAt} IS NULL`
-        )
-      )
-      .orderBy(channels.sortOrder, channels.createdAt)
-
-    return { success: true, data: allChannels }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to list channels",
-    }
-  }
+  return readVisibleChannels()
 }
 
 export async function getChannel(channelId: string) {
-  try {
-    const user = await conversationRequestViewer(await getCurrentUser())
-    if (!user || !user.isActive) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify user has access
-    const channel = await db
-      .select()
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!channel) {
-      return { success: false, error: "Channel not found" }
-    }
-
-    const scope = await getProjectAudienceRequestScope()
-    if (scope && (channel.projectId !== scope.projectId || channel.audience !== (scope.audience === "owner" ? "clients" : "sub_vendors"))) return { success: false, error: "Channel not found" }
-    const orgId = requireOrg(user)
-    if (channel.organizationId !== orgId) {
-      return { success: false, error: "Channel not found" }
-    }
-
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (
-      isBuildertrendArchiveChannelId(channel.id)
-        ? !isInternalStaffRole(user.role)
-        : (channel.isPrivate || !isInternalStaffRole(user.role)) && !membership
-    ) {
-      return { success: false, error: "Access denied" }
-    }
-
-    // count members
-    const memberCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(channelMembers)
-      .where(eq(channelMembers.channelId, channelId))
-      .then((rows) => rows[0]?.count ?? 0)
-
-    return {
-      success: true,
-      data: {
-        ...channel,
-        memberCount,
-      },
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to get channel",
-    }
-  }
+  return readChannelForViewer(channelId)
 }
 
 export async function createChannel(data: {
@@ -439,7 +300,7 @@ export async function createChannel(data: {
       updatedAt: now,
     }
 
-    await db.insert(channels).values(newChannel)
+    await insertChannel(db, newChannel)
 
     // add creator as owner
     const memberId = crypto.randomUUID()
@@ -451,7 +312,7 @@ export async function createChannel(data: {
       notifyLevel: "all",
       joinedAt: now,
     }
-    await db.insert(channelMembers).values(newMember)
+    await insertChannelMembers(db, [newMember])
 
     // initialize read state for creator
     const readStateId = crypto.randomUUID()
@@ -463,7 +324,7 @@ export async function createChannel(data: {
       lastReadAt: now,
       unreadCount: 0,
     }
-    await db.insert(channelReadState).values(newReadState)
+    await insertReadStates(db, [newReadState])
 
     revalidatePath("/dashboard")
     return { success: true, data: { channelId } }
@@ -471,180 +332,6 @@ export async function createChannel(data: {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to create channel",
-    }
-  }
-}
-
-export async function joinChannel(channelId: string) {
-  try {
-    await assertAudiencePreviewWriteAllowed()
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    if (!isInternalStaffRole(user.role)) {
-      return {
-        success: false,
-        error: "Project partners join conversations through their project team.",
-      }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // verify channel exists and is not private
-    const channel = await db
-      .select()
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!channel) {
-      return { success: false, error: "Channel not found" }
-    }
-
-    const orgId = requireOrg(user)
-    if (channel.organizationId !== orgId) {
-      return { success: false, error: "Channel not found" }
-    }
-
-    if (channel.isPrivate) {
-      return {
-        success: false,
-        error: "Cannot join private channel without invitation",
-      }
-    }
-
-    // check if already a member
-    const existing = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (existing) {
-      return { success: false, error: "Already a member" }
-    }
-
-    const now = new Date().toISOString()
-    const memberId = crypto.randomUUID()
-    const newMember: NewChannelMember = {
-      id: memberId,
-      channelId,
-      userId: user.id,
-      role: "member",
-      notifyLevel: "all",
-      joinedAt: now,
-    }
-    await db.insert(channelMembers).values(newMember)
-
-    // initialize read state
-    const readStateId = crypto.randomUUID()
-    const newReadState: NewChannelReadState = {
-      id: readStateId,
-      userId: user.id,
-      channelId,
-      lastReadMessageId: null,
-      lastReadAt: now,
-      unreadCount: 0,
-    }
-    await db.insert(channelReadState).values(newReadState)
-
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to join channel",
-    }
-  }
-}
-
-export async function leaveChannel(channelId: string) {
-  try {
-    await assertAudiencePreviewWriteAllowed()
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // check current membership
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
-
-    // if owner, check if there are other owners
-    if (membership.role === "owner") {
-      const ownerCount = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(channelMembers)
-        .where(
-          and(
-            eq(channelMembers.channelId, channelId),
-            eq(channelMembers.role, "owner")
-          )
-        )
-        .then((rows) => rows[0]?.count ?? 0)
-
-      if (ownerCount <= 1) {
-        return {
-          success: false,
-          error: "Cannot leave - you are the last owner",
-        }
-      }
-    }
-
-    // remove membership and read state
-    await db
-      .delete(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-
-    await db
-      .delete(channelReadState)
-      .where(
-        and(
-          eq(channelReadState.channelId, channelId),
-          eq(channelReadState.userId, user.id)
-        )
-      )
-
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to leave channel",
     }
   }
 }

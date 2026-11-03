@@ -3,8 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { projectJobStatuses, projectProfileAuditEvents, projects } from "@/db/schema"
-import { projectWorkflowChecks } from "@/db/schema-job-workflows"
+import { projectJobStatuses, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -12,7 +12,11 @@ import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowProgress } from "@/lib/job-workflows/engine"
 import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
 import { carryOverWorkflowChecks, linkedProjectIds } from "@/lib/job-workflows/carryover"
-import { chunkD1Rows } from "@/lib/d1-query"
+import {
+  insertWorkflowChecksIfAbsent,
+  workflowCheckDeleteStatement,
+  workflowCheckInsertStatement,
+} from "@/lib/domain/workflows/store"
 import { loadWorkflowChecks, readWorkflowCustomization, jobWorkflowFacts } from "@/lib/job-workflows/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -171,11 +175,8 @@ export async function catchUpJobWorkflow(projectId: string): Promise<Result<{ re
       checkedBy: user.id,
       checkedAt: now,
     }))
-    for (const chunk of chunkD1Rows(rows)) {
-      await db.insert(projectWorkflowChecks).values(chunk).onConflictDoNothing()
-    }
-    await db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    await insertWorkflowChecksIfAbsent(db, rows)
+    await recordProjectAudit(db, {
       organizationId,
       projectId,
       actorUserId: user.id,
@@ -206,8 +207,7 @@ export async function setJobWorkflowCheck(input: {
     const { db, organizationId, user } = await context(input.projectId, "update")
     if (isDemoUser(user.id) || isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
     const now = new Date().toISOString()
-    const audit = db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    const audit = recordProjectAudit(db, {
       organizationId,
       projectId: input.projectId,
       actorUserId: user.id,
@@ -220,30 +220,19 @@ export async function setJobWorkflowCheck(input: {
     })
     if (input.checked) {
       await db.batch([
-        db
-          .insert(projectWorkflowChecks)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId,
-            projectId: input.projectId,
-            itemKey: input.itemKey,
-            checkedBy: user.id,
-            checkedAt: now,
-          })
-          .onConflictDoNothing(),
+        workflowCheckInsertStatement(db, {
+          id: crypto.randomUUID(),
+          organizationId,
+          projectId: input.projectId,
+          itemKey: input.itemKey,
+          checkedBy: user.id,
+          checkedAt: now,
+        }),
         audit,
       ])
     } else {
       await db.batch([
-        db
-          .delete(projectWorkflowChecks)
-          .where(
-            and(
-              eq(projectWorkflowChecks.projectId, input.projectId),
-              eq(projectWorkflowChecks.organizationId, organizationId),
-              eq(projectWorkflowChecks.itemKey, input.itemKey),
-            ),
-          ),
+        workflowCheckDeleteStatement(db, { projectId: input.projectId, organizationId, itemKey: input.itemKey }),
         audit,
       ])
     }

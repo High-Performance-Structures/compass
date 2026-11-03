@@ -3,7 +3,6 @@
 import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import {
   projects,
   scheduleTasks,
@@ -12,23 +11,14 @@ import {
 } from "@/db/schema"
 import { projectTemplates } from "@/db/schema-templates"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
+import { dependencyType, exceptionData } from "@/lib/domain/templates/rules"
+import { savedScheduleTemplateStatements } from "@/lib/domain/templates/store"
 import { requirePermission } from "@/lib/permissions"
-import type {
-  DependencyType,
-  ExceptionCategory,
-  ExceptionRecurrence,
-  WorkdayExceptionData,
-  WorkdayExceptionType,
-} from "@/lib/schedule/types"
+import { orgContext, type OrgContext } from "@/lib/server/action-context"
 import {
   SAVED_SCHEDULE_TEMPLATE_KIND,
   captureScheduleTemplate,
-  type CapturedScheduleTemplateDependency,
-  type CapturedScheduleTemplateItem,
 } from "@/lib/templates/schedule-template-capture"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -49,37 +39,11 @@ type SaveResult =
     }
   | { readonly success: false; readonly error: string }
 
-// D1 binds at most 100 parameters per statement.
-const ITEM_COLUMNS = 15
-const DEPENDENCY_COLUMNS = 6
-const MAX_BOUND_PARAMETERS = 100
-
-function chunk<T>(values: readonly T[], size: number): readonly (readonly T[])[] {
-  const chunks: T[][] = []
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size))
-  }
-  return chunks
-}
-
-function dependencyType(value: string): DependencyType {
-  return value === "SS" || value === "FF" || value === "SF" ? value : "FS"
-}
-
-function exceptionData(row: typeof workdayExceptions.$inferSelect): WorkdayExceptionData {
-  const type: WorkdayExceptionType = row.type === "working" ? "working" : "non_working"
-  const recurrence: ExceptionRecurrence = row.recurrence === "yearly" ? "yearly" : "one_time"
-  const categories: readonly ExceptionCategory[] = [
-    "national_holiday",
-    "state_holiday",
-    "vacation_day",
-    "company_holiday",
-    "weather_day",
-    "extra_workday",
-  ]
-  const category =
-    categories.find((candidate) => candidate === row.category) ?? "company_holiday"
-  return { ...row, type, recurrence, category }
+/** The shared org context; a failure is thrown with its message, as before. */
+async function scheduleTemplateContext(): Promise<OrgContext> {
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  return context.data
 }
 
 function ensureStaff(role: string): string | null {
@@ -91,12 +55,9 @@ function ensureStaff(role: string): string | null {
 export async function getSavedScheduleTemplates(): Promise<
   readonly SavedScheduleTemplateOption[]
 > {
-  const user = await requireAuth()
+  const { user, organizationId, db } = await scheduleTemplateContext()
   requirePermission(user, "schedule", "read")
   if (ensureStaff(user.role)) return []
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return db
     .select({
       id: projectTemplates.id,
@@ -127,12 +88,11 @@ export async function saveScheduleAsTemplate(input: {
   readonly replaceTemplateId: string | null
 }): Promise<SaveResult> {
   try {
-    const user = await requireAuth()
+    const { user, organizationId, db, env } = await scheduleTemplateContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     const staffError = ensureStaff(user.role)
     if (staffError) return { success: false, error: staffError }
-    const organizationId = requireOrg(user)
 
     const name = input.name.trim()
     const category = input.category.trim()
@@ -144,8 +104,6 @@ export async function saveScheduleAsTemplate(input: {
       return { success: false, error: "The category or description is too long." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
@@ -220,83 +178,38 @@ export async function saveScheduleAsTemplate(input: {
     const versionId = crypto.randomUUID()
     const versionNumber = (existing?.currentVersionNumber ?? 0) + 1
     const { items, dependencies } = capture.data
-    const statements: D1PreparedStatement[] = []
-
-    if (existing) {
-      statements.push(
-        env.DB.prepare(
-          `UPDATE project_templates SET current_version_number = ?,
-            name = ?, trade_category = ?, description = ?,
-            lifecycle_status = 'active', review_status = 'verified',
-            updated_at = ?
-          WHERE id = ? AND organization_id = ?`
-        ).bind(
-          versionNumber,
-          name || existing.name,
-          category || existing.tradeCategory,
-          description || existing.description,
-          now,
-          templateId,
-          organizationId
-        )
-      )
-    } else {
-      statements.push(
-        env.DB.prepare(
-          `INSERT INTO project_templates (
-            id, organization_id, source_system, source_key, source_template_id,
-            source_url, name, description, template_kind, department_code,
-            trade_category, lifecycle_status, review_status,
-            current_version_number, source_metadata_json, created_by,
-            created_at, updated_at
-          ) VALUES (?, ?, 'compass', ?, NULL, NULL, ?, ?, ?, NULL, ?,
-            'active', 'verified', ?, ?, ?, ?, ?)`
-        ).bind(
-          templateId,
-          organizationId,
-          `schedule:${templateId}`,
-          name,
-          description || null,
-          SAVED_SCHEDULE_TEMPLATE_KIND,
-          category || "Schedules",
-          versionNumber,
-          JSON.stringify({ sourceProjectId: project.id }),
-          user.id,
-          now,
-          now
-        )
-      )
-    }
-
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO project_template_versions (
-          id, template_id, version_number, status, source_fingerprint,
-          source_captured_at, notes, created_by, created_at
-        ) VALUES (?, ?, ?, 'published', NULL, ?, ?, ?, ?)`
-      ).bind(
-        versionId,
-        templateId,
-        versionNumber,
-        now,
-        `Saved from the ${project.name} schedule.`,
-        user.id,
-        now
-      ),
-      env.DB.prepare(
-        `INSERT INTO project_template_modules (
-          id, version_id, module_type, source_item_count,
-          normalization_status, source_payload_json
-        ) VALUES (?, ?, 'schedule', ?, 'captured', ?)`
-      ).bind(
-        crypto.randomUUID(),
-        versionId,
-        items.length,
-        JSON.stringify({ sourceProjectId: project.id, dependencyCount: dependencies.length })
-      )
-    )
-    statements.push(...itemStatements(env.DB, versionId, items))
-    statements.push(...dependencyStatements(env.DB, versionId, dependencies))
+    const statements = savedScheduleTemplateStatements(env.DB, {
+      header: existing
+        ? {
+            kind: "existing",
+            templateId,
+            organizationId,
+            versionNumber,
+            name: name || existing.name,
+            tradeCategory: category || existing.tradeCategory,
+            description: description || existing.description,
+            now,
+          }
+        : {
+            kind: "new",
+            templateId,
+            organizationId,
+            versionNumber,
+            name,
+            description: description || null,
+            templateKind: SAVED_SCHEDULE_TEMPLATE_KIND,
+            tradeCategory: category || "Schedules",
+            sourceMetadataJson: JSON.stringify({ sourceProjectId: project.id }),
+            now,
+          },
+      versionId,
+      moduleId: crypto.randomUUID(),
+      createdBy: user.id,
+      versionNotes: `Saved from the ${project.name} schedule.`,
+      modulePayloadJson: JSON.stringify({ sourceProjectId: project.id, dependencyCount: dependencies.length }),
+      items,
+      dependencies,
+    })
 
     const results = await env.DB.batch(statements)
     if (results.some((result) => !result.success)) {
@@ -339,69 +252,4 @@ export async function saveScheduleAsTemplate(input: {
     console.error("Unable to save schedule as template", error)
     return { success: false, error: "Unable to save the schedule as a template." }
   }
-}
-
-function itemStatements(
-  database: D1Database,
-  versionId: string,
-  items: readonly CapturedScheduleTemplateItem[]
-): readonly D1PreparedStatement[] {
-  return chunk(items, Math.floor(MAX_BOUND_PARAMETERS / ITEM_COLUMNS)).map((rows) =>
-    database
-      .prepare(
-        `INSERT INTO schedule_template_items (
-          id, version_id, source_item_id, item_key, title,
-          start_offset_workdays, workdays, phase, display_color, is_milestone,
-          assignee_placeholder, owner_visible, sub_vendor_visible, notes,
-          sort_order
-        ) VALUES ${rows.map(() => `(${Array(ITEM_COLUMNS).fill("?").join(", ")})`).join(", ")}`
-      )
-      .bind(
-        ...rows.flatMap((item) => [
-          item.id,
-          versionId,
-          item.sourceItemId,
-          item.itemKey,
-          item.title,
-          item.startOffsetWorkdays,
-          item.workdays,
-          item.phase,
-          item.displayColor,
-          item.isMilestone ? 1 : 0,
-          item.assigneePlaceholder,
-          item.ownerVisible ? 1 : 0,
-          item.subVendorVisible ? 1 : 0,
-          item.notes,
-          item.sortOrder,
-        ])
-      )
-  )
-}
-
-function dependencyStatements(
-  database: D1Database,
-  versionId: string,
-  dependencies: readonly CapturedScheduleTemplateDependency[]
-): readonly D1PreparedStatement[] {
-  return chunk(
-    dependencies,
-    Math.floor(MAX_BOUND_PARAMETERS / DEPENDENCY_COLUMNS)
-  ).map((rows) =>
-    database
-      .prepare(
-        `INSERT INTO schedule_template_dependencies (
-          id, version_id, predecessor_item_id, successor_item_id, type, lag_days
-        ) VALUES ${rows.map(() => `(${Array(DEPENDENCY_COLUMNS).fill("?").join(", ")})`).join(", ")}`
-      )
-      .bind(
-        ...rows.flatMap((dependency) => [
-          dependency.id,
-          versionId,
-          dependency.predecessorItemId,
-          dependency.successorItemId,
-          dependency.type,
-          dependency.lagDays,
-        ])
-      )
-  )
 }

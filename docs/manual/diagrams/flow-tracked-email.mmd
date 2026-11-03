@@ -1,0 +1,23 @@
+sequenceDiagram
+  autonumber
+  participant A as Server action
+  participant T as sendTrackedEmail
+  participant DB as D1
+  participant M as Mailbox
+  participant V as Recipient
+  participant S as Inbound sync
+  A->>T: record, recipients, body
+  T->>T: pick sender
+  T->>DB: reply thread + token
+  T->>M: send (Reply-To has token)
+  M->>V: email
+  A->>DB: delivery, status, Activity
+  V->>M: reply
+  S->>M: every minute: new messages
+  S->>DB: dedupe into inbound_emails
+  alt token matches
+    S->>DB: post on record thread
+    S->>DB: Activity + notify staff
+  else no token
+    S->>DB: needs_review or routed
+  end

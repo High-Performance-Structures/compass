@@ -9,15 +9,20 @@ import {
   projects,
   type ProjectExternalLink,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import {
+  deleteProjectExternalLinks,
+  insertProjectExternalLink,
+  updateProjectExternalLinks,
+  updateProjects,
+} from "@/lib/domain/project/store"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
 import { isProjectDepartment } from "@/lib/project-branding"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ProjectRegistryProject = {
   readonly id: string
@@ -126,15 +131,12 @@ async function verifyProjectAccess(
   projectId: string,
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", action)
   if (!canManageProjectRegistry(user)) {
     throw new Error("Permission denied: project registry is admin-only")
   }
   const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const existing = await db
     .select({ id: projects.id })
@@ -175,31 +177,26 @@ async function upsertProjectLink(
 
   if (!hasExternalValue) {
     if (existingId) {
-      await db
-        .delete(projectExternalLinks)
-        .where(eq(projectExternalLinks.id, existingId))
+      await deleteProjectExternalLinks(db, eq(projectExternalLinks.id, existingId))
     }
     return
   }
 
   if (existingId) {
-    await db
-      .update(projectExternalLinks)
-      .set({
-        label: input.label,
-        externalId: input.externalId,
-        externalNumber: input.externalNumber,
-        externalUrl: input.externalUrl,
-        syncDirection: input.syncDirection,
-        syncStatus: input.syncStatus,
-        metadata: input.metadata,
-        updatedAt: now,
-      })
-      .where(eq(projectExternalLinks.id, existingId))
+    await updateProjectExternalLinks(db, eq(projectExternalLinks.id, existingId), {
+      label: input.label,
+      externalId: input.externalId,
+      externalNumber: input.externalNumber,
+      externalUrl: input.externalUrl,
+      syncDirection: input.syncDirection,
+      syncStatus: input.syncStatus,
+      metadata: input.metadata,
+      updatedAt: now,
+    })
     return
   }
 
-  await db.insert(projectExternalLinks).values({
+  await insertProjectExternalLink(db, {
     id: crypto.randomUUID(),
     projectId,
     system: input.system,
@@ -269,7 +266,7 @@ export async function updateProjectRegistry(
   formData: FormData
 ): Promise<UpdateResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
@@ -281,9 +278,6 @@ export async function updateProjectRegistry(
       }
     }
     const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select({ id: projects.id, projectNumber: projects.projectNumber })
@@ -348,9 +342,7 @@ export async function updateProjectRegistry(
       "weekly"
     )
 
-    await db
-      .update(projects)
-      .set({
+    await updateProjects(db, eq(projects.id, projectId), {
         projectNumber,
         status,
         sageJobId,
@@ -366,7 +358,6 @@ export async function updateProjectRegistry(
         ownerUpdateCadence,
         updatedAt: now,
       })
-      .where(eq(projects.id, projectId))
 
     await upsertProjectLink(db, projectId, {
       system: "sage",

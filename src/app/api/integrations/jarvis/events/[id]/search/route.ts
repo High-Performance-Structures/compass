@@ -1,16 +1,14 @@
-import { and, desc, eq, inArray, notExists, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
   dailyLogs,
   ownerProjectUpdates,
-  projectDuplicateDecisions,
   projectJobStatuses,
-  projectRegistryRemovals,
   projectRfis,
-  projectRouteAliases,
   projects,
 } from "@/db/schema"
+import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import { projectEstimates } from "@/db/schema-estimates"
 import {
   feedbackDeskItems,
@@ -240,31 +238,7 @@ export async function GET(
   const results: JarvisCompassSearchResult[] = []
   let sourceComplete = true
 
-  const visibleProjectCondition = and(
-    notExists(
-      db
-        .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
-        .from(projectRouteAliases)
-        .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
-    ),
-    notExists(
-      db
-        .select({ projectId: projectRegistryRemovals.projectId })
-        .from(projectRegistryRemovals)
-        .where(eq(projectRegistryRemovals.projectId, projects.id)),
-    ),
-    notExists(
-      db
-        .select({ removedProjectId: projectDuplicateDecisions.removedProjectId })
-        .from(projectDuplicateDecisions)
-        .where(
-          and(
-            eq(projectDuplicateDecisions.status, "merged"),
-            eq(projectDuplicateDecisions.removedProjectId, projects.id),
-          ),
-        ),
-    ),
-  )
+  const visibleProjectCondition = activeRegistryProject(db)
 
   if (kindsSet.has("feedback_request")) {
     const email = payloadUserEmail(payload)

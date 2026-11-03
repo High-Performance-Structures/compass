@@ -45,14 +45,14 @@ export interface NavGroupItem {
   readonly items: ReadonlyArray<NavGroupChildItem>
 }
 
-export interface NavSubgroupItem {
+interface NavSubgroupItem {
   readonly kind: "subgroup"
   readonly title: string
   readonly icon: Icon
   readonly items: ReadonlyArray<NavSubgroupChildItem>
 }
 
-export interface NavComingSoonItem {
+interface NavComingSoonItem {
   readonly kind: "coming-soon"
   readonly title: string
   readonly note: string

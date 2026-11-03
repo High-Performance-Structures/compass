@@ -42,7 +42,3 @@ export function setCredentialsDismissed(): void {
 export function isCredentialsDismissed(): boolean {
   return localStorage.getItem(DONT_ASK_KEY) === "true"
 }
-
-export function clearCredentialsDismissed(): void {
-  localStorage.removeItem(DONT_ASK_KEY)
-}

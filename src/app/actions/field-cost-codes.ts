@@ -2,11 +2,11 @@
 
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
-import { activityEvents, organizationFeatureSettings, projectFieldCostCodes, projectProfileAuditEvents, projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { projectFieldCostCodes, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { deleteOrganizationFeatureSettingStatement, saveOrganizationFeatureSettingStatement } from "@/lib/domain/settings/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { loadProjectCostCodeCatalog, loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
@@ -16,6 +16,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 type SaveResult = { readonly success: true } | { readonly success: false; readonly error: string }
@@ -28,12 +29,14 @@ export type FieldCostCodeEditorView = {
   readonly combinesDepartmentLists: boolean
 }
 
+/** Settings events keep their stored actor name: display name, else email. */
+function settingsActor(user: { readonly id: string; readonly email: string; readonly displayName?: string | null; readonly role: string }): ActivityActor {
+  return { id: user.id, email: user.email, displayName: user.displayName ?? null, firstName: null, lastName: null, role: user.role }
+}
 async function context(projectId?: string) {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!user.isActive || !isInternalStaffRole(user.role)) throw new Error("Field cost-code settings are available to active company staff.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   if (projectId) {
     await requireFeaturePermission(user, "project-hub", "read")
     const access = await getProjectAccessRecord(db, user, projectId)
@@ -95,11 +98,8 @@ export async function saveCompanyFieldCostCodes(raw: unknown): Promise<SaveResul
     const before = await readFeatureSettings(ctx.db, ctx.organizationId, "field-cost-codes")
     const codes = canonicalCodes(raw, (await companyView(ctx)).choices)
     const now = new Date().toISOString()
-    await ctx.db.batch([
-      ctx.db.insert(organizationFeatureSettings).values({ organizationId: ctx.organizationId, featureKey: "field-cost-codes", value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now })
-        .onConflictDoUpdate({ target: [organizationFeatureSettings.organizationId, organizationFeatureSettings.featureKey], set: { value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now } }),
-      ctx.db.insert(activityEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, actorUserId: ctx.user.id, actorName: ctx.user.displayName ?? ctx.user.email, actorRole: ctx.user.role, category: "settings", action: "updated", entityType: "field_cost_code_defaults", summary: "Updated Field Mode default cost codes.", metadata: JSON.stringify({ before, after: { defaultCodes: codes } }), createdAt: now }),
-    ])
+    await saveOrganizationFeatureSettingStatement(ctx.db, { organizationId: ctx.organizationId, featureKey: "field-cost-codes", value: JSON.stringify({ defaultCodes: codes }), updatedBy: ctx.user.id, updatedAt: now })
+    await recordActivityEvent({ db: ctx.db, organizationId: ctx.organizationId, actor: settingsActor(ctx.user), category: "settings", action: "updated", entityType: "field_cost_code_defaults", summary: "Updated Field Mode default cost codes.", metadata: { before, after: { defaultCodes: codes } }, createdAt: now })
     invalidate()
     return { success: true }
   } catch (error) { return { success: false, error: errorMessage(error) } }
@@ -110,10 +110,8 @@ export async function resetCompanyFieldCostCodes(): Promise<SaveResult> {
     if (!ctx.canEdit) return { success: false, error: "Only company admins can reset Field Mode defaults." }
     const before = await readFeatureSettings(ctx.db, ctx.organizationId, "field-cost-codes")
     const now = new Date().toISOString()
-    await ctx.db.batch([
-      ctx.db.delete(organizationFeatureSettings).where(and(eq(organizationFeatureSettings.organizationId, ctx.organizationId), eq(organizationFeatureSettings.featureKey, "field-cost-codes"))),
-      ctx.db.insert(activityEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, actorUserId: ctx.user.id, actorName: ctx.user.displayName ?? ctx.user.email, actorRole: ctx.user.role, category: "settings", action: "reset", entityType: "field_cost_code_defaults", summary: "Reset Field Mode defaults to the configured crew list.", metadata: JSON.stringify({ before, after: { defaultCodes: null } }), createdAt: now }),
-    ])
+    await deleteOrganizationFeatureSettingStatement(ctx.db, ctx.organizationId, "field-cost-codes")
+    await recordActivityEvent({ db: ctx.db, organizationId: ctx.organizationId, actor: settingsActor(ctx.user), category: "settings", action: "reset", entityType: "field_cost_code_defaults", summary: "Reset Field Mode defaults to the configured crew list.", metadata: { before, after: { defaultCodes: null } }, createdAt: now })
     invalidate()
     return { success: true }
   } catch (error) { return { success: false, error: errorMessage(error) } }
@@ -145,7 +143,7 @@ export async function saveProjectFieldCostCodes(projectId: string, raw: unknown)
       ? ctx.db.insert(projectFieldCostCodes).values({ projectId, organizationId: ctx.organizationId, codesJson: JSON.stringify(codes), updatedAt: now, updatedBy: ctx.user.id })
         .onConflictDoUpdate({ target: projectFieldCostCodes.projectId, set: { codesJson: JSON.stringify(codes), updatedAt: now, updatedBy: ctx.user.id } })
       : ctx.db.delete(projectFieldCostCodes).where(and(eq(projectFieldCostCodes.projectId, projectId), eq(projectFieldCostCodes.organizationId, ctx.organizationId)))
-    await ctx.db.batch([write, ctx.db.insert(projectProfileAuditEvents).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, projectId, actorUserId: ctx.user.id, eventType: codes.length ? "field_cost_codes_updated" : "field_cost_codes_cleared", entityType: "field_cost_codes", entityId: projectId, beforeJson: JSON.stringify(before), afterJson: JSON.stringify(codes), createdAt: now })])
+    await ctx.db.batch([write, recordProjectAudit(ctx.db, { organizationId: ctx.organizationId, projectId, actorUserId: ctx.user.id, eventType: codes.length ? "field_cost_codes_updated" : "field_cost_codes_cleared", entityType: "field_cost_codes", entityId: projectId, beforeJson: JSON.stringify(before), afterJson: JSON.stringify(codes), createdAt: now })])
     invalidate(projectId)
     return { success: true }
   } catch (error) { return { success: false, error: errorMessage(error) } }

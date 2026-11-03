@@ -1,0 +1,35 @@
+erDiagram
+  direction LR
+  project_families {
+    key id
+  }
+  project_family_phases {
+    key id
+    ref family_id
+    ref project_id
+    ref originating_change_order_id
+  }
+  project_job_status_label_keys {
+    key status_id
+  }
+  project_job_statuses {
+    key id
+  }
+  project_duplicate_decisions {
+    key id
+  }
+  project_external_links {
+    key id
+    ref project_id
+  }
+  project_change_orders {
+    key id
+  }
+  projects {
+    key id
+  }
+  project_change_orders |o--o{ project_family_phases : ""
+  project_families ||--o{ project_family_phases : ""
+  project_job_statuses ||--o{ project_job_status_label_keys : ""
+  projects |o--o{ project_family_phases : ""
+  projects ||--o{ project_external_links : ""

@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { IconExternalLink, IconFileDescription, IconHistory } from "@tabler/icons-react"
 
 import type {
@@ -73,12 +72,15 @@ export function ProjectAudienceDocumentLibrary({
                 )}
               </div>
               <Button asChild size="sm" variant="outline">
-                <Link
+                {/* Plain anchors: Next Link would RSC-prefetch these API file
+                    responses and wedge the client router on large documents. */}
+                <a
                   href={`/api/projects/${projectId}/contracts/${document.id}/executed-document`}
                   target="_blank"
+                  rel="noreferrer"
                 >
                   <IconExternalLink className="size-4" />Open contract
-                </Link>
+                </a>
               </Button>
             </article>
           ))}
@@ -107,9 +109,13 @@ export function ProjectAudienceDocumentLibrary({
               </div>
               {document.downloadable && (
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
+                  <a
+                    href={`/api/projects/${projectId}/documents/${document.id}/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     <IconExternalLink className="size-4" />Open
-                  </Link>
+                  </a>
                 </Button>
               )}
             </article>
@@ -143,9 +149,13 @@ export function ProjectAudienceDocumentLibrary({
                 </div>
                 {document.downloadable && (
                   <Button asChild size="sm" variant="ghost">
-                    <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
+                    <a
+                      href={`/api/projects/${projectId}/documents/${document.id}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       <IconExternalLink className="size-4" />Open
-                    </Link>
+                    </a>
                   </Button>
                 )}
               </div>

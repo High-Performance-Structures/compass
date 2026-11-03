@@ -18,7 +18,7 @@ export type RfqFileProof = RfqHistoricalScope & {
   readonly verificationReceiptSha256: string
 }
 
-export type RfqHistoricalAttachment = {
+type RfqHistoricalAttachment = {
   readonly documentInstanceId: string
   readonly label: string
 } & (

@@ -1,19 +1,6 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
-import {
-  installSkill as installSkillAction,
-  uninstallSkill as uninstallSkillAction,
-  toggleSkill as toggleSkillAction,
-  getInstalledSkills as getInstalledSkillsAction,
-} from "@/app/actions/plugins"
-import {
-  getCustomThemes,
-  setUserThemePreference,
-} from "@/app/actions/themes"
-import {
-  getCustomDashboards,
-} from "@/app/actions/dashboards"
 import { THEME_PRESETS } from "@/lib/theme/presets"
 import type { BridgeToolScope, BridgeToolMeta } from "@/lib/mcp/types"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -42,10 +29,41 @@ function getBoolean(
   return typeof v === "boolean" ? v : undefined
 }
 
+type ActionFailure = { readonly success: false; readonly error: string }
+
+/**
+ * The server actions some bridge tools run. The app layer passes the real
+ * actions in (src/app/api/bridge/tools/bridge-tool-actions.ts), so each call
+ * keeps that action's own auth and permission checks.
+ */
+export interface BridgeToolActions {
+  getCustomThemes(): Promise<
+    | {
+        readonly success: true
+        readonly data: ReadonlyArray<{
+          readonly id: string
+          readonly name: string
+          readonly description: string
+        }>
+      }
+    | ActionFailure
+  >
+  getCustomDashboards(): Promise<
+    | { readonly success: true; readonly data: ReadonlyArray<unknown> }
+    | ActionFailure
+  >
+  getInstalledSkills(): Promise<unknown>
+  setUserThemePreference(themeId: string): Promise<{ readonly success: true } | ActionFailure>
+  installSkill(source: string): Promise<unknown>
+  uninstallSkill(pluginId: string): Promise<unknown>
+  toggleSkill(pluginId: string, enabled: boolean): Promise<unknown>
+}
+
 type BridgeToolHandler = (
   userId: string,
   userRole: string,
   args: Record<string, unknown>,
+  actions: BridgeToolActions,
 ) => Promise<unknown>
 
 type BridgeToolEntry = Readonly<{
@@ -224,7 +242,7 @@ const bridgeToolRegistry: Readonly<
     scope: "read",
     description:
       "List available visual themes (presets + custom)",
-    handler: async () => {
+    handler: async (_userId, _userRole, _args, actions) => {
       const presets = THEME_PRESETS.map((p) => ({
         id: p.id,
         name: p.name,
@@ -232,7 +250,7 @@ const bridgeToolRegistry: Readonly<
         isPreset: true,
       }))
 
-      const customResult = await getCustomThemes()
+      const customResult = await actions.getCustomThemes()
       const customs = customResult.success
         ? customResult.data.map((c) => ({
             id: c.id,
@@ -249,8 +267,8 @@ const bridgeToolRegistry: Readonly<
   listDashboards: {
     scope: "read",
     description: "List user's saved custom dashboards",
-    handler: async () => {
-      const result = await getCustomDashboards()
+    handler: async (_userId, _userRole, _args, actions) => {
+      const result = await actions.getCustomDashboards()
       if (!result.success) return { error: result.error }
       return {
         dashboards: result.data,
@@ -263,7 +281,8 @@ const bridgeToolRegistry: Readonly<
     scope: "read",
     description:
       "List all installed agent skills with status",
-    handler: async () => getInstalledSkillsAction(),
+    handler: async (_userId, _userRole, _args, actions) =>
+      actions.getInstalledSkills(),
   },
 
   rememberContext: {
@@ -300,10 +319,10 @@ const bridgeToolRegistry: Readonly<
   setTheme: {
     scope: "write",
     description: "Switch the user's visual theme",
-    handler: async (_userId, _userRole, args) => {
+    handler: async (_userId, _userRole, args, actions) => {
       const themeId = getString(args, "themeId")
       if (!themeId) return { error: "themeId required" }
-      const result = await setUserThemePreference(themeId)
+      const result = await actions.setUserThemePreference(themeId)
       if (!result.success) return { error: result.error }
       return {
         action: "apply_theme",
@@ -316,7 +335,7 @@ const bridgeToolRegistry: Readonly<
     scope: "admin",
     description:
       "Install a skill from GitHub (admin only)",
-    handler: async (_userId, userRole, args) => {
+    handler: async (_userId, userRole, args, actions) => {
       if (userRole !== "admin") {
         return {
           error: "admin role required to install skills",
@@ -324,7 +343,7 @@ const bridgeToolRegistry: Readonly<
       }
       const source = getString(args, "source")
       if (!source) return { error: "source required" }
-      return installSkillAction(source)
+      return actions.installSkill(source)
     },
   },
 
@@ -332,13 +351,13 @@ const bridgeToolRegistry: Readonly<
     scope: "admin",
     description:
       "Remove an installed skill (admin only)",
-    handler: async (_userId, userRole, args) => {
+    handler: async (_userId, userRole, args, actions) => {
       if (userRole !== "admin") {
         return { error: "admin role required" }
       }
       const pluginId = getString(args, "pluginId")
       if (!pluginId) return { error: "pluginId required" }
-      return uninstallSkillAction(pluginId)
+      return actions.uninstallSkill(pluginId)
     },
   },
 
@@ -346,7 +365,7 @@ const bridgeToolRegistry: Readonly<
     scope: "admin",
     description:
       "Enable or disable an installed skill (admin only)",
-    handler: async (_userId, userRole, args) => {
+    handler: async (_userId, userRole, args, actions) => {
       if (userRole !== "admin") {
         return { error: "admin role required" }
       }
@@ -356,7 +375,7 @@ const bridgeToolRegistry: Readonly<
       if (enabled === undefined) {
         return { error: "enabled required" }
       }
-      return toggleSkillAction(pluginId, enabled)
+      return actions.toggleSkill(pluginId, enabled)
     },
   },
 }
@@ -387,6 +406,7 @@ export async function executeBridgeTool(
   userRole: string,
   args: Record<string, unknown>,
   scopes: ReadonlyArray<string>,
+  actions: BridgeToolActions,
 ): Promise<
   | { readonly success: true; readonly result: unknown }
   | { readonly success: false; readonly error: string }
@@ -413,6 +433,7 @@ export async function executeBridgeTool(
       userId,
       userRole,
       args,
+      actions,
     )
     return { success: true, result }
   } catch (err) {

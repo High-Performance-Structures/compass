@@ -17,7 +17,7 @@ export type ProjectRouteAliasLookup = (
   sourceProjectId: string,
 ) => Promise<string | null>
 
-export async function getProjectRouteAliasTarget(
+async function getProjectRouteAliasTarget(
   db: Db,
   sourceProjectId: string,
 ): Promise<string | null> {

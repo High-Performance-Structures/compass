@@ -189,7 +189,7 @@ function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-export function normalizePlanSwiftCostCode(value: unknown): string {
+function normalizePlanSwiftCostCode(value: unknown): string {
   const text = textValue(value);
   if (!text) return "";
 
@@ -243,7 +243,7 @@ function rowHasData(row: ReadonlyArray<unknown>): boolean {
   return row.some((value) => textValue(value) !== null);
 }
 
-export function normalizePlanSwiftRow(
+function normalizePlanSwiftRow(
   row: ReadonlyArray<unknown>,
   rowNumber: number,
   mappings: PlanSwiftColumnMappings,

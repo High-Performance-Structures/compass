@@ -2,16 +2,14 @@
 
 import { and, desc, eq } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { activityEvents, projects } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
 import {
   ACTIVITY_CATEGORIES,
   type ActivityCategory,
 } from "@/lib/activity-log"
-import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type ActivityEventView = {
   readonly id: string
@@ -36,7 +34,7 @@ export type ActivityFilters = {
 export async function getActivityEvents(
   filters: ActivityFilters = {}
 ): Promise<readonly ActivityEventView[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!isInternalStaffRole(user.role)) {
     throw new Error("Only internal staff can view organization activity.")
   }
@@ -50,8 +48,6 @@ export async function getActivityEvents(
   if (category) conditions.push(eq(activityEvents.category, category))
   if (projectId) conditions.push(eq(activityEvents.projectId, projectId))
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const rows = await db
     .select({
       id: activityEvents.id,

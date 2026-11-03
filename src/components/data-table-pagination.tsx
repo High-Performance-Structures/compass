@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-export const TABLE_PAGE_SIZES = [25, 50, 100] as const
+const TABLE_PAGE_SIZES = [25, 50, 100] as const
 export const DEFAULT_TABLE_PAGE_SIZE: number = TABLE_PAGE_SIZES[0]
 
 interface DataTablePaginationProps<TData> {
@@ -44,8 +44,13 @@ export function DataTablePagination<TData>({
     }
   }, [pageCount, pageIndex, table])
 
-  const totalRows = table.getFilteredRowModel().rows.length
-  const selectedRows = table.getFilteredSelectedRowModel().rows.length
+  // A server-paged table holds one page, so its total and selection come from
+  // the server's row count and the selection state rather than the rows held.
+  const serverPaged = table.options.manualPagination === true
+  const totalRows = serverPaged ? table.getRowCount() : table.getFilteredRowModel().rows.length
+  const selectedRows = serverPaged
+    ? Object.values(table.getState().rowSelection).filter(Boolean).length
+    : table.getFilteredSelectedRowModel().rows.length
 
   return (
     <div className="flex shrink-0 flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">

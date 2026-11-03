@@ -11,14 +11,16 @@ import {
 } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { insertSagePayApplicationSyncRun } from "@/lib/domain/sage-bridge/store"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const ACTIVE_SYNC_STATUSES = ["queued", "running", "processing"] as const
 const BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
 
-export type SagePayApplicationSyncStatus =
+type SagePayApplicationSyncStatus =
   | "queued"
   | "running"
   | "processing"
@@ -26,7 +28,7 @@ export type SagePayApplicationSyncStatus =
   | "completed"
   | "failed"
 
-export type SagePayApplicationSyncItem = {
+type SagePayApplicationSyncItem = {
   readonly id: string
   readonly status: SagePayApplicationSyncStatus
   readonly sageJobId: string | null
@@ -101,14 +103,12 @@ async function bridgeOnline(env: CloudflareEnv): Promise<boolean> {
 export async function getSagePayApplicationSyncState(
   projectId: string
 ): Promise<SagePayApplicationSyncState> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   if (!isInternalStaffRole(user.role)) {
     throw new Error("Project not found")
   }
   await requireFeaturePermission(user, "budget", "read")
   await requireFeaturePermission(user, "sage-sync", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const project = await db
     .select({
@@ -241,7 +241,7 @@ export async function queueSagePayApplicationSync(
     const now = new Date().toISOString()
     const runId = crypto.randomUUID()
     try {
-      await db.insert(sagePayApplicationSyncRuns).values({
+      await insertSagePayApplicationSyncRun(db, {
         id: runId,
         projectId,
         requestedByUserId: user.id,

@@ -11,6 +11,12 @@ import {
   type OperationTypeType,
 } from "../schema"
 import { type VectorClockValue, serializeClock } from "../clock"
+import {
+  deleteCompletedMutations,
+  insertQueuedMutation,
+  setQueuedMutationStatus,
+  updateQueuedMutationAttempt,
+} from "@/lib/domain/settings/offline-queue/store"
 
 // Queue configuration
 export interface MutationQueueConfig {
@@ -182,7 +188,7 @@ export class MutationQueueManager {
       createdAt: new Date().toISOString(),
     }
 
-    await this.db.insert(mutationQueue).values(entry)
+    await insertQueuedMutation(this.db, entry)
 
     // Update localStorage backup
     if (this.config.enablePersistence) {
@@ -207,10 +213,7 @@ export class MutationQueueManager {
     const entry = entries[0]!
 
     // Mark as processing
-    await this.db
-      .update(mutationQueue)
-      .set({ status: MutationStatus.PROCESSING })
-      .where(eq(mutationQueue.id, entry.id))
+    await setQueuedMutationStatus(this.db, entry.id, MutationStatus.PROCESSING)
 
     // Update localStorage backup to reflect processing state
     if (this.config.enablePersistence) {
@@ -276,10 +279,7 @@ export class MutationQueueManager {
 
   // Mark a mutation as completed
   async markCompleted(id: string): Promise<void> {
-    await this.db
-      .update(mutationQueue)
-      .set({ status: MutationStatus.COMPLETED })
-      .where(eq(mutationQueue.id, id))
+    await setQueuedMutationStatus(this.db, id, MutationStatus.COMPLETED)
 
     // Update localStorage backup
     if (this.config.enablePersistence) {
@@ -300,14 +300,11 @@ export class MutationQueueManager {
     const newRetryCount = entry.retryCount + 1
     const shouldRetry = newRetryCount < this.config.maxRetries
 
-    await this.db
-      .update(mutationQueue)
-      .set({
-        status: shouldRetry ? MutationStatus.PENDING : MutationStatus.FAILED,
-        retryCount: newRetryCount,
-        errorMessage: error,
-      })
-      .where(eq(mutationQueue.id, id))
+    await updateQueuedMutationAttempt(this.db, id, {
+      status: shouldRetry ? MutationStatus.PENDING : MutationStatus.FAILED,
+      retryCount: newRetryCount,
+      errorMessage: error,
+    })
 
     // Update localStorage backup
     if (this.config.enablePersistence) {
@@ -360,14 +357,7 @@ export class MutationQueueManager {
       )
 
     // Delete the records
-    await this.db
-      .delete(mutationQueue)
-      .where(
-        and(
-          eq(mutationQueue.status, MutationStatus.COMPLETED),
-          lt(mutationQueue.createdAt, cutoff)
-        )
-      )
+    await deleteCompletedMutations(this.db, cutoff)
 
     return toDelete.length
   }
@@ -381,9 +371,7 @@ export class MutationQueueManager {
       .where(eq(mutationQueue.status, MutationStatus.COMPLETED))
 
     // Delete
-    await this.db
-      .delete(mutationQueue)
-      .where(eq(mutationQueue.status, MutationStatus.COMPLETED))
+    await deleteCompletedMutations(this.db)
 
     return toDelete.length
   }
@@ -399,14 +387,11 @@ export class MutationQueueManager {
 
   // Retry a failed mutation
   async retry(id: string): Promise<void> {
-    await this.db
-      .update(mutationQueue)
-      .set({
-        status: MutationStatus.PENDING,
-        retryCount: 0,
-        errorMessage: null,
-      })
-      .where(eq(mutationQueue.id, id))
+    await updateQueuedMutationAttempt(this.db, id, {
+      status: MutationStatus.PENDING,
+      retryCount: 0,
+      errorMessage: null,
+    })
 
     // Update localStorage backup
     if (this.config.enablePersistence) {

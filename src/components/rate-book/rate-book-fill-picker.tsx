@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactElement } from "react"
 import type { RateBookPickerOption } from "@/app/actions/rate-book"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Label } from "@/components/ui/label"
-import { loadRateBookPicker } from "@/lib/rate-book/picker-cache"
+import { loadRateBookPicker } from "@/components/rate-book/rate-book-picker-cache"
 
 function money(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

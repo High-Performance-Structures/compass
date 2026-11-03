@@ -1,0 +1,22 @@
+erDiagram
+  direction LR
+  sage_pay_application_snapshots {
+    key id
+    ref run_id
+  }
+  sage_pay_application_sync_runs {
+    key id
+  }
+  project_field_cost_codes {
+    key project_id
+  }
+  sage_bridge_request_nonces {
+    key request_id
+  }
+  sage_bridge_status {
+    key id
+  }
+  sage_client_directory_entries {
+    key id
+  }
+  sage_pay_application_sync_runs ||--o{ sage_pay_application_snapshots : ""

@@ -1,4 +1,6 @@
 import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
+import { CHANGE_ORDER_KINDS, type ChangeOrderKind } from "@/lib/domain/estimates/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 
 /**
  * How a change order is built. Staff choose the first three; a
@@ -11,15 +13,15 @@ import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
  * - replacement: a newer contract-estimate version replaces the baseline.
  * - contract_version: the line-by-line differences of an accepted version.
  */
-export const CHANGE_ORDER_KINDS = ["estimate", "description", "replacement", "contract_version"] as const
-export type ChangeOrderKind = (typeof CHANGE_ORDER_KINDS)[number]
-
+export type { ChangeOrderKind }
 /** The kinds staff can choose when creating or editing a change order. */
-export const CHOOSABLE_CHANGE_ORDER_KINDS = ["estimate", "description", "replacement"] as const
-export type ChoosableChangeOrderKind = (typeof CHOOSABLE_CHANGE_ORDER_KINDS)[number]
+export type ChoosableChangeOrderKind =
+  | "estimate"
+  | "description"
+  | "replacement"
 
 export function isChangeOrderKind(value: unknown): value is ChangeOrderKind {
-  return typeof value === "string" && CHANGE_ORDER_KINDS.some((kind) => kind === value)
+  return isListValue(CHANGE_ORDER_KINDS, value)
 }
 
 export function isChoosableChangeOrderKind(value: unknown): value is ChoosableChangeOrderKind {

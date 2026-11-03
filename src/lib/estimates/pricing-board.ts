@@ -39,7 +39,7 @@ export type PricingBoardRfq = {
 
 export type PricingBoardRfqStatus = "draft" | "sent" | "quoted" | "declined" | "closed"
 
-export type PricingBoardPackage = {
+type PricingBoardPackage = {
   readonly id: string
   readonly title: string
   readonly costCodes: readonly string[]
@@ -71,7 +71,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * The bid package an RFQ belongs to: RFQs made together on the pricing board,
  * or duplicated for another vendor, share one. Title only for board packages.
  */
-export function rfqBidPackageOf(payloadJson: string | null): { readonly id: string | null; readonly title: string | null } {
+function rfqBidPackageOf(payloadJson: string | null): { readonly id: string | null; readonly title: string | null } {
   if (!payloadJson) return { id: null, title: null }
   try {
     const parsed: unknown = JSON.parse(payloadJson)

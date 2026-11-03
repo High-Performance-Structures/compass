@@ -17,6 +17,7 @@ vi.mock("@/lib/db", () => ({
   getCloudflareContext: async () => ({ env: { AGENT_AUTH_SECRET: "test-agent-secret", DB: {} } }),
 }))
 vi.mock("@/lib/agent/in-process-data-source", () => ({ callAgentRoute: mocks.callAgentRoute }))
+vi.mock("@/app/api/compass/agent-tool-routes", () => ({ AGENT_TOOL_ROUTES: new Map() }))
 
 import { confirmAgentAction } from "@/app/actions/agent-confirmation"
 import { signPendingAction } from "@/lib/agent/pending-actions"
@@ -61,6 +62,7 @@ describe("confirmAgentAction", () => {
       expect.any(String),
       "/api/compass/schedule",
       { action: "deleteTask", taskId: "task-1" },
+      expect.any(Map),
     )
   })
 

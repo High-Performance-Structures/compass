@@ -1,12 +1,5 @@
-"use client"
-
-import { Suspense } from "react"
-import { FileBrowser } from "@/components/files/file-browser"
+import { FilesPageClient } from "@/components/files/files-page-client"
 
 export default function FilesPage() {
-  return (
-    <Suspense>
-      <FileBrowser />
-    </Suspense>
-  )
+  return <FilesPageClient />
 }

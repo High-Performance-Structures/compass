@@ -144,7 +144,7 @@ function overlayViewability(value: unknown, row: HistoricalStagedFileRow): Histo
 }
 
 /** Strict reader for the additive O-152-compatible proof overlay. */
-export function parseHistoricalViewabilityProofOverlay(
+function parseHistoricalViewabilityProofOverlay(
   row: HistoricalStagedFileRow,
   expected: HistoricalFileExpectation,
   scope: RfqHistoricalScope,

@@ -1,6 +1,6 @@
 // google drive API v3 response types
 
-export type DriveUser = {
+type DriveUser = {
   readonly displayName: string
   readonly photoLink?: string
   readonly emailAddress?: string
@@ -52,7 +52,7 @@ export type DriveAbout = {
   readonly user: DriveUser
 }
 
-export type DriveSharedDrive = {
+type DriveSharedDrive = {
   readonly id: string
   readonly name: string
   readonly createdTime?: string

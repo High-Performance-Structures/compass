@@ -4,8 +4,8 @@ import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { projectOperations } from "@/db/schema"
-import { projectRfqQuoteLinks } from "@/db/schema-rfqs"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateOperations, updateRfqQuoteLinkById } from "@/lib/domain/operations/store"
 import { getCloudflareContext } from "@/lib/db"
 import { notifyRfqResponseReceivedByLink } from "@/lib/notifications/events"
 import { parsePortalRfqPayload, withPortalRfqVendorResponse } from "@/lib/rfqs/portal-response"
@@ -46,9 +46,14 @@ export async function submitRfqQuoteByLink(token: string, input: SubmitQuoteByLi
     const now = new Date().toISOString()
     const status = input.decision === "decline" ? "declined" : "response_received"
     // Only write while the RFQ is still open and unchanged since we read it.
-    await db
-      .update(projectOperations)
-      .set({
+    await updateOperations(
+      db,
+      and(
+        eq(projectOperations.id, rfq.id),
+        eq(projectOperations.updatedAt, rfq.updatedAt),
+        inArray(projectOperations.status, ["sent", "response_received"]),
+      ),
+      {
         status,
         amount: answer.amount,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
@@ -60,17 +65,11 @@ export async function submitRfqQuoteByLink(token: string, input: SubmitQuoteByLi
           submittedAt: now,
         }),
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectOperations.id, rfq.id),
-          eq(projectOperations.updatedAt, rfq.updatedAt),
-          inArray(projectOperations.status, ["sent", "response_received"]),
-        ),
-      )
+      },
+    )
     const [saved] = await db.select({ status: projectOperations.status, updatedAt: projectOperations.updatedAt }).from(projectOperations).where(eq(projectOperations.id, rfq.id)).limit(1)
     if (saved?.updatedAt !== now) return { success: false, error: "This RFQ just changed. Reload the page and try again." }
-    await db.update(projectRfqQuoteLinks).set({ submittedAt: now }).where(eq(projectRfqQuoteLinks.id, link.id))
+    await updateRfqQuoteLinkById(db, link.id, { submittedAt: now })
 
     const who = responderCompany ? `${responderName} at ${responderCompany}` : responderName
     await recordActivityEvent({

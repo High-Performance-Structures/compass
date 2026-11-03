@@ -32,6 +32,38 @@ const staff: AuthUser = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 }
 
+type OverrideRow = { readonly featureId: string; readonly accessLevel: string }
+
+// Overrides are read in one batch: role rows, team rows, then this
+// person's own rows. The query builders only need to chain.
+function mockOverrides(rows: {
+  readonly role?: readonly OverrideRow[]
+  readonly team?: readonly OverrideRow[]
+  readonly user?: readonly OverrideRow[]
+}): void {
+  const query = {
+    from: () => query,
+    innerJoin: () => query,
+    where: () => query,
+  }
+  mocks.getDb.mockReturnValue({
+    select: () => query,
+    batch: async () => [rows.role ?? [], rows.team ?? [], rows.user ?? []],
+  })
+}
+
+const INDIVIDUAL_FEATURES = [
+  "employee-contact-private",
+  "sage-contact-review",
+  "cherish-review",
+  "greeting-card-approval",
+  "project-archive-access",
+]
+
+function individualGrants(accessLevel: string): readonly OverrideRow[] {
+  return INDIVIDUAL_FEATURES.map((featureId) => ({ featureId, accessLevel }))
+}
+
 describe("individual employee contact permission", () => {
   beforeEach(() => {
     mocks.getCloudflareContext.mockReset()
@@ -40,9 +72,7 @@ describe("individual employee contact permission", () => {
   })
 
   it("fails closed without an individual grant", async () => {
-    mocks.getDb.mockReturnValue({
-      select: () => ({ from: () => ({ where: () => ({ get: async () => null }) }) }),
-    })
+    mockOverrides({})
     for (const featureId of [
       "employee-contact-private",
       "sage-contact-review",
@@ -57,13 +87,7 @@ describe("individual employee contact permission", () => {
   })
 
   it("separates viewing from approving", async () => {
-    mocks.getDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({ get: async () => ({ accessLevel: "view" }) }),
-        }),
-      }),
-    })
+    mockOverrides({ user: individualGrants("view") })
     for (const featureId of [
       "employee-contact-private", "sage-contact-review", "cherish-review",
       "greeting-card-approval", "project-archive-access",
@@ -74,13 +98,7 @@ describe("individual employee contact permission", () => {
   })
 
   it("lets an individually approved staff member use elevated actions", async () => {
-    mocks.getDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({ get: async () => ({ accessLevel: "approve" }) }),
-        }),
-      }),
-    })
+    mockOverrides({ user: individualGrants("approve") })
     for (const featureId of [
       "employee-contact-private", "sage-contact-review", "cherish-review",
       "greeting-card-approval", "project-archive-access",
@@ -107,20 +125,8 @@ describe("staff directory permissions", () => {
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
   })
 
-  function mockUserOverride(accessLevel: string | null): void {
-    let selection = 0
-    mocks.getDb.mockReturnValue({
-      select: () => {
-        selection += 1
-        const current = selection
-        return {
-          from: () => ({
-            where: () => ({ get: async () => current === 3 && accessLevel ? { accessLevel } : null }),
-            innerJoin: () => ({ where: async () => [] }),
-          }),
-        }
-      },
-    })
+  function mockUserOverride(featureId: string, accessLevel: string | null): void {
+    mockOverrides({ user: accessLevel ? [{ featureId, accessLevel }] : [] })
   }
 
   it("does not expose shared client, vendor, or internal lists to external accounts", async () => {
@@ -140,19 +146,35 @@ describe("staff directory permissions", () => {
   })
 
   it("allows an individual staff denial of customer edits without affecting vendors", async () => {
-    mockUserOverride("none")
+    mockUserOverride("customers", "none")
     expect(await canFeature(staff, "customers", "update")).toBe(false)
-    mockUserOverride(null)
+    mockUserOverride("vendors", null)
     expect(await canFeature(staff, "vendors", "update")).toBe(true)
   })
 
+  it("applies role, team, and personal overrides for the feature being checked", async () => {
+    mockOverrides({
+      role: [{ featureId: "vendors", accessLevel: "view" }],
+      team: [
+        { featureId: "vendors", accessLevel: "edit" },
+        { featureId: "customers", accessLevel: "none" },
+      ],
+      user: [{ featureId: "internal-directory", accessLevel: "none" }],
+    })
+    // Team grants can only raise a role level.
+    expect(await canFeature(staff, "vendors", "update")).toBe(true)
+    expect(await canFeature(staff, "customers", "read")).toBe(true)
+    // A personal staff choice may still deny.
+    expect(await canFeature(staff, "internal-directory", "read")).toBe(false)
+  })
+
   it("allows internal contacts to have a different staff edit grant", async () => {
-    mockUserOverride("edit")
+    mockUserOverride("internal-directory", "edit")
     expect(await canFeature(staff, "internal-directory", "update")).toBe(true)
   })
 
   it("does not carry a stored staff edit grant into an external role", async () => {
-    mockUserOverride("edit")
+    mockUserOverride("internal-directory", "edit")
     expect(await canFeature({ ...staff, role: "client" }, "internal-directory", "update")).toBe(false)
   })
 })

@@ -4,8 +4,10 @@ import * as React from "react"
 
 import {
   updateProjectSelectionStatus,
-  type ProjectSelectionStatus,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionStatus,
+} from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 
 const STATUS_OPTIONS: readonly {
@@ -23,12 +25,6 @@ const STATUS_OPTIONS: readonly {
   { value: "unavailable", label: "Unavailable" },
   { value: "deferred", label: "Deferred" },
 ]
-
-export function selectionStatusLabel(status: ProjectSelectionStatus): string {
-  return (
-    STATUS_OPTIONS.find((option) => option.value === status)?.label ?? "Needed"
-  )
-}
 
 export function ProjectSelectionStatusSelect({
   projectId,

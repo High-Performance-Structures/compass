@@ -1,7 +1,7 @@
 const SIGNATURE_HEADER = "x-compass-signature"
 const TIMESTAMP_HEADER = "x-compass-timestamp"
 const MAX_CLOCK_SKEW_SECONDS = 5 * 60
-export const MAX_JARVIS_BODY_BYTES = 64 * 1024
+const MAX_JARVIS_BODY_BYTES = 64 * 1024
 
 type VerificationResult =
   | { readonly success: true }

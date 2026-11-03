@@ -1,4 +1,4 @@
-export type OwnerArSourceSystem = "buildertrend" | "compass" | "manual" | "sage"
+type OwnerArSourceSystem = "buildertrend" | "compass" | "manual" | "sage"
 
 export type OwnerArSourceIdentity = {
   readonly organizationId: string
@@ -18,10 +18,6 @@ export type OwnerArNonCashCreditSettlement = {
   readonly cashReceipt: false
   readonly appliedAmountCents: number
 }
-
-export type OwnerArSettlement =
-  | OwnerArCashSettlementCents
-  | OwnerArNonCashCreditSettlement
 
 export type OwnerArValidationResult<T> =
   | { readonly ok: true; readonly value: T }

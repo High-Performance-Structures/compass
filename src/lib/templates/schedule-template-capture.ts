@@ -5,7 +5,7 @@ import type {
 } from "@/lib/schedule/types"
 import { parseISO } from "date-fns"
 
-export const SCHEDULE_TEMPLATE_CAPTURE_LIMIT = 500
+const SCHEDULE_TEMPLATE_CAPTURE_LIMIT = 500
 
 /** Template kind for schedules saved from a Compass project. */
 export const SAVED_SCHEDULE_TEMPLATE_KIND = "schedule"
@@ -57,7 +57,7 @@ export type CapturedScheduleTemplateDependency = {
   readonly lagDays: number
 }
 
-export type CapturedScheduleTemplate = {
+type CapturedScheduleTemplate = {
   readonly items: readonly CapturedScheduleTemplateItem[]
   readonly dependencies: readonly CapturedScheduleTemplateDependency[]
 }

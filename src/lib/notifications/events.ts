@@ -9,7 +9,7 @@ import {
   projects,
   users,
 } from "@/db/schema"
-import { channelMembers, channels } from "@/db/schema-conversations"
+import { channelMembers, channels, messages } from "@/db/schema-conversations"
 import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -19,15 +19,10 @@ import {
   type NotificationRecipientInput,
 } from "@/lib/notifications/create-event"
 import { channelMessageNotificationDelivery } from "@/lib/notifications/delivery"
-import {
-  channelNotificationRecipients,
-  type ChannelMessageMention,
-} from "@/lib/notifications/audience"
+import { channelNotificationRecipients, type ChannelMessageMention } from "@/lib/notifications/audience"
+import { shouldNotifyForMessage } from "@/lib/domain/conversations/imported"
 import { workflowRoleIdFromString } from "@/lib/project-workflow-roles"
-import {
-  portalPurchaseOrderVendorStatusLabel,
-  type PortalPurchaseOrderVendorStatus,
-} from "@/lib/purchase-orders/portal-response"
+import { portalPurchaseOrderVendorStatusLabel, type PortalPurchaseOrderVendorStatus } from "@/lib/purchase-orders/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export {
@@ -421,6 +416,11 @@ export async function notifyChannelMessage(
 ): Promise<void> {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  // Imported (e.g. Buildertrend) messages never notify; they were delivered at the source.
+  const source = await db
+    .select({ sourceSystem: messages.sourceSystem }).from(messages)
+    .where(eq(messages.id, input.messageId)).get()
+  if (source && !shouldNotifyForMessage(source)) return
   const members = await db
     .select({
       userId: channelMembers.userId,

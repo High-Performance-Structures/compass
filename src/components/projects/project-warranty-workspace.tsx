@@ -44,8 +44,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import {
   WARRANTY_CLAIM_PRIORITIES,
-  WARRANTY_CLAIM_STATUSES,
 } from "@/lib/warranty/status"
+import { WARRANTY_CLAIM_STATUSES } from "@/lib/domain/warranty/statuses"
 import { PageHeader } from "@/components/page-header"
 
 const CATEGORIES = [

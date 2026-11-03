@@ -1,7 +1,8 @@
 import {
+  index,
+  integer,
   sqliteTable,
   text,
-  integer,
 } from "drizzle-orm/sqlite-core"
 import { users } from "./schema"
 
@@ -35,7 +36,10 @@ export const pluginConfig = sqliteTable("plugin_config", {
     .notNull()
     .default(false),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("plugin_config_plugin_id_idx").on(table.pluginId),
+  ])
 
 // plugin lifecycle audit log
 export const pluginEvents = sqliteTable("plugin_events", {
@@ -47,7 +51,10 @@ export const pluginEvents = sqliteTable("plugin_events", {
   details: text("details"),
   userId: text("user_id").references(() => users.id),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("plugin_events_plugin_id_idx").on(table.pluginId),
+  ])
 
 export type Plugin = typeof plugins.$inferSelect
 export type NewPlugin = typeof plugins.$inferInsert

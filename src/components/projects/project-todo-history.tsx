@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { IconCircleCheck } from "@tabler/icons-react"
 
-import type { ProjectTodoDetail } from "@/app/actions/project-operations"
+import type { ProjectTodoDetail } from "@/lib/domain/operations/types"
 import { Button } from "@/components/ui/button"
 import type { ProjectTodoHistoryItem } from "@/lib/daily-logs/log-followups-server"
 import { projectTodoStatusLabel } from "@/lib/project-todos"

@@ -17,7 +17,7 @@ export type ProjectDocumentStatus =
   | "superseded"
   | "archived"
 
-export type ProjectDocumentMetadata = {
+type ProjectDocumentMetadata = {
   readonly category: ProjectDocumentCategory
   readonly title: string
   readonly description: string | null

@@ -2,11 +2,8 @@
 
 import * as React from "react"
 import { IconPlus, IconTrash } from "@tabler/icons-react"
-import type {
-  VendorCompanyMutationInput,
-  VendorDirectoryCompany,
-  VendorContactItem,
-} from "@/app/actions/vendors"
+import type { VendorCompanyMutationInput } from "@/app/actions/vendors"
+import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -291,7 +288,12 @@ export function VendorDialog({
                         onCheckedChange={(checked) => setSelectedPeopleIds((current) =>
                           checked === true ? [...current, contact.id ?? ""] : current.filter((id) => id !== contact.id))}
                       /> : null}
-                      <p className="text-sm font-medium">Contact {index + 1}</p>
+                      <p className="text-sm font-medium">
+                        Contact {index + 1}
+                        {sageLinked && contact.id && !initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) ? (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">Compass only, not in Sage</span>
+                        ) : null}
+                      </p>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"

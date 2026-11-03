@@ -82,7 +82,7 @@ export function transformToFrappeTasks(
   })
 }
 
-export interface PhaseGroup {
+interface PhaseGroup {
   phase: string
   label: string
   tasks: ScheduleTaskData[]
@@ -103,7 +103,7 @@ export type DisplayItem =
  */
 export type GanttGrouping = (task: ScheduleTaskData) => { readonly key: string; readonly label: string }
 
-export function groupTasksByPhase(
+function groupTasksByPhase(
   tasks: ScheduleTaskData[],
   grouping?: GanttGrouping
 ): PhaseGroup[] {

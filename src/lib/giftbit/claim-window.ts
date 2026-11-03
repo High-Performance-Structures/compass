@@ -3,7 +3,7 @@ const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1_000
 // Giftbit permits promotional claim periods up to one year and treats the
 // date as valid through the end of the Pacific day. This two-day offset leaves
 // a full-day safety margin for timezone, inclusive-day, and leap-year edges.
-export const GIFTBIT_CLAIM_WINDOW_DAYS = 363
+const GIFTBIT_CLAIM_WINDOW_DAYS = 363
 
 export function giftbitClaimExpiryDate(releasedAt: string): string {
   const released = new Date(releasedAt)

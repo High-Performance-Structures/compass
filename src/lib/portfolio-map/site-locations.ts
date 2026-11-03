@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
+import { updateProjects } from "@/lib/domain/project/store"
 import { fetchElevationFeet, geocodeProjectAddress, type GeocodeResult } from "@/lib/geo/site-lookup"
 
 /** Few per dashboard load: the public geocoders ask for light, sequential use. */
@@ -12,7 +13,7 @@ const ATTEMPT_COOLDOWN_MS = 10 * 60 * 1000
 // Background work after a response gets about 30 seconds. Start no new
 // lookup after LOOKUP_START_BUDGET_MS, and stop waiting at LOOKUP_DEADLINE_MS.
 export const LOOKUP_START_BUDGET_MS = 15_000
-export const LOOKUP_DEADLINE_MS = 25_000
+const LOOKUP_DEADLINE_MS = 25_000
 
 export type SiteLocationRow = {
   readonly id: string
@@ -73,7 +74,7 @@ function timeout(ms: number): Promise<{ readonly status: "timeout" }> {
   return new Promise((resolve) => setTimeout(() => resolve({ status: "timeout" }), Math.max(0, ms)))
 }
 
-export type SiteLocationWrite = {
+type SiteLocationWrite = {
   readonly siteLocationAddress?: string
   readonly siteLocationStatus?: "found" | "not_found" | null
   readonly siteLatitude?: number | null
@@ -88,10 +89,7 @@ export type SiteLocationWriter = (projectId: string, values: SiteLocationWrite) 
 /** Saves site lookups on the organization's projects. */
 export function siteLocationWriter(db: ReturnType<typeof getDb>, organizationId: string): SiteLocationWriter {
   return async (projectId, values) => {
-    await db
-      .update(projects)
-      .set(values)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    await updateProjects(db, and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)), values)
   }
 }
 

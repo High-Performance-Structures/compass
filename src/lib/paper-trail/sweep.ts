@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm"
 import type { getDb } from "@/db"
 import type { PaperTrailRecordType } from "@/db/schema-paper-trail"
+import { queueChangedRecordDriveFiles, queueMilestoneRecordDriveSnapshots } from "@/lib/domain/documents/store"
 import type { PaperTrailSettings } from "@/lib/feature-settings/registry"
 import { PAPER_TRAIL_RECORDS } from "@/lib/paper-trail/record-types"
 
@@ -86,36 +87,18 @@ export async function sweepPaperTrailChanges(
   const scope = projectScope(organizationId, settings)
   if (!scope) return
   const stamp = now.toISOString()
+  // One set-based statement per record type (five fixed types), not per record.
   for (const recordType of Object.keys(CHANGED_RECORDS) as PaperTrailRecordType[]) {
     if (!settings[PAPER_TRAIL_RECORDS[recordType].setting]) continue
-    await db.run(sql`
-      INSERT INTO project_record_drive_files
-        (id, organization_id, project_id, record_type, record_id, status, due_at, changed_at, source_changed_at, attempts, created_at, updated_at)
-      SELECT lower(hex(randomblob(16))), p.organization_id, x.project_id, ${recordType}, x.id, 'pending', ${stamp}, x.changed, x.changed, 0, ${stamp}, ${stamp}
-      FROM (${CHANGED_RECORDS[recordType]}) x
-      JOIN projects p ON p.id = x.project_id
-      LEFT JOIN project_record_drive_files f ON f.record_type = ${recordType} AND f.record_id = x.id
-      WHERE ${scope}
-        AND (f.id IS NULL OR (f.status NOT IN ('removed', 'needs_choice', 'kept_existing') AND x.changed > coalesce(f.source_changed_at, '')))
-      ON CONFLICT (record_type, record_id) DO UPDATE SET
-        status = 'pending',
-        due_at = excluded.due_at,
-        changed_at = max(project_record_drive_files.changed_at, excluded.changed_at),
-        source_changed_at = excluded.source_changed_at,
-        attempts = 0,
-        last_error = NULL,
-        updated_at = excluded.updated_at
-    `)
+    await queueChangedRecordDriveFiles(db, { recordType, changedRows: CHANGED_RECORDS[recordType], projectScope: scope, stamp })
     const milestone = MILESTONES[recordType]
     if (!settings.milestoneCopies || !milestone) continue
-    await db.run(sql`
-      INSERT INTO project_record_drive_snapshots
-        (id, organization_id, project_id, record_type, record_id, milestone, milestone_at, status, requested_at, attempts)
-      SELECT lower(hex(randomblob(16))), p.organization_id, m.project_id, ${recordType}, m.id, ${milestone.milestone}, m.at, 'pending', ${stamp}, 0
-      FROM (${milestone.rows}) m
-      JOIN projects p ON p.id = m.project_id
-      WHERE ${scope}
-      ON CONFLICT DO NOTHING
-    `)
+    await queueMilestoneRecordDriveSnapshots(db, {
+      recordType,
+      milestone: milestone.milestone,
+      milestoneRows: milestone.rows,
+      projectScope: scope,
+      stamp,
+    })
   }
 }

@@ -1,17 +1,18 @@
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm"
-import { alias } from "drizzle-orm/sqlite-core"
+import { and, eq, inArray, lt, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import {
-  notificationEvents,
-  notificationPreferences,
-  notificationRecipients,
-  users,
-} from "@/db/schema"
+import { notificationPreferences, users } from "@/db/schema"
 import { feedbackServiceHealth } from "@/db/schema-jarvis"
+import { unrecoveredNotificationEvents } from "@/lib/domain/notifications/queries"
+import {
+  dismissEventRecipientsStatement,
+  notificationEventInsertStatement,
+  notificationRecipientInsertStatement,
+} from "@/lib/domain/notifications/store"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
+import { insertFeedbackServiceHealth } from "@/lib/domain/feedback/store"
 
 export const squareAuthObservationSchema = z
   .object({
@@ -40,9 +41,7 @@ export async function recordSquareAuthObservation(
   const db = getDb(env.DB)
   const healthy = observation.state === "healthy"
   const now = observation.checkedAt
-  await db
-    .insert(feedbackServiceHealth)
-    .values({
+  await insertFeedbackServiceHealth(db, {
       serviceName: service,
       organizationId,
       status: healthy ? "healthy" : "failed",
@@ -175,9 +174,7 @@ export async function notifySquareAuthHealth(
   const db = getDb(env.DB)
   // Establish a five-minute commissioning window even if secret injection fails
   // before the private monitor can send its very first report.
-  await db
-    .insert(feedbackServiceHealth)
-    .values({
+  await insertFeedbackServiceHealth(db, {
       serviceName: "square-invoice-auth",
       organizationId,
       status: "starting",
@@ -223,28 +220,14 @@ export async function notifySquareAuthHealth(
       heartbeatAge <= MAX_AGE_MS
     if (fresh && heartbeat.status === "starting") continue
     if (fresh && heartbeat.status === "healthy") {
-      const recovery = alias(notificationEvents, "recovery")
-      const failures = await db
-        .select({
-          id: notificationEvents.id,
-          sourceId: notificationEvents.sourceId,
-        })
-        .from(notificationEvents)
-        .leftJoin(
-          recovery,
-          eq(recovery.id, sql`${notificationEvents.id} || ':recovered'`)
-        )
-        .where(
-          and(
-            eq(notificationEvents.organizationId, organizationId),
-            eq(notificationEvents.sourceType, SOURCE_TYPE),
-            eq(notificationEvents.eventType, "square_auth.failed"),
-            sql`${notificationEvents.sourceId} LIKE ${heartbeat.serviceName + ":%"}`,
-            lt(notificationEvents.createdAt, heartbeat.lastSuccessAt ?? ""),
-            isNull(recovery.id)
-          )
-        )
-        .limit(50)
+      const failures = await unrecoveredNotificationEvents(db, {
+        organizationId,
+        sourceType: SOURCE_TYPE,
+        eventType: "square_auth.failed",
+        sourceIdPrefix: heartbeat.serviceName + ":",
+        createdBefore: heartbeat.lastSuccessAt ?? "",
+        limit: 50,
+      })
       for (const failure of failures) {
         await persistAlert(
           failure.id + ":recovered",
@@ -281,9 +264,9 @@ export async function notifySquareAuthHealth(
     // Event and recipients commit atomically with deterministic IDs. Retries,
     // overlapping cron/report requests, and partial failures cannot spam alerts.
     await db.batch([
-      db
-        .insert(notificationEvents)
-        .values({
+      notificationEventInsertStatement(
+        db,
+        {
           id,
           organizationId,
           projectId: null,
@@ -297,32 +280,24 @@ export async function notifySquareAuthHealth(
           audience: "internal",
           createdBy: null,
           createdAt: timestamp,
-        })
-        .onConflictDoNothing(),
+        },
+        { ignoreConflict: true }
+      ),
       ...recipients.map((recipient) =>
-        db
-          .insert(notificationRecipients)
-          .values({
+        notificationRecipientInsertStatement(
+          db,
+          {
             id: `${id}:${recipient.userId}`,
             eventId: id,
             userId: recipient.userId,
             inApp: true,
             createdAt: timestamp,
-          })
-          .onConflictDoNothing()
+          },
+          { ignoreConflict: true }
+        )
       ),
       ...(resolvedEventId
-        ? [
-            db
-              .update(notificationRecipients)
-              .set({ dismissedAt: timestamp })
-              .where(
-                and(
-                  eq(notificationRecipients.eventId, resolvedEventId),
-                  isNull(notificationRecipients.dismissedAt)
-                )
-              ),
-          ]
+        ? [dismissEventRecipientsStatement(db, resolvedEventId, timestamp)]
         : []),
     ])
   }

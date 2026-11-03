@@ -1,5 +1,5 @@
-export const SCHEDULE_SHIFT_REASON_MIN_LENGTH = 3
-export const SCHEDULE_SHIFT_REASON_MAX_LENGTH = 500
+const SCHEDULE_SHIFT_REASON_MIN_LENGTH = 3
+const SCHEDULE_SHIFT_REASON_MAX_LENGTH = 500
 
 type ScheduleDateUpdate = {
   readonly startDate: string

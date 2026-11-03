@@ -3,12 +3,8 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import {
-  projectProfileAuditEvents,
-  projectTravelChargeOverrides,
-  projects,
-  travelChargeSettings,
-} from "@/db/schema"
+import { projectTravelChargeOverrides, projects, travelChargeSettings } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -185,8 +181,7 @@ export async function saveProjectTravelOverride(projectId: string, input: unknow
     }
     const before = toOverride(await loadOverride(db, projectId, organizationId))
     const now = new Date().toISOString()
-    const audit = db.insert(projectProfileAuditEvents).values({
-      id: crypto.randomUUID(),
+    const audit = recordProjectAudit(db, {
       organizationId,
       projectId,
       actorUserId: user.id,

@@ -2,7 +2,7 @@ import type {
   ProjectContactDirectoryOption,
   ProjectContactItem,
   ProjectContactType,
-} from "@/app/actions/project-contacts"
+} from "@/lib/domain/contacts/types"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectContactDisplayGroupId = "owners" | "vendors" | "internal"

@@ -1,30 +1,9 @@
 import "server-only"
 
 import type { DataSource } from "agent-core"
-import { POST as dashboardsPOST } from "@/app/api/compass/dashboards/route"
-import { POST as feedbackPOST } from "@/app/api/compass/feedback/route"
-import { POST as githubPOST } from "@/app/api/compass/github/route"
-import { POST as memoryPOST } from "@/app/api/compass/memory/route"
-import { POST as messagesPOST } from "@/app/api/compass/messages/route"
-import { POST as queryPOST } from "@/app/api/compass/query/route"
-import { POST as schedulePOST } from "@/app/api/compass/schedule/route"
-import { POST as skillsPOST } from "@/app/api/compass/skills/route"
-import { POST as themesPOST } from "@/app/api/compass/themes/route"
 
-type RouteHandler = (request: Request) => Promise<Response>
-
-/** Agent tool API paths and the route handlers that serve them. */
-export const AGENT_TOOL_ROUTES: ReadonlyMap<string, RouteHandler> = new Map([
-  ["/api/compass/dashboards", dashboardsPOST],
-  ["/api/compass/feedback", feedbackPOST],
-  ["/api/compass/github", githubPOST],
-  ["/api/compass/memory", memoryPOST],
-  ["/api/compass/messages", messagesPOST],
-  ["/api/compass/query", queryPOST],
-  ["/api/compass/schedule", schedulePOST],
-  ["/api/compass/skills", skillsPOST],
-  ["/api/compass/themes", themesPOST],
-])
+/** A Compass API route handler the agent can call in-process. */
+export type AgentRouteHandler = (request: Request) => Promise<Response>
 
 function errorText(value: unknown, status: number): string {
   if (typeof value === "object" && value !== null && "error" in value) {
@@ -39,13 +18,15 @@ function errorText(value: unknown, status: number): string {
  * request instead of over HTTP. A network call back to Compass's own domain
  * carries no session cookie, so the auth middleware redirects it to /login,
  * and a Worker calling its own hostname is unreliable on Cloudflare. Each
- * handler still validates the agent token and the user's permissions.
+ * handler still validates the agent token and the user's permissions. The
+ * route map (src/app/api/compass/agent-tool-routes.ts) is passed in so this
+ * module does not depend on the app layer.
  */
 export async function callAgentRoute(
   token: string,
   path: string,
   body: unknown,
-  routes: ReadonlyMap<string, RouteHandler> = AGENT_TOOL_ROUTES,
+  routes: ReadonlyMap<string, AgentRouteHandler>,
 ): Promise<unknown> {
   const handler = routes.get(path)
   if (!handler) {
@@ -80,11 +61,11 @@ export type ToolCallInterceptor = (
 export function createInProcessDataSource(
   token: string,
   options: {
-    readonly routes?: ReadonlyMap<string, RouteHandler>
+    readonly routes: ReadonlyMap<string, AgentRouteHandler>
     readonly intercept?: ToolCallInterceptor
-  } = {},
+  },
 ): DataSource {
-  const routes = options.routes ?? AGENT_TOOL_ROUTES
+  const routes = options.routes
   return {
     async fetch(path: string, body?: unknown): Promise<unknown> {
       const intercepted = options.intercept

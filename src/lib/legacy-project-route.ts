@@ -74,7 +74,7 @@ export type LegacyProjectDeepLink = {
   readonly originalSearch: string | undefined
 }
 
-export function legacyProjectRouteFromPathname(
+function legacyProjectRouteFromPathname(
   pathname: string,
 ): LegacyProjectRoute | null {
   const match = pathname.match(

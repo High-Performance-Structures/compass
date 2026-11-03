@@ -5,14 +5,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("server-only", () => ({}))
-vi.mock("@/app/api/compass/query/route", () => ({ POST: mocks.queryPOST }))
-vi.mock("@/app/api/compass/dashboards/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/github/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/memory/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/messages/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/schedule/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/skills/route", () => ({ POST: vi.fn() }))
-vi.mock("@/app/api/compass/themes/route", () => ({ POST: vi.fn() }))
+
+const routes = new Map([["/api/compass/query", mocks.queryPOST]])
 
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
 
@@ -20,7 +14,7 @@ describe("createInProcessDataSource", () => {
   it("calls the route handler directly with the agent token and body", async () => {
     mocks.queryPOST.mockResolvedValueOnce(Response.json({ data: [], count: 0 }))
 
-    const result = await createInProcessDataSource("agent-token").fetch(
+    const result = await createInProcessDataSource("agent-token", { routes }).fetch(
       "/api/compass/query",
       { queryType: "daily_logs" },
     )
@@ -38,13 +32,13 @@ describe("createInProcessDataSource", () => {
     )
 
     await expect(
-      createInProcessDataSource("agent-token").fetch("/api/compass/query", {}),
+      createInProcessDataSource("agent-token", { routes }).fetch("/api/compass/query", {}),
     ).rejects.toThrow("Compass search is unavailable for this account")
   })
 
   it("rejects a path with no handler", async () => {
     await expect(
-      createInProcessDataSource("agent-token").fetch("/api/compass/nope", {}),
+      createInProcessDataSource("agent-token", { routes }).fetch("/api/compass/nope", {}),
     ).rejects.toThrow("No Compass API handler for /api/compass/nope")
   })
 })

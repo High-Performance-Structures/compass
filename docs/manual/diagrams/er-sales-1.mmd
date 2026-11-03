@@ -1,0 +1,44 @@
+erDiagram
+  direction LR
+  sales_catalog_prices {
+    key id
+    ref catalog_version_id
+    ref product_id
+  }
+  sales_catalog_versions {
+    key id
+  }
+  sales_order_items {
+    key id
+    ref workflow_id
+    ref product_id
+    ref catalog_version_id
+  }
+  sales_order_workflows {
+    key id
+    ref estimate_id
+    ref catalog_version_id
+    ref airlite_purchase_order_operation_id
+  }
+  sales_products {
+    key id
+    ref sage_cost_code_id
+  }
+  project_estimates {
+    key id
+  }
+  project_operations {
+    key id
+  }
+  sage_cost_codes {
+    key id
+  }
+  project_estimates |o--o{ sales_order_workflows : ""
+  project_operations |o--o{ sales_order_workflows : ""
+  sage_cost_codes |o--o{ sales_products : ""
+  sales_catalog_versions |o--o{ sales_order_workflows : ""
+  sales_catalog_versions ||--o{ sales_catalog_prices : ""
+  sales_catalog_versions ||--o{ sales_order_items : ""
+  sales_order_workflows ||--o{ sales_order_items : ""
+  sales_products ||--o{ sales_catalog_prices : ""
+  sales_products ||--o{ sales_order_items : ""

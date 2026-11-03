@@ -3,7 +3,8 @@ import "server-only"
 import { and, eq, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { emailReplyThreads, projectContacts, projectInteractions, projectOperations, projectRfis } from "@/db/schema"
+import { emailReplyThreads, projectContacts, projectOperations, projectRfis } from "@/db/schema"
+import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
 import {
@@ -70,27 +71,24 @@ async function recordClientReply(input: {
       .get()
     if (!contact) return
     const sender = input.candidate.fromName?.trim() || input.candidate.fromAddress
-    await input.db
-      .insert(projectInteractions)
-      .values({
-        id: `project-interaction-reply-${input.candidate.gmailMessageId}`,
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        projectContactId: contact.id,
-        interactionType: "email",
-        direction: "inbound",
-        source: "email",
-        qualifiesForClientTouch: true,
-        summary: `Reply to ${input.label} from ${sender}${input.preview ? `: ${input.preview}` : ""}`.slice(0, 1000),
-        occurredAt: input.candidate.receivedAt,
-        createdBy: null,
-        updatedBy: null,
-        deletedBy: null,
-        createdAt: input.candidate.receivedAt,
-        updatedAt: input.candidate.receivedAt,
-        deletedAt: null,
-      })
-      .onConflictDoNothing()
+    await insertProjectInteractionIfAbsent(input.db, {
+      id: `project-interaction-reply-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      projectContactId: contact.id,
+      interactionType: "email",
+      direction: "inbound",
+      source: "email",
+      qualifiesForClientTouch: true,
+      summary: `Reply to ${input.label} from ${sender}${input.preview ? `: ${input.preview}` : ""}`.slice(0, 1000),
+      occurredAt: input.candidate.receivedAt,
+      createdBy: null,
+      updatedBy: null,
+      deletedBy: null,
+      createdAt: input.candidate.receivedAt,
+      updatedAt: input.candidate.receivedAt,
+      deletedAt: null,
+    })
     await clearOverdueFollowUpReminders(input.db, [input.projectId])
   } catch (error) {
     console.error("[tracked-record-replies] client reply log failed", error)

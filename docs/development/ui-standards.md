@@ -112,6 +112,85 @@ Field Mode, even when the two surfaces share components, queries, or settings.
 - Lists without pagination still need a deliberate empty state and should not
   silently render an unbounded dataset when the collection can grow.
 
+### Record lists (owner-approved standard)
+
+Every collection of records that grows over time uses one consistent table
+layout. This covers to-dos, RFQs, RFIs, POs, pay requests, payments, change
+orders, logs, documents and the like, and applies across all of Compass, not
+just the first lists migrated. The owner approved this design on 2026-10-31.
+
+- **Layout.** Use a flat table built on the shared table foundation. Don't
+  hand-build a card or article list per record type.
+- **Columns.** Pick the columns that fit the record:
+  - name or reference number;
+  - short description;
+  - status;
+  - responsible people;
+  - the dates that matter (due, sent, received, created);
+  - author or creator;
+  - money columns when the record carries an amount.
+  Money and date columns are right-aligned or tabular as appropriate.
+- **Sorting.** Every data column header sorts, as described above. Dates and
+  amounts sort by their typed value, never by their display text.
+- **Search.** There is a search box over the visible text columns, and
+  searching resets the list to page 1.
+- **Navigation.** The record's name or reference links to its detail view.
+  Record-specific workflows (approve, send, sign, post) stay on the detail
+  view or in the row's actions.
+- **Selection.** A checkbox column appears only where a bulk action exists,
+  such as deleting to-dos. A bulk bar shows the count selected and the
+  available actions.
+- **Actions and safety.** Show only the actions the viewer's permissions
+  allow.
+  - A destructive action asks for confirmation and offers undo or recovery
+    where the record type allows it, following "Mutations and destructive
+    actions".
+  - Financial or legally significant records (payments, posted pay requests,
+    signed contracts) are never freely deletable from a list. They follow
+    their own void or reversal rules.
+- **Paging.** Page sizes are 25, 50 and 100, using `DataTablePagination`.
+  A list that can reach hundreds of records (contacts, vendors, clients)
+  is paged on the server with `useServerRecordTable`: the server searches,
+  sorts and pages in one query per page, and the browser holds only the
+  visible rows. Secondary data (such as trade doc standing or a company's
+  people) is read for the visible rows, or when a record is opened.
+- **Responsive and theme.** On mobile the table scrolls horizontally inside
+  its own container, never the page. It must read well in light and dark
+  themes using theme tokens only.
+- **Writes.** Bulk actions call the owning domain store, following
+  docs/development/architecture-standards.md, never a table write from the
+  component or action.
+- **Exceptions.** Lists whose order carries meaning keep their order on
+  purpose. Examples are estimate and document line items, ranked queues and
+  hand-arranged lists.
+
+### Imported-record source tag (owner-approved standard)
+
+Records imported from another system look like native Compass records. The
+only sign of where they came from is a small source tag. The owner approved
+this on 2026-11-01.
+
+- **Tag.** Render `<SourceTag source="buildertrend" />` from
+  `src/components/shared/source-tag.tsx`. It shows a muted inline `[BT]` with
+  no badge chrome. "Imported from Buildertrend" appears only in its tooltip
+  and screen-reader label.
+- **No long labels.** Don't write "Imported from Buildertrend", "From
+  Buildertrend", "Initiator: Not verified from Buildertrend", "Purpose: Not
+  classified" or similar sentences on record displays. This covers to-dos,
+  change orders, daily logs, photos, documents, schedules, estimates,
+  financial records and messages.
+- **Extra facts.** If staff genuinely need extra provenance facts, pass them
+  as the tag's `detail` (tooltip only), or put them on a detail view. They
+  are never inline. Plain-text output such as print uses
+  `recordSourceTag()` from `src/lib/record-source.ts`, which gives `[BT]`.
+- **New sources.** Add a source by adding one entry (key, short code, name)
+  to `src/lib/record-source.ts`. Don't hard-code company or product names in
+  components.
+- **Not covered.** Feature names, settings sections, import tools and their
+  instructions, such as "Buildertrend Archive delivery" or "Export the
+  estimate from Buildertrend…", are features, not record labels.
+  `source-tag-standard.test.ts` enforces this rule with a reasoned allowlist.
+
 ## Layout and visual language
 
 - Use shadcn/ui with the New York style and the shared UI primitives.

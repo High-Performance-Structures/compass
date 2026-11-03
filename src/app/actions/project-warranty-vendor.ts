@@ -17,6 +17,8 @@ import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { VENDOR_WARRANTY_STATUSES, type VendorWarrantyStatus } from "@/lib/warranty/status"
+import { vendorClaimTimestamps, warrantyActorName } from "@/lib/domain/warranty/rules"
+import { insertWarrantyClaimEvent, updateWarrantyClaim } from "@/lib/domain/warranty/store"
 
 /** What a sub/vendor sees of a claim assigned to them: the owner-visible fields only. */
 export type VendorWarrantyClaim = {
@@ -227,26 +229,21 @@ export async function updateVendorWarrantyClaim(
 
     const now = new Date().toISOString()
     const nextStatus: VendorWarrantyStatus = status
-    await context.db
-      .update(projectWarrantyClaims)
-      .set({
-        status: nextStatus,
-        scheduledFor,
-        acknowledgedAt: existing.acknowledgedAt ?? now,
-        workStartedAt: nextStatus === "in_progress" || nextStatus === "resolved" ? existing.workStartedAt ?? now : existing.workStartedAt,
-        resolvedAt: nextStatus === "resolved" ? existing.resolvedAt ?? now : null,
-        resolutionSummary: note ?? existing.resolutionSummary,
-        updatedAt: now,
-      })
-      .where(and(eq(projectWarrantyClaims.id, claimId), eq(projectWarrantyClaims.projectId, projectId)))
+    await updateWarrantyClaim(context.db, { claimId, projectId }, {
+      status: nextStatus,
+      scheduledFor,
+      ...vendorClaimTimestamps(nextStatus, existing, now),
+      resolutionSummary: note ?? existing.resolutionSummary,
+      updatedAt: now,
+    })
     const statusChanged = existing.status !== nextStatus
-    await context.db.insert(projectWarrantyClaimEvents).values({
+    await insertWarrantyClaimEvent(context.db, {
       id: crypto.randomUUID(),
       organizationId: context.organizationId,
       projectId,
       claimId,
       actorUserId: context.user.id,
-      actorName: context.user.displayName?.trim() || context.user.email,
+      actorName: warrantyActorName(context.user),
       actorRole: context.user.role,
       eventType: statusChanged ? "status_changed" : "vendor_update",
       fromStatus: existing.status,

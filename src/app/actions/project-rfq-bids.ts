@@ -3,7 +3,6 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import {
   projectEstimateLineCostItems,
@@ -13,21 +12,28 @@ import {
 import { planBidFill } from "@/lib/estimates/bid-fill"
 import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 import {
+  insertEstimateLineFromSelectStatement,
+  updateEstimateLinesStatement,
+  updateEstimatesStatement,
+} from "@/lib/domain/estimates/store"
+import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
   projectRfqBidApprovals,
 } from "@/db/schema-rfqs"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
+import { orgContext, type Db } from "@/lib/server/action-context"
+import {
+  operationUpdateQuery,
+  rfqBidApprovalFromSelectStatement,
+  rfqBidImportFromSelectStatement,
+  rfqBidImportLineFromSelectStatement,
+} from "@/lib/domain/operations/store"
 import {
   estimateCanBeEdited,
   isEstimateStatus,
 } from "@/lib/financials/estimate-ledger"
-import { requireOrg } from "@/lib/org-scope"
-import {
-  canFeature,
-  requireFeaturePermission,
-} from "@/lib/permission-enforcement"
+import { canFeature } from "@/lib/permission-enforcement"
 import { can, requirePermission } from "@/lib/permissions"
 import {
   approvedRfqResponseSnapshot,
@@ -38,10 +44,8 @@ import {
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
-type CompassDb = ReturnType<typeof getDb>
-
 type RfqBidAccess = {
-  readonly db: CompassDb
+  readonly db: Db
   readonly user: AuthUser
 }
 
@@ -82,11 +86,11 @@ async function rfqBidAccess(
   projectId: string,
   action: "read" | "approve"
 ): Promise<RfqBidAccess> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "rfqs", action)
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  // No demo refusal before, so not a "mutation" context; the project check
+  // keeps its own "Project not found." message.
+  const context = await orgContext({ feature: "rfqs", action })
+  if (!context.success) throw new Error(context.error)
+  const { db, user, organizationId } = context.data
   const project = await db
     .select({ id: projects.id })
     .from(projects)
@@ -270,7 +274,8 @@ export async function approveProjectRfqBid(
     const note = approvalNote?.trim() || null
     const amountCents = currencyAmountToCents(response.amount)
     const responseSnapshotJson = approvedRfqResponseSnapshot(response)
-    const approvalInsert = access.db.insert(projectRfqBidApprovals).select(
+    const approvalInsert = rfqBidApprovalFromSelectStatement(
+      access.db,
       sql`SELECT
         ${id}, ${projectId}, ${rfqOperationId}, ${amountCents},
         ${responseSnapshotJson}, ${response.responderName},
@@ -289,21 +294,20 @@ export async function approveProjectRfqBid(
     )
     await access.db.batch([
       approvalInsert,
-      access.db
-        .update(projectOperations)
-        .set({ status: "awarded", updatedAt: now })
-        .where(
-          and(
-            eq(projectOperations.id, rfqOperationId),
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.status, "response_received"),
-            eq(projectOperations.updatedAt, rfq.updatedAt),
-            sql`EXISTS (
-              SELECT 1 FROM ${projectRfqBidApprovals}
-              WHERE ${projectRfqBidApprovals.id} = ${id}
-            )`
-          )
+      operationUpdateQuery(
+        access.db,
+        and(
+          eq(projectOperations.id, rfqOperationId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.status, "response_received"),
+          eq(projectOperations.updatedAt, rfq.updatedAt),
+          sql`EXISTS (
+            SELECT 1 FROM ${projectRfqBidApprovals}
+            WHERE ${projectRfqBidApprovals.id} = ${id}
+          )`
         ),
+        { status: "awarded", updatedAt: now }
+      ),
     ])
     const completedApproval = await access.db
       .select({
@@ -577,9 +581,8 @@ export async function importApprovedProjectRfqBid(
         error: "Approved bid line prices no longer match the approved total.",
       }
     }
-    const importInsert = access.db
-      .insert(projectEstimateRfqBidImports)
-      .select(
+    const importInsert = rfqBidImportFromSelectStatement(
+        access.db,
         sql`SELECT
           ${importId}, ${projectId}, ${approvalId}, ${estimateId},
           ${importedAmountCents}, ${access.user.id}, ${actorName(access.user)},
@@ -594,7 +597,7 @@ export async function importApprovedProjectRfqBid(
           )`
       )
     const estimateLineInserts = lineValues.map((line) =>
-      access.db.insert(projectEstimateLines).select(
+      insertEstimateLineFromSelectStatement(access.db,
         sql`SELECT
           ${line.estimateLine.id}, ${line.estimateLine.projectId},
           ${line.estimateLine.estimateId}, NULL, NULL, NULL,
@@ -619,20 +622,22 @@ export async function importApprovedProjectRfqBid(
     )`
     // Only a line still at $0 is filled, so a price typed in meanwhile wins.
     const lineFillUpdates = lineFills.map((fill) =>
-      access.db
-        .update(projectEstimateLines)
-        .set({
+      updateEstimateLinesStatement(
+        access.db,
+        and(eq(projectEstimateLines.id, fill.target.id), eq(projectEstimateLines.lineTotalCents, 0), importGuard),
+        {
           quantity: 1,
           unit: "LS",
           unitCostCents: fill.amountCents,
           ...fill.calculation,
           specifications: fill.specifications || null,
           updatedAt: now,
-        })
-        .where(and(eq(projectEstimateLines.id, fill.target.id), eq(projectEstimateLines.lineTotalCents, 0), importGuard))
+        }
+      )
     )
     const provenanceInserts = [...lineValues, ...lineFills].map((line) =>
-      access.db.insert(projectEstimateRfqBidImportLines).select(
+      rfqBidImportLineFromSelectStatement(
+        access.db,
         sql`SELECT
           ${line.provenance.id}, ${importId}, ${line.provenance.estimateLineId},
           ${line.provenance.rfqLineNumber},
@@ -689,9 +694,17 @@ export async function importApprovedProjectRfqBid(
       ...estimateLineInserts,
       ...lineFillUpdates,
       ...provenanceInserts,
-      access.db
-        .update(projectEstimates)
-        .set({
+      updateEstimatesStatement(
+        access.db,
+        and(
+          eq(projectEstimates.id, estimateId),
+          inArray(projectEstimates.status, ["draft", "internal_review"]),
+          sql`EXISTS (
+            SELECT 1 FROM ${projectEstimateRfqBidImports}
+            WHERE ${projectEstimateRfqBidImports.id} = ${importId}
+          )`
+        ),
+        {
           directCostCents: directCostTotal,
           markupCents: markupTotal,
           taxCents: taxTotal,
@@ -702,17 +715,8 @@ export async function importApprovedProjectRfqBid(
           builderFeeCents: sql`${overheadTotal} + ${marginTotal} + ${contingencyTotal}`,
           estimateTotalCents: sql`${lineTotal} + ${overheadTotal} + ${marginTotal} + ${contingencyTotal}`,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectEstimates.id, estimateId),
-            inArray(projectEstimates.status, ["draft", "internal_review"]),
-            sql`EXISTS (
-              SELECT 1 FROM ${projectEstimateRfqBidImports}
-              WHERE ${projectEstimateRfqBidImports.id} = ${importId}
-            )`
-          )
-        ),
+        }
+      ),
     ])
     const completedImport = await access.db
       .select({ id: projectEstimateRfqBidImports.id })

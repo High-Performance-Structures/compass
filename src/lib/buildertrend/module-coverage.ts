@@ -18,7 +18,7 @@ export type BuildertrendModuleKey =
   | "change_orders"
   | "warranty_claims"
 
-export type BuildertrendCoverageStatus =
+type BuildertrendCoverageStatus =
   | "verified_captured"
   | "verified_empty"
   | "stale"
@@ -89,7 +89,7 @@ export type BuildertrendModuleCoverageRow = {
   readonly completionPercent: number
 }
 
-export const BUILDERTREND_LIVE_FRESHNESS_DAYS = 7
+const BUILDERTREND_LIVE_FRESHNESS_DAYS = 7
 
 function projectEvidenceCanRemainStable(status: string): boolean {
   return status === "ARCHIVE" || status === "COMPLETE" || status === "INACTIVE"

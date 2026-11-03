@@ -1,10 +1,11 @@
 "use server"
 
-import { and, eq, lt, sql } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 
-import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { takeTradeDocLinkUpload, updateTradeDocLink } from "@/lib/domain/documents/store"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
@@ -42,12 +43,7 @@ async function requestOrigin(): Promise<string | undefined> {
 
 /** Counts one more upload against the link's limit; false once it's used up. */
 async function takeUpload(link: TradeDocLinkContext): Promise<boolean> {
-  const taken = await link.db
-    .update(vendorTradeDocLinks)
-    .set({ uploadCount: sql`${vendorTradeDocLinks.uploadCount} + 1` })
-    .where(and(eq(vendorTradeDocLinks.id, link.link.id), lt(vendorTradeDocLinks.uploadCount, TRADE_DOC_LINK_UPLOAD_LIMIT)))
-    .returning({ id: vendorTradeDocLinks.id })
-  return taken.length > 0
+  return takeTradeDocLinkUpload(link.db, link.link.id, TRADE_DOC_LINK_UPLOAD_LIMIT)
 }
 
 function linkActor(link: TradeDocLinkContext, name: string | null): ActivityActor {
@@ -137,7 +133,7 @@ export async function recordTradeDocLinkUpload(
       receivedFrom: `${actor.displayName ?? link.link.recipientEmail} via docs link`,
     })
     const now = new Date().toISOString()
-    await link.db.update(vendorTradeDocLinks).set({ lastSubmittedAt: now }).where(eq(vendorTradeDocLinks.id, link.link.id))
+    await updateTradeDocLink(link.db, link.link.id, { lastSubmittedAt: now })
     await recordActivityEvent({
       db: link.db,
       organizationId: link.organizationId,
@@ -229,7 +225,7 @@ export async function submitTradeDocInfoSheet(
       notes: signerTitle ? `Signed online by ${signerName}, ${signerTitle}` : `Signed online by ${signerName}`,
       receivedFrom: `${actor.displayName ?? link.link.recipientEmail} via docs link`,
     })
-    await link.db.update(vendorTradeDocLinks).set({ lastSubmittedAt: signedAt.toISOString() }).where(eq(vendorTradeDocLinks.id, link.link.id))
+    await updateTradeDocLink(link.db, link.link.id, { lastSubmittedAt: signedAt.toISOString() })
     await recordActivityEvent({
       db: link.db,
       organizationId: link.organizationId,

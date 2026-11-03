@@ -3,21 +3,24 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
 import { getDb } from "@/db"
 import { organizationMembers, projects, users } from "@/db/schema"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
-import type { AuthUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
-import { encrypt, decrypt } from "@/lib/crypto"
+import { encrypt } from "@/lib/crypto"
 import {
   getGoogleConfig,
   getGoogleCryptoSalt,
   parseServiceAccountKey,
-  type ServiceAccountKey,
 } from "@/lib/google/config"
 import { DriveClient } from "@/lib/google/client/drive-client"
+import {
+  buildDriveClient,
+  createDriveUploadSession,
+  getOrgGoogleAuth,
+  resolveGoogleEmail,
+} from "@/lib/domain/documents/drive-session"
 import { mapDriveFileToFileItem } from "@/lib/google/mapper"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import { filterFieldDocumentRootFolders } from "@/lib/field/document-access"
@@ -25,6 +28,7 @@ import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import type { FileItem } from "@/lib/files-data"
 import { isDemoUser } from "@/lib/demo"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateUser } from "@/lib/domain/identity/store"
 import {
   describeSenderAddressConflict,
   findSenderAddressConflict,
@@ -39,40 +43,9 @@ import {
   withProjectFileSource,
   withProjectFolderMetadata,
 } from "@/lib/project-files"
+import { requireUserContext } from "@/lib/server/action-context"
 
 // helpers
-
-function resolveGoogleEmail(user: AuthUser): string {
-  return user.googleEmail ?? user.email
-}
-
-async function getOrgGoogleAuth(db: ReturnType<typeof getDb>) {
-  const rows = await db.select().from(googleAuth).limit(1)
-  return rows[0] ?? null
-}
-
-async function getDecryptedServiceAccountKey(
-  encryptedKey: string,
-  encryptionKey: string
-): Promise<ServiceAccountKey> {
-  const json = await decrypt(
-    encryptedKey,
-    encryptionKey,
-    getGoogleCryptoSalt()
-  )
-  return parseServiceAccountKey(json)
-}
-
-async function buildDriveClient(
-  encryptedKey: string,
-  encryptionKey: string
-): Promise<DriveClient> {
-  const serviceAccountKey = await getDecryptedServiceAccountKey(
-    encryptedKey,
-    encryptionKey
-  )
-  return new DriveClient({ serviceAccountKey })
-}
 
 async function getStarredIds(
   db: ReturnType<typeof getDb>,
@@ -253,8 +226,7 @@ export async function connectGoogleDrive(
     const parsed = parseServiceAccountKey(serviceAccountKeyJson)
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
 
     // validate by making a test call
@@ -306,10 +278,8 @@ export async function disconnectGoogleDrive(): Promise<
   { success: true } | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "delete")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     await db.delete(googleAuth).run()
     revalidatePath("/dashboard/files")
     return { success: true }
@@ -335,8 +305,7 @@ export async function listAvailableSharedDrives(): Promise<
     requirePermission(user, "organization", "update")
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -374,11 +343,9 @@ export async function selectSharedDrive(
   driveName: string | null
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -427,8 +394,7 @@ export async function listDriveFiles(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -496,8 +462,7 @@ export async function listProjectDriveFilesForField(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     await assertFieldProjectMembership(db, user.id, projectId)
 
@@ -576,8 +541,7 @@ export async function listProjectDriveFolderForField(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     await assertFieldProjectMembership(db, user.id, projectId)
 
@@ -690,8 +654,7 @@ export async function listDriveFilesForView(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -820,8 +783,7 @@ export async function searchDriveFiles(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -873,8 +835,7 @@ export async function createDriveFolder(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -925,8 +886,7 @@ export async function renameDriveFile(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -966,8 +926,7 @@ export async function moveDriveFile(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -1010,8 +969,7 @@ export async function trashDriveFile(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -1049,8 +1007,7 @@ export async function restoreDriveFile(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -1089,8 +1046,7 @@ export async function getDriveStorageQuota(): Promise<
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -1120,17 +1076,6 @@ export async function getDriveStorageQuota(): Promise<
   }
 }
 
-/** The calling page's origin (scheme + host), from the request headers. */
-async function requestOrigin(): Promise<string | undefined> {
-  const requestHeaders = await headers()
-  const origin = requestHeaders.get("origin")
-  if (origin && /^https?:\/\/[^/]+$/.test(origin)) return origin
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host")
-  if (!host) return undefined
-  const proto = requestHeaders.get("x-forwarded-proto") ?? "https"
-  return `${proto}://${host}`
-}
-
 export async function getUploadSessionUrl(
   fileName: string,
   mimeType: string,
@@ -1139,51 +1084,7 @@ export async function getUploadSessionUrl(
   | { success: true; uploadUrl: string }
   | { success: false; error: string }
 > {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "create")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-
-    const uploadUrl = await client.initiateResumableUpload(
-      googleEmail,
-      {
-        name: fileName,
-        mimeType,
-        parentId: parentId ?? auth.sharedDriveId ?? undefined,
-        driveId: auth.sharedDriveId ?? undefined,
-        // The browser uploads to this session directly, so Google must allow
-        // this site's origin; without it the PUT fails with "Failed to fetch".
-        browserOrigin: await requestOrigin(),
-      }
-    )
-
-    return { success: true, uploadUrl }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to initiate upload",
-    }
-  }
+  return createDriveUploadSession(fileName, mimeType, parentId)
 }
 
 export async function toggleStarFile(
@@ -1193,11 +1094,8 @@ export async function toggleStarFile(
   | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "document", "read")
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const existing = await db
       .select()
@@ -1238,36 +1136,6 @@ export async function toggleStarFile(
   }
 }
 
-export async function getStarredFileIds(): Promise<
-  | { success: true; fileIds: string[] }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const rows = await db
-      .select({ googleFileId: googleStarredFiles.googleFileId })
-      .from(googleStarredFiles)
-      .where(eq(googleStarredFiles.userId, user.id))
-
-    return {
-      success: true,
-      fileIds: rows.map(r => r.googleFileId),
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to get starred files",
-    }
-  }
-}
-
 /**
  * Set or clear a user's Google Workspace address. Compass impersonates this
  * address for Drive and sends mail as it, so the target must be an active
@@ -1279,15 +1147,12 @@ export async function updateUserGoogleEmail(
   googleEmail: string | null
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "user", "update")
     if (!user.organizationId) {
       return { success: false, error: "No active organization selected" }
     }
     const organizationId = user.organizationId
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const target = await db
       .select({
@@ -1348,14 +1213,10 @@ export async function updateUserGoogleEmail(
       return { success: true }
     }
 
-    await db
-      .update(users)
-      .set({
-        googleEmail: nextGoogleEmail,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(users.id, target.id))
-      .run()
+    await updateUser(db, target.id, {
+      googleEmail: nextGoogleEmail,
+      updatedAt: new Date().toISOString(),
+    })
 
     await recordActivityEvent({
       db,
@@ -1404,8 +1265,7 @@ export async function getDriveFileInfo(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
@@ -1455,8 +1315,7 @@ export async function listDriveFolders(
     }
 
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getGoogleConfig(envRecord)
+    const config = getGoogleConfig(env)
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {

@@ -1,12 +1,13 @@
 import "server-only"
 import { and, eq } from "drizzle-orm"
+import { projects } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import type { getDb } from "@/db"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { conversationRequestViewer } from "./preview-viewer"
 import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
-import { canAccessConversationChannel, type ConversationChannelAccess } from "./channel-access"
+import { canAccessConversationChannel, importedConversationAccess, type ConversationChannelAccess } from "./channel-access"
 
 export async function getConversationChannelAccess(input: {
   readonly db: ReturnType<typeof getDb>
@@ -24,8 +25,11 @@ export async function getConversationChannelAccess(input: {
       projectId: channels.projectId,
       isPrivate: channels.isPrivate,
       audience: channels.audience,
+      sourceSystem: channels.sourceSystem,
+      projectStaffOnly: projects.importedConversationsStaffOnly,
     })
     .from(channels)
+    .leftJoin(projects, eq(projects.id, channels.projectId))
     .where(eq(channels.id, input.channelId))
     .limit(1)
     .then((rows) => rows[0] ?? null)
@@ -48,6 +52,14 @@ export async function getConversationChannelAccess(input: {
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
+  const access = {
+    id: channel.id,
+    name: channel.name,
+    organizationId: channel.organizationId,
+    projectId: channel.projectId,
+    isPrivate: channel.isPrivate,
+    audience: channel.audience,
+  }
   return canAccessConversationChannel({
     channelId: channel.id,
     hasMembership: membership !== null,
@@ -55,7 +67,8 @@ export async function getConversationChannelAccess(input: {
     isPrivate: channel.isPrivate,
     audience: channel.audience,
     role: user.role,
+    imported: importedConversationAccess(channel),
   })
-    ? channel
+    ? access
     : null
 }

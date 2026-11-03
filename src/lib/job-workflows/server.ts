@@ -15,6 +15,7 @@ import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
 import { projectFamilyPhases } from "@/db/schema-project-families"
+import type { ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WorkflowCheck, WorkflowFacts, WorkflowLayout, WorkflowOverrides } from "@/lib/job-workflows/engine"
 import { resolvedProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
@@ -62,7 +63,7 @@ const ESTIMATE_SENT = new Set(["signature_pending", "accepted"])
 const CLOSED_STATUSES = new Set(["complete", "closed"])
 
 // Change orders still waiting on the company or the owner.
-const OPEN_CHANGE_ORDER_STATUSES = [
+const OPEN_CHANGE_ORDER_STATUSES: readonly ChangeOrderStatus[] = [
   "submitted",
   "triage",
   "needs_information",

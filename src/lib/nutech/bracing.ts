@@ -1,8 +1,7 @@
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
-
-/** reserved: planned, not yet out. out: signed out to the job. returned: checked back in. */
-export const BRACING_RENTAL_STATUSES = ["reserved", "out", "returned"] as const
-export type BracingRentalStatus = (typeof BRACING_RENTAL_STATUSES)[number]
+import { formatCents } from "@/lib/format"
+import { BRACING_RENTAL_STATUSES, type BracingRentalStatus } from "@/lib/domain/nutech/statuses"
+export type { BracingRentalStatus }
 
 export function isBracingRentalStatus(value: string): value is BracingRentalStatus {
   return BRACING_RENTAL_STATUSES.some((status) => status === value)
@@ -104,8 +103,4 @@ export function bracingAvailability(
       return owned === 0 && out === 0 ? [] : [{ itemKey: item.key, label: item.label, size, owned, out, available: owned - out }]
     }),
   )
-}
-
-export function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })
 }

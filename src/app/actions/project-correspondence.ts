@@ -2,16 +2,19 @@
 
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { correspondence, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceRevisions, correspondenceState } from "@/db/schema-correspondence"
+import { correspondence, correspondenceCompositionDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
 import { correspondenceSourceMessages } from "@/db/schema-correspondence-source"
 import { authorizedConversation, correspondenceContacts, correspondenceContext, currentParticipants } from "@/lib/correspondence/access"
 import { releaseRejectedComposition, validateDraftAttachments } from "@/lib/correspondence/saved-drafts"
 import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/read"
+import { channelIdFromConversationId, CHANNEL_THREAD_STATE_UNAVAILABLE } from "@/lib/correspondence/channel-thread-id"
+import { listChannelThreads, markChannelThreadOpened, readChannelThread, searchChannelThreads, setChannelThreadClosedByStaff, setChannelThreadsState } from "@/lib/correspondence/channel-threads"
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { markCorrespondenceNotificationsRead } from "@/lib/notifications/clear-on-read"
-import type { CorrespondenceInboxFilter, CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
+import { insertReplyDraft, markMessageOpenedStatement, messageRevisionStatement, resetMessageOpenedStatement, revisionInsertStatement, setConversationClosed, updateReplyDraft, upsertConversationState } from "@/lib/domain/correspondence/store"
+import type { CorrespondenceInboxFilter, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceSummary, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
 function failure(error: unknown): { readonly success: false; readonly error: string } {
   // Never return SQL/provider internals or another participant's content.
@@ -19,18 +22,32 @@ function failure(error: unknown): { readonly success: false; readonly error: str
   return { success: false, error: safe ? error.message : "Messaging is temporarily unavailable. Your draft has been retained." }
 }
 function refresh(projectId: string): void { revalidatePath(`/dashboard/projects/${projectId}/messages`) }
+/** Read receipts and message edits are correspondence-only; refuse them clearly for imported conversations. */
+function assertCorrespondenceThread(conversationId: string): void {
+  if (channelIdFromConversationId(conversationId) !== null) throw new Error(CHANNEL_THREAD_STATE_UNAVAILABLE)
+}
+async function inboxConversations(ctx: Awaited<ReturnType<typeof correspondenceContext>>): Promise<readonly CorrespondenceSummary[]> {
+  const [threads, channelThreads] = await Promise.all([
+    listCorrespondence(ctx),
+    // Imported project conversations are an addition to the inbox; a failure there must not hide correspondence.
+    listChannelThreads(ctx).catch((error: unknown) => { console.error("project_messages_channel_threads_failed", error instanceof Error ? error.message : error); return [] }),
+  ])
+  return [...threads, ...channelThreads].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt) || b.id.localeCompare(a.id))
+}
 
 export async function getCorrespondenceInbox(projectId: string): Promise<CorrespondenceResult<CorrespondenceInbox>> {
   try {
     const ctx = await correspondenceContext(projectId, "read")
     const draft = ctx.preview ? null : await ctx.db.select().from(correspondenceCompositionDrafts).where(and(eq(correspondenceCompositionDrafts.projectId, projectId), eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.userId, ctx.user.id))).get()
-    return { success: true, data: { compositionDraft: draft ? { subject: draft.subject, body: draft.body, recipientUserIds: draft.recipientUserIds, version: draft.version } : null, viewerId: ctx.user.id, projectName: ctx.projectName, workspace: ctx.workspace, conversations: await listCorrespondence(ctx), contacts: (await correspondenceContacts(ctx)).filter((p) => p.userId !== ctx.user.id) } }
+    return { success: true, data: { compositionDraft: draft ? { subject: draft.subject, body: draft.body, recipientUserIds: draft.recipientUserIds, version: draft.version } : null, viewerId: ctx.user.id, projectName: ctx.projectName, workspace: ctx.workspace, conversations: await inboxConversations(ctx), contacts: (await correspondenceContacts(ctx)).filter((p) => p.userId !== ctx.user.id) } }
   } catch (error) { return failure(error) }
 }
 export async function getCorrespondenceDetail(projectId: string, conversationId: string, beforeSequence?: number): Promise<CorrespondenceResult<CorrespondenceDetail>> {
   try {
     if (beforeSequence !== undefined && (!Number.isSafeInteger(beforeSequence) || beforeSequence < 1)) throw new Error("Invalid message page.")
-    return { success: true, data: await readCorrespondence(await correspondenceContext(projectId, "read"), conversationId, beforeSequence) }
+    const ctx = await correspondenceContext(projectId, "read")
+    const channelId = channelIdFromConversationId(conversationId)
+    return { success: true, data: channelId === null ? await readCorrespondence(ctx, conversationId, beforeSequence) : await readChannelThread(ctx, channelId, beforeSequence) }
   } catch (error) {
     return failure(error)
   }
@@ -39,6 +56,8 @@ export async function sendCorrespondence(input: SendCorrespondenceInput): Promis
   try {
     const parsed = parseCorrespondenceSend(input)
     if (!parsed.success) return { ...parsed, retry: "edit" }
+    // Replies in an imported conversation go through the conversation's own send action.
+    if (parsed.data.conversationId !== null && channelIdFromConversationId(parsed.data.conversationId) !== null) return { success: false, error: "Reply from the open conversation.", retry: "edit" }
     const ctx = await correspondenceContext(parsed.data.projectId)
     let data: { readonly conversationId: string; readonly messageId: string }
     try { data = await persistCorrespondence(ctx, parsed.data) } catch (error) {
@@ -55,8 +74,14 @@ export async function setCorrespondenceState(projectId: string, conversationId: 
   try {
     if ([state.saved, state.followUp, state.archived].some((v) => typeof v !== "boolean")) throw new Error("Invalid inbox state.")
     const ctx = await correspondenceContext(projectId)
+    const channelId = channelIdFromConversationId(conversationId)
+    if (channelId !== null) {
+      await setChannelThreadsState(ctx, [channelId], { saved: state.saved, needsReply: state.followUp, archived: state.archived })
+      refresh(projectId)
+      return { success: true, data: null }
+    }
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.insert(correspondenceState).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, saved: state.saved, followUp: state.followUp, archived: state.archived }).onConflictDoUpdate({ target: [correspondenceState.conversationId, correspondenceState.userId], set: { saved: state.saved, followUp: state.followUp, archived: state.archived } })
+    await upsertConversationState(ctx.db, conversationId, ctx.user.id, { saved: state.saved, followUp: state.followUp, archived: state.archived })
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }
@@ -64,13 +89,18 @@ export async function setCorrespondenceState(projectId: string, conversationId: 
 export async function saveCorrespondenceDraft(projectId: string, conversationId: string, body: string, expectedVersion: number, attachmentIds: readonly string[] = []): Promise<CorrespondenceResult<{ readonly version: number }>> {
   try {
     if (typeof body !== "string" || body.length > 50000 || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw new Error("Invalid draft.")
+    if (channelIdFromConversationId(conversationId) !== null) {
+      // No reply-draft storage for imported conversations: keep unsent text on screen instead of pretending it was saved.
+      if (body.trim() || attachmentIds.length > 0) throw new Error("Replies in imported conversations aren't kept as drafts. Send your reply or clear it first.")
+      return { success: true, data: { version: expectedVersion + 1 } }
+    }
     const ctx = await correspondenceContext(projectId)
     await authorizedConversation(ctx, conversationId)
     await validateDraftAttachments(ctx, attachmentIds, "message")
     const version = expectedVersion + 1
     const rows = expectedVersion === 0
-      ? await ctx.db.insert(correspondenceDrafts).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, attachmentIds, version, updatedAt: new Date().toISOString() }).onConflictDoNothing().returning({ version: correspondenceDrafts.version })
-      : await ctx.db.update(correspondenceDrafts).set({ body, attachmentIds, version, updatedAt: new Date().toISOString() }).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), eq(correspondenceDrafts.version, expectedVersion))).returning({ version: correspondenceDrafts.version })
+      ? await insertReplyDraft(ctx.db, { id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, attachmentIds: [...attachmentIds], version, updatedAt: new Date().toISOString() })
+      : await updateReplyDraft(ctx.db, { conversationId, userId: ctx.user.id, expectedVersion, body, attachmentIds, version, updatedAt: new Date().toISOString() })
     if (!rows.length) throw new Error("This draft changed on another device. Copy your text before reloading.")
     return { success: true, data: { version } }
   } catch (error) { return failure(error) }
@@ -84,19 +114,20 @@ export async function markCorrespondenceOpened(projectId: string, conversationId
   try {
     if (!Array.isArray(observedMessages) || !observedMessages.length || observedMessages.length > 50) throw new Error("Invalid visible message selection.")
     const ctx = await correspondenceContext(projectId)
-    await authorizedConversation(ctx, conversationId)
-    const now = new Date().toISOString()
     for (const observed of observedMessages) {
       if (typeof observed.id !== "string" || observed.editedAt !== null && typeof observed.editedAt !== "string") throw new Error("Invalid visible message selection.")
-      // Match the revision actually presented; a delayed read request cannot certify an edit.
-      await ctx.db.update(correspondenceRecipients).set({ openedAt: now }).where(and(
-        eq(correspondenceRecipients.userId, ctx.user.id), eq(correspondenceRecipients.messageId, observed.id), isNull(correspondenceRecipients.openedAt),
-        sql`EXISTS(SELECT 1 FROM correspondence_messages m JOIN correspondence_participants p ON p.conversation_id=m.conversation_id
-          WHERE m.id=${observed.id} AND m.conversation_id=${conversationId} AND m.retracted_at IS NULL
-          AND p.user_id=${ctx.user.id} AND p.revoked_at IS NULL
-          AND ${observed.editedAt === null ? sql`m.edited_at IS NULL` : sql`m.edited_at=${observed.editedAt}`})`
-      ))
     }
+    const channelId = channelIdFromConversationId(conversationId)
+    if (channelId !== null) {
+      await markChannelThreadOpened(ctx, channelId, observedMessages.map((observed) => observed.id))
+      return { success: true, data: null }
+    }
+    await authorizedConversation(ctx, conversationId)
+    const now = new Date().toISOString()
+    // Match the revision actually presented; a delayed read request cannot certify an edit.
+    const [first, ...rest] = observedMessages.map((observed) =>
+      markMessageOpenedStatement(ctx.db, { userId: ctx.user.id, conversationId, messageId: observed.id, editedAt: observed.editedAt, now }))
+    if (first) await ctx.db.batch([first, ...rest])
     // Opened here means handled in the bell too (only this viewer's rows).
     await markCorrespondenceNotificationsRead(ctx.db, ctx.user.id, observedMessages.map((observed) => observed.id))
       .catch((error: unknown) => console.error("correspondence_notification_clear_failed", error instanceof Error ? error.message : error))
@@ -106,6 +137,7 @@ export async function markCorrespondenceOpened(projectId: string, conversationId
 export async function reviseCorrespondenceMessage(projectId: string, conversationId: string, messageId: string, body: string | null): Promise<CorrespondenceResult<null>> {
   try {
     if (body !== null && (typeof body !== "string" || !body.trim() || body.length > 50000)) throw new Error("Write a message of at most 50,000 characters.")
+    assertCorrespondenceThread(conversationId)
     const ctx = await correspondenceContext(projectId)
     const conversation = await authorizedConversation(ctx, conversationId)
     const message = await ctx.db.select().from(correspondenceMessages).where(and(eq(correspondenceMessages.id, messageId), eq(correspondenceMessages.conversationId, conversationId), eq(correspondenceMessages.authorUserId, ctx.user.id), eq(correspondenceMessages.source, "compass"), isNull(correspondenceMessages.retractedAt))).get()
@@ -115,9 +147,9 @@ export async function reviseCorrespondenceMessage(projectId: string, conversatio
     const people = await currentParticipants(ctx, conversationId)
     await ctx.db.batch([
       correspondenceWriteGuard(ctx, { id: guardId, conversationId, participantVersion: conversation.participantVersion, people: people.filter((p) => p.userId === ctx.user.id), extra: sql`EXISTS(SELECT 1 FROM correspondence_messages WHERE id=${messageId} AND body=${message.body} AND retracted_at IS NULL AND ${message.editedAt === null ? sql`edited_at IS NULL` : sql`edited_at=${message.editedAt}`})` }),
-      ctx.db.insert(correspondenceRevisions).values({ id: crypto.randomUUID(), messageId, actorUserId: ctx.user.id, previousBody: message.body, operation: body === null ? "retract" : "edit", createdAt: now }),
-      ctx.db.update(correspondenceMessages).set(body === null ? { retractedAt: now } : { body, editedAt: now }).where(eq(correspondenceMessages.id, messageId)),
-      ctx.db.update(correspondenceRecipients).set({ openedAt: null }).where(eq(correspondenceRecipients.messageId, messageId)),
+      revisionInsertStatement(ctx.db, { id: crypto.randomUUID(), messageId, actorUserId: ctx.user.id, previousBody: message.body, operation: body === null ? "retract" : "edit", createdAt: now }),
+      messageRevisionStatement(ctx.db, messageId, body, now),
+      resetMessageOpenedStatement(ctx.db, messageId),
       clearCorrespondenceWriteGuard(ctx, guardId),
     ])
     refresh(projectId)
@@ -129,8 +161,14 @@ export async function setCorrespondenceClosed(projectId: string, conversationId:
     if (typeof closed !== "boolean") throw new Error("Invalid conversation state.")
     const ctx = await correspondenceContext(projectId)
     if (ctx.workspace !== "staff") throw new Error("Only project staff can close or reopen a conversation.")
+    const channelId = channelIdFromConversationId(conversationId)
+    if (channelId !== null) {
+      await setChannelThreadClosedByStaff(ctx, channelId, closed)
+      refresh(projectId)
+      return { success: true, data: null }
+    }
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.update(correspondence).set({ closed }).where(eq(correspondence.id, conversationId))
+    await setConversationClosed(ctx.db, conversationId, closed)
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }
@@ -139,10 +177,10 @@ export async function setCorrespondenceClosed(projectId: string, conversationId:
 export async function setCorrespondenceReceiptPreference(projectId: string, conversationId: string, share: boolean): Promise<CorrespondenceResult<null>> {
   try {
     if (typeof share !== "boolean") throw new Error("Invalid receipt preference.")
+    assertCorrespondenceThread(conversationId)
     const ctx = await correspondenceContext(projectId)
     await authorizedConversation(ctx, conversationId)
-    await ctx.db.insert(correspondenceState).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, shareReadReceipts: share })
-      .onConflictDoUpdate({ target: [correspondenceState.conversationId, correspondenceState.userId], set: { shareReadReceipts: share } })
+    await upsertConversationState(ctx.db, conversationId, ctx.user.id, { shareReadReceipts: share })
     refresh(projectId)
     return { success: true, data: null }
   } catch (error) { return failure(error) }
@@ -187,11 +225,15 @@ export async function searchCorrespondence(projectId: string, query: string, fil
         if (!isMissingSourceAudienceTable(error)) throw error
       }
     }
-    return { success: true, data: { hits: rows.slice(0, 50).map((row) => {
+    const correspondenceHits = rows.map((row) => {
       const start = Math.max(0, row.body.toLowerCase().indexOf(term.toLowerCase()) - 50)
       const source = sourceByMessage.get(row.messageId)
       return { conversationId: row.conversationId, messageId: row.messageId, subject: row.subject, sentAt: row.sentAt, sourceSentDisplay: source?.sourceSentAt === null ? source.sourceSentDisplay : null, sourceSentAt: source?.sourceSentAt ?? null, excerpt: `${start ? "…" : ""}${row.body.slice(start, start + 180)}` }
-    }), hasMore: rows.length > 50 } }
+    })
+    // As in the inbox, imported conversations add to correspondence results and never hide them.
+    const channelHits = await searchChannelThreads(ctx, term, filter).catch((error: unknown) => { console.error("project_messages_channel_search_failed", error instanceof Error ? error.message : error); return [] })
+    const hits = [...correspondenceHits, ...channelHits].sort((a, b) => b.sentAt.localeCompare(a.sentAt))
+    return { success: true, data: { hits: hits.slice(0, 50), hasMore: hits.length > 50 } }
   } catch (error) { return failure(error) }
 }
 
@@ -199,18 +241,4 @@ function isMissingSourceAudienceTable(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   if (/no such table: correspondence_source_(messages|recipients)/i.test(error.message)) return true
   return error.cause !== undefined && isMissingSourceAudienceTable(error.cause)
-}
-
-export async function saveCorrespondenceCompositionDraft(projectId: string, draft: CorrespondenceCompositionDraft): Promise<CorrespondenceResult<{ readonly version: number }>> {
-  try {
-    if (typeof draft.subject !== "string" || draft.subject.length > 200 || typeof draft.body !== "string" || draft.body.length > 50000 || !Array.isArray(draft.recipientUserIds) || draft.recipientUserIds.length > 30 || draft.recipientUserIds.some((id) => typeof id !== "string" || id.length > 200) || !Number.isSafeInteger(draft.version) || draft.version < 0) throw new Error("Invalid composition draft.")
-    const ctx = await correspondenceContext(projectId)
-    const version = draft.version + 1
-    const values = { subject: draft.subject, body: draft.body, recipientUserIds: draft.recipientUserIds, version, updatedAt: new Date().toISOString() }
-    const rows = draft.version === 0
-      ? await ctx.db.insert(correspondenceCompositionDrafts).values({ id: crypto.randomUUID(), organizationId: ctx.organizationId, projectId, userId: ctx.user.id, ...values }).onConflictDoNothing().returning({ version: correspondenceCompositionDrafts.version })
-      : await ctx.db.update(correspondenceCompositionDrafts).set(values).where(and(eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.projectId, projectId), eq(correspondenceCompositionDrafts.userId, ctx.user.id), eq(correspondenceCompositionDrafts.version, draft.version))).returning({ version: correspondenceCompositionDrafts.version })
-    if (!rows.length) throw new Error("This draft changed on another device. Copy your text before reloading.")
-    return { success: true, data: { version } }
-  } catch (error) { return failure(error) }
 }

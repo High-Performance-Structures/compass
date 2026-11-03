@@ -3,11 +3,10 @@
 import { and, asc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
-import { projectContacts, projectInteractions, projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectContacts, projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { insertProjectInteractionStatement } from "@/lib/domain/crm/store"
 import type { TemplateEmailDraft } from "@/lib/email/template-email"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import { addressLines } from "@/lib/department-profiles"
@@ -27,6 +26,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectDepartment } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -34,12 +34,10 @@ const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function jobEmailContext(projectId: string, action: "read" | "update") {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   if (!isInternalStaffRole(user.role)) throw new Error("Job emails are available to office staff.")
   await requireFeaturePermission(user, "project-hub", action)
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const access = await getProjectAccessRecord(db, user, projectId)
   if (!access || access.organizationId !== organizationId) throw new Error("Project not found or access denied.")
   const project = await db
@@ -190,8 +188,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     const now = new Date().toISOString()
     const loggedContact = template.audience === "client"
     await ctx.db.batch([
-      ctx.db.insert(projectProfileAuditEvents).values({
-        id: crypto.randomUUID(),
+      recordProjectAudit(ctx.db, {
         organizationId: ctx.organizationId,
         projectId,
         actorUserId: ctx.user.id,
@@ -204,7 +201,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
       }),
       ...(loggedContact
         ? [
-            ctx.db.insert(projectInteractions).values({
+            insertProjectInteractionStatement(ctx.db, {
               id: crypto.randomUUID(),
               organizationId: ctx.organizationId,
               projectId,

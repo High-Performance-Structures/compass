@@ -3,7 +3,7 @@ import { z } from "zod/v4"
 const money = z.number().finite().min(-1_000_000_000_000).max(1_000_000_000_000)
 const MAX_PAY_APPLICATION_LINES = 150
 
-export const sagePayApplicationHeaderSchema = z.object({
+const sagePayApplicationHeaderSchema = z.object({
   sourceApplicationId: z.string().min(1).max(256),
   sourceRevision: z.string().min(1).max(256),
   sageJobId: z.string().min(1).max(256).nullable(),
@@ -22,7 +22,7 @@ export const sagePayApplicationHeaderSchema = z.object({
   balanceToFinish: money,
 })
 
-export const sagePayApplicationLineSchema = z.object({
+const sagePayApplicationLineSchema = z.object({
   sourceLineId: z.string().min(1).max(256),
   costCode: z.string().min(1).max(128),
   csiDivision: z.string().min(1).max(32),
@@ -55,18 +55,14 @@ export const sagePayApplicationSnapshotSchema = z.object({
     .min(1)
     .max(MAX_PAY_APPLICATION_LINES),
 })
-
-export type SagePayApplicationHeader = z.infer<
-  typeof sagePayApplicationHeaderSchema
->
-export type SagePayApplicationLine = z.infer<
+type SagePayApplicationLine = z.infer<
   typeof sagePayApplicationLineSchema
 >
 export type SagePayApplicationSnapshot = z.infer<
   typeof sagePayApplicationSnapshotSchema
 >
 
-export type SageReconciliationCheck = {
+type SageReconciliationCheck = {
   readonly key: string
   readonly expected: number
   readonly actual: number

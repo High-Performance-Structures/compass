@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getProviderConfigForJwt } from "@/lib/agent/provider-config"
+import { envValue } from "@/lib/shared/env"
 
 const ORG_DEFAULT_USER_ID = "org_default"
 
@@ -21,8 +22,7 @@ export async function getAgentToken(): Promise<
   }
 
   const { env } = await getCloudflareContext()
-  const secret = (env as unknown as Record<string, string>)
-    .AGENT_AUTH_SECRET
+  const secret = envValue(env, "AGENT_AUTH_SECRET")
 
   if (!secret) {
     return { error: "Agent auth not configured" }

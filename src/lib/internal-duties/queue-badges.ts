@@ -1,4 +1,4 @@
-import type { InternalWorkspaceSummary } from "@/app/actions/internal-duties"
+import type { InternalWorkspaceSummary } from "@/lib/internal-duties/model"
 import type { InternalQueueId } from "@/lib/internal-duties/queues"
 
 /** Counts shown on internal work queues, from the workspace summary. */

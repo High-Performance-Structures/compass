@@ -1,31 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects } from "./schema"
-
-export const PAPER_TRAIL_RECORD_TYPES = [
-  "purchase_order",
-  "estimate",
-  "rfi",
-  "change_order",
-  "shop_ticket",
-] as const
-export type PaperTrailRecordType = (typeof PAPER_TRAIL_RECORD_TYPES)[number]
-
-export const PAPER_TRAIL_FILE_STATUSES = [
-  "pending",
-  "synced",
-  "failed",
-  // Written to the private "Compass Records" folder because the usual
-  // subfolder is shared outside the company.
-  "held_private",
-  // The record no longer exists; its last Drive copy is kept.
-  "removed",
-  // A file that looks like this record was already in the folder (saved by
-  // hand); nothing is written until someone chooses what to do.
-  "needs_choice",
-  // Someone chose to keep the hand-saved file; Compass stops saving this record.
-  "kept_existing",
-] as const
-export type PaperTrailFileStatus = (typeof PAPER_TRAIL_FILE_STATUSES)[number]
+import { PAPER_TRAIL_FILE_STATUSES, PAPER_TRAIL_RECORD_TYPES, PAPER_TRAIL_SNAPSHOT_STATUSES, type PaperTrailRecordType, type PaperTrailFileStatus } from "../lib/domain/documents/statuses"
+export type { PaperTrailRecordType, PaperTrailFileStatus }
 
 /**
  * One living Drive copy per Compass record. Edits only move `dueAt`; the
@@ -71,6 +47,7 @@ export const projectRecordDriveFiles = sqliteTable(
     uniqueIndex("project_record_drive_files_record_idx").on(table.recordType, table.recordId),
     index("project_record_drive_files_due_idx").on(table.status, table.dueAt),
     index("project_record_drive_files_project_idx").on(table.projectId),
+    index("project_record_drive_files_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -92,7 +69,7 @@ export const projectRecordDriveSnapshots = sqliteTable(
     milestone: text("milestone").notNull(),
     /** When the milestone happened (sent, signed, approved, answered). */
     milestoneAt: text("milestone_at").notNull(),
-    status: text("status", { enum: ["pending", "saved", "failed"] }).notNull().default("pending"),
+    status: text("status", { enum: PAPER_TRAIL_SNAPSHOT_STATUSES }).notNull().default("pending"),
     requestedAt: text("requested_at").notNull(),
     savedAt: text("saved_at"),
     driveFileId: text("drive_file_id"),
@@ -103,6 +80,7 @@ export const projectRecordDriveSnapshots = sqliteTable(
   (table) => [
     index("project_record_drive_snapshots_due_idx").on(table.status, table.requestedAt),
     uniqueIndex("project_record_drive_snapshots_record_idx").on(table.recordType, table.recordId, table.milestone, table.milestoneAt),
+    index("project_record_drive_snapshots_project_id_idx").on(table.projectId),
   ],
 )
 

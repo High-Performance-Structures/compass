@@ -1,9 +1,8 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, vendors } from "@/db/schema"
+import { insertCustomer, insertVendor, updateCustomerById, updateVendorById } from "@/lib/domain/contacts/store"
 import { getNetSuiteConfig } from "@/lib/netsuite/config"
 import { TokenManager } from "@/lib/netsuite/auth/token-manager"
 import { getAuthorizeUrl } from "@/lib/netsuite/auth/oauth-client"
@@ -19,8 +18,7 @@ export async function getNetSuiteConnectionStatus() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
     const db = getDb(env.DB)
     const tokenManager = new TokenManager(config, db as never)
     const connected = await tokenManager.hasTokens()
@@ -40,8 +38,7 @@ export async function initiateNetSuiteOAuth() {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
 
     const state = crypto.randomUUID()
     const authorizeUrl = getAuthorizeUrl(config, state)
@@ -60,8 +57,7 @@ export async function disconnectNetSuite() {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
     const db = getDb(env.DB)
     const tokenManager = new TokenManager(config, db as never)
     await tokenManager.clearTokens()
@@ -81,9 +77,8 @@ export async function syncCustomers() {
     const user = await getCurrentUser()
     requirePermission(user, "customer", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     const mapper = new CustomerMapper()
 
     const result = await engine.pull(
@@ -91,14 +86,11 @@ export async function syncCustomers() {
       async (localId, data) => {
         const now = new Date().toISOString()
         if (localId) {
-          await db
-            .update(customers)
-            .set({ ...data, updatedAt: now } as never)
-            .where(eq(customers.id, localId))
+          await updateCustomerById(db, { customerId: localId, values: { ...data, updatedAt: now } as never })
           return localId
         }
         const id = crypto.randomUUID()
-        await db.insert(customers).values({
+        await insertCustomer(db, {
           id,
           name: String(data.name ?? ""),
           email: (data.email as string) ?? null,
@@ -131,9 +123,8 @@ export async function syncVendors() {
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     const mapper = new VendorMapper()
 
     const result = await engine.pull(
@@ -141,14 +132,11 @@ export async function syncVendors() {
       async (localId, data) => {
         const now = new Date().toISOString()
         if (localId) {
-          await db
-            .update(vendors)
-            .set({ ...data, updatedAt: now } as never)
-            .where(eq(vendors.id, localId))
+          await updateVendorById(db, { vendorId: localId, values: { ...data, updatedAt: now } as never })
           return localId
         }
         const id = crypto.randomUUID()
-        await db.insert(vendors).values({
+        await insertVendor(db, {
           id,
           name: String(data.name ?? ""),
           category: (data.category as string) ?? "Subcontractor",
@@ -183,9 +171,8 @@ export async function getSyncHistory() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     return { success: true, history: await engine.getSyncHistory() }
   } catch (err) {
     return {
@@ -201,9 +188,8 @@ export async function getConflicts() {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     return { success: true, conflicts: await engine.getConflicts() }
   } catch (err) {
     return {
@@ -222,9 +208,8 @@ export async function resolveConflict(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "update")
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
-    const engine = new SyncEngine(db as never, envRecord)
+    const engine = new SyncEngine(db as never, env)
     await engine.resolveConflict(metaId, resolution)
 
     revalidatePath("/dashboard")

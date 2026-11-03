@@ -10,9 +10,11 @@ import { notFound } from "next/navigation"
 import {
   getProjectSelectionOptions,
   getProjectSelections,
-  type ProjectSelectionOptions,
-  type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionOptions,
+  ProjectSelectionsSummary,
+} from "@/lib/domain/selections/types"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"

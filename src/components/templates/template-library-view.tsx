@@ -41,7 +41,7 @@ import type { ContractTemplateLibraryItem } from "@/app/actions/contract-templat
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PageHeader } from "@/components/page-header"
 
-export const TEMPLATE_CATEGORIES = [
+const TEMPLATE_CATEGORIES = [
   "Concrete",
   "Preconstruction",
   "Drywall",

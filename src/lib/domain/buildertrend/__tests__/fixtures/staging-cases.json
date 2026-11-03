@@ -1,0 +1,93 @@
+[
+  {
+    "name": "full manifest with linked children",
+    "organizationId": "org-1",
+    "manifest": {
+      "runKey": "jobs-2026-07-30",
+      "sourceMethod": "authenticated_export",
+      "sourceLabel": "Buildertrend job inventory",
+      "capturedAt": "2026-07-30T12:00:00.000Z",
+      "rawArtifactDriveFileId": "raw-file",
+      "rawArtifactDriveUrl": "https://drive.example/raw",
+      "notes": "Owner's export",
+      "records": [
+        {
+          "sourceKey": "job:123",
+          "projectId": "project-123",
+          "sourceRecordType": "job",
+          "buildertrendJobId": "123",
+          "buildertrendRecordId": "123",
+          "title": "O'Brien \"Forest\" project",
+          "amount": 1234.5,
+          "rawPayload": { "status": "Open", "nested": { "b": 2, "a": [1, null, "x'y"] } },
+          "archiveDriveFolderId": "source-record-folder",
+          "archiveDriveFileId": "source-record-drive",
+          "archiveDriveUrl": "https://source.example/record",
+          "notes": "It's here"
+        },
+        {
+          "sourceKey": "lead:9",
+          "sourceScope": "lead",
+          "sourceRecordType": "lead",
+          "buildertrendLeadId": "9",
+          "title": "Lead without project"
+        }
+      ],
+      "files": [
+        {
+          "sourceKey": "file:123:photo-1",
+          "sourceRecordKey": "job:123",
+          "projectId": "project-123",
+          "sourceRecordType": "job_photo",
+          "buildertrendJobId": "123",
+          "buildertrendFileId": "photo-1",
+          "fileName": "photo-1.jpg",
+          "fileSize": 2048,
+          "checksum": "abc123",
+          "driveFolderId": "source-file-folder",
+          "driveFileId": "source-file-drive",
+          "driveUrl": "https://source.example/file",
+          "thumbnailDriveFileId": "source-thumbnail-drive",
+          "thumbnailUrl": "https://source.example/thumbnail",
+          "metadata": { "k": "v'q" }
+        },
+        {
+          "sourceKey": "file:loose",
+          "sourceRecordType": "document",
+          "fileName": "loose.pdf",
+          "capturedAt": "2026-07-29T00:00:00.000Z"
+        }
+      ],
+      "accessCandidates": [
+        {
+          "sourceKey": "access:123:contact-1",
+          "sourceRecordKey": "job:123",
+          "projectId": "project-123",
+          "buildertrendJobId": "123",
+          "buildertrendContactId": "contact-1",
+          "buildertrendAccessRole": "client",
+          "contactName": "Example O'Owner",
+          "email": "approved@example.test",
+          "companyName": null,
+          "proposedContactType": "customer"
+        },
+        {
+          "sourceKey": "access:sub",
+          "contactName": "Sub Vendor",
+          "phone": "719-900-8850",
+          "notes": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty manifest",
+    "organizationId": "  org-2  ",
+    "manifest": {
+      "runKey": "empty",
+      "sourceMethod": "manual",
+      "sourceLabel": "Empty",
+      "capturedAt": "2026-08-01T00:00:00Z"
+    }
+  }
+]

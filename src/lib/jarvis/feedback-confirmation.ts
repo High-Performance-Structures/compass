@@ -46,7 +46,7 @@ function conversationFromPayload(payload: string): readonly ConversationMessage[
   }
 }
 
-export function explicitlyRequestsCompassFeedback(message: string): boolean {
+function explicitlyRequestsCompassFeedback(message: string): boolean {
   const value = message.toLowerCase()
   return [
     /\b(?:bug|issue|problem|broken)\b/,
@@ -62,7 +62,7 @@ export function explicitlyRequestsCompassFeedback(message: string): boolean {
   ].some((pattern) => pattern.test(value))
 }
 
-export function askedToFileFeedback(message: string): boolean {
+function askedToFileFeedback(message: string): boolean {
   const value = message.toLowerCase().replace(/\s+/g, " ")
   const asksToFile =
     /\b(?:would|do) you (?:like|want) me to (?:file|submit|report|record)\b/.test(value) ||

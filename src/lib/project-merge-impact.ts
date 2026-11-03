@@ -6,7 +6,7 @@ export type ProjectMergeCategoryId =
   | "access"
   | "other"
 
-export type ProjectMergeCategory = {
+type ProjectMergeCategory = {
   readonly id: ProjectMergeCategoryId
   readonly label: string
   readonly recordCount: number

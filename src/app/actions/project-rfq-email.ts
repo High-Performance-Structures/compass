@@ -4,23 +4,27 @@ import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, desc, eq, gt, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import { projectRfqEmailDeliveries, projectRfqQuoteLinks } from "@/db/schema-rfqs"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { notificationLink } from "@/lib/notifications/create-event"
 import { hashQuoteLinkToken, newQuoteLinkToken, QUOTE_LINK_PATH, quoteLinkExpiresAt, quoteLinkIsLive } from "@/lib/rfqs/quote-links"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
+import type { AuthUser } from "@/lib/auth"
+import { orgContext, type Db } from "@/lib/server/action-context"
+import {
+  insertRfqEmailDelivery,
+  insertRfqQuoteLink,
+  updateOperations,
+  updateRfqEmailDelivery,
+  updateRfqQuoteLinkById,
+  updateRfqQuoteLinks,
+} from "@/lib/domain/operations/store"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { projectTopLevelFolderOf } from "@/lib/google/project-folder-boundary"
 import { classifyProjectFolderName, type ProjectFileCategoryKey } from "@/lib/project-files"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectBrandFor } from "@/lib/project-branding"
 import { driveFileIdFromRfqLink } from "@/lib/rfqs/drive-links"
 import { rfqEmailHtml, rfqEmailText, type RfqEmailDocument } from "@/lib/rfqs/email"
@@ -66,9 +70,9 @@ function parseJsonStrings(value: string): readonly string[] {
 }
 
 async function projectRfqEmailAccess(projectId: string, update: boolean): Promise<{
-  readonly db: ReturnType<typeof getDb>
+  readonly db: Db
   readonly env: CloudflareEnv
-  readonly user: Awaited<ReturnType<typeof requireAuth>>
+  readonly user: AuthUser
   readonly organizationId: string
   readonly project: {
     readonly id: string
@@ -77,12 +81,10 @@ async function projectRfqEmailAccess(projectId: string, update: boolean): Promis
     readonly googleDriveFolderId: string | null
   }
 }> {
-  const user = await requireAuth()
-  if (update && isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-  await requireFeaturePermission(user, "rfqs", update ? "update" : "read")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  // The project check keeps its own "Project not found." message.
+  const context = await orgContext({ feature: "rfqs", action: update ? "update" : "read", mutation: update })
+  if (!context.success) throw new Error(context.error)
+  const { db, env, user, organizationId } = context.data
   const project = await db.select({
     id: projects.id,
     name: projects.name,
@@ -203,7 +205,7 @@ export async function sendProjectRfqEmail(
     const now = new Date().toISOString()
     const deliveryId = crypto.randomUUID()
     const actorName = access.user.displayName?.trim() || access.user.email
-    await access.db.insert(projectRfqEmailDeliveries).values({
+    await insertRfqEmailDelivery(access.db, {
       id: deliveryId,
       projectId,
       rfqOperationId: rfqId,
@@ -225,7 +227,7 @@ export async function sendProjectRfqEmail(
     const pricing = await readFeatureSettings(access.db, access.organizationId, "estimate-pricing")
     const quoteToken = newQuoteLinkToken()
     const quoteLinkId = crypto.randomUUID()
-    await access.db.insert(projectRfqQuoteLinks).values({
+    await insertRfqQuoteLink(access.db, {
       id: quoteLinkId,
       projectId,
       rfqOperationId: rfqId,
@@ -301,27 +303,27 @@ export async function sendProjectRfqEmail(
     }
 
     const sentAt = deliveryStatus === "sent" ? new Date().toISOString() : null
-    await access.db.update(projectRfqEmailDeliveries).set({
+    await updateRfqEmailDelivery(access.db, deliveryId, {
       status: deliveryStatus,
       provider,
       providerMessageId,
       error: deliveryError,
       sentAt,
-    }).where(eq(projectRfqEmailDeliveries.id, deliveryId))
+    })
     if (deliveryStatus !== "sent") {
       // The email never went out, so its link shouldn't work either.
-      await access.db.update(projectRfqQuoteLinks).set({ revokedAt: new Date().toISOString() }).where(eq(projectRfqQuoteLinks.id, quoteLinkId))
+      await updateRfqQuoteLinkById(access.db, quoteLinkId, { revokedAt: new Date().toISOString() })
       return { success: false, error: deliveryError ?? "RFQ email was not sent. Check the email provider and Drive sharing settings." }
     }
-    await access.db.update(projectOperations).set({
-      status: "sent",
-      sagePayloadJson: withPortalRfqRecipientEmail(rfq.sagePayloadJson, to),
-      updatedAt: sentAt ?? new Date().toISOString(),
-    }).where(and(
+    await updateOperations(access.db, and(
       eq(projectOperations.id, rfqId),
       eq(projectOperations.projectId, projectId),
       eq(projectOperations.updatedAt, rfq.updatedAt)
-    ))
+    ), {
+      status: "sent",
+      sagePayloadJson: withPortalRfqRecipientEmail(rfq.sagePayloadJson, to),
+      updatedAt: sentAt ?? new Date().toISOString(),
+    })
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -387,11 +389,11 @@ export async function turnOffRfqQuoteLinks(
       gt(projectRfqQuoteLinks.expiresAt, now)
     ))
     if (live.length === 0) return { success: true, count: 0 }
-    await access.db.update(projectRfqQuoteLinks).set({ revokedAt: now, revokedBy: access.user.id }).where(and(
+    await updateRfqQuoteLinks(access.db, and(
       eq(projectRfqQuoteLinks.projectId, projectId),
       eq(projectRfqQuoteLinks.rfqOperationId, rfqId),
       isNull(projectRfqQuoteLinks.revokedAt)
-    ))
+    ), { revokedAt: now, revokedBy: access.user.id })
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,

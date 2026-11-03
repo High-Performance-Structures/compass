@@ -1,0 +1,1420 @@
+{
+  "tableWriters": {
+    "accountDeletionRequests": [
+      "src/lib/domain/identity/store.ts"
+    ],
+    "activityEvents": [
+      "src/lib/activity-log.ts"
+    ],
+    "agentActionConfirmations": [
+      "src/app/actions/agent-confirmation.ts"
+    ],
+    "agentConfig": [
+      "src/app/actions/ai-config.ts"
+    ],
+    "agentConversations": [
+      "src/app/actions/agent.ts"
+    ],
+    "agentItems": [
+      "src/app/actions/agent-items.ts"
+    ],
+    "agentMemories": [
+      "src/app/actions/agent.ts"
+    ],
+    "anthropicOauthTokens": [
+      "src/app/actions/anthropic-oauth.ts"
+    ],
+    "buildertrendAccessCandidates": [
+      "src/lib/domain/buildertrend/store.ts"
+    ],
+    "buildertrendArchiveFiles": [
+      "src/lib/domain/buildertrend/store.ts"
+    ],
+    "buildertrendIdentityDecisions": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendIdentityRelationships": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendIdentityReviewRuns": [
+      "src/lib/buildertrend/identity-reconciliation.ts"
+    ],
+    "buildertrendImportObservations": [
+      "src/lib/domain/buildertrend/store.ts"
+    ],
+    "buildertrendImportRuns": [
+      "src/lib/domain/buildertrend/store.ts"
+    ],
+    "buildertrendSourceRecords": [
+      "src/lib/domain/buildertrend/store.ts"
+    ],
+    "channelMembers": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "channelReadState": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "channelThreadUserState": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "channels": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "cherishCardFulfillments": [
+      "src/app/actions/cherish-cards.ts"
+    ],
+    "cherishPulseResponses": [
+      "src/app/actions/cherish-pulse.ts"
+    ],
+    "cherishPulseStoryReplies": [
+      "src/app/actions/cherish-stories.ts"
+    ],
+    "cherishPulseStoryStates": [
+      "src/app/actions/cherish-stories.ts"
+    ],
+    "compassProjectCalendarEvents": [
+      "src/lib/project-calendars/sync.ts"
+    ],
+    "compassProjectCalendarMembers": [
+      "src/lib/project-calendars/sync.ts"
+    ],
+    "compassProjectCalendars": [
+      "src/lib/domain/calendars/store.ts"
+    ],
+    "contactAccountLinkEvents": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "contactMergeEvents": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "contractDocumentTemplates": [
+      "src/app/actions/contract-templates.ts"
+    ],
+    "contractDocumentTemplateVersions": [
+      "src/app/actions/contract-templates.ts"
+    ],
+    "contractPacketDocuments": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "contractPackets": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "correspondence": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceAttachments": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceCompositionDrafts": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceDrafts": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceEmailDeliveries": [
+      "src/lib/domain/correspondence/email-store.ts"
+    ],
+    "correspondenceEmailEvents": [
+      "src/lib/domain/correspondence/email-store.ts"
+    ],
+    "correspondenceEmailThreads": [
+      "src/lib/domain/correspondence/email-store.ts"
+    ],
+    "correspondenceMessages": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceOutbox": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceParticipants": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceRecipients": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceRevisions": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceSavedDrafts": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceState": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "correspondenceWriteGuards": [
+      "src/lib/domain/correspondence/store.ts"
+    ],
+    "creditMemos": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "customDashboards": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "customerContacts": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "customers": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "customThemes": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "dailyLogPhotos": [
+      "src/lib/domain/field/store.ts"
+    ],
+    "dailyLogReminders": [
+      "src/lib/daily-logs/reminders-server.ts"
+    ],
+    "dailyLogs": [
+      "src/lib/domain/field/store.ts"
+    ],
+    "dailyLogTaskLinks": [
+      "src/lib/domain/field/store.ts"
+    ],
+    "driveFolderShareChecks": [
+      "src/lib/paper-trail/folders.ts"
+    ],
+    "emailMailboxState": [
+      "src/lib/email/mailbox-state.ts"
+    ],
+    "emailReplyThreads": [
+      "src/lib/domain/correspondence/email-store.ts"
+    ],
+    "equipmentLogEntries": [
+      "src/app/actions/equipment.ts"
+    ],
+    "equipmentMachines": [
+      "src/app/actions/equipment.ts"
+    ],
+    "equipmentServiceItems": [
+      "src/app/actions/equipment.ts"
+    ],
+    "estimateTemplateDefaults": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "estimateTemplateLines": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "estimateTermsTemplates": [
+      "src/app/actions/estimate-text-templates.ts"
+    ],
+    "feedback": [
+      "src/app/api/feedback/route.ts"
+    ],
+    "feedbackDeskItems": [
+      "src/lib/domain/feedback/store.ts"
+    ],
+    "feedbackMaintenanceRuns": [
+      "src/lib/domain/feedback/store.ts"
+    ],
+    "feedbackServiceHealth": [
+      "src/lib/domain/feedback/store.ts"
+    ],
+    "googleAuth": [
+      "src/app/actions/google-drive.ts"
+    ],
+    "googleCalendarConnections": [
+      "src/lib/domain/calendars/store.ts"
+    ],
+    "googleCalendarEntityLinks": [
+      "src/lib/google/calendar/sync.ts"
+    ],
+    "googleCalendarEvents": [
+      "src/lib/google/calendar/sync.ts"
+    ],
+    "googleCalendarSelections": [
+      "src/lib/domain/calendars/store.ts"
+    ],
+    "googleStarredFiles": [
+      "src/app/actions/google-drive.ts"
+    ],
+    "gotoInboundEvents": [
+      "src/lib/domain/feedback/inbound-store.ts"
+    ],
+    "gotoInboundSettings": [
+      "src/lib/domain/feedback/inbound-store.ts"
+    ],
+    "greetingCardRequests": [
+      "src/app/actions/greeting-cards.ts"
+    ],
+    "inboundEmails": [
+      "src/lib/domain/correspondence/email-store.ts"
+    ],
+    "internalContactPrivateAddresses": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "internalContacts": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "internalDutyEntries": [
+      "src/lib/domain/duties/store.ts"
+    ],
+    "invoicePaymentAllocations": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "invoices": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "jarvisBridgeEvents": [
+      "src/lib/domain/feedback/store.ts"
+    ],
+    "listeningPlaylistItems": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningPlaylists": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningPlaylistTrackLinks": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningQueueItems": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningRoomParticipants": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningRooms": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "listeningTrackLinks": [
+      "src/lib/domain/listening/store.ts"
+    ],
+    "localSyncMetadata": [
+      "src/lib/sync/engine.ts"
+    ],
+    "mcpApiKeys": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "mcpUsage": [
+      "src/app/api/bridge/tools/route.ts"
+    ],
+    "messageAttachments": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "messageMentions": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "messageReactions": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "messages": [
+      "src/lib/domain/conversations/store.ts"
+    ],
+    "morningPlanPreferences": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "mutationQueue": [
+      "src/lib/domain/settings/offline-queue/store.ts"
+    ],
+    "myCompassCalendarItems": [
+      "src/lib/my-compass-calendar/sync.ts"
+    ],
+    "myCompassCalendars": [
+      "src/lib/domain/calendars/store.ts"
+    ],
+    "netsuiteAuth": [
+      "src/lib/netsuite/auth/token-manager.ts"
+    ],
+    "netsuiteSyncLog": [
+      "src/lib/netsuite/sync/sync-engine.ts"
+    ],
+    "netsuiteSyncMetadata": [
+      "src/lib/netsuite/sync/delta-sync.ts",
+      "src/lib/netsuite/sync/push.ts",
+      "src/lib/netsuite/sync/sync-engine.ts"
+    ],
+    "notificationDeliveries": [
+      "src/lib/domain/notifications/store.ts"
+    ],
+    "notificationEvents": [
+      "src/lib/domain/notifications/store.ts"
+    ],
+    "notificationPreferences": [
+      "src/lib/domain/notifications/store.ts"
+    ],
+    "notificationRecipients": [
+      "src/lib/domain/notifications/store.ts"
+    ],
+    "nuTechBracingRentalLines": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechBracingRentals": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechCatalogPrices": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechCatalogVersions": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechOrderItems": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechOrderWorkflows": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "nuTechProducts": [
+      "src/lib/domain/nutech/store.ts"
+    ],
+    "organizationCalendarSettings": [
+      "src/lib/domain/work-calendar/store.ts"
+    ],
+    "organizationFeatureSettings": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "organizationInvites": [
+      "src/app/actions/invites.ts"
+    ],
+    "organizationMembers": [
+      "src/lib/domain/identity/store.ts"
+    ],
+    "organizations": [
+      "src/lib/auth.ts"
+    ],
+    "ownerProjectUpdates": [
+      "src/lib/domain/field/store.ts"
+    ],
+    "payApplicationPaymentAllocations": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "payApplicationPrepaidMarks": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "payments": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "permissionAuditEvents": [
+      "src/app/actions/permission-overrides.ts"
+    ],
+    "pluginConfig": [
+      "src/app/actions/plugins.ts"
+    ],
+    "pluginEvents": [
+      "src/app/actions/plugins.ts"
+    ],
+    "plugins": [
+      "src/app/actions/plugins.ts"
+    ],
+    "printSnapshots": [
+      "src/app/actions/print-snapshots.ts"
+    ],
+    "projectAccessInvitations": [
+      "src/lib/domain/identity/store.ts"
+    ],
+    "projectArchiveDocuments": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectArchiveRecipients": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectBudgetApplications": [
+      "src/lib/domain/budget/store.ts"
+    ],
+    "projectBudgetLines": [
+      "src/lib/domain/budget/store.ts"
+    ],
+    "projectChangeOrderDocuments": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectChangeOrderHistory": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectChangeOrderLines": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectChangeOrders": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectClientMeetings": [
+      "src/lib/domain/media/store.ts"
+    ],
+    "projectContacts": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "projectContactSourceLinks": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "projectContractBudgetAdjustments": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "projectContractBudgetLines": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "projectContractBudgetRevisions": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "projectContractDeposits": [
+      "src/app/actions/project-contract-deposits.ts"
+    ],
+    "projectDocuments": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectDuplicateDecisions": [
+      "src/lib/domain/project/registry-store.ts"
+    ],
+    "projectEmailCampaigns": [
+      "src/app/actions/project-email.ts"
+    ],
+    "projectEmailRecipients": [
+      "src/app/actions/project-email.ts"
+    ],
+    "projectEstimateAcknowledgements": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateAssemblies": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateAssemblyCopies": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateBasisDocuments": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateLineCostItems": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateLines": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimatePhaseDescriptions": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateReportPhases": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectEstimateRfqBidImportLines": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectEstimateRfqBidImports": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectEstimates": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectExternalLinks": [
+      "src/lib/domain/project/store.ts"
+    ],
+    "projectFamilies": [
+      "src/lib/domain/families/store.ts"
+    ],
+    "projectFamilyPhases": [
+      "src/lib/domain/families/store.ts"
+    ],
+    "projectFieldCostCodes": [
+      "src/app/actions/field-cost-codes.ts"
+    ],
+    "projectFinishSelectionRooms": [
+      "src/lib/domain/selections/store.ts"
+    ],
+    "projectFinishSelections": [
+      "src/lib/domain/selections/store.ts"
+    ],
+    "projectFollowUpReminders": [
+      "src/lib/project-follow-up-reminders.ts"
+    ],
+    "projectFollowUps": [
+      "src/lib/domain/crm/store.ts"
+    ],
+    "projectInteractions": [
+      "src/lib/domain/crm/store.ts"
+    ],
+    "projectJobStatuses": [
+      "src/lib/domain/project/store.ts"
+    ],
+    "projectLinks": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectMembers": [
+      "src/lib/domain/project/store.ts"
+    ],
+    "projectNotes": [
+      "src/lib/domain/crm/store.ts"
+    ],
+    "projectNumberAliases": [
+      "src/lib/domain/project/numbering-store.ts"
+    ],
+    "projectNumberReservations": [
+      "src/lib/domain/project/numbering-store.ts"
+    ],
+    "projectNumberRetirements": [
+      "src/lib/domain/project/numbering-store.ts"
+    ],
+    "projectNumberReviewDecisions": [
+      "src/app/actions/project-number-reviews.ts"
+    ],
+    "projectOperations": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectPhaseProposals": [
+      "src/lib/domain/estimates/store.ts"
+    ],
+    "projectProfileAuditEvents": [
+      "src/lib/domain/project-audit/store.ts"
+    ],
+    "projectProfileSyncOperations": [
+      "src/lib/domain/project/store.ts"
+    ],
+    "projectPurchaseOrderLines": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectRecordDriveFiles": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectRecordDriveSnapshots": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectRegistryRemovals": [
+      "src/lib/domain/project/registry-store.ts"
+    ],
+    "projectRfiAttachments": [
+      "src/lib/domain/rfis/store.ts"
+    ],
+    "projectRfis": [
+      "src/lib/domain/rfis/store.ts"
+    ],
+    "projectRfqBidApprovals": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectRfqEmailDeliveries": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectRfqManualResponseEvents": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectRfqQuoteLinks": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectRouteAliases": [
+      "src/lib/domain/project/numbering-store.ts"
+    ],
+    "projects": [
+      "src/lib/domain/project/store.ts"
+    ],
+    "projectSavedViews": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "projectSelectionProcurementLinks": [
+      "src/app/actions/project-operations.ts"
+    ],
+    "projectSourceRecordParticipants": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "projectTemplateApplicationItems": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "projectTemplateApplications": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "projectTemplateModules": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "projectTemplates": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "projectTemplateVersions": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "projectTodoEvents": [
+      "src/lib/domain/operations/store.ts"
+    ],
+    "projectTravelChargeOverrides": [
+      "src/app/actions/project-travel-charges.ts"
+    ],
+    "projectVideos": [
+      "src/lib/domain/media/store.ts"
+    ],
+    "projectWarrantyClaimAttachments": [
+      "src/lib/domain/warranty/store.ts"
+    ],
+    "projectWarrantyClaimEvents": [
+      "src/lib/domain/warranty/store.ts"
+    ],
+    "projectWarrantyClaims": [
+      "src/lib/domain/warranty/store.ts"
+    ],
+    "projectWorkflowChecks": [
+      "src/lib/domain/workflows/store.ts"
+    ],
+    "pushTokens": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "rateBookEntries": [
+      "src/app/actions/rate-book.ts"
+    ],
+    "rateBookEntryHistory": [
+      "src/app/actions/rate-book.ts"
+    ],
+    "recurringDuties": [
+      "src/lib/domain/duties/store.ts"
+    ],
+    "recurringDutyCompletions": [
+      "src/lib/domain/duties/store.ts"
+    ],
+    "rolePermissionOverrides": [
+      "src/app/actions/permission-overrides.ts"
+    ],
+    "sageBridgeRequestNonces": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageBridgeStatus": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageClientDirectoryEntries": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageClientDirectoryRefreshes": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageClientProjectWriteOperations": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageContactChangeEvents": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactChangeProposals": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactCreateEvents": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactCreateProposals": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactLinkEvents": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactReadRequests": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageContactSnapshots": [
+      "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageLaborLines": [
+      "src/lib/shop-tickets/sage-labor-ingest.ts"
+    ],
+    "sageLaborRequests": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sagePayApplicationSnapshots": [
+      "src/lib/sage/pay-application-ingest.ts"
+    ],
+    "sagePayApplicationSyncRuns": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageSquarePaymentOperations": [
+      "src/lib/domain/sage-bridge/square-store.ts"
+    ],
+    "sageSquareWebhookEvents": [
+      "src/lib/sage/square-payment.ts"
+    ],
+    "sageTaxEntities": [
+      "src/lib/sage/tax-catalog-ingest.ts"
+    ],
+    "sageVendorCertificateSyncs": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sageVendorDirectoryEntries": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "savedViewDefaults": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "savedViews": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "scheduleBaselines": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "schedulePhaseOptions": [
+      "src/app/actions/schedule-phases.ts"
+    ],
+    "schedulePublications": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleSavedViews": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "scheduleTaskAssignees": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleTaskLinks": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleTaskPeople": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleTasks": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "scheduleTemplateDependencies": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "scheduleTemplateItems": [
+      "src/lib/domain/templates/store.ts"
+    ],
+    "shopTicketLaborClaims": [
+      "src/app/actions/shop-tickets.ts"
+    ],
+    "shopTicketLines": [
+      "src/app/actions/shop-tickets.ts"
+    ],
+    "shopTickets": [
+      "src/app/actions/shop-tickets.ts"
+    ],
+    "slabMemories": [
+      "src/lib/agent/memory.ts"
+    ],
+    "socialAccounts": [
+      "src/lib/domain/media/store.ts"
+    ],
+    "socialConnectionDrafts": [
+      "src/lib/domain/media/store.ts"
+    ],
+    "socialPostMedia": [
+      "src/app/actions/social-posts.ts"
+    ],
+    "socialPosts": [
+      "src/app/actions/social-posts.ts"
+    ],
+    "socialPostTargets": [
+      "src/app/actions/social-posts.ts"
+    ],
+    "socialProjectAlbums": [
+      "src/app/actions/social-posts.ts"
+    ],
+    "staffMessageEvents": [
+      "src/lib/domain/feedback/inbound-store.ts"
+    ],
+    "staffMessageRecords": [
+      "src/lib/domain/feedback/inbound-store.ts"
+    ],
+    "syncCheckpoint": [
+      "src/lib/sync/engine.ts"
+    ],
+    "syncTombstone": [
+      "src/lib/sync/engine.ts"
+    ],
+    "taskDependencies": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "teamPermissionOverrides": [
+      "src/app/actions/permission-overrides.ts"
+    ],
+    "tradeLetters": [
+      "src/lib/domain/trade-letters/store.ts"
+    ],
+    "travelChargeSettings": [
+      "src/app/actions/travel-charges.ts"
+    ],
+    "typingSessions": [
+      "src/app/actions/conversations-realtime.ts"
+    ],
+    "userPermissionOverrides": [
+      "src/app/actions/permission-overrides.ts"
+    ],
+    "userPresence": [
+      "src/app/actions/presence.ts"
+    ],
+    "userProviderConfig": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "users": [
+      "src/lib/domain/identity/store.ts"
+    ],
+    "userThemePreference": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "userViewPreferences": [
+      "src/lib/domain/settings/store.ts"
+    ],
+    "vendorBills": [
+      "src/lib/domain/financials/store.ts"
+    ],
+    "vendorContacts": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "vendors": [
+      "src/lib/domain/contacts/store.ts"
+    ],
+    "vendorTradeDocLinks": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "vendorTradeDocuments": [
+      "src/lib/domain/documents/store.ts"
+    ],
+    "voiceParticipants": [
+      "src/app/actions/voice-sessions.ts"
+    ],
+    "voiceRealtimeKitMeetings": [
+      "src/app/actions/voice-sessions.ts"
+    ],
+    "voiceSignals": [
+      "src/app/actions/voice-sessions.ts"
+    ],
+    "weatherAreaSnapshots": [
+      "src/lib/weather/refresh-server.ts"
+    ],
+    "weatherCells": [
+      "src/lib/domain/weather/store.ts"
+    ],
+    "weatherPoints": [
+      "src/lib/domain/weather/store.ts"
+    ],
+    "weatherScheduleRisks": [
+      "src/lib/weather/schedule-risk-server.ts"
+    ],
+    "weatherZoneShapes": [
+      "src/lib/weather/refresh-server.ts"
+    ],
+    "workCalendarEventAttendees": [
+      "src/lib/domain/work-calendar/store.ts"
+    ],
+    "workCalendarEvents": [
+      "src/lib/domain/work-calendar/store.ts"
+    ],
+    "workdayExceptions": [
+      "src/lib/domain/schedule/store.ts"
+    ],
+    "youtubeChannelConnections": [
+      "src/lib/domain/media/store.ts"
+    ]
+  },
+  "largeFiles": {
+    "src/app/actions/chat-messages.ts": 1157,
+    "src/app/actions/cherish-pulse.ts": 912,
+    "src/app/actions/contract-packets.ts": 1361,
+    "src/app/actions/google-drive.ts": 1357,
+    "src/app/actions/greeting-cards.ts": 1104,
+    "src/app/actions/listening-room.ts": 1085,
+    "src/app/actions/nutech-orders.ts": 980,
+    "src/app/actions/project-audience-preview.ts": 1007,
+    "src/app/actions/project-change-orders.ts": 1553,
+    "src/app/actions/project-documents.ts": 876,
+    "src/app/actions/project-financial-workflows.ts": 1432,
+    "src/app/actions/schedule-confirmations.ts": 1344,
+    "src/app/actions/social-posts.ts": 1123,
+    "src/app/actions/voice-sessions.ts": 982,
+    "src/app/api/google/project-manager-handoff/route.ts": 816,
+    "src/app/page.tsx": 1149,
+    "src/components/agent/chat-view.tsx": 1047,
+    "src/components/ai/prompt-input.tsx": 1287,
+    "src/components/app-sidebar.tsx": 854,
+    "src/components/conversations/message-composer.tsx": 1014,
+    "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
+    "src/components/dashboard/dashboard-launchpad.tsx": 1343,
+    "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
+    "src/components/nutech/nutech-order-workspace.tsx": 1182,
+    "src/components/projects/owner-update-draft-editor.tsx": 1125,
+    "src/components/projects/project-audience-preview.tsx": 923,
+    "src/components/projects/project-contract-packet-workspace.tsx": 995,
+    "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
+    "src/components/projects/project-purchase-order-create-form.tsx": 1043,
+    "src/components/projects/project-rfq-edit-form.tsx": 1069,
+    "src/components/projects/projects-hub.tsx": 1670,
+    "src/components/schedule/work-calendar-event-dialog.tsx": 815,
+    "src/components/schedule/work-calendar.tsx": 830,
+    "src/components/settings/ai-model-tab.tsx": 1379,
+    "src/components/ui/sidebar.tsx": 916,
+    "src/components/voice/realtimekit-meeting-window.tsx": 1060,
+    "src/lib/agent/render/registry.tsx": 1809,
+    "src/lib/auth.ts": 807,
+    "src/lib/email/gmail-inbound.ts": 821,
+    "src/lib/email/project-inbound-routing.ts": 1039,
+    "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
+    "src/lib/feature-settings/registry.ts": 1040,
+    "src/lib/notifications/create-event.ts": 843,
+    "src/lib/notifications/events.ts": 955,
+    "src/lib/permissions.ts": 806,
+    "src/lib/sage/square-payment.ts": 1333,
+    "src/lib/sync/engine.ts": 864,
+    "src/lib/theme/presets.ts": 1942
+  },
+  "localHelpers": {
+    "src/app/actions/cherish-cards.ts": 1,
+    "src/app/actions/contract-templates.ts": 1,
+    "src/app/actions/greeting-cards.ts": 1,
+    "src/app/actions/inbound-sms-review.ts": 1,
+    "src/app/actions/project-access-invitations.ts": 1,
+    "src/app/actions/project-audience-sub-vendor.ts": 1,
+    "src/app/actions/project-contract-deposits.ts": 1,
+    "src/app/actions/project-financial-workflows.ts": 1,
+    "src/app/actions/social-connections.ts": 1,
+    "src/app/actions/social-posts.ts": 1,
+    "src/app/actions/voice-sessions.ts": 1,
+    "src/app/api/conversations/attachments/[attachmentId]/route.ts": 1,
+    "src/app/api/conversations/attachments/upload/route.ts": 1,
+    "src/app/api/email/gmail-sync/route.ts": 2,
+    "src/app/api/google/project-manager-handoff/route.ts": 1,
+    "src/app/api/google/script-handoff/route.ts": 1,
+    "src/app/api/integrations/goto/setup/route.ts": 2,
+    "src/app/api/integrations/jarvis/events/[id]/search/route.ts": 1,
+    "src/app/api/projects/[id]/pay-applications/[applicationId]/download/route.ts": 2,
+    "src/app/api/projects/[id]/photos/[photoId]/route.ts": 2,
+    "src/app/api/projects/[id]/photos/upload/route.ts": 1,
+    "src/app/api/projects/[id]/videos/[videoId]/route.ts": 1,
+    "src/app/api/projects/[id]/videos/upload/complete/route.ts": 1,
+    "src/app/api/projects/[id]/videos/upload/start/route.ts": 1,
+    "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": 1,
+    "src/app/api/social/media/[photoId]/route.ts": 1,
+    "src/app/dashboard/office-alerts/page.tsx": 1,
+    "src/app/dashboard/requests/[id]/page.tsx": 1,
+    "src/app/dashboard/requests/my-requests-list.tsx": 1,
+    "src/app/preview/projects/[id]/owner/budget/page.tsx": 2,
+    "src/components/ai/code-block.tsx": 1,
+    "src/components/cards/ecard-preview.tsx": 1,
+    "src/components/cards/greeting-card-workspace.tsx": 1,
+    "src/components/correspondence/correspondence-message-card.tsx": 1,
+    "src/components/correspondence/project-correspondence-workspace.tsx": 1,
+    "src/components/dashboard/cherish-pulse-stream.tsx": 1,
+    "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1,
+    "src/components/equipment/equipment-workspace.tsx": 1,
+    "src/components/feedback/feedback-desk-admin.tsx": 1,
+    "src/components/projects/deposit-request-document.tsx": 2,
+    "src/components/projects/duty-log-workspace.tsx": 1,
+    "src/components/projects/estimate-client-report.tsx": 1,
+    "src/components/projects/estimate-line-bids-dialog.tsx": 2,
+    "src/components/projects/estimate-pricing-board.tsx": 1,
+    "src/components/projects/estimate-version-acceptance-fields.tsx": 1,
+    "src/components/projects/owner-update-actions.tsx": 1,
+    "src/components/projects/pay-application-client-report.tsx": 1,
+    "src/components/projects/project-audience-gantt.tsx": 1,
+    "src/components/projects/project-audience-photo-gallery.tsx": 1,
+    "src/components/projects/project-audience-preview.tsx": 2,
+    "src/components/projects/project-audience-schedule.tsx": 1,
+    "src/components/projects/project-budget-panel.tsx": 2,
+    "src/components/projects/project-change-order-detail.tsx": 2,
+    "src/components/projects/project-change-order-document-upload.ts": 1,
+    "src/components/projects/project-change-order-estimate-panel.tsx": 1,
+    "src/components/projects/project-change-order-list.tsx": 1,
+    "src/components/projects/project-change-order-version-lines.tsx": 1,
+    "src/components/projects/project-contract-deposits-panel.tsx": 1,
+    "src/components/projects/project-contract-packet-workspace.tsx": 1,
+    "src/components/projects/project-estimate-acceptance-upload.ts": 1,
+    "src/components/projects/project-estimate-assembly-editor.tsx": 1,
+    "src/components/projects/project-estimate-buildertrend-import.tsx": 1,
+    "src/components/projects/project-estimate-line-breakdown.tsx": 1,
+    "src/components/projects/project-estimate-list.tsx": 1,
+    "src/components/projects/project-estimate-phase-proposals.tsx": 1,
+    "src/components/projects/project-estimate-report-phase-editor.tsx": 1,
+    "src/components/projects/project-estimate-report-phases.tsx": 1,
+    "src/components/projects/project-estimate-version-comparison.tsx": 1,
+    "src/components/projects/project-financial-workspace.tsx": 1,
+    "src/components/projects/project-follow-up-aging.tsx": 1,
+    "src/components/projects/project-owner-pay-application-editor.tsx": 1,
+    "src/components/projects/project-selection-share-actions.tsx": 1,
+    "src/components/projects/project-video-upload.tsx": 1,
+    "src/components/projects/project-warranty-workspace.tsx": 1,
+    "src/components/projects/recurring-duties-board.tsx": 1,
+    "src/components/projects/shop-ticket-document.tsx": 1,
+    "src/components/projects/shop-tickets-workspace.tsx": 1,
+    "src/components/rate-book/rate-book-fill-picker.tsx": 1,
+    "src/components/settings/account-deletion-requests-card.tsx": 1,
+    "src/components/templates/estimate-template-editor.tsx": 1,
+    "src/components/voice/realtimekit-meeting-window.tsx": 1,
+    "src/components/voice/talk-notes-panel.tsx": 1,
+    "src/hooks/use-voice-state.ts": 1,
+    "src/lib/agent/pending-actions.ts": 1,
+    "src/lib/agent/render/registry.tsx": 2,
+    "src/lib/billing/owner-document-notices.ts": 1,
+    "src/lib/contact-notes.ts": 1,
+    "src/lib/contracts/packet-pdf.ts": 1,
+    "src/lib/correspondence/attachment-storage.ts": 2,
+    "src/lib/correspondence/email-adapter.ts": 1,
+    "src/lib/email/compass-email.ts": 2,
+    "src/lib/email/gmail-inbound.ts": 2,
+    "src/lib/email/gmail-message-parser.ts": 2,
+    "src/lib/email/internal-email-alias.ts": 2,
+    "src/lib/email/invitation-delivery.ts": 1,
+    "src/lib/email/project-access-welcome.ts": 1,
+    "src/lib/email/project-email-attachments.ts": 1,
+    "src/lib/email/project-video-attachments.ts": 3,
+    "src/lib/email/reply-tracking.ts": 2,
+    "src/lib/equipment/model.ts": 1,
+    "src/lib/estimates/pricing-board.ts": 1,
+    "src/lib/field/offline-outbox.ts": 1,
+    "src/lib/financials/owner-ar.ts": 1,
+    "src/lib/financials/project-totals-import.ts": 1,
+    "src/lib/geo/nearby-address.ts": 1,
+    "src/lib/geo/site-lookup.ts": 1,
+    "src/lib/giftbit/config.ts": 1,
+    "src/lib/google/calendar/client.ts": 1,
+    "src/lib/google/calendar/oauth.ts": 1,
+    "src/lib/google/youtube.ts": 1,
+    "src/lib/goto/account-discovery.ts": 1,
+    "src/lib/goto/message-recovery.ts": 1,
+    "src/lib/goto/notification-parser.ts": 1,
+    "src/lib/goto/numbers.ts": 1,
+    "src/lib/goto/webhook-security.ts": 1,
+    "src/lib/greeting-cards/ecard-delivery.ts": 2,
+    "src/lib/greeting-cards/workflow.ts": 1,
+    "src/lib/handwrytten/config.ts": 1,
+    "src/lib/internal-duties/recurring-display.ts": 1,
+    "src/lib/jarvis/visual-context.ts": 1,
+    "src/lib/morning-plan/plan.ts": 1,
+    "src/lib/owner-updates/external-projection.ts": 1,
+    "src/lib/participant-access.ts": 1,
+    "src/lib/print/audience-record-reports.ts": 1,
+    "src/lib/print/portal-report.ts": 1,
+    "src/lib/print/rfq-print.ts": 1,
+    "src/lib/purchase-orders/email.ts": 1,
+    "src/lib/push/providers.ts": 1,
+    "src/lib/rate-book/model.ts": 1,
+    "src/lib/rfqs/email.ts": 1,
+    "src/lib/sage/client-directory-import.ts": 1,
+    "src/lib/sage/pay-application-ingest.ts": 1,
+    "src/lib/sage/square-payment.ts": 1,
+    "src/lib/sage/square-webhook-auth.ts": 1,
+    "src/lib/shop-tickets/model.ts": 1,
+    "src/lib/social/config.ts": 1,
+    "src/lib/social/meta.ts": 1,
+    "src/lib/social/x.ts": 1,
+    "src/lib/warranty/google-drive.ts": 1
+  },
+  "envCasts": {},
+  "libImportsApp": {},
+  "actionImportsActions": {
+    "src/app/actions/cherish-stories.ts": 2,
+    "src/app/actions/estimate-bids.ts": 1,
+    "src/app/actions/estimate-pricing-board.ts": 2,
+    "src/app/actions/field-mode.ts": 4,
+    "src/app/actions/nutech-airlite-po.ts": 2,
+    "src/app/actions/portfolio-map.ts": 1,
+    "src/app/actions/project-estimates.ts": 1,
+    "src/app/actions/project-families.ts": 1,
+    "src/app/actions/project-links.ts": 1,
+    "src/app/actions/project-messages.ts": 1,
+    "src/app/actions/rate-book.ts": 1,
+    "src/app/actions/schedule-publications.ts": 1,
+    "src/app/actions/selection-decisions-read.ts": 1
+  },
+  "clientPages": {},
+  "handRolledContext": {
+    "src/app/actions/account-deletion-admin.ts": 1,
+    "src/app/actions/agent-auth.ts": 1,
+    "src/app/actions/agent-confirmation.ts": 1,
+    "src/app/actions/agent-items.ts": 4,
+    "src/app/actions/ai-config.ts": 5,
+    "src/app/actions/anthropic-oauth.ts": 3,
+    "src/app/actions/channel-categories.ts": 1,
+    "src/app/actions/chat-messages.ts": 8,
+    "src/app/actions/cherish-cards.ts": 4,
+    "src/app/actions/cherish-pulse.ts": 6,
+    "src/app/actions/cherish-recipients.ts": 1,
+    "src/app/actions/cherish-stories.ts": 3,
+    "src/app/actions/client-follow-up.ts": 1,
+    "src/app/actions/contact-account-links.ts": 2,
+    "src/app/actions/contact-directory-access.ts": 1,
+    "src/app/actions/contact-duplicates.ts": 1,
+    "src/app/actions/contract-templates.ts": 1,
+    "src/app/actions/conversations-realtime.ts": 2,
+    "src/app/actions/conversations.ts": 3,
+    "src/app/actions/department-profiles.ts": 1,
+    "src/app/actions/equipment.ts": 1,
+    "src/app/actions/feature-settings.ts": 1,
+    "src/app/actions/feedback-admin.ts": 6,
+    "src/app/actions/field-mode.ts": 2,
+    "src/app/actions/github.ts": 1,
+    "src/app/actions/google-calendar.ts": 1,
+    "src/app/actions/google-drive.ts": 16,
+    "src/app/actions/greeting-card-recipients.ts": 1,
+    "src/app/actions/greeting-cards.ts": 8,
+    "src/app/actions/inbound-email-review.ts": 1,
+    "src/app/actions/inbound-sms-review.ts": 1,
+    "src/app/actions/internal-workspaces.ts": 2,
+    "src/app/actions/invites.ts": 5,
+    "src/app/actions/job-workflows.ts": 1,
+    "src/app/actions/listening-room.ts": 1,
+    "src/app/actions/mcp-keys.ts": 4,
+    "src/app/actions/message-search.ts": 3,
+    "src/app/actions/morning-plan.ts": 1,
+    "src/app/actions/my-compass-calendar.ts": 1,
+    "src/app/actions/netsuite-sync.ts": 8,
+    "src/app/actions/notifications.ts": 2,
+    "src/app/actions/office-alerts.ts": 1,
+    "src/app/actions/organizations.ts": 3,
+    "src/app/actions/permission-overrides.ts": 4,
+    "src/app/actions/portfolio-weather.ts": 1,
+    "src/app/actions/presence.ts": 3,
+    "src/app/actions/profile.ts": 5,
+    "src/app/actions/project-access-invitations.ts": 1,
+    "src/app/actions/project-budget.ts": 1,
+    "src/app/actions/project-change-orders.ts": 1,
+    "src/app/actions/project-contract-deposits.ts": 1,
+    "src/app/actions/project-duplicates.ts": 1,
+    "src/app/actions/project-estimates.ts": 1,
+    "src/app/actions/project-financial-workflows.ts": 2,
+    "src/app/actions/project-messages.ts": 1,
+    "src/app/actions/project-number-reviews.ts": 1,
+    "src/app/actions/project-registry-archive.ts": 1,
+    "src/app/actions/project-site-weather.ts": 2,
+    "src/app/actions/project-travel-charges.ts": 1,
+    "src/app/actions/project-videos.ts": 2,
+    "src/app/actions/project-warranty-source-review.ts": 1,
+    "src/app/actions/project-warranty-vendor.ts": 1,
+    "src/app/actions/project-warranty.ts": 1,
+    "src/app/actions/provider-config.ts": 4,
+    "src/app/actions/rate-book.ts": 1,
+    "src/app/actions/rfq-quote-link.ts": 1,
+    "src/app/actions/sage-client-directory.ts": 2,
+    "src/app/actions/sage-contact-changes.ts": 4,
+    "src/app/actions/sage-contact-creates.ts": 2,
+    "src/app/actions/sage-contact-links.ts": 2,
+    "src/app/actions/sage-pay-applications.ts": 1,
+    "src/app/actions/shop-ticket-sage-labor.ts": 1,
+    "src/app/actions/shop-tickets.ts": 1,
+    "src/app/actions/social-connections.ts": 1,
+    "src/app/actions/social-posts.ts": 1,
+    "src/app/actions/template-import-options.ts": 1,
+    "src/app/actions/themes.ts": 2,
+    "src/app/actions/travel-charges.ts": 1,
+    "src/app/actions/users.ts": 5,
+    "src/app/actions/vendor-trade-doc-link.ts": 1,
+    "src/app/actions/view-preferences.ts": 1,
+    "src/app/actions/voice-sessions.ts": 1,
+    "src/app/actions/work-calendar.ts": 1,
+    "src/app/api/agent/render/route.ts": 1,
+    "src/app/api/agent/route.ts": 1,
+    "src/app/api/bridge/context/route.ts": 1,
+    "src/app/api/bridge/register/route.ts": 1,
+    "src/app/api/bridge/tools/route.ts": 1,
+    "src/app/api/client-follow-up/overdue-count/route.ts": 1,
+    "src/app/api/compass/dashboards/route.ts": 1,
+    "src/app/api/compass/feedback/route.ts": 1,
+    "src/app/api/compass/github/route.ts": 1,
+    "src/app/api/compass/memory/route.ts": 1,
+    "src/app/api/compass/messages/route.ts": 1,
+    "src/app/api/compass/provider/route.ts": 3,
+    "src/app/api/compass/query/route.ts": 1,
+    "src/app/api/compass/schedule/route.ts": 1,
+    "src/app/api/compass/skills/route.ts": 1,
+    "src/app/api/compass/themes/route.ts": 1,
+    "src/app/api/conversations/attachments/[attachmentId]/route.ts": 1,
+    "src/app/api/conversations/attachments/upload/route.ts": 1,
+    "src/app/api/email/gmail-sync/route.ts": 1,
+    "src/app/api/feedback/route.ts": 1,
+    "src/app/api/field/notifications/[recipientId]/open/route.ts": 1,
+    "src/app/api/google/calendar/callback/route.ts": 1,
+    "src/app/api/google/calendar/connect/route.ts": 1,
+    "src/app/api/google/download/[fileId]/route.ts": 1,
+    "src/app/api/google/project-manager-handoff/route.ts": 1,
+    "src/app/api/google/script-handoff/route.ts": 1,
+    "src/app/api/google/youtube/callback/route.ts": 1,
+    "src/app/api/google/youtube/connect/route.ts": 1,
+    "src/app/api/help/videos/[videoId]/route.ts": 1,
+    "src/app/api/integrations/foxit/envelopes/[envelopeId]/document/route.ts": 1,
+    "src/app/api/integrations/foxit/webhook/route.ts": 1,
+    "src/app/api/integrations/goto/inbound/route.ts": 2,
+    "src/app/api/integrations/goto/setup/route.ts": 1,
+    "src/app/api/integrations/jarvis/events/[id]/ack/route.ts": 1,
+    "src/app/api/integrations/jarvis/events/[id]/search/route.ts": 1,
+    "src/app/api/integrations/jarvis/events/[id]/visuals/route.ts": 1,
+    "src/app/api/integrations/jarvis/events/route.ts": 2,
+    "src/app/api/integrations/jarvis/feedback/[id]/status/route.ts": 1,
+    "src/app/api/integrations/jarvis/health/route.ts": 1,
+    "src/app/api/integrations/jarvis/replies/route.ts": 1,
+    "src/app/api/integrations/sage/client-directory/route.ts": 1,
+    "src/app/api/integrations/sage/client-project-writes/requests/route.ts": 1,
+    "src/app/api/integrations/sage/client-project-writes/results/route.ts": 1,
+    "src/app/api/integrations/sage/contact-changes/requests/route.ts": 1,
+    "src/app/api/integrations/sage/contact-changes/results/route.ts": 1,
+    "src/app/api/integrations/sage/labor-hours/requests/route.ts": 1,
+    "src/app/api/integrations/sage/labor-hours/results/route.ts": 1,
+    "src/app/api/integrations/sage/pay-applications/requests/route.ts": 1,
+    "src/app/api/integrations/sage/pay-applications/results/route.ts": 1,
+    "src/app/api/integrations/sage/square-invoice-creators/route.ts": 1,
+    "src/app/api/integrations/sage/square-payments/requests/route.ts": 1,
+    "src/app/api/integrations/sage/square-payments/results/route.ts": 1,
+    "src/app/api/integrations/sage/tax-catalog/results/route.ts": 1,
+    "src/app/api/integrations/square/auth-health/route.ts": 1,
+    "src/app/api/integrations/square/webhook/route.ts": 1,
+    "src/app/api/netsuite/callback/route.ts": 1,
+    "src/app/api/operations/client-meetings/transcripts/route.ts": 1,
+    "src/app/api/operations/daily-logs/missing-reminders/route.ts": 1,
+    "src/app/api/operations/email/retry-invitations/route.ts": 1,
+    "src/app/api/operations/feedback/reconcile/route.ts": 1,
+    "src/app/api/operations/goto/recover-message-bodies/route.ts": 1,
+    "src/app/api/operations/morning-plan/sweep/route.ts": 1,
+    "src/app/api/operations/my-compass-calendar/sync/route.ts": 1,
+    "src/app/api/operations/paper-trail/run/route.ts": 1,
+    "src/app/api/operations/project-calendars/sync/route.ts": 1,
+    "src/app/api/operations/project-follow-up/overdue-reminders/route.ts": 1,
+    "src/app/api/operations/sage/health/route.ts": 1,
+    "src/app/api/operations/sage/square-receipts/route.ts": 1,
+    "src/app/api/operations/square/auth-health/route.ts": 1,
+    "src/app/api/operations/staff-message-desk/stale-reminders/route.ts": 1,
+    "src/app/api/operations/weather/refresh/route.ts": 1,
+    "src/app/api/projects/[id]/archive/[archiveId]/download/route.ts": 1,
+    "src/app/api/projects/[id]/change-orders/[changeOrderId]/executed-document/route.ts": 1,
+    "src/app/api/projects/[id]/contract-packets/[packetId]/pdf/route.ts": 1,
+    "src/app/api/projects/[id]/contracts/[packetId]/executed-document/route.ts": 1,
+    "src/app/api/projects/[id]/documents/[documentId]/download/route.ts": 1,
+    "src/app/api/projects/[id]/estimates/[estimateId]/accepted-document/route.ts": 1,
+    "src/app/api/projects/[id]/nutech-order-form/route.ts": 1,
+    "src/app/api/projects/[id]/pay-applications/[applicationId]/download/route.ts": 1,
+    "src/app/api/projects/[id]/photos/[photoId]/route.ts": 1,
+    "src/app/api/projects/[id]/trade-letters/[letterId]/pdf/route.ts": 1,
+    "src/app/api/projects/[id]/videos/[videoId]/route.ts": 1,
+    "src/app/api/projects/[id]/videos/upload/complete/route.ts": 1,
+    "src/app/api/projects/[id]/videos/upload/start/route.ts": 1,
+    "src/app/api/projects/[id]/warranty/[claimId]/attachments/[attachmentId]/download/route.ts": 1,
+    "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": 1,
+    "src/app/api/push/register/route.ts": 2,
+    "src/app/api/social/media/[photoId]/route.ts": 1,
+    "src/app/api/social/meta/callback/route.ts": 1,
+    "src/app/api/social/meta/connect/route.ts": 1,
+    "src/app/api/social/x/callback/route.ts": 1,
+    "src/app/api/social/x/connect/route.ts": 1,
+    "src/app/api/transcribe/route.ts": 1
+  },
+  "typeAssertions": {
+    "src/app/actions/ai-config.ts": 1,
+    "src/app/actions/conversations-realtime.ts": 1,
+    "src/app/actions/dashboards.ts": 1,
+    "src/app/actions/github.ts": 8,
+    "src/app/actions/mcp-keys.ts": 1,
+    "src/app/actions/netsuite-sync.ts": 17,
+    "src/app/actions/presence.ts": 1,
+    "src/app/actions/provider-config.ts": 1,
+    "src/app/actions/schedule.ts": 1,
+    "src/app/api/agent/action/route.ts": 2,
+    "src/app/api/agent/render/route.ts": 4,
+    "src/app/api/agent/route.ts": 3,
+    "src/app/api/auth/accept-invite/route.ts": 1,
+    "src/app/api/auth/login/route.ts": 2,
+    "src/app/api/auth/reset-password/route.ts": 1,
+    "src/app/api/auth/signup/route.ts": 1,
+    "src/app/api/auth/verify-email/route.ts": 1,
+    "src/app/api/bridge/tools/route.ts": 1,
+    "src/app/api/compass/dashboards/route.ts": 2,
+    "src/app/api/compass/github/route.ts": 10,
+    "src/app/api/compass/memory/route.ts": 6,
+    "src/app/api/compass/schedule/route.ts": 25,
+    "src/app/api/compass/skills/route.ts": 4,
+    "src/app/api/compass/themes/route.ts": 30,
+    "src/app/api/feedback/route.ts": 3,
+    "src/app/api/google/project-manager-handoff/route.ts": 2,
+    "src/app/api/netsuite/callback/route.ts": 1,
+    "src/app/dashboard/layout.tsx": 1,
+    "src/components/agent/chat-provider.tsx": 9,
+    "src/components/agent/chat-view.tsx": 4,
+    "src/components/ai/code-block.tsx": 1,
+    "src/components/ai/prompt-input.tsx": 4,
+    "src/components/ai/shimmer.tsx": 2,
+    "src/components/ai/tool.tsx": 1,
+    "src/components/auth/invite-form.tsx": 1,
+    "src/components/auth/login-form.tsx": 1,
+    "src/components/auth/passwordless-form.tsx": 2,
+    "src/components/auth/reset-password-form.tsx": 1,
+    "src/components/auth/set-password-form.tsx": 1,
+    "src/components/auth/signup-form.tsx": 1,
+    "src/components/auth/verify-email-form.tsx": 1,
+    "src/components/conversations/mention-suggestion.tsx": 3,
+    "src/components/conversations/message-composer.tsx": 6,
+    "src/components/conversations/pinned-messages-panel.tsx": 1,
+    "src/components/feedback-widget.tsx": 1,
+    "src/components/files/file-browser.tsx": 1,
+    "src/components/files/file-toolbar.tsx": 2,
+    "src/components/files/project-file-groups.tsx": 1,
+    "src/components/netsuite/conflict-dialog.tsx": 1,
+    "src/components/people-table.tsx": 3,
+    "src/components/schedule/dependency-dialog.tsx": 1,
+    "src/components/schedule/gantt-chart.tsx": 2,
+    "src/components/schedule/schedule-calendar-view.tsx": 1,
+    "src/components/schedule/schedule-list-view.tsx": 2,
+    "src/components/settings/ai-model-tab.tsx": 2,
+    "src/components/settings/invite-links-section.tsx": 1,
+    "src/components/theme-provider.tsx": 8,
+    "src/components/ui/carousel-pages.tsx": 1,
+    "src/components/ui/chart.tsx": 10,
+    "src/components/ui/file-preview.tsx": 1,
+    "src/components/ui/form.tsx": 2,
+    "src/components/ui/input-group.tsx": 1,
+    "src/components/ui/markdown-renderer.tsx": 3,
+    "src/components/ui/sidebar.tsx": 2,
+    "src/components/ui/sonner.tsx": 2,
+    "src/components/ui/toggle-group.tsx": 1,
+    "src/db/provider/d1-provider.ts": 2,
+    "src/db/provider/electron-provider.ts": 3,
+    "src/db/provider/interface.ts": 4,
+    "src/db/provider/memory-provider.ts": 3,
+    "src/hooks/use-agent.ts": 3,
+    "src/hooks/use-audio-recorder.ts": 1,
+    "src/hooks/use-compass-chat.ts": 4,
+    "src/lib/agent/chat-adapter.ts": 7,
+    "src/lib/agent/plugins/skills-client.ts": 3,
+    "src/lib/agent/provider-config.ts": 1,
+    "src/lib/agent/render/actions.ts": 14,
+    "src/lib/agent/render/compass-renderer.tsx": 2,
+    "src/lib/agent/render/registry.tsx": 7,
+    "src/lib/auth.ts": 2,
+    "src/lib/change-orders/version-difference.ts": 2,
+    "src/lib/cloudflare-context.ts": 12,
+    "src/lib/desktop/window-manager.ts": 1,
+    "src/lib/domain/schedule/rules.ts": 6,
+    "src/lib/files-data.ts": 2,
+    "src/lib/github/client.ts": 1,
+    "src/lib/google/auth/service-account.ts": 1,
+    "src/lib/google/client/drive-client.ts": 3,
+    "src/lib/google/config.ts": 1,
+    "src/lib/jarvis/feedback-github.ts": 2,
+    "src/lib/mcp/tool-adapter.ts": 1,
+    "src/lib/native/platform.ts": 3,
+    "src/lib/netsuite/auth/oauth-client.ts": 2,
+    "src/lib/netsuite/client/base-client.ts": 2,
+    "src/lib/netsuite/client/errors.ts": 3,
+    "src/lib/netsuite/client/suiteql-client.ts": 1,
+    "src/lib/netsuite/sync/delta-sync.ts": 1,
+    "src/lib/netsuite/sync/sync-engine.ts": 1,
+    "src/lib/paper-trail/sweep.ts": 1,
+    "src/lib/schedule/appearance.ts": 2,
+    "src/lib/schedule/gantt-transform.ts": 2,
+    "src/lib/sync/clock.ts": 2,
+    "src/lib/sync/conflict.ts": 2,
+    "src/lib/sync/engine.ts": 28,
+    "src/lib/sync/queue/mutation-queue.ts": 3,
+    "src/lib/sync/queue/processor.ts": 2
+  },
+  "nonNullAssertions": {
+    "src/app/api/auth/callback/route.ts": 1,
+    "src/app/api/auth/login/route.ts": 2,
+    "src/app/api/auth/mobile/session/route.ts": 1,
+    "src/app/api/auth/sso/route.ts": 2,
+    "src/components/agent/chat-provider.tsx": 1,
+    "src/components/schedule/schedule-mobile-view.tsx": 1,
+    "src/components/ui/audio-visualizer.tsx": 1,
+    "src/lib/desktop/window-manager.ts": 7,
+    "src/lib/native/platform.ts": 1,
+    "src/lib/netsuite/rate-limiter/concurrency-limiter.ts": 1,
+    "src/lib/schedule/critical-path.ts": 13,
+    "src/lib/schedule/dependency-validation.ts": 3,
+    "src/lib/schedule/gantt-transform.ts": 4,
+    "src/lib/sync/engine.ts": 4,
+    "src/lib/sync/queue/mutation-queue.ts": 1
+  },
+  "explicitAny": {},
+  "statusColumnsWithoutList": {
+    "src/db/schema-agent.ts": 1,
+    "src/db/schema-ai-config.ts": 1,
+    "src/db/schema-buildertrend.ts": 25,
+    "src/db/schema-contracts.ts": 3,
+    "src/db/schema-conversations.ts": 6,
+    "src/db/schema-correspondence-email.ts": 2,
+    "src/db/schema-correspondence.ts": 1,
+    "src/db/schema-documents.ts": 1,
+    "src/db/schema-estimates.ts": 7,
+    "src/db/schema-jarvis.ts": 6,
+    "src/db/schema-netsuite.ts": 10,
+    "src/db/schema-nutech.ts": 9,
+    "src/db/schema-participants.ts": 9,
+    "src/db/schema-plugins.ts": 3,
+    "src/db/schema-project-families.ts": 1,
+    "src/db/schema-rfqs.ts": 1,
+    "src/db/schema-sage.ts": 18,
+    "src/db/schema-selection-decisions.ts": 1,
+    "src/db/schema-social.ts": 3,
+    "src/db/schema-templates.ts": 8,
+    "src/db/schema-trade-docs.ts": 1,
+    "src/db/schema-warranty.ts": 5,
+    "src/db/schema.ts": 94
+  }
+}

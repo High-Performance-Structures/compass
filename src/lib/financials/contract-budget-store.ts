@@ -2,25 +2,40 @@ import { and, desc, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
-  projectBudgetApplications,
-  projectBudgetLines,
   projectChangeOrderLines,
   projectChangeOrders,
   sageCostCodes,
 } from "@/db/schema"
 import {
-  projectContractBudgetAdjustments,
-  projectContractBudgetLines,
   projectContractBudgetRevisions,
   projectEstimateLines,
   projectEstimates,
 } from "@/db/schema-estimates"
 import {
+  activateBudgetProjectionStatement,
+  insertBudgetApplicationStatement,
+  insertBudgetLinesStatement,
+  supersedeCurrentBudgetProjectionStatement,
+} from "@/lib/domain/budget/store"
+import {
+  contractBudgetApplicationNumber,
+  contractBudgetProjectionId,
+  contractBudgetRevisionPlan,
+  nextContractBudgetRevisionNumber,
+} from "@/lib/domain/financials/rules"
+import {
+  insertContractBudgetAdjustmentStatement,
+  insertContractBudgetLineStatement,
+  insertContractBudgetRevisionStatement,
+  makeContractBudgetRevisionCurrentStatement,
+  supersedeCurrentContractBudgetRevisionStatement,
+} from "@/lib/domain/financials/store"
+import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/domain/estimates/rules"
+import type { ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
+import {
   buildContractBudget,
-  calculateEstimateTotals,
   contractBudgetSourceHash,
   type ContractAdjustment,
-  type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
 import { moveDraftPayApplicationsToRevision } from "@/lib/financials/owner-pay-application-refresh"
 import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
@@ -37,7 +52,7 @@ export type ContractBudgetRebuildResult =
 
 type CompassDb = ReturnType<typeof getDb>
 
-const BUDGET_CHANGE_ORDER_STATUSES = [
+const BUDGET_CHANGE_ORDER_STATUSES: readonly ChangeOrderStatus[] = [
   "executed",
   "sage_pending",
   "synced",
@@ -304,7 +319,8 @@ export async function rebuildProjectContractBudget(input: {
     )
     .limit(1)
   const matching = matchingRows[0]
-  if (matching?.status === "current") {
+  const plan = contractBudgetRevisionPlan(matching?.status)
+  if (matching && plan === "unchanged") {
     return {
       success: true,
       revisionId: matching.id,
@@ -312,7 +328,7 @@ export async function rebuildProjectContractBudget(input: {
       changed: false,
     }
   }
-  if (matching?.status === "building") {
+  if (matching && plan === "reuse") {
     if (input.publish === false) {
       return {
         success: true,
@@ -342,7 +358,7 @@ export async function rebuildProjectContractBudget(input: {
     .where(eq(projectContractBudgetRevisions.projectId, input.projectId))
     .orderBy(desc(projectContractBudgetRevisions.revisionNumber))
     .limit(1)
-  const revisionNumber = (priorRows[0]?.revisionNumber ?? 0) + 1
+  const revisionNumber = nextContractBudgetRevisionNumber(priorRows[0]?.revisionNumber)
   const revisionId = crypto.randomUUID()
   const now = new Date().toISOString()
   const budget = buildContractBudget({
@@ -400,13 +416,13 @@ export async function rebuildProjectContractBudget(input: {
     createdAt: now,
   }))
 
-  const projectionId = `contract-budget-view:${revisionId}`
+  const projectionId = contractBudgetProjectionId(revisionId)
   const projectionRow = {
     id: projectionId,
     projectId: input.projectId,
     sourceSystem: "compass_contract_budget_projection",
     sourceRecordId: revisionId,
-    applicationNumber: `Contract Budget R${revisionNumber}`,
+    applicationNumber: contractBudgetApplicationNumber(revisionNumber),
     periodTo: now.slice(0, 10),
     status: "building",
     originalContractSum: budget.originalContractSumCents / 100,
@@ -464,17 +480,11 @@ export async function rebuildProjectContractBudget(input: {
     updatedAt: now,
   }))
   const preparationStatements = [
-    input.db.insert(projectContractBudgetRevisions).values(revisionRow),
-    ...revisionLineRows.map((line) =>
-      input.db.insert(projectContractBudgetLines).values(line)
-    ),
-    ...adjustmentRows.map((adjustment) =>
-      input.db.insert(projectContractBudgetAdjustments).values(adjustment)
-    ),
-    input.db.insert(projectBudgetApplications).values(projectionRow),
-    ...projectionLineRows.map((line) =>
-      input.db.insert(projectBudgetLines).values(line)
-    ),
+    insertContractBudgetRevisionStatement(input.db, revisionRow),
+    ...revisionLineRows.map((line) => insertContractBudgetLineStatement(input.db, line)),
+    ...adjustmentRows.map((adjustment) => insertContractBudgetAdjustmentStatement(input.db, adjustment)),
+    insertBudgetApplicationStatement(input.db, projectionRow),
+    ...projectionLineRows.map((line) => insertBudgetLinesStatement(input.db, line)),
   ]
   const firstStatement = preparationStatements[0]
   if (!firstStatement) {
@@ -505,42 +515,12 @@ async function activateContractBudgetRevision(input: {
   readonly revisionId: string
   readonly now: string
 }): Promise<void> {
-  const projectionId = `contract-budget-view:${input.revisionId}`
+  const projectionId = contractBudgetProjectionId(input.revisionId)
   await input.db.batch([
-    input.db
-      .update(projectContractBudgetRevisions)
-      .set({ status: "superseded" })
-      .where(
-        and(
-          eq(projectContractBudgetRevisions.projectId, input.projectId),
-          eq(projectContractBudgetRevisions.status, "current")
-        )
-      ),
-    input.db
-      .update(projectBudgetApplications)
-      .set({ status: "budget_superseded", updatedAt: input.now })
-      .where(
-        and(
-          eq(projectBudgetApplications.projectId, input.projectId),
-          eq(projectBudgetApplications.status, "budget_current"),
-          eq(
-            projectBudgetApplications.sourceSystem,
-            "compass_contract_budget_projection"
-          )
-        )
-      ),
-    input.db
-      .update(projectContractBudgetRevisions)
-      .set({ status: "current" })
-      .where(eq(projectContractBudgetRevisions.id, input.revisionId)),
-    input.db
-      .update(projectBudgetApplications)
-      .set({
-        status: "budget_current",
-        ownerVisible: true,
-        updatedAt: input.now,
-      })
-      .where(eq(projectBudgetApplications.id, projectionId)),
+    supersedeCurrentContractBudgetRevisionStatement(input.db, input.projectId),
+    supersedeCurrentBudgetProjectionStatement(input.db, input.projectId, input.now),
+    makeContractBudgetRevisionCurrentStatement(input.db, input.revisionId),
+    activateBudgetProjectionStatement(input.db, projectionId, input.now),
   ])
   // Draft draws follow the new revision so an executed change order reaches them.
   await moveDraftPayApplicationsToRevision(input.db, input.projectId, input.revisionId, input.now)

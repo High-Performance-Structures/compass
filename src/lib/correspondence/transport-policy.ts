@@ -3,9 +3,9 @@
  * the decision pure makes it possible to apply the same access boundary to
  * polling, webhooks, and future transport providers.
  */
-export type CorrespondenceTransport = "email" | "sms"
+type CorrespondenceTransport = "email" | "sms"
 
-export type CorrespondenceInboundTarget = {
+type CorrespondenceInboundTarget = {
   readonly organizationId: string
   readonly projectId: string
   readonly conversationId: string

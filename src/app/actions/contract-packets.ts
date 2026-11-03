@@ -3,7 +3,7 @@
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 
@@ -16,7 +16,19 @@ import {
   contractPackets,
 } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
+import { supersedeOtherContractEstimatesStatement, updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  deleteContractPacket,
+  deleteContractPacketDocument,
+  insertContractPacketDocument,
+  insertContractPacketDocumentStatement,
+  insertContractPacketStatement,
+  supersedeOtherExecutedPacketsStatement,
+  updateContractPacket,
+  updateContractPacketDocument,
+  updateContractPacketStatement,
+} from "@/lib/domain/documents/store"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { validateExecutedContractDocumentReplacement } from "@/lib/contracts/executed-document"
 import {
@@ -26,17 +38,23 @@ import {
   signerInitials,
   type ContractPacketSigner,
 } from "@/lib/contracts/packet"
+import type {
+  ProjectContractPacketDocumentItem,
+  ProjectContractPacketEstimateOption,
+  ProjectContractPacketSummary,
+} from "@/lib/contracts/packet-types"
 import {
   loadContractPacketPdfBranding,
   prepareContractPacketPdf,
 } from "@/lib/contracts/packet-pdf"
-import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { contractVersionBaseline } from "@/lib/change-orders/contract-version-acceptance"
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { createFoxitPreparedEnvelope } from "@/lib/foxit/esign"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
+import { projectContext } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
+import { requiredText } from "@/lib/domain/documents/rules"
 import {
   projectDepartment,
   projectLegalEntityName,
@@ -44,6 +62,8 @@ import {
 } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+
+export type { ProjectContractPacketDocumentItem } from "@/lib/contracts/packet-types"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -61,56 +81,7 @@ type ContractPacketAccess = {
   readonly canEdit: boolean
 }
 
-export type ProjectContractPacketDocumentItem = {
-  readonly id: string
-  readonly templateId: string | null
-  readonly templateVersionId: string | null
-  readonly code: string
-  readonly title: string
-  readonly contentMarkdown: string
-  readonly inclusionMode: string
-  readonly signingStage: string
-  readonly signaturePolicy: string
-  readonly documentDate: string | null
-  readonly revision: string | null
-  readonly sourceUrl: string | null
-  readonly sortOrder: number
-}
-
-export type ProjectContractPacketSummary = {
-  readonly id: string
-  readonly estimateId: string
-  readonly packetNumber: string
-  readonly versionNumber: number
-  readonly title: string
-  readonly status: string
-  readonly legalEntityName: string
-  readonly contractDraftDate: string | null
-  readonly approximateCommencementDate: string | null
-  readonly approximateCompletionDate: string | null
-  readonly depositRateBasisPoints: number
-  readonly depositCents: number
-  readonly latePaymentRateBasisPoints: number
-  readonly details: Readonly<Record<string, string>>
-  readonly clientSigners: readonly ContractPacketSigner[]
-  readonly companySignerName: string | null
-  readonly companySignerTitle: string | null
-  readonly companySignerEmail: string | null
-  readonly companySignerInitials: string | null
-  readonly foxitStatus: string
-  readonly foxitEnvelopeId: string | null
-  readonly foxitEmbeddedSessionUrl: string | null
-  readonly signaturePackageUrl: string | null
-  readonly signedAt: string | null
-  readonly acceptanceMethod: string | null
-  readonly acceptanceEvidenceLabel: string | null
-  readonly acceptanceRecordedByName: string | null
-  readonly acceptedAt: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
-}
-
-export type ProjectContractTemplateOption = {
+type ProjectContractTemplateOption = {
   readonly id: string
   readonly versionId: string
   readonly versionNumber: number
@@ -124,21 +95,7 @@ export type ProjectContractTemplateOption = {
   readonly sortOrder: number
 }
 
-export type ProjectContractPacketEstimateOption = {
-  readonly id: string
-  readonly estimateNumber: string
-  readonly versionNumber: number
-  readonly title: string
-  readonly status: string
-  readonly estimateDate: string | null
-  readonly clientName: string | null
-  readonly clientMailingAddress: string | null
-  readonly builderFeeCents: number
-  readonly builderFeeRateBasisPoints: number
-  readonly estimateTotalCents: number
-}
-
-export type ProjectContractSignerOption = {
+type ProjectContractSignerOption = {
   readonly id: string
   readonly name: string
   readonly title: string | null
@@ -192,17 +149,6 @@ export type ContractPacketExecutedDocumentReplacementInput = {
   readonly evidenceLabel: string | null
   readonly reason: string | null
   readonly attested: boolean
-}
-
-function cleanText(value: string | null): string | null {
-  const cleaned = value?.trim() ?? ""
-  return cleaned ? cleaned : null
-}
-
-function requiredText(value: string | null, label: string): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required.`)
-  return cleaned
 }
 
 function safeStringRecord(value: string): Readonly<Record<string, string>> {
@@ -295,9 +241,10 @@ async function packetAccess(
   if (!isInternalStaffRole(user.role)) {
     throw new Error("Contract packet preparation is limited to internal staff.")
   }
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const projectAccess = await assertProjectAccess(db, user, projectId)
+  // "member" scope: the same getProjectAccessRecord rule assertProjectAccess used.
+  const context = await projectContext(projectId, { scope: "member" })
+  if (!context.success) throw new Error(context.error)
+  const { db, env, project: projectAccess } = context.data
   const project = await db
     .select({
       name: projects.name,
@@ -361,18 +308,14 @@ async function resetPreparedPacketIfNeeded(
   updatedAt: string
 ): Promise<void> {
   if (packet.foxitStatus !== "preparing") return
-  await db
-    .update(contractPackets)
-    .set({
-      foxitStatus: "not_started",
-      foxitEnvelopeId: null,
-      foxitEmbeddedSessionUrl: null,
-      preparedSourceHash: null,
-      preparedAt: null,
-      updatedAt,
-    })
-    .where(eq(contractPackets.id, packet.id))
-    .run()
+  await updateContractPacket(db, packet.id, {
+    foxitStatus: "not_started",
+    foxitEnvelopeId: null,
+    foxitEmbeddedSessionUrl: null,
+    preparedSourceHash: null,
+    preparedAt: null,
+    updatedAt,
+  })
 }
 
 async function publishedTemplateOptions(
@@ -557,7 +500,7 @@ export async function createProjectContractPacket(
     const versionNumber = (existing[0]?.versionNumber ?? 0) + 1
     const clientSigners = estimateSigners(estimate)
     await access.db.batch([
-      access.db.insert(contractPackets).values({
+      insertContractPacketStatement(access.db, {
         id: packetId,
         projectId,
         estimateId,
@@ -586,7 +529,7 @@ export async function createProjectContractPacket(
         updatedAt: now,
       }),
       ...templates.map((template) =>
-        access.db.insert(contractPacketDocuments).values({
+        insertContractPacketDocumentStatement(access.db, {
           id: crypto.randomUUID(),
           projectId,
           packetId,
@@ -686,27 +629,23 @@ export async function saveProjectContractPacket(
       depositRateBasisPoints
     )
     const now = new Date().toISOString()
-    await access.db
-      .update(contractPackets)
-      .set({
-        title: requiredText(input.title, "Packet title"),
-        legalEntityName: requiredText(input.legalEntityName, "Legal entity"),
-        contractDraftDate: cleanText(input.contractDraftDate),
-        approximateCommencementDate: cleanText(input.approximateCommencementDate),
-        approximateCompletionDate: cleanText(input.approximateCompletionDate),
-        depositRateBasisPoints,
-        depositCents,
-        latePaymentRateBasisPoints,
-        detailsJson: JSON.stringify(input.details),
-        clientSignersJson: JSON.stringify(clients),
-        companySignerName: cleanText(input.companySignerName),
-        companySignerTitle: cleanText(input.companySignerTitle),
-        companySignerEmail: cleanText(input.companySignerEmail),
-        companySignerInitials: cleanText(input.companySignerInitials)?.toUpperCase() ?? null,
-        updatedAt: now,
-      })
-      .where(eq(contractPackets.id, packetId))
-      .run()
+    await updateContractPacket(access.db, packetId, {
+      title: requiredText(input.title, "Packet title"),
+      legalEntityName: requiredText(input.legalEntityName, "Legal entity"),
+      contractDraftDate: cleanText(input.contractDraftDate),
+      approximateCommencementDate: cleanText(input.approximateCommencementDate),
+      approximateCompletionDate: cleanText(input.approximateCompletionDate),
+      depositRateBasisPoints,
+      depositCents,
+      latePaymentRateBasisPoints,
+      detailsJson: JSON.stringify(input.details),
+      clientSignersJson: JSON.stringify(clients),
+      companySignerName: cleanText(input.companySignerName),
+      companySignerTitle: cleanText(input.companySignerTitle),
+      companySignerEmail: cleanText(input.companySignerEmail),
+      companySignerInitials: cleanText(input.companySignerInitials)?.toUpperCase() ?? null,
+      updatedAt: now,
+    })
     await resetPreparedPacketIfNeeded(access.db, packet, now)
     revalidateContractPacket(projectId)
     return { success: true, id: packetId, message: "Contract packet details saved." }
@@ -754,21 +693,17 @@ export async function saveProjectContractPacketDocument(
     if (signingStage !== "contract" && signingStage !== "construction" && signingStage !== "closeout" && signingStage !== "reference") {
       throw new Error("Choose a supported signing stage.")
     }
-    await access.db
-      .update(contractPacketDocuments)
-      .set({
-        title: requiredText(input.title, "Document title"),
-        contentMarkdown: inclusionMode === "generated"
-          ? document.contentMarkdown
-          : requiredText(input.contentMarkdown, "Document content"),
-        inclusionMode,
-        signingStage,
-        documentDate: cleanText(input.documentDate),
-        revision: cleanText(input.revision),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(contractPacketDocuments.id, documentId))
-      .run()
+    await updateContractPacketDocument(access.db, documentId, {
+      title: requiredText(input.title, "Document title"),
+      contentMarkdown: inclusionMode === "generated"
+        ? document.contentMarkdown
+        : requiredText(input.contentMarkdown, "Document content"),
+      inclusionMode,
+      signingStage,
+      documentDate: cleanText(input.documentDate),
+      revision: cleanText(input.revision),
+      updatedAt: new Date().toISOString(),
+    })
     await resetPreparedPacketIfNeeded(access.db, packet, new Date().toISOString())
     revalidateContractPacket(projectId)
     return { success: true, id: documentId, message: `${document.code} snapshot saved.` }
@@ -804,7 +739,7 @@ export async function addProjectContractPacketDocument(
     if (existing) throw new Error(`${template.code} is already in this packet.`)
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    await access.db.insert(contractPacketDocuments).values({
+    await insertContractPacketDocument(access.db, {
       id,
       projectId,
       packetId,
@@ -821,7 +756,7 @@ export async function addProjectContractPacketDocument(
       sortOrder: template.sortOrder,
       createdAt: now,
       updatedAt: now,
-    }).run()
+    })
     await resetPreparedPacketIfNeeded(access.db, packet, now)
     revalidateContractPacket(projectId)
     return { success: true, id, message: `${template.code} added.` }
@@ -853,8 +788,7 @@ export async function deleteProjectContractPacketDocument(
       )
       .get()
     if (!document) throw new Error("Contract packet document not found.")
-    await access.db.delete(contractPacketDocuments)
-      .where(eq(contractPacketDocuments.id, document.id)).run()
+    await deleteContractPacketDocument(access.db, document.id)
     await resetPreparedPacketIfNeeded(access.db, packet, new Date().toISOString())
     revalidateContractPacket(projectId)
     return { success: true, id: document.id, message: `${document.code} removed.` }
@@ -900,7 +834,7 @@ export async function duplicateProjectContractPacket(
     const nextVersion = (latest[0]?.versionNumber ?? source.versionNumber) + 1
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db.insert(contractPackets).values({
+      insertContractPacketStatement(access.db, {
         id: nextId,
         projectId,
         estimateId: source.estimateId,
@@ -926,7 +860,7 @@ export async function duplicateProjectContractPacket(
         updatedAt: now,
       }),
       ...documents.map((document) =>
-        access.db.insert(contractPacketDocuments).values({
+        insertContractPacketDocumentStatement(access.db, {
           id: crypto.randomUUID(),
           projectId,
           packetId: nextId,
@@ -964,7 +898,7 @@ export async function deleteProjectContractPacket(
   try {
     const access = await packetAccess(projectId, true)
     const packet = await requireEditablePacket(access.db, projectId, packetId)
-    await access.db.delete(contractPackets).where(eq(contractPackets.id, packet.id)).run()
+    await deleteContractPacket(access.db, packet.id)
     revalidateContractPacket(projectId)
     return { success: true, id: packet.id, message: "Draft contract packet deleted." }
   } catch (error) {
@@ -1155,18 +1089,14 @@ export async function prepareProjectContractPacketForSignature(
       sourceHash,
     })
     const now = new Date().toISOString()
-    await access.db
-      .update(contractPackets)
-      .set({
-        foxitStatus: "preparing",
-        foxitEnvelopeId: foxit.envelopeId,
-        foxitEmbeddedSessionUrl: foxit.embeddedSessionUrl,
-        preparedSourceHash: sourceHash,
-        preparedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(contractPackets.id, packet.id))
-      .run()
+    await updateContractPacket(access.db, packet.id, {
+      foxitStatus: "preparing",
+      foxitEnvelopeId: foxit.envelopeId,
+      foxitEmbeddedSessionUrl: foxit.embeddedSessionUrl,
+      preparedSourceHash: sourceHash,
+      preparedAt: now,
+      updatedAt: now,
+    })
     revalidateContractPacket(projectId)
     return {
       success: true,
@@ -1216,27 +1146,21 @@ export async function markProjectContractPacketSentOutsideCompass(
     const sourceHash = await sha256(JSON.stringify({ packet, documents }))
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db
-        .update(contractPackets)
-        .set({
-          status: "signature_pending",
-          foxitStatus: "not_applicable",
-          foxitEnvelopeId: null,
-          foxitEmbeddedSessionUrl: null,
-          signatureRequestedAt: now,
-          sourceHash,
-          updatedAt: now,
-        })
-        .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          status: "signature_pending",
-          foxitStatus: "included_in_manual_contract_packet",
-          signatureRequestedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, packet.estimateId)),
+      updateContractPacketStatement(access.db, packet.id, {
+        status: "signature_pending",
+        foxitStatus: "not_applicable",
+        foxitEnvelopeId: null,
+        foxitEmbeddedSessionUrl: null,
+        signatureRequestedAt: now,
+        sourceHash,
+        updatedAt: now,
+      }),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, packet.estimateId), {
+        status: "signature_pending",
+        foxitStatus: "included_in_manual_contract_packet",
+        signatureRequestedAt: now,
+        updatedAt: now,
+      }),
     ])
     revalidateContractPacket(projectId)
     return { success: true, id: packet.id, message: "Packet frozen for outside signatures." }
@@ -1297,59 +1221,33 @@ export async function recordManualProjectContractPacketExecution(
     const now = new Date().toISOString()
     const signedAtIso = signedAt.toISOString()
     await access.db.batch([
-      access.db
-        .update(contractPackets)
-        .set({ status: "superseded", updatedAt: now })
-        .where(
-          and(
-            eq(contractPackets.projectId, projectId),
-            eq(contractPackets.status, "executed"),
-            ne(contractPackets.id, packet.id)
-          )
-        ),
-      access.db
-        .update(projectEstimates)
-        .set({ status: "superseded", updatedAt: now })
-        .where(
-          and(
-            eq(projectEstimates.projectId, projectId),
-            eq(projectEstimates.status, "accepted"),
-            ne(projectEstimates.id, packet.estimateId),
-            // Change-order and phase estimates aren't part of the contract.
-            ...contractEstimateConditions()
-          )
-        ),
-      access.db
-        .update(contractPackets)
-        .set({
-          status: "executed",
-          foxitStatus: "not_applicable",
-          signaturePackageUrl: url.toString(),
-          signedAt: signedAtIso,
-          acceptanceMethod: "manual",
-          acceptanceEvidenceLabel: evidenceLabel,
-          acceptanceRecordedByName: access.user.displayName ?? access.user.email,
-          acceptedAt: now,
-          acceptedBy: access.user.id,
-          updatedAt: now,
-        })
-        .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          status: "accepted",
-          foxitStatus: "completed_in_manual_contract_packet",
-          signaturePackageUrl: url.toString(),
-          signedAt: signedAtIso,
-          acceptanceMethod: "manual_contract_packet",
-          acceptanceEvidenceLabel: evidenceLabel,
-          acceptanceRecordedByName: access.user.displayName ?? access.user.email,
-          acceptedAt: now,
-          acceptedBy: access.user.id,
-          sageStatus: "ready",
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, packet.estimateId)),
+      supersedeOtherExecutedPacketsStatement(access.db, { projectId, packetId: packet.id, now }),
+      supersedeOtherContractEstimatesStatement(access.db, projectId, packet.estimateId, now),
+      updateContractPacketStatement(access.db, packet.id, {
+        status: "executed",
+        foxitStatus: "not_applicable",
+        signaturePackageUrl: url.toString(),
+        signedAt: signedAtIso,
+        acceptanceMethod: "manual",
+        acceptanceEvidenceLabel: evidenceLabel,
+        acceptanceRecordedByName: access.user.displayName ?? access.user.email,
+        acceptedAt: now,
+        acceptedBy: access.user.id,
+        updatedAt: now,
+      }),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, packet.estimateId), {
+        status: "accepted",
+        foxitStatus: "completed_in_manual_contract_packet",
+        signaturePackageUrl: url.toString(),
+        signedAt: signedAtIso,
+        acceptanceMethod: "manual_contract_packet",
+        acceptanceEvidenceLabel: evidenceLabel,
+        acceptanceRecordedByName: access.user.displayName ?? access.user.email,
+        acceptedAt: now,
+        acceptedBy: access.user.id,
+        sageStatus: "ready",
+        updatedAt: now,
+      }),
     ])
     const budget = await rebuildProjectContractBudget({
       db: access.db,
@@ -1411,22 +1309,16 @@ export async function replaceExecutedProjectContractPacketDocument(
     const previousLabel = packet.acceptanceEvidenceLabel
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db
-        .update(contractPackets)
-        .set({
-          signaturePackageUrl: replacement.url,
-          acceptanceEvidenceLabel: replacement.label,
-          updatedAt: now,
-        })
-        .where(eq(contractPackets.id, packet.id)),
-      access.db
-        .update(projectEstimates)
-        .set({
-          signaturePackageUrl: replacement.url,
-          acceptanceEvidenceLabel: replacement.label,
-          updatedAt: now,
-        })
-        .where(eq(projectEstimates.id, linkedEstimate.id)),
+      updateContractPacketStatement(access.db, packet.id, {
+        signaturePackageUrl: replacement.url,
+        acceptanceEvidenceLabel: replacement.label,
+        updatedAt: now,
+      }),
+      updateEstimatesStatement(access.db, eq(projectEstimates.id, linkedEstimate.id), {
+        signaturePackageUrl: replacement.url,
+        acceptanceEvidenceLabel: replacement.label,
+        updatedAt: now,
+      }),
     ])
 
     await recordActivityEvent({

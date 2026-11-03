@@ -1,6 +1,17 @@
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
+import { formatCents } from "@/lib/format"
+import {
+  insertInternalNotificationEventWhereStatement,
+  insertNotificationRecipientWhereStatement,
+  settleNotificationRecipientsWhereStatement,
+} from "@/lib/domain/notifications/store"
+import {
+  markSageReceiptAlreadyInSageStatement,
+  recordSageReceiptCheckedStatement,
+  recordSageReceiptReminderStatement,
+} from "@/lib/domain/sage-bridge/square-store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 import { authorizedFinanceStaff, type SquareCreatorConfiguration } from "@/lib/sage/square-creator-alerts"
@@ -63,21 +74,23 @@ export async function recordSageReceiptCheck(env: CloudflareEnv, organizationId:
   if (!row || row.sage_invoice_id !== observation.sageInvoiceId) return false
   const now = new Date().toISOString()
   if (!observation.entered) {
-    await env.DB.prepare(`UPDATE sage_square_payment_operations SET sage_receipt_checked_at = ? WHERE id = ? AND organization_id = ?`)
-      .bind(observation.checkedAt, row.id, organizationId).run()
+    await recordSageReceiptCheckedStatement(env.DB, {
+      operationId: row.id, organizationId, checkedAt: observation.checkedAt,
+    }).run()
     return true
   }
   await env.DB.batch([
-    env.DB.prepare(`UPDATE sage_square_payment_operations
-      SET status = 'already_in_sage', sage_record_id = ?, sage_record_number = ?, sage_receipt_checked_at = ?,
-        completed_at = COALESCE(completed_at, ?), updated_at = ?, claim_token = NULL
-      WHERE id = ? AND organization_id = ? AND ${AWAITING_ENTRY}`)
-      .bind(observation.sageRecordId, observation.sageRecordNumber, observation.checkedAt, now, now, row.id, organizationId),
+    markSageReceiptAlreadyInSageStatement(env.DB, {
+      operationId: row.id, organizationId, sageRecordId: observation.sageRecordId,
+      sageRecordNumber: observation.sageRecordNumber, checkedAt: observation.checkedAt,
+      awaitingEntry: AWAITING_ENTRY, now,
+    }),
     // Clear the original "post this payment" alert and every reminder for it.
-    env.DB.prepare(`UPDATE notification_recipients SET read_at = COALESCE(read_at, ?), dismissed_at = COALESCE(dismissed_at, ?)
-      WHERE event_id IN (SELECT id FROM notification_events WHERE organization_id = ? AND source_type = 'sage_square_payment'
-        AND source_id = ? AND event_type IN ('sage.square_payment.manual_receipt', 'sage.square_payment.receipt_reminder'))`)
-      .bind(now, now, organizationId, row.id),
+    settleNotificationRecipientsWhereStatement(env.DB, { markRead: true, now, where: {
+      sql: `event_id IN (SELECT id FROM notification_events WHERE organization_id = ? AND source_type = 'sage_square_payment'
+        AND source_id = ? AND event_type IN ('sage.square_payment.manual_receipt', 'sage.square_payment.receipt_reminder'))`,
+      binds: [organizationId, row.id],
+    } }),
   ])
   return true
 }
@@ -95,9 +108,6 @@ export function withinBusinessHours(now: Date, timeZone: string): boolean {
   return !["Sat", "Sun"].includes(weekday) && hour >= 7 && hour < 17
 }
 
-function money(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100)
-}
 
 /**
  * Reminds the person who created the Sage invoice, plus the people chosen in
@@ -131,29 +141,32 @@ export async function sendSquareReceiptReminders(env: CloudflareEnv, config: Squ
     const eventId = `${REMINDER_PREFIX}:${config.organizationId}:${row.id}:${count}`
     const days = Math.max(1, Math.floor((now.getTime() - Date.parse(row.payment_completed_at)) / 86_400_000))
     const title = `Reminder: enter the Square payment for ${row.sage_invoice_number} in Sage`
-    const body = `Square received ${money(row.amount_cents)} for Sage invoice ${row.sage_invoice_number} ${days} day${days === 1 ? "" : "s"} ago, and the receipt isn't in Sage yet. Enter it in Sage 3-3-2 Electronic Receipts (Post, not Process and Post). Compass checks Sage and stops reminding once it's there.`
+    const body = `Square received ${formatCents(row.amount_cents)} for Sage invoice ${row.sage_invoice_number} ${days} day${days === 1 ? "" : "s"} ago, and the receipt isn't in Sage yet. Enter it in Sage 3-3-2 Electronic Receipts (Post, not Process and Post). Compass checks Sage and stops reminding once it's there.`
     const href = row.project_id
       ? `/dashboard/projects/${encodeURIComponent(row.project_id)}/financials?squareReceipt=${encodeURIComponent(row.id)}`
       : "/dashboard/financials?tab=payments"
     const stillOpen = `EXISTS (SELECT 1 FROM sage_square_payment_operations WHERE id = ? AND ${AWAITING_ENTRY} AND receipt_reminder_count = ?)`
+    const eventStored = { sql: "EXISTS (SELECT 1 FROM notification_events WHERE id = ?)", binds: [eventId] }
     const statements = [
-      env.DB.prepare(`INSERT INTO notification_events
-        (id, organization_id, project_id, event_type, source_type, source_id, title, body, href, priority, audience, created_at)
-        SELECT ?, ?, ?, 'sage.square_payment.receipt_reminder', 'sage_square_payment', ?, ?, ?, ?, 'high', 'internal', ?
-        WHERE ${stillOpen} ON CONFLICT(id) DO NOTHING`)
-        .bind(eventId, config.organizationId, row.project_id, row.id, title, body, href, stamp, row.id, row.receipt_reminder_count),
-      ...recipients.map(userId => env.DB.prepare(`INSERT INTO notification_recipients (id, event_id, user_id, in_app, email, sms, push, created_at)
-        SELECT ?, ?, ?, 1, 0, 0, 0, ? WHERE EXISTS (SELECT 1 FROM notification_events WHERE id = ?) ON CONFLICT(id) DO NOTHING`)
-        .bind(`${eventId}:${userId}`, eventId, userId, stamp, eventId)),
+      insertInternalNotificationEventWhereStatement(env.DB, {
+        id: eventId, organizationId: config.organizationId, projectId: row.project_id,
+        eventType: "sage.square_payment.receipt_reminder", sourceType: "sage_square_payment", sourceId: row.id,
+        title, body, href, priority: "high", createdAt: stamp,
+      }, { sql: stillOpen, binds: [row.id, row.receipt_reminder_count] }),
+      ...recipients.map(userId => insertNotificationRecipientWhereStatement(env.DB, {
+        id: `${eventId}:${userId}`, eventId, userId, createdAt: stamp,
+      }, eventStored)),
       // Only the newest reminder stays in the bell.
-      env.DB.prepare(`UPDATE notification_recipients SET dismissed_at = COALESCE(dismissed_at, ?)
-        WHERE event_id IN (SELECT id FROM notification_events WHERE organization_id = ? AND source_type = 'sage_square_payment'
+      settleNotificationRecipientsWhereStatement(env.DB, { markRead: false, now: stamp, where: {
+        sql: `event_id IN (SELECT id FROM notification_events WHERE organization_id = ? AND source_type = 'sage_square_payment'
           AND source_id = ? AND event_type = 'sage.square_payment.receipt_reminder' AND id <> ?)
-          AND EXISTS (SELECT 1 FROM notification_events WHERE id = ?)`)
-        .bind(stamp, config.organizationId, row.id, eventId, eventId),
-      env.DB.prepare(`UPDATE sage_square_payment_operations SET receipt_reminded_at = ?, receipt_reminder_count = ?
-        WHERE id = ? AND organization_id = ? AND receipt_reminder_count = ? AND EXISTS (SELECT 1 FROM notification_events WHERE id = ?)`)
-        .bind(stamp, count, row.id, config.organizationId, row.receipt_reminder_count, eventId),
+          AND EXISTS (SELECT 1 FROM notification_events WHERE id = ?)`,
+        binds: [config.organizationId, row.id, eventId, eventId],
+      } }),
+      recordSageReceiptReminderStatement(env.DB, {
+        operationId: row.id, organizationId: config.organizationId,
+        previousCount: row.receipt_reminder_count, eventId, now: stamp,
+      }),
     ]
     const results = await env.DB.batch(statements)
     if (results[results.length - 1]?.meta.changes === 1) sent += 1

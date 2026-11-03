@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { formatDate } from "@/lib/format"
 import type * as React from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -38,15 +39,6 @@ function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return "No date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
 function OwnerUpdateLink({
   baseHref,
   update,
@@ -66,7 +58,7 @@ function OwnerUpdateLink({
               {update.status}
             </Badge>
             <span className="text-sm text-muted-foreground">
-              {formatDate(update.updateDate)}
+              {formatDate(update.updateDate, "medium", "No date")}
             </span>
             <Badge variant="outline">{update.channel}</Badge>
           </div>

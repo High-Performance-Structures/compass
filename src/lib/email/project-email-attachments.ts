@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -10,6 +10,8 @@ import {
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
+import { chunkD1Values } from "@/lib/d1-query"
+import { insertDailyLogPhoto } from "@/lib/domain/field/store"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import {
@@ -21,24 +23,13 @@ import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
   MAX_PHOTO_UPLOAD_FILE_BYTES,
 } from "@/lib/photos/upload-limits"
+import { envString } from "@/lib/shared/env"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
 
 type Db = ReturnType<typeof getDb>
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : process.env[key] ?? null
-}
 
 function safeFileName(value: string): string {
   const normalized = value.replace(/[/:\\]/g, "-").trim()
@@ -193,21 +184,32 @@ export async function storeDailyLogEmailAttachments(input: {
     sharedDriveId: auth.sharedDriveId,
   })
 
+  const photoIdFor = (index: number): string =>
+    `${input.idPrefix ?? "email"}-photo-${input.candidate.gmailMessageId}-${index + 1}`
+  // One read for the files a retried message already stored.
+  const existingPhotoIds = new Set(
+    (
+      await Promise.all(
+        chunkD1Values(input.candidate.attachments.map((_, index) => photoIdFor(index))).map((ids) =>
+          input.db
+            .select({ id: dailyLogPhotos.id })
+            .from(dailyLogPhotos)
+            .where(inArray(dailyLogPhotos.id, ids))
+        )
+      )
+    ).flat().map((row) => row.id)
+  )
+
   let storedCount = 0
+  // Sequential: each file is a Google Drive upload (rate-limited outside API).
   for (let index = 0; index < input.candidate.attachments.length; index += 1) {
     const attachment = input.candidate.attachments[index]
     if (!attachment) continue
     if (!attachment.data) {
       throw new Error(`Gmail did not return data for ${attachment.fileName}.`)
     }
-    const photoId =
-      `${input.idPrefix ?? "email"}-photo-${input.candidate.gmailMessageId}-${index + 1}`
-    const [existing] = await input.db
-      .select({ id: dailyLogPhotos.id })
-      .from(dailyLogPhotos)
-      .where(eq(dailyLogPhotos.id, photoId))
-      .limit(1)
-    if (existing) continue
+    const photoId = photoIdFor(index)
+    if (existingPhotoIds.has(photoId)) continue
 
     const mimeType = attachment.mimeType || "application/octet-stream"
     const fileName = safeFileName(attachment.fileName)
@@ -218,7 +220,7 @@ export async function storeDailyLogEmailAttachments(input: {
       driveId: auth.sharedDriveId ?? undefined,
       data: new Blob([attachment.data.slice().buffer], { type: mimeType }),
     })
-    await input.db.insert(dailyLogPhotos).values({
+    await insertDailyLogPhoto(input.db, {
       id: photoId,
       projectId: input.projectId,
       dailyLogId: input.dailyLogId,

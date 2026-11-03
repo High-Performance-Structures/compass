@@ -1,6 +1,8 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
 import { rateBookEntries } from "./schema-rate-book"
+import { EQUIPMENT_LOG_STATUSES, EQUIPMENT_LOG_KINDS, type EquipmentLogKind, type EquipmentLogStatus } from "../lib/domain/field/statuses"
+export type { EquipmentLogKind, EquipmentLogStatus }
 
 /**
  * A company machine (loader, excavator). Its running rate comes from its rate
@@ -31,7 +33,9 @@ export const equipmentMachines = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("equipment_machines_org_idx").on(table.organizationId, table.active)],
+  (table) => [index("equipment_machines_org_idx").on(table.organizationId, table.active),
+    index("equipment_machines_location_project_id_idx").on(table.locationProjectId),
+    index("equipment_machines_rate_book_entry_id_idx").on(table.rateBookEntryId)],
 )
 
 /** A recurring service on a machine: every so many hours and/or days. */
@@ -53,14 +57,9 @@ export const equipmentServiceItems = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("equipment_service_items_machine_idx").on(table.machineId)],
+  (table) => [index("equipment_service_items_machine_idx").on(table.machineId),
+    index("equipment_service_items_organization_id_idx").on(table.organizationId)],
 )
-
-export const EQUIPMENT_LOG_KINDS = ["hours", "fuel", "maintenance", "repair", "other"] as const
-export type EquipmentLogKind = (typeof EQUIPMENT_LOG_KINDS)[number]
-
-export const EQUIPMENT_LOG_STATUSES = ["pending", "approved", "rejected"] as const
-export type EquipmentLogStatus = (typeof EQUIPMENT_LOG_STATUSES)[number]
 
 /**
  * One machine log entry: hours on a job, a fill-up, a service or repair, or
@@ -115,6 +114,8 @@ export const equipmentLogEntries = sqliteTable(
     index("equipment_log_entries_machine_idx").on(table.machineId, table.entryDate),
     index("equipment_log_entries_status_idx").on(table.organizationId, table.status),
     uniqueIndex("equipment_log_entries_submission_idx").on(table.clientSubmissionId),
+    index("equipment_log_entries_service_item_id_idx").on(table.serviceItemId),
+    index("equipment_log_entries_project_id_idx").on(table.projectId),
   ],
 )
 

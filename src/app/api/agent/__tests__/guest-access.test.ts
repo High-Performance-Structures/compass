@@ -28,8 +28,10 @@ vi.mock("@/lib/jarvis/read-capabilities", () => ({
   jarvisReadCapabilitiesForUser: vi.fn(),
 }))
 vi.mock("@/lib/agent/render/action-registry", () => ({
-  actionRegistry: {},
   checkActionPermission: vi.fn(),
+}))
+vi.mock("@/app/api/agent/action/render-actions", () => ({
+  actionRegistry: {},
 }))
 vi.mock("@/lib/agent/render/catalog", () => ({
   compassCatalog: { prompt: vi.fn(() => "") },

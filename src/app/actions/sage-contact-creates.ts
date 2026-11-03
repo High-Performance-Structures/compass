@@ -6,14 +6,20 @@ import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
-import { sageContactCreateEvents, sageContactCreateProposals } from "@/db/schema-sage"
+import { sageContactCreateProposals } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  insertSageContactCreateEvent,
+  insertSageContactCreateProposal,
+  reviewSageContactCreateStatements,
+} from "@/lib/domain/sage-bridge/contact-store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
 const fieldsSchema = z.record(z.string(), z.string().nullable())
@@ -92,7 +98,7 @@ export async function proposeSageContactCreate(
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     await db.batch([
-      db.insert(sageContactCreateProposals).values({
+      insertSageContactCreateProposal(db, {
         id, organizationId: orgId, kind: kind.data,
         customerId: kind.data === "client_person" ? companyId : null,
         vendorId: kind.data === "vendor_person" ? companyId : null,
@@ -102,7 +108,7 @@ export async function proposeSageContactCreate(
         status: "pending", requestedByUserId: user.id,
         requestedAt: now, updatedAt: now,
       }),
-      db.insert(sageContactCreateEvents).values({
+      insertSageContactCreateEvent(db, {
         id: crypto.randomUUID(), proposalId: id, organizationId: orgId,
         actorUserId: user.id, eventType: "proposed", detailJson: "{}", createdAt: now,
       }),
@@ -115,11 +121,9 @@ export async function proposeSageContactCreate(
 }
 
 export async function listSageContactCreateProposals(): Promise<readonly SageContactCreateListItem[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "sage-contact-review", "read")
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const canSeeClients = await requireFeaturePermission(user, "customers", "read")
     .then(() => true).catch(() => false)
   const canSeeVendors = await requireFeaturePermission(user, "vendors", "read")
@@ -208,22 +212,11 @@ export async function reviewSageContactCreate(
     const now = new Date().toISOString()
     const status = decision === "approve" ? "approved" : "rejected"
     const reviewNote = note.trim().slice(0, 1000)
-    const results = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE sage_contact_create_proposals SET status = ?, reviewed_by_user_id = ?,
-         reviewed_at = ?, review_note = ?, completed_at = ?, updated_at = ?
-         WHERE id = ? AND organization_id = ? AND status = 'pending'`
-      ).bind(status, user.id, now, reviewNote || null,
-        decision === "reject" ? now : null, now, proposalId, orgId),
-      env.DB.prepare(
-        `INSERT INTO sage_contact_create_events
-         (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-         SELECT ?, id, organization_id, ?, ?, ?, ? FROM sage_contact_create_proposals
-         WHERE id = ? AND organization_id = ? AND status = ?
-           AND reviewed_by_user_id = ? AND reviewed_at = ?`
-      ).bind(crypto.randomUUID(), user.id, status, JSON.stringify({ note: reviewNote }), now,
-        proposalId, orgId, status, user.id, now),
-    ])
+    const results = await env.DB.batch(reviewSageContactCreateStatements(env.DB, {
+      proposalId, organizationId: orgId, reviewerUserId: user.id, status,
+      reviewNote: reviewNote || null, noteJson: JSON.stringify({ note: reviewNote }),
+      completedAt: decision === "reject" ? now : null, now,
+    }))
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
       return { success: false, error: "Proposal changed during review." }
     }

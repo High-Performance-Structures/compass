@@ -14,6 +14,7 @@ import {
   feedbackReference,
   githubFeedbackIssueContent,
 } from "@/lib/jarvis/feedback-github-content"
+import { updateFeedbackDeskItems } from "@/lib/domain/feedback/store"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -220,12 +221,12 @@ async function clearGithubIssueCreationClaim(
   item: Pick<FeedbackDeskItem, "id" | "organizationId">,
   claimToken: string,
 ): Promise<void> {
-  await db.update(feedbackDeskItems).set({
+  await updateFeedbackDeskItems(db, {
     githubIssueCreationClaimToken: null,
     githubIssueCreationClaimedAt: null,
     githubIssueCreationClaimExpiresAt: null,
     updatedAt: new Date().toISOString(),
-  }).where(and(
+  }, and(
     eq(feedbackDeskItems.id, item.id),
     rowIdentity(item),
     eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
@@ -264,10 +265,10 @@ export async function linkFeedbackDeskItemToGithub(
             const issue = await response.json() as GitHubIssueResponse
             if (typeof issue.node_id === "string") {
               nodeId = issue.node_id
-              await db.update(feedbackDeskItems).set({
+              await updateFeedbackDeskItems(db, {
                 githubIssueNodeId: nodeId,
                 updatedAt: new Date().toISOString(),
-              }).where(and(
+              }, and(
                 eq(feedbackDeskItems.id, currentItem.id),
                 item.organizationId === null
                   ? isNull(feedbackDeskItems.organizationId)
@@ -295,12 +296,12 @@ export async function linkFeedbackDeskItemToGithub(
   const claimExpiresAt = new Date(
     Date.now() + GITHUB_ISSUE_CLAIM_LEASE_MS,
   ).toISOString()
-  const claimRows = await db.update(feedbackDeskItems).set({
+  const claimRows = await updateFeedbackDeskItems(db, {
     githubIssueCreationClaimToken: claimToken,
     githubIssueCreationClaimedAt: claimedAt,
     githubIssueCreationClaimExpiresAt: claimExpiresAt,
     updatedAt: claimedAt,
-  }).where(and(
+  }, and(
     eq(feedbackDeskItems.id, currentItem.id),
     rowIdentity(currentItem),
     isNull(feedbackDeskItems.githubIssueUrl),
@@ -345,7 +346,7 @@ export async function linkFeedbackDeskItemToGithub(
     const recoveredIssue = recoveredLookup.issue
     const recoveredUrl = issueUrlForRepo(recoveredIssue?.html_url, config.repo)
     if (recoveredIssue && recoveredUrl) {
-      const recoveredRows = await db.update(feedbackDeskItems).set({
+      const recoveredRows = await updateFeedbackDeskItems(db, {
         githubIssueUrl: recoveredUrl,
         githubIssueNodeId:
           typeof recoveredIssue.node_id === "string" ? recoveredIssue.node_id : null,
@@ -354,7 +355,7 @@ export async function linkFeedbackDeskItemToGithub(
         githubIssueCreationClaimExpiresAt: null,
         githubIssueCreationProviderAttemptedAt: null,
         updatedAt: new Date().toISOString(),
-      }).where(and(
+      }, and(
         eq(feedbackDeskItems.id, claimedItem.id),
         rowIdentity(claimedItem),
         isNull(feedbackDeskItems.githubIssueUrl),
@@ -400,9 +401,9 @@ export async function linkFeedbackDeskItemToGithub(
     }
 
     const providerAttemptedAt = new Date().toISOString()
-    const providerStartRows = await db.update(feedbackDeskItems).set({
+    const providerStartRows = await updateFeedbackDeskItems(db, {
       githubIssueCreationProviderAttemptedAt: providerAttemptedAt,
-    }).where(and(
+    }, and(
       eq(feedbackDeskItems.id, claimedItem.id),
       rowIdentity(claimedItem),
       isNull(feedbackDeskItems.githubIssueUrl),
@@ -440,9 +441,7 @@ export async function linkFeedbackDeskItemToGithub(
       return null
     }
 
-    const linkedRows = await db
-      .update(feedbackDeskItems)
-      .set({
+    const linkedRows = await updateFeedbackDeskItems(db, {
         githubIssueUrl: issueUrl,
         githubIssueNodeId:
           typeof issue.node_id === "string" ? issue.node_id : null,
@@ -451,8 +450,7 @@ export async function linkFeedbackDeskItemToGithub(
         githubIssueCreationClaimExpiresAt: null,
         githubIssueCreationProviderAttemptedAt: null,
         updatedAt: new Date().toISOString(),
-      })
-      .where(and(
+      }, and(
         eq(feedbackDeskItems.id, claimedItem.id),
         rowIdentity(claimedItem),
         isNull(feedbackDeskItems.githubIssueUrl),

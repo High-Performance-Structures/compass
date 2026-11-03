@@ -9,7 +9,7 @@ export type FeedbackDeskQueueItem = Readonly<{
   title: string
 }>
 
-export const FEEDBACK_DESK_QUEUE_VIEW_IDS = [
+const FEEDBACK_DESK_QUEUE_VIEW_IDS = [
   "attention",
   "bugs",
   "feature_decisions",

@@ -12,7 +12,7 @@ import {
   duplicateProjectEstimate,
   type ProjectEstimateSummary,
 } from "@/app/actions/project-estimates"
-import type { ProjectFamilySummary } from "@/app/actions/project-families"
+import type { ProjectFamilySummary } from "@/lib/domain/families/rules"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,

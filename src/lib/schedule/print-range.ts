@@ -18,7 +18,7 @@ export interface SchedulePrintRangeItem {
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
-export function isDateKey(value: string): boolean {
+function isDateKey(value: string): boolean {
   if (!DATE_KEY_PATTERN.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
   return (
@@ -27,7 +27,7 @@ export function isDateKey(value: string): boolean {
   )
 }
 
-export function addDaysToDateKey(value: string, days: number): string {
+function addDaysToDateKey(value: string, days: number): string {
   const parsed = new Date(`${value}T00:00:00Z`)
   parsed.setUTCDate(parsed.getUTCDate() + days)
   return parsed.toISOString().slice(0, 10)
@@ -41,7 +41,7 @@ export function normalizeSchedulePrintRange(
   return { start, end }
 }
 
-export function scheduleItemOverlapsRange(
+function scheduleItemOverlapsRange(
   item: SchedulePrintRangeItem,
   range: SchedulePrintDateRange
 ): boolean {
@@ -57,7 +57,7 @@ export function filterScheduleItemsForPrint<
   return items.filter((item) => scheduleItemOverlapsRange(item, range))
 }
 
-export function schedulePrintBounds(
+function schedulePrintBounds(
   items: readonly SchedulePrintRangeItem[],
   fallbackDate: string
 ): SchedulePrintDateRange {

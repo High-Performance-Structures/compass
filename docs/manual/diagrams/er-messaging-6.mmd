@@ -1,0 +1,26 @@
+erDiagram
+  direction LR
+  notification_deliveries {
+    key id
+    ref event_id
+    ref recipient_id
+  }
+  notification_events {
+    key id
+  }
+  notification_recipients {
+    key id
+    ref event_id
+  }
+  activity_events {
+    key id
+  }
+  correspondence_composition_drafts {
+    key id
+  }
+  correspondence_saved_drafts {
+    key id
+  }
+  notification_events ||--o{ notification_deliveries : ""
+  notification_events ||--o{ notification_recipients : ""
+  notification_recipients ||--o{ notification_deliveries : ""

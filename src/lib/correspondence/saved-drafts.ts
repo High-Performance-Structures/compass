@@ -5,6 +5,7 @@ import { authorizedConversation, type CorrespondenceContext } from "./access"
 import type { CompositionContent, CorrespondenceAttachment, ProjectDraft, SavedComposition } from "./types"
 
 import { compositionHasContent } from "./draft-content"
+import { releaseSavedDraftRequest, retireSavedDraftStatement } from "@/lib/domain/correspondence/store"
 
 const ids = z.array(z.string().min(1).max(200)).max(10).refine((value) => new Set(value).size === value.length)
 const base = { subject: z.string().max(200), body: z.string().max(50000), attachmentIds: ids, requestId: z.string().regex(/^[a-zA-Z0-9_-]{16,100}$/).nullable() }
@@ -62,10 +63,9 @@ export function retireSentComposition(ctx: CorrespondenceContext, draft: { reado
 // The absence check races safely with the send batch's reservation guard.
 export async function releaseRejectedComposition(ctx: CorrespondenceContext, draft: { readonly id: string; readonly version: number }, requestId: string, recordId: string, kind: "message" | "email" = "message"): Promise<number | null> {
   const absent = kind === "email" ? sql`NOT EXISTS(SELECT 1 FROM project_email_campaigns WHERE id=${recordId})` : sql`NOT EXISTS(SELECT 1 FROM correspondence_messages WHERE id=${recordId})`
-  const rows = await ctx.db.update(correspondenceSavedDrafts).set({ content: sql`json_set(${correspondenceSavedDrafts.content}, '$.requestId', NULL)`, version: draft.version + 1 })
-    .where(and(eq(correspondenceSavedDrafts.id, draft.id), eq(correspondenceSavedDrafts.organizationId, ctx.organizationId), eq(correspondenceSavedDrafts.projectId, ctx.projectId), eq(correspondenceSavedDrafts.userId, ctx.user.id), eq(correspondenceSavedDrafts.version, draft.version), isNull(correspondenceSavedDrafts.retiredAt), sql`json_extract(content,'$.requestId')=${requestId}`, sql`json_extract(content,'$.kind')=${kind}`, absent)).returning({ version: correspondenceSavedDrafts.version })
+  const rows = await releaseSavedDraftRequest(ctx.db, { id: draft.id, organizationId: ctx.organizationId, projectId: ctx.projectId, userId: ctx.user.id }, { version: draft.version, requestId, kind, absent })
   return rows[0]?.version ?? null
 }
 function retireComposition(ctx: CorrespondenceContext, draft: { readonly id: string; readonly version: number }) {
-  return ctx.db.update(correspondenceSavedDrafts).set({ retiredAt: new Date().toISOString(), version: sql`${correspondenceSavedDrafts.version}+1` }).where(and(eq(correspondenceSavedDrafts.id, draft.id), eq(correspondenceSavedDrafts.organizationId, ctx.organizationId), eq(correspondenceSavedDrafts.projectId, ctx.projectId), eq(correspondenceSavedDrafts.userId, ctx.user.id), eq(correspondenceSavedDrafts.version, draft.version), isNull(correspondenceSavedDrafts.retiredAt)))
+  return retireSavedDraftStatement(ctx.db, { id: draft.id, organizationId: ctx.organizationId, projectId: ctx.projectId, userId: ctx.user.id }, draft.version)
 }

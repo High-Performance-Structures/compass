@@ -8,7 +8,8 @@ import React, {
   useCallback,
   useRef,
 } from "react"
-import { updatePresence } from "@/app/actions/presence"
+import { sendPresence } from "@/components/background-requests"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 type PresenceStatus = "online" | "idle" | "dnd" | "offline"
 
@@ -64,7 +65,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        await updatePresence(
+        await sendPresence(
           newStatus,
           effectiveMessage ?? undefined,
           newStatus !== "offline"
@@ -92,7 +93,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         setIsIdle(true)
         setStatus("idle")
         statusRef.current = "idle"
-        updatePresence("idle", statusMessageRef.current ?? undefined).catch(
+        sendPresence("idle", statusMessageRef.current ?? undefined).catch(
           () => {}
         )
       }
@@ -106,23 +107,16 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     if (statusRef.current === "offline" || statusRef.current === "dnd") return
 
     try {
-      await updatePresence(statusRef.current, statusMessageRef.current ?? undefined)
+      await sendPresence(statusRef.current, statusMessageRef.current ?? undefined)
     } catch {
       // silently fail - presence updates are non-critical
     }
   }, [])
 
-  // set up heartbeat interval
-  useEffect(() => {
-    const heartbeatTimer = window.setInterval(
-      sendHeartbeat,
-      HEARTBEAT_INTERVAL_MS
-    )
-
-    return () => {
-      window.clearInterval(heartbeatTimer)
-    }
-  }, [sendHeartbeat])
+  // heartbeat every 30 s while the tab is visible
+  useVisibleInterval(() => void sendHeartbeat(), HEARTBEAT_INTERVAL_MS, {
+    immediate: false,
+  })
 
   const handleActivity = useCallback((): void => {
     const now = Date.now()
@@ -146,7 +140,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
 
     if (now - lastActivitySyncRef.current >= ACTIVITY_SYNC_INTERVAL_MS) {
       lastActivitySyncRef.current = now
-      updatePresence(
+      sendPresence(
         "online",
         statusMessageRef.current ?? undefined,
         true
@@ -182,13 +176,13 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
           setIsIdle(true)
           setStatus("idle")
           statusRef.current = "idle"
-          updatePresence("idle", statusMessageRef.current ?? undefined).catch(
+          sendPresence("idle", statusMessageRef.current ?? undefined).catch(
             () => {}
           )
         } else {
           scheduleIdleTimer()
         }
-        sendHeartbeat()
+        // The visible-tab heartbeat catches up on its own once a beat was missed.
       } else {
         clearIdleTimer()
       }
@@ -199,12 +193,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [clearIdleTimer, scheduleIdleTimer, sendHeartbeat])
+  }, [clearIdleTimer, scheduleIdleTimer])
 
   // send initial presence on mount
   useEffect(() => {
     lastActivitySyncRef.current = Date.now()
-    updatePresence("online", undefined, true).catch(() => {})
+    sendPresence("online", undefined, true).catch(() => {})
   }, [])
 
   const value: PresenceContextValue = {

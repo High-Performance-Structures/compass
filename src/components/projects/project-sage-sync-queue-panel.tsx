@@ -10,12 +10,8 @@ import {
   IconDatabaseExport,
 } from "@tabler/icons-react"
 
-import {
-  queueProjectOperationForSageSync,
-  queueProjectOperationsForSageSync,
-  type ProjectSageSyncItem,
-  type ProjectSageSyncQueue,
-} from "@/app/actions/project-operations"
+import { queueProjectOperationForSageSync, queueProjectOperationsForSageSync } from "@/app/actions/project-sage-sync-queue"
+import type { ProjectSageSyncItem, ProjectSageSyncQueue } from "@/lib/domain/operations/types"
 import { reviewProjectHandoffClient } from "@/app/actions/project-sage-handoff-review"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { isGooglePhaseHandoffAwaitingClientReview } from "@/lib/sage/project-handoff-review"
 import { cn } from "@/lib/utils"
+import { formatDate, formatDollars } from "@/lib/format"
 
 function formatKind(kind: ProjectSageSyncItem["kind"]): string {
   if (kind === "project_handoff") return "Project handoff"
@@ -36,24 +33,14 @@ function formatKind(kind: ProjectSageSyncItem["kind"]): string {
   return "Task"
 }
 
-function formatMoney(value: number | null): string {
-  if (value === null) return "-"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
+/** Whole dollars, or "-" when there is no amount. */
+function wholeDollars(value: number | null): string {
+  return formatDollars(value, { decimals: 0, fallback: "-" })
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return "-"
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** The calendar day of a date or timestamp, or "-". */
+function queueDate(value: string | null): string {
+  return formatDate(value ? value.slice(0, 10) : null, "medium", "-")
 }
 
 function itemQueueState(
@@ -318,8 +305,8 @@ export function ProjectSageSyncQueuePanel({
                       </div>
                     )}
                   </div>
-                  <span>{formatMoney(item.amount)}</span>
-                  <span>{formatDate(item.dueDate)}</span>
+                  <span>{wholeDollars(item.amount)}</span>
+                  <span>{queueDate(item.dueDate)}</span>
                   <div className="space-y-1">
                     <QueueStateBadge item={item} />
                     <p className="text-xs text-muted-foreground">

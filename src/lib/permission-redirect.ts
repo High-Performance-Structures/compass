@@ -1,7 +1,5 @@
 import "server-only"
 
-import { redirect } from "next/navigation"
-
 import {
   isFeaturePermissionDeniedError,
   type FeaturePermissionDeniedError,
@@ -23,9 +21,4 @@ function restrictedAccessUrl(error: FeaturePermissionDeniedError): string {
  */
 export function permissionDeniedRedirectHref(error: unknown): string | null {
   return isFeaturePermissionDeniedError(error) ? restrictedAccessUrl(error) : null
-}
-
-export function redirectIfFeaturePermissionDenied(error: unknown): void {
-  const href = permissionDeniedRedirectHref(error)
-  if (href) redirect(href)
 }

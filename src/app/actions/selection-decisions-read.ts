@@ -14,7 +14,7 @@ import {
 } from "@/db/schema-selection-decisions"
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { canFeature } from "@/lib/permission-enforcement"
-import { selectionAccess } from "@/lib/selections/access"
+import { selectionAccess } from "@/lib/domain/selections/access"
 import {
   parseApprovalHistory,
   approvalBlocker,

@@ -1,19 +1,14 @@
 "use server"
 
-import { and, eq, exists, sql } from "drizzle-orm"
+import { and, eq, exists } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
-import {
-  projectOperations,
-  projectProfileAuditEvents,
-  projects,
-} from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { projectOperations, projects } from "@/db/schema"
 import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { updateProjectsStatement } from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { orgContext } from "@/lib/server/action-context"
 import { isGooglePhaseHandoffAwaitingClientReview } from "@/lib/sage/project-handoff-review"
 
 type ReviewProjectHandoffClientResult =
@@ -32,19 +27,18 @@ export async function reviewProjectHandoffClient(
   clientNameInput: string,
 ): Promise<ReviewProjectHandoffClientResult> {
   try {
-    const user = await requireAuth()
+    // Not a "mutation" context: the demo keeps its own message below.
+    const context = await orgContext({ feature: "sage-sync", action: "update" })
+    if (!context.success) throw new Error(context.error)
+    const { db, user, organizationId } = context.data
     if (isDemoUser(user.id)) {
       return { success: false, error: "Demo projects are read-only." }
     }
-    await requireFeaturePermission(user, "sage-sync", "update")
-    const organizationId = requireOrg(user)
     const clientName = reviewedClientName(clientNameInput)
     if (!clientName) {
       return { success: false, error: "Enter the Sage client/company." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const operation = await db
       .select({
         id: projectOperations.id,
@@ -124,64 +118,52 @@ export async function reviewProjectHandoffClient(
     // update last so every earlier mutation can require the untouched review
     // version; a concurrent reviewer then makes all three statements no-ops.
     const results = await db.batch([
-      db
-        .update(projects)
-        .set({ clientName, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.organizationId, organizationId),
-            exists(guardedPendingReview),
-          ),
+      updateProjectsStatement(
+        db,
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId),
+          exists(guardedPendingReview),
         ),
-      db.insert(projectProfileAuditEvents).select(
-        db
-          .select({
-            id: sql<string>`${crypto.randomUUID()}`.as("id"),
-            organizationId: projects.organizationId,
-            projectId: projects.id,
-            actorUserId: sql<string>`${user.id}`.as("actorUserId"),
-            eventType: sql<string>`'project.sage_handoff_client_reviewed'`.as(
-              "eventType",
-            ),
-            entityType: sql<string>`'project_operation'`.as("entityType"),
-            entityId: sql<string>`${operationId}`.as("entityId"),
-            beforeJson: sql<string>`${beforeJson}`.as("beforeJson"),
-            afterJson: sql<string>`${afterJson}`.as("afterJson"),
-            createdAt: sql<string>`${now}`.as("createdAt"),
-          })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.organizationId, organizationId),
-              exists(guardedPendingReview),
-            ),
-          ),
+        { clientName, updatedAt: now },
       ),
-      db
-        .update(projectOperations)
-        .set({
+      recordProjectAudit(
+        db,
+        {
+          organizationId,
+          projectId,
+          actorUserId: user.id,
+          eventType: "project.sage_handoff_client_reviewed",
+          entityType: "project_operation",
+          entityId: operationId,
+          beforeJson,
+          afterJson,
+          createdAt: now,
+        },
+        { onlyIf: exists(guardedPendingReview) },
+      ),
+      operationUpdateQuery(
+        db,
+        and(
+          eq(projectOperations.id, operationId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceSystem, "google_project_manager"),
+          eq(projectOperations.sourceRecordType, "sage_project_handoff"),
+          eq(projectOperations.status, "needs_review"),
+          eq(projectOperations.syncDirection, "write"),
+          eq(projectOperations.sageWriteStatus, "not_ready"),
+          eq(projectOperations.syncStatus, "needs_review"),
+          eq(projectOperations.updatedAt, expectedUpdatedAt),
+        ),
+        {
           companyName: clientName,
           description: reviewedDescription,
           status: "open",
           sageWriteStatus: "needs_review",
           syncStatus: "pending_sage",
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectOperations.id, operationId),
-            eq(projectOperations.projectId, projectId),
-            eq(projectOperations.sourceSystem, "google_project_manager"),
-            eq(projectOperations.sourceRecordType, "sage_project_handoff"),
-            eq(projectOperations.status, "needs_review"),
-            eq(projectOperations.syncDirection, "write"),
-            eq(projectOperations.sageWriteStatus, "not_ready"),
-            eq(projectOperations.syncStatus, "needs_review"),
-            eq(projectOperations.updatedAt, expectedUpdatedAt),
-          ),
-        ),
+        },
+      ),
     ])
     const operationUpdate = results[2]
     if (!operationUpdate || operationUpdate.meta.changes !== 1) {

@@ -1,6 +1,6 @@
 import type { HelpGuide } from "@/lib/help/types"
 
-export type HelpSectionPreview = Readonly<{
+type HelpSectionPreview = Readonly<{
   id: string
   topicId: string
   title: string

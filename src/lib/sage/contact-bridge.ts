@@ -47,7 +47,7 @@ export function sageContactCreationEnabled(env: object): boolean {
     Reflect.get(env, "SAGE_CONTACT_CREATES_ENABLED") === "true"
 }
 
-export const sageContactFieldsSchema = z.record(z.string(), z.string().nullable())
+const sageContactFieldsSchema = z.record(z.string(), z.string().nullable())
 
 export const sageContactSnapshotResultSchema = z.object({
   kind: sageContactKindSchema,

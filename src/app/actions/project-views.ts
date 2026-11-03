@@ -1,14 +1,20 @@
 "use server"
 
-import { and, asc, eq, or } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
-import { getDb } from "@/db"
-import { projectJobStatuses, projectSavedViews, userViewPreferences, users } from "@/db/schema"
-import { getCurrentUser, requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+
+import { SAVED_VIEW_VISIBILITIES, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
+import { projectJobStatuses } from "@/db/schema"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
+import { listVisibleSavedViews, readSavedViewDefault } from "@/lib/domain/settings/saved-views"
+import {
+  clearSavedViewDefault,
+  deleteOwnedProjectSavedView,
+  insertProjectSavedView,
+  saveSavedViewDefault,
+  updateOwnedProjectSavedView,
+} from "@/lib/domain/settings/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import {
@@ -20,32 +26,34 @@ import {
   type ProjectViewPreferences,
   type SavedProjectView,
 } from "@/lib/project-views"
+import { orgContext, type Db } from "@/lib/server/action-context"
 
 type MutationResult = { readonly success: true } | { readonly success: false; readonly error: string }
 type SaveViewInput = {
   readonly id: string | null
   readonly name: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly definition: ProjectViewDefinition | null
 }
 const saveSchema = z.object({
   id: z.string().min(1).max(200).nullable(),
   name: z.string().trim().min(1, "Enter a view name.").max(80),
-  visibility: z.enum(["personal", "shared"]),
+  visibility: z.enum(SAVED_VIEW_VISIBILITIES),
   // Null on an edit preserves the stored filters, even if a status was removed.
   definition: projectViewDefinitionSchema.nullable(),
 })
 
-async function viewContext(): Promise<{ readonly db: ReturnType<typeof getDb>; readonly userId: string; readonly organizationId: string }> {
-  const user = await requireAuth()
-  const organizationId = requireOrg(user)
+async function viewContext(): Promise<{ readonly db: Db; readonly userId: string; readonly organizationId: string }> {
+  // Throws "Unauthorized" / "No active organization" as requireAuth and requireOrg did.
+  const context = await orgContext()
+  if (!context.success) throw new Error(context.error)
+  const { user, organizationId, db } = context.data
   if (!isInternalStaffRole(user.role)) throw new Error("Only internal staff can save project views.")
   if (isDemoUser(user.id) || isDemoOrg(organizationId)) throw new Error("Demo accounts are read-only.")
-  const { env } = await getCloudflareContext()
-  return { db: getDb(env.DB), userId: user.id, organizationId }
+  return { db, userId: user.id, organizationId }
 }
 
-async function statusExists(db: ReturnType<typeof getDb>, organizationId: string, definition: ProjectViewDefinition): Promise<boolean> {
+async function statusExists(db: Db, organizationId: string, definition: ProjectViewDefinition): Promise<boolean> {
   if (definition.status.kind !== "job") return true
   const statusId = definition.status.jobStatusId
   if (PROJECT_JOB_STATUS_DEFINITIONS.some((item) => item.id === statusId)) return true
@@ -61,16 +69,15 @@ function refreshViews(): void {
 
 export async function getProjectViewPreferences(): Promise<ProjectViewPreferences> {
   try {
-    const user = await getCurrentUser()
-    if (!user?.organizationId || !isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(user.organizationId)) {
+    const context = await orgContext()
+    if (!context.success) return { defaultDefinition: null, canSave: false, error: null }
+    const { user, organizationId, db } = context.data
+    if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) {
       return { defaultDefinition: null, canSave: false, error: null }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const row = await db.select({ value: userViewPreferences.value }).from(userViewPreferences)
-      .where(and(eq(userViewPreferences.userId, user.id), eq(userViewPreferences.viewKey, projectDefaultViewKey(user.organizationId)))).get()
-    const parsed = row ? parseProjectViewDefinition(row.value) : null
-    const definition = parsed && await statusExists(db, user.organizationId, parsed) ? parsed : row ? DEFAULT_PROJECT_VIEW : null
+    const value = await readSavedViewDefault(db, { userId: user.id, organizationId, scope: "projects", legacyViewKey: projectDefaultViewKey(organizationId) })
+    const parsed = value === null ? null : parseProjectViewDefinition(value)
+    const definition = parsed && await statusExists(db, organizationId, parsed) ? parsed : value === null ? null : DEFAULT_PROJECT_VIEW
     return { defaultDefinition: definition, canSave: true, error: null }
   } catch (error) {
     console.warn("Unable to load project view preferences", error)
@@ -83,15 +90,12 @@ export async function setDefaultProjectView(definition: ProjectViewDefinition | 
   if (!parsed.success) return { success: false, error: "Choose valid project filters." }
   try {
     const { db, userId, organizationId } = await viewContext()
-    const viewKey = projectDefaultViewKey(organizationId)
+    const key = { userId, organizationId, scope: "projects", legacyViewKey: projectDefaultViewKey(organizationId) } as const
     if (parsed.data === null) {
-      await db.delete(userViewPreferences).where(and(eq(userViewPreferences.userId, userId), eq(userViewPreferences.viewKey, viewKey))).run()
+      await clearSavedViewDefault(db, key)
     } else {
       if (!await statusExists(db, organizationId, parsed.data)) return { success: false, error: "That job status is no longer available. Choose another status." }
-      const value = JSON.stringify(parsed.data)
-      const updatedAt = new Date().toISOString()
-      await db.insert(userViewPreferences).values({ userId, viewKey, value, updatedAt })
-        .onConflictDoUpdate({ target: [userViewPreferences.userId, userViewPreferences.viewKey], set: { value, updatedAt } }).run()
+      await saveSavedViewDefault(db, { ...key, inlineDefinition: JSON.stringify(parsed.data), updatedAt: new Date().toISOString() })
     }
     refreshViews()
     return { success: true }
@@ -103,29 +107,25 @@ export async function setDefaultProjectView(definition: ProjectViewDefinition | 
 
 export async function getProjectSavedViews(): Promise<{ readonly views: readonly SavedProjectView[]; readonly error: string | null }> {
   try {
-    const user = await getCurrentUser()
-    if (!user?.organizationId || !isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(user.organizationId)) return { views: [], error: null }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await orgContext()
+    if (!context.success) return { views: [], error: null }
+    const { user, organizationId, db } = context.data
+    if (!isInternalStaffRole(user.role) || isDemoUser(user.id) || isDemoOrg(organizationId)) return { views: [], error: null }
     const [rows, customStatuses] = await Promise.all([
-      db.select({ view: projectSavedViews, ownerName: users.displayName }).from(projectSavedViews)
-        .innerJoin(users, eq(users.id, projectSavedViews.ownerUserId)).where(and(
-        eq(projectSavedViews.organizationId, user.organizationId),
-        or(eq(projectSavedViews.ownerUserId, user.id), eq(projectSavedViews.visibility, "shared")),
-      )).orderBy(asc(projectSavedViews.name)),
+      listVisibleSavedViews(db, { organizationId, userId: user.id, scope: "projects" }),
       db.select({ id: projectJobStatuses.id }).from(projectJobStatuses)
-        .where(and(eq(projectJobStatuses.organizationId, user.organizationId), eq(projectJobStatuses.active, true))),
+        .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true))),
     ])
     const availableStatusIds = new Set([
       ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id),
       ...customStatuses.map((status) => status.id),
     ])
-    return { views: rows.flatMap(({ view: row, ownerName }) => {
+    return { views: rows.flatMap((row) => {
       const parsed = parseProjectViewDefinition(row.definition)
       // Deleted custom statuses fall back just like personal default snapshots.
       const definition = parsed?.status.kind === "job" && !availableStatusIds.has(parsed.status.jobStatusId)
         ? DEFAULT_PROJECT_VIEW : parsed
-      return definition ? [{ id: row.id, name: row.name, ownerName: ownerName ?? "Staff member", visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
+      return definition ? [{ id: row.id, name: row.name, ownerName: row.ownerName ?? "Staff member", visibility: row.visibility, isOwner: row.ownerUserId === user.id, definition }] : []
     }), error: null }
   } catch (error) {
     console.warn("Unable to load saved project views", error)
@@ -144,16 +144,15 @@ export async function saveProjectView(input: SaveViewInput): Promise<{ readonly 
     const now = new Date().toISOString()
     const viewId = id ?? crypto.randomUUID()
     if (id !== null) {
-      const updated = await db.update(projectSavedViews).set({ name, visibility, ...(definition === null ? {} : { definition: JSON.stringify(definition) }), updatedAt: now })
-        .where(and(eq(projectSavedViews.id, id), eq(projectSavedViews.ownerUserId, userId), eq(projectSavedViews.organizationId, organizationId)))
-        .returning().get()
+      const updated = await updateOwnedProjectSavedView(db, { id, organizationId, ownerUserId: userId, name, visibility,
+        definition: definition === null ? undefined : JSON.stringify(definition), updatedAt: now })
       if (!updated) return { success: false, error: "Only the owner can edit this view." }
       const stored = parseProjectViewDefinition(updated.definition)
       const displayDefinition = stored && await statusExists(db, organizationId, stored) ? stored : DEFAULT_PROJECT_VIEW
       refreshViews()
       return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: displayDefinition } }
     } else {
-      await db.insert(projectSavedViews).values({ id: viewId, name, visibility, definition: JSON.stringify(definition), organizationId, ownerUserId: userId, createdAt: now, updatedAt: now }).run()
+      await insertProjectSavedView(db, { id: viewId, name, visibility, definition: JSON.stringify(definition), organizationId, ownerUserId: userId, createdAt: now, updatedAt: now })
     }
     refreshViews()
     return { success: true, view: { id: viewId, name, ownerName: "You", visibility, isOwner: true, definition: definition ?? DEFAULT_PROJECT_VIEW } }
@@ -167,8 +166,7 @@ export async function deleteProjectView(id: string): Promise<MutationResult> {
   if (typeof id !== "string" || id.length === 0 || id.length > 200) return { success: false, error: "Choose a saved view." }
   try {
     const { db, userId, organizationId } = await viewContext()
-    const deleted = await db.delete(projectSavedViews).where(and(eq(projectSavedViews.id, id), eq(projectSavedViews.organizationId, organizationId), eq(projectSavedViews.ownerUserId, userId)))
-      .returning({ id: projectSavedViews.id }).get()
+    const deleted = await deleteOwnedProjectSavedView(db, { id, organizationId, ownerUserId: userId })
     if (!deleted) return { success: false, error: "Only the owner can delete this view." }
     // Defaults are snapshots in user preferences; deleting a shared view cannot change them.
     refreshViews()

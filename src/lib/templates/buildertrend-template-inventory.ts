@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto"
 
+import { buildertrendInventoryTemplateUpsertSql } from "@/lib/domain/templates/store"
+import { isRecord } from "@/lib/shared/guards"
+
 export type BuildertrendTemplateInventoryItem = {
   readonly name: string
   readonly tradeCategory: string
@@ -20,10 +23,6 @@ export type BuildertrendTemplateInventory = {
 export type BuildertrendTemplateInventoryParseResult =
   | { readonly success: true; readonly data: BuildertrendTemplateInventory }
   | { readonly success: false; readonly errors: readonly string[] }
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
 
 function stringValue(
   record: Readonly<Record<string, unknown>>,
@@ -158,12 +157,6 @@ export function parseBuildertrendTemplateInventory(
   }
 }
 
-function sql(value: string | number | null): string {
-  if (value === null) return "NULL"
-  if (typeof value === "number") return String(value)
-  return `'${value.replaceAll("'", "''")}'`
-}
-
 function templateSourceKey(name: string): string {
   const slug = name
     .toLocaleLowerCase("en-US")
@@ -185,39 +178,17 @@ export function buildBuildertrendTemplateInventorySql(
       excludedArchivedTemplateCount: inventory.excludedArchivedCount,
       contentCaptureStatus: "pending",
     })
-    return (
-      `INSERT INTO project_templates (` +
-      `id, organization_id, source_system, source_key, source_template_id, ` +
-      `source_url, name, template_kind, department_code, trade_category, ` +
-      `lifecycle_status, review_status, source_metadata_json, created_at, updated_at` +
-      `) VALUES (` +
-      [
-        sql(id),
-        sql(organizationId),
-        sql("buildertrend"),
-        sql(sourceKey),
-        sql(template.sourceTemplateId),
-        sql(null),
-        sql(template.name),
-        sql(template.templateKind),
-        // Department/branding is selected by the destination project, not the template.
-        sql(null),
-        sql(template.tradeCategory),
-        sql("draft"),
-        sql("inventory_only"),
-        sql(sourceMetadata),
-        sql(inventory.capturedAt),
-        sql(inventory.capturedAt),
-      ].join(", ") +
-      `) ON CONFLICT(organization_id, source_system, source_key) DO UPDATE SET ` +
-      `source_template_id=excluded.source_template_id, ` +
-      `source_url=NULL, name=excluded.name, ` +
-      `template_kind=excluded.template_kind, ` +
-      `department_code=project_templates.department_code, ` +
-      `trade_category=excluded.trade_category, ` +
-      `source_metadata_json=excluded.source_metadata_json, ` +
-      `updated_at=excluded.updated_at;`
-    )
+    return buildertrendInventoryTemplateUpsertSql({
+      id,
+      organizationId,
+      sourceKey,
+      sourceTemplateId: template.sourceTemplateId,
+      name: template.name,
+      templateKind: template.templateKind,
+      tradeCategory: template.tradeCategory,
+      sourceMetadataJson: sourceMetadata,
+      capturedAt: inventory.capturedAt,
+    })
   })
 
   return {

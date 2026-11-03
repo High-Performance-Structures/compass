@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { users } from "./schema"
 
 export const customDashboards = sqliteTable(
@@ -16,6 +16,9 @@ export const customDashboards = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
+  (table) => [
+    index("custom_dashboards_user_id_idx").on(table.userId),
+  ],
 )
 
 export type CustomDashboard =

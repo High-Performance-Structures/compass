@@ -3,6 +3,7 @@ import { and, eq, isNull, or } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { gotoInboundEvents } from "@/db/schema"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
+import { updateGotoInboundEvents } from "@/lib/domain/feedback/inbound-store"
 
 type Db = ReturnType<typeof getDb>
 
@@ -124,31 +125,25 @@ export async function recoverLegacyGotoMessageBodies(input: {
     const result = await retrieveGotoMessage(row.messageId, token.accessToken)
     const now = new Date().toISOString()
     if (result.kind === "found") {
-      await input.db
-        .update(gotoInboundEvents)
-        .set({
+      await updateGotoInboundEvents(input.db, {
           messageBody: result.message.body,
           conversationId: result.message.conversationId,
           reviewReason: "missing_project",
           error: null,
           updatedAt: now,
-        })
-        .where(eq(gotoInboundEvents.id, row.id))
+        }, eq(gotoInboundEvents.id, row.id))
         .run()
       recovered += 1
       continue
     }
 
-    await input.db
-      .update(gotoInboundEvents)
-      .set({
+    await updateGotoInboundEvents(input.db, {
         error:
           result.status === 200
             ? "GoTo returned no retained text for this historical message."
             : `Historical message is no longer available from GoTo (${result.status}).`,
         updatedAt: now,
-      })
-      .where(eq(gotoInboundEvents.id, row.id))
+      }, eq(gotoInboundEvents.id, row.id))
       .run()
     unavailable += 1
   }

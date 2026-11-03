@@ -22,24 +22,7 @@ import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor, type ProjectBrand } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
-
-function formatDate(value: string): string {
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
+import { formatDate, formatDateTime } from "@/lib/format"
 
 function statusLabel(value: string): string {
   return value
@@ -176,7 +159,7 @@ export function OwnerUpdatePrintable({
             </div>
             <div className="text-right text-xs">
               <p className="font-semibold">{label}</p>
-              <p>{formatDate(document.update.updateDate)}</p>
+              <p>{formatDate(document.update.updateDate, "long")}</p>
             </div>
           </div>
 
@@ -204,15 +187,15 @@ export function OwnerUpdatePrintable({
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground print:text-xs print:text-black">
               <span>{label}</span>
               <span>&middot;</span>
-              <span>{formatDate(document.update.updateDate)}</span>
+              <span>{formatDate(document.update.updateDate, "long")}</span>
               {document.update.periodStart &&
                 document.update.periodEnd && (
                   <>
                     <span>&middot;</span>
                     <span>
                       Reporting period{" "}
-                      {formatDate(document.update.periodStart)} -{" "}
-                      {formatDate(document.update.periodEnd)}
+                      {formatDate(document.update.periodStart, "long")} -{" "}
+                      {formatDate(document.update.periodEnd, "long")}
                     </span>
                   </>
                 )}
@@ -257,7 +240,7 @@ export function OwnerUpdatePrintable({
                     className="rounded-md border p-4 print:break-inside-avoid print:rounded-none print:border-0 print:border-t print:border-black/30 print:px-0 print:py-3"
                   >
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground print:text-[10px] print:font-semibold print:uppercase print:text-black">
-                      <span>{formatDate(log.logDate)}</span>
+                      <span>{formatDate(log.logDate, "long")}</span>
                       {log.authorName && (
                         <>
                           <span>&middot;</span>
@@ -440,9 +423,9 @@ export function OwnerUpdatePrintable({
                     className="grid gap-2 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] print:grid-cols-[6.75rem_minmax(0,1fr)] print:py-2"
                   >
                     <p className="text-xs font-medium text-muted-foreground print:text-[10px] print:text-black">
-                      {formatDate(item.startDate)}
+                      {formatDate(item.startDate, "long")}
                       {item.endDate !== item.startDate
-                        ? ` - ${formatDate(item.endDate)}`
+                        ? ` - ${formatDate(item.endDate, "long")}`
                         : ""}
                     </p>
                     <div>
@@ -483,7 +466,7 @@ export function OwnerUpdatePrintable({
                       </p>
                       <p className="text-xs text-muted-foreground print:text-[10px] print:text-black">
                         {item.dueDate
-                          ? `Due ${formatDate(item.dueDate)}`
+                          ? `Due ${formatDate(item.dueDate, "long")}`
                           : statusLabel(item.status)}
                       </p>
                     </div>
@@ -515,9 +498,9 @@ export function OwnerUpdatePrintable({
                     className="grid gap-2 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[8rem_minmax(0,1fr)] print:grid-cols-[6.75rem_minmax(0,1fr)] print:px-3 print:py-2"
                   >
                     <p className="text-xs font-medium text-muted-foreground print:text-[10px] print:text-black">
-                      {formatDate(item.startDate)}
+                      {formatDate(item.startDate, "long")}
                       {item.endDate !== item.startDate
-                        ? ` - ${formatDate(item.endDate)}`
+                        ? ` - ${formatDate(item.endDate, "long")}`
                         : ""}
                     </p>
                     <div>

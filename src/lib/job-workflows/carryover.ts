@@ -1,9 +1,10 @@
 import { and, eq, inArray, or } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { projectProfileAuditEvents, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { projectLinks } from "@/db/schema-project-links"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
-import { chunkD1Rows } from "@/lib/d1-query"
+import { insertWorkflowChecksIfAbsent } from "@/lib/domain/workflows/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowItemKey } from "@/lib/job-workflows/engine"
@@ -96,11 +97,8 @@ export async function carryOverWorkflowChecks(
     carriedFromProjectId: source.id,
     carriedFromItemKey: tick.sourceKey,
   }))
-  for (const chunk of chunkD1Rows(inserts)) {
-    await db.insert(projectWorkflowChecks).values(chunk).onConflictDoNothing()
-  }
-  await db.insert(projectProfileAuditEvents).values({
-    id: crypto.randomUUID(),
+  await insertWorkflowChecksIfAbsent(db, inserts)
+  await recordProjectAudit(db, {
     organizationId: input.organizationId,
     projectId: target.id,
     actorUserId: input.actorUserId,

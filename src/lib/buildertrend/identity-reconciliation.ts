@@ -119,7 +119,7 @@ const identityRelationshipSchema = z
     }
   )
 
-export const buildertrendIdentityReviewManifestSchema = z
+const buildertrendIdentityReviewManifestSchema = z
   .object({
     reviewKey: requiredText,
     reviewedAt: z.iso.datetime({ offset: true }),
@@ -146,7 +146,7 @@ export type BuildertrendIdentityReviewParseResult =
       readonly errors: readonly string[]
     }
 
-export type BuildertrendIdentityReviewSummary = {
+type BuildertrendIdentityReviewSummary = {
   readonly reviewKey: string
   readonly decisionCount: number
   readonly relationshipCount: number

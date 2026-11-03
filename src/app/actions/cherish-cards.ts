@@ -29,7 +29,7 @@ export type CherishCardCatalogItem = {
   readonly characters: number | null
 }
 
-export type CherishCardStatus =
+type CherishCardStatus =
   | "submitting"
   | "submitted"
   | "cancelling"

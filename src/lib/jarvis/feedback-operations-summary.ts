@@ -1,4 +1,4 @@
-export type FeedbackOperationsSummaryItem = Readonly<{
+type FeedbackOperationsSummaryItem = Readonly<{
   assignedToUserId: string | null
   kind: string
   overdue: boolean

@@ -4,12 +4,9 @@ import { useEffect, useState, type ReactElement } from "react"
 import { createPortal } from "react-dom"
 
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
-import type { ProjectContactsSummary } from "@/app/actions/project-contacts"
+import type { ProjectContactsSummary } from "@/lib/domain/contacts/types"
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
-import type {
-  ProjectOperationsSummary,
-  ProjectSageSyncQueue,
-} from "@/app/actions/project-operations"
+import type { ProjectOperationsSummary, ProjectSageSyncQueue } from "@/lib/domain/operations/types"
 import type { ProjectRegistry } from "@/app/actions/project-registry"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
 import { SearchableCombobox } from "@/components/searchable-combobox"

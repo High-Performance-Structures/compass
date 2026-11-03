@@ -3,7 +3,7 @@ export type EstimateAcceptanceMethod =
   | "wet_signature"
   | "external_esignature"
 
-export const ESTIMATE_ACCEPTANCE_EVIDENCE_MAX_BYTES = 50 * 1024 * 1024
+const ESTIMATE_ACCEPTANCE_EVIDENCE_MAX_BYTES = 50 * 1024 * 1024
 
 const ACCEPTANCE_EVIDENCE_MIME_TYPES = new Set([
   "application/msword",

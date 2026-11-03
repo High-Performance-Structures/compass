@@ -18,23 +18,15 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
-import {
-  archiveProjectTodo,
-  deleteProjectTodo,
-  getProjectTodoDetail,
-  restoreProjectTodo,
-  setProjectTodoStatus,
-  updateProjectTodo,
-  type ProjectOperationItem,
-  type ProjectTaskRecordType,
-  type ProjectTodoDetail,
-} from "@/app/actions/project-operations"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
+import { archiveProjectTodo, deleteProjectTodo, getProjectTodoDetail, restoreProjectTodo, setProjectTodoStatus, updateProjectTodo } from "@/app/actions/project-todos"
+import type { ProjectTodoItem, ProjectTaskRecordType, ProjectTodoDetail } from "@/lib/domain/operations/types"
 import { ProjectTodoHistory } from "@/components/projects/project-todo-history"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { SourceTag } from "@/components/shared/source-tag"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,7 +51,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   canonicalProjectTodoRecordType,
-  isArchivedProjectTodoStatus,
   isSelectableProjectTodoStatus,
   normalizeProjectTodoStatus,
   PROJECT_TODO_SELECTABLE_STATUSES,
@@ -76,8 +67,8 @@ function cleanValue(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function sourceLabel(item: ProjectOperationItem): string {
-  if (item.sourceSystem === "buildertrend") return "Imported from Buildertrend"
+function sourceLabel(item: ProjectTodoItem): React.ReactNode {
+  if (item.sourceSystem === "buildertrend") return <SourceTag source="buildertrend" />
   if (item.sourceSystem === "compass_template") return "Created from a Compass template"
   if (item.sourceSystem === "compass") return "Created in Compass"
   if (item.sourceSystem === "sage") return "Imported from Sage"
@@ -88,12 +79,14 @@ export function ProjectTodoEditDialog({
   projectId,
   item,
   assigneeOptions,
+  canDelete,
   open,
   onOpenChange,
 }: {
   readonly projectId: string
-  readonly item: ProjectOperationItem
+  readonly item: ProjectTodoItem
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly canDelete: boolean
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
 }): React.ReactElement {
@@ -117,7 +110,7 @@ export function ProjectTodoEditDialog({
   const [saveState, setSaveState] = React.useState<SaveState>({ kind: "idle" })
   const [costCode, setCostCode] = React.useState(item.costCode ?? "")
   const [detail, setDetail] = React.useState<ProjectTodoDetail | null>(null)
-  const archived = isArchivedProjectTodoStatus(item.status)
+  const archived = item.actions.canRestore
 
   React.useEffect(() => {
     if (!open) return
@@ -228,7 +221,10 @@ export function ProjectTodoEditDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={save} className="space-y-5">
           <DialogHeader>
-            <DialogTitle>Edit to-do</DialogTitle>
+            <DialogTitle>
+              Edit to-do{" "}
+              {item.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
+            </DialogTitle>
             <DialogDescription>
               {developerModeEnabled ? (
                 <>
@@ -436,7 +432,7 @@ export function ProjectTodoEditDialog({
                   <IconRestore className="size-4" />
                   Restore to-do
                 </Button>
-                <AlertDialog>
+                {canDelete && <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
                       type="button"
@@ -462,7 +458,7 @@ export function ProjectTodoEditDialog({
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
-                </AlertDialog>
+                </AlertDialog>}
               </div>
             ) : (
               <AlertDialog>

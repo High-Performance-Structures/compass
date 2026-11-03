@@ -3,18 +3,16 @@
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { projectDocuments } from "@/db/schema-documents"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { insertProjectDocuments } from "@/lib/domain/documents/store"
 import { chunkD1Values } from "@/lib/d1-query"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { collectPublishableProjectDocumentFolderFiles } from "@/lib/google/project-document-folder-publishing"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
   isProjectDocumentCategory,
   projectDocumentTitleFromFileName,
@@ -26,6 +24,9 @@ import {
   projectDocumentVisibilityLabel,
   type ProjectDocumentVisibility,
 } from "@/lib/project-document-audience"
+import { cleanDocumentDate, requiredText } from "@/lib/domain/documents/rules"
+import { projectContext } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
@@ -37,26 +38,6 @@ export type ProjectDocumentFolderPublishResult =
       readonly skippedCount: number
     }
   | { readonly success: false; readonly error: string }
-
-function cleanText(value: string | null): string | null {
-  const cleaned = value?.trim() ?? ""
-  return cleaned.length > 0 ? cleaned : null
-}
-
-function requiredText(value: string | null, label: string): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required.`)
-  return cleaned
-}
-
-function cleanDate(value: string | null): string | null {
-  const cleaned = cleanText(value)
-  if (!cleaned) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-    throw new Error("Document date must use YYYY-MM-DD.")
-  }
-  return cleaned
-}
 
 function refreshDocumentPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/documents`)
@@ -85,9 +66,10 @@ export async function publishProjectDocumentFolder(
     if (!isInternalStaffRole(user.role)) {
       throw new Error("Only authorized internal staff can manage project documents.")
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const access = await assertProjectAccess(db, user, projectId)
+    // "member" scope: the same getProjectAccessRecord rule assertProjectAccess used.
+    const context = await projectContext(projectId, { scope: "member" })
+    if (!context.success) throw new Error(context.error)
+    const { db, env, project: access } = context.data
     if (!access.organizationId) throw new Error("Project organization is missing.")
     const project = await db
       .select({ driveFolderId: projects.googleDriveFolderId })
@@ -180,7 +162,7 @@ export async function publishProjectDocumentFolder(
     )
     const now = new Date().toISOString()
     const description = cleanText(input.description)
-    const documentDate = cleanDate(input.documentDate)
+    const documentDate = cleanDocumentDate(input.documentDate)
     const revision = cleanText(input.revision)
     const rows = collected.files.flatMap((file) => {
       if (duplicateIds.has(file.id)) return []
@@ -212,16 +194,8 @@ export async function publishProjectDocumentFolder(
       }]
     })
     if (rows.length > 0) {
-      // A project-document row binds 21 columns. Four rows per statement keep
-      // each insert below D1's 100-bound-parameter limit; batch is atomic.
-      const firstInsert = db.insert(projectDocuments).values(rows.slice(0, 4))
-      const remainingInserts = []
-      for (let index = 4; index < rows.length; index += 4) {
-        remainingInserts.push(
-          db.insert(projectDocuments).values(rows.slice(index, index + 4))
-        )
-      }
-      await db.batch([firstInsert, ...remainingInserts])
+      // One atomic batch, a few rows per statement (D1's bound-parameter limit).
+      await insertProjectDocuments(db, rows)
       await recordActivityEvent({
         db,
         organizationId: access.organizationId,

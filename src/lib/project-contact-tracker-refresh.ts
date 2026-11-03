@@ -3,7 +3,8 @@ import "server-only"
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { projectProfileSyncOperations, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { insertProjectProfileSyncOperationStatement } from "@/lib/domain/project/store"
 
 /** Queue one registry/tracker refresh after a project-contact mutation batch. */
 export async function queueProjectContactTrackerRefresh(input: {
@@ -22,7 +23,8 @@ export async function queueProjectContactTrackerRefresh(input: {
   if (!project?.projectNumber) return
 
   const now = new Date().toISOString()
-  await input.db.insert(projectProfileSyncOperations).values({
+  // One statement; the project store only offers the batch form.
+  await input.db.batch([insertProjectProfileSyncOperationStatement(input.db, {
     id: crypto.randomUUID(),
     organizationId: input.organizationId,
     projectId: input.projectId,
@@ -38,5 +40,5 @@ export async function queueProjectContactTrackerRefresh(input: {
     completedAt: null,
     createdAt: now,
     updatedAt: now,
-  })
+  })])
 }

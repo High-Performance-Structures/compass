@@ -23,7 +23,7 @@ export type MountainBand = {
   readonly ratePerManHourCents: number | null
 }
 
-export type TravelHomeBase = {
+type TravelHomeBase = {
   readonly label: string
   readonly lat: number
   readonly lon: number

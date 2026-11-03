@@ -1,0 +1,31 @@
+erDiagram
+  direction LR
+  project_job_status_label_conflicts {
+    key id
+  }
+  project_members {
+    key id
+    ref project_id
+  }
+  project_number_aliases {
+    key id
+    ref project_id
+  }
+  project_number_reservations {
+    key id
+    ref project_id
+  }
+  project_number_retirements {
+    key id
+  }
+  project_number_review_decisions {
+    key id
+    ref project_id
+  }
+  projects {
+    key id
+  }
+  projects ||--o{ project_members : ""
+  projects ||--o{ project_number_aliases : ""
+  projects ||--o{ project_number_reservations : ""
+  projects ||--o{ project_number_review_decisions : ""

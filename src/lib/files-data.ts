@@ -18,7 +18,7 @@ export type SharedUser = {
   role: SharedRole
 }
 
-export type FileOwner = {
+type FileOwner = {
   name: string
   avatar?: string
 }

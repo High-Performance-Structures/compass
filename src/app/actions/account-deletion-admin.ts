@@ -6,21 +6,21 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { accountDeletionRequests, organizationMembers } from "@/db/schema"
-import { isWorkOSNotFound, runAccountDeletion } from "@/lib/account-deletion"
+import { isWorkOSNotFound } from "@/lib/account-deletion"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isWorkOSConfigured } from "@/lib/auth-config"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  ACCOUNT_DELETION_REQUEST_STATUSES,
+  type AccountDeletionRequestStatus,
+} from "@/lib/domain/identity/statuses"
+import { runAccountDeletion, startAccountDeletionRequestProcessing } from "@/lib/domain/identity/store"
 import { canManageUserAccess } from "@/lib/permissions"
+import { listValueOr } from "@/lib/shared/statuses"
 
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
-
-export type AccountDeletionRequestStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "cancelled"
 
 export type AdminAccountDeletionRequest = {
   readonly id: string
@@ -34,15 +34,8 @@ export type AdminAccountDeletionRequest = {
   readonly cancelledAt: string | null
 }
 
-const STATUSES: readonly AccountDeletionRequestStatus[] = [
-  "pending",
-  "processing",
-  "completed",
-  "cancelled",
-]
-
 function toStatus(value: string): AccountDeletionRequestStatus {
-  return STATUSES.find((status) => status === value) ?? "pending"
+  return listValueOr(ACCOUNT_DELETION_REQUEST_STATUSES, value, "pending")
 }
 
 type AdminContext = {
@@ -153,22 +146,12 @@ export async function startAccountDeletionProcessing(
     }
 
     const now = new Date().toISOString()
-    const result = await db
-      .update(accountDeletionRequests)
-      .set({
-        status: "processing",
-        processingStartedAt: now,
-        processingStartedBy: user.id,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(accountDeletionRequests.id, requestId),
-          eq(accountDeletionRequests.status, "pending")
-        )
-      )
-      .run()
-    if ((result.meta.changes ?? 0) !== 1) {
+    const changes = await startAccountDeletionRequestProcessing(db, {
+      requestId,
+      startedBy: user.id,
+      now,
+    })
+    if (changes !== 1) {
       return {
         success: false,
         error: "The request changed while you were viewing it. Refresh and try again.",

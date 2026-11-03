@@ -23,7 +23,8 @@ export const projectRfqEmailDeliveries = sqliteTable(
     requestedAt: text("requested_at").notNull(),
     sentAt: text("sent_at"),
   },
-  (table) => [index("project_rfq_email_deliveries_rfq_idx").on(table.rfqOperationId, table.requestedAt)]
+  (table) => [index("project_rfq_email_deliveries_rfq_idx").on(table.rfqOperationId, table.requestedAt),
+    index("project_rfq_email_deliveries_project_id_idx").on(table.projectId)]
 )
 
 /** Append-only audit of staff-entered responses received outside Compass. */
@@ -41,7 +42,8 @@ export const projectRfqManualResponseEvents = sqliteTable(
     recordedByName: text("recorded_by_name").notNull(),
     recordedAt: text("recorded_at").notNull(),
   },
-  (table) => [index("project_rfq_manual_response_events_rfq_idx").on(table.rfqOperationId, table.recordedAt)]
+  (table) => [index("project_rfq_manual_response_events_rfq_idx").on(table.rfqOperationId, table.recordedAt),
+    index("project_rfq_manual_response_events_project_id_idx").on(table.projectId)]
 )
 
 /**
@@ -111,6 +113,7 @@ export const projectEstimateRfqBidImports = sqliteTable(
       table.estimateId,
       table.importedAt
     ),
+    index("project_estimate_rfq_bid_imports_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -172,5 +175,6 @@ export const projectRfqQuoteLinks = sqliteTable(
   (table) => [
     uniqueIndex("project_rfq_quote_links_token_uq").on(table.tokenHash),
     index("project_rfq_quote_links_rfq_idx").on(table.rfqOperationId, table.createdAt),
+    index("project_rfq_quote_links_project_id_idx").on(table.projectId),
   ]
 )

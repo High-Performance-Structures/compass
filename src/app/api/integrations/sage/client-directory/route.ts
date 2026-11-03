@@ -4,6 +4,13 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { sageBridgeRequestNonces, sageClientDirectoryRefreshes } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import { SAGE_BRIDGE_NONCE_RETENTION_MS, sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
+import {
+  deleteSageBridgeRequestNonces,
+  insertSageBridgeRequestNonce,
+  sageClientDirectoryReplaceStatements,
+  updateSageClientDirectoryRefreshes,
+} from "@/lib/domain/sage-bridge/store"
 import {
   getSageContactBridgeSecret, readBoundedSageBridgeBody,
   SAGE_BRIDGE_REQUEST_ID_HEADER, verifySageBridgeRequest,
@@ -11,7 +18,6 @@ import {
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 
 const STALE_CLAIM_MS = 10 * 60 * 1000
-const NONCE_RETENTION_MS = 15 * 60 * 1000
 const MAX_DIRECTORY_RESULT_BYTES = 4 * 1024 * 1024
 const DIRECTORY_INSERT_CHUNK = 500
 const entrySchema = z.strictObject({
@@ -44,10 +50,10 @@ async function authorize(request: Request, rawBody: string): Promise<
   if (!requestId) return { success: false, response: Response.json({ error: "Missing request ID" }, { status: 401 }) }
   const db = getDb(env.DB)
   const now = new Date()
-  await db.delete(sageBridgeRequestNonces).where(lt(sageBridgeRequestNonces.createdAt,
-    new Date(now.getTime() - NONCE_RETENTION_MS).toISOString()))
+  await deleteSageBridgeRequestNonces(db, lt(sageBridgeRequestNonces.createdAt,
+    sageBridgeCutoff(now, SAGE_BRIDGE_NONCE_RETENTION_MS)))
   try {
-    await db.insert(sageBridgeRequestNonces).values({ requestId, route: new URL(request.url).pathname, createdAt: now.toISOString() })
+    await insertSageBridgeRequestNonce(db, { requestId, route: new URL(request.url).pathname, createdAt: now.toISOString() })
   } catch {
     return { success: false, response: Response.json({ error: "Bridge request already consumed" }, { status: 409 }) }
   }
@@ -71,8 +77,8 @@ export async function GET(request: Request): Promise<Response> {
   )).orderBy(asc(sageClientDirectoryRefreshes.requestedAt)).get()
   if (!candidate) return Response.json({ refresh: null })
   const token = crypto.randomUUID()
-  const claimed = await db.update(sageClientDirectoryRefreshes).set({ status: "running", claimToken: token, claimedAt: new Date().toISOString() })
-    .where(and(eq(sageClientDirectoryRefreshes.id, candidate.id), eq(sageClientDirectoryRefreshes.organizationId, configuredOrg),
+  const claimed = await updateSageClientDirectoryRefreshes(db, { status: "running", claimToken: token, claimedAt: new Date().toISOString() },
+    and(eq(sageClientDirectoryRefreshes.id, candidate.id), eq(sageClientDirectoryRefreshes.organizationId, configuredOrg),
       eq(sageClientDirectoryRefreshes.status, candidate.status),
       candidate.status === "running" ? lt(sageClientDirectoryRefreshes.claimedAt, stale) : eq(sageClientDirectoryRefreshes.requestedAt, candidate.requestedAt)))
     .returning({ id: sageClientDirectoryRefreshes.id })
@@ -105,8 +111,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!claim) return Response.json({ error: "Directory claim changed" }, { status: 409 })
   const now = new Date().toISOString()
   if (result.outcome === "failed") {
-    const failed = await db.update(sageClientDirectoryRefreshes).set({ status: "failed", errorMessage: result.error, completedAt: now })
-      .where(and(eq(sageClientDirectoryRefreshes.id, claim.id),
+    const failed = await updateSageClientDirectoryRefreshes(db, { status: "failed", errorMessage: result.error, completedAt: now },
+      and(eq(sageClientDirectoryRefreshes.id, claim.id),
         eq(sageClientDirectoryRefreshes.organizationId, result.organizationId),
         eq(sageClientDirectoryRefreshes.status, "running"),
         eq(sageClientDirectoryRefreshes.claimToken, result.claimToken))).returning({ id: sageClientDirectoryRefreshes.id })
@@ -116,36 +122,22 @@ export async function POST(request: Request): Promise<Response> {
   const ids = new Set(result.entries.map((entry) => entry.sageRecordId.toLowerCase()))
   const numbers = new Set(result.entries.map((entry) => entry.sageClientNumber))
   if (ids.size !== result.entries.length || numbers.size !== result.entries.length) {
-    await db.update(sageClientDirectoryRefreshes).set({ status: "failed",
-      errorMessage: "Duplicate Sage identity in directory result; prior snapshot preserved.", completedAt: now })
-      .where(and(eq(sageClientDirectoryRefreshes.id, claim.id),
+    await updateSageClientDirectoryRefreshes(db, { status: "failed",
+      errorMessage: "Duplicate Sage identity in directory result; prior snapshot preserved.", completedAt: now },
+      and(eq(sageClientDirectoryRefreshes.id, claim.id),
         eq(sageClientDirectoryRefreshes.organizationId, result.organizationId),
         eq(sageClientDirectoryRefreshes.status, "running"),
         eq(sageClientDirectoryRefreshes.claimToken, result.claimToken)))
     return Response.json({ error: "Duplicate Sage identity in directory result" }, { status: 400 })
   }
   const normalized = result.entries.map((entry) => ({ ...entry, name: entry.name.trim() }))
-  const inserts: D1PreparedStatement[] = []
+  const chunks: string[] = []
   for (let offset = 0; offset < normalized.length; offset += DIRECTORY_INSERT_CHUNK) {
-    inserts.push(auth.env.DB.prepare(`INSERT INTO sage_client_directory_entries
-      (organization_id, sage_record_id, sage_client_number, name, email, captured_at)
-      SELECT ?, json_extract(value, '$.sageRecordId'), json_extract(value, '$.sageClientNumber'),
-        json_extract(value, '$.name'), json_extract(value, '$.email'), ? FROM json_each(?)
-      WHERE EXISTS (SELECT 1 FROM sage_client_directory_refreshes WHERE id = ? AND organization_id = ?
-        AND status = 'running' AND claim_token = ?)`)
-      .bind(result.organizationId, now, JSON.stringify(normalized.slice(offset, offset + DIRECTORY_INSERT_CHUNK)),
-        claim.id, result.organizationId, result.claimToken))
+    chunks.push(JSON.stringify(normalized.slice(offset, offset + DIRECTORY_INSERT_CHUNK)))
   }
-  const statements = await auth.env.DB.batch([
-    auth.env.DB.prepare(`DELETE FROM sage_client_directory_entries WHERE organization_id = ?
-      AND EXISTS (SELECT 1 FROM sage_client_directory_refreshes WHERE id = ? AND organization_id = ?
-        AND status = 'running' AND claim_token = ?)`)
-      .bind(result.organizationId, claim.id, result.organizationId, result.claimToken),
-    ...inserts,
-    auth.env.DB.prepare(`UPDATE sage_client_directory_refreshes SET status = 'succeeded', completed_at = ?, error_message = NULL
-      WHERE id = ? AND organization_id = ? AND status = 'running' AND claim_token = ?`)
-      .bind(now, claim.id, result.organizationId, result.claimToken),
-  ])
+  const statements = await auth.env.DB.batch(sageClientDirectoryReplaceStatements(auth.env.DB, {
+    refreshId: claim.id, organizationId: result.organizationId, claimToken: result.claimToken, now,
+  }, chunks))
   if (statements[statements.length - 1]?.meta.changes !== 1) return Response.json({ error: "Directory claim changed" }, { status: 409 })
   return Response.json({ success: true, status: "succeeded", count: normalized.length }, { status: 202 })
 }

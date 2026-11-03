@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 
 import { organizations, projects, scheduleTasks, users } from "./schema"
+import { DEPENDENCY_TYPES } from "../lib/domain/schedule/statuses"
 
 export const projectTemplates = sqliteTable(
   "project_templates",
@@ -185,7 +186,7 @@ export const scheduleTemplateDependencies = sqliteTable(
     successorItemId: text("successor_item_id")
       .notNull()
       .references(() => scheduleTemplateItems.id, { onDelete: "cascade" }),
-    type: text("type").notNull().default("FS"),
+    type: text("type", { enum: DEPENDENCY_TYPES }).notNull().default("FS"),
     lagDays: integer("lag_days").notNull().default(0),
   },
   (table) => [
@@ -195,6 +196,8 @@ export const scheduleTemplateDependencies = sqliteTable(
       table.successorItemId,
       table.type
     ),
+    index("schedule_template_dependencies_successor_item_id_idx").on(table.successorItemId),
+    index("schedule_template_dependencies_predecessor_item_id_idx").on(table.predecessorItemId),
   ]
 )
 
@@ -294,6 +297,7 @@ export const projectTemplateApplications = sqliteTable(
       table.templateId,
       table.status
     ),
+    index("project_template_applications_version_id_idx").on(table.versionId),
   ]
 )
 
@@ -321,6 +325,7 @@ export const projectTemplateApplicationItems = sqliteTable(
       table.applicationId,
       table.templateItemId
     ),
+    index("project_template_application_items_template_item_id_idx").on(table.templateItemId),
   ]
 )
 

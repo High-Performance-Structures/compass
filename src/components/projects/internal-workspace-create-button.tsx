@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
-import { isWorkspaceKind, WORKSPACE_KIND_LABELS, WORKSPACE_KINDS, type WorkspaceKind } from "@/lib/internal-duties/model"
+import { WORKSPACE_KINDS } from "@/lib/domain/project/statuses"
+import { isWorkspaceKind, WORKSPACE_KIND_LABELS, type WorkspaceKind } from "@/lib/internal-duties/model"
 import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 
 /** Adds an office, owner's office or yard workspace under the Internal department. */

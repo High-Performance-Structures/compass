@@ -4,6 +4,7 @@ import { organizationMembers, organizations, projectMembers, projects, users } f
 import { projectArchiveDocuments, projectArchiveRecipients, type ProjectArchiveDocument } from "@/db/schema-project-archives"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { insertArchiveEdition } from "@/lib/domain/documents/store"
 
 import { archivePublicationSchema, type ArchivePublication } from "@/lib/project-archive-model"
 export type { ArchivePublication } from "@/lib/project-archive-model"
@@ -58,9 +59,6 @@ export async function publishArchiveRecord(input: {
   if (readerIds.some((id) => !eligible.some((reader) => reader.id === id && reader.audience === parsed.audience))) throw new Error("Every recipient must have matching active project access.")
   const id = crypto.randomUUID()
   // One batch: a failed/revoked recipient cannot leave a partially published edition.
-  await input.db.batch([
-    input.db.insert(projectArchiveDocuments).values({ id, organizationId: input.organizationId, projectId: input.projectId, title: parsed.title, kind: parsed.kind, period: parsed.period, audience: parsed.audience, sourceRecordIds: JSON.stringify([...new Set(parsed.sourceRecordIds)]), sourceAudienceEvidence: parsed.sourceAudienceEvidence, driveFileId: parsed.driveFileId, ...input.fingerprint, publishedBy: input.actorId, publishedAt: new Date().toISOString() }),
-    ...readerIds.map((userId) => input.db.insert(projectArchiveRecipients).values({ archiveId: id, userId })),
-  ])
+  await insertArchiveEdition(input.db, { id, organizationId: input.organizationId, projectId: input.projectId, title: parsed.title, kind: parsed.kind, period: parsed.period, audience: parsed.audience, sourceRecordIds: JSON.stringify([...new Set(parsed.sourceRecordIds)]), sourceAudienceEvidence: parsed.sourceAudienceEvidence, driveFileId: parsed.driveFileId, ...input.fingerprint, publishedBy: input.actorId, publishedAt: new Date().toISOString() }, readerIds)
   return id
 }

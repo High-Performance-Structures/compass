@@ -61,7 +61,7 @@ export type NuTechStepId =
   | "vendor_invoice"
   | "complete"
 
-export const NUTECH_STEP_IDS: readonly NuTechStepId[] = [
+const NUTECH_STEP_IDS: readonly NuTechStepId[] = [
   "intake",
   "quantities",
   "estimate",
@@ -171,7 +171,7 @@ export const NUTECH_ORDER_WORKFLOW: WorkflowDefinition = {
 const ESTIMATE_SENT = new Set(["signature_pending", "accepted"])
 
 /** What Compass records about the order, as workflow facts. */
-export function nuTechOrderFacts(snapshot: NuTechOrderSnapshot): WorkflowFacts {
+function nuTechOrderFacts(snapshot: NuTechOrderSnapshot): WorkflowFacts {
   const order = snapshot.order
   const delivery: NuTechDeliveryMethod | null =
     order?.deliveryMethod ??

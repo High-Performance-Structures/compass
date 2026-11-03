@@ -14,7 +14,7 @@ export type ActiveFire = {
 }
 
 /** Outline tolerance for fire perimeters: about 250 m. */
-export const FIRE_TOLERANCE_DEG = 0.0025
+const FIRE_TOLERANCE_DEG = 0.0025
 /** Pieces of an outline smaller than this (degrees, about 400 m) are left off the map. */
 const MIN_RING_SPAN_DEG = 0.004
 

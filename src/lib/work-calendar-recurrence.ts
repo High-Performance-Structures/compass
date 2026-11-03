@@ -1,6 +1,6 @@
 import { isValidDateKey } from "@/lib/work-calendar"
 
-export const WORK_CALENDAR_RECURRENCES = [
+const WORK_CALENDAR_RECURRENCES = [
   "none",
   "daily",
   "weekly",

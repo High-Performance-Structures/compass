@@ -1,0 +1,12 @@
+flowchart TD
+  A([New pay application]) --> B{Current budget<br/>revision with lines?}
+  B -->|no| B1[Refused]
+  B -->|yes| C[draft: edit lines,<br/>percent, deposit]
+  C --> D[Mark ready:<br/>internal_review]
+  D -->|return| C
+  D --> E[Approve for billing:<br/>billed, owner_visible]
+  E -->|undo if no later app<br/>and no invoice number| D
+  E --> F[Owner sees it]
+  E --> G[Accounting creates<br/>the invoice]
+  G --> H[Staff record invoice<br/>number: synced]
+  E -.read-only check.-> I[[Bridge reads accounting<br/>pay application snapshot]]

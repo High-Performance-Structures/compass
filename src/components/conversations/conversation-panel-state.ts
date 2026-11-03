@@ -1,4 +1,4 @@
-export type ConversationPanelView = "direct-message-picker"
+type ConversationPanelView = "direct-message-picker"
 
 export type ConversationPanelState = {
   readonly isOpen: boolean

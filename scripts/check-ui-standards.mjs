@@ -103,7 +103,6 @@ if (
 
 const smallTextExemptFiles = new Set([
   "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
-  "src/components/desktop/sync-indicator.tsx",
   "src/components/projects/purchase-order-document.tsx",
   "src/components/projects/shop-ticket-document.tsx",
   "src/components/help/help-compass-icon.tsx",
@@ -119,7 +118,6 @@ const stockColorExemptFiles = new Set([
   // Print documents moved out of src/app/print so the paper trail can reuse them.
   "src/components/projects/estimate-client-report.tsx",
   "src/components/files/file-icon.tsx",
-  "src/components/voice/realtimekit-meeting-dialog.tsx",
   "src/components/voice/realtimekit-meeting-window.tsx",
 ])
 

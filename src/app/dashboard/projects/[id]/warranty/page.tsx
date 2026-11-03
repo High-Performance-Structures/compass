@@ -3,7 +3,7 @@ import type * as React from "react"
 import Link from "next/link"
 import { IconArrowLeft } from "@tabler/icons-react"
 
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
 import { getProjectWarrantySourceReview } from "@/app/actions/project-warranty-source-review"

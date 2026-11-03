@@ -7,6 +7,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
+import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES } from "../lib/domain/sage-bridge/statuses"
 import { customers, organizations, projects, users, vendors } from "./schema"
 
 export const sageWriteApprovals = sqliteTable(
@@ -86,6 +87,7 @@ export const sageClientProjectWriteOperations = sqliteTable(
       table.customerId,
       table.status
     ),
+    index("sage_client_project_write_operations_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -150,6 +152,23 @@ export const sageClientDirectoryEntries = sqliteTable("sage_client_directory_ent
   uniqueIndex("sage_client_directory_org_id_unique").on(table.organizationId, table.sageRecordId),
   uniqueIndex("sage_client_directory_org_number_unique").on(table.organizationId, table.sageClientNumber),
   index("sage_client_directory_org_name_idx").on(table.organizationId, table.name),
+])
+
+/**
+ * Read-only Sage vendor catalog (Sage's vendor records), sent by the Sage
+ * writer, so staff can link Compass vendors to Sage in bulk.
+ */
+export const sageVendorDirectoryEntries = sqliteTable("sage_vendor_directory_entries", {
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  sageRecordId: text("sage_record_id").notNull(),
+  sageVendorNumber: text("sage_vendor_number").notNull(),
+  name: text("name").notNull(),
+  email: text("email"),
+  capturedAt: text("captured_at").notNull(),
+}, (table) => [
+  uniqueIndex("sage_vendor_directory_org_id_unique").on(table.organizationId, table.sageRecordId),
+  uniqueIndex("sage_vendor_directory_org_number_unique").on(table.organizationId, table.sageVendorNumber),
+  index("sage_vendor_directory_org_name_idx").on(table.organizationId, table.name),
 ])
 
 /** Immutable record of deliberate Sage identity link decisions. */
@@ -270,6 +289,8 @@ export const sageContactCreateProposals = sqliteTable(
     index("sage_contact_create_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
     index("sage_contact_create_company_idx")
       .on(table.organizationId, table.kind, table.customerId, table.vendorId, table.status),
+    index("sage_contact_create_proposals_vendor_id_idx").on(table.vendorId),
+    index("sage_contact_create_proposals_customer_id_idx").on(table.customerId),
   ]
 )
 
@@ -332,6 +353,8 @@ export const sagePayApplicationSyncRuns = sqliteTable(
     uniqueIndex("sage_pay_app_sync_runs_active_project_idx")
       .on(table.projectId)
       .where(sql`${table.status} IN ('queued', 'running', 'processing')`),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("sage_pay_application_sync_runs_snapshot_id_idx").on(table.snapshotId),
   ]
 )
 
@@ -373,6 +396,44 @@ export const sagePayApplicationSnapshots = sqliteTable(
     ),
   ]
 )
+
+/**
+ * One row per vendor: keeps Sage's vendor certificates (expiry, Warning,
+ * Stop Pay) in step with the vendor's trade docs in Compass. Compass marks
+ * the row queued when the docs or the vendor's bill choice change; the
+ * Sage writer claims it, and the request is built from the docs at claim
+ * time, so it is never stale.
+ */
+export const sageVendorCertificateSyncs = sqliteTable(
+  "sage_vendor_certificate_syncs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    vendorId: text("vendor_id")
+      .notNull()
+      .references(() => vendors.id, { onDelete: "cascade" }),
+    status: text("status", { enum: SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES }).notNull().default("queued"),
+    requestedAt: text("requested_at").notNull(),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    // json: provider request snapshot, the certificate rows sent to Sage
+    payloadJson: text("payload_json"),
+    // json: provider response, what the Sage writer added and changed
+    resultJson: text("result_json"),
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_vendor_certificate_syncs_vendor_idx").on(table.vendorId),
+    index("sage_vendor_certificate_syncs_org_status_idx").on(table.organizationId, table.status),
+  ]
+)
+
+export type SageVendorCertificateSync = typeof sageVendorCertificateSyncs.$inferSelect
 
 export const sageBridgeRequestNonces = sqliteTable(
   "sage_bridge_request_nonces",
@@ -483,6 +544,7 @@ export const sageSquarePaymentOperations = sqliteTable(
       table.projectId,
       table.paymentCompletedAt
     ),
+    index("sage_square_payment_operations_project_id_idx").on(table.projectId),
   ]
 )
 

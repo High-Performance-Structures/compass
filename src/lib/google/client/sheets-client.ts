@@ -9,7 +9,7 @@ type SheetsValueRenderOption =
   | "UNFORMATTED_VALUE"
   | "FORMULA"
 
-export type GoogleSheetMetadata = {
+type GoogleSheetMetadata = {
   readonly sheetId: number
   readonly title: string
   readonly index: number

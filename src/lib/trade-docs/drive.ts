@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { vendors } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
+import { updateVendorById } from "@/lib/domain/contacts/store"
 import type { AuthUser } from "@/lib/auth"
 import type { DriveClient } from "@/lib/google/client/drive-client"
 import type { DriveFile } from "@/lib/google/client/types"
@@ -18,7 +18,7 @@ export type TradeDocsDrive = {
 }
 
 /** A Drive folder name for a vendor; Drive allows most characters, but not '/'. */
-export function vendorFolderName(vendorName: string): string {
+function vendorFolderName(vendorName: string): string {
   return vendorName.replace(/[\\/]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "Vendor"
 }
 
@@ -73,10 +73,9 @@ export async function ensureVendorTradeDocsFolder(input: {
     parentId: root?.id,
     driveId: driveId ?? undefined,
   }))
-  await input.db
-    .update(vendors)
-    .set({ tradeDocsFolderId: folder.id, updatedAt: new Date().toISOString() })
-    .where(eq(vendors.id, input.vendor.id))
-    .run()
+  await updateVendorById(input.db, {
+    vendorId: input.vendor.id,
+    values: { tradeDocsFolderId: folder.id, updatedAt: new Date().toISOString() },
+  })
   return { client: drive.client, userEmail: drive.userEmail, folderId: folder.id, driveId }
 }

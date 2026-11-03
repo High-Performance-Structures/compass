@@ -1,0 +1,36 @@
+erDiagram
+  direction LR
+  sage_contact_change_events {
+    key id
+    ref proposal_id
+  }
+  sage_contact_change_proposals {
+    key id
+  }
+  sage_contact_create_events {
+    key id
+    ref proposal_id
+  }
+  sage_contact_create_proposals {
+    key id
+    ref customer_id
+    ref vendor_id
+  }
+  sage_contact_link_events {
+    key id
+    ref request_id
+  }
+  sage_contact_read_requests {
+    key id
+  }
+  customers {
+    key id
+  }
+  vendors {
+    key id
+  }
+  customers |o--o{ sage_contact_create_proposals : ""
+  sage_contact_change_proposals ||--o{ sage_contact_change_events : ""
+  sage_contact_create_proposals ||--o{ sage_contact_create_events : ""
+  sage_contact_read_requests ||--o{ sage_contact_link_events : ""
+  vendors |o--o{ sage_contact_create_proposals : ""

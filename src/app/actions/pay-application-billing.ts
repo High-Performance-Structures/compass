@@ -6,11 +6,14 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectBudgetApplications, projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
+import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 /*
  * After review, staff approve a Compass pay application for billing: it is
@@ -27,12 +30,10 @@ async function billingAccess(projectId: string): Promise<{
   readonly user: AuthUser
   readonly organizationId: string
 }> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   requirePermission(user, "project", "update")
   if (!isInternalStaffRole(user.role)) throw new Error("Only staff can bill pay applications.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const project = await db
     .select({ id: projects.id })
     .from(projects)
@@ -85,12 +86,16 @@ export async function approveProjectOwnerPayApplicationForBilling(
     }
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now })
-        .where(and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review"))),
-      db.update(projectOperations)
-        .set({ status: "billed", syncStatus: "awaiting_sage_invoice", updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(
+        db,
+        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review")),
+        { status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now }
+      ),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), {
+        status: "billed",
+        syncStatus: "awaiting_sage_invoice",
+        updatedAt: now,
+      }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
@@ -133,14 +138,21 @@ export async function undoProjectOwnerPayApplicationBilling(
     if (application.sageInvoiceNumber) {
       throw new Error(`This draw is invoiced in Sage as ${application.sageInvoiceNumber}. Clear the Sage invoice number first.`)
     }
+    if (await payApplicationHasActivePayments(db, applicationId)) {
+      throw new Error("Payments are recorded against this draw. Void them first.")
+    }
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now })
-        .where(and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed"))),
-      db.update(projectOperations)
-        .set({ status: "internal_review", syncStatus: "needs_review", updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(
+        db,
+        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed")),
+        { status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now }
+      ),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), {
+        status: "internal_review",
+        syncStatus: "needs_review",
+        updatedAt: now,
+      }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
@@ -169,12 +181,12 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     const syncStatus = number ? "synced" : "awaiting_sage_invoice"
     const now = new Date().toISOString()
     await db.batch([
-      db.update(projectBudgetApplications)
-        .set({ sageInvoiceNumber: number, syncStatus, updatedAt: now })
-        .where(eq(projectBudgetApplications.id, applicationId)),
-      db.update(projectOperations)
-        .set({ syncStatus, updatedAt: now })
-        .where(operationFor(projectId, applicationId)),
+      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+        sageInvoiceNumber: number,
+        syncStatus,
+        updatedAt: now,
+      }),
+      operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
     ])
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",

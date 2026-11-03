@@ -1,32 +1,15 @@
 "use client"
 
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-
 import * as React from "react"
 import { IconDotsVertical } from "@tabler/icons-react"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type RowSelectionState,
-  type SortingState,
-} from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 
-import type { Customer } from "@/db/schema"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { getCustomerDirectoryPage } from "@/app/actions/contact-directory"
+import type { CustomerDirectoryRow } from "@/lib/domain/contacts/directory-page"
+import type { RecordPage } from "@/lib/record-page"
 import { Badge } from "@/components/ui/badge"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
+import { Button } from "@/components/ui/button"
+import { SourceTag } from "@/components/shared/source-tag"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,449 +17,199 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { RecordSearchInput, RecordTable, recordSelectionColumn } from "@/components/record-table"
+import { useServerRecordTable } from "@/components/use-server-record-table"
 
-interface CustomersTableProps {
-  customers: Customer[]
-  onEdit?: (customer: Customer) => void
-  onDelete?: (id: string) => void
-  onViewPeople?: (customer: Customer) => void
-  selectedIds?: readonly string[]
-  onSelectionChange?: (ids: readonly string[]) => void
+type CustomerRowActions = {
+  readonly onEdit?: (customer: CustomerDirectoryRow) => void
+  readonly onDelete?: (id: string) => void
+  readonly onViewPeople?: (customer: CustomerDirectoryRow) => void
+  /** Opens the merge dialog with this client chosen and a search for the other. */
+  readonly onMergeWith?: (customer: CustomerDirectoryRow) => void
 }
 
-const EMPTY_SELECTION: readonly string[] = []
+type CustomersTableProps = CustomerRowActions & {
+  readonly initialPage: RecordPage<CustomerDirectoryRow> | null
+  readonly reloadToken: number
+  readonly onSelectionChange?: (customers: readonly CustomerDirectoryRow[]) => void
+  readonly clearSelectionToken?: number
+}
 
-export function CustomersTable({
-  customers,
-  onEdit,
-  onDelete,
-  onViewPeople,
-  selectedIds = EMPTY_SELECTION,
-  onSelectionChange,
-}: CustomersTableProps) {
-  const isMobile = useIsMobile()
-  const { developerModeEnabled } = useDeveloperMode()
-  const [sorting, setSorting] = React.useState<SortingState>([
-    { id: "name", desc: false },
-  ])
-  const [columnFilters, setColumnFilters] =
-    React.useState<ColumnFiltersState>([])
-  const rowSelection = React.useMemo<RowSelectionState>(
-    () => Object.fromEntries(selectedIds.map((id) => [id, true])),
-    [selectedIds]
+const customerRowId = (customer: CustomerDirectoryRow): string => customer.id
+
+function Blank(): React.ReactElement {
+  return <span className="text-muted-foreground/40">—</span>
+}
+
+function CustomerMenu({ customer, actions }: { readonly customer: CustomerDirectoryRow; readonly actions: CustomerRowActions }): React.ReactElement {
+  const { onViewPeople, onEdit, onMergeWith, onDelete } = actions
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="size-8 p-0">
+          <span className="sr-only">Actions for {customer.name}</span>
+          <IconDotsVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
+        {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
+        {onMergeWith && <DropdownMenuItem onClick={() => onMergeWith(customer)}>Merge with…</DropdownMenuItem>}
+        {onDelete && (onEdit || onMergeWith) && <DropdownMenuSeparator />}
+        {onDelete && (
+          <DropdownMenuItem className="text-destructive" onClick={() => onDelete(customer.id)}>
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
+}
 
-  const sortKey = React.useMemo(() => {
-    if (!sorting.length) return "name-asc"
-    const s = sorting[0]
-    if (s.id === "name") return s.desc ? "name-desc" : "name-asc"
-    if (s.id === "createdAt") return s.desc ? "newest" : "oldest"
-    return "name-asc"
-  }, [sorting])
+function CustomerSource({ customer }: { readonly customer: CustomerDirectoryRow }): React.ReactElement {
+  const sageLinked = Boolean(customer.sageClientId)
+  const sageCandidate = !sageLinked && Boolean(customer.sageClientNumber)
+  const buildertrend = Boolean(customer.buildertrendContactId)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {sageLinked ? <Badge variant="outline">Sage{customer.sageClientNumber ? ` #${customer.sageClientNumber}` : ""}</Badge> : null}
+      {sageCandidate ? <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge> : null}
+      {buildertrend ? <SourceTag source="buildertrend" /> : null}
+      {!sageLinked && !sageCandidate && !buildertrend ? <Badge variant="outline">Compass</Badge> : null}
+    </div>
+  )
+}
 
-  const handleSort = (value: string) => {
-    setPagination((current) => ({ ...current, pageIndex: 0 }))
-    switch (value) {
-      case "name-asc":
-        setSorting([{ id: "name", desc: false }])
-        break
-      case "name-desc":
-        setSorting([{ id: "name", desc: true }])
-        break
-      case "newest":
-        setSorting([{ id: "createdAt", desc: true }])
-        break
-      case "oldest":
-        setSorting([{ id: "createdAt", desc: false }])
-        break
-    }
-  }
-
-  const columns = React.useMemo<ColumnDef<Customer>[]>(() => [
+function customerColumns(
+  actions: CustomerRowActions,
+  options: { readonly selectable: boolean; readonly developerMode: boolean },
+): ColumnDef<CustomerDirectoryRow>[] {
+  const open = actions.onViewPeople ?? actions.onEdit
+  const hasActions = Boolean(actions.onEdit || actions.onDelete || actions.onViewPeople || actions.onMergeWith)
+  const columns: (ColumnDef<CustomerDirectoryRow> | null)[] = [
+    options.selectable ? recordSelectionColumn((customer: CustomerDirectoryRow) => customer.name) : null,
     {
-      id: "select",
-      header: ({ table }) => <Checkbox
-        checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
-        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
-        aria-label="Select all clients on this page"
-      />,
-      cell: ({ row }) => <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
-        aria-label={`Select ${row.original.name}`}
-      />,
-      enableSorting: false,
-      enableHiding: false,
-    },
-    {
-      accessorKey: "name",
+      id: "name",
+      accessorFn: (customer) => customer.name,
       header: "Name",
-      cell: ({ row }) => {
-        const c = row.original
-        const initials = c.name
-          .split(/\s+/)
-          .map((w) => w[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase()
-        return (
-          <div className="flex items-center gap-3">
-            <Avatar size="sm">
-              <AvatarFallback className="text-[10px]">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <span className="font-medium block truncate">
-                {c.name}
-              </span>
-              {c.company ? (
-                <span className="text-xs text-muted-foreground block truncate">
-                  {c.company}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          {open ? (
+            <button type="button" className="block text-left font-medium hover:underline" onClick={() => open(row.original)}>
+              {row.original.name}
+            </button>
+          ) : <span className="block font-medium">{row.original.name}</span>}
+          {row.original.company ? <span className="block text-xs text-muted-foreground">{row.original.company}</span> : null}
+        </div>
+      ),
     },
     {
-      accessorKey: "email",
+      id: "email",
+      accessorFn: (customer) => customer.primaryEmail || customer.email,
       header: "Email",
       cell: ({ row }) => {
-        const email = row.getValue("email") as string | null
-        if (!email) {
-          return (
-            <span className="text-muted-foreground/40">—</span>
-          )
-        }
-        return (
-          <a
-            href={`mailto:${email}`}
-            className="text-sm hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {email}
-          </a>
-        )
+        const email = row.original.primaryEmail || row.original.email
+        return email ? <a href={`mailto:${email}`} className="text-sm hover:underline">{email}</a> : <Blank />
       },
     },
     {
-      accessorKey: "phone",
+      id: "phone",
+      accessorFn: (customer) => customer.phone,
       header: "Phone",
-      cell: ({ row }) => {
-        const phone = row.getValue("phone") as string | null
-        if (!phone) {
-          return (
-            <span className="text-muted-foreground/40">—</span>
-          )
-        }
-        return (
-          <a
-            href={`tel:${phone}`}
-            className="text-sm tabular-nums hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {phone}
-          </a>
-        )
-      },
+      cell: ({ row }) => row.original.phone
+        ? <a href={`tel:${row.original.phone}`} className="text-sm tabular-nums hover:underline">{row.original.phone}</a>
+        : <Blank />,
     },
     {
-      accessorKey: "relationshipType",
+      id: "people",
+      accessorFn: (customer) => customer.peopleCount,
+      header: "People",
+      cell: ({ row }) => row.original.peopleCount === 0 ? <Blank /> : (
+        <span className="text-sm tabular-nums">{row.original.peopleCount}</span>
+      ),
+    },
+    {
+      id: "relationshipType",
+      accessorFn: (customer) => customer.relationshipType,
       header: "Status",
       cell: ({ row }) => (
-        <Badge
-          variant={
-            row.original.relationshipType === "lead" ? "secondary" : "outline"
-          }
-        >
+        <Badge variant={row.original.relationshipType === "lead" ? "secondary" : "outline"}>
           {row.original.relationshipType === "lead" ? "Lead" : "Client"}
         </Badge>
       ),
     },
-    {
+    options.developerMode ? {
       id: "source",
       header: "Source",
-      cell: ({ row }) => {
-        const customer = row.original
-        const isSageLinked = Boolean(customer.sageClientId)
-        const isSageCandidate = !isSageLinked && Boolean(customer.sageClientNumber)
-        const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
-        return (
-          <div className="flex flex-wrap gap-1">
-            {isSageLinked ? (
-              <Badge variant="outline">
-                Sage
-                {customer.sageClientNumber
-                  ? ` #${customer.sageClientNumber}`
-                  : ""}
-              </Badge>
-            ) : null}
-            {isSageCandidate ? (
-              <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
-            ) : null}
-            {isBuildertrendLinked ? (
-              <Badge variant="outline">Buildertrend</Badge>
-            ) : null}
-            {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
-              <Badge variant="outline">Compass</Badge>
-            ) : null}
-          </div>
-        )
-      },
-    },
+      enableSorting: false,
+      cell: ({ row }) => <CustomerSource customer={row.original} />,
+    } : null,
     {
-      accessorKey: "createdAt",
+      id: "createdAt",
+      accessorFn: (customer) => customer.createdAt,
       header: "Added",
-      cell: ({ row }) => {
-        const d = row.getValue("createdAt") as string
-        return (
-          <span className="text-muted-foreground text-xs tabular-nums">
-            {new Date(d).toLocaleDateString("en-US", {
-              month: "short",
-              year: "numeric",
-            })}
-          </span>
-        )
-      },
+      cell: ({ row }) => (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {new Date(row.original.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+        </span>
+      ),
     },
-    {
+    hasActions ? {
       id: "actions",
-      cell: ({ row }) => {
-        if (!onEdit && !onDelete && !onViewPeople) return null
-        const customer = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="size-8 p-0">
-                <span className="sr-only">open menu</span>
-                <IconDotsVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
-              {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
-              {onEdit && onDelete && <DropdownMenuSeparator />}
-              {onDelete && <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDelete(customer.id)}
-              >
-                Delete
-              </DropdownMenuItem>}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
-    },
-  ], [onEdit, onDelete, onViewPeople])
-  const visibleColumns = React.useMemo(() => columns.filter((column) =>
-    (developerModeEnabled || column.id !== "source") &&
-    (onSelectionChange !== undefined || column.id !== "select") &&
-    (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
-  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople, onSelectionChange])
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      size: 48,
+      cell: ({ row }) => <CustomerMenu customer={row.original} actions={actions} />,
+    } : null,
+  ]
+  return columns.filter((column): column is ColumnDef<CustomerDirectoryRow> => column !== null)
+}
 
-  const table = useReactTable({
-    data: customers,
-    columns: visibleColumns,
-    getRowId: (customer) => customer.id,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: onSelectionChange ? (updater) => {
-      const next = typeof updater === "function" ? updater(rowSelection) : updater
-      onSelectionChange(Object.keys(next).filter((id) => next[id]))
-    } : undefined,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: { sorting, columnFilters, rowSelection, pagination },
-  })
-
-  const emptyState = (
-    <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-muted-foreground">No client or lead contacts yet</p>
-      <p className="text-sm text-muted-foreground/70 mt-1">
-        Add a contact to associate them with projects when ready.
-      </p>
-    </div>
+/** Clients and leads, searched, sorted and paged on the server. */
+export function CustomersTable({
+  initialPage,
+  reloadToken,
+  onSelectionChange,
+  clearSelectionToken = 0,
+  onEdit,
+  onDelete,
+  onViewPeople,
+  onMergeWith,
+}: CustomersTableProps): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
+  const selectable = onSelectionChange !== undefined
+  const columns = React.useMemo(
+    () => customerColumns({ onEdit, onDelete, onViewPeople, onMergeWith }, { selectable, developerMode: developerModeEnabled }),
+    [onEdit, onDelete, onViewPeople, onMergeWith, selectable, developerModeEnabled],
   )
-
-  if (isMobile) {
-    const rows = table.getRowModel().rows
-    return (
-      <div className="space-y-3">
-        <Input
-          placeholder="Search clients and leads..."
-          value={
-            (table.getColumn("name")?.getFilterValue() as string) ?? ""
-          }
-          onChange={(e) =>
-            table.getColumn("name")?.setFilterValue(e.target.value)
-          }
-          className="w-full"
-        />
-        <Select value={sortKey} onValueChange={handleSort}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name-asc">Name A-Z</SelectItem>
-            <SelectItem value="name-desc">Name Z-A</SelectItem>
-            <SelectItem value="newest">Newest</SelectItem>
-            <SelectItem value="oldest">Oldest</SelectItem>
-          </SelectContent>
-        </Select>
-        {rows.length ? (
-          <div className="rounded-md border divide-y">
-            {rows.map((row) => {
-              const c = row.original
-              return (
-                <div
-                  key={row.id}
-                  className="flex items-center gap-3 px-3 py-2.5"
-                >
-                  <Avatar size="sm">
-                    <AvatarFallback className="text-[10px]">
-                      {c.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {c.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {[c.company, c.email, c.phone]
-                        .filter(Boolean)
-                        .join(" \u00b7 ") || "No contact info"}
-                    </p>
-                  </div>
-                  {(onEdit || onDelete || onViewPeople) && <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 shrink-0"
-                      >
-                        <IconDotsVertical className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(c)}>People at this client</DropdownMenuItem>}
-                      {onEdit && <DropdownMenuItem onClick={() => onEdit(c)}>Edit</DropdownMenuItem>}
-                      {onEdit && onDelete && <DropdownMenuSeparator />}
-                      {onDelete && <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => onDelete(c.id)}
-                      >
-                        Delete
-                      </DropdownMenuItem>}
-                    </DropdownMenuContent>
-                  </DropdownMenu>}
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          emptyState
-        )}
-        <DataTablePagination
-          table={table}
-          itemLabel="contacts"
-          id="customers-mobile-items-per-page"
-        />
-      </div>
-    )
-  }
+  const list = useServerRecordTable({
+    columns,
+    getRowId: customerRowId,
+    load: getCustomerDirectoryPage,
+    reloadToken,
+    initialPage,
+    enableSelection: selectable,
+  })
+  const { selectedRows, clearSelection } = list
+  React.useEffect(() => { onSelectionChange?.(selectedRows) }, [selectedRows, onSelectionChange])
+  React.useEffect(() => { if (clearSelectionToken > 0) clearSelection() }, [clearSelectionToken, clearSelection])
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 gap-3">
-      <Input
-        placeholder="Search customers..."
-        value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-        onChange={(e) =>
-          table.getColumn("name")?.setFilterValue(e.target.value)
-        }
-        className="h-8 w-full sm:max-w-sm shrink-0"
+    <div className="flex min-w-0 flex-col gap-3">
+      <RecordSearchInput
+        value={list.search}
+        onChange={list.setSearch}
+        label="Search clients and leads"
+        placeholder="Search name, company, person, email or phone…"
+        className="sm:max-w-md"
       />
-      <div className="rounded-md border flex-1 min-h-0 overflow-hidden">
-        <div className="overflow-auto h-full">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      <TanstackSortableHeader header={header} />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length}
-                    className="h-24 text-center"
-                  >
-                    No customers found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-      <DataTablePagination
-        table={table}
-        itemLabel="contacts"
-        id="customers-items-per-page"
+      <RecordTable
+        table={list.table}
+        itemLabel="clients and leads"
+        emptyMessage={list.search ? "No clients or leads match this search." : "No client or lead contacts yet."}
+        state={list.state}
+        rowIdPrefix="customer"
       />
     </div>
   )

@@ -1,15 +1,13 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm"
+import { and, asc, desc, eq, not, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { dailyLogPhotos, dailyLogs, projectPhotoSourceDates, projects, scheduleTasks } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { errorMessage } from "@/lib/action-result"
+import { normalizedPhotoKind, normalizedPhotoReviewStatus } from "@/lib/domain/field/rules"
+import { setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
+import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -38,7 +36,7 @@ export type ProjectPhotoLibraryItem = {
   readonly schedulePhaseReason: string
 }
 
-export type ProjectPhotoPhaseOption = {
+type ProjectPhotoPhaseOption = {
   readonly value: string
   readonly label: string
   readonly count: number
@@ -71,52 +69,18 @@ type UpdatePhotoPhaseResult =
   | { readonly success: true; readonly phase: string }
   | { readonly success: false; readonly error: string }
 
-async function verifyProjectAccess(
+/** Photo actions are staff work inside the project's own organization. */
+async function photoContext(
   projectId: string,
-  action: "read" | "update"
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "project-photos", action)
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  return db
-}
-
-function normalizedReviewStatus(value: string): string {
-  switch (value) {
-    case "approved":
-    case "needs_review":
-    case "rejected":
-      return value
-    default:
-      return "needs_review"
-  }
-}
-
-function normalizedPhotoKind(value: string): string {
-  switch (value) {
-    case "progress":
-    case "issue":
-    case "delivery":
-    case "selection":
-    case "archive":
-      return value
-    default:
-      return "progress"
-  }
+  mutation: boolean
+): Promise<ProjectContext> {
+  const context = await projectContext(projectId, {
+    scope: "organization",
+    feature: "project-photos",
+    mutation,
+  })
+  if (!context.success) throw new Error(context.error)
+  return context.data
 }
 
 function isImage(value: {
@@ -146,8 +110,7 @@ function phaseOptions(
 export async function getProjectPhotoLibrary(
   projectId: string
 ): Promise<ProjectPhotoLibrary> {
-  const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId, "read")
+  const { db, user: viewer } = await photoContext(projectId, false)
 
   const [project] = await db
     .select({
@@ -233,6 +196,7 @@ export async function getProjectPhotoLibrary(
 
   const photos = rows.filter(isImage).map((row) => {
     const resolvedPhotoDate = resolveProjectPhotoDate({
+      sourceSystem: row.sourceSystem,
       capturedAt: row.capturedAt,
       sourceDate: row.sourceDate,
       logDate: row.logDate,
@@ -280,40 +244,22 @@ export async function updateProjectPhotoPhase(
   phase: string
 ): Promise<UpdatePhotoPhaseResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const context = await projectContext(projectId, {
+      scope: "organization",
+      feature: "project-photos",
+      mutation: true,
+    })
+    if (!context.success) return context
+    const { db } = context.data
 
     const normalizedPhase = phase.trim() === "unassigned" ? "" : phase.trim()
 
-    await db
-      .update(dailyLogPhotos)
-      .set({
-        schedulePhaseOverride:
-          normalizedPhase.length > 0 ? normalizedPhase : null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(eq(dailyLogPhotos.projectId, projectId), eq(dailyLogPhotos.id, photoId))
-      )
+    await setPhotoPhaseOverride(db, {
+      projectId,
+      photoId,
+      phase: normalizedPhase.length > 0 ? normalizedPhase : null,
+      now: new Date().toISOString(),
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/photos`)
@@ -324,8 +270,7 @@ export async function updateProjectPhotoPhase(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to update photo phase",
+      error: errorMessage(error, "Unable to update photo phase"),
     }
   }
 }
@@ -335,27 +280,13 @@ export async function updateProjectPhotoPermissions(
   input: PhotoPermissionInput
 ): Promise<UpdateResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const context = await projectContext(projectId, {
+      scope: "organization",
+      feature: "project-photos",
+      mutation: true,
+    })
+    if (!context.success) return context
+    const { db } = context.data
 
     const photoIds = [...new Set(input.photoIds)].filter(
       (id) => id.trim().length > 0
@@ -364,22 +295,18 @@ export async function updateProjectPhotoPermissions(
       return { success: false, error: "Select at least one photo." }
     }
 
-    await db
-      .update(dailyLogPhotos)
-      .set({
-        reviewStatus: normalizedReviewStatus(input.reviewStatus),
+    await setPhotoPermissions(db, {
+      projectId,
+      photoIds,
+      values: {
+        reviewStatus: normalizedPhotoReviewStatus(input.reviewStatus),
         ownerVisible: input.ownerVisible,
         subVendorVisible: input.subVendorVisible,
         publicShareable: input.publicShareable,
         photoKind: normalizedPhotoKind(input.photoKind),
         updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(dailyLogPhotos.projectId, projectId),
-          inArray(dailyLogPhotos.id, photoIds)
-        )
-      )
+      },
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/photos`)
@@ -388,7 +315,7 @@ export async function updateProjectPhotoPermissions(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unable to update photos",
+      error: errorMessage(error, "Unable to update photos"),
     }
   }
 }

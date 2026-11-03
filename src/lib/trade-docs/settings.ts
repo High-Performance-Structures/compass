@@ -15,7 +15,7 @@ export const TRADE_DOC_BILL_MODE_LABELS: Readonly<Record<TradeDocBillMode, strin
   off: "Do nothing",
 }
 
-export const tradeDocTypeSchema = z.object({
+const tradeDocTypeSchema = z.object({
   /** Stored on documents; never reuse an id for a different meaning. */
   id: z.string().regex(/^[a-z0-9-]{1,40}$/, "Use lowercase letters, numbers and dashes for the id."),
   label: z.string().trim().min(1).max(60),
@@ -52,7 +52,7 @@ export const INFO_SHEET_FIELD_KIND_LABELS: Readonly<Record<InfoSheetFieldKind, s
 export const INFO_SHEET_FIELD_PURPOSES = ["none", "agent_name", "agent_email"] as const
 export type InfoSheetFieldPurpose = (typeof INFO_SHEET_FIELD_PURPOSES)[number]
 
-export const infoSheetFieldSchema = z.object({
+const infoSheetFieldSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{1,40}$/, "Use lowercase letters, numbers and dashes for the id."),
   label: z.string().trim().min(1).max(80),
   kind: z.enum(INFO_SHEET_FIELD_KINDS),
@@ -64,7 +64,7 @@ export const infoSheetFieldSchema = z.object({
 })
 export type InfoSheetField = z.infer<typeof infoSheetFieldSchema>
 
-export const infoSheetSettingsSchema = z.object({
+const infoSheetSettingsSchema = z.object({
   /** The document type the online info sheet fills; null turns the online form off. */
   docTypeId: z.string().max(40).nullable(),
   fields: z.array(infoSheetFieldSchema).min(1).max(40),
@@ -78,7 +78,7 @@ export type InfoSheetSettings = z.infer<typeof infoSheetSettingsSchema>
  * {quote}, {agreement} and {owed}; the scope table and signatures are added
  * by Compass.
  */
-export const tradeLetterSettingsSchema = z.object({
+const tradeLetterSettingsSchema = z.object({
   /** The document type that is the master agreement a trade signs once. */
   agreementDocTypeId: z.string().max(40).nullable(),
   intentText: z.string().trim().min(1).max(3000),
@@ -104,6 +104,23 @@ export const DEFAULT_TRADE_LETTER_SETTINGS: TradeLetterSettings = {
   companySignerTitle: "",
 }
 
+/**
+ * Keeping Sage's vendor certificates in step with the trade docs. While
+ * warnOnly is on, every vendor gets warnings only, even those set to hold
+ * payment, so payments aren't stopped before documents are collected.
+ */
+const tradeDocSageSettingsSchema = z.object({
+  enabled: z.boolean(),
+  warnOnly: z.boolean(),
+  /** Sage's certificate description per document type id, when it differs from the label. */
+  names: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.string().trim().max(50)),
+  /** Document types kept in Compass only (false); every other required type goes to Sage. */
+  send: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.boolean()).default({}),
+})
+export type TradeDocSageSettings = z.infer<typeof tradeDocSageSettingsSchema>
+
+export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = { enabled: false, warnOnly: true, names: {}, send: {} }
+
 export const tradeDocSettingsSchema = z.object({
   docTypes: z.array(tradeDocTypeSchema).min(1).max(30),
   /** What staff confirm on an insurance certificate before accepting it. */
@@ -122,6 +139,7 @@ export const tradeDocSettingsSchema = z.object({
   certificateHolder: z.string().trim().max(800).default(""),
   infoSheet: infoSheetSettingsSchema.default(() => DEFAULT_INFO_SHEET),
   letters: tradeLetterSettingsSchema.default(() => DEFAULT_TRADE_LETTER_SETTINGS),
+  sage: tradeDocSageSettingsSchema.default(() => DEFAULT_TRADE_DOC_SAGE_SETTINGS),
 })
 export type TradeDocSettings = z.infer<typeof tradeDocSettingsSchema>
 
@@ -145,7 +163,7 @@ export const DEFAULT_TRADE_DOC_TYPES: readonly TradeDocType[] = [
   { id: "info-sheet", label: "Subcontractor info sheet", requiredFor: ["Subcontractor"], expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
 ]
 
-export const DEFAULT_CERTIFICATE_CHECKS: readonly string[] = [
+const DEFAULT_CERTIFICATE_CHECKS: readonly string[] = [
   "Limits meet our minimums",
   "We are named as additional insured",
   "Waiver of subrogation included",
@@ -190,6 +208,7 @@ export const DEFAULT_TRADE_DOC_SETTINGS: TradeDocSettings = {
   certificateHolder: "",
   infoSheet: DEFAULT_INFO_SHEET,
   letters: DEFAULT_TRADE_LETTER_SETTINGS,
+  sage: DEFAULT_TRADE_DOC_SAGE_SETTINGS,
 }
 
 /** Accepts a Drive folder link or a bare id; returns the id or null. */

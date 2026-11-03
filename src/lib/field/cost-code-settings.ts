@@ -1,6 +1,6 @@
 import { z } from "zod/v4"
 
-export const fieldCostCodeSchema = z.object({
+const fieldCostCodeSchema = z.object({
   code: z.string().trim().min(1).max(200),
   name: z.string().trim().min(1).max(500),
 })

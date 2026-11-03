@@ -1,6 +1,14 @@
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { weatherAreaSnapshots, weatherCells, weatherPoints, weatherZoneShapes } from "@/db/schema"
+import {
+  insertWeatherPointsIfAbsent,
+  markWeatherPointFound,
+  markWeatherPointOutside,
+  recordWeatherCellFailure,
+  saveWeatherCellForecast,
+} from "@/lib/domain/weather/store"
+import { parseReportingAreas, parseSmokeKml } from "@/lib/weather/air"
 import { parseAlerts, withZoneShapes, zonesNeedingShapes, ALERT_TOLERANCE_DEG, type WeatherAlert } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { weatherAreasInUse } from "@/lib/weather/areas-server"
@@ -21,9 +29,14 @@ const FETCH_TIMEOUT_MS = 8_000
 const MINUTE = 60 * 1000
 const ALERTS_EVERY_MS = 10 * MINUTE
 const FIRES_EVERY_MS = 15 * MINUTE
+// AirNow posts readings hourly; NOAA traces smoke a few times a day.
+const AIR_EVERY_MS = 30 * MINUTE
+const SMOKE_EVERY_MS = 60 * MINUTE
+const AIRNOW_REPORTING_AREAS = "https://files.airnowtech.org/airnow/today/reportingarea.dat"
+const HMS_SMOKE_KML = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/KML"
 const CELL_EVERY_MS = 60 * MINUTE
 /** Cells and points nobody has read for this long stop refreshing. */
-export const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
+const IDLE_AFTER_MS = 2 * 24 * 60 * MINUTE
 const ZONE_SHAPE_MAX_AGE_MS = 30 * 24 * 60 * MINUTE
 const POINTS_PER_RUN = 10
 // Per area shown on some company's map, up to the cap; the time budget still applies.
@@ -34,6 +47,8 @@ const ZONES_PER_RUN = 8
 export type WeatherRefreshSummary = {
   readonly alerts: number
   readonly fires: number
+  readonly smoke: number
+  readonly air: number
   readonly points: number
   readonly cells: number
   readonly failures: number
@@ -62,10 +77,7 @@ async function seedAreaPoints(db: Db, area: WeatherArea, now: string): Promise<v
     longitude: Number(point.lon.toFixed(2)),
     requestedAt: now,
   }))
-  // D1 caps bound parameters per statement; 4 columns × 20 rows stays well under.
-  for (let i = 0; i < rows.length; i += 20) {
-    await db.insert(weatherPoints).values(rows.slice(i, i + 20)).onConflictDoNothing()
-  }
+  await insertWeatherPointsIfAbsent(db, rows)
 }
 
 async function snapshotAge(db: Db, areaKey: string, kind: string, nowMs: number): Promise<number> {
@@ -179,6 +191,55 @@ async function refreshFires(db: Db, area: WeatherArea, nowMs: number): Promise<n
   return fires.length
 }
 
+async function getText(url: string): Promise<string | null> {
+  const response = await fetch(url, { headers: { "User-Agent": NWS_HEADERS["User-Agent"] }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`air source ${response.status}`)
+  return response.text()
+}
+
+/**
+ * The national smoke and air quality files, fetched at most once per run
+ * however many areas need them (each run's areas share one download).
+ */
+function nationalFiles(nowMs: number): { readonly smoke: () => Promise<string>; readonly air: () => Promise<string> } {
+  let smoke: Promise<string> | null = null
+  let air: Promise<string> | null = null
+  const smokeUrl = (ms: number): string => {
+    const day = new Date(ms).toISOString().slice(0, 10).replaceAll("-", "")
+    return `${HMS_SMOKE_KML}/${day.slice(0, 4)}/${day.slice(4, 6)}/hms_smoke${day}.kml`
+  }
+  // Today's file (UTC) appears after the first morning analysis; until then, yesterday's.
+  const loadSmoke = async (): Promise<string> => {
+    const today = await getText(smokeUrl(nowMs))
+    if (today && today.includes("<Placemark")) return today
+    return (await getText(smokeUrl(nowMs - 24 * 60 * MINUTE))) ?? ""
+  }
+  const loadAir = async (): Promise<string> => (await getText(AIRNOW_REPORTING_AREAS)) ?? ""
+  return {
+    smoke: () => {
+      smoke ??= loadSmoke()
+      return smoke
+    },
+    air: () => {
+      air ??= loadAir()
+      return air
+    },
+  }
+}
+
+async function refreshSmoke(db: Db, area: WeatherArea, kml: string): Promise<number> {
+  const plumes = parseSmokeKml(kml, area)
+  await storeSnapshot(db, area.key, "smoke", JSON.stringify(plumes), new Date().toISOString())
+  return plumes.length
+}
+
+async function refreshAir(db: Db, area: WeatherArea, text: string): Promise<number> {
+  const readings = parseReportingAreas(text, area)
+  await storeSnapshot(db, area.key, "air", JSON.stringify(readings), new Date().toISOString())
+  return readings.length
+}
+
 async function markSnapshotFailure(db: Db, areaKey: string, kind: string): Promise<void> {
   await db
     .update(weatherAreaSnapshots)
@@ -197,6 +258,8 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
     .limit(POINTS_PER_RUN)
   let resolved = 0
   let failures = 0
+  // One NWS /points call per point, in sequence: the NWS API is rate limited
+  // and the run stops at its time budget.
   for (const point of pending) {
     if (Date.now() > deadline) break
     const now = new Date().toISOString()
@@ -207,7 +270,7 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
       })
       if (response.status === 404) {
         // Outside NWS coverage (offshore, outside the US).
-        await db.update(weatherPoints).set({ status: "outside", resolvedAt: now }).where(eq(weatherPoints.pointKey, point.pointKey))
+        await markWeatherPointOutside(db, point.pointKey, now)
         continue
       }
       if (!response.ok) throw new Error(`points ${response.status}`)
@@ -217,11 +280,11 @@ async function resolvePoints(db: Db, deadline: number, nowMs: number): Promise<{
       const y = nested(body, "properties", "gridY")
       if (typeof office !== "string" || typeof x !== "number" || typeof y !== "number") throw new Error("points shape")
       const cellKey = `${office}/${x},${y}`
-      await db
-        .insert(weatherCells)
-        .values({ cellKey, latitude: point.latitude, longitude: point.longitude, requestedAt: point.requestedAt })
-        .onConflictDoNothing()
-      await db.update(weatherPoints).set({ status: "found", cellKey, resolvedAt: now }).where(eq(weatherPoints.pointKey, point.pointKey))
+      await markWeatherPointFound(db, {
+        pointKey: point.pointKey,
+        cell: { cellKey, latitude: point.latitude, longitude: point.longitude, requestedAt: point.requestedAt },
+        now,
+      })
       resolved += 1
     } catch {
       failures += 1
@@ -249,6 +312,8 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
     .limit(limit)
   let refreshed = 0
   let failures = 0
+  // One NWS gridpoints call per cell, in sequence: the NWS API is rate
+  // limited and the run stops at its time budget.
   for (const cell of due) {
     if (Date.now() > deadline) break
     const [office, xy] = cell.cellKey.split("/")
@@ -258,25 +323,22 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
       const series = parseGridSeries(properties, Date.now())
       if (!series) throw new Error("grid shape")
       const elevation = nested(properties, "elevation", "value")
-      await db
-        .update(weatherCells)
-        .set({
-          series: JSON.stringify(series),
-          elevationM: typeof elevation === "number" ? Math.round(elevation) : null,
-          fetchedAt: new Date().toISOString(),
-          failureCount: 0,
-          nextAttemptAt: null,
-        })
-        .where(eq(weatherCells.cellKey, cell.cellKey))
+      await saveWeatherCellForecast(db, {
+        cellKey: cell.cellKey,
+        series: JSON.stringify(series),
+        elevationM: typeof elevation === "number" ? Math.round(elevation) : null,
+        fetchedAt: new Date().toISOString(),
+      })
       refreshed += 1
     } catch {
       failures += 1
       // Back off: 10 minutes, doubling, at most 6 hours.
       const delay = Math.min(6 * 60, 10 * 2 ** cell.failureCount) * MINUTE
-      await db
-        .update(weatherCells)
-        .set({ failureCount: cell.failureCount + 1, nextAttemptAt: new Date(Date.now() + delay).toISOString() })
-        .where(eq(weatherCells.cellKey, cell.cellKey))
+      await recordWeatherCellFailure(db, {
+        cellKey: cell.cellKey,
+        failureCount: cell.failureCount + 1,
+        nextAttemptAt: new Date(Date.now() + delay).toISOString(),
+      })
     }
   }
   return { refreshed, failures }
@@ -292,7 +354,10 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
   const now = new Date(nowMs).toISOString()
   let alerts = 0
   let fires = 0
+  let smoke = 0
+  let air = 0
   let failures = 0
+  const files = nationalFiles(nowMs)
   const areas = await weatherAreasInUse(db)
   for (const area of areas) {
     await seedAreaPoints(db, area, now)
@@ -312,12 +377,30 @@ export async function refreshWeatherCache(db: Db, options: { readonly budgetMs: 
         await markSnapshotFailure(db, area.key, "fires")
       }
     }
+    if (Date.now() < deadline && (await snapshotAge(db, area.key, "smoke", nowMs)) >= SMOKE_EVERY_MS) {
+      try {
+        smoke += await refreshSmoke(db, area, await files.smoke())
+      } catch {
+        failures += 1
+        await markSnapshotFailure(db, area.key, "smoke")
+      }
+    }
+    if (Date.now() < deadline && (await snapshotAge(db, area.key, "air", nowMs)) >= AIR_EVERY_MS) {
+      try {
+        air += await refreshAir(db, area, await files.air())
+      } catch {
+        failures += 1
+        await markSnapshotFailure(db, area.key, "air")
+      }
+    }
   }
   const points = Date.now() < deadline ? await resolvePoints(db, deadline, nowMs) : { resolved: 0, failures: 0 }
   const cells = Date.now() < deadline ? await refreshCells(db, deadline, nowMs, Math.min(MAX_CELLS_PER_RUN, CELLS_PER_RUN * Math.max(1, areas.length))) : { refreshed: 0, failures: 0 }
   return {
     alerts,
     fires,
+    smoke,
+    air,
     points: points.resolved,
     cells: cells.refreshed,
     failures: failures + points.failures + cells.failures,

@@ -1,0 +1,15 @@
+flowchart TD
+  A([Card payment]) --> B{Webhook enabled,<br/>signature valid?}
+  B -->|no| B1[503 or 401]
+  B -->|yes| C{Event already<br/>seen?}
+  C -->|yes| C1[200 duplicate]
+  C -->|no| D{Event checks pass?<br/>date, total, location,<br/>overpayment}
+  D -->|no, or refund /<br/>failed charge| X[Flag for accounting<br/>review; 200]
+  D -->|yes| E[Receipt operation:<br/>manual_action_required]
+  D -->|yes| F[Fee operation: queued]
+  E --> E1[Owner receivable updated;<br/>staff reminded each minute]
+  F --> G[[On-prem fee writer claims]]
+  G --> H{Fee already<br/>in accounting?}
+  H -->|yes| H1[already_in_sage]
+  H -->|no| H2[Post GL entry:<br/>succeeded]
+  D -.other error.-> Y[500: provider<br/>redelivers]

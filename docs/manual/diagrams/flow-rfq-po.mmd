@@ -1,0 +1,14 @@
+flowchart TD
+  A([createRfqRequest:<br/>RFQ draft]) --> B[sendProjectRfqEmail:<br/>checks, then tracked email<br/>with hashed price link]
+  B --> C[RFQ sent]
+  C --> D{Vendor response}
+  D -->|price link| E[response_received<br/>or declined]
+  D -->|staff record it| E
+  D -->|email reply| D1[Reply threads onto RFQ;<br/>staff record it]
+  D1 --> E
+  E --> F[approveProjectRfqBid:<br/>RFQ awarded and locked]
+  F --> G[Optional: import bid<br/>into draft estimate]
+  F --> H[createPurchaseOrderRequest<br/>from awarded RFQ]
+  H --> I[sendPurchaseOrderEmail:<br/>PO sent, paper trail]
+  I --> J[ordered, received,<br/>complete, closed]
+  J -.optional.-> K[[Queue for accounting]]

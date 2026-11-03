@@ -22,7 +22,7 @@ function isSafeProjectReturnHref(
   return belongsToProject && parsed.pathname !== conversationsHref
 }
 
-export function getProjectConversationReturnHref(
+function getProjectConversationReturnHref(
   projectId: string,
   requestedHref: string | null,
 ): string {

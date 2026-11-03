@@ -1,0 +1,49 @@
+erDiagram
+  direction LR
+  estimate_template_defaults {
+    key version_id
+  }
+  estimate_template_lines {
+    key id
+    ref version_id
+  }
+  project_template_application_items {
+    key id
+    ref application_id
+    ref template_item_id
+    ref schedule_task_id
+  }
+  project_template_applications {
+    key id
+    ref template_id
+    ref version_id
+  }
+  project_template_content_items {
+    key id
+    ref version_id
+  }
+  project_template_modules {
+    key id
+    ref version_id
+  }
+  project_template_versions {
+    key id
+  }
+  project_templates {
+    key id
+  }
+  schedule_tasks {
+    key id
+  }
+  schedule_template_items {
+    key id
+  }
+  project_template_applications ||--o{ project_template_application_items : ""
+  project_template_versions ||--o{ estimate_template_defaults : ""
+  project_template_versions ||--o{ estimate_template_lines : ""
+  project_template_versions ||--o{ project_template_applications : ""
+  project_template_versions ||--o{ project_template_content_items : ""
+  project_template_versions ||--o{ project_template_modules : ""
+  project_templates ||--o{ project_template_applications : ""
+  schedule_tasks ||--o{ project_template_application_items : ""
+  schedule_template_items ||--o{ project_template_application_items : ""

@@ -6,6 +6,7 @@ import { googleCalendarConnections, googleProjectCalendars } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { upsertGoogleCalendarConnection } from "@/lib/domain/calendars/store"
 import {
   getGoogleCalendarOAuthConfig,
   googleCalendarTokenSalt,
@@ -145,42 +146,23 @@ export async function GET(request: NextRequest): Promise<Response> {
     const now = new Date().toISOString()
     const connectionId =
       existingConnection?.id ?? crypto.randomUUID()
-    await db
-      .insert(googleCalendarConnections)
-      .values({
-        id: connectionId,
-        organizationId: user.organizationId,
-        userId: user.id,
-        googleAccountId: identity.subject,
-        googleAccountEmail: identity.email,
-        refreshTokenEncrypted: encryptedRefreshToken,
-        grantedScopes: [...grant.scopes].sort().join(" "),
-        status: "connected",
-        calendarSyncEnabled: false,
-        tasksSyncEnabled: false,
-        connectedAt: now,
-        lastSyncedAt: null,
-        lastError: null,
-        createdAt: existingConnection?.createdAt ?? now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          googleCalendarConnections.organizationId,
-          googleCalendarConnections.userId,
-        ],
-        set: {
-          googleAccountId: identity.subject,
-          googleAccountEmail: identity.email,
-          refreshTokenEncrypted: encryptedRefreshToken,
-          grantedScopes: [...grant.scopes].sort().join(" "),
-          status: "connected",
-          connectedAt: now,
-          lastError: null,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await upsertGoogleCalendarConnection(db, {
+      id: connectionId,
+      organizationId: user.organizationId,
+      userId: user.id,
+      googleAccountId: identity.subject,
+      googleAccountEmail: identity.email,
+      refreshTokenEncrypted: encryptedRefreshToken,
+      grantedScopes: [...grant.scopes].sort().join(" "),
+      status: "connected",
+      calendarSyncEnabled: false,
+      tasksSyncEnabled: false,
+      connectedAt: now,
+      lastSyncedAt: null,
+      lastError: null,
+      createdAt: existingConnection?.createdAt ?? now,
+      updatedAt: now,
+    })
 
     return redirectAndClearState(request, "connected")
   } catch {

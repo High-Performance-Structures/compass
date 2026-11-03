@@ -1,12 +1,21 @@
 "use server"
 
-import { and, desc, eq, isNull, isNotNull } from "drizzle-orm"
+import { and, desc, eq, isNotNull } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import {
+  deleteTradeDocumentStatement,
+  insertTradeDocumentStatement,
+  supersedeCurrentTradeDocumentStatement,
+  updateTradeDocuments,
+  updateTradeDocumentsStatement,
+} from "@/lib/domain/documents/store"
+import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { updateVendorById } from "@/lib/domain/contacts/store"
 import type { AuthUser } from "@/lib/auth"
 import { tradeDocAccess, type TradeDocAccess } from "@/lib/trade-docs/access"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
@@ -30,14 +39,6 @@ export type VendorTradeDocsView = {
   readonly certificateChecks: readonly string[]
   readonly billModeDefault: TradeDocBillMode
   readonly canEdit: boolean
-}
-
-export type VendorTradeDocStatus = {
-  readonly label: string
-  readonly requiredCount: number
-  readonly goodCount: number
-  readonly owedCount: number
-  readonly expiringCount: number
 }
 
 export type RecordTradeDocInput = {
@@ -135,45 +136,6 @@ export async function getVendorTradeDocs(vendorId: string): Promise<Result<Vendo
   }
 }
 
-/** Trade doc standing for every vendor in the directory, for the vendors table. */
-export async function getVendorTradeDocStatuses(): Promise<Result<Readonly<Record<string, VendorTradeDocStatus>>>> {
-  try {
-    const access = await tradeDocAccess(false)
-    const [vendorRows, docRows] = await Promise.all([
-      access.db
-        .select({ id: vendors.id, category: vendors.category })
-        .from(vendors)
-        .where(and(eq(vendors.organizationId, access.organizationId), eq(vendors.directoryStatus, "active"))),
-      access.db
-        .select()
-        .from(vendorTradeDocuments)
-        .where(and(eq(vendorTradeDocuments.organizationId, access.organizationId), isNull(vendorTradeDocuments.supersededAt))),
-    ])
-    const docsByVendor = new Map<string, TradeDocOnFile[]>()
-    for (const row of docRows) {
-      const list = docsByVendor.get(row.vendorId) ?? []
-      list.push(toTradeDocOnFile(row))
-      docsByVendor.set(row.vendorId, list)
-    }
-    const date = today()
-    const statuses: Record<string, VendorTradeDocStatus> = {}
-    for (const vendor of vendorRows) {
-      const summary = summarizeTradeDocs({ docTypes: access.settings.docTypes, vendorCategory: vendor.category, docs: docsByVendor.get(vendor.id) ?? [], today: date })
-      if (summary.requiredCount === 0 && summary.lines.length === 0) continue
-      statuses[vendor.id] = {
-        label: summary.requiredCount === 0 ? "On file" : `${summary.goodCount} of ${summary.requiredCount}`,
-        requiredCount: summary.requiredCount,
-        goodCount: summary.goodCount,
-        owedCount: summary.owed.length,
-        expiringCount: summary.expiringCount,
-      }
-    }
-    return { success: true, data: statuses }
-  } catch (error) {
-    return { success: false, error: message(error, "Could not load trade doc status.") }
-  }
-}
-
 /** Starts a browser upload into the vendor's trade docs folder in Drive. */
 export async function startVendorTradeDocUpload(
   vendorId: string,
@@ -239,11 +201,8 @@ export async function recordVendorTradeDoc(vendorId: string, input: RecordTradeD
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     await access.db.batch([
-      access.db
-        .update(vendorTradeDocuments)
-        .set({ supersededAt: now, updatedAt: now })
-        .where(and(eq(vendorTradeDocuments.vendorId, vendor.id), eq(vendorTradeDocuments.docType, type.id), isNull(vendorTradeDocuments.supersededAt))),
-      access.db.insert(vendorTradeDocuments).values({
+      supersedeCurrentTradeDocumentStatement(access.db, { vendorId: vendor.id, docType: type.id, now }),
+      insertTradeDocumentStatement(access.db, {
         id,
         organizationId: access.organizationId,
         vendorId: vendor.id,
@@ -274,6 +233,7 @@ export async function recordVendorTradeDoc(vendorId: string, input: RecordTradeD
       summary: `${input.kind === "waiver" ? `${type.label} alternative` : type.label} recorded for ${vendor.name}`,
       metadata: { documentId: id, docType: type.id },
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [vendor.id])
     revalidateVendors()
     return { success: true, data: { id } }
   } catch (error) {
@@ -296,17 +256,14 @@ export async function updateVendorTradeDoc(
     if (!row) return { success: false, error: "Document not found." }
     const type = access.settings.docTypes.find((item) => item.id === row.docType)
     const checks = input.checks.filter((check) => access.settings.certificateChecks.includes(check))
-    await access.db
-      .update(vendorTradeDocuments)
-      .set({
-        effectiveOn: cleanDate(input.effectiveOn),
-        expiresOn: type?.expires === false ? null : cleanDate(input.expiresOn),
-        checksJson: checks.length > 0 ? JSON.stringify(checks) : null,
-        notes: input.notes?.trim().slice(0, 1000) || null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(vendorTradeDocuments.id, row.id))
-      .run()
+    await updateTradeDocuments(access.db, eq(vendorTradeDocuments.id, row.id), {
+      effectiveOn: cleanDate(input.effectiveOn),
+      expiresOn: type?.expires === false ? null : cleanDate(input.expiresOn),
+      checksJson: checks.length > 0 ? JSON.stringify(checks) : null,
+      notes: input.notes?.trim().slice(0, 1000) || null,
+      updatedAt: new Date().toISOString(),
+    })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [row.vendorId])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {
@@ -340,14 +297,14 @@ export async function deleteVendorTradeDoc(documentId: string): Promise<Result<n
           .get()
       : null
     const now = new Date().toISOString()
-    const remove = access.db.delete(vendorTradeDocuments).where(eq(vendorTradeDocuments.id, row.id))
+    const remove = deleteTradeDocumentStatement(access.db, row.id)
     if (previous) {
       await access.db.batch([
         remove,
-        access.db.update(vendorTradeDocuments).set({ supersededAt: null, updatedAt: now }).where(eq(vendorTradeDocuments.id, previous.id)),
+        updateTradeDocumentsStatement(access.db, eq(vendorTradeDocuments.id, previous.id), { supersededAt: null, updatedAt: now }),
       ])
     } else {
-      await remove.run()
+      await access.db.batch([remove])
     }
     await recordActivityEvent({
       db: access.db,
@@ -360,6 +317,7 @@ export async function deleteVendorTradeDoc(documentId: string): Promise<Result<n
       summary: `Removed ${row.fileName ?? "a trade document"} from the vendor's trade docs`,
       metadata: { documentId: row.id, docType: row.docType, driveFileId: row.driveFileId },
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [row.vendorId])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {
@@ -373,11 +331,10 @@ export async function setVendorTradeDocBillMode(vendorId: string, mode: TradeDoc
     const access = await tradeDocAccess(true)
     const vendor = await loadVendor(access, vendorId)
     if (mode !== null && !isTradeDocBillMode(mode)) return { success: false, error: "Choose flag, hold or nothing." }
-    await access.db
-      .update(vendors)
-      .set({ tradeDocsBillMode: mode, updatedAt: new Date().toISOString() })
-      .where(eq(vendors.id, vendor.id))
-      .run()
+    await updateVendorById(access.db, {
+      vendorId: vendor.id,
+      values: { tradeDocsBillMode: mode, updatedAt: new Date().toISOString() },
+    })
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -388,6 +345,7 @@ export async function setVendorTradeDocBillMode(vendorId: string, mode: TradeDoc
       entityId: vendor.id,
       summary: `Bills for ${vendor.name} while docs are missing: ${mode ?? "company default"}`,
     })
+    await requestVendorCertificateSyncs(access.db, access.organizationId, [vendor.id])
     revalidateVendors()
     return { success: true, data: null }
   } catch (error) {

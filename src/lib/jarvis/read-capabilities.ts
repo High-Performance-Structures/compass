@@ -1,7 +1,7 @@
 import type { AuthUser } from "@/lib/auth"
 import { canFeature } from "@/lib/permission-enforcement"
 
-export const JARVIS_READ_CAPABILITIES = [
+const JARVIS_READ_CAPABILITIES = [
   "project-hub",
   "daily-logs",
   "rfis",

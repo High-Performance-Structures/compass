@@ -9,20 +9,19 @@ import {
   projectContacts,
   vendors,
   projectOperations,
+  projectTodoEvents,
   projectPurchaseOrderLines,
   scheduleTasks,
 } from "@/db/schema"
-import {
-  getProjectPurchaseOrders,
-  getProjectTodos,
-} from "@/app/actions/project-operations"
+import { getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
+import { getProjectTodos } from "@/app/actions/project-todos"
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   cloudflare: vi.fn(),
   permission: vi.fn(),
 }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.cloudflare }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: mocks.permission,
@@ -49,7 +48,7 @@ beforeEach(() => {
   testDb = openCorrespondenceTestDatabase()
   // The shared harness creates a reduced contacts table; use the full schema here.
   testDb.sqlite.exec("DROP TABLE project_contacts")
-  for (const table of [projectContacts, vendors, projectOperations, projectPurchaseOrderLines, scheduleTasks]) {
+  for (const table of [projectContacts, vendors, projectOperations, projectTodoEvents, projectPurchaseOrderLines, scheduleTasks]) {
     createTable(table)
   }
   const insertTask = testDb.sqlite.prepare(

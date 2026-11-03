@@ -16,6 +16,7 @@ import {
 } from "./schema-templates"
 import { projectDocuments } from "./schema-documents"
 import { projectFamilyPhases } from "./schema-project-families"
+import { STORED_ESTIMATE_STATUSES } from "../lib/domain/estimates/statuses"
 
 export const sageTaxEntities = sqliteTable(
   "sage_tax_entities",
@@ -97,7 +98,7 @@ export const projectEstimates = sqliteTable(
     estimateNumber: text("estimate_number").notNull(),
     versionNumber: integer("version_number").notNull().default(1),
     title: text("title").notNull().default("CA22 Construction Estimate"),
-    status: text("status").notNull().default("draft"),
+    status: text("status", { enum: STORED_ESTIMATE_STATUSES }).notNull().default("draft"),
     estimateDate: text("estimate_date"),
     clientName: text("client_name"),
     clientMailingAddress: text("client_mailing_address"),
@@ -224,6 +225,17 @@ export const projectEstimates = sqliteTable(
     uniqueIndex("project_estimates_one_accepted_per_number_uq")
       .on(table.projectId, table.estimateNumber)
       .where(sql`${table.status} = 'accepted'`),
+    index("project_estimates_terms_template_id_idx").on(table.termsTemplateId),
+    index("project_estimates_default_tax_entity_id_idx").on(table.defaultTaxEntityId),
+    index("project_estimates_company_signer_contact_id_idx").on(table.companySignerContactId),
+    index("project_estimates_client_signer_contact_id_idx").on(table.clientSignerContactId),
+    index("project_estimates_closing_template_id_idx").on(table.closingTemplateId),
+    index("project_estimates_introduction_template_id_idx").on(table.introductionTemplateId),
+    index("project_estimates_template_application_id_idx").on(table.templateApplicationId),
+    index("project_estimates_template_version_id_idx").on(table.templateVersionId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimates_change_order_id_idx").on(table.changeOrderId),
+    index("project_estimates_phase_proposal_id_idx").on(table.phaseProposalId),
   ]
 )
 
@@ -257,7 +269,12 @@ export const projectPhaseProposals = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt)]
+  (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt),
+    index("project_phase_proposals_family_phase_id_idx").on(table.familyPhaseId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_phase_proposals_deduct_change_order_id_idx").on(table.deductChangeOrderId),
+    index("project_phase_proposals_source_estimate_id_idx").on(table.sourceEstimateId),
+  ]
 )
 
 export const projectEstimatePhaseDescriptions = sqliteTable(
@@ -333,7 +350,8 @@ export const projectEstimateReportPhases = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder)]
+  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder),
+    index("project_estimate_report_phases_project_id_idx").on(table.projectId)]
 )
 
 export const projectEstimateAssemblies = sqliteTable(
@@ -351,7 +369,10 @@ export const projectEstimateAssemblies = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder)]
+  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimate_assemblies_contract_assembly_id_idx").on(table.contractAssemblyId),
+  ]
 )
 
 /**
@@ -384,6 +405,10 @@ export const projectEstimateAssemblyCopies = sqliteTable(
   (table) => [
     index("project_estimate_assembly_copies_source_idx").on(table.sourceEstimateId, table.createdAt),
     index("project_estimate_assembly_copies_target_idx").on(table.targetProjectId, table.createdAt),
+    index("project_estimate_assembly_copies_source_project_id_idx").on(table.sourceProjectId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_estimate_assembly_copies_source_assembly_id_idx").on(table.sourceAssemblyId),
+    index("project_estimate_assembly_copies_target_estimate_id_idx").on(table.targetEstimateId),
   ]
 )
 
@@ -448,11 +473,18 @@ export const projectEstimateLines = sqliteTable(
       table.divisionCode,
       table.sortOrder
     ),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    index("project_estimate_lines_estimate_updated_idx").on(table.estimateId, table.updatedAt),
     index("project_estimate_lines_project_cost_code_idx").on(
       table.projectId,
       table.costCode
     ),
     index("project_estimate_lines_report_phase_idx").on(table.reportPhaseId),
+    index("project_estimate_lines_tax_entity_id_idx").on(table.taxEntityId),
+    index("project_estimate_lines_pricing_todo_id_idx").on(table.pricingTodoId),
+    index("project_estimate_lines_assembly_id_idx").on(table.assemblyId),
+    index("project_estimate_lines_template_line_id_idx").on(table.templateLineId),
   ]
 )
 
@@ -517,6 +549,9 @@ export const projectEstimateLineCostItems = sqliteTable(
       table.deletedAt,
       table.sortOrder
     ),
+    index("project_estimate_line_cost_items_project_id_idx").on(table.projectId),
+    index("project_estimate_line_cost_items_rate_book_entry_id_idx").on(table.rateBookEntryId),
+    index("project_estimate_line_cost_items_tax_entity_id_idx").on(table.taxEntityId),
   ]
 )
 
@@ -553,6 +588,7 @@ export const projectEstimateBasisDocuments = sqliteTable(
     index("project_estimate_basis_documents_project_document_idx").on(
       table.projectDocumentId
     ),
+    index("project_estimate_basis_documents_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -598,6 +634,7 @@ export const projectContractBudgetRevisions = sqliteTable(
       table.status,
       table.revisionNumber
     ),
+    index("project_contract_budget_revisions_accepted_estimate_id_idx").on(table.acceptedEstimateId),
   ]
 )
 
@@ -645,6 +682,7 @@ export const projectContractBudgetLines = sqliteTable(
       table.projectId,
       table.revisionId
     ),
+    index("project_contract_budget_lines_source_estimate_line_id_idx").on(table.sourceEstimateLineId),
   ]
 )
 
@@ -680,6 +718,10 @@ export const projectContractBudgetAdjustments = sqliteTable(
       table.projectId,
       table.changeOrderId
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_contract_budget_adjustments_change_order_id_idx").on(table.changeOrderId),
+    index("project_contract_budget_adjustments_change_order_line_id_idx").on(table.changeOrderLineId),
+    index("project_contract_budget_adjustments_contract_assembly_id_idx").on(table.contractAssemblyId),
   ]
 )
 

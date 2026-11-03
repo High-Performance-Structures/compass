@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import { updateSageSquarePaymentOperations } from "@/lib/domain/sage-bridge/square-store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -95,15 +96,16 @@ export async function POST(request: Request): Promise<Response> {
   }
   const now = new Date().toISOString()
   if (result.outcome === "failed") {
-    await db
-      .update(sageSquarePaymentOperations)
-      .set({
+    await updateSageSquarePaymentOperations(
+      db,
+      {
         status: "failed",
         errorMessage: result.error,
         completedAt: now,
         updatedAt: now,
-    })
-      .where(eq(sageSquarePaymentOperations.id, operation.id))
+      },
+      eq(sageSquarePaymentOperations.id, operation.id)
+    )
     await hydrateLegacySageSquarePaymentScopes(env, operation.squarePaymentId)
     const receipt = await db
       .select({
@@ -148,29 +150,31 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (result.outcome === "already_in_sage") {
     // Nothing was written; the matching Sage entry is recorded for audit.
-    await db
-      .update(sageSquarePaymentOperations)
-      .set({
+    await updateSageSquarePaymentOperations(
+      db,
+      {
         status: "already_in_sage",
         sageRecordId: result.sageRecordId,
         sageRecordNumber: result.sageRecordNumber,
         errorMessage: result.matchReason,
         completedAt: now,
         updatedAt: now,
-      })
-      .where(eq(sageSquarePaymentOperations.id, operation.id))
+      },
+      eq(sageSquarePaymentOperations.id, operation.id)
+    )
     return Response.json({ success: true, status: "already_in_sage" })
   }
-  await db
-    .update(sageSquarePaymentOperations)
-    .set({
+  await updateSageSquarePaymentOperations(
+    db,
+    {
       status: "succeeded",
       sageRecordId: result.sageRecordId,
       sageRecordNumber: result.sageRecordNumber,
       errorMessage: null,
       completedAt: now,
       updatedAt: now,
-    })
-    .where(eq(sageSquarePaymentOperations.id, operation.id))
+    },
+    eq(sageSquarePaymentOperations.id, operation.id)
+  )
   return Response.json({ success: true, status: "succeeded" })
 }

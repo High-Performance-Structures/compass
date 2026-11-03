@@ -399,10 +399,16 @@ export function ProjectDocumentsWorkspacePanel({
                 </div>
                 <div className="flex flex-col gap-3 lg:items-end">
                   <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                  {/* Plain anchor: Next Link would RSC-prefetch this API file
+                      response and wedge the client router on large documents. */}
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
+                    <a
+                      href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       <IconExternalLink className="size-4" />Open
-                    </Link>
+                    </a>
                   </Button>
                   {document.status === "current" && (
                     <Button

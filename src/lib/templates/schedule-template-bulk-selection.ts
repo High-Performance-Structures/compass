@@ -5,7 +5,7 @@ export type BulkScheduleTemplateSelection = {
   readonly templateTodoIds: readonly string[]
 }
 
-export type ValidBulkScheduleTemplateSelection = {
+type ValidBulkScheduleTemplateSelection = {
   readonly itemIds: readonly string[]
   readonly todoIdsByItem: ReadonlyMap<string, readonly string[]>
 }

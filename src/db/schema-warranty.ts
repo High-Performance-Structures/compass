@@ -1,6 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { organizations, projectContacts, projects, users, vendors } from "./schema"
+import { WARRANTY_CLAIM_STATUSES } from "../lib/domain/warranty/statuses"
 
 export const projectWarrantyClaims = sqliteTable(
   "project_warranty_claims",
@@ -20,7 +21,7 @@ export const projectWarrantyClaims = sqliteTable(
     category: text("category").notNull(),
     description: text("description").notNull(),
     priority: text("priority").notNull().default("normal"),
-    status: text("status").notNull().default("submitted"),
+    status: text("status", { enum: WARRANTY_CLAIM_STATUSES }).notNull().default("submitted"),
     audience: text("audience").notNull().default("owner"),
     promotionState: text("promotion_state").notNull().default("actionable"),
     claimantUserId: text("claimant_user_id").references(() => users.id, {
@@ -74,6 +75,8 @@ export const projectWarrantyClaims = sqliteTable(
     ),
     index("project_warranty_claims_assigned_contact_idx").on(table.projectId, table.assignedProjectContactId),
     index("project_warranty_claims_assigned_vendor_idx").on(table.projectId, table.assignedVendorId),
+    index("project_warranty_claims_assigned_vendor_id_idx").on(table.assignedVendorId),
+    index("project_warranty_claims_assigned_project_contact_id_idx").on(table.assignedProjectContactId),
   ]
 )
 
@@ -133,8 +136,8 @@ export const projectWarrantyClaimEvents = sqliteTable(
     actorName: text("actor_name").notNull(),
     actorRole: text("actor_role").notNull(),
     eventType: text("event_type").notNull(),
-    fromStatus: text("from_status"),
-    toStatus: text("to_status"),
+    fromStatus: text("from_status", { enum: WARRANTY_CLAIM_STATUSES }),
+    toStatus: text("to_status", { enum: WARRANTY_CLAIM_STATUSES }),
     note: text("note"),
     ownerVisible: integer("owner_visible", { mode: "boolean" })
       .notNull()
@@ -146,6 +149,7 @@ export const projectWarrantyClaimEvents = sqliteTable(
       table.claimId,
       table.createdAt
     ),
+    index("project_warranty_claim_events_project_id_idx").on(table.projectId),
   ]
 )
 
@@ -190,6 +194,7 @@ export const buildertrendWarrantyClaimStaging = sqliteTable(
       table.updatedAt
     ),
     index("buildertrend_warranty_staging_project_idx").on(table.projectId),
+    index("buildertrend_warranty_claim_staging_promoted_claim_id_idx").on(table.promotedClaimId),
   ]
 )
 

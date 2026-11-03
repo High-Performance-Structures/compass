@@ -1,0 +1,13 @@
+flowchart TD
+  A([Request]) --> B{Public path?}
+  B -->|yes| B1[Route checks its own<br/>signature, secret or token]
+  B -->|no| C{Session and<br/>not a preview write?}
+  C -->|no| C1[Login redirect<br/>or 403]
+  C -->|yes| D{User, organization,<br/>not demo mutation?}
+  D -->|no| D1[Unauthorized / No active<br/>organization / DEMO_READ_ONLY]
+  D -->|yes| E{canFeature:<br/>role baseline, role override,<br/>team raise, user override}
+  E -->|denied| E1[Permission denied]
+  E -->|allowed| F{Project access:<br/>organization scope<br/>or member scope}
+  F -->|no| F1[Project not found]
+  F -->|yes| G[Audience filter on reads:<br/>owner and vendor flags]
+  G --> H([Domain store])

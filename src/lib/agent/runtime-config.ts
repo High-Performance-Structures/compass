@@ -36,7 +36,7 @@ function requiresApiKey(type: ProviderConfig["type"]): boolean {
   return type !== "ollama"
 }
 
-export function mapRuntimeProviderType(
+function mapRuntimeProviderType(
   type: string
 ): ProviderConfig["type"] {
   switch (type) {

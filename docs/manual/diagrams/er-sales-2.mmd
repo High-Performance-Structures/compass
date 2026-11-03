@@ -1,0 +1,10 @@
+erDiagram
+  direction LR
+  sales_bracing_rental_lines {
+    key id
+    ref rental_id
+  }
+  sales_bracing_rentals {
+    key id
+  }
+  sales_bracing_rentals ||--o{ sales_bracing_rental_lines : ""

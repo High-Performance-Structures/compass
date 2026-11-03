@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { MessageCircle } from "lucide-react"
@@ -27,25 +27,8 @@ import { Label } from "@/components/ui/label"
 
 const FeedbackContext = createContext<{ open: () => void }>({ open: () => {} })
 
-export function useFeedback() {
-  return useContext(FeedbackContext)
-}
-
 export function openFeedbackDialog() {
   window.dispatchEvent(new CustomEvent("open-feedback-dialog"))
-}
-
-export function FeedbackCallout() {
-  const { open } = useFeedback()
-  return (
-    <p className="text-primary font-semibold">
-      Have feedback?{" "}
-      <button onClick={open} className="underline underline-offset-2 hover:opacity-80">
-        Let us know what you think
-      </button>
-      {" "}— we&apos;d love to hear from you.
-    </p>
-  )
 }
 
 export function FeedbackWidget({ children }: { children?: React.ReactNode }) {

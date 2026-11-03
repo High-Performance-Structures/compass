@@ -4,6 +4,7 @@ import { getDb } from "@/db"
 import { agentActionConfirmations } from "@/db/schema-agent"
 import { generateAgentToken } from "@/lib/agent/api-auth"
 import { callAgentRoute } from "@/lib/agent/in-process-data-source"
+import { AGENT_TOOL_ROUTES } from "@/app/api/compass/agent-tool-routes"
 import { verifyPendingAction } from "@/lib/agent/pending-actions"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -76,7 +77,7 @@ export async function confirmAgentAction(
       user.role,
       isDemoUser(user.id),
     )
-    await callAgentRoute(agentToken, pending.path, pending.body)
+    await callAgentRoute(agentToken, pending.path, pending.body, AGENT_TOOL_ROUTES)
     return { success: true }
   } catch (error) {
     return {

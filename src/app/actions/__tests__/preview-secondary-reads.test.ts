@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ actor: vi.fn(), viewer: vi.fn(), scope: vi.fn(
 vi.mock("server-only", () => ({}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.actor, getCurrentUser: mocks.actor }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.env }))
-vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn() }))
+vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn(), canFeature: vi.fn(async () => true) }))
 vi.mock("@/lib/project-audience-request-server", () => ({ requireProjectAudienceReadUser: mocks.viewer, getProjectAudienceRequestScope: mocks.scope, assertAudiencePreviewWriteAllowed: mocks.writeGuard, assertAudienceResourceProject: mocks.resourceProject, isAudiencePreviewRequest: mocks.isPreview }))
 vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer: mocks.viewer }))
 import { setTyping, getChannelUpdates } from "@/app/actions/conversations-realtime"

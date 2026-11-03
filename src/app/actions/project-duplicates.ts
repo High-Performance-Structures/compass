@@ -9,17 +9,33 @@ import {
   projectDuplicateDecisions,
   projectExternalLinks,
   projectMembers,
-  projectNumberAliases,
   projectNumberReservations,
-  projectNumberRetirements,
-  projectProfileAuditEvents,
   projectRegistryRemovals,
   projectRouteAliases,
   projects,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
+import {
+  deleteProjectNumberReservationsStatement,
+  insertProjectNumberAliasIfAbsentStatement,
+  insertProjectNumberRetirementIfAbsentStatement,
+  insertProjectRouteAliasStatement,
+  updateProjectRouteAliasesStatement,
+} from "@/lib/domain/project/numbering-store"
+import {
+  insertProjectRegistryRemovalStatement,
+  upsertProjectDuplicateDecisionReturningStatus,
+  upsertProjectDuplicateDecisionStatement,
+} from "@/lib/domain/project/registry-store"
+import {
+  insertProjectExternalLinkStatement,
+  insertProjectMemberStatement,
+  updateProjectsStatement,
+} from "@/lib/domain/project/store"
+import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { isRecord } from "@/lib/shared/guards"
 import {
   compareProjectDuplicateIdentity,
   type ProjectDuplicateCandidate,
@@ -116,18 +132,20 @@ function projectDependencyTable(tableName: string) {
   })
 }
 
-type DrizzleQuery = {
-  readonly toSQL: () => {
-    readonly sql: string
-    readonly params: readonly unknown[]
-  }
-}
+/** A built drizzle statement (store statements are typed as batch items). */
+type DrizzleQuery = object
 
+/** Compiles a drizzle statement with its own `toSQL()` for the raw D1 batch. */
 function prepareDrizzleQuery(
   d1: D1Database,
   query: DrizzleQuery,
 ): D1PreparedStatement {
-  const compiled = query.toSQL()
+  const toSQL: unknown = Reflect.get(query, "toSQL")
+  if (typeof toSQL !== "function") throw new Error("Merge statement cannot be compiled.")
+  const compiled: unknown = Reflect.apply(toSQL, query, [])
+  if (!isRecord(compiled) || typeof compiled.sql !== "string" || !Array.isArray(compiled.params)) {
+    throw new Error("Merge statement cannot be compiled.")
+  }
   return d1.prepare(compiled.sql).bind(...compiled.params)
 }
 
@@ -297,14 +315,14 @@ export async function archiveProjectFromRegistry(input: { readonly projectId: st
     const now = new Date().toISOString()
     const parts = project.projectNumber ? projectNumberParts(project.projectNumber) : null
     await db.batch([
-      db.update(projects).set({ projectNumber: null, status: "ARCHIVE", updatedAt: now }).where(eq(projects.id, project.id)),
-      db.delete(projectNumberReservations).where(and(eq(projectNumberReservations.organizationId, organizationId), eq(projectNumberReservations.projectId, project.id))),
-      ...(project.projectNumber ? [db.insert(projectNumberRetirements).values({
+      updateProjectsStatement(db, eq(projects.id, project.id), { projectNumber: null, status: "ARCHIVE", updatedAt: now }),
+      deleteProjectNumberReservationsStatement(db, and(eq(projectNumberReservations.organizationId, organizationId), eq(projectNumberReservations.projectId, project.id))),
+      ...(project.projectNumber ? [insertProjectNumberRetirementIfAbsentStatement(db, {
         id: crypto.randomUUID(), organizationId, formerProjectId: project.id, projectNumber: project.projectNumber,
         department: parts?.department ?? null, sequence: parts ? Number(parts.sequence) : null, retiredByUserId: user.id, retiredAt: now,
-      }).onConflictDoNothing()] : []),
-      db.insert(projectProfileAuditEvents).values({ id: crypto.randomUUID(), organizationId, projectId: project.id, actorUserId: user.id, eventType: "project.registry_removed", entityType: "project", entityId: project.id, beforeJson: JSON.stringify(project), afterJson: JSON.stringify({ status: "ARCHIVE", projectNumber: null }), createdAt: now }),
-      db.insert(projectRegistryRemovals).values({ id: crypto.randomUUID(), organizationId, projectId: project.id, originalProjectNumber: project.projectNumber, originalStatus: project.status, projectSnapshotJson: JSON.stringify(project), removedByUserId: user.id, removedAt: now, createdAt: now, updatedAt: now }),
+      })] : []),
+      recordProjectAudit(db, { organizationId, projectId: project.id, actorUserId: user.id, eventType: "project.registry_removed", entityType: "project", entityId: project.id, beforeJson: JSON.stringify(project), afterJson: JSON.stringify({ status: "ARCHIVE", projectNumber: null }), createdAt: now }),
+      insertProjectRegistryRemovalStatement(db, { id: crypto.randomUUID(), organizationId, projectId: project.id, originalProjectNumber: project.projectNumber, originalStatus: project.status, projectSnapshotJson: JSON.stringify(project), removedByUserId: user.id, removedAt: now, createdAt: now, updatedAt: now }),
     ])
     revalidatePath("/dashboard/projects")
     revalidatePath("/dashboard/executive-admin/project-archive")
@@ -359,9 +377,9 @@ export async function confirmProjectsAreDistinct(input: {
       identityFromRow(second),
     )
     const now = new Date().toISOString()
-    const savedDecisions = await db
-      .insert(projectDuplicateDecisions)
-      .values({
+    const savedDecisions = await upsertProjectDuplicateDecisionReturningStatus(
+      db,
+      {
         id: crypto.randomUUID(),
         organizationId,
         projectAId,
@@ -376,8 +394,8 @@ export async function confirmProjectsAreDistinct(input: {
         resolvedAt: now,
         createdAt: now,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
+      },
+      {
         target: [
           projectDuplicateDecisions.organizationId,
           projectDuplicateDecisions.projectAId,
@@ -395,8 +413,8 @@ export async function confirmProjectsAreDistinct(input: {
           updatedAt: now,
         },
         setWhere: ne(projectDuplicateDecisions.status, "merged"),
-      })
-      .returning({ status: projectDuplicateDecisions.status })
+      },
+    )
 
     if (!savedDecisions[0]) {
       return {
@@ -542,7 +560,7 @@ export async function mergeDuplicateProjects(input: {
     const memberStatements = removedMembers
       .filter((member) => !keptMemberIds.has(member.userId))
       .map((member) =>
-        db.insert(projectMembers).values({
+        insertProjectMemberStatement(db, {
           id: crypto.randomUUID(),
           projectId: kept.id,
           userId: member.userId,
@@ -560,7 +578,7 @@ export async function mergeDuplicateProjects(input: {
         return true
       })
       .map((link) =>
-        db.insert(projectExternalLinks).values({
+        insertProjectExternalLinkStatement(db, {
           ...link,
           id: crypto.randomUUID(),
           projectId: kept.id,
@@ -584,16 +602,11 @@ export async function mergeDuplicateProjects(input: {
     })
 
     const mergeQueries: readonly DrizzleQuery[] = [
-      db
-        .update(projects)
-        // Release the active number before a later statement either transfers
-        // or reserves it. The pre-merge row remains in the audit snapshot.
-        .set({ projectNumber: null, status: "ARCHIVE", updatedAt: now })
-        .where(eq(projects.id, removed.id)),
+      // Release the active number before a later statement either transfers
+      // or reserves it. The pre-merge row remains in the audit snapshot.
+      updateProjectsStatement(db, eq(projects.id, removed.id), { projectNumber: null, status: "ARCHIVE", updatedAt: now }),
       ...dependencyTransferStatements,
-      db
-        .update(projects)
-        .set({
+      updateProjectsStatement(db, eq(projects.id, kept.id), {
           projectNumber: kept.projectNumber ?? removed.projectNumber,
           sageJobId: kept.sageJobId ?? removed.sageJobId,
           sageJobNumber: kept.sageJobNumber ?? removed.sageJobNumber,
@@ -607,11 +620,10 @@ export async function mergeDuplicateProjects(input: {
           buildertrendProjectId:
             kept.buildertrendProjectId ?? removed.buildertrendProjectId,
           updatedAt: now,
-        })
-        .where(eq(projects.id, kept.id)),
+        }),
       ...(removedAlias
-        ? [db.update(projectRouteAliases).set({ reason: input.selectionReason ?? "duplicate_registry_merge" }).where(eq(projectRouteAliases.sourceProjectId, removed.id))]
-        : [db.insert(projectRouteAliases).values({
+        ? [updateProjectRouteAliasesStatement(db, eq(projectRouteAliases.sourceProjectId, removed.id), { reason: input.selectionReason ?? "duplicate_registry_merge" })]
+        : [insertProjectRouteAliasStatement(db, {
             sourceProjectId: removed.id,
             targetProjectId: kept.id,
             organizationId,
@@ -623,20 +635,17 @@ export async function mergeDuplicateProjects(input: {
       ...externalLinkCopyStatements,
       ...(removed.projectNumber && kept.projectNumber
         ? [
-            db
-              .insert(projectNumberAliases)
-              .values({
-                id: crypto.randomUUID(),
-                organizationId,
-                projectId: kept.id,
-                projectNumber: removed.projectNumber,
-                createdBy: user.id,
-                createdAt: now,
-              })
-              .onConflictDoNothing(),
+            insertProjectNumberAliasIfAbsentStatement(db, {
+              id: crypto.randomUUID(),
+              organizationId,
+              projectId: kept.id,
+              projectNumber: removed.projectNumber,
+              createdBy: user.id,
+              createdAt: now,
+            }),
           ]
         : []),
-      db.insert(projectExternalLinks).values({
+      insertProjectExternalLinkStatement(db, {
         id: crypto.randomUUID(),
         projectId: kept.id,
         system: "compass_merged_source",
@@ -651,7 +660,7 @@ export async function mergeDuplicateProjects(input: {
         createdAt: now,
         updatedAt: now,
       }),
-      db.insert(projectExternalLinks).values({
+      insertProjectExternalLinkStatement(db, {
         id: crypto.randomUUID(),
         projectId: removed.id,
         system: "compass_merged_into",
@@ -667,9 +676,9 @@ export async function mergeDuplicateProjects(input: {
         updatedAt: now,
       }),
       ...memberStatements,
-      db
-        .insert(projectDuplicateDecisions)
-        .values({
+      upsertProjectDuplicateDecisionStatement(
+        db,
+        {
           id: crypto.randomUUID(),
           organizationId,
           projectAId,
@@ -684,8 +693,8 @@ export async function mergeDuplicateProjects(input: {
           resolvedAt: now,
           createdAt: now,
           updatedAt: now,
-        })
-        .onConflictDoUpdate({
+        },
+        {
           target: [
             projectDuplicateDecisions.organizationId,
             projectDuplicateDecisions.projectAId,
@@ -702,7 +711,8 @@ export async function mergeDuplicateProjects(input: {
             resolvedAt: now,
             updatedAt: now,
           },
-        }),
+        },
+      ),
     ]
     await d1.batch([
       // Some child rows include project_id in composite foreign keys. D1

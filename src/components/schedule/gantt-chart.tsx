@@ -215,8 +215,7 @@ export function GanttChart({
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ganttRef = useRef<any>(null)
+  const ganttRef = useRef<import("frappe-gantt").default | null>(null)
   const [loaded, setLoaded] = useState(false)
   // Bumped after each Frappe render so DOM-level decorations can be reapplied.
   const [renderVersion, setRenderVersion] = useState(0)

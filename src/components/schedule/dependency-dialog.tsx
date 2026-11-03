@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import { createDependency } from "@/app/actions/schedule"
+import { createDependency } from "@/app/actions/schedule-dependencies"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import { resolveScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {

@@ -1,21 +1,7 @@
-export const CHANGE_ORDER_STATUSES = [
-  "draft",
-  "submitted",
-  "triage",
-  "needs_information",
-  "pricing",
-  "internal_review",
-  "approved_for_owner",
-  "signature_pending",
-  "executed",
-  "sage_pending",
-  "synced",
-  "closed",
-  "declined",
-  "void",
-] as const
+import { CHANGE_ORDER_STATUSES, type ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 
-export type ChangeOrderStatus = (typeof CHANGE_ORDER_STATUSES)[number]
+export type { ChangeOrderStatus }
 
 const TRANSITIONS: Readonly<
   Record<ChangeOrderStatus, readonly ChangeOrderStatus[]>
@@ -59,7 +45,7 @@ const APPROVAL_STATUSES = new Set<ChangeOrderStatus>([
 export function isChangeOrderStatus(
   value: string
 ): value is ChangeOrderStatus {
-  return CHANGE_ORDER_STATUSES.some((status) => status === value)
+  return isListValue(CHANGE_ORDER_STATUSES, value)
 }
 
 export function changeOrderStatusLabel(status: ChangeOrderStatus): string {
@@ -76,8 +62,10 @@ export function changeOrderDisplayStatus(
   if (sourceType !== "buildertrend_import") {
     return changeOrderStatusLabel(status)
   }
-  if (status === "executed") return "Approved · Buildertrend"
-  return `${changeOrderStatusLabel(status)} · Buildertrend`
+  // Imported "executed" means approved in the source system, not signed in
+  // Compass. The source itself is shown with the shared [BT] tag, not here.
+  if (status === "executed") return "Approved"
+  return changeOrderStatusLabel(status)
 }
 
 export function allowedChangeOrderTransitions(

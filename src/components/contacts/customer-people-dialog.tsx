@@ -129,7 +129,10 @@ export function CustomerPeopleDialog({
                   checked === true ? [...current, person.id] : current.filter((id) => id !== person.id))}
               /> : null}
               <div>
-                <div className="font-medium">{person.name}{person.isPrimary ? " · Primary" : ""}</div>
+                <div className="font-medium">
+                  {person.name}{person.isPrimary ? " · Primary" : ""}
+                  {customer?.sageLinked && !person.sageContactId ? <span className="ml-2 text-xs font-normal text-muted-foreground">Compass only, not in Sage</span> : null}
+                </div>
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
               </div>
               <div className="flex flex-wrap gap-2">

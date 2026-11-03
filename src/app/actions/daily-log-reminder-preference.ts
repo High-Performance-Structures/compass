@@ -1,16 +1,15 @@
 "use server"
 
+import { upsertNotificationPreferences } from "@/lib/domain/notifications/store"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { notificationPreferences } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { reminderTimeFor, TIME_PATTERN } from "@/lib/daily-logs/reminders"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { userContext } from "@/lib/server/action-context"
 
 export type DailyLogReminderPreference = {
   /** The company lets staff pick their own time. */
@@ -25,10 +24,11 @@ type Result<T> = { readonly success: true; readonly data: T } | { readonly succe
 
 /** The signed-in person's daily log reminder time; null for people who aren't staff. */
 export async function getDailyLogReminderPreference(): Promise<DailyLogReminderPreference | null> {
-  const user = await requireAuth()
+  // Signed-out callers throw "Unauthorized", as requireAuth did.
+  const context = await userContext()
+  if (!context.success) throw new Error(context.error)
+  const { user, db } = context.data
   if (!user.organizationId || !isInternalStaffRole(user.role)) return null
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [rules, row] = await Promise.all([
     readFeatureSettings(db, user.organizationId, "daily-log-reminders"),
     db
@@ -48,19 +48,17 @@ export async function getDailyLogReminderPreference(): Promise<DailyLogReminderP
 /** Sets (or clears, with null) the person's own reminder time. */
 export async function setDailyLogReminderTime(time: string | null): Promise<Result<null>> {
   try {
-    const user = await requireAuth()
+    const context = await userContext()
+    // Signed out falls to the catch below, as requireAuth's throw did.
+    if (!context.success) throw new Error(context.error)
+    const { user, db } = context.data
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     if (!user.organizationId || !isInternalStaffRole(user.role)) return { success: false, error: "Daily log reminders are for staff." }
     if (time !== null && !TIME_PATTERN.test(time)) return { success: false, error: "Enter a time like 16:30." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const rules = await readFeatureSettings(db, user.organizationId, "daily-log-reminders")
     if (!rules.staffPickOwnTime) return { success: false, error: "Your company sets the reminder time." }
     const now = new Date().toISOString()
-    await db
-      .insert(notificationPreferences)
-      .values({ userId: user.id, dailyLogReminderTime: time, updatedAt: now })
-      .onConflictDoUpdate({ target: notificationPreferences.userId, set: { dailyLogReminderTime: time, updatedAt: now } })
+    await upsertNotificationPreferences(db, user.id, { dailyLogReminderTime: time, updatedAt: now })
     revalidatePath("/dashboard/settings")
     return { success: true, data: null }
   } catch (error) {

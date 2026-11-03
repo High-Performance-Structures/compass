@@ -1,0 +1,16 @@
+erDiagram
+  direction LR
+  project_travel_charge_overrides {
+    key project_id
+  }
+  travel_charge_settings {
+    key organization_id
+  }
+  vendor_bills {
+    key id
+    ref vendor_id
+  }
+  vendors {
+    key id
+  }
+  vendors ||--o{ vendor_bills : ""

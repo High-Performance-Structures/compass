@@ -9,17 +9,11 @@ import {
   IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 
-import {
-  getProjectContactsSummary,
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
-import {
-  getProjectRfqCostCodeOptions,
-  getProjectRfqs,
-  type ProjectRfqCostCodeOption,
-  type ProjectRfqItem,
-} from "@/app/actions/project-operations"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
+import { getProjectRfqCostCodeOptions, getProjectRfqs } from "@/app/actions/project-operations"
+import type { ProjectRfqCostCodeOption, ProjectRfqItem } from "@/lib/domain/operations/types"
 import {
   getProjectRfqBidWorkspace,
   type ProjectRfqBidWorkflowItem,
@@ -37,9 +31,11 @@ import {
 import {
   getProjectSelectionOptions,
   getProjectSelections,
-  type ProjectSelectionOptions,
-  type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
+import type {
+  ProjectSelectionOptions,
+  ProjectSelectionsSummary,
+} from "@/lib/domain/selections/types"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectHistoricalRfqWorkspace } from "@/app/actions/project-historical-rfq-history"
 import { PageHeader } from "@/components/page-header"
@@ -79,16 +75,13 @@ import {
   type ProjectBrand,
 } from "@/lib/project-branding"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { formatDate } from "@/lib/format"
 
 export const dynamic = "force-dynamic"
 
-function formatDate(value: string | null): string {
-  if (!value) return "No due date"
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+/** A due date as "Oct 30, 2026", or "No due date". */
+function dueDate(value: string | null): string {
+  return formatDate(value, "medium", "No due date")
 }
 
 function label(value: string): string {
@@ -246,7 +239,7 @@ function RfqCard({
           {rfq.priority === "high" || rfq.priority === "critical" ? (
             <Badge variant="destructive">{label(rfq.priority)}</Badge>
           ) : null}
-          {!rfq.vendorResponse && (
+          {rfq.actions.canEdit && (
             <ProjectRfqEditForm
               projectId={projectId}
               rfq={rfq}
@@ -279,7 +272,7 @@ function RfqCard({
             projectLabel={projectLabel}
             rfq={rfq}
           />
-          {rfq.status === "draft" && (
+          {rfq.actions.canDelete && (
             <ProjectRfqDeleteButton
               projectId={projectId}
               rfqId={rfq.id}
@@ -351,7 +344,7 @@ function RfqCard({
               <span>Lead time: {rfq.vendorResponse.leadTime}</span>
             )}
             {rfq.vendorResponse.validUntil && (
-              <span>Valid through {formatDate(rfq.vendorResponse.validUntil)}</span>
+              <span>Valid through {dueDate(rfq.vendorResponse.validUntil)}</span>
             )}
           </div>
           {rfq.vendorResponse.notes && (
@@ -410,7 +403,7 @@ function RfqCard({
         {rfq.companyName && <span>{rfq.companyName}</span>}
         {rfq.vendorCategory && <span>{rfq.vendorCategory}</span>}
         {rfq.recipientEmail && <span>{rfq.recipientEmail}</span>}
-        <span>Response needed by {formatDate(rfq.dueDate)}</span>
+        <span>Response needed by {dueDate(rfq.dueDate)}</span>
       </div>
 
       <ProjectRfqEmailHistory deliveries={emailDeliveries} />

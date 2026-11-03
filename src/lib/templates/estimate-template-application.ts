@@ -2,7 +2,7 @@ import {
   calculateEstimateLine,
   calculateEstimateTotals,
   type EstimateLedgerTotals,
-} from "@/lib/financials/estimate-ledger"
+} from "@/lib/domain/estimates/rules"
 
 export type EstimateTemplateSourceLine = {
   readonly id: string
@@ -29,7 +29,7 @@ export type EstimateTemplateTaxEntity = {
   readonly rateBasisPoints: number
 }
 
-export type AppliedEstimateTemplateLine = EstimateTemplateSourceLine & {
+type AppliedEstimateTemplateLine = EstimateTemplateSourceLine & {
   readonly templateLineId: string
   readonly taxEntityId: string | null
   readonly taxName: string | null
@@ -40,7 +40,7 @@ export type AppliedEstimateTemplateLine = EstimateTemplateSourceLine & {
   readonly lineTotalCents: number
 }
 
-export type EstimateTemplateApplication = {
+type EstimateTemplateApplication = {
   readonly lines: readonly AppliedEstimateTemplateLine[]
   readonly totals: EstimateLedgerTotals
 }

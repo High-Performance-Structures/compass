@@ -1,0 +1,11 @@
+flowchart TD
+  A([Daily log submitted]) --> B[createDailyLog:<br/>idempotent id, validate,<br/>insert log and labor lines]
+  B --> C[applyDailyLogFollowUps]
+  C --> D[Referenced to-dos:<br/>worked, still blocked, cleared]
+  D --> D1[Events written;<br/>open may become in_progress]
+  C --> E{Make to-do on<br/>an issue line?}
+  E -->|yes| F[New open to-do linked<br/>to the log; assignee notified]
+  D1 --> Z([Completion is ticked<br/>by a person])
+  F --> Z
+  R([Every 10 min]) --> S[Missing-log check:<br/>work day, past reminder time,<br/>no log, not on time off]
+  S --> T[One reminder per person<br/>per day: in-app and push]

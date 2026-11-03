@@ -6,7 +6,7 @@ import {
   buildBuildertrendInventoryManifest,
   type BuildertrendInventoryManifestOptions,
 } from "../inventory-manifest"
-import { buildBuildertrendStagingSql } from "../staging-manifest"
+import { buildBuildertrendStagingSql } from "@/lib/domain/buildertrend/staging"
 
 function fixture(name: string): unknown {
   return JSON.parse(

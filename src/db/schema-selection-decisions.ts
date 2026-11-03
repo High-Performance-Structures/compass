@@ -6,6 +6,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 import { projectFinishSelections, projectOperations, projects } from "./schema"
+import { SELECTION_REQUEST_KINDS, SELECTION_REQUEST_STATUSES } from "../lib/domain/selections/statuses"
 
 // Published owner terms are separate from editable staff notes and supplier costs.
 export const projectSelectionDecisions = sqliteTable(
@@ -37,7 +38,10 @@ export const projectSelectionDecisions = sqliteTable(
     lastMutationId: text("last_mutation_id").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("selection_decisions_project").on(table.projectId)]
+  (table) => [index("selection_decisions_project").on(table.projectId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_selection_decisions_change_order_id_idx").on(table.changeOrderId),
+  ]
 )
 
 export const projectSelectionRequests = sqliteTable(
@@ -52,10 +56,10 @@ export const projectSelectionRequests = sqliteTable(
       .references(() => projectFinishSelections.id, { onDelete: "cascade" }),
     requesterId: text("requester_id").notNull(),
     requesterName: text("requester_name").notNull(),
-    kind: text("kind", { enum: ["pricing", "alternative"] }).notNull(),
+    kind: text("kind", { enum: SELECTION_REQUEST_KINDS }).notNull(),
     note: text("note").notNull(),
     productUrl: text("product_url"),
-    status: text("status", { enum: ["open", "resolved", "withdrawn"] })
+    status: text("status", { enum: SELECTION_REQUEST_STATUSES })
       .notNull()
       .default("open"),
     response: text("response"),
@@ -65,6 +69,7 @@ export const projectSelectionRequests = sqliteTable(
   },
   (table) => [
     index("selection_requests_project").on(table.projectId, table.status),
+    index("project_selection_requests_selection_id_idx").on(table.selectionId),
   ]
 )
 
@@ -90,6 +95,8 @@ export const projectSelectionDecisionEvents = sqliteTable(
       table.selectionId,
       table.createdAt
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("project_selection_decision_events_selection_id_idx").on(table.selectionId),
   ]
 )
 
@@ -114,5 +121,7 @@ export const projectSelectionProcurementLinks = sqliteTable(
       table.selectionId,
       table.operationId
     ),
+    index("project_selection_procurement_links_operation_id_idx").on(table.operationId),
+    index("project_selection_procurement_links_project_id_idx").on(table.projectId),
   ]
 )

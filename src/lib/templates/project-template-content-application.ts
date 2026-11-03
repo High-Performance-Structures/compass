@@ -17,7 +17,7 @@ export type ProjectTemplateContentDefinition = {
   readonly payloadJson: string | null
 }
 
-export type InstantiatedTemplateTodo = {
+type InstantiatedTemplateTodo = {
   readonly id: string
   readonly templateContentItemId: string
   readonly title: string
@@ -26,7 +26,7 @@ export type InstantiatedTemplateTodo = {
   readonly sourcePayloadJson: string
 }
 
-export type InstantiatedTemplateSelection = {
+type InstantiatedTemplateSelection = {
   readonly id: string
   readonly templateContentItemId: string
   readonly sourceRecordId: string
@@ -44,7 +44,7 @@ export type InstantiatedTemplateSelection = {
   readonly sortOrder: number
 }
 
-export type InstantiatedTemplateBidPackage = {
+type InstantiatedTemplateBidPackage = {
   readonly id: string
   readonly templateContentItemId: string
   readonly sourceRecordId: string

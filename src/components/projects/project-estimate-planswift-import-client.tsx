@@ -29,6 +29,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { planSwiftAmountDollars, planSwiftUnitCostDollars } from "@/lib/domain/estimates/rules";
+import { formatCents, formatDollars } from "@/lib/format";
 import {
   Select,
   SelectContent,
@@ -74,14 +76,6 @@ type EditablePreviewRow = {
 };
 
 type ImportStep = "upload" | "mapping" | "review";
-
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 function fileExtension(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
@@ -359,9 +353,7 @@ export function ProjectEstimatePlanSwiftImportClient({
         const unitCost = Number(nextRow.unitCost);
         const markup = Number(nextRow.markupPercentage) || 0;
         if (quantity > 0 && unitCost > 0) {
-          nextRow.amount = String(
-            Math.round(quantity * unitCost * (1 + markup / 100) * 100) / 100,
-          );
+          nextRow.amount = String(planSwiftAmountDollars(quantity, unitCost, markup));
         }
       }
       if (field === "amount") {
@@ -369,9 +361,7 @@ export function ProjectEstimatePlanSwiftImportClient({
         const quantity = Number(nextRow.quantity) || 1;
         const markup = Number(nextRow.markupPercentage) || 0;
         if (amount > 0) {
-          nextRow.unitCost = String(
-            Math.round((amount / quantity / (1 + markup / 100)) * 100) / 100,
-          );
+          nextRow.unitCost = String(planSwiftUnitCostDollars(amount, quantity, markup));
         }
       }
       return {
@@ -425,7 +415,7 @@ export function ProjectEstimatePlanSwiftImportClient({
       }
 
       toast.success(
-        `Imported ${result.lineCount} PlanSwift items totaling ${money(result.totalCents / 100)}.`,
+        `Imported ${result.lineCount} PlanSwift items totaling ${formatCents(result.totalCents)}.`,
       );
       setOpen(false);
       reset();
@@ -663,7 +653,7 @@ export function ProjectEstimatePlanSwiftImportClient({
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Selected total</p>
-                  <p className="text-xl font-semibold">{money(selectedTotal)}</p>
+                  <p className="text-xl font-semibold">{formatDollars(selectedTotal)}</p>
                 </div>
               </div>
 

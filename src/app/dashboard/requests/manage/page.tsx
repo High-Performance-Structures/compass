@@ -4,7 +4,10 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 
 export const dynamic = "force-dynamic"
 
-export default async function FeedbackDeskManagePage() {
+export default async function FeedbackDeskManagePage({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Readonly<Record<string, string | string[] | undefined>>> }>) {
+  const { request } = await searchParams
   const result = await getFeedbackAdminOverview()
   if (!result.success) {
     return (
@@ -18,5 +21,10 @@ export default async function FeedbackDeskManagePage() {
       </div>
     )
   }
-  return <FeedbackDeskAdmin overview={result.data} />
+  return (
+    <FeedbackDeskAdmin
+      overview={result.data}
+      requestId={typeof request === "string" ? request : null}
+    />
+  )
 }

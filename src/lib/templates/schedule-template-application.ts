@@ -27,7 +27,7 @@ export type ScheduleTemplateDependencyDefinition = {
   readonly lagDays: number
 }
 
-export type InstantiatedScheduleTask = {
+type InstantiatedScheduleTask = {
   readonly id: string
   readonly templateItemId: string
   readonly title: string
@@ -44,7 +44,7 @@ export type InstantiatedScheduleTask = {
   readonly notes: string | null
 }
 
-export type InstantiatedScheduleDependency = {
+type InstantiatedScheduleDependency = {
   readonly id: string
   readonly predecessorId: string
   readonly successorId: string
@@ -52,7 +52,7 @@ export type InstantiatedScheduleDependency = {
   readonly lagDays: number
 }
 
-export type ScheduleTemplateApplicationBuild = {
+type ScheduleTemplateApplicationBuild = {
   readonly tasks: readonly InstantiatedScheduleTask[]
   readonly dependencies: readonly InstantiatedScheduleDependency[]
 }

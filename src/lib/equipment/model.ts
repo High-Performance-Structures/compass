@@ -4,8 +4,12 @@
  * Free of path aliases so the native Field Mode bundle can import it.
  */
 
-export const MACHINE_LOG_KINDS = ["hours", "fuel", "maintenance", "repair", "other"] as const
-export type MachineLogKind = (typeof MACHINE_LOG_KINDS)[number]
+// Relative import: this module stays free of path aliases (see above).
+import { EQUIPMENT_LOG_KINDS, type EquipmentLogKind } from "../domain/field/statuses"
+
+/** Machine log kinds are the equipment log list; one list, two names. */
+export const MACHINE_LOG_KINDS = EQUIPMENT_LOG_KINDS
+export type MachineLogKind = EquipmentLogKind
 
 export const MACHINE_LOG_KIND_LABELS: { readonly [K in MachineLogKind]: string } = {
   hours: "Hours",
@@ -63,7 +67,7 @@ export type MachineLogValues = {
   readonly notes: string | null
 }
 
-export type MachineLogErrorKey = keyof MachineLogDraft | "hours"
+type MachineLogErrorKey = keyof MachineLogDraft | "hours"
 export type MachineLogError = { readonly key: MachineLogErrorKey; readonly message: string }
 
 export function emptyMachineLogDraft(kind: MachineLogKind, entryDate: string): MachineLogDraft {
@@ -212,8 +216,8 @@ export type ServiceDue = {
 }
 
 /** Within this many hours or days, a service shows as coming up. */
-export const SERVICE_SOON_HOURS = 10
-export const SERVICE_SOON_DAYS = 7
+const SERVICE_SOON_HOURS = 10
+const SERVICE_SOON_DAYS = 7
 
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000)

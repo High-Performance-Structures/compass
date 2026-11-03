@@ -6,6 +6,10 @@ function actionSource(name: string): string {
   return readFileSync(join(process.cwd(), "src/app/actions", name), "utf8")
 }
 
+function domainSource(name: string): string {
+  return readFileSync(join(process.cwd(), "src/lib/domain/contacts", name), "utf8")
+}
+
 describe("contact directory permission boundaries", () => {
   it("enforces distinct feature grants for client and vendor mutations", () => {
     const customers = actionSource("customers.ts")
@@ -36,7 +40,7 @@ describe("contact directory permission boundaries", () => {
     expect(intake).toContain('if (cleanText(input.assignedTo)) {')
     expect(intake).toContain('requireFeaturePermission(user, "internal-directory", "read")')
     expect(intake?.indexOf('requireFeaturePermission(user, "customers", "read")'))
-      .toBeLessThan(intake?.indexOf("const customerMatches =") ?? 0)
+      .toBeLessThan(intake?.indexOf("await resolveIntakeCustomer(") ?? 0)
   })
 
   it("does not expose or assign denied directories through project contact actions", () => {
@@ -46,23 +50,34 @@ describe("contact directory permission boundaries", () => {
     for (const feature of ["customers", "vendors", "internal-directory"]) {
       expect(picker).toContain(`canFeature(user, "${feature}", "read")`)
     }
-    expect(picker).toContain("canViewCustomers ? db")
-    expect(picker).toContain("isNull(customers.mergedIntoCustomerId)")
-    expect(picker).toContain("canViewVendors ? db")
-    expect(picker).toContain("canViewInternal ? db")
-
-    const save = contacts.split("export async function saveProjectContact(")[1]
+    expect(picker).toContain("customers: canViewCustomers, vendors: canViewVendors, internal: canViewInternal")
+    const options = domainSource("directory-options.ts")
+      .split("export async function loadProjectContactDirectoryOptions(")[1]
       ?.split("export async function ")[0]
-    expect(save).toContain("const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(")
-    expect(save).toContain("if (!unchangedDirectorySelection) {")
-    expect(save).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
-    expect(save?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
-      .toBeLessThan(save?.indexOf("if (input.directorySourceType === \"customer\")") ?? 0)
+    expect(options).toContain("grants.customers\n      ? db")
+    expect(options).toContain("isNull(customers.mergedIntoCustomerId)")
+    expect(options).toContain("grants.vendors\n      ? db")
+    expect(options).toContain("grants.internal\n      ? db")
+
+    const save = domainSource("save-contact.ts")
+    const selection = save.split("async function resolveDirectorySelection(")[1]
+      ?.split("\nasync function ")[0]
+    expect(selection).toContain("const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(")
+    expect(selection).toContain("if (!unchangedDirectorySelection) {")
+    expect(selection).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
+    expect(selection?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
+      .toBeLessThan(selection?.indexOf("input.directorySourceType === \"customer\"\n      ? await selectCustomer") ?? 0)
     expect(save).toContain("isNull(customers.mergedIntoCustomerId)")
   })
 
   it("excludes archived merge sources from project association and project intake", () => {
     expect(actionSource("contact-project-associations.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
-    expect(actionSource("projects.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
+    // Intake's client lookups moved to the project domain module.
+    const intake = readFileSync(join(process.cwd(), "src/lib/domain/project/intake.ts"), "utf8")
+    const resolveCustomer = intake.split("export async function resolveIntakeCustomer(")[1]
+      ?.split("export async function ")[0] ?? ""
+    expect(resolveCustomer.match(/isNull\(customers\.mergedIntoCustomerId\)/g)).toHaveLength(2)
+    expect(readFileSync(join(process.cwd(), "src/lib/domain/project/intake-shell.ts"), "utf8"))
+      .toContain("isNull(customers.mergedIntoCustomerId)")
   })
 })

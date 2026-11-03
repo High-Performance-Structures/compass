@@ -9,9 +9,13 @@ function source(relativePath: string): string {
 const customerActions = source("../../../app/actions/customers.ts")
 const contactEditGate = source("../contact-edit-gate.ts")
 const projectActions = source("../../../app/actions/projects.ts")
-const resultsRoute = source(
-  "../../../app/api/integrations/sage/client-project-writes/results/route.ts"
-)
+// The route's customer write now goes through the contacts store and its
+// operation writes through the Sage bridge store.
+const resultsRoute =
+  source("../../../app/api/integrations/sage/client-project-writes/results/route.ts") +
+  source("../../domain/contacts/store.ts") +
+  source("../../domain/sage-bridge/store.ts")
+const projectStore = source("../../domain/project/store.ts")
 const windowsWriter = source(
   "../../../../scripts/Sage.100.Contractor.CompassClientProjectWriter.cs"
 )
@@ -46,9 +50,11 @@ describe("Sage customer/project creation authorization boundary", () => {
     expect(resultsRoute).toContain("UPDATE customers")
     expect(resultsRoute).toContain("sage_client_id = ?")
     expect(resultsRoute).toContain("sage_client_number = ?")
-    expect(resultsRoute).toContain("UPDATE projects")
-    expect(resultsRoute).toContain("sage_job_id = ?")
-    expect(resultsRoute).toContain("sage_job_number = ?")
+    // The project write goes through the project store.
+    expect(resultsRoute).toContain("sageJobResultStatement(env.DB")
+    expect(projectStore).toContain("UPDATE projects")
+    expect(projectStore).toContain("sage_job_id = ?")
+    expect(projectStore).toContain("sage_job_number = ?")
   })
 
   it("does not bypass contact review when filling a missing Sage client email", () => {

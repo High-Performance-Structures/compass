@@ -1,9 +1,16 @@
 import { and, eq, isNull, ne, type SQL } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
+import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
-import type { EstimateLedgerLine } from "@/lib/financials/estimate-ledger"
+import type { EstimateLedgerLine } from "@/lib/domain/estimates/rules"
+import {
+  deleteChangeOrderLinesStatement,
+  insertChangeOrderHistoryStatement,
+  insertChangeOrderLineStatement,
+  updateChangeOrdersStatement,
+  type Statement,
+} from "@/lib/domain/estimates/store"
 
 type Db = ReturnType<typeof getDb>
 type EstimateRow = typeof projectEstimates.$inferSelect
@@ -104,7 +111,7 @@ export async function changeOrderExecutionFromEstimate(input: {
   readonly evidenceLabel: string
   readonly actor: { readonly id: string | null; readonly name: string; readonly role: string }
   readonly now: string
-}) {
+}): Promise<readonly Statement[]> {
   const changeOrderId = input.estimate.changeOrderId
   if (!changeOrderId) throw new Error("This estimate isn't linked to a change order.")
   const changeOrder = await input.db
@@ -132,11 +139,12 @@ export async function changeOrderExecutionFromEstimate(input: {
   const lines = changeOrderLinesFromEstimate(ledger.lines, (lineId) => (lineId ? assemblyByLine.get(lineId) ?? null : null))
   if (lines.length === 0) throw new Error("The change-order estimate has no priced lines.")
   const totalCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
-  const lineInserts = []
+  const lineInserts: Statement[] = []
   // Each line binds 11 columns; eight per statement stays under D1's limit.
   for (let index = 0; index < lines.length; index += 8) {
     lineInserts.push(
-      input.db.insert(projectChangeOrderLines).values(
+      insertChangeOrderLineStatement(
+        input.db,
         lines.slice(index, index + 8).map((line) => ({
           id: crypto.randomUUID(),
           projectId: input.estimate.projectId,
@@ -155,22 +163,19 @@ export async function changeOrderExecutionFromEstimate(input: {
     )
   }
   return [
-    input.db.delete(projectChangeOrderLines).where(eq(projectChangeOrderLines.changeOrderId, changeOrderId)),
+    deleteChangeOrderLinesStatement(input.db, eq(projectChangeOrderLines.changeOrderId, changeOrderId)),
     ...lineInserts,
-    input.db
-      .update(projectChangeOrders)
-      .set({
-        status: "executed",
-        amountCents: totalCents,
-        budgetTreatment: "additive",
-        executedAt: input.signedAt,
-        executedDocumentUrl: input.evidenceUrl,
-        executedDocumentLabel: input.evidenceLabel.slice(0, 200),
-        foxitStatus: "completed",
-        updatedAt: input.now,
-      })
-      .where(eq(projectChangeOrders.id, changeOrderId)),
-    input.db.insert(projectChangeOrderHistory).values({
+    updateChangeOrdersStatement(input.db, eq(projectChangeOrders.id, changeOrderId), {
+      status: "executed",
+      amountCents: totalCents,
+      budgetTreatment: "additive",
+      executedAt: input.signedAt,
+      executedDocumentUrl: input.evidenceUrl,
+      executedDocumentLabel: input.evidenceLabel.slice(0, 200),
+      foxitStatus: "completed",
+      updatedAt: input.now,
+    }),
+    insertChangeOrderHistoryStatement(input.db, {
       id: crypto.randomUUID(),
       projectId: input.estimate.projectId,
       changeOrderId,
@@ -184,5 +189,5 @@ export async function changeOrderExecutionFromEstimate(input: {
       metadataJson: JSON.stringify({ estimateId: input.estimate.id, totalCents, lineCount: lines.length }),
       createdAt: input.now,
     }),
-  ] as const
+  ]
 }

@@ -115,6 +115,7 @@ function createSchema(sqlite: Sqlite): void {
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
       invoice_id TEXT NOT NULL, payment_id TEXT NOT NULL,
       allocation_cents INTEGER NOT NULL, created_at TEXT NOT NULL,
+      released_at TEXT, released_by TEXT,
       UNIQUE (invoice_id, payment_id)
     );
     CREATE TABLE project_operations (

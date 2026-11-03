@@ -5,15 +5,14 @@ import { IconPlus, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { formatCurrency } from "@/lib/utils"
+import { formatDollars } from "@/lib/format"
+import {
+  lineAmount,
+  lineItemsSubtotal,
+  parseLineNumber,
+  type LineItem,
+} from "@/lib/domain/financials/rules"
 import { useIsMobile } from "@/hooks/use-mobile"
-
-export type LineItem = {
-  description: string
-  quantity: number
-  rate: number
-  amount: number
-}
 
 interface LineItemsEditorProps {
   value: LineItem[]
@@ -42,18 +41,18 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
       if (field === "description") {
         next.description = raw
       } else if (field === "quantity") {
-        next.quantity = parseFloat(raw) || 0
-        next.amount = next.quantity * next.rate
+        next.quantity = parseLineNumber(raw)
+        next.amount = lineAmount(next.quantity, next.rate)
       } else if (field === "rate") {
-        next.rate = parseFloat(raw) || 0
-        next.amount = next.quantity * next.rate
+        next.rate = parseLineNumber(raw)
+        next.amount = lineAmount(next.quantity, next.rate)
       }
       return next
     })
     onChange(updated)
   }
 
-  const subtotal = value.reduce((sum, item) => sum + item.amount, 0)
+  const subtotal = lineItemsSubtotal(value)
 
   // Mobile: card-based layout
   if (isMobile) {
@@ -111,7 +110,7 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
 
             <div className="flex items-center justify-between pt-1 text-xs">
               <span className="text-muted-foreground">Amount:</span>
-              <span className="font-semibold">{formatCurrency(item.amount)}</span>
+              <span className="font-semibold">{formatDollars(item.amount)}</span>
             </div>
           </div>
         ))}
@@ -129,7 +128,7 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
 
         <div className="flex items-center justify-between pt-2 text-sm border-t">
           <span className="font-medium">Subtotal:</span>
-          <span className="font-semibold">{formatCurrency(subtotal)}</span>
+          <span className="font-semibold">{formatDollars(subtotal)}</span>
         </div>
       </div>
     )
@@ -172,7 +171,7 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
             onChange={(e) => updateLine(index, "rate", e.target.value)}
             className="h-9"
           />
-          <span className="text-sm px-2">{formatCurrency(item.amount)}</span>
+          <span className="text-sm px-2">{formatDollars(item.amount)}</span>
           <Button
             type="button"
             variant="ghost"
@@ -190,7 +189,7 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
           Add Line
         </Button>
         <span className="text-sm font-medium">
-          Subtotal: {formatCurrency(subtotal)}
+          Subtotal: {formatDollars(subtotal)}
         </span>
       </div>
     </div>

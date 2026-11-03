@@ -8,6 +8,7 @@ import {
   users,
 } from "./schema"
 import { projectEstimates } from "./schema-estimates"
+import { BRACING_RENTAL_STATUSES } from "../lib/domain/nutech/statuses"
 
 export const nuTechCatalogVersions = sqliteTable(
   "nutech_catalog_versions",
@@ -240,6 +241,8 @@ export const nuTechOrderWorkflows = sqliteTable(
       table.airlitePurchaseOrderOperationId
     ),
     index("nutech_order_workflows_catalog_idx").on(table.catalogVersionId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("nutech_order_workflows_tax_entity_id_idx").on(table.taxEntityId),
   ]
 )
 
@@ -275,6 +278,8 @@ export const nuTechOrderItems = sqliteTable(
       table.workflowId,
       table.sortOrder
     ),
+    index("nutech_order_items_catalog_version_id_idx").on(table.catalogVersionId),
+    index("nutech_order_items_product_id_idx").on(table.productId),
   ]
 )
 
@@ -294,7 +299,7 @@ export const nuTechBracingRentals = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     /** reserved | out | returned */
-    status: text("status").notNull().default("reserved"),
+    status: text("status", { enum: BRACING_RENTAL_STATUSES }).notNull().default("reserved"),
     signedOutOn: text("signed_out_on"),
     expectedReturnOn: text("expected_return_on"),
     returnedOn: text("returned_on"),

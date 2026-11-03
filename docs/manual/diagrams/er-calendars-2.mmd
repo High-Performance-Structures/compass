@@ -1,0 +1,22 @@
+erDiagram
+  direction LR
+  work_calendar_event_attendees {
+    key id
+    ref event_id
+  }
+  work_calendar_events {
+    key id
+  }
+  compass_project_calendar_members {
+    key id
+  }
+  compass_project_calendars {
+    key project_id
+  }
+  my_compass_calendar_items {
+    key id
+  }
+  my_compass_calendars {
+    key user_id
+  }
+  work_calendar_events ||--o{ work_calendar_event_attendees : ""

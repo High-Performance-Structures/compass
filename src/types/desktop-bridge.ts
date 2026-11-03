@@ -1,4 +1,4 @@
-export type DesktopPlatform = "windows" | "macos" | "linux"
+type DesktopPlatform = "windows" | "macos" | "linux"
 
 export type DesktopReadyState = "loading" | "ready" | "error"
 
@@ -22,16 +22,6 @@ export interface DesktopClaudeCredentialsStatus {
   readonly hasCredentials: boolean
   readonly expiresAt: number
   readonly subscriptionType?: string
-}
-
-export interface DesktopShortcutHandlers {
-  readonly sync?: () => void
-  readonly new?: () => void
-  readonly search?: () => void
-  readonly settings?: () => void
-  readonly zoomIn?: () => void
-  readonly zoomOut?: () => void
-  readonly zoomReset?: () => void
 }
 
 export interface CompassDesktopBridge {

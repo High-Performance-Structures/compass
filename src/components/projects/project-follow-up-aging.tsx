@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PROJECT_AGING_LEVELS, type ProjectAgingLevel, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
-export function agingColor(level: ProjectAgingLevel): string {
+function agingColor(level: ProjectAgingLevel): string {
   return `var(${PROJECT_AGING_LEVELS[level].colorToken})`
 }
 

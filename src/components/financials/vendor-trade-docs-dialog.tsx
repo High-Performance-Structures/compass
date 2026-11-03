@@ -38,6 +38,7 @@ import {
   type TradeDocOnFile,
   type TradeDocState,
 } from "@/lib/trade-docs/status"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const STATE_CLASS: Readonly<Record<TradeDocState, string>> = {
@@ -49,10 +50,9 @@ const STATE_CLASS: Readonly<Record<TradeDocState, string>> = {
   waived: "text-success",
 }
 
-function shortDate(value: string | null): string | null {
-  if (!value) return null
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+/** "Oct 30, 2026" (date-only values stay on their day); raw text when unreadable. */
+function docDate(value: string | null): string | null {
+  return value ? formatDate(value, "medium", value) : null
 }
 
 function lineDetail(line: TradeDocLine): string {
@@ -62,10 +62,10 @@ function lineDetail(line: TradeDocLine): string {
     doc.kind === "waiver" ? line.type.waiverLabel : doc.fileName,
     line.daysLeft !== null
       ? line.daysLeft < 0
-        ? `expired ${shortDate(doc.expiresOn)}`
-        : `expires ${shortDate(doc.expiresOn)}${line.daysLeft <= 60 ? ` (${line.daysLeft} days)` : ""}`
+        ? `expired ${docDate(doc.expiresOn)}`
+        : `expires ${docDate(doc.expiresOn)}${line.daysLeft <= 60 ? ` (${line.daysLeft} days)` : ""}`
       : null,
-    `recorded ${shortDate(doc.createdAt)} by ${doc.createdByName}`,
+    `recorded ${docDate(doc.createdAt)} by ${doc.createdByName}`,
   ]
   return parts.filter(Boolean).join(" · ")
 }
@@ -281,8 +281,8 @@ export function VendorTradeDocsDialog({
                 {view.history.map((doc) => (
                   <li key={doc.id} className="flex flex-wrap items-center gap-2">
                     <span>
-                      {typeLabel(doc.docType)} · {doc.fileName ?? "alternative"} · recorded {shortDate(doc.createdAt)}
-                      {doc.expiresOn ? ` · expired ${shortDate(doc.expiresOn)}` : ""}
+                      {typeLabel(doc.docType)} · {doc.fileName ?? "alternative"} · recorded {docDate(doc.createdAt)}
+                      {doc.expiresOn ? ` · expired ${docDate(doc.expiresOn)}` : ""}
                     </span>
                     {doc.webUrl && (
                       <a href={doc.webUrl} target="_blank" rel="noreferrer" className="underline">

@@ -12,7 +12,7 @@ import type {
   ProjectContractPacketDocumentItem,
   ProjectContractPacketEstimateOption,
   ProjectContractPacketSummary,
-} from "@/app/actions/contract-packets"
+} from "@/lib/contracts/packet-types"
 import {
   contractDocumentSchedule,
   dollarsInWords,

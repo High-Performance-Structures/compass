@@ -2,7 +2,7 @@ import { RFQ_VENDOR_CATEGORY_OPTIONS } from "@/lib/project-rfq-categories"
 
 type JsonObject = Readonly<Record<string, unknown>>
 
-export type NormalizedTemplateRfqScopeItem = {
+type NormalizedTemplateRfqScopeItem = {
   readonly lineNumber: number
   readonly description: string
   readonly phaseCode: string | null
@@ -10,14 +10,14 @@ export type NormalizedTemplateRfqScopeItem = {
   readonly notes: string | null
 }
 
-export type NormalizedTemplateRfqDocumentLink = {
+type NormalizedTemplateRfqDocumentLink = {
   readonly lineNumber: number
   readonly label: string
   readonly url: string
   readonly notes: string | null
 }
 
-export type TemplateRfqReview = {
+type TemplateRfqReview = {
   readonly unresolvedPlaceholders: readonly string[]
   readonly requiresDocumentPackage: boolean
 }

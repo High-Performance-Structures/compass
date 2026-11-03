@@ -10,6 +10,9 @@ import {
   projectBudgetLines,
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
+import type { ProjectBudgetApplicationItem } from "@/lib/financials/project-budget-types"
+import { linkedVendorNames } from "@/lib/domain/contacts/directory-links"
+import { preferLinkedText } from "@/lib/domain/contacts/rules"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -38,33 +41,12 @@ import {
 
 export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
 /** "category_percent" shows divisions by percent complete with no amounts. */
-export type ProjectBudgetDetailMode =
+type ProjectBudgetDetailMode =
   | "cost_code"
   | "category"
   | "category_percent"
   | "assembly"
   | "assembly_percent"
-
-export type ProjectBudgetApplicationItem = {
-  readonly id: string
-  readonly sourceSystem: string
-  readonly applicationNumber: string
-  readonly periodTo: string | null
-  readonly status: string
-  readonly originalContractSum: number
-  readonly netChanges: number
-  readonly contractSumToDate: number
-  readonly totalCompletedStoredToDate: number
-  readonly retainageHeld: number
-  readonly totalEarnedLessRetainage: number
-  readonly previousCertificates: number
-  readonly currentPaymentDue: number
-  readonly balanceToFinish: number
-  readonly ownerVisible: boolean
-  readonly documentAvailable: boolean
-  readonly sourceUrl: string | null
-  readonly lastSyncedAt: string | null
-}
 
 export type ProjectBudgetLineItem = {
   readonly id: string
@@ -107,7 +89,7 @@ export type ProjectBudgetDivision = {
   readonly lines: readonly ProjectBudgetLineItem[]
 }
 
-export type ProjectBudgetTotals = {
+type ProjectBudgetTotals = {
   readonly originalEstimate: number
   readonly totalChanges: number
   readonly adjustedEstimate: number
@@ -183,6 +165,16 @@ function toApplicationItem(
   return audience === "owner"
     ? sanitizeBudgetApplicationForOwner(application)
     : application
+}
+
+/** Staff reads prefer the linked directory vendor's name over the imported text. */
+async function withLinkedVendorNames(
+  access: ProjectAccess,
+  rows: readonly (typeof projectBudgetLines.$inferSelect)[]
+): Promise<readonly (typeof projectBudgetLines.$inferSelect)[]> {
+  if (!access.organizationId) return rows
+  const names = await linkedVendorNames(access.db, access.organizationId, rows.map((row) => row.vendorId))
+  return rows.map((row) => ({ ...row, vendorName: preferLinkedText(row.vendorId ? names.get(row.vendorId) : null, row.vendorName) }))
 }
 
 function toLineItem(
@@ -683,7 +675,7 @@ export async function getProjectBudgetSummary(
         ).map((row) => sanitizeBudgetLineForOwner(row))
       : scopeBudgetLinesToApplication(
           (
-            await access.db
+            await withLinkedVendorNames(access, await access.db
               .select()
               .from(projectBudgetLines)
               .where(
@@ -695,7 +687,7 @@ export async function getProjectBudgetSummary(
               .orderBy(
                 asc(projectBudgetLines.sortOrder),
                 asc(projectBudgetLines.costCode)
-              )
+              ))
           ).map((row) => ({
             ...toLineItem(row, effectiveAudience),
             applicationId: row.applicationId,

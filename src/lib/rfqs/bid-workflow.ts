@@ -1,8 +1,5 @@
 import type { PortalRfqVendorResponse } from "@/lib/rfqs/portal-response"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
+import { isRecord } from "@/lib/shared/guards"
 
 export function currencyAmountToCents(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 0

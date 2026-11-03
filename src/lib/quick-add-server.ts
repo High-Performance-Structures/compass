@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm"
 
-import type { ProjectListItem } from "@/app/actions/projects"
+import type { ProjectListItem } from "@/lib/projects/project-list"
 import { getDb } from "@/db"
 import {
   organizationMembers,

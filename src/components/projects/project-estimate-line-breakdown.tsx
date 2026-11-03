@@ -22,7 +22,7 @@ import {
 } from "@/app/actions/project-estimates"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import type { RateBookPickerOption } from "@/app/actions/rate-book"
-import { loadRateBookPicker } from "@/lib/rate-book/picker-cache"
+import { loadRateBookPicker } from "@/components/rate-book/rate-book-picker-cache"
 import { EstimateUnitInput } from "@/components/estimate-unit-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
+import { calculateEstimateLine } from "@/lib/domain/estimates/rules"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {

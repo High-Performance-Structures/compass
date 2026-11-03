@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 const update = vi.hoisted(() => vi.fn())
-vi.mock("@/app/actions/project-profile", () => ({ updateProjectJobStatus: update }))
+vi.mock("@/lib/domain/project/profile-commands", () => ({ updateProjectJobStatusCommand: update }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { updateProjectJobStatuses } from "../project-bulk-status"

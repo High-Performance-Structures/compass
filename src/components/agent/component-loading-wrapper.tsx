@@ -85,27 +85,3 @@ export function ComponentLoadingWrapper({
   // All props available, render the component
   return children
 }
-
-// Predefined prop configs for common component patterns
-export const commonPropConfigs = {
-  card: [
-    { name: "title", type: "text-short" as const, required: true },
-    { name: "description", type: "text" as const },
-    { name: "badge", type: "badge" as const },
-  ],
-  tableRow: [
-    { name: "name", type: "text-short" as const, required: true },
-    { name: "status", type: "badge" as const },
-    { name: "date", type: "date" as const },
-    { name: "value", type: "number" as const },
-  ],
-  stat: [
-    { name: "label", type: "text-short" as const, required: true },
-    { name: "value", type: "number" as const, required: true },
-  ],
-  userCard: [
-    { name: "name", type: "text-short" as const, required: true },
-    { name: "role", type: "badge" as const },
-    { name: "avatar", type: "avatar" as const },
-  ],
-}

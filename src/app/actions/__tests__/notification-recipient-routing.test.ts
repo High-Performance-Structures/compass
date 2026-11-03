@@ -52,6 +52,19 @@ afterEach(() => {
 })
 
 describe("notification bell recipient routing", () => {
+  it("repairs an existing broad RFI link using its stored source id without rewriting the event", async () => {
+    database = openCorrespondenceTestDatabase()
+    database.sqlite.exec(`
+      CREATE TABLE notification_events (id TEXT PRIMARY KEY, organization_id TEXT, title TEXT, body TEXT, href TEXT, priority TEXT, event_type TEXT, project_id TEXT, source_type TEXT, source_id TEXT);
+      CREATE TABLE notification_recipients (id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, in_app INTEGER, dismissed_at TEXT, read_at TEXT, created_at TEXT);
+      INSERT INTO notification_events VALUES ('event-rfi','org-a','RFI changed','Update','/dashboard/projects/project-a/rfis','normal','rfi.updated','project-a','rfi','rfi-a');
+      INSERT INTO notification_recipients VALUES ('recipient-rfi','event-rfi','staff-a',1,NULL,NULL,'2026-10-31T12:00:00Z');
+    `)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: database.d1 } })
+    mocks.requireAuth.mockResolvedValue({ id: "staff-a", role: "admin", organizationId: "org-a" })
+    expect(await getNotificationCenter()).toMatchObject({ success: true, data: { items: [{ href: "/dashboard/projects/project-a/rfis?status=all&item=rfi-a#rfi-rfi-a" }] } })
+    expect(database.sqlite.prepare("SELECT href FROM notification_events WHERE id='event-rfi'").get()).toEqual({ href: "/dashboard/projects/project-a/rfis" })
+  })
   it("uses the signed-in recipient identity for an existing shared vendor notification", async () => {
     database = openCorrespondenceTestDatabase()
     database.sqlite.exec(`
@@ -63,6 +76,7 @@ describe("notification bell recipient routing", () => {
       INSERT INTO notification_recipients VALUES ('recipient-staff-other-org', 'event-other-org', 'staff-a', 1, NULL, NULL, '2026-09-06T01:00:00Z');
       INSERT INTO notification_recipients VALUES ('recipient-vendor', 'event-a', 'owner-a', 1, NULL, NULL, '2026-09-06T00:00:00Z');
       ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
+      ALTER TABLE notification_events ADD COLUMN source_id TEXT;
     `)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: database.d1 } })
     mocks.requireAuth.mockResolvedValue({
@@ -129,6 +143,7 @@ describe("notification bell recipient routing", () => {
         INSERT INTO notification_recipients VALUES ('recipient-other-org', 'event-other-org', 'external-a', 1, NULL, NULL, '2026-09-07T08:00:00Z');
         INSERT INTO project_members VALUES ('member-a', 'project-a', 'external-a', '${projectRole}', '2026-09-01T00:00:00Z');
         ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
+        ALTER TABLE notification_events ADD COLUMN source_id TEXT;
     `)
       mocks.getCloudflareContext.mockResolvedValue({
         env: { DB: database.d1 },
@@ -178,6 +193,7 @@ describe("notification bell recipient routing", () => {
       CREATE TABLE notification_recipients (id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, in_app INTEGER, dismissed_at TEXT, read_at TEXT, created_at TEXT);
       INSERT INTO project_members VALUES ('member-a', 'project-a', 'external-a', 'subcontractor', '2026-09-01T00:00:00Z');
       ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
+      ALTER TABLE notification_events ADD COLUMN source_id TEXT;
     `)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: database.d1 } })
     mocks.requireAuth.mockResolvedValue({

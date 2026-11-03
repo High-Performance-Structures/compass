@@ -19,14 +19,15 @@ export type RfqVendorAnswer =
 
 class AnswerError extends Error {}
 
-function cleanText(value: string | null, max: number): string | null {
+/** Trimmed text, null when blank; longer than `max` is an answer error. */
+function boundedText(value: string | null, max: number): string | null {
   const text = value?.trim() ?? ""
   if (!text) return null
   if (text.length > max) throw new AnswerError(`Text must be ${max.toLocaleString()} characters or fewer.`)
   return text
 }
 
-function money(value: number | null): number | null {
+function roundedToCents(value: number | null): number | null {
   return value === null || !Number.isFinite(value) ? null : Math.round(value * 100) / 100
 }
 
@@ -48,10 +49,10 @@ export function checkRfqVendorAnswer(payload: Pick<PortalRfqPayload, "scopeItems
 
 function checkAnswer(payload: Pick<PortalRfqPayload, "scopeItems">, input: RfqVendorAnswerInput): RfqVendorAnswer {
   if (input.decision !== "quote" && input.decision !== "decline") return { ok: false, error: "Choose quote or decline." }
-  let amount = money(input.amount)
+  let amount = roundedToCents(input.amount)
   const lines =
     input.decision === "quote"
-      ? input.lines.map((line) => ({ lineNumber: line.lineNumber, amount: money(line.amount), notes: cleanText(line.notes, 2_000) }))
+      ? input.lines.map((line) => ({ lineNumber: line.lineNumber, amount: roundedToCents(line.amount), notes: boundedText(line.notes, 2_000) }))
       : []
   if (input.decision === "quote" && payload.scopeItems.length > 0) {
     // A quote prices every scope line; the total is their sum.
@@ -71,9 +72,9 @@ function checkAnswer(payload: Pick<PortalRfqPayload, "scopeItems">, input: RfqVe
       decision: input.decision,
       amount: input.decision === "quote" ? amount : null,
       lines: lines.flatMap((line) => (line.amount === null ? [] : [{ lineNumber: line.lineNumber, amount: line.amount, notes: line.notes }])),
-      leadTime: cleanText(input.leadTime, 240),
+      leadTime: boundedText(input.leadTime, 240),
       validUntil: validDate(input.validUntil),
-      notes: cleanText(input.notes, 10_000),
+      notes: boundedText(input.notes, 10_000),
     },
   }
 }

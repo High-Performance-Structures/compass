@@ -11,6 +11,11 @@ import {
 } from "@/lib/mcp/auth"
 import { revalidatePath } from "next/cache"
 import { isDemoUser } from "@/lib/demo"
+import {
+  deleteMcpApiKey as deleteStoredMcpApiKey,
+  insertMcpApiKey,
+  revokeMcpApiKey as revokeStoredMcpApiKey,
+} from "@/lib/domain/settings/store"
 
 export async function createApiKey(
   name: string,
@@ -36,19 +41,16 @@ export async function createApiKey(
     const { key, keyPrefix } = generateApiKey()
     const keyHash = await hashApiKey(key)
 
-    await db
-      .insert(mcpApiKeys)
-      .values({
-        id: crypto.randomUUID(),
-        userId: user.id,
-        name,
-        keyPrefix,
-        keyHash,
-        scopes: JSON.stringify(scopes),
-        createdAt: now,
-        isActive: true,
-      })
-      .run()
+    await insertMcpApiKey(db, {
+      id: crypto.randomUUID(),
+      userId: user.id,
+      name,
+      keyPrefix,
+      keyHash,
+      scopes: JSON.stringify(scopes),
+      createdAt: now,
+      isActive: true,
+    })
 
     revalidatePath("/dashboard")
 
@@ -156,11 +158,7 @@ export async function revokeApiKey(
       return { success: false, error: "Key not found" }
     }
 
-    await db
-      .update(mcpApiKeys)
-      .set({ isActive: false })
-      .where(eq(mcpApiKeys.id, keyId))
-      .run()
+    await revokeStoredMcpApiKey(db, keyId)
 
     revalidatePath("/dashboard")
 
@@ -210,10 +208,7 @@ export async function deleteApiKey(
       return { success: false, error: "Key not found" }
     }
 
-    await db
-      .delete(mcpApiKeys)
-      .where(eq(mcpApiKeys.id, keyId))
-      .run()
+    await deleteStoredMcpApiKey(db, keyId)
 
     revalidatePath("/dashboard")
 

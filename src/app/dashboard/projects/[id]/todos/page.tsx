@@ -3,11 +3,9 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { notFound } from "next/navigation"
 
-import {
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
-import { getProjectTodos } from "@/app/actions/project-operations"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
+import { getProjectTodos } from "@/app/actions/project-todos"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectTodosView } from "@/components/projects/project-todos-view"
 import { requireAuth } from "@/lib/auth"
@@ -44,6 +42,7 @@ export default async function ProjectTodosPage({
     typeof query.quickAdd === "string" ? query.quickAdd : query.quickAdd?.[0]
   const canManage =
     !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
+  const canDelete = canManage && (await canFeature(user, "tasks", "delete"))
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   if (canManage) {
     const assigneeData = await getProjectTaskAssigneeOptions(id)
@@ -61,6 +60,7 @@ export default async function ProjectTodosPage({
       initialItemId={initialItemId}
       assigneeOptions={assigneeOptions}
       canManage={canManage}
+      canDelete={canDelete}
       initialCreateOpen={quickAdd === "todo"}
     />
   )

@@ -5,7 +5,7 @@ import {
   linkedScheduleTaskId,
   linkedTodoSourceLabel,
 } from "@/lib/schedule/linked-todos"
-import { LINKED_TODO_DATE_UPDATE_SQL } from "@/lib/schedule/linked-todo-sync"
+import { LINKED_TODO_DATE_UPDATE_SQL } from "@/lib/domain/operations/store"
 
 describe("linked schedule to-dos", () => {
   it("only treats a to-do source ID as a schedule link when the item exists", () => {

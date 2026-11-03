@@ -168,6 +168,10 @@ namespace CompassSageClientProjectWriter
                 return RunSquareFeesOnly();
             if (args.Length > 0 && String.Equals(args[0], "--sage-reinit-test", StringComparison.OrdinalIgnoreCase))
                 return RunSageReinitTest();
+            if (args.Length > 0 && String.Equals(args[0], "--vendor-certificate-diagnose", StringComparison.OrdinalIgnoreCase))
+                return RunVendorCertificateDiagnostics();
+            if (args.Length > 0 && String.Equals(args[0], "--vendor-certificate-run", StringComparison.OrdinalIgnoreCase))
+                return RunVendorCertificatesOnly();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -187,6 +191,8 @@ namespace CompassSageClientProjectWriter
                 // Square fees run last, only with SAGE_SQUARE_FEE_WRITES_ENABLED,
                 // and never fail the client/project run.
                 RunSquareFeesAfterWriterRun();
+                // Vendor certificates last, only with SAGE_VENDOR_CERTIFICATE_WRITES_ENABLED.
+                RunVendorCertificatesAfterWriterRun();
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }

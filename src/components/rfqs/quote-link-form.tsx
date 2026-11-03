@@ -8,10 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { QuoteLinkView } from "@/lib/rfqs/quote-link-server"
+import { formatDollars as money } from "@/lib/format"
 
-function money(value: number): string {
-  return value.toLocaleString("en-US", { style: "currency", currency: "USD" })
-}
 
 function parseMoney(text: string): number | null {
   const cleaned = text.replace(/[$,\s]/g, "")

@@ -89,6 +89,7 @@ import {
 } from "@/lib/work-calendar"
 import { cn } from "@/lib/utils"
 import { usePresence } from "@/contexts/presence-context"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 type DashboardMode = "office" | "project"
 
@@ -839,22 +840,9 @@ function OfficePresence({
     )
   }, [currentActivity, status, user])
 
-  useEffect(() => {
-    refreshAvailability()
-    const refreshTimer = window.setInterval(
-      refreshAvailability,
-      TEAM_AVAILABILITY_REFRESH_MS
-    )
-    const handleVisibilityChange = (): void => {
-      if (!document.hidden) refreshAvailability()
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      window.clearInterval(refreshTimer)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-    }
-  }, [refreshAvailability])
+  // Hidden tabs stop polling; the effect above keeps this viewer's own row
+  // current between polls.
+  useVisibleInterval(refreshAvailability, TEAM_AVAILABILITY_REFRESH_MS)
 
   return (
     <section className="border-y border-border/70 bg-background">

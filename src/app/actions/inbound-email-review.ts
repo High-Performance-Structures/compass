@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { inboundEmails, projectRfis, projects } from "@/db/schema"
+import { insertRfi } from "@/lib/domain/rfis/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -18,14 +19,15 @@ import { notifyRfiCreated } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { dismissInboundEmailForReview, markInboundEmailPosted } from "@/lib/domain/correspondence/email-store"
 
-export type InboundEmailReviewProject = {
+type InboundEmailReviewProject = {
   readonly id: string
   readonly projectNumber: string | null
   readonly name: string
 }
 
-export type InboundEmailReviewItem = {
+type InboundEmailReviewItem = {
   readonly id: string
   readonly fromAddress: string
   readonly fromName: string | null
@@ -187,7 +189,7 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const rfiNumber = rfiNumberFor(project.projectNumber, count, id)
-    await db.insert(projectRfis).values({
+    await insertRfi(db, {
       id,
       projectId: project.id,
       sourceSystem: "email",
@@ -251,14 +253,7 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
     }
   }
 
-  await db
-    .update(inboundEmails)
-    .set({
-      projectId: project.id,
-      matchedStatus: "posted",
-      postedMessageId: rfi.id,
-    })
-    .where(eq(inboundEmails.id, email.id))
+  await markInboundEmailPosted(db, email.id, { projectId: project.id, postedMessageId: rfi.id })
 
   revalidatePath("/dashboard/office-maintenance/inbound-email")
   revalidatePath(`/dashboard/projects/${project.id}/rfis`)
@@ -268,15 +263,6 @@ export async function routeInboundEmailToRfi(formData: FormData): Promise<void> 
 export async function dismissInboundEmail(formData: FormData): Promise<void> {
   const emailId = requiredFormString(formData, "emailId")
   const { db, organizationId } = await reviewContext()
-  await db
-    .update(inboundEmails)
-    .set({ matchedStatus: "dismissed" })
-    .where(
-      and(
-        eq(inboundEmails.id, emailId),
-        eq(inboundEmails.organizationId, organizationId),
-        eq(inboundEmails.matchedStatus, "needs_review")
-      )
-    )
+  await dismissInboundEmailForReview(db, emailId, organizationId)
   revalidatePath("/dashboard/office-maintenance/inbound-email")
 }

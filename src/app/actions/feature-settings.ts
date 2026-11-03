@@ -7,6 +7,7 @@ import { organizationFeatureSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { deleteOrganizationFeatureSetting, saveOrganizationFeatureSetting } from "@/lib/domain/settings/store"
 import {
   FEATURE_SETTINGS,
   canEditFeatureSettings,
@@ -14,7 +15,10 @@ import {
   parseFeatureSettings,
   type FeatureSettingsKey,
 } from "@/lib/feature-settings/registry"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
+import { requestAllVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
+import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -70,6 +74,11 @@ export async function getFeatureSettingsForEditor(key: string): Promise<Result<F
   }
 }
 
+async function requeueSageCertificates(db: Db, organizationId: string): Promise<void> {
+  const settings = await readFeatureSettings(db, organizationId, "trade-docs")
+  if (settings.sage.enabled) await requestAllVendorCertificateSyncs(db, organizationId)
+}
+
 /** Saves a feature's settings for the company (admins only). */
 export async function saveFeatureSettings(key: string, value: unknown): Promise<Result<null>> {
   try {
@@ -88,13 +97,15 @@ export async function saveFeatureSettings(key: string, value: unknown): Promise<
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Check the values and try again." }
     const now = new Date().toISOString()
     const json = JSON.stringify(parsed.data)
-    await ctx.db
-      .insert(organizationFeatureSettings)
-      .values({ organizationId: ctx.organizationId, featureKey: key, value: json, updatedAt: now, updatedBy: ctx.userId })
-      .onConflictDoUpdate({
-        target: [organizationFeatureSettings.organizationId, organizationFeatureSettings.featureKey],
-        set: { value: json, updatedAt: now, updatedBy: ctx.userId },
-      })
+    await saveOrganizationFeatureSetting(ctx.db, {
+      organizationId: ctx.organizationId,
+      featureKey: key,
+      value: json,
+      updatedAt: now,
+      updatedBy: ctx.userId,
+    })
+    // Required documents, names or the warn-only switch can change every vendor's Sage certificates.
+    if (key === "trade-docs") await requeueSageCertificates(ctx.db, ctx.organizationId)
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }
@@ -117,9 +128,8 @@ export async function resetFeatureSettings(key: string): Promise<Result<null>> {
         error: FEATURE_SETTINGS[key].editorRoles ? "Only the company owner can change these settings." : "Only admins can change company settings.",
       }
     }
-    await ctx.db
-      .delete(organizationFeatureSettings)
-      .where(and(eq(organizationFeatureSettings.organizationId, ctx.organizationId), eq(organizationFeatureSettings.featureKey, key)))
+    await deleteOrganizationFeatureSetting(ctx.db, ctx.organizationId, key)
+    if (key === "trade-docs") await requeueSageCertificates(ctx.db, ctx.organizationId)
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }

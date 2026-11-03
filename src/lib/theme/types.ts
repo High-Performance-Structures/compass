@@ -63,7 +63,7 @@ export interface ThemeShadows {
   readonly "2xl": string
 }
 
-export interface ThemePreviewColors {
+interface ThemePreviewColors {
   readonly primary: string
   readonly background: string
   readonly foreground: string

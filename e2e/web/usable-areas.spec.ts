@@ -183,18 +183,47 @@ test.describe("usable Compass areas", () => {
   })
 
   test("timezone preference persists after reloading settings", async ({ page }) => {
+    // Production can drop individual requests without answering them
+    // (issue #1036). The Preferences tab retries internally (up to ~60s)
+    // and surfaces an error when every attempt dies, so drive it the way a
+    // user would — re-click Save on a reported failure, reload again on a
+    // failed load — waiting out the tab's full retry budget each time. A
+    // genuine persistence bug still fails: the saved notice never appears,
+    // or the reloaded value is wrong.
+    test.slow()
     const path = "/dashboard/settings"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
 
     const timezone = page.getByRole("combobox", { name: "Timezone" })
+    await expect(timezone).toBeVisible({ timeout: 75_000 })
     await timezone.click()
     await page.getByRole("option", { name: "Pacific (PT)" }).click()
     await expect(timezone).toContainText("Pacific (PT)")
-    await page.getByRole("button", { name: "Save preferences" }).click()
-    await expect(page.getByText("Preferences saved.")).toBeVisible()
 
-    await page.reload()
+    const savedNotice = page.getByText("Preferences saved.")
+    const saveFailedNotice = page.getByText(
+      "Could not save preferences. Please try again."
+    )
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.getByRole("button", { name: "Save preferences" }).click()
+      await expect(savedNotice.or(saveFailedNotice).first()).toBeVisible({
+        timeout: 75_000,
+      })
+      if (await savedNotice.isVisible()) break
+    }
+    await expect(savedNotice).toBeVisible()
+
+    const loadFailedNotice = page.getByText(
+      "Could not load notification preferences. Reload the page to try again."
+    )
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.reload()
+      await expect(
+        page.getByRole("combobox", { name: "Timezone" })
+      ).toBeVisible({ timeout: 75_000 })
+      if (!(await loadFailedNotice.isVisible())) break
+    }
     await expect(
       page.getByRole("combobox", { name: "Timezone" })
     ).toContainText("Pacific (PT)")
@@ -1084,9 +1113,17 @@ test.describe("usable Compass areas", () => {
     const editDialog = page.getByRole("dialog", {
       name: "Edit Schedule Item",
     })
-    await editDialog.getByRole("button", { name: "Demo User" }).click()
+    // Everyone assigned shows as a removable entry; the picker adds more.
+    await expect(
+      editDialog.getByRole("list", { name: "Assigned people" })
+    ).toContainText("Demo User")
+    await editDialog
+      .getByRole("button", { name: "Add another person..." })
+      .click()
     await expect(page.getByText("No matching contacts.")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Demo User" })).toHaveCount(1)
+    await expect(
+      page.getByRole("button", { name: "Remove Demo User" })
+    ).toHaveCount(1)
   })
 
   test("schedule items expose related records in the existing to-do workspace", async ({
@@ -1126,7 +1163,7 @@ test.describe("usable Compass areas", () => {
       /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
     )
     const focusedTodo = page.locator(
-      'article[data-focused="true"]#todo-e2e-todo-001'
+      'tr[data-focused="true"]#todo-e2e-todo-001'
     )
     await expect(focusedTodo).toContainText("Regression follow-up")
     await expect(
@@ -1237,11 +1274,22 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("work calendar opens to Events and preserves an explicit All work selection", async ({ page }) => {
+    const response = await page.goto("/dashboard/schedule?view=list")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+    await expect(page.getByRole("button", { name: "Events", exact: true })).toHaveAttribute("aria-pressed", "true")
+    const allWork = page.getByRole("button", { name: "All work", exact: true })
+    await allWork.click()
+    await page.waitForURL((url) => url.searchParams.get("kind") === "all")
+    await page.reload()
+    await expect(allWork).toHaveAttribute("aria-pressed", "true")
+  })
+
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=list")
+    const response = await page.goto("/dashboard/schedule?view=list&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const workQueue = page.locator("section").filter({
@@ -1295,46 +1343,92 @@ test.describe("usable Compass areas", () => {
   test("work calendar arrows move by the active view period", async ({
     page,
   }) => {
+    // Production can drop the RSC round trip behind router.replace, so the
+    // label moves while the URL never commits (issue #1036). Mirror a user
+    // nudging the stalled navigation: step back and forward again to fire a
+    // fresh replace before treating the stale URL as a failure. Arrows that
+    // never commit a URL still fail after the nudges.
+    test.slow()
+
+    async function arrowCommitsUrl(
+      arrowName: string,
+      oppositeName: string,
+      committed: (url: string) => boolean
+    ): Promise<void> {
+      await page.getByRole("button", { name: arrowName }).click()
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await page.waitForURL((url) => committed(url.toString()), {
+            timeout: 15_000,
+          })
+          return
+        } catch {
+          await page.getByRole("button", { name: oppositeName }).click()
+          await page.getByRole("button", { name: arrowName }).click()
+        }
+      }
+      await page.waitForURL((url) => committed(url.toString()), {
+        timeout: 15_000,
+      })
+    }
+
     // App Router can briefly retain the previous streamed tree while the next
     // calendar route commits. Both labels contain the same period, so target
     // the active tree without making the navigation assertion timing-sensitive.
     const periodLabel = page
       .getByTestId("work-calendar-period-label")
       .last()
+    const matchesPeriod = (url: string, view: string): boolean => {
+      const params = new URL(url).searchParams
+      return params.get("view") === view && params.get("kind") === "event" && /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "")
+    }
 
     let response = await page.goto("/dashboard/schedule?view=today")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialDay = await periodLabel.innerText()
     await page.getByRole("button", { name: "Events" }).click()
-    await page.getByRole("button", { name: "Next day" }).click()
-    await expect(periodLabel).not.toHaveText(initialDay)
-    await expect(page).toHaveURL(
-      /view=today&date=\d{4}-\d{2}-\d{2}&kind=event/
+    await arrowCommitsUrl("Next day", "Previous day", (url) =>
+      matchesPeriod(url, "today")
     )
+    await expect(periodLabel).not.toHaveText(initialDay)
     const nextDayUrl = page.url()
-    await page.getByRole("button", { name: "Previous day" }).click()
+    await arrowCommitsUrl(
+      "Previous day",
+      "Next day",
+      (url) => matchesPeriod(url, "today") && url !== nextDayUrl
+    )
     await expect(periodLabel).toHaveText(initialDay)
     await expect(page).not.toHaveURL(nextDayUrl)
 
     response = await page.goto("/dashboard/schedule?view=week")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialWeek = await periodLabel.innerText()
-    await page.getByRole("button", { name: "Next week" }).click()
+    await arrowCommitsUrl("Next week", "Previous week", (url) =>
+      matchesPeriod(url, "week")
+    )
     await expect(periodLabel).not.toHaveText(initialWeek)
-    await expect(page).toHaveURL(/view=week&date=\d{4}-\d{2}-\d{2}/)
     const nextWeekUrl = page.url()
-    await page.getByRole("button", { name: "Previous week" }).click()
+    await arrowCommitsUrl(
+      "Previous week",
+      "Next week",
+      (url) => matchesPeriod(url, "week") && url !== nextWeekUrl
+    )
     await expect(periodLabel).toHaveText(initialWeek)
     await expect(page).not.toHaveURL(nextWeekUrl)
 
     response = await page.goto("/dashboard/schedule?view=month")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
     const initialMonth = await periodLabel.innerText()
-    await page.getByRole("button", { name: "Next month" }).click()
+    await arrowCommitsUrl("Next month", "Previous month", (url) =>
+      matchesPeriod(url, "month")
+    )
     await expect(periodLabel).not.toHaveText(initialMonth)
-    await expect(page).toHaveURL(/view=month&date=\d{4}-\d{2}-\d{2}/)
     const nextMonthUrl = page.url()
-    await page.getByRole("button", { name: "Previous month" }).click()
+    await arrowCommitsUrl(
+      "Previous month",
+      "Next month",
+      (url) => matchesPeriod(url, "month") && url !== nextMonthUrl
+    )
     await expect(periodLabel).toHaveText(initialMonth)
     await expect(page).not.toHaveURL(nextMonthUrl)
   })
@@ -1343,7 +1437,7 @@ test.describe("usable Compass areas", () => {
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=month")
+    const response = await page.goto("/dashboard/schedule?view=month&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const overflowButton = page.getByRole("button", {
@@ -1369,7 +1463,7 @@ test.describe("usable Compass areas", () => {
     page,
   }) => {
     skipWithoutDemoFixtures()
-    const response = await page.goto("/dashboard/schedule?view=list")
+    const response = await page.goto("/dashboard/schedule?view=list&kind=all")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
     const todoLink = page
@@ -1385,7 +1479,7 @@ test.describe("usable Compass areas", () => {
       /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
     )
     const focusedTodo = page.locator(
-      'article[data-focused="true"]#todo-e2e-todo-001'
+      'tr[data-focused="true"]#todo-e2e-todo-001'
     )
     await expect(focusedTodo).toContainText("Regression follow-up")
     await expect(focusedTodo).toBeFocused()

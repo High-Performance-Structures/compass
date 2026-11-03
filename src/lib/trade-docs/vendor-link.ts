@@ -14,7 +14,7 @@ export const TRADE_DOC_REPLY_ACTION = "trade_docs_email_reply_received"
 export const TRADE_DOC_LINK_UPLOAD_LIMIT = 40
 export const TRADE_DOC_LINK_MAX_BYTES = 25 * 1024 * 1024
 
-export const TRADE_DOC_LINK_AUDIENCES = ["vendor", "agent"] as const
+const TRADE_DOC_LINK_AUDIENCES = ["vendor", "agent"] as const
 export type TradeDocLinkAudience = (typeof TRADE_DOC_LINK_AUDIENCES)[number]
 
 export function isTradeDocLinkAudience(value: string): value is TradeDocLinkAudience {
@@ -47,7 +47,7 @@ export function tradeDocLinkItemState(line: TradeDocLine, receivedThroughLink: b
 
 const EMAIL = /^[^\s@<>,"]+@[^\s@<>,"]+\.[^\s@<>,"]+$/
 
-export function isLinkEmail(value: string): boolean {
+function isLinkEmail(value: string): boolean {
   return value.length <= 254 && EMAIL.test(value)
 }
 

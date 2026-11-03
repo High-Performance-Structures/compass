@@ -1,0 +1,32 @@
+flowchart TB
+  subgraph Browser
+    PAGE[page.tsx - server component<br/>loads data, passes props]
+    CC[Client components<br/>preview math via pure rules]
+  end
+  subgraph Adapters[Thin adapters - src/app]
+    ACT[Server actions<br/>src/app/actions/*.ts]
+    API[API routes<br/>src/app/api/**/route.ts]
+  end
+  CTX[Action context<br/>src/lib/server/action-context.ts<br/>user, org, db, feature, demo, project]
+  subgraph Domain[src/lib/domain/module]
+    ACC[access.ts<br/>who may]
+    RUL[rules.ts<br/>pure: numbering, totals,<br/>transitions, validation]
+    STO[store.ts<br/>the only writer of its tables]
+  end
+  SH[Shared helpers<br/>format.ts money and dates,<br/>shared/guards.ts, shared/env.ts,<br/>d1-query.ts chunking, ActionResult, Db]
+  INT[Integration clients<br/>google, sage, foxit, goto, push, email]
+  DB[(D1)]
+  PAGE --> CC
+  CC -- call --> ACT
+  PAGE -- reads --> Domain
+  ACT --> CTX
+  API --> CTX
+  CTX --> ACC
+  ACT --> RUL
+  ACT --> STO
+  API --> STO
+  INT --> STO
+  STO --> DB
+  RUL --- SH
+  STO --- SH
+  CC -. same pure function .-> RUL

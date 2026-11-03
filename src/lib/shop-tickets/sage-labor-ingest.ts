@@ -4,6 +4,7 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { chunkD1Values } from "@/lib/d1-query"
 import { sageLaborLines, sageLaborRequests, shopTicketLaborClaims } from "@/db/schema-shop-tickets"
+import { updateSageLaborRequests } from "@/lib/domain/sage-bridge/store"
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
@@ -63,10 +64,11 @@ export async function ingestSageLaborResult(env: CloudflareEnv, input: unknown):
   const now = new Date().toISOString()
 
   if (!result.ok) {
-    await db
-      .update(sageLaborRequests)
-      .set({ status: "failed", error: result.error, completedAt: now, updatedAt: now })
-      .where(eq(sageLaborRequests.id, request.id))
+    await updateSageLaborRequests(
+      db,
+      { status: "failed", error: result.error, completedAt: now, updatedAt: now },
+      eq(sageLaborRequests.id, request.id),
+    )
     return { success: true, lineCount: 0 }
   }
 
@@ -125,17 +127,18 @@ export async function ingestSageLaborResult(env: CloudflareEnv, input: unknown):
     const removable = chunk.filter((id) => !billedIds.has(id))
     if (removable.length > 0) await db.delete(sageLaborLines).where(inArray(sageLaborLines.id, removable))
   }
-  await db
-    .update(sageLaborRequests)
-    .set({
+  await updateSageLaborRequests(
+    db,
+    {
       status: "done",
       error: null,
       sageJobNumber: result.sageJobNumber,
       lineCount: rows.length,
       completedAt: now,
       updatedAt: now,
-    })
-    .where(eq(sageLaborRequests.id, request.id))
+    },
+    eq(sageLaborRequests.id, request.id),
+  )
   return { success: true, lineCount: rows.length }
 }
 

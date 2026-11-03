@@ -2,15 +2,12 @@
 
 import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, count, desc, eq } from "drizzle-orm"
-import { getDb } from "@/db"
-import { projectContacts, projects } from "@/db/schema"
+import { projectContacts } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import { nuTechBracingRentals, nuTechOrderItems } from "@/db/schema-nutech"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
+import { isNuTechJob, readNuTechProject } from "@/lib/domain/nutech/access"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { projectDepartment } from "@/lib/project-branding"
+import { orgContext } from "@/lib/server/action-context"
 import { loadWorkflowChecks, readWorkflowCustomization } from "@/lib/job-workflows/server"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -43,27 +40,15 @@ function pick<T extends string>(options: readonly { readonly value: T }[], value
  */
 export async function getNuTechOrderOverview(projectId: string): Promise<NuTechOrderOverview | null> {
   try {
-    const user = await requireAuth()
+    const context = await orgContext()
+    // No user, company or database: no overview.
+    if (!context.success) return null
+    const { db, user, organizationId } = context.data
     if (!isInternalStaffRole(user.role)) return null
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return null
-    const db = getDb(env.DB)
-    const project = await db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        address: projects.address,
-        jobStatusId: projects.jobStatusId,
-        deliveryMethod: projects.deliveryMethod,
-      })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .limit(1)
-      .get()
+    const project = await readNuTechProject(db, organizationId, projectId)
     if (!project) return null
-    if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return null
+    if (!isNuTechJob(project)) return null
 
     // The job overview follows the newest order and that order's estimate.
     const latestOrder = await findNuTechOrder(db, projectId, null)

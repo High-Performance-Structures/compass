@@ -15,9 +15,13 @@ export type TradeDocOnFile = {
   readonly createdAt: string
   readonly createdByName: string
 }
-
-export const TRADE_DOC_STATES = ["missing", "expired", "needs_date", "expiring", "on_file", "waived"] as const
-export type TradeDocState = (typeof TRADE_DOC_STATES)[number]
+export type TradeDocState =
+  | "missing"
+  | "expired"
+  | "needs_date"
+  | "expiring"
+  | "on_file"
+  | "waived"
 
 export type TradeDocLine = {
   readonly type: TradeDocType
@@ -47,7 +51,7 @@ function dayNumber(isoDate: string): number | null {
   return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / DAY_MS)
 }
 
-export function isRequiredFor(type: TradeDocType, vendorCategory: string | null): boolean {
+function isRequiredFor(type: TradeDocType, vendorCategory: string | null): boolean {
   const category = vendorCategory?.trim().toLowerCase() ?? ""
   return category.length > 0 && type.requiredFor.some((item) => item.trim().toLowerCase() === category)
 }

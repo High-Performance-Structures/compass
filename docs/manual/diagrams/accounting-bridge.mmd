@@ -1,0 +1,19 @@
+sequenceDiagram
+  autonumber
+  participant U as Staff action
+  participant W as Compass worker
+  participant DB as D1 queue tables
+  participant AG as On-prem agent<br/>(poller or writer)
+  participant ACC as Accounting system
+  U->>W: e.g. create project, queue pay-app sync
+  W->>DB: insert operation (status queued)
+  loop every minute
+    AG->>W: GET /api/integrations/sage/.../requests<br/>signed: timestamp, request id, HMAC
+    W->>DB: verify, store nonce, heartbeat sage_bridge_status
+    W->>DB: claim rows (claim_token, claimed_at), re-claim stale
+    W-->>AG: claimed work (JSON, zod-validated)
+    AG->>ACC: read (SQL, read-only login) or write (vendor API)
+    AG->>W: POST .../results with id + claim_token
+    W->>DB: complete / needs_review / failed (409 if claim stale)
+  end
+  Note over W: Every 10 min: health check raises an<br/>offline notification if a heartbeat is older than 5 min

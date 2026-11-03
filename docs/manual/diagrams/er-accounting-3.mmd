@@ -1,0 +1,25 @@
+erDiagram
+  direction LR
+  sage_client_directory_refreshes {
+    key id
+  }
+  sage_client_project_write_operations {
+    key id
+    ref customer_id
+  }
+  sage_contact_snapshots {
+    key id
+  }
+  sage_cost_codes {
+    key id
+  }
+  sage_labor_lines {
+    key id
+  }
+  sage_labor_requests {
+    key id
+  }
+  customers {
+    key id
+  }
+  customers |o--o{ sage_client_project_write_operations : ""

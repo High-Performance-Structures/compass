@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 import type { FoxitEnvelopeField } from "@/lib/foxit/esign"
 import { pdfSafeText, wrapPdfText } from "@/lib/trade-docs/info-sheet-pdf"
 import type { TradeLetterKind, TradeLetterScopeItem } from "@/lib/trade-letters/letter"
+import { formatCents as money } from "@/lib/format"
 
 const PAGE = { width: 612, height: 792, margin: 54 } as const
 const SIGNATURE_BLOCK_HEIGHT = 120
@@ -32,10 +33,6 @@ export type PreparedTradeLetterPdf = {
   readonly pdfBytes: Uint8Array<ArrayBuffer>
   /** Signature and date fields: party 1 is the trade, party 2 the company. */
   readonly fields: readonly FoxitEnvelopeField[]
-}
-
-function money(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100)
 }
 
 async function embedLogo(document: PDFDocument, bytes: Uint8Array | null): Promise<PDFImage | null> {

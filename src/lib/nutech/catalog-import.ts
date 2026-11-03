@@ -1,6 +1,6 @@
-export type NuTechProductCategory = "block" | "panel" | "web" | "accessory"
+type NuTechProductCategory = "block" | "panel" | "web" | "accessory"
 
-export type NuTechAirliteMappingStatus = "mapped" | "addendum_required"
+type NuTechAirliteMappingStatus = "mapped" | "addendum_required"
 
 export type NuTechImportedProduct = {
   readonly manufacturerSku: string

@@ -5,12 +5,17 @@ import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
 import {
+  flagSageSquareOperationsForAttentionStatement,
+  updateSageSquarePaymentOperations,
+  upsertSageSquarePaymentOperationStatement,
+} from "@/lib/domain/sage-bridge/square-store"
+import {
   dismissSageSquareException,
   notifySageSquareManualReceipt,
 } from "@/lib/sage/square-payment-notifications"
 import { upsertSquareOwnerReceivable } from "@/lib/sage/square-receivable"
 
-export const SQUARE_API_VERSION = "2026-08-19"
+const SQUARE_API_VERSION = "2026-08-19"
 export const SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER = 10000
 export const SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER = 62020
 
@@ -171,7 +176,7 @@ export const sageSquarePaymentResultSchema = z.discriminatedUnion("outcome", [
 ])
 
 export type SquareWebhookEvent = z.infer<typeof squareWebhookEventSchema>
-export type SageSquarePaymentPayload = z.infer<
+type SageSquarePaymentPayload = z.infer<
   typeof sageSquarePaymentPayloadSchema
 >
 
@@ -555,44 +560,28 @@ async function insertOperation(
   now: string
 ): Promise<string> {
   const operationId = crypto.randomUUID()
-  await env.DB.prepare(
-    `INSERT INTO sage_square_payment_operations (
-       id, organization_id, project_id, operation_type, idempotency_key, square_payment_id,
-       square_invoice_id, square_order_id, square_location_id, department,
-       sage_job_short_name, sage_invoice_id, sage_invoice_number, amount_cents, currency,
-       deposit_account_number, merchant_fee_account_number, payload_json,
-       status, payment_completed_at, requested_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(idempotency_key) DO UPDATE SET
-       organization_id = excluded.organization_id,
-       project_id = excluded.project_id,
-       sage_job_short_name = excluded.sage_job_short_name,
-       updated_at = excluded.updated_at`
-  )
-    .bind(
-      operationId,
-      context.organizationId,
-      context.projectId,
-      operationType,
-      idempotencyKey,
-      context.squarePaymentId,
-      context.squareInvoiceId,
-      context.squareOrderId,
-      context.squareLocationId,
-      context.department,
-      context.sageJobShortName,
-      context.sageInvoiceId,
-      context.sageInvoiceNumber,
-      amountCents,
-      SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
-      SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
-      JSON.stringify(payload),
-      sageSquareInitialOperationStatus(operationType),
-      context.paymentCompletedAt,
-      now,
-      now
-    )
-    .run()
+  await upsertSageSquarePaymentOperationStatement(env.DB, {
+    id: operationId,
+    organizationId: context.organizationId,
+    projectId: context.projectId,
+    operationType,
+    idempotencyKey,
+    squarePaymentId: context.squarePaymentId,
+    squareInvoiceId: context.squareInvoiceId,
+    squareOrderId: context.squareOrderId,
+    squareLocationId: context.squareLocationId,
+    department: context.department,
+    sageJobShortName: context.sageJobShortName,
+    sageInvoiceId: context.sageInvoiceId,
+    sageInvoiceNumber: context.sageInvoiceNumber,
+    amountCents,
+    depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
+    merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
+    payloadJson: JSON.stringify(payload),
+    status: sageSquareInitialOperationStatus(operationType),
+    paymentCompletedAt: context.paymentCompletedAt,
+    now,
+  }).run()
   const stored = await env.DB.prepare(
     `SELECT id FROM sage_square_payment_operations WHERE idempotency_key = ?`
   )
@@ -912,20 +901,19 @@ async function contextFromReceiptWithLegacyHydration(
   }
   const project = await resolveCompassProject(env, invoice.sageJobShortName)
   const db = getDb(env.DB)
-  await db
-    .update(sageSquarePaymentOperations)
-    .set({
+  await updateSageSquarePaymentOperations(
+    db,
+    {
       organizationId: project.organizationId,
       projectId: project.id,
       sageJobShortName: invoice.sageJobShortName,
       updatedAt: new Date().toISOString(),
-    })
-    .where(
-      eq(
-        sageSquarePaymentOperations.squarePaymentId,
-        operation.squarePaymentId
-      )
+    },
+    eq(
+      sageSquarePaymentOperations.squarePaymentId,
+      operation.squarePaymentId
     )
+  )
   return contextFromReceipt({
     ...operation,
     organizationId: project.organizationId,
@@ -1013,26 +1001,25 @@ export async function reconcileSageSquareManualReceipts(
       depositAccountNumber: receipt.depositAccountNumber,
       merchantFeeAccountNumber: receipt.merchantFeeAccountNumber,
     })
-    const updated = await db
-      .update(sageSquarePaymentOperations)
-      .set({
+    const updated = await updateSageSquarePaymentOperations(
+      db,
+      {
         status: "manual_action_required",
         claimToken: null,
         claimedAt: null,
         updatedAt: now.toISOString(),
-      })
-      .where(
-        and(
-          eq(sageSquarePaymentOperations.id, receipt.id),
-          or(
-            eq(sageSquarePaymentOperations.status, "queued"),
-            and(
-              eq(sageSquarePaymentOperations.status, "running"),
-              lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-            )
+      },
+      and(
+        eq(sageSquarePaymentOperations.id, receipt.id),
+        or(
+          eq(sageSquarePaymentOperations.status, "queued"),
+          and(
+            eq(sageSquarePaymentOperations.status, "running"),
+            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
           )
         )
       )
+    )
       .returning({ id: sageSquarePaymentOperations.id })
     if (updated.length === 1) transitioned += 1
   }
@@ -1070,14 +1057,12 @@ async function processPaymentUpdate(
     payment.status !== "COMPLETED" ||
     (payment.refunded_money?.amount ?? 0) > 0
   ) {
-    await env.DB.prepare(
-      `UPDATE sage_square_payment_operations
-       SET status = CASE WHEN status = 'succeeded' THEN status ELSE 'attention' END,
-           error_message = ?, updated_at = ?
-       WHERE square_payment_id = ?`
-    )
-      .bind("Square payment changed or was refunded; review is required", now, payment.id)
-      .run()
+    await flagSageSquareOperationsForAttentionStatement(env.DB, {
+      match: "square_payment_id",
+      squareId: payment.id,
+      errorMessage: "Square payment changed or was refunded; review is required",
+      now,
+    }).run()
     throw new SageSquarePaymentAttentionError(
       "Square bridge payment changed or was refunded",
       scope
@@ -1333,14 +1318,12 @@ export async function processSquareWebhookEvent(
             receiptOperationId: receipt.id,
           }
         : undefined
-    await env.DB.prepare(
-      `UPDATE sage_square_payment_operations
-       SET status = CASE WHEN status = 'succeeded' THEN status ELSE 'attention' END,
-           error_message = ?, updated_at = ?
-       WHERE square_invoice_id = ?`
-    )
-      .bind(`Square reported ${event.type}; review is required`, now, invoice.id)
-      .run()
+    await flagSageSquareOperationsForAttentionStatement(env.DB, {
+      match: "square_invoice_id",
+      squareId: invoice.id,
+      errorMessage: `Square reported ${event.type}; review is required`,
+      now,
+    }).run()
     throw new SageSquarePaymentAttentionError(
       `Square reported ${event.type} for a Sage bridge invoice`,
       scope

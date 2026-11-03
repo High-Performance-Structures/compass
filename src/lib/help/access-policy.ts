@@ -1,6 +1,6 @@
 import { HELP_GUIDES, helpAudienceForRole } from "@/lib/help"
 import type { HelpGuide } from "@/lib/help/types"
-import { USER_ROLES } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
 
 export function getAudienceHelpGuides(
   role: string,

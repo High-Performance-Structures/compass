@@ -1,0 +1,64 @@
+erDiagram
+  direction LR
+  estimate_terms_templates {
+    key id
+  }
+  project_estimate_acknowledgements {
+    key id
+    ref estimate_id
+  }
+  project_estimate_assemblies {
+    key id
+    ref estimate_id
+  }
+  project_estimate_basis_documents {
+    key id
+    ref estimate_id
+    ref project_document_id
+  }
+  project_estimate_line_cost_items {
+    key id
+    ref estimate_id
+    ref estimate_line_id
+    ref tax_entity_id
+  }
+  project_estimate_lines {
+    key id
+    ref estimate_id
+    ref template_line_id
+    ref assembly_id
+    ref report_phase_id
+    ref tax_entity_id
+    ref pricing_todo_id
+  }
+  estimate_template_lines {
+    key id
+  }
+  project_documents {
+    key id
+  }
+  project_estimate_report_phases {
+    key id
+  }
+  project_estimates {
+    key id
+  }
+  project_operations {
+    key id
+  }
+  sage_tax_entities {
+    key id
+  }
+  estimate_template_lines |o--o{ project_estimate_lines : ""
+  project_documents |o--o{ project_estimate_basis_documents : ""
+  project_estimate_assemblies |o--o{ project_estimate_lines : ""
+  project_estimate_lines ||--o{ project_estimate_line_cost_items : ""
+  project_estimate_report_phases |o--o{ project_estimate_lines : ""
+  project_estimates ||--o{ project_estimate_acknowledgements : ""
+  project_estimates ||--o{ project_estimate_assemblies : ""
+  project_estimates ||--o{ project_estimate_basis_documents : ""
+  project_estimates ||--o{ project_estimate_line_cost_items : ""
+  project_estimates ||--o{ project_estimate_lines : ""
+  project_operations |o--o{ project_estimate_lines : ""
+  sage_tax_entities |o--o{ project_estimate_line_cost_items : ""
+  sage_tax_entities |o--o{ project_estimate_lines : ""

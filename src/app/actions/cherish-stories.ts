@@ -1,5 +1,6 @@
 "use server"
 
+import { updateNotificationEventsForSource } from "@/lib/domain/notifications/store"
 import {
   and,
   count,
@@ -20,7 +21,6 @@ import {
   cherishPulseResponses,
   cherishPulseStoryReplies,
   cherishPulseStoryStates,
-  notificationEvents,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { conversationFullViewHref } from "@/lib/conversations/notification-route"
@@ -227,21 +227,14 @@ export async function sendCherishStoryReply(
           rollbackError: rollback.error,
         })
       } else {
-        await context.db
-          .update(notificationEvents)
-          .set({
+        await updateNotificationEventsForSource(
+          context.db,
+          { organizationId: context.organizationId, sourceType: "message", sourceId: id, createdBy: context.user.id },
+          {
             title: "CHERISH reply not sent",
             body: "This reply could not be delivered.",
-          })
-          .where(
-            and(
-              eq(notificationEvents.organizationId, context.organizationId),
-              eq(notificationEvents.sourceType, "message"),
-              eq(notificationEvents.sourceId, id),
-              eq(notificationEvents.createdBy, context.user.id),
-            ),
-          )
-          .run()
+          },
+        )
       }
       return {
         success: false,
@@ -252,22 +245,15 @@ export async function sendCherishStoryReply(
     // The regular message notification already opens the correct conversation.
     // Customizing its CHERISH presentation is useful but not delivery-critical.
     try {
-      await context.db
-        .update(notificationEvents)
-        .set({
+      await updateNotificationEventsForSource(
+        context.db,
+        { organizationId: context.organizationId, sourceType: "message", sourceId: id, createdBy: context.user.id },
+        {
           eventType: "cherish.story_reply",
           title: `${replyAuthorName(context.user)} replied to your CHERISH`,
           href: conversationFullViewHref(conversation.data.channelId),
-        })
-        .where(
-          and(
-            eq(notificationEvents.organizationId, context.organizationId),
-            eq(notificationEvents.sourceType, "message"),
-            eq(notificationEvents.sourceId, id),
-            eq(notificationEvents.createdBy, context.user.id),
-          ),
-        )
-        .run()
+        },
+      )
     } catch (notificationError) {
       console.error("Unable to customize the CHERISH reply notification:", {
         id,
@@ -333,21 +319,14 @@ export async function deleteCherishStoryReply(
       }
     }
 
-    await db
-      .update(notificationEvents)
-      .set({
+    await updateNotificationEventsForSource(
+      db,
+      { organizationId, sourceType: "message", sourceId: id, createdBy: user.id },
+      {
         title: "CHERISH reply removed",
         body: "This reply was removed by its sender.",
-      })
-      .where(
-        and(
-          eq(notificationEvents.organizationId, organizationId),
-          eq(notificationEvents.sourceType, "message"),
-          eq(notificationEvents.sourceId, id),
-          eq(notificationEvents.createdBy, user.id),
-        ),
-      )
-      .run()
+      },
+    )
 
     await db
       .update(cherishPulseStoryReplies)

@@ -1,0 +1,46 @@
+erDiagram
+  direction LR
+  project_estimate_rfq_bid_import_lines {
+    key id
+    ref import_id
+    ref estimate_line_id
+  }
+  project_estimate_rfq_bid_imports {
+    key id
+    ref approval_id
+    ref estimate_id
+  }
+  project_finish_selections {
+    key id
+    ref rfq_operation_id
+    ref purchase_order_operation_id
+  }
+  project_operations {
+    key id
+    ref vendor_id
+  }
+  project_purchase_order_lines {
+    key id
+    ref operation_id
+  }
+  project_rfq_bid_approvals {
+    key id
+    ref rfq_operation_id
+  }
+  project_estimate_lines {
+    key id
+  }
+  project_estimates {
+    key id
+  }
+  vendors {
+    key id
+  }
+  project_estimate_lines |o--o{ project_estimate_rfq_bid_import_lines : ""
+  project_estimate_rfq_bid_imports ||--o{ project_estimate_rfq_bid_import_lines : ""
+  project_estimates ||--o{ project_estimate_rfq_bid_imports : ""
+  project_operations |o--o{ project_finish_selections : ""
+  project_operations ||--o{ project_purchase_order_lines : ""
+  project_operations ||--o{ project_rfq_bid_approvals : ""
+  project_rfq_bid_approvals ||--o{ project_estimate_rfq_bid_imports : ""
+  vendors |o--o{ project_operations : ""

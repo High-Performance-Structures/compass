@@ -31,7 +31,7 @@ const todoSelectionSchema = z.object({
   notes: z.string(),
 })
 
-export const ownerUpdateDraftEditSchema = z.object({
+const ownerUpdateDraftEditSchema = z.object({
   title: z.string(),
   updateDate: z.string(),
   periodStart: z.string().optional(),

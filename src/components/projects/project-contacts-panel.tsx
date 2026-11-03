@@ -16,7 +16,7 @@ import type {
   ProjectContactItem,
   ProjectContactSageOptions,
   ProjectContactsSummary,
-} from "@/app/actions/project-contacts"
+} from "@/lib/domain/contacts/types"
 import { ProjectContactEditor } from "@/components/projects/project-contact-management"
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"

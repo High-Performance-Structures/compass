@@ -24,7 +24,7 @@ export type PersonIdentity = {
   readonly otherNames: readonly string[]
 }
 
-export function normalizeName(value: string | null | undefined): string {
+function normalizeName(value: string | null | undefined): string {
   return (value ?? "")
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")

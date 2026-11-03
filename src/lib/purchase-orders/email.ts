@@ -2,7 +2,7 @@ import type { ProjectBrand } from "@/lib/project-branding"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 
-export type PurchaseOrderEmailLine = {
+type PurchaseOrderEmailLine = {
   readonly lineNumber: number
   readonly description: string
   readonly phaseCode: string | null

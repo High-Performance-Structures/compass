@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { updateProjectJobStatus } from "@/app/actions/project-profile"
+import { updateProjectJobStatusCommand } from "@/lib/domain/project/profile-commands"
 
 type BulkStatusResult =
   | { readonly success: true; readonly updated: number; readonly failed: readonly { readonly projectId: string; readonly error: string }[] }
@@ -26,7 +26,7 @@ export async function updateProjectJobStatuses(
   let updated = 0
   // Sequential keeps D1 load and audit ordering predictable for a short list.
   for (const projectId of ids) {
-    const result = await updateProjectJobStatus({ projectId, jobStatusId })
+    const result = await updateProjectJobStatusCommand({ projectId, jobStatusId })
     if (result.success) updated += 1
     else failed.push({ projectId, error: result.error })
   }

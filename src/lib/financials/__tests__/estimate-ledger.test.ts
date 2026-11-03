@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  buildContractBudget,
   calculateEstimateLine,
   calculateEstimateLineBreakdownRollup,
   calculateEstimateLineBreakdownSubtotal,
@@ -9,9 +8,9 @@ import {
   calculateEstimateTotals,
   estimateCanBeAccepted,
   estimateCanBeEdited,
-  estimateSourceHash,
   type EstimateLedgerLine,
-} from "@/lib/financials/estimate-ledger"
+} from "@/lib/domain/estimates/rules"
+import { buildContractBudget, estimateSourceHash } from "@/lib/financials/estimate-ledger"
 
 function estimateLine(
   input: Partial<EstimateLedgerLine> & Pick<EstimateLedgerLine, "id">

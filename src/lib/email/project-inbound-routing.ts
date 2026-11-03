@@ -4,21 +4,22 @@ import { and, eq, inArray, or, sql } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 
 import type { getDb } from "@/db"
+import { insertRfiIfMissing } from "@/lib/domain/rfis/store"
+import { insertOperationIfAbsent } from "@/lib/domain/operations/store"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { insertChangeOrderHistoryIfAbsent, insertChangeOrderIfAbsent } from "@/lib/domain/estimates/store"
 import {
-  dailyLogs,
   notificationPreferences,
   organizationMembers,
   projectContacts,
-  projectChangeOrderHistory,
   projectChangeOrders,
-  projectInteractions,
   projectOperations,
   projectRfis,
   projectVideos,
   projects,
   users,
 } from "@/db/schema"
+import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import {
   stripHtml,
   type InboundCandidate,
@@ -35,6 +36,8 @@ import {
   trustedInternalEmailDomains,
 } from "@/lib/email/internal-email-alias"
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
+import { dailyLogInsertIfAbsentStatement, insertDailyLogIfAbsent } from "@/lib/domain/field/store"
+import { projectVideoImportStatement } from "@/lib/domain/media/store"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 import { projectDepartment } from "@/lib/project-branding"
@@ -50,7 +53,7 @@ import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
 
-export type ProjectInboundSource = {
+type ProjectInboundSource = {
   readonly kind: "email" | "goto_sms"
   readonly idPrefix: "email" | "sms"
   readonly sourceSystem: "email" | "goto_sms"
@@ -150,27 +153,24 @@ async function recordVerifiedInboundClientInteraction(input: {
     throw new Error("Verified inbound route has an unsupported client interaction type.")
   }
   const summary = `${input.source.label} from ${senderLabel(input.candidate)}: ${title}`
-  await input.db
-    .insert(projectInteractions)
-    .values({
-      id: `project-interaction-${input.source.idPrefix}-${input.candidate.gmailMessageId}`,
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      projectContactId: contact.id,
-      interactionType,
-      direction: "inbound",
-      source: input.source.sourceSystem,
-      qualifiesForClientTouch: true,
-      summary,
-      occurredAt: input.candidate.receivedAt,
-      createdBy: null,
-      updatedBy: null,
-      deletedBy: null,
-      createdAt: input.candidate.receivedAt,
-      updatedAt: input.candidate.receivedAt,
-      deletedAt: null,
-    })
-    .onConflictDoNothing()
+  await insertProjectInteractionIfAbsent(input.db, {
+    id: `project-interaction-${input.source.idPrefix}-${input.candidate.gmailMessageId}`,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    projectContactId: contact.id,
+    interactionType,
+    direction: "inbound",
+    source: input.source.sourceSystem,
+    qualifiesForClientTouch: true,
+    summary,
+    occurredAt: input.candidate.receivedAt,
+    createdBy: null,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: input.candidate.receivedAt,
+    updatedAt: input.candidate.receivedAt,
+    deletedAt: null,
+  })
   // An inbound client email or text is contact; clear any overdue reminder.
   await clearOverdueFollowUpReminders(input.db, [input.projectId]).catch((error: unknown) => {
     console.error("Unable to clear overdue follow-up reminders", error)
@@ -323,29 +323,26 @@ async function routeRfi(input: {
     projectEmailTitle(input.candidate.subject) ||
     `Email from ${senderLabel(input.candidate)}`
 
-  await input.db
-    .insert(projectRfis)
-    .values({
+  await insertRfiIfMissing(input.db, {
+    id,
+    projectId: input.projectId,
+    sourceSystem: input.source.sourceSystem,
+    sourceRecordId: input.candidate.gmailMessageId,
+    rfiNumber: rfiNumber({
+      projectNumber: input.projectNumber,
+      existingCount: existing.length,
       id,
-      projectId: input.projectId,
-      sourceSystem: input.source.sourceSystem,
-      sourceRecordId: input.candidate.gmailMessageId,
-      rfiNumber: rfiNumber({
-        projectNumber: input.projectNumber,
-        existingCount: existing.length,
-        id,
-      }),
-      subject: title,
-      question: candidateBody(input.candidate),
-      status: "new",
-      priority: "normal",
-      audience: "internal",
-      requesterName: senderLabel(input.candidate),
-      submittedAt: input.candidate.receivedAt,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectRfis.id })
+    }),
+    subject: title,
+    question: candidateBody(input.candidate),
+    status: "new",
+    priority: "normal",
+    audience: "internal",
+    requesterName: senderLabel(input.candidate),
+    submittedAt: input.candidate.receivedAt,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   return { id, status: "routed_rfi" }
 }
@@ -376,9 +373,7 @@ async function routeTodo(input: {
     `Email from ${senderLabel(input.candidate)}`
   const title = input.delivery ? `Delivery: ${baseTitle}` : baseTitle
 
-  await input.db
-    .insert(projectOperations)
-    .values({
+  await insertOperationIfAbsent(input.db, {
       id,
       projectId: input.projectId,
       sourceSystem: input.source.sourceSystem,
@@ -398,7 +393,6 @@ async function routeTodo(input: {
       createdAt: input.now,
       updatedAt: input.now,
     })
-    .onConflictDoNothing({ target: projectOperations.id })
 
   return { id, status: "routed_todo" }
 }
@@ -426,9 +420,7 @@ async function routeRfq(input: {
     `RFQ from ${senderLabel(input.candidate)}`
   const prefix = input.projectNumber?.trim() || "PROJECT"
 
-  await input.db
-    .insert(projectOperations)
-    .values({
+  await insertOperationIfAbsent(input.db, {
       id,
       projectId: input.projectId,
       sourceSystem: input.source.sourceSystem,
@@ -447,7 +439,6 @@ async function routeRfq(input: {
       createdAt: input.now,
       updatedAt: input.now,
     })
-    .onConflictDoNothing({ target: projectOperations.id })
 
   return { id, status: "routed_rfq" }
 }
@@ -472,53 +463,47 @@ async function routeChangeOrder(input: {
   const changeOrderNumber =
     `${prefix}-CO-${String(existing.length + 1).padStart(3, "0")}`
 
-  await input.db
-    .insert(projectChangeOrders)
-    .values({
-      id,
-      projectId: input.projectId,
-      changeOrderNumber,
-      title,
-      scope: candidateBody(input.candidate),
-      status: "draft",
-      audience: "internal",
-      // Email-created requests enter as internal drafts until staff confirms
-      // the sender's owner/sub role and chooses an external audience.
-      requesterType: "internal",
-      requesterName: senderLabel(input.candidate),
-      sourceType: `${input.source.sourceSystem}_request`,
-      sourceRecordId: input.candidate.gmailMessageId,
-      internalNotes:
-        `Created from a project ${input.source.label.toLowerCase()}; review before submitting.`,
-      foxitStatus: "not_started",
-      sageStatus: "not_ready",
-      createdBy: null,
-      submittedAt: null,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectChangeOrders.id })
+  await insertChangeOrderIfAbsent(input.db, {
+    id,
+    projectId: input.projectId,
+    changeOrderNumber,
+    title,
+    scope: candidateBody(input.candidate),
+    status: "draft",
+    audience: "internal",
+    // Email-created requests enter as internal drafts until staff confirms
+    // the sender's owner/sub role and chooses an external audience.
+    requesterType: "internal",
+    requesterName: senderLabel(input.candidate),
+    sourceType: `${input.source.sourceSystem}_request`,
+    sourceRecordId: input.candidate.gmailMessageId,
+    internalNotes:
+      `Created from a project ${input.source.label.toLowerCase()}; review before submitting.`,
+    foxitStatus: "not_started",
+    sageStatus: "not_ready",
+    createdBy: null,
+    submittedAt: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
-  await input.db
-    .insert(projectChangeOrderHistory)
-    .values({
-      id: `${input.source.idPrefix}-change-order-history-${input.candidate.gmailMessageId}`,
-      projectId: input.projectId,
-      changeOrderId: id,
-      eventType: "created",
-      fromStatus: null,
-      toStatus: "draft",
-      actorUserId: null,
-      actorName: senderLabel(input.candidate),
-      actorRole: "internal",
-      note: `Created from a project ${input.source.label.toLowerCase()} for staff review.`,
-      metadataJson: JSON.stringify({
-        source: input.source.sourceSystem,
-        gmailMessageId: input.candidate.gmailMessageId,
-      }),
-      createdAt: input.now,
-    })
-    .onConflictDoNothing({ target: projectChangeOrderHistory.id })
+  await insertChangeOrderHistoryIfAbsent(input.db, {
+    id: `${input.source.idPrefix}-change-order-history-${input.candidate.gmailMessageId}`,
+    projectId: input.projectId,
+    changeOrderId: id,
+    eventType: "created",
+    fromStatus: null,
+    toStatus: "draft",
+    actorUserId: null,
+    actorName: senderLabel(input.candidate),
+    actorRole: "internal",
+    note: `Created from a project ${input.source.label.toLowerCase()} for staff review.`,
+    metadataJson: JSON.stringify({
+      source: input.source.sourceSystem,
+      gmailMessageId: input.candidate.gmailMessageId,
+    }),
+    createdAt: input.now,
+  })
 
   return { id, status: "routed_change_order" }
 }
@@ -541,24 +526,21 @@ async function routeDailyLog(input: {
     .filter((line): line is string => line !== null)
     .join("\n")
 
-  await input.db
-    .insert(dailyLogs)
-    .values({
-      id,
-      projectId: input.projectId,
-      authorId: null,
-      sourceSystem: input.source.sourceSystem,
-      sourceExternalId: input.candidate.gmailMessageId,
-      logDate: input.candidate.receivedAt.slice(0, 10),
-      workCompleted: candidateBody(input.candidate),
-      notes: sourceNote,
-      isClientVisible: false,
-      reviewStatus: "needs_review",
-      syncStatus: "pending",
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: dailyLogs.id })
+  await insertDailyLogIfAbsent(input.db, {
+    id,
+    projectId: input.projectId,
+    authorId: null,
+    sourceSystem: input.source.sourceSystem,
+    sourceExternalId: input.candidate.gmailMessageId,
+    logDate: input.candidate.receivedAt.slice(0, 10),
+    workCompleted: candidateBody(input.candidate),
+    notes: sourceNote,
+    isClientVisible: false,
+    reviewStatus: "needs_review",
+    syncStatus: "pending",
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   await storeDailyLogEmailAttachments({
     env: input.env,
@@ -629,7 +611,7 @@ async function routeVideo(input: {
     projectEmailTitle(input.candidate.subject) ||
     attachment.fileName.replace(/\.[^.]+$/, "") ||
     "Project video"
-  const videoInsert = input.db.insert(projectVideos).values({
+  const videoInsert = projectVideoImportStatement(input.db, {
     id,
     organizationId: input.organizationId,
     projectId: input.projectId,
@@ -665,30 +647,25 @@ async function routeVideo(input: {
     deletedAt: null,
     createdAt: input.now,
     updatedAt: input.now,
-  }).onConflictDoNothing({
-    target: [projectVideos.sourceSystem, projectVideos.sourceExternalId],
   })
 
-  const dailyLogInsert = input.db
-    .insert(dailyLogs)
-    .values({
-      id: dailyLogId,
-      projectId: input.projectId,
-      authorId: null,
-      sourceSystem: input.source.sourceSystem,
-      sourceExternalId: `${input.candidate.gmailMessageId}:video`,
-      logDate: input.candidate.receivedAt.slice(0, 10),
-      workCompleted: title,
-      notes:
-        `Video submitted by ${senderLabel(input.candidate)} for staff review. ` +
-        "The share link will appear here after publication.",
-      isClientVisible: false,
-      reviewStatus: "needs_review",
-      syncStatus: "pending",
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .onConflictDoNothing({ target: dailyLogs.id })
+  const dailyLogInsert = dailyLogInsertIfAbsentStatement(input.db, {
+    id: dailyLogId,
+    projectId: input.projectId,
+    authorId: null,
+    sourceSystem: input.source.sourceSystem,
+    sourceExternalId: `${input.candidate.gmailMessageId}:video`,
+    logDate: input.candidate.receivedAt.slice(0, 10),
+    workCompleted: title,
+    notes:
+      `Video submitted by ${senderLabel(input.candidate)} for staff review. ` +
+      "The share link will appear here after publication.",
+    isClientVisible: false,
+    reviewStatus: "needs_review",
+    syncStatus: "pending",
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
 
   await input.db.batch([videoInsert, dailyLogInsert])
 

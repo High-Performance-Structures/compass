@@ -6,7 +6,7 @@ import { createSystemNotificationEvent } from "@/lib/notifications/create-event"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
-export const OVERDUE_FOLLOW_UP_EVENT = "project.follow_up_overdue"
+const OVERDUE_FOLLOW_UP_EVENT = "project.follow_up_overdue"
 
 type Db = ReturnType<typeof getDb>
 
@@ -93,6 +93,7 @@ async function orgSignals(db: Db, organizationId: string, now: Date) {
       name: projects.name,
       projectNumber: projects.projectNumber,
       department: projects.department,
+      createdAt: projects.createdAt,
     })
     .from(projects)
     .where(eq(projects.organizationId, organizationId))

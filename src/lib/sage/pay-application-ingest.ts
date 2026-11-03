@@ -14,7 +14,16 @@ import {
   sagePayApplicationSnapshotSchema,
   type SagePayApplicationSnapshot,
 } from "@/lib/sage/pay-application-snapshot"
+import {
+  acquireSagePayApplicationRunStatement,
+  sagePayApplicationTerminalRunStatement,
+  updateSagePayApplicationSyncRuns,
+} from "@/lib/domain/sage-bridge/store"
 import { validateSageSyncClaim } from "@/lib/sage/sync-claim"
+import {
+  sageSnapshotApplicationInsertStatement,
+  sageSnapshotBudgetLineInsertStatement,
+} from "@/lib/domain/budget/store"
 
 export type SagePayApplicationIngestResult =
   | {
@@ -68,9 +77,9 @@ async function markRun(
 ): Promise<void> {
   const now = new Date().toISOString()
   const db = getDb(env.DB)
-  await db
-    .update(sagePayApplicationSyncRuns)
-    .set({
+  await updateSagePayApplicationSyncRuns(
+    db,
+    {
       status: input.status,
       snapshotId: input.snapshotId ?? null,
       sourceApplicationId: input.sourceApplicationId ?? null,
@@ -81,14 +90,13 @@ async function markRun(
       capturedAt: input.capturedAt ?? null,
       completedAt: now,
       updatedAt: now,
-    })
-    .where(
-      and(
-        eq(sagePayApplicationSyncRuns.id, runId),
-        eq(sagePayApplicationSyncRuns.status, "processing"),
-        eq(sagePayApplicationSyncRuns.claimToken, claimToken)
-      )
+    },
+    and(
+      eq(sagePayApplicationSyncRuns.id, runId),
+      eq(sagePayApplicationSyncRuns.status, "processing"),
+      eq(sagePayApplicationSyncRuns.claimToken, claimToken)
     )
+  )
 }
 
 async function acquireRunForIngestion(
@@ -98,14 +106,12 @@ async function acquireRunForIngestion(
   claimedAt: string
 ): Promise<boolean> {
   const now = new Date().toISOString()
-  const result = await env.DB.prepare(
-    `UPDATE sage_pay_application_sync_runs
-     SET status = 'processing', claimed_at = ?, updated_at = ?
-     WHERE id = ? AND status = 'running'
-       AND claim_token = ? AND claimed_at = ?`
-  )
-    .bind(now, now, runId, claimToken, claimedAt)
-    .run()
+  const result = await acquireSagePayApplicationRunStatement(env.DB, {
+    runId,
+    claimToken,
+    claimedAt,
+    now,
+  }).run()
   return (result.meta.changes ?? 0) === 1
 }
 
@@ -126,48 +132,6 @@ function reviewReason(reconciliationJson: string): string | null {
   } catch {
     return "Stored Sage reconciliation data requires review."
   }
-}
-
-function terminalRunStatement(
-  env: CloudflareEnv,
-  input: {
-    readonly runId: string
-    readonly projectId: string
-    readonly claimToken: string
-    readonly status: "completed" | "needs_review"
-    readonly snapshotId: string
-    readonly sourceApplicationId: string
-    readonly sourceRevision: string
-    readonly sourceHash: string
-    readonly reconciliationJson: string
-    readonly errorMessage: string | null
-    readonly capturedAt: string
-    readonly now: string
-  }
-): D1PreparedStatement {
-  return env.DB.prepare(
-    `UPDATE sage_pay_application_sync_runs
-     SET status = ?, snapshot_id = ?, source_application_id = ?,
-         source_revision = ?, source_hash = ?, reconciliation_json = ?,
-         error_message = ?, captured_at = ?, completed_at = ?,
-         updated_at = ?
-     WHERE id = ? AND project_id = ?
-       AND status = 'processing' AND claim_token = ?`
-  ).bind(
-    input.status,
-    input.snapshotId,
-    input.sourceApplicationId,
-    input.sourceRevision,
-    input.sourceHash,
-    input.reconciliationJson,
-    input.errorMessage,
-    input.capturedAt,
-    input.now,
-    input.now,
-    input.runId,
-    input.projectId,
-    input.claimToken
-  )
 }
 
 function snapshotInsertStatement(
@@ -378,7 +342,7 @@ export async function ingestSagePayApplicationSnapshot(
           reconciliationJson,
           now,
         }),
-        terminalRunStatement(env, {
+        sagePayApplicationTerminalRunStatement(env.DB, {
           runId: run.id,
           projectId: run.projectId,
           claimToken: snapshot.claimToken,
@@ -449,17 +413,7 @@ export async function ingestSagePayApplicationSnapshot(
       reconciliationJson,
       now,
     }),
-    env.DB.prepare(
-      `INSERT INTO project_budget_applications (
-        id, project_id, source_system, source_record_id,
-        application_number, period_to, status,
-        original_contract_sum, net_changes, contract_sum_to_date,
-        total_completed_stored_to_date, retainage_held,
-        total_earned_less_retainage, previous_certificates,
-        current_payment_due, balance_to_finish, owner_visible,
-        sync_status, last_synced_at, created_at, updated_at
-      ) VALUES (?, ?, 'sage_read_snapshot', ?, ?, ?, 'imported_draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'synced', ?, ?, ?)`
-    ).bind(
+    sageSnapshotApplicationInsertStatement(env.DB, [
       applicationId,
       run.projectId,
       sourceRecordId,
@@ -476,24 +430,14 @@ export async function ingestSagePayApplicationSnapshot(
       snapshot.header.balanceToFinish,
       snapshot.capturedAt,
       now,
-      now
-    ),
+      now,
+    ]),
   ]
 
   for (const line of snapshot.lines) {
     const currentCosts = line.currentWorkCompleted + line.storedMaterials
     statements.push(
-      env.DB.prepare(
-        `INSERT INTO project_budget_lines (
-          id, project_id, application_id, source_system, source_record_id,
-          source_record_number, cost_code, csi_division, csi_division_name,
-          description, original_estimate, prior_changes, current_changes,
-          total_changes, adjusted_estimate, prior_costs, current_costs,
-          total_costs, percent_complete, balance_to_finish, retainage_held,
-          owner_visible, sort_order, sync_status, last_synced_at,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, 'sage_read_snapshot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'synced', ?, ?, ?)`
-      ).bind(
+      sageSnapshotBudgetLineInsertStatement(env.DB, [
         `${applicationId}:line:${encodeURIComponent(line.sourceLineId)}`,
         run.projectId,
         applicationId,
@@ -520,13 +464,13 @@ export async function ingestSagePayApplicationSnapshot(
         line.sortOrder,
         snapshot.capturedAt,
         now,
-        now
-      )
+        now,
+      ])
     )
   }
 
   statements.push(
-    terminalRunStatement(env, {
+    sagePayApplicationTerminalRunStatement(env.DB, {
       runId: run.id,
       projectId: run.projectId,
       claimToken: snapshot.claimToken,

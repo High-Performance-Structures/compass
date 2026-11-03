@@ -37,8 +37,7 @@ export async function GET(request: Request) {
 
   try {
     const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
-    const config = getNetSuiteConfig(envRecord)
+    const config = getNetSuiteConfig(env)
     const db = getDb(env.DB)
 
     const tokens = await exchangeCodeForTokens(config, code)

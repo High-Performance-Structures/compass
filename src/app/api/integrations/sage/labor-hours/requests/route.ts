@@ -1,9 +1,14 @@
 import { and, asc, eq, lt, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { sageBridgeRequestNonces } from "@/db/schema-sage"
 import { sageLaborRequests } from "@/db/schema-shop-tickets"
 import { getCloudflareContext } from "@/lib/db"
+import { sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
+import {
+  insertSageBridgeRequestNonce,
+  sageBridgeHeartbeatStatement,
+  updateSageLaborRequests,
+} from "@/lib/domain/sage-bridge/store"
 import {
   getSagePayApplicationBridgeSecret,
   SAGE_BRIDGE_REQUEST_ID_HEADER,
@@ -34,32 +39,25 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const now = new Date()
   const nowIso = now.toISOString()
-  const staleClaimIso = new Date(now.getTime() - CLAIM_RETRY_MILLISECONDS).toISOString()
+  const staleClaimIso = sageBridgeCutoff(now, CLAIM_RETRY_MILLISECONDS)
   const db = getDb(env.DB)
   try {
-    await db.insert(sageBridgeRequestNonces).values({ requestId, route: url.pathname, createdAt: nowIso })
+    await insertSageBridgeRequestNonce(db, { requestId, route: url.pathname, createdAt: nowIso })
   } catch {
     return Response.json({ error: "Bridge request has already been consumed" }, { status: 409 })
   }
-  await env.DB.prepare(
-    `INSERT INTO sage_bridge_status (id, last_seen_at, updated_at)
-     VALUES ('labor-hours-poller', ?, ?)
-     ON CONFLICT(id) DO UPDATE SET last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at`,
-  )
-    .bind(nowIso, nowIso)
-    .run()
+  await sageBridgeHeartbeatStatement(env.DB, "labor-hours-poller", nowIso).run()
 
   // Requests whose claims went stale too often fail instead of looping.
-  await db
-    .update(sageLaborRequests)
-    .set({ status: "failed", error: "The Sage bridge did not answer.", updatedAt: nowIso })
-    .where(
-      and(
-        eq(sageLaborRequests.status, "running"),
-        lt(sageLaborRequests.claimedAt, staleClaimIso),
-        sql`${sageLaborRequests.attemptCount} >= ${MAX_ATTEMPTS}`,
-      ),
-    )
+  await updateSageLaborRequests(
+    db,
+    { status: "failed", error: "The Sage bridge did not answer.", updatedAt: nowIso },
+    and(
+      eq(sageLaborRequests.status, "running"),
+      lt(sageLaborRequests.claimedAt, staleClaimIso),
+      sql`${sageLaborRequests.attemptCount} >= ${MAX_ATTEMPTS}`,
+    ),
+  )
   const claimable = or(
     eq(sageLaborRequests.status, "queued"),
     and(eq(sageLaborRequests.status, "running"), lt(sageLaborRequests.claimedAt, staleClaimIso)),
@@ -81,16 +79,17 @@ export async function GET(request: Request): Promise<Response> {
   }[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    await db
-      .update(sageLaborRequests)
-      .set({
+    await updateSageLaborRequests(
+      db,
+      {
         status: "running",
         claimToken,
         claimedAt: nowIso,
         attemptCount: sql`${sageLaborRequests.attemptCount} + 1`,
         updatedAt: nowIso,
-      })
-      .where(and(eq(sageLaborRequests.id, candidate.id), claimable))
+      },
+      and(eq(sageLaborRequests.id, candidate.id), claimable),
+    )
     const claimed = await db
       .select()
       .from(sageLaborRequests)

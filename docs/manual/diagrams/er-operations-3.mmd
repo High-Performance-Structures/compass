@@ -1,0 +1,48 @@
+erDiagram
+  direction LR
+  project_todo_events {
+    key id
+    ref todo_id
+    ref daily_log_id
+  }
+  project_warranty_claim_attachments {
+    key id
+    ref claim_id
+  }
+  project_warranty_claim_events {
+    key id
+    ref claim_id
+  }
+  project_warranty_claims {
+    key id
+    ref assigned_project_contact_id
+    ref assigned_vendor_id
+  }
+  project_rfi_attachments {
+    key id
+    ref rfi_id
+  }
+  project_rfis {
+    key id
+    ref assigned_project_contact_id
+  }
+  daily_logs {
+    key id
+  }
+  project_contacts {
+    key id
+  }
+  project_operations {
+    key id
+  }
+  vendors {
+    key id
+  }
+  daily_logs |o--o{ project_todo_events : ""
+  project_contacts |o--o{ project_rfis : ""
+  project_contacts |o--o{ project_warranty_claims : ""
+  project_operations ||--o{ project_todo_events : ""
+  project_rfis ||--o{ project_rfi_attachments : ""
+  project_warranty_claims ||--o{ project_warranty_claim_attachments : ""
+  project_warranty_claims ||--o{ project_warranty_claim_events : ""
+  vendors |o--o{ project_warranty_claims : ""

@@ -2,7 +2,7 @@ const HANDWRYTTEN_API_URL = "https://api.handwrytten.com/v2"
 const MAX_CARD_PAGES = 20
 const REQUEST_TIMEOUT_MS = 15_000
 
-export type HandwryttenCard = {
+type HandwryttenCard = {
   readonly id: number
   readonly name: string
   readonly description: string
@@ -24,7 +24,7 @@ export type HandwryttenAddress = {
   readonly country: "United States"
 }
 
-export type SubmitHandwryttenOrderInput = {
+type SubmitHandwryttenOrderInput = {
   readonly cardId: number
   readonly message: string
   readonly wishes: string
@@ -34,7 +34,7 @@ export type SubmitHandwryttenOrderInput = {
   readonly clientMetadata: string
 }
 
-export type HandwryttenResult<T> =
+type HandwryttenResult<T> =
   | { readonly success: true; readonly data: T }
   | {
       readonly success: false
@@ -42,7 +42,7 @@ export type HandwryttenResult<T> =
       readonly retrySafety: "safe" | "unknown"
     }
 
-export type HandwryttenOrder = {
+type HandwryttenOrder = {
   readonly orderId: number
   readonly mailSent: boolean
 }

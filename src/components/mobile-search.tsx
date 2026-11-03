@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/sheet"
 import { getCustomers } from "@/app/actions/customers"
 import { getVendors } from "@/app/actions/vendors"
-import { getProjects } from "@/app/actions/projects"
+import { useProjectList } from "@/components/project-list-provider"
 
 interface MobileSearchProps {
   readonly open: boolean
@@ -172,6 +172,10 @@ export function MobileSearch({
     SearchItem[]
   >([])
   const loadedRef = React.useRef(false)
+  // The dashboard layout already loaded the viewer's projects.
+  const projectList = useProjectList()
+  const projectsRef = React.useRef(projectList)
+  projectsRef.current = projectList
 
   React.useEffect(() => {
     setMounted(true)
@@ -202,11 +206,11 @@ export function MobileSearch({
 
   async function loadEntities() {
     try {
-      const [customers, vendors, projects] = await Promise.all([
+      const [customers, vendors] = await Promise.all([
         getCustomers(),
         getVendors(),
-        getProjects(),
       ])
+      const projects = projectsRef.current
       const items: SearchItem[] = [
         ...customers.map((c) => ({
           icon: IconUsers,

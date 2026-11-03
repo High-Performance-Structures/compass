@@ -56,6 +56,7 @@ How to work on Compass.
 
 - [getting started](development/getting-started.md) -- local setup, environment variables, dev server, database, deployment
 - [conventions](development/conventions.md) -- TypeScript discipline, component patterns, file organization
+- [architecture and data standard](development/architecture-standards.md) -- domain modules, relational integrity, shared helpers, efficiency, size limits, and the CI ratchet that enforces them
 - [UI standards](development/ui-standards.md) -- canonical visual, responsive, list, accessibility, and release-review rules
 - [email, notification, and Activity standard](development/email-workflows.md) -- how every outside-email workflow sends, tracks replies, notifies, and logs
 - [regression testing](development/regression-testing.md) -- pull-request, daily, native, and release regression strategy

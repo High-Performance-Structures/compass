@@ -1,3 +1,6 @@
+import { WARRANTY_CLAIM_STATUSES, type WarrantyClaimStatus } from "@/lib/domain/warranty/statuses"
+export type { WarrantyClaimStatus }
+
 export const WARRANTY_CLAIM_PRIORITIES = [
   "low",
   "normal",
@@ -8,29 +11,6 @@ export const WARRANTY_CLAIM_PRIORITIES = [
 export type WarrantyClaimPriority =
   (typeof WARRANTY_CLAIM_PRIORITIES)[number]
 
-export const WARRANTY_CLAIM_STATUSES = [
-  "submitted",
-  "acknowledged",
-  "visit_scheduled",
-  "in_progress",
-  "waiting_on_owner",
-  "resolved",
-  "closed",
-  "rejected",
-] as const
-
-export type WarrantyClaimStatus = (typeof WARRANTY_CLAIM_STATUSES)[number]
-
-export const WARRANTY_PROMOTION_STATES = [
-  "actionable",
-  "review_required",
-  "archive_only",
-  "rejected",
-] as const
-
-export type WarrantyPromotionState =
-  (typeof WARRANTY_PROMOTION_STATES)[number]
-
 export function warrantyClaimPriority(
   value: string
 ): WarrantyClaimPriority | null {
@@ -39,12 +19,6 @@ export function warrantyClaimPriority(
 
 export function warrantyClaimStatus(value: string): WarrantyClaimStatus | null {
   return WARRANTY_CLAIM_STATUSES.find((status) => status === value) ?? null
-}
-
-export function warrantyPromotionState(
-  value: string
-): WarrantyPromotionState | null {
-  return WARRANTY_PROMOTION_STATES.find((state) => state === value) ?? null
 }
 
 function normalizedStage(value: string | null): string {

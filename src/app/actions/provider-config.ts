@@ -9,10 +9,12 @@ import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { encrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
-
-// --- constants ---
-
-const ORG_DEFAULT_USER_ID = "org_default"
+import {
+  deleteUserProviderConfig,
+  saveUserProviderConfig,
+  updateUserModelOverrides as storeModelOverrides,
+} from "@/lib/domain/settings/store"
+import { envValue } from "@/lib/shared/env"
 
 // --- types ---
 
@@ -108,9 +110,7 @@ export async function setUserProviderConfig(
 
     let encryptedApiKey: string | null = null
     if (apiKey) {
-      const encryptionKey = (
-        env as unknown as Record<string, string>
-      ).PROVIDER_KEY_ENCRYPTION_KEY
+      const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
       if (!encryptionKey) {
         return {
@@ -131,29 +131,14 @@ export async function setUserProviderConfig(
       ? JSON.stringify(modelOverrides)
       : null
 
-    await db
-      .insert(userProviderConfig)
-      .values({
-        userId: user.id,
-        providerType,
-        apiKey: encryptedApiKey,
-        baseUrl: baseUrl ?? null,
-        modelOverrides: modelOverridesJson,
-        isActive: 1,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userProviderConfig.userId,
-        set: {
-          providerType,
-          apiKey: encryptedApiKey,
-          baseUrl: baseUrl ?? null,
-          modelOverrides: modelOverridesJson,
-          isActive: 1,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await saveUserProviderConfig(db, {
+      userId: user.id,
+      providerType,
+      apiKey: encryptedApiKey,
+      baseUrl: baseUrl ?? null,
+      modelOverrides: modelOverridesJson,
+      updatedAt: now,
+    })
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -202,14 +187,7 @@ export async function updateUserModelOverrides(
 
     const now = new Date().toISOString()
 
-    await db
-      .update(userProviderConfig)
-      .set({
-        modelOverrides: JSON.stringify(modelOverrides),
-        updatedAt: now,
-      })
-      .where(eq(userProviderConfig.userId, user.id))
-      .run()
+    await storeModelOverrides(db, user.id, JSON.stringify(modelOverrides), now)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -244,10 +222,7 @@ export async function clearUserProviderConfig(): Promise<{
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db
-      .delete(userProviderConfig)
-      .where(eq(userProviderConfig.userId, user.id))
-      .run()
+    await deleteUserProviderConfig(db, user.id)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -258,153 +233,6 @@ export async function clearUserProviderConfig(): Promise<{
         err instanceof Error
           ? err.message
           : "Failed to clear provider config",
-    }
-  }
-}
-
-export async function getOrgProviderConfig(): Promise<
-  | { success: true; data: ProviderConfigData | null }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    if (!can(user, "agent", "update")) {
-      return {
-        success: false,
-        error: "Permission denied",
-      }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const config = await db
-      .select()
-      .from(userProviderConfig)
-      .where(
-        eq(userProviderConfig.userId, ORG_DEFAULT_USER_ID)
-      )
-      .get()
-
-    if (!config) {
-      return { success: true, data: null }
-    }
-
-    let modelOverrides: Record<string, string> | null = null
-    if (config.modelOverrides) {
-      try {
-        modelOverrides = JSON.parse(
-          config.modelOverrides
-        ) as Record<string, string>
-      } catch {
-        modelOverrides = null
-      }
-    }
-
-    return {
-      success: true,
-      data: {
-        providerType: config.providerType,
-        hasApiKey: config.apiKey !== null,
-        baseUrl: config.baseUrl,
-        modelOverrides,
-        isActive: config.isActive === 1,
-      },
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "Failed to get org provider config",
-    }
-  }
-}
-
-export async function setOrgProviderConfig(
-  providerType: string,
-  apiKey?: string,
-  baseUrl?: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    if (!can(user, "agent", "update")) {
-      return {
-        success: false,
-        error: "Permission denied",
-      }
-    }
-
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    let encryptedApiKey: string | null = null
-    if (apiKey) {
-      const encryptionKey = (
-        env as unknown as Record<string, string>
-      ).PROVIDER_KEY_ENCRYPTION_KEY
-
-      if (!encryptionKey) {
-        return {
-          success: false,
-          error:
-            "Encryption key not configured (PROVIDER_KEY_ENCRYPTION_KEY)",
-        }
-      }
-      encryptedApiKey = await encrypt(
-        apiKey,
-        encryptionKey,
-        ORG_DEFAULT_USER_ID
-      )
-    }
-
-    const now = new Date().toISOString()
-
-    await db
-      .insert(userProviderConfig)
-      .values({
-        userId: ORG_DEFAULT_USER_ID,
-        providerType,
-        apiKey: encryptedApiKey,
-        baseUrl: baseUrl ?? null,
-        modelOverrides: null,
-        isActive: 1,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userProviderConfig.userId,
-        set: {
-          providerType,
-          apiKey: encryptedApiKey,
-          baseUrl: baseUrl ?? null,
-          isActive: 1,
-          updatedAt: now,
-        },
-      })
-      .run()
-
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "Failed to set org provider config",
     }
   }
 }

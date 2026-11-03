@@ -2,11 +2,8 @@
 
 import { and, asc, count, eq, gt, inArray, isNull, or, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/sqlite-core"
-import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
 import { buildertrendArchiveFiles, buildertrendSourceRecords } from "@/db/schema-buildertrend"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -18,6 +15,7 @@ import type { HistoricalRfqWorkspace, HistoricalRfqWorkspaceItem } from "@/lib/r
 import { mapHistoricalRfqFile } from "@/lib/rfqs/historical-file-proof"
 import { historicalCanonicalFileProofFromRow } from "@/lib/rfqs/historical-file-proof-metadata"
 import { historicalSubmitterDisplay, historicalVendorNotes } from "@/lib/rfqs/historical-display"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const PAGE_SIZE = 50
 
@@ -45,7 +43,7 @@ export async function getProjectHistoricalRfqWorkspace(
   cursor: string | null = null,
 ): Promise<HistoricalRfqWorkspace> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (!user.isActive || isDemoUser(user.id) || user.organizationType !== "internal" || !isInternalStaffRole(user.role)) {
       return { success: false, error: "Historical vendor bids are available only to authorized internal staff." }
     }
@@ -54,8 +52,6 @@ export async function getProjectHistoricalRfqWorkspace(
     if (cursor !== null && (typeof cursor !== "string" || !cursor || cursor.length > 512)) {
       return { success: false, error: "Invalid history page. Return to the first page." }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)
     const project = await db.select({ id: projects.id, jobId: projects.buildertrendProjectId, rootId: projects.googleDriveFolderId })
       .from(projects).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))).limit(1).get()

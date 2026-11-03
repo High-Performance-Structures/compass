@@ -19,7 +19,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 const snapshots = vi.hoisted(() => ({
   open: vi.fn<(input: { readonly html: string }) => Promise<{ readonly success: true }>>(async () => ({ success: true })),
 }))
-vi.mock("@/lib/print/open-print-snapshot", () => ({ openPrintSnapshot: snapshots.open }))
+vi.mock("@/components/print/open-print-snapshot", () => ({ openPrintSnapshot: snapshots.open }))
 
 function scheduleItems(count: number): readonly SchedulePrintItem[] {
   return Array.from({ length: count }, (_, index) => ({

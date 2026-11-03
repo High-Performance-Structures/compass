@@ -20,7 +20,7 @@ async function readPlaceFile(state: MapStateCode): Promise<unknown> {
 }
 
 /** A state's towns and ZIP codes, or null when they can't be loaded. */
-export function loadPlaceIndex(state: MapStateCode): Promise<PlaceIndex | null> {
+function loadPlaceIndex(state: MapStateCode): Promise<PlaceIndex | null> {
   if (state === "CO") return Promise.resolve(COLORADO_PLACES)
   const cached = loaded.get(state)
   if (cached) return cached

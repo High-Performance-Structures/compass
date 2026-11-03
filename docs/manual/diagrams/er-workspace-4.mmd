@@ -1,0 +1,28 @@
+erDiagram
+  direction LR
+  listening_playlist_items {
+    key id
+    ref playlist_id
+  }
+  listening_playlist_track_links {
+    key id
+    ref playlist_item_id
+  }
+  listening_playlists {
+    key id
+  }
+  plugin_config {
+    key id
+    ref plugin_id
+  }
+  plugin_events {
+    key id
+    ref plugin_id
+  }
+  plugins {
+    key id
+  }
+  listening_playlist_items ||--o{ listening_playlist_track_links : ""
+  listening_playlists ||--o{ listening_playlist_items : ""
+  plugins ||--o{ plugin_config : ""
+  plugins ||--o{ plugin_events : ""

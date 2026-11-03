@@ -27,6 +27,7 @@ export const projectLinks = sqliteTable(
   (table) => ({
     pairIdx: uniqueIndex("project_links_pair_uq").on(table.projectId, table.linkedProjectId),
     linkedIdx: index("project_links_linked_idx").on(table.linkedProjectId),
+    projectLinksOrganizationIdIdx: index("project_links_organization_id_idx").on(table.organizationId),
   }),
 )
 

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { IconTrash } from "@tabler/icons-react"
 
-import { deletePurchaseOrderRequest } from "@/app/actions/project-operations"
+import { deletePurchaseOrderRequest } from "@/app/actions/project-purchase-orders"
 import {
   AlertDialog,
   AlertDialogAction,

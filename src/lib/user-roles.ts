@@ -1,30 +1,6 @@
-export const USER_ROLES = [
-  "admin",
-  "secondary_admin",
-  "executive",
-  "project_manager",
-  "project_administrator",
-  "assistant_project_manager",
-  "accounting",
-  "office_manager",
-  "office",
-  "field_superintendent",
-  "field_crew",
-  "architectural_designer",
-  "drafter",
-  "lead_estimator",
-  "assistant_estimator",
-  "developer",
-  "subcontractor",
-  "supplier",
-  "client",
-  "guest",
-  // Legacy roles kept so existing accounts and old invite links keep working.
-  "coordinator",
-  "field",
-] as const
+import type { UserRole } from "@/lib/domain/identity/statuses"
 
-export type UserRole = (typeof USER_ROLES)[number]
+export type { UserRole }
 
 export type UserRoleOption = {
   readonly value: UserRole

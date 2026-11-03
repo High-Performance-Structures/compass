@@ -11,7 +11,7 @@ import {
   projects,
   vendors,
 } from "@/db/schema"
-import type { AudienceRfi } from "@/app/actions/project-audience-preview"
+import type { AudienceRfi } from "@/lib/project-audience-preview-types"
 import type { PurchaseOrderDocumentData } from "@/components/projects/purchase-order-document"
 import type { ChangeOrderReportItem } from "@/lib/print/audience-record-reports"
 import type { ShopTicketDocumentData } from "@/components/projects/shop-ticket-document"

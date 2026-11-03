@@ -23,6 +23,7 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { getProjectViewPreferences } from "@/app/actions/project-views"
 import { ProjectListProvider } from "@/components/project-list-provider"
+import { NotificationCenterProvider } from "@/components/notifications/notification-center-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { isLocalDevelopment } from "@/lib/auth-config"
 import { cookies } from "next/headers"
@@ -131,6 +132,7 @@ export default async function DashboardLayout({
     <VoiceProvider>
     <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
     <SettingsProvider>
+    <NotificationCenterProvider>
     <ProjectListProvider projects={projectList} viewPreferences={projectViewPreferences}>
     <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
@@ -199,6 +201,7 @@ export default async function DashboardLayout({
     </PageActionsProvider>
     </QuickAddProvider>
     </ProjectListProvider>
+    </NotificationCenterProvider>
     </SettingsProvider>
     </ListeningRoomDockProvider>
     </VoiceProvider>

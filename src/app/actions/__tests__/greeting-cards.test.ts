@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({

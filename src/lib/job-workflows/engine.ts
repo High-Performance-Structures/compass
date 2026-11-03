@@ -8,7 +8,7 @@
 /** Facts a loader computes from the job's records, by name. */
 export type WorkflowFacts = Readonly<Record<string, boolean>>
 
-export type WorkflowItemDefinition = {
+type WorkflowItemDefinition = {
   readonly id: string
   readonly label: string
   /** Where the item is filled in, relative to the job; null for a plain tick. */
@@ -101,7 +101,7 @@ export type WorkflowItem = {
   readonly check: WorkflowCheck | null
 }
 
-export type WorkflowStep = {
+type WorkflowStep = {
   readonly id: string
   readonly label: string
   readonly state: "done" | "current" | "upcoming"

@@ -1,0 +1,26 @@
+erDiagram
+  direction LR
+  role_permission_overrides {
+    key id
+    ref organization_id
+    ref created_by
+    ref updated_by
+  }
+  user_permission_overrides {
+    key id
+    ref organization_id
+    ref user_id
+    ref created_by
+    ref updated_by
+  }
+  users {
+    key id
+  }
+  organizations {
+    key id
+  }
+  organizations ||--o{ role_permission_overrides : ""
+  organizations ||--o{ user_permission_overrides : ""
+  users |o--o{ role_permission_overrides : ""
+  users |o--o{ user_permission_overrides : ""
+  users ||--o{ user_permission_overrides : ""

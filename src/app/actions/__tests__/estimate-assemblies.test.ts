@@ -4,11 +4,11 @@ import { drizzle } from "drizzle-orm/better-sqlite3"
 import { getTableConfig } from "drizzle-orm/sqlite-core"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
-import { estimateAssemblyRevisionStatements } from "@/lib/estimates/assembly-revision"
+import { estimateAssemblyRevisionStatements } from "@/lib/domain/estimates/store"
 
 const mocks = vi.hoisted(() => ({ getDb: vi.fn(), requireAuth: vi.fn(), requirePermission: vi.fn(), assertProjectAccess: vi.fn(), recordActivityEvent: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))

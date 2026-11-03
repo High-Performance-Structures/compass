@@ -7,7 +7,7 @@ import {
   resetFeatureSettings,
   saveFeatureSettings,
 } from "@/app/actions/feature-settings"
-import { getProjects } from "@/app/actions/projects"
+import { useProjectList } from "@/components/project-list-provider"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,7 +47,12 @@ export function PaperTrailSettingsSection(): React.ReactElement {
   const [settings, setSettings] = React.useState<PaperTrailSettings>(DEFAULTS)
   const [quiet, setQuiet] = React.useState(String(DEFAULTS.quietMinutes))
   const [domains, setDomains] = React.useState("")
-  const [projects, setProjects] = React.useState<readonly ProjectOption[]>([])
+  // The dashboard layout already loaded the viewer's projects.
+  const projectList = useProjectList()
+  const projects = React.useMemo<readonly ProjectOption[]>(
+    () => projectList.map((project) => ({ value: project.id, label: projectNumberAndName(project) })),
+    [projectList]
+  )
   const [pending, startTransition] = React.useTransition()
 
   const apply = React.useCallback((value: PaperTrailSettings) => {
@@ -57,7 +62,7 @@ export function PaperTrailSettingsSection(): React.ReactElement {
   }, [])
 
   const load = React.useCallback(async () => {
-    const [result, projectRows] = await Promise.all([getFeatureSettingsForEditor("paper-trail"), getProjects()])
+    const result = await getFeatureSettingsForEditor("paper-trail")
     if (!result.success) {
       setError(result.error)
       return
@@ -66,7 +71,6 @@ export function PaperTrailSettingsSection(): React.ReactElement {
     apply(parsed.success ? parsed.data : DEFAULTS)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
-    setProjects(projectRows.map((project) => ({ value: project.id, label: projectNumberAndName(project) })))
     setLoaded(true)
   }, [apply])
 

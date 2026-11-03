@@ -8,7 +8,7 @@ export type BaselineTaskLike = {
   readonly workdays: number
 }
 
-export type BaselineVarianceRow = {
+type BaselineVarianceRow = {
   readonly id: string
   readonly title: string
   readonly baselineStart: string | null

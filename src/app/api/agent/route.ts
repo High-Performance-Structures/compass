@@ -53,6 +53,7 @@ import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 import { resolveCurrentProjectContext } from "@/lib/agent/current-project-context"
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
+import { AGENT_TOOL_ROUTES } from "@/app/api/compass/agent-tool-routes"
 import {
   describePendingAction,
   requiresConfirmation,
@@ -290,6 +291,7 @@ export async function POST(
   // in the chat; the agent gets a pending action instead of a result.
   const organizationId = user.organizationId ?? ""
   const dataSource = createInProcessDataSource(token, {
+    routes: AGENT_TOOL_ROUTES,
     intercept: async (path, body) => {
       if (!requiresConfirmation(path, body)) return undefined
       const pending = { userId: user.id, organizationId, path, body }

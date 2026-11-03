@@ -12,7 +12,8 @@ import {
   getPermissionFeatureAccessLevel,
   getPermissions,
 } from "@/lib/permissions"
-import { isInternalStaffRole, USER_ROLES } from "@/lib/user-roles"
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 function userWithRole(role: string): AuthUser {
   return {

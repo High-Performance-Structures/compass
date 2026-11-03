@@ -1,7 +1,4 @@
-import {
-  baseProjectNumber,
-  projectNumberParts,
-} from "@/lib/project-profile"
+import { baseProjectNumber } from "@/lib/project-profile"
 
 /**
  * Family sequence 1 is the original project. Additional phases use the
@@ -35,9 +32,4 @@ export function projectFamilyPhaseDriveFolderName(input: {
   if (!projectNumber) throw new Error("A phased project number is required.")
   if (!phaseName) throw new Error("A phase name is required.")
   return `${projectNumber} - ${phaseName}`
-}
-
-export function isPhasedProjectNumber(value: string): boolean {
-  const parts = projectNumberParts(value)
-  return parts !== null && /^(?:[OHND])-\d+-[A-Z0-9]+-\d+$/i.test(value.trim())
 }

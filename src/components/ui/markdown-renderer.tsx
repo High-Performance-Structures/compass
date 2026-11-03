@@ -1,5 +1,5 @@
 import React, { Suspense } from "react"
-import Markdown from "react-markdown"
+import Markdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { createHighlighterCore, type HighlighterCore } from "shiki/core"
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript"
@@ -53,7 +53,7 @@ export function MarkdownRenderer({
   children,
   linkHrefTransform,
 }: MarkdownRendererProps) {
-  const components = linkHrefTransform
+  const components: Components = linkHrefTransform
     ? {
         ...COMPONENTS,
         a: ({
@@ -75,8 +75,7 @@ export function MarkdownRenderer({
 
   return (
     <div className="space-y-3">
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Markdown remarkPlugins={[remarkGfm]} components={components as any}>
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </Markdown>
     </div>
@@ -211,7 +210,7 @@ const COMPONENTS = {
   strong: withClass("strong", "font-semibold"),
   a: withClass("a", "text-primary underline underline-offset-2"),
   blockquote: withClass("blockquote", "border-l-2 border-primary pl-4"),
-  code: ({ children, className, node: _node, ...rest }: { children?: React.ReactNode; className?: string; node?: unknown } & Record<string, unknown>) => {
+  code: ({ children, className, node: _node, ...rest }: { node?: unknown } & React.HTMLAttributes<HTMLElement>) => {
     const match = /language-(\w+)/.exec(className || "")
     return match ? (
       <CodeBlock className={className} language={match[1]} {...rest}>
@@ -250,7 +249,7 @@ const COMPONENTS = {
 }
 
 function withClass(Tag: keyof React.JSX.IntrinsicElements, classes: string) {
-  const Component = ({ node, ...props }: { node?: unknown } & Record<string, unknown>) => {
+  const Component = ({ node, ...props }: { node?: unknown } & React.HTMLAttributes<HTMLElement>) => {
     const Element = Tag as React.ElementType
     return <Element className={classes} {...props} />
   }

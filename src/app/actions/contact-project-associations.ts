@@ -3,17 +3,17 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getProjects } from "@/app/actions/projects"
-import { getDb } from "@/db"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { customers, projectContacts, projects, vendors } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { insertProjectContactsIfMissing } from "@/lib/domain/contacts/store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type CompanyDirectoryKind = "customer" | "vendor"
 type AssociationProject = { readonly id: string; readonly name: string; readonly projectNumber: string | null }
@@ -26,7 +26,7 @@ export async function getCompanyAssociationProjects(): Promise<readonly Associat
     const user = await requireAuth()
     await requireFeaturePermission(user, "project-contacts", "update")
     requirePermission(user, "project", "update")
-    return (await getProjects()).map((project) => ({
+    return (await listProjectsForCurrentUser()).map((project) => ({
       id: project.id,
       name: project.name,
       projectNumber: project.projectNumber,
@@ -42,7 +42,7 @@ export async function addCompaniesToProject(input: {
   readonly projectId: string
 }): Promise<AssociationResult> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     const orgId = requireOrg(user)
     if (isDemoUser(user.id) || isDemoOrg(orgId)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "project-contacts", "update")
@@ -57,13 +57,11 @@ export async function addCompaniesToProject(input: {
       !input.projectId.trim()
     ) return { success: false, error: "Choose 1–100 valid directory records and a project." }
 
-    const visibleProjects = await getProjects()
+    const visibleProjects = await listProjectsForCurrentUser()
     if (!visibleProjects.some((project) => project.id === input.projectId)) {
       return { success: false, error: "Project is not available for assignment." }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db.select({ id: projects.id }).from(projects).where(and(
       eq(projects.id, input.projectId), eq(projects.organizationId, orgId)
     )).get()
@@ -133,34 +131,32 @@ export async function addCompaniesToProject(input: {
     const missing = companyRows.filter((company) => !existingIds.has(company.id))
     const now = new Date().toISOString()
 
-    const inserted = missing.length > 0
-      ? await db.insert(projectContacts).values(missing.map((company) => ({
-          id: `project-contact-company-${input.projectId}-${input.kind}-${company.id}`,
-          projectId: input.projectId,
-          contactType: company.contactType,
-          sourceSystem: input.kind === "vendor" ? "global_directory" : "customer_directory",
-          sourceRecordId: company.id,
-          sourceEntityType: input.kind,
-          sourceEntityId: company.id,
-          vendorId: input.kind === "vendor" ? company.id : null,
-          customerId: input.kind === "customer" ? company.id : null,
-          displayName: company.name,
-          companyName: company.company ?? company.name,
-          role: company.contactType === "owner" ? "Owner / Client" : company.contactType === "supplier" ? "Supplier" : "Subcontractor",
-          email: company.email,
-          phone: company.phone,
-          address: company.address,
-          ownerPortalVisible: false,
-          subVendorPortalVisible: false,
-          internalVisible: true,
-          active: true,
-          sortOrder: 800,
-          syncStatus: company.syncStatus,
-          lastSyncedAt: company.lastSyncedAt,
-          createdAt: now,
-          updatedAt: now,
-        }))).onConflictDoNothing().returning({ id: projectContacts.id })
-      : []
+    const inserted = await insertProjectContactsIfMissing(db, missing.map((company) => ({
+      id: `project-contact-company-${input.projectId}-${input.kind}-${company.id}`,
+      projectId: input.projectId,
+      contactType: company.contactType,
+      sourceSystem: input.kind === "vendor" ? "global_directory" : "customer_directory",
+      sourceRecordId: company.id,
+      sourceEntityType: input.kind,
+      sourceEntityId: company.id,
+      vendorId: input.kind === "vendor" ? company.id : null,
+      customerId: input.kind === "customer" ? company.id : null,
+      displayName: company.name,
+      companyName: company.company ?? company.name,
+      role: company.contactType === "owner" ? "Owner / Client" : company.contactType === "supplier" ? "Supplier" : "Subcontractor",
+      email: company.email,
+      phone: company.phone,
+      address: company.address,
+      ownerPortalVisible: false,
+      subVendorPortalVisible: false,
+      internalVisible: true,
+      active: true,
+      sortOrder: 800,
+      syncStatus: company.syncStatus,
+      lastSyncedAt: company.lastSyncedAt,
+      createdAt: now,
+      updatedAt: now,
+    })))
 
     let warning: string | undefined
     if (inserted.length > 0) {

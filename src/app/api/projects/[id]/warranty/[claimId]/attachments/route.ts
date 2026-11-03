@@ -5,10 +5,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { getDb } from "@/db"
 import { projectMembers, projects } from "@/db/schema"
-import {
-  projectWarrantyClaimAttachments,
-  projectWarrantyClaims,
-} from "@/db/schema-warranty"
+import { projectWarrantyClaims } from "@/db/schema-warranty"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -27,6 +24,7 @@ import {
   warrantyClaimFolderId,
 } from "@/lib/warranty/google-drive"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
+import { insertWarrantyClaimAttachment, updateWarrantyClaim } from "@/lib/domain/warranty/store"
 
 type UploadResult =
   | { readonly success: true; readonly uploadedCount: number }
@@ -188,6 +186,8 @@ export async function POST(
       drive,
     })
     const now = new Date().toISOString()
+    // One Drive upload per file, in sequence: the Drive API is rate limited
+    // and each attachment row needs its uploaded file id.
     for (const file of files) {
       const mimeType = file.type || "application/octet-stream"
       const uploaded = await drive.client.uploadFile(drive.googleEmail, {
@@ -197,7 +197,7 @@ export async function POST(
         driveId: drive.driveId ?? undefined,
         data: file,
       })
-      await db.insert(projectWarrantyClaimAttachments).values({
+      await insertWarrantyClaimAttachment(db, {
         id: crypto.randomUUID(),
         organizationId: access.organizationId,
         projectId,
@@ -214,15 +214,7 @@ export async function POST(
         updatedAt: now,
       })
     }
-    await db
-      .update(projectWarrantyClaims)
-      .set({ updatedAt: now })
-      .where(
-        and(
-          eq(projectWarrantyClaims.id, claimId),
-          eq(projectWarrantyClaims.projectId, projectId)
-        )
-      )
+    await updateWarrantyClaim(db, { claimId, projectId }, { updatedAt: now })
     await recordActivityEvent({
       db,
       organizationId: access.organizationId,

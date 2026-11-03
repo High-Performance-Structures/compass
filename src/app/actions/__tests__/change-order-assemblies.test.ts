@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
   assertProjectAccess: vi.fn(),
 }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: vi.fn(), can: () => true }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: vi.fn(async () => undefined),

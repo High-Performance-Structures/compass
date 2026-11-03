@@ -19,16 +19,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { TRADE_LETTER_KIND_LABELS, longDate, type TradeLetterKind } from "@/lib/trade-letters/letter"
+import { formatCents as money } from "@/lib/format"
 
 export type TradeLetterDialogTarget = {
   readonly row: TradeLetterRow
   readonly kind: TradeLetterKind
   /** Reopens a saved draft. */
   readonly letterId: string | null
-}
-
-function money(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })
 }
 
 /**

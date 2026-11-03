@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   decrypt: vi.fn(),
   parseServiceAccountKey: vi.fn(),
   downloadFile: vi.fn(),
+  getFile: vi.fn(),
+  downloadThumbnail: vi.fn(),
   exportFile: vi.fn(),
   isGoogleNativeFile: vi.fn(),
   getExportMimeType: vi.fn(),
@@ -50,6 +52,8 @@ vi.mock("@/lib/google/mapper", () => ({
 vi.mock("@/lib/google/client/drive-client", () => ({
   DriveClient: class {
     downloadFile = mocks.downloadFile
+    getFile = mocks.getFile
+    downloadThumbnail = mocks.downloadThumbnail
     exportFile = mocks.exportFile
   },
 }))
@@ -91,6 +95,9 @@ const documentWithImageMime = {
 function query(result: unknown) {
   const chain = {
     from() {
+      return chain
+    },
+    innerJoin() {
       return chain
     },
     where() {
@@ -143,6 +150,8 @@ function configureDb({
   mocks.parseServiceAccountKey.mockReturnValue({ type: "service_account" })
   mocks.isGoogleNativeFile.mockReturnValue(false)
   mocks.downloadFile.mockResolvedValue(new Response("jpeg-bytes", { status: 200 }))
+  mocks.getFile.mockResolvedValue({ mimeType: "image/jpeg", thumbnailLink: "https://drive.google.com/thumbnail=s220" })
+  mocks.downloadThumbnail.mockResolvedValue(new Response("print-jpeg", { headers: { "Content-Type": "image/jpeg" } }))
 
   let selectCount = 0
   mocks.getDb.mockReturnValue({
@@ -166,11 +175,13 @@ function configureDb({
 
 async function getPhoto(
   audience?: string,
-  resourceType?: string
+  resourceType?: string,
+  size?: string
 ): Promise<Response> {
   const search = new URLSearchParams()
   if (audience !== undefined) search.set("audience", audience)
   if (resourceType !== undefined) search.set("resourceType", resourceType)
+  if (size !== undefined) search.set("size", size)
   const suffix = search.toString().length > 0 ? `?${search.toString()}` : ""
   return GET(
     new NextRequest(
@@ -232,6 +243,41 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     )
   })
 
+  it.each(["admin", "client"])("serves a print-size rendition after %s authorization", async (viewerRole) => {
+    configureDb({ viewerRole, membershipRole: "client", visiblePhoto: photo })
+    const response = await getPhoto("owner", undefined, "print")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("print-jpeg")
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg")
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(mocks.downloadThumbnail).toHaveBeenCalledWith("drive@example.com", "https://drive.google.com/thumbnail=s220", 800)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("does not fetch a print rendition of a photo the audience cannot see", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: null })
+    expect((await getPhoto("owner", undefined, "print")).status).toBe(404)
+    expect(mocks.getFile).not.toHaveBeenCalled()
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("falls back to the original when Drive has no print rendition", async () => {
+    mocks.downloadThumbnail.mockResolvedValue(null)
+    const response = await getPhoto("owner", undefined, "print")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("jpeg-bytes")
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps non-image document downloads intact for a print-size request", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: document })
+    mocks.getFile.mockResolvedValue({ mimeType: "application/pdf", thumbnailLink: "https://drive.google.com/thumbnail=s220" })
+    const response = await getPhoto("owner", "owner_update_document", "print")
+    expect(response.headers.get("Content-Type")).toBe("application/pdf")
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+  })
+
   it("serves an approved owner-visible photo only to an owner member", async () => {
     configureDb({
       viewerRole: "client",
@@ -243,15 +289,7 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     expect(response.status).toBe(200)
     expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
-    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith({
-      db: expect.anything(),
-      organizationId: "org-1",
-      projectId: "project-1",
-      recipientUserId: "viewer-1",
-      resourceId: "photo-1",
-      resourceType: "photo",
-      audience: "owner",
-    })
+    expect(mocks.hasActiveExternalProjectResourceGrant).not.toHaveBeenCalled()
   })
 
   it("serves an approved owner-visible composer document with its exact grant type", async () => {
@@ -453,19 +491,18 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("denies an ungranted external photo before project or Drive lookup", async () => {
-    configureDb({
-      viewerRole: "client",
-      membershipRole: "client",
-      visiblePhoto: photo,
-    })
+  it.each([
+    ["owner", "client"],
+    ["sub_vendor", "subcontractor"],
+  ] as const)("serves a %s-visible gallery photo without an owner-update grant", async (audience, role) => {
+    configureDb({ viewerRole: role, membershipRole: role, visiblePhoto: photo })
     mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
 
-    const response = await getPhoto("owner")
+    const response = await getPhoto(audience)
 
-    expect(response.status).toBe(404)
+    expect(response.status).toBe(200)
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
-    expect(mocks.downloadFile).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
   })
 
   it("denies a revoked composer document before Drive access", async () => {
@@ -499,27 +536,19 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     ["a cross-project request", "project-2"],
     ["a cross-organization request", "project-from-org-2"],
   ] as const)("stops %s at the project-access boundary", async (_label, resolvedProjectId) => {
+    // The membership lookup is scoped to the viewer's organization's projects,
+    // so another project or organization yields no membership row.
     configureDb({
       viewerRole: "client",
-      membershipRole: "client",
+      membershipRole: null,
       visiblePhoto: photo,
       projectAccessError: new Error("Project not found"),
     })
     mocks.resolveProjectRouteId.mockResolvedValue(resolvedProjectId)
-    mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
 
     const response = await getPhoto("owner")
 
-    // Access-helper rejection must have the same not-found semantics as the
-    // route's other external denial paths, without touching photo or Drive.
     expect(response.status).toBe(404)
-    expect(mocks.hasActiveExternalProjectResourceGrant).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: resolvedProjectId,
-        resourceId: "photo-1",
-        audience: "owner",
-      })
-    )
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })

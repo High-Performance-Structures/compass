@@ -26,7 +26,7 @@ const INLINE_ICONS: Record<string, (size: number, className?: string) => React.J
 }
 
 // provider logo files in /public/providers/
-export const PROVIDER_LOGO: Record<string, string> = {
+const PROVIDER_LOGO: Record<string, string> = {
   OpenAI: "openai",
   Google: "google",
   Meta: "meta",

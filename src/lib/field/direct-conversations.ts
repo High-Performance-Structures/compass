@@ -3,7 +3,7 @@ type DirectConversationActivity = {
   readonly updatedAt: string
 }
 
-export function compareDirectConversationActivity(
+function compareDirectConversationActivity(
   left: DirectConversationActivity,
   right: DirectConversationActivity
 ): number {

@@ -3,7 +3,6 @@ import "server-only"
 import { YOUTUBE_OAUTH_SCOPES } from "@/lib/google/youtube-oauth-scopes"
 
 export {
-  YOUTUBE_OAUTH_SCOPES,
   hasRequiredYoutubeScopes,
 } from "@/lib/google/youtube-oauth-scopes"
 
@@ -11,9 +10,10 @@ const GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 const YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
 const YOUTUBE_UPLOAD_API = "https://www.googleapis.com/upload/youtube/v3"
-
-export const YOUTUBE_CHANNEL_KEYS = ["orc", "hps", "nutech"] as const
-export type YoutubeChannelKey = (typeof YOUTUBE_CHANNEL_KEYS)[number]
+export type YoutubeChannelKey =
+  | "orc"
+  | "hps"
+  | "nutech"
 export type YoutubePrivacy = "private" | "unlisted" | "public"
 
 export type YoutubeOAuthConfig = {
@@ -50,12 +50,6 @@ function environmentValue(env: object, key: string): string | null {
 export function youtubeChannelKey(value: string | null): YoutubeChannelKey | null {
   if (value === "orc" || value === "hps" || value === "nutech") return value
   return null
-}
-
-export function youtubeChannelLabel(key: YoutubeChannelKey): string {
-  if (key === "hps") return "HPS"
-  if (key === "nutech") return "Nu-Tech"
-  return "ORC"
 }
 
 export function getYoutubeOAuthConfig(

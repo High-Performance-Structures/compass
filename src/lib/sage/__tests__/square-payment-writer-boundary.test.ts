@@ -15,10 +15,13 @@ const resultsRoute = source(
 const schemaInspector = source(
   "../../../../scripts/inspect_sage_payment_mbxml.ps1"
 )
-const squarePaymentSource = source("../square-payment.ts")
+// The SQL these checks read now lives in the domain stores the integration calls.
+const squarePaymentSource =
+  source("../square-payment.ts") + source("../../domain/sage-bridge/square-store.ts")
 const notificationSource = source("../square-payment-notifications.ts")
 const receiptActions = source("../../../app/actions/sage-square-receipts.ts")
-const receivableSource = source("../square-receivable.ts")
+const receivableSource =
+  source("../square-receivable.ts") + source("../../domain/financials/store.ts")
 const maintenanceRoute = source(
   "../../../app/api/operations/sage/square-receipts/route.ts"
 )

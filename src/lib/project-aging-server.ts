@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectFollowUps, projectInteractions, projectJobStatuses, projects } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -9,17 +9,20 @@ import {
   type ProjectFollowUpSignal,
 } from "@/lib/project-follow-up"
 
-/**
- * Follow-up aging for a set of jobs, from the client contact log (the
- * project's activity tracker), any scheduled follow-up, and the company's
- * project aging settings. Jobs whose status is not followed up are left out.
- */
+// D1 caps bound parameters per statement; past this, read the whole company.
+const CREATED_AT_LOOKUP_LIMIT = 90
+
 /** The later of the company's no-contact clock start and the job's creation. */
 function noContactSince(clockStart: string | null, createdAt: string | null): string | null {
   if (!clockStart) return null
   return createdAt && createdAt > clockStart ? createdAt : clockStart
 }
 
+/**
+ * Follow-up aging for a set of jobs, from the client contact log (the
+ * project's activity tracker), any scheduled follow-up, and the company's
+ * project aging settings. Jobs whose status is not followed up are left out.
+ */
 export async function loadProjectFollowUpSignals(
   db: ReturnType<typeof getDb>,
   organizationId: string,
@@ -54,13 +57,21 @@ export async function loadProjectFollowUpSignals(
       .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true))),
   ])
   const lastContactById = new Map(lastContacts.map((row) => [row.projectId, row.occurredAt]))
-  // Creation dates only matter once the company's no-contact clock is on.
+  // Creation dates only matter once the company's no-contact clock is on,
+  // and only for jobs the caller did not already load them for.
   const createdAtById = new Map<string, string>()
-  if (settings.noContactClockStart) {
+  const missingCreatedAt = settings.noContactClockStart
+    ? jobs.filter((job) => !job.createdAt).map((job) => job.id)
+    : []
+  if (missingCreatedAt.length > 0) {
     const created = await db
       .select({ id: projects.id, createdAt: projects.createdAt })
       .from(projects)
-      .where(eq(projects.organizationId, organizationId))
+      .where(
+        missingCreatedAt.length <= CREATED_AT_LOOKUP_LIMIT
+          ? and(eq(projects.organizationId, organizationId), inArray(projects.id, missingCreatedAt))
+          : eq(projects.organizationId, organizationId),
+      )
     for (const row of created) createdAtById.set(row.id, row.createdAt)
   }
   const scheduledById = new Map(scheduled.map((row) => [row.projectId, row.nextFollowUpAt]))

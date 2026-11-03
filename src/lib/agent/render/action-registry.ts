@@ -6,43 +6,6 @@ import {
   type Action,
 } from "@/lib/permissions"
 
-import {
-  createCustomer,
-  updateCustomer,
-  deleteCustomer,
-} from "@/app/actions/customers"
-
-import {
-  createVendor,
-  updateVendor,
-  deleteVendor,
-} from "@/app/actions/vendors"
-
-import {
-  createInvoice,
-  updateInvoice,
-  deleteInvoice,
-} from "@/app/actions/invoices"
-
-import {
-  createVendorBill,
-  updateVendorBill,
-  deleteVendorBill,
-} from "@/app/actions/vendor-bills"
-
-import {
-  createTask,
-  updateTask,
-  deleteTask,
-} from "@/app/actions/schedule"
-
-import {
-  createAgentItem,
-  updateAgentItem,
-  deleteAgentItem,
-  toggleAgentItem,
-} from "@/app/actions/agent-items"
-
 type ActionResult =
   | { readonly success: true; readonly data?: unknown }
   | { readonly success: false; readonly error: string }
@@ -201,9 +164,53 @@ const agentItemToggleSchema = z.object({
   id: z.string().min(1),
 })
 
-function wrapResult(
-  result: { success: boolean; id?: string; error?: string }
-): ActionResult {
+type MutationResult = {
+  readonly success: boolean
+  readonly id?: string
+  readonly error?: string
+}
+
+/**
+ * The server actions the agent's rendered UI may call. The app layer passes
+ * the real actions in (src/app/api/agent/action/render-actions.ts), so each
+ * call still runs that action's own auth and permission checks. Inputs are
+ * validated against the schemas below before an action runs.
+ */
+export interface AgentRenderActions {
+  createCustomer(data: unknown): Promise<MutationResult>
+  updateCustomer(id: string, data: unknown): Promise<MutationResult>
+  deleteCustomer(id: string): Promise<MutationResult>
+  createVendor(data: {
+    readonly name: string
+    readonly category: string
+    readonly email: string
+    readonly phone: string
+    readonly address: string
+  }): Promise<MutationResult>
+  updateVendor(id: string, data: {
+    readonly name?: string
+    readonly category?: string
+    readonly email?: string
+    readonly phone?: string
+    readonly address?: string
+  }): Promise<MutationResult>
+  deleteVendor(id: string): Promise<MutationResult>
+  createInvoice(data: unknown): Promise<MutationResult>
+  updateInvoice(id: string, data: unknown): Promise<MutationResult>
+  deleteInvoice(id: string): Promise<MutationResult>
+  createVendorBill(data: unknown): Promise<MutationResult>
+  updateVendorBill(id: string, data: unknown): Promise<MutationResult>
+  deleteVendorBill(id: string): Promise<MutationResult>
+  createTask(projectId: string, data: unknown): Promise<MutationResult>
+  updateTask(id: string, data: unknown): Promise<MutationResult>
+  deleteTask(id: string): Promise<MutationResult>
+  createAgentItem(data: unknown): Promise<MutationResult>
+  updateAgentItem(id: string, data: Record<string, unknown>, userId: string): Promise<MutationResult>
+  deleteAgentItem(id: string, userId: string): Promise<MutationResult>
+  toggleAgentItem(id: string, userId: string): Promise<MutationResult>
+}
+
+function wrapResult(result: MutationResult): ActionResult {
   if (result.success) {
     return {
       success: true,
@@ -216,235 +223,180 @@ function wrapResult(
   }
 }
 
-export const actionRegistry: Record<
-  string,
-  ActionDefinition
-> = {
-  "customer.create": {
-    schema: customerSchema,
-    resource: "customer",
-    permission: "create",
-    execute: async (params) => {
-      const result = await createCustomer(
-        params as Parameters<typeof createCustomer>[0]
-      )
-      return wrapResult(result)
-    },
-  },
-  "customer.update": {
-    schema: customerUpdateSchema,
-    resource: "customer",
-    permission: "update",
-    execute: async (params) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateCustomer(id, data)
-      return wrapResult(result)
-    },
-  },
-  "customer.delete": {
-    schema: deleteSchema,
-    resource: "customer",
-    permission: "delete",
-    execute: async (params) => {
-      const { id } = params as { id: string }
-      const result = await deleteCustomer(id)
-      return wrapResult(result)
-    },
-  },
+/** The record id every update, delete, and toggle schema requires. */
+function recordId(params: Record<string, unknown>): string {
+  return typeof params.id === "string" ? params.id : ""
+}
 
-  "vendor.create": {
-    schema: vendorSchema,
-    resource: "vendor",
-    permission: "create",
-    execute: async (params) => {
-      const result = await createVendor({
-        name: typeof params.name === "string" ? params.name : "",
-        category:
-          typeof params.category === "string"
-            ? params.category
-            : "Miscellaneous Vendor",
-        email: typeof params.email === "string" ? params.email : "",
-        phone: typeof params.phone === "string" ? params.phone : "",
-        address: typeof params.address === "string" ? params.address : "",
-      })
-      return wrapResult(result)
-    },
-  },
-  "vendor.update": {
-    schema: vendorUpdateSchema,
-    resource: "vendor",
-    permission: "update",
-    execute: async (params) => {
-      const id = typeof params.id === "string" ? params.id : ""
-      const result = await updateVendor(id, {
-        ...(typeof params.name === "string" ? { name: params.name } : {}),
-        ...(typeof params.category === "string"
-          ? { category: params.category }
-          : {}),
-        ...(typeof params.email === "string" ? { email: params.email } : {}),
-        ...(typeof params.phone === "string" ? { phone: params.phone } : {}),
-        ...(typeof params.address === "string"
-          ? { address: params.address }
-          : {}),
-      })
-      return wrapResult(result)
-    },
-  },
-  "vendor.delete": {
-    schema: deleteSchema,
-    resource: "vendor",
-    permission: "delete",
-    execute: async (params) => {
-      const { id } = params as { id: string }
-      const result = await deleteVendor(id)
-      return wrapResult(result)
-    },
-  },
+/** The params without their record id, as the update actions expect. */
+function withoutId(params: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(params).filter(([key]) => key !== "id"))
+}
 
-  "invoice.create": {
-    schema: invoiceSchema,
-    resource: "finance",
-    permission: "create",
-    execute: async (params) => {
-      const result = await createInvoice(
-        params as Parameters<typeof createInvoice>[0]
-      )
-      return wrapResult(result)
-    },
-  },
-  "invoice.update": {
-    schema: invoiceUpdateSchema,
-    resource: "finance",
-    permission: "update",
-    execute: async (params) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateInvoice(id, data)
-      return wrapResult(result)
-    },
-  },
-  "invoice.delete": {
-    schema: deleteSchema,
-    resource: "finance",
-    permission: "delete",
-    execute: async (params) => {
-      const { id } = params as { id: string }
-      const result = await deleteInvoice(id)
-      return wrapResult(result)
-    },
-  },
+export type ActionRegistry = Readonly<Record<string, ActionDefinition>>
 
-  "vendorBill.create": {
-    schema: vendorBillSchema,
-    resource: "finance",
-    permission: "create",
-    execute: async (params) => {
-      const result = await createVendorBill(
-        params as Parameters<typeof createVendorBill>[0]
-      )
-      return wrapResult(result)
+export function createActionRegistry(actions: AgentRenderActions): ActionRegistry {
+  return {
+    "customer.create": {
+      schema: customerSchema,
+      resource: "customer",
+      permission: "create",
+      execute: async (params) => wrapResult(await actions.createCustomer(params)),
     },
-  },
-  "vendorBill.update": {
-    schema: vendorBillUpdateSchema,
-    resource: "finance",
-    permission: "update",
-    execute: async (params) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateVendorBill(id, data)
-      return wrapResult(result)
+    "customer.update": {
+      schema: customerUpdateSchema,
+      resource: "customer",
+      permission: "update",
+      execute: async (params) =>
+        wrapResult(await actions.updateCustomer(recordId(params), withoutId(params))),
     },
-  },
-  "vendorBill.delete": {
-    schema: deleteSchema,
-    resource: "finance",
-    permission: "delete",
-    execute: async (params) => {
-      const { id } = params as { id: string }
-      const result = await deleteVendorBill(id)
-      return wrapResult(result)
+    "customer.delete": {
+      schema: deleteSchema,
+      resource: "customer",
+      permission: "delete",
+      execute: async (params) => wrapResult(await actions.deleteCustomer(recordId(params))),
     },
-  },
 
-  "schedule.create": {
-    schema: scheduleCreateSchema,
-    resource: "schedule",
-    permission: "create",
-    execute: async (params) => {
-      const { projectId, ...data } = params as {
-        projectId: string
-      } & Record<string, unknown>
-      const result = await createTask(
-        projectId,
-        data as Parameters<typeof createTask>[1]
-      )
-      return wrapResult(result)
+    "vendor.create": {
+      schema: vendorSchema,
+      resource: "vendor",
+      permission: "create",
+      execute: async (params) => {
+        const result = await actions.createVendor({
+          name: typeof params.name === "string" ? params.name : "",
+          category:
+            typeof params.category === "string"
+              ? params.category
+              : "Miscellaneous Vendor",
+          email: typeof params.email === "string" ? params.email : "",
+          phone: typeof params.phone === "string" ? params.phone : "",
+          address: typeof params.address === "string" ? params.address : "",
+        })
+        return wrapResult(result)
+      },
     },
-  },
-  "schedule.update": {
-    schema: scheduleUpdateSchema,
-    resource: "schedule",
-    permission: "update",
-    execute: async (params) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateTask(
-        id,
-        data as Parameters<typeof updateTask>[1]
-      )
-      return wrapResult(result)
+    "vendor.update": {
+      schema: vendorUpdateSchema,
+      resource: "vendor",
+      permission: "update",
+      execute: async (params) => {
+        const id = typeof params.id === "string" ? params.id : ""
+        const result = await actions.updateVendor(id, {
+          ...(typeof params.name === "string" ? { name: params.name } : {}),
+          ...(typeof params.category === "string"
+            ? { category: params.category }
+            : {}),
+          ...(typeof params.email === "string" ? { email: params.email } : {}),
+          ...(typeof params.phone === "string" ? { phone: params.phone } : {}),
+          ...(typeof params.address === "string"
+            ? { address: params.address }
+            : {}),
+        })
+        return wrapResult(result)
+      },
     },
-  },
-  "schedule.delete": {
-    schema: deleteSchema,
-    resource: "schedule",
-    permission: "delete",
-    execute: async (params) => {
-      const { id } = params as { id: string }
-      const result = await deleteTask(id)
-      return wrapResult(result)
+    "vendor.delete": {
+      schema: deleteSchema,
+      resource: "vendor",
+      permission: "delete",
+      execute: async (params) => wrapResult(await actions.deleteVendor(recordId(params))),
     },
-  },
 
-  "agentItem.create": {
-    schema: agentItemSchema,
-    execute: async (params, userId) => {
-      const result = await createAgentItem({
-        ...(params as Parameters<typeof createAgentItem>[0]),
-        userId,
-      })
-      return wrapResult(result)
+    "invoice.create": {
+      schema: invoiceSchema,
+      resource: "finance",
+      permission: "create",
+      execute: async (params) => wrapResult(await actions.createInvoice(params)),
     },
-  },
-  "agentItem.update": {
-    schema: agentItemUpdateSchema,
-    execute: async (params, userId) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateAgentItem(id, data, userId)
-      return wrapResult(result)
+    "invoice.update": {
+      schema: invoiceUpdateSchema,
+      resource: "finance",
+      permission: "update",
+      execute: async (params) =>
+        wrapResult(await actions.updateInvoice(recordId(params), withoutId(params))),
     },
-  },
-  "agentItem.delete": {
-    schema: deleteSchema,
-    execute: async (params, userId) => {
-      const { id } = params as { id: string }
-      const result = await deleteAgentItem(id, userId)
-      return wrapResult(result)
+    "invoice.delete": {
+      schema: deleteSchema,
+      resource: "finance",
+      permission: "delete",
+      execute: async (params) => wrapResult(await actions.deleteInvoice(recordId(params))),
     },
-  },
-  "agentItem.toggle": {
-    schema: agentItemToggleSchema,
-    execute: async (params, userId) => {
-      const { id } = params as { id: string }
-      const result = await toggleAgentItem(id, userId)
-      return wrapResult(result)
+
+    "vendorBill.create": {
+      schema: vendorBillSchema,
+      resource: "finance",
+      permission: "create",
+      execute: async (params) => wrapResult(await actions.createVendorBill(params)),
     },
-  },
+    "vendorBill.update": {
+      schema: vendorBillUpdateSchema,
+      resource: "finance",
+      permission: "update",
+      execute: async (params) =>
+        wrapResult(await actions.updateVendorBill(recordId(params), withoutId(params))),
+    },
+    "vendorBill.delete": {
+      schema: deleteSchema,
+      resource: "finance",
+      permission: "delete",
+      execute: async (params) => wrapResult(await actions.deleteVendorBill(recordId(params))),
+    },
+
+    "schedule.create": {
+      schema: scheduleCreateSchema,
+      resource: "schedule",
+      permission: "create",
+      execute: async (params) => {
+        const projectId = typeof params.projectId === "string" ? params.projectId : ""
+        const data = Object.fromEntries(
+          Object.entries(params).filter(([key]) => key !== "projectId"),
+        )
+        return wrapResult(await actions.createTask(projectId, data))
+      },
+    },
+    "schedule.update": {
+      schema: scheduleUpdateSchema,
+      resource: "schedule",
+      permission: "update",
+      execute: async (params) =>
+        wrapResult(await actions.updateTask(recordId(params), withoutId(params))),
+    },
+    "schedule.delete": {
+      schema: deleteSchema,
+      resource: "schedule",
+      permission: "delete",
+      execute: async (params) => wrapResult(await actions.deleteTask(recordId(params))),
+    },
+
+    "agentItem.create": {
+      schema: agentItemSchema,
+      execute: async (params, userId) =>
+        wrapResult(await actions.createAgentItem({ ...params, userId })),
+    },
+    "agentItem.update": {
+      schema: agentItemUpdateSchema,
+      execute: async (params, userId) =>
+        wrapResult(await actions.updateAgentItem(recordId(params), withoutId(params), userId)),
+    },
+    "agentItem.delete": {
+      schema: deleteSchema,
+      execute: async (params, userId) =>
+        wrapResult(await actions.deleteAgentItem(recordId(params), userId)),
+    },
+    "agentItem.toggle": {
+      schema: agentItemToggleSchema,
+      execute: async (params, userId) =>
+        wrapResult(await actions.toggleAgentItem(recordId(params), userId)),
+    },
+  }
 }
 
 export function checkActionPermission(
+  registry: ActionRegistry,
   user: AuthUser,
   actionName: string,
 ): boolean {
-  const def = actionRegistry[actionName]
+  const def = registry[actionName]
   if (!def) return false
   if (!def.resource || !def.permission) return true
   return can(user, def.resource, def.permission)

@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Slider } from "@/components/ui/slider"
 import { useListeningRoomRealtime } from "@/hooks/use-listening-room-realtime"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import {
   formatListeningPosition,
   listeningPlaybackPositionMs,
@@ -168,20 +169,17 @@ export function ListeningRoom({
     }
   }, [channelId])
 
+  // Load right away for a new room; loadingRoomRef drops the overlapping
+  // first poll below.
   React.useEffect(() => {
     void loadRoom()
-    const interval = window.setInterval(() => void loadRoom(), full ? 30_000 : 60_000)
-    const refreshVisibleRoom = (): void => {
-      if (document.visibilityState === "visible") void loadRoom()
-    }
-    window.addEventListener("focus", refreshVisibleRoom)
-    document.addEventListener("visibilitychange", refreshVisibleRoom)
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener("focus", refreshVisibleRoom)
-      document.removeEventListener("visibilitychange", refreshVisibleRoom)
-    }
-  }, [loadRoom, full])
+  }, [loadRoom])
+  // People listen with the tab in the background; keep the room's playback
+  // state current there too in case the realtime socket drops.
+  useVisibleInterval(() => void loadRoom(), full ? 30_000 : 60_000, {
+    refreshOnFocus: true,
+    whileHidden: true,
+  })
 
   const joined = Boolean(room?.currentUserJoined)
   React.useEffect(() => {

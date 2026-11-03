@@ -22,7 +22,9 @@ import {
   type PermissionAccessLevel,
 } from "@/lib/permissions"
 import { requireOrg } from "@/lib/org-scope"
-import { isInternalStaffRole, USER_ROLES } from "@/lib/user-roles"
+import { USER_ROLES, type UserRole } from "@/lib/domain/identity/statuses"
+import { isListValue } from "@/lib/shared/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { canManageUserAccess } from "@/lib/permissions"
 
 export type PermissionOverrideChoice = {
@@ -78,8 +80,8 @@ export type PermissionOverrideResult =
 const BASELINE = "baseline"
 const INHERIT = "inherit"
 
-function isKnownRole(role: string): boolean {
-  return USER_ROLES.some((knownRole) => knownRole === role)
+function isKnownRole(role: string): role is UserRole {
+  return isListValue(USER_ROLES, role)
 }
 
 function isDemoContext(user: {

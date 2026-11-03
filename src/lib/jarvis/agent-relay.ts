@@ -3,6 +3,7 @@ import type { getDb } from "@/db"
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
 import type { JarvisVisualAttachment } from "@/lib/agent/visual-context"
 import type { JarvisReadCapability } from "@/lib/jarvis/read-capabilities"
+import { insertJarvisBridgeEvents } from "@/lib/domain/feedback/store"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -193,9 +194,7 @@ export async function relayAgentRequest(
   const idempotencyKey = `agent:${input.user.id}:${digest}`
   const now = new Date().toISOString()
 
-  await input.db
-    .insert(jarvisBridgeEvents)
-    .values({
+  await insertJarvisBridgeEvents(input.db, {
       id: crypto.randomUUID(),
       organizationId: input.organizationId,
       direction: "outbound",

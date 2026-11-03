@@ -1,5 +1,5 @@
 import { cache } from "react"
-import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
+import { withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
@@ -14,6 +14,7 @@ import type { User } from "@/db/schema"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
+import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
@@ -24,6 +25,15 @@ import {
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
+import { externalOrganizationRole as normalizedExternalProjectRole } from "@/lib/domain/identity/rules"
+import {
+  ensureExternalOrganizationMembership,
+  insertOrganizationMember,
+  insertUser,
+  markProjectAccessInvitationAccepted,
+  markProjectAccessInvitationExpired,
+  updateUser,
+} from "@/lib/domain/identity/store"
 
 export type AuthUser = {
   readonly id: string
@@ -81,50 +91,6 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
   }
 }
 
-function normalizedExternalProjectRole(role: string): string {
-  return role === "owner" ? "client" : role
-}
-
-async function ensureExternalOrganizationMembership(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly organizationId: string
-  readonly userId: string
-  readonly role: string
-  readonly now: string
-}): Promise<void> {
-  const existing = await input.db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, input.userId),
-        eq(organizationMembers.organizationId, input.organizationId)
-      )
-    )
-    .get()
-  const role = normalizedExternalProjectRole(input.role)
-
-  if (existing) {
-    await input.db
-      .update(organizationMembers)
-      .set({ role })
-      .where(eq(organizationMembers.id, existing.id))
-      .run()
-    return
-  }
-
-  await input.db
-    .insert(organizationMembers)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId: input.organizationId,
-      userId: input.userId,
-      role,
-      joinedAt: input.now,
-    })
-    .run()
-}
-
 async function setActiveOrgCookie(orgId: string): Promise<void> {
   try {
     const cookieStore = await cookies()
@@ -140,16 +106,15 @@ async function setActiveOrgCookie(orgId: string): Promise<void> {
   }
 }
 
-async function claimProjectAccessInvitations(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-  email: string,
-  now: string
-): Promise<{ readonly organizationId: string; readonly role: string } | null> {
-  const normalizedEmail = email.trim().toLowerCase()
-  if (!normalizedEmail) return null
+function normalizedEmailAddress(email: string): string {
+  return email.trim().toLowerCase()
+}
 
-  const invitations = await db
+function pendingInvitationsQuery(
+  db: ReturnType<typeof getDb>,
+  normalizedEmail: string
+) {
+  return db
     .select({
       id: projectAccessInvitations.id,
       organizationId: projectAccessInvitations.organizationId,
@@ -173,32 +138,88 @@ async function claimProjectAccessInvitations(
       )
     )
     .orderBy(desc(projectAccessInvitations.invitedAt))
+}
 
-  const currentIdentity = await db
-    .select({ phone: users.phone, address: users.address })
-    .from(users)
-    .where(eq(users.id, userId))
-    .get()
+type PendingInvitation = Awaited<
+  ReturnType<typeof pendingInvitationsQuery>
+>[number]
+
+function organizationMembershipsQuery(
+  db: ReturnType<typeof getDb>,
+  userId: string
+) {
+  return db
+    .select({
+      orgId: organizations.id,
+      orgName: organizations.name,
+      orgType: organizations.type,
+      memberRole: organizationMembers.role,
+    })
+    .from(organizationMembers)
+    .innerJoin(
+      organizations,
+      eq(organizations.id, organizationMembers.organizationId)
+    )
+    .where(eq(organizationMembers.userId, userId))
+}
+
+function firstProjectMembershipQuery(
+  db: ReturnType<typeof getDb>,
+  userId: string
+) {
+  return db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, userId))
+    .limit(1)
+}
+
+/** Looks up and claims an account's pending invitations (sign-in callbacks). */
+async function claimInvitationsForAccount(
+  db: ReturnType<typeof getDb>,
+  account: {
+    readonly id: string
+    readonly email: string
+    readonly phone: string | null
+    readonly address: string | null
+  },
+  now: string
+): Promise<{ readonly organizationId: string; readonly role: string } | null> {
+  const email = normalizedEmailAddress(account.email)
+  if (!email) return null
+  const invitations = await pendingInvitationsQuery(db, email)
+  return claimProjectAccessInvitations(db, account, invitations, now)
+}
+
+async function claimProjectAccessInvitations(
+  db: ReturnType<typeof getDb>,
+  currentIdentity: {
+    readonly id: string
+    readonly phone: string | null
+    readonly address: string | null
+  },
+  invitations: readonly PendingInvitation[],
+  now: string
+): Promise<{ readonly organizationId: string; readonly role: string } | null> {
+  // Nearly every request has nothing pending; skip all further work.
+  if (invitations.length === 0) return null
+  const userId = currentIdentity.id
+
   const identityInvitation = invitations.find(
     (invitation) =>
       (!invitation.workosExpiresAt || invitation.workosExpiresAt > now) &&
       (invitation.contactPhone || invitation.contactAddress)
   )
   if (
-    currentIdentity &&
     identityInvitation &&
     ((!currentIdentity.phone && identityInvitation.contactPhone) ||
       (!currentIdentity.address && identityInvitation.contactAddress))
   ) {
-    await db
-      .update(users)
-      .set({
-        phone: currentIdentity.phone ?? identityInvitation.contactPhone,
-        address: currentIdentity.address ?? identityInvitation.contactAddress,
-        updatedAt: now,
-      })
-      .where(eq(users.id, userId))
-      .run()
+    await updateUser(db, userId, {
+      phone: currentIdentity.phone ?? identityInvitation.contactPhone,
+      address: currentIdentity.address ?? identityInvitation.contactAddress,
+      updatedAt: now,
+    })
   }
 
   let claimedInvitation: {
@@ -210,11 +231,7 @@ async function claimProjectAccessInvitations(
       invitation.workosExpiresAt &&
       invitation.workosExpiresAt <= now
     ) {
-      await db
-        .update(projectAccessInvitations)
-        .set({ status: "expired", updatedAt: now })
-        .where(eq(projectAccessInvitations.id, invitation.id))
-        .run()
+      await markProjectAccessInvitationExpired(db, invitation.id, now)
       continue
     }
 
@@ -242,8 +259,7 @@ async function claimProjectAccessInvitations(
       isExternalProjectRole(invitation.role) &&
       !preservedOrganizationRole
     ) {
-      await ensureExternalOrganizationMembership({
-        db,
+      await ensureExternalOrganizationMembership(db, {
         organizationId: invitation.organizationId,
         userId,
         role: invitation.role,
@@ -263,22 +279,15 @@ async function claimProjectAccessInvitations(
       .get()
 
     if (!projectMembership) {
-      await db
-        .insert(projectMembers)
-        .values({
-          id: crypto.randomUUID(),
-          projectId: invitation.projectId,
-          userId,
-          role: assignedRole,
-          assignedAt: now,
-        })
-        .run()
+      await insertProjectMember(db, {
+        id: crypto.randomUUID(),
+        projectId: invitation.projectId,
+        userId,
+        role: assignedRole,
+        assignedAt: now,
+      })
     } else {
-      await db
-        .update(projectMembers)
-        .set({ role: assignedRole })
-        .where(eq(projectMembers.id, projectMembership.id))
-        .run()
+      await updateProjectMembers(db, eq(projectMembers.id, projectMembership.id), { role: assignedRole })
     }
 
     const audience =
@@ -294,24 +303,15 @@ async function claimProjectAccessInvitations(
         projectId: invitation.projectId,
         organizationId: invitation.organizationId,
         audience,
-        contactId:
-          audience === "owner" ? null : invitation.projectContactId,
+        contactId: audience === "owner" ? null : invitation.projectContactId,
+        importedContactId: invitation.projectContactId,
         externalUserId: userId,
         createdBy: invitation.invitedBy,
         now,
       })
     }
 
-    await db
-      .update(projectAccessInvitations)
-      .set({
-        status: "accepted",
-        acceptedBy: userId,
-        acceptedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(projectAccessInvitations.id, invitation.id))
-      .run()
+    await markProjectAccessInvitationAccepted(db, invitation.id, userId, now)
     claimedInvitation ??= {
       organizationId: invitation.organizationId,
       role: assignedRole,
@@ -409,13 +409,27 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
 
     const db = getDb(env.DB)
 
-    // check if user exists in our database
+    // Every signed-in request needs these four reads; send them in one D1
+    // round trip instead of one after another. They are keyed on the
+    // WorkOS id and email, which match the Compass account for every
+    // established user. First sign-ins and reconciled accounts re-read
+    // whatever the prefetch could not cover below.
+    const workosEmail = normalizedEmailAddress(workosUser.email)
+    const [
+      userRows,
+      prefetchedInvitations,
+      prefetchedMemberships,
+      prefetchedProjectMemberships,
+    ] = await db.batch([
+      db.select().from(users).where(eq(users.id, workosUser.id)).limit(1),
+      pendingInvitationsQuery(db, workosEmail),
+      organizationMembershipsQuery(db, workosUser.id),
+      firstProjectMembershipQuery(db, workosUser.id),
+    ])
+
     let activatedPendingAccount = false
-    let dbUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, workosUser.id))
-      .get()
+    let dbUser: User | undefined = userRows[0]
+    const foundByWorkosId = dbUser !== undefined
 
     if (!dbUser) {
       const emailMatch = await db
@@ -433,21 +447,17 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
         emailMatch.lastLoginAt === null &&
         !emailMatch.id.startsWith("user_")
       if (emailMatch && (emailMatch.isActive || isPendingPlaceholder)) {
-        await db
-          .update(users)
-          .set({
-            firstName: workosUser.firstName ?? emailMatch.firstName,
-            lastName: workosUser.lastName ?? emailMatch.lastName,
-            displayName:
-              workosUser.firstName && workosUser.lastName
-                ? `${workosUser.firstName} ${workosUser.lastName}`
-                : emailMatch.displayName,
-            avatarUrl: workosUser.profilePictureUrl ?? emailMatch.avatarUrl,
-            isActive: isPendingPlaceholder ? true : emailMatch.isActive,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(users.id, emailMatch.id))
-          .run()
+        await updateUser(db, emailMatch.id, {
+          firstName: workosUser.firstName ?? emailMatch.firstName,
+          lastName: workosUser.lastName ?? emailMatch.lastName,
+          displayName:
+            workosUser.firstName && workosUser.lastName
+              ? `${workosUser.firstName} ${workosUser.lastName}`
+              : emailMatch.displayName,
+          avatarUrl: workosUser.profilePictureUrl ?? emailMatch.avatarUrl,
+          isActive: isPendingPlaceholder ? true : emailMatch.isActive,
+          updatedAt: new Date().toISOString(),
+        })
         activatedPendingAccount = isPendingPlaceholder
         dbUser = await db
           .select()
@@ -465,14 +475,10 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
     // Backfill the Google/WorkOS profile image for older accounts while
     // preserving any avatar that was already chosen in Compass.
     if (!dbUser.avatarUrl && workosUser.profilePictureUrl) {
-      await db
-        .update(users)
-        .set({
-          avatarUrl: workosUser.profilePictureUrl,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(users.id, dbUser.id))
-        .run()
+      await updateUser(db, dbUser.id, {
+        avatarUrl: workosUser.profilePictureUrl,
+        updatedAt: new Date().toISOString(),
+      })
       dbUser = {
         ...dbUser,
         avatarUrl: workosUser.profilePictureUrl,
@@ -481,10 +487,17 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
 
     // update last login timestamp
     const now = new Date().toISOString()
+    const accountEmail = normalizedEmailAddress(dbUser.email)
+    const invitations =
+      foundByWorkosId && accountEmail === workosEmail
+        ? prefetchedInvitations
+        : accountEmail
+          ? await pendingInvitationsQuery(db, accountEmail)
+          : []
     const claimedInvitation = await claimProjectAccessInvitations(
       db,
-      dbUser.id,
-      dbUser.email,
+      dbUser,
+      invitations,
       now
     )
     if (claimedInvitation) {
@@ -492,27 +505,18 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
     }
     // Recording activity on every request added a D1 write to each render.
     if (lastLoginIsStale(dbUser.lastLoginAt, now)) {
-      await db
-        .update(users)
-        .set({ lastLoginAt: now })
-        .where(eq(users.id, dbUser.id))
-        .run()
+      await updateUser(db, dbUser.id, { lastLoginAt: now })
     }
 
-    // query org memberships
-    const orgMemberships = await db
-      .select({
-        orgId: organizations.id,
-        orgName: organizations.name,
-        orgType: organizations.type,
-        memberRole: organizationMembers.role,
-      })
-      .from(organizationMembers)
-      .innerJoin(
-        organizations,
-        eq(organizations.id, organizationMembers.organizationId)
-      )
-      .where(eq(organizationMembers.userId, dbUser.id))
+    // A claimed invitation or a newly found/created account can change
+    // memberships after the prefetch, so read them again in that case.
+    const membershipsAreCurrent = foundByWorkosId && !claimedInvitation
+    const [orgMemberships, projectMemberships] = membershipsAreCurrent
+      ? [prefetchedMemberships, prefetchedProjectMemberships]
+      : await db.batch([
+          organizationMembershipsQuery(db, dbUser.id),
+          firstProjectMembershipQuery(db, dbUser.id),
+        ])
 
     if (activatedPendingAccount) {
       for (const membership of orgMemberships) {
@@ -547,12 +551,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
-    const projectMembership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, dbUser.id))
-      .limit(1)
-      .get()
+    const projectMembership = projectMemberships[0]
     const hasInternalStaffOrganization = orgMemberships.some(
       (membership) =>
         membership.orgType === "internal" &&
@@ -652,10 +651,9 @@ export async function ensureUserExists(workosUser: {
     // Claim it in the single auth callback request so the first redirected page
     // does not race multiple server-component auth reads to provision access.
     const now = new Date().toISOString()
-    const claimedInvitation = await claimProjectAccessInvitations(
+    const claimedInvitation = await claimInvitationsForAccount(
       db,
-      existing.id,
-      existing.email,
+      existing,
       now
     )
     if (claimedInvitation) {
@@ -697,25 +695,20 @@ export async function ensureUserExists(workosUser: {
       lastLoginAt: now,
       updatedAt: now,
     }
-    await db
-      .update(users)
-      .set({
-        email: reconciledUser.email,
-        firstName: reconciledUser.firstName,
-        lastName: reconciledUser.lastName,
-        displayName: reconciledUser.displayName,
-        avatarUrl: reconciledUser.avatarUrl,
-        isActive: reconciledUser.isActive,
-        lastLoginAt: reconciledUser.lastLoginAt,
-        updatedAt: reconciledUser.updatedAt,
-      })
-      .where(eq(users.id, emailMatch.id))
-      .run()
+    await updateUser(db, emailMatch.id, {
+      email: reconciledUser.email,
+      firstName: reconciledUser.firstName,
+      lastName: reconciledUser.lastName,
+      displayName: reconciledUser.displayName,
+      avatarUrl: reconciledUser.avatarUrl,
+      isActive: reconciledUser.isActive,
+      lastLoginAt: reconciledUser.lastLoginAt,
+      updatedAt: reconciledUser.updatedAt,
+    })
 
-    const claimedInvitation = await claimProjectAccessInvitations(
+    const claimedInvitation = await claimInvitationsForAccount(
       db,
-      emailMatch.id,
-      normalizedEmail,
+      reconciledUser,
       now
     )
     if (claimedInvitation) {
@@ -742,7 +735,7 @@ export async function ensureUserExists(workosUser: {
     .limit(1)
     .get()
 
-  const newUser = {
+  const newUser: typeof users.$inferInsert = {
     id: workosUser.id,
     email: workosUser.email,
     firstName: workosUser.firstName ?? null,
@@ -761,12 +754,11 @@ export async function ensureUserExists(workosUser: {
     updatedAt: now,
   }
 
-  await db.insert(users).values(newUser).run()
+  await insertUser(db, newUser)
 
-  const claimedInvitation = await claimProjectAccessInvitations(
+  const claimedInvitation = await claimInvitationsForAccount(
     db,
-    workosUser.id,
-    workosUser.email,
+    { id: workosUser.id, email: workosUser.email, phone: null, address: null },
     now
   )
   if (claimedInvitation) {
@@ -792,24 +784,17 @@ export async function ensureUserExists(workosUser: {
     .run()
 
   // add user as admin member
-  await db
-    .insert(organizationMembers)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId: personalOrgId,
-      userId: workosUser.id,
-      role: "admin",
-      joinedAt: now,
-    })
-    .run()
+  await insertOrganizationMember(db, {
+    id: crypto.randomUUID(),
+    organizationId: personalOrgId,
+    userId: workosUser.id,
+    role: "admin",
+    joinedAt: now,
+  })
 
   await setActiveOrgCookie(personalOrgId)
 
   return newUser as User
-}
-
-export async function handleSignOut() {
-  await signOut()
 }
 
 export async function requireAuth(): Promise<AuthUser> {
@@ -817,18 +802,5 @@ export async function requireAuth(): Promise<AuthUser> {
   if (!user) {
     throw new Error("Unauthorized")
   }
-  return user
-}
-
-export async function requireEmailVerified(): Promise<AuthUser> {
-  const user = await requireAuth()
-
-  if (isWorkOSConfigured()) {
-    const session = await withAuth()
-    if (session?.user && !session.user.emailVerified) {
-      throw new Error("Email not verified")
-    }
-  }
-
   return user
 }

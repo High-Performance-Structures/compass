@@ -23,7 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import type { OwnerDocumentKind } from "@/lib/billing/owner-document-notices"
 
-export function ownerDocumentEmailHref(projectId: string, kind: OwnerDocumentKind, documentId: string): string {
+function ownerDocumentEmailHref(projectId: string, kind: OwnerDocumentKind, documentId: string): string {
   const query = new URLSearchParams({ email: kind, documentId })
   return `/dashboard/projects/${encodeURIComponent(projectId)}/messages?${query.toString()}`
 }

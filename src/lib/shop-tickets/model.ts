@@ -25,7 +25,7 @@ export type ShopTicketRate = {
 /** The rate book's active labor and machine rates, by name. */
 export type ShopTicketRates = readonly ShopTicketRate[]
 
-export type PricedShopTicketLine = ShopTicketLineInput & {
+type PricedShopTicketLine = ShopTicketLineInput & {
   readonly rateCents: number
   readonly amountCents: number
   readonly rateBookEntryId: string
@@ -57,7 +57,7 @@ export function resolveShopTicketRate(
 }
 
 /** Hours are kept to two decimals, the same precision Sage reports. */
-export function roundHours(hours: number): number {
+function roundHours(hours: number): number {
   return Math.round(hours * 100) / 100
 }
 
@@ -114,7 +114,7 @@ export function priceShopTicketLines(
 }
 
 /** Cost codes compare on their digits, so "01 71 13" and "017113" match. */
-export function normalizeCostCode(code: string): string {
+function normalizeCostCode(code: string): string {
   return code.replace(/[^0-9a-z.]/gi, "").toLowerCase()
 }
 

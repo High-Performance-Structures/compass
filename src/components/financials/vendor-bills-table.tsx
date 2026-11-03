@@ -1,49 +1,23 @@
 "use client"
 
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-
-import * as React from "react"
-import { IconDotsVertical } from "@tabler/icons-react"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type SortingState,
-} from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 
 import type { VendorBill } from "@/db/schema-netsuite"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
 import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { formatCurrency } from "@/lib/utils"
+  actionsColumn,
+  dollarsColumn,
+  MobileRecordActions,
+  RecordsEmpty,
+  searchInputClass,
+  selectColumn,
+  type BadgeVariant,
+} from "@/components/financials/record-columns"
+import { localeDateText } from "@/lib/domain/financials/rules"
+import { formatDollars } from "@/lib/format"
 
-const STATUS_VARIANT: Record<string, "secondary" | "default" | "outline"> = {
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
   pending: "secondary",
   approved: "default",
   paid: "outline",
@@ -59,6 +33,8 @@ interface VendorBillsTableProps {
   onDelete?: (id: string) => void
 }
 
+const SEARCH = { columnId: "billNumber", placeholder: "Search by bill number..." }
+
 export function VendorBillsTable({
   bills,
   vendorMap,
@@ -66,42 +42,14 @@ export function VendorBillsTable({
   onEdit,
   onDelete,
 }: VendorBillsTableProps) {
-  const isMobile = useIsMobile()
-  const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] =
-    React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
-
   const columns: ColumnDef<VendorBill>[] = [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
+    selectColumn<VendorBill>(),
     {
       accessorKey: "billNumber",
       header: "Bill #",
       cell: ({ row }) => (
         <span className="font-medium">
-          {row.getValue("billNumber") || "-"}
+          {row.original.billNumber || "-"}
         </span>
       ),
     },
@@ -122,7 +70,7 @@ export function VendorBillsTable({
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
-        const status = row.getValue("status") as string
+        const status = row.original.status
         return (
           <Badge variant={STATUS_VARIANT[status] ?? "secondary"}>
             {status.replace("_", " ")}
@@ -133,228 +81,68 @@ export function VendorBillsTable({
     {
       accessorKey: "billDate",
       header: "Bill Date",
-      cell: ({ row }) =>
-        new Date(row.getValue("billDate") as string).toLocaleDateString(),
+      cell: ({ row }) => localeDateText(row.original.billDate),
     },
     {
       accessorKey: "dueDate",
       header: "Due Date",
       cell: ({ row }) => {
-        const d = row.getValue("dueDate") as string | null
-        return d ? new Date(d).toLocaleDateString() : "-"
+        const d = row.original.dueDate
+        return d ? localeDateText(d) : "-"
       },
     },
-    {
-      accessorKey: "total",
-      header: "Total",
-      cell: ({ row }) => formatCurrency(row.getValue("total") as number),
-    },
-    {
-      accessorKey: "amountDue",
-      header: "Amount Due",
-      cell: ({ row }) =>
-        formatCurrency(row.getValue("amountDue") as number),
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const bill = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="size-8 p-0">
-                <IconDotsVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(bill)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDelete?.(bill.id)}
-              >
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
-    },
+    dollarsColumn<VendorBill>("total", "Total", (bill) => bill.total),
+    dollarsColumn<VendorBill>("amountDue", "Amount Due", (bill) => bill.amountDue),
+    actionsColumn<VendorBill>(onEdit, onDelete),
   ]
 
-  const table = useReactTable({
-    data: bills,
-    columns,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: { sorting, columnFilters, rowSelection, pagination },
-  })
-
-  const emptyState = (
-    <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-muted-foreground">No bills yet</p>
-      <p className="text-sm text-muted-foreground/70 mt-1">
-        Record a vendor bill to track what you owe.
-      </p>
-    </div>
-  )
-
-  if (isMobile) {
-    const rows = table.getRowModel().rows
-    return (
-      <div className="space-y-3">
-        <Input
-          placeholder="Search by bill number..."
-          value={
-            (table.getColumn("billNumber")?.getFilterValue() as string) ?? ""
-          }
-          onChange={(e) =>
-            table.getColumn("billNumber")?.setFilterValue(e.target.value)
-          }
-          className="w-full"
-        />
-        {rows.length ? (
-          <div className="rounded-md border divide-y">
-            {rows.map((row) => {
-              const bill = row.original
-              const status = bill.status
-              return (
-                <div
-                  key={row.id}
-                  className="flex items-center gap-3 px-3 py-2.5"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
-                        {bill.billNumber || "-"}
-                      </p>
-                      <Badge
-                        variant={STATUS_VARIANT[status] ?? "secondary"}
-                        className="shrink-0 text-xs px-1.5 py-0"
-                      >
-                        {status.replace("_", " ")}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {vendorMap[bill.vendorId] ?? "-"}
-                      {bill.dueDate && ` · Due ${new Date(bill.dueDate).toLocaleDateString()}`}
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold shrink-0">
-                    {formatCurrency(bill.total)}
-                  </span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 shrink-0"
-                      >
-                        <IconDotsVertical className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(bill)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => onDelete?.(bill.id)}
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          emptyState
-        )}
-        <DataTablePagination
-          table={table}
-          itemLabel="vendor bills"
-          id="vendor-bills-mobile-items-per-page"
-        />
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      <Input
-        placeholder="Search by bill number..."
-        value={
-          (table.getColumn("billNumber")?.getFilterValue() as string) ?? ""
-        }
-        onChange={(e) =>
-          table.getColumn("billNumber")?.setFilterValue(e.target.value)
-        }
-        className="w-full sm:max-w-sm"
-      />
-      <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      <TanstackSortableHeader header={header} />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
-                    No bills found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-      <DataTablePagination table={table} itemLabel="vendor bills" id="vendor-bills-items-per-page" />
-    </div>
+    <EntityTable
+      data={bills}
+      columns={columns}
+      mobileToolbar={({ table }) => (
+        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
+      )}
+      desktopToolbar={({ table }) => (
+        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
+      )}
+      mobileRow={(bill) => {
+        const status = bill.status
+        return (
+          <>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate">
+                  {bill.billNumber || "-"}
+                </p>
+                <Badge
+                  variant={STATUS_VARIANT[status] ?? "secondary"}
+                  className="shrink-0 text-xs px-1.5 py-0"
+                >
+                  {status.replace("_", " ")}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                {vendorMap[bill.vendorId] ?? "-"}
+                {bill.dueDate && ` · Due ${localeDateText(bill.dueDate)}`}
+              </p>
+            </div>
+            <span className="text-sm font-semibold shrink-0">
+              {formatDollars(bill.total)}
+            </span>
+            <MobileRecordActions record={bill} onEdit={onEdit} onDelete={onDelete} />
+          </>
+        )
+      }}
+      mobileEmpty={
+        <RecordsEmpty
+          title="No bills yet"
+          hint="Record a vendor bill to track what you owe."
+        />
+      }
+      desktopEmpty="No bills found"
+      itemLabel="vendor bills"
+      paginationId="vendor-bills"
+    />
   )
 }

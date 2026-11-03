@@ -1,3 +1,5 @@
+import { formatDate } from "@/lib/format"
+
 function datePart(parts: readonly Intl.DateTimeFormatPart[], type: string): string {
   return parts.find((part) => part.type === type)?.value ?? ""
 }
@@ -17,8 +19,6 @@ export function conversationTimeLabel(iso: string, timeZone: string): string {
 }
 
 export function conversationDayLabel(day: string): string {
-  // The grouping key is already a calendar day in the selected zone.
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC", year: "numeric", month: "long", day: "numeric",
-  }).format(new Date(`${day}T12:00:00Z`))
+  // This key is a date-only calendar value; reuse the shared, zone-safe formatter.
+  return formatDate(day, "long")
 }

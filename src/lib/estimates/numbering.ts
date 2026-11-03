@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm"
 
 import { projectEstimates } from "@/db/schema-estimates"
-import type { CompassDb } from "@/lib/estimates/access"
+import type { CompassDb } from "@/lib/domain/estimates/access"
 import { estimateModeFor, nextEstimateNumber, type EstimateMode } from "@/lib/estimates/estimate-modes"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"

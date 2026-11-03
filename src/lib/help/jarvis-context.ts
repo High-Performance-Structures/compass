@@ -56,7 +56,7 @@ export type JarvisHelpContextInput = Readonly<{
   allowedGuideIds: readonly string[]
 }>
 
-export type JarvisHelpReference = Readonly<{
+type JarvisHelpReference = Readonly<{
   topicId: string
   title: string
   href: string

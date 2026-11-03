@@ -1,0 +1,22 @@
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant MW as Middleware
+  participant SA as Server action
+  participant CTX as Action context
+  participant ST as Domain store
+  participant DB as D1
+  B->>MW: POST (server action)
+  MW->>MW: session check, audience rules
+  MW->>SA: request
+  SA->>SA: parse input (zod)
+  SA->>CTX: projectContext(id, options)
+  CTX->>DB: user, memberships, overrides (one batch, cached)
+  CTX->>CTX: demo check, canFeature
+  CTX->>DB: project in scope?
+  CTX-->>SA: context or ActionFailure
+  SA->>ST: domain operation (rules.ts math)
+  ST->>DB: db.batch(writes + audit)
+  ST-->>SA: result
+  SA->>SA: revalidatePath
+  SA-->>B: success or error

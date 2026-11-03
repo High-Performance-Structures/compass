@@ -4,6 +4,11 @@
 
 import type { DrizzleDB } from "@/db/provider/interface"
 import { MutationQueueManager, type MutationQueueConfig } from "./mutation-queue"
+import {
+  clearQueuedMutationBackoff,
+  setQueuedMutationStatus,
+  updateQueuedMutationAttempt,
+} from "@/lib/domain/settings/offline-queue/store"
 import { MutationStatus, type MutationQueueEntry, mutationQueue } from "../schema"
 import { eq, and, or, lt, isNull } from "drizzle-orm"
 
@@ -188,10 +193,7 @@ export class SyncProcessor {
 
       for (const entry of readyEntries) {
         // Mark as processing
-        await this.db
-          .update(mutationQueue)
-          .set({ status: MutationStatus.PROCESSING })
-          .where(eq(mutationQueue.id, entry.id))
+        await setQueuedMutationStatus(this.db, entry.id, MutationStatus.PROCESSING)
 
         processed++
 
@@ -263,25 +265,19 @@ export class SyncProcessor {
       const processAfter = new Date(Date.now() + backoffMs).toISOString()
 
       // Set status back to pending with processAfter timestamp
-      await this.db
-        .update(mutationQueue)
-        .set({
-          status: MutationStatus.PENDING,
-          retryCount: newRetryCount,
-          errorMessage: error,
-          processAfter,
-        })
-        .where(eq(mutationQueue.id, entry.id))
+      await updateQueuedMutationAttempt(this.db, entry.id, {
+        status: MutationStatus.PENDING,
+        retryCount: newRetryCount,
+        errorMessage: error,
+        processAfter,
+      })
     } else {
       // Max retries exceeded, mark as failed
-      await this.db
-        .update(mutationQueue)
-        .set({
-          status: MutationStatus.FAILED,
-          retryCount: newRetryCount,
-          errorMessage: error,
-        })
-        .where(eq(mutationQueue.id, entry.id))
+      await updateQueuedMutationAttempt(this.db, entry.id, {
+        status: MutationStatus.FAILED,
+        retryCount: newRetryCount,
+        errorMessage: error,
+      })
     }
 
     // Update localStorage backup if persistence is enabled
@@ -322,10 +318,7 @@ export class SyncProcessor {
 
       for (const entry of allPending) {
         // Mark as processing
-        await this.db
-          .update(mutationQueue)
-          .set({ status: MutationStatus.PROCESSING })
-          .where(eq(mutationQueue.id, entry.id))
+        await setQueuedMutationStatus(this.db, entry.id, MutationStatus.PROCESSING)
 
         processed++
 
@@ -364,17 +357,7 @@ export class SyncProcessor {
 
   // Reset backoff for all waiting entries (call when connection is restored)
   async resetBackoff(): Promise<number> {
-    const result = await this.db
-      .update(mutationQueue)
-      .set({ processAfter: null })
-      .where(
-        and(
-          eq(mutationQueue.status, MutationStatus.PENDING),
-          lt(mutationQueue.processAfter, new Date().toISOString())
-        )
-      )
-
-    return result.changes ?? 0
+    return clearQueuedMutationBackoff(this.db, new Date().toISOString())
   }
 
   // Calculate exponential backoff with cap

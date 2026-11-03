@@ -4,7 +4,7 @@ import { useDepartmentProfiles } from "@/components/branding/department-profiles
 import * as React from "react"
 import { IconEye } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
-import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
+import { openPrintSnapshot } from "@/components/print/open-print-snapshot"
 import {
   portalReportHtml,
   type PortalReport,

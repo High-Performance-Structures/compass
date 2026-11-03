@@ -8,7 +8,7 @@ import {
 } from "@/components/searchable-combobox"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
-export type ProjectComboboxOption = {
+type ProjectComboboxOption = {
   readonly id: string
   readonly name: string
   readonly projectNumber?: string | null
@@ -16,7 +16,7 @@ export type ProjectComboboxOption = {
   readonly jobStatusLabel?: string
 }
 
-export type ProjectComboboxSpecialOption = {
+type ProjectComboboxSpecialOption = {
   readonly value: string
   readonly label: string
   readonly description?: string

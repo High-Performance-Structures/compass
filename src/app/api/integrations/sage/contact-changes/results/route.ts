@@ -3,13 +3,20 @@ import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import {
-  sageBridgeRequestNonces,
-  sageContactChangeEvents,
   sageContactChangeProposals,
   sageContactReadRequests,
   sageContactSnapshots,
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  awaitSageLinkReviewStatements,
+  insertSageContactChangeEvent,
+  insertSageContactSnapshot,
+  rejectSageLinkCandidateStatements,
+  updateSageContactChangeProposals,
+  updateSageContactReadRequests,
+} from "@/lib/domain/sage-bridge/contact-store"
+import { insertSageBridgeRequestNonce } from "@/lib/domain/sage-bridge/store"
 import {
   getSageContactBridgeSecret,
   readBoundedSageBridgeBody,
@@ -56,21 +63,7 @@ async function rejectCandidateRead(
   reason: string,
   now: string
 ): Promise<Response> {
-  const results = await database.batch([
-    database.prepare(
-      `UPDATE sage_contact_read_requests SET status = 'conflict', error_message = ?, completed_at = ?
-       WHERE id = ? AND organization_id = ? AND claim_token = ?
-         AND status = 'running' AND purpose = 'link_candidate'`
-    ).bind(reason, now, read.id, read.organizationId, read.claimToken),
-    database.prepare(
-      `INSERT INTO sage_contact_link_events
-       (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-       SELECT ?, id, organization_id, NULL, 'conflict', ?, ?
-       FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
-         AND claim_token = ? AND status = 'conflict' AND completed_at = ?`
-    ).bind(crypto.randomUUID(), JSON.stringify({ reason }), now,
-      read.id, read.organizationId, read.claimToken, now),
-  ])
+  const results = await database.batch(rejectSageLinkCandidateStatements(database, read, reason, now))
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
     return Response.json({ error: "Candidate claim changed concurrently" }, { status: 409 })
   }
@@ -93,7 +86,7 @@ export async function POST(request: Request): Promise<Response> {
   const now = new Date().toISOString()
   const db = getDb(env.DB)
   try {
-    await db.insert(sageBridgeRequestNonces).values({
+    await insertSageBridgeRequestNonce(db, {
       requestId, route: new URL(request.url).pathname, createdAt: now,
     })
   } catch {
@@ -122,18 +115,18 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Read claim is missing or outside the bridge organization" }, { status: 409 })
     }
     if (result.outcome === "failed") {
-      await db.update(sageContactReadRequests).set({
+      await updateSageContactReadRequests(db, {
         status: "failed", errorMessage: result.error, completedAt: now,
-      }).where(and(eq(sageContactReadRequests.id, read.id),
+      }, and(eq(sageContactReadRequests.id, read.id),
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
     if (sageContactReadClaimError(read)) {
-      await db.update(sageContactReadRequests).set({
+      await updateSageContactReadRequests(db, {
         status: "failed",
         errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
         completedAt: now,
-      }).where(and(eq(sageContactReadRequests.id, read.id),
+      }, and(eq(sageContactReadRequests.id, read.id),
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
@@ -186,37 +179,26 @@ export async function POST(request: Request): Promise<Response> {
           id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
         }, identityError, now)
       }
-      const results = await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE sage_contact_read_requests
-           SET status = 'awaiting_review', candidate_snapshot_json = ?, completed_at = ?
-           WHERE id = ? AND claim_token = ? AND status = 'running' AND purpose = 'link_candidate'`
-        ).bind(JSON.stringify(snapshot), now, read.id, result.claimToken),
-        env.DB.prepare(
-          `INSERT INTO sage_contact_link_events
-           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-           SELECT ?, id, organization_id, NULL, 'candidate_read', '{}', ?
-           FROM sage_contact_read_requests WHERE id = ? AND status = 'awaiting_review'
-             AND claim_token = ?`
-        ).bind(crypto.randomUUID(), now, read.id, result.claimToken),
-      ])
+      const results = await env.DB.batch(awaitSageLinkReviewStatements(env.DB, {
+        readId: read.id, claimToken: result.claimToken, snapshotJson: JSON.stringify(snapshot), now,
+      }))
       if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
         return Response.json({ error: "Sage link candidate changed concurrently" }, { status: 409 })
       }
       return accepted("awaiting_review")
     }
     if (!identity.sageRecordId) {
-      await db.update(sageContactReadRequests).set({
+      await updateSageContactReadRequests(db, {
         status: "failed",
         errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
         completedAt: now,
-      }).where(and(eq(sageContactReadRequests.id, read.id),
+      }, and(eq(sageContactReadRequests.id, read.id),
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
     const applied = await applySageContactSnapshotToCanonical(env.DB, read.organizationId, identity, snapshot)
     if (!applied.success) return Response.json({ error: applied.error }, { status: 409 })
-    await db.insert(sageContactSnapshots).values({
+    await insertSageContactSnapshot(db, {
       id: crypto.randomUUID(), organizationId: read.organizationId,
       kind: snapshot.kind, entityId: snapshot.entityId,
       sageRecordId: snapshot.sageRecordId,
@@ -232,8 +214,8 @@ export async function POST(request: Request): Promise<Response> {
         capturedAt: now,
       },
     })
-    await db.update(sageContactReadRequests).set({ status: "succeeded", completedAt: now, errorMessage: null })
-      .where(and(eq(sageContactReadRequests.id, read.id), eq(sageContactReadRequests.claimToken, result.claimToken)))
+    await updateSageContactReadRequests(db, { status: "succeeded", completedAt: now, errorMessage: null },
+      and(eq(sageContactReadRequests.id, read.id), eq(sageContactReadRequests.claimToken, result.claimToken)))
     return accepted("succeeded")
   }
 
@@ -248,12 +230,12 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (result.outcome === "failed") {
     await db.batch([
-      db.update(sageContactChangeProposals).set({
+      updateSageContactChangeProposals(db, {
         status: "failed", errorMessage: result.error,
         completedAt: now, updatedAt: now,
-      }).where(and(eq(sageContactChangeProposals.id, proposal.id),
+      }, and(eq(sageContactChangeProposals.id, proposal.id),
         eq(sageContactChangeProposals.claimToken, result.claimToken))),
-      db.insert(sageContactChangeEvents).values({
+      insertSageContactChangeEvent(db, {
         id: crypto.randomUUID(), proposalId: proposal.id,
         organizationId: proposal.organizationId, actorUserId: null,
         eventType: "failed", detailJson: JSON.stringify({ error: result.error }), createdAt: now,
@@ -283,7 +265,7 @@ export async function POST(request: Request): Promise<Response> {
   ), snapshot.fields)
   const status = confirmed ? "succeeded" : "conflict"
   await db.batch([
-    db.insert(sageContactSnapshots).values({
+    insertSageContactSnapshot(db, {
       id: crypto.randomUUID(), organizationId: proposal.organizationId,
       kind: snapshot.kind, entityId: snapshot.entityId,
       sageRecordId: snapshot.sageRecordId,
@@ -294,13 +276,13 @@ export async function POST(request: Request): Promise<Response> {
       target: [sageContactSnapshots.organizationId, sageContactSnapshots.kind, sageContactSnapshots.entityId],
       set: { revision: snapshot.revision, fieldsJson: JSON.stringify(snapshot.fields), capturedAt: now },
     }),
-    db.update(sageContactChangeProposals).set({
+    updateSageContactChangeProposals(db, {
       status, resultRevision: snapshot.revision,
       errorMessage: confirmed ? null : "Sage read-back differs from approved changes",
       completedAt: now, updatedAt: now,
-    }).where(and(eq(sageContactChangeProposals.id, proposal.id),
+    }, and(eq(sageContactChangeProposals.id, proposal.id),
       eq(sageContactChangeProposals.claimToken, result.claimToken))),
-    db.insert(sageContactChangeEvents).values({
+    insertSageContactChangeEvent(db, {
       id: crypto.randomUUID(), proposalId: proposal.id,
       organizationId: proposal.organizationId, actorUserId: null,
       eventType: status, detailJson: JSON.stringify({ revision: snapshot.revision }), createdAt: now,

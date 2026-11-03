@@ -10,7 +10,7 @@ import {
 } from "@/lib/email/project-address"
 import { cn } from "@/lib/utils"
 
-export function ProjectEmailAddressCard({
+function ProjectEmailAddressCard({
   projectId,
   compact = false,
 }: {

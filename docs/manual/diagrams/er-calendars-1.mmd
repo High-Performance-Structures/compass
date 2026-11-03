@@ -1,0 +1,36 @@
+erDiagram
+  direction LR
+  internal_duty_entries {
+    key id
+    ref daily_log_id
+    ref todo_id
+  }
+  recurring_duties {
+    key id
+  }
+  recurring_duty_completions {
+    key id
+    ref recurring_duty_id
+    ref duty_entry_id
+  }
+  google_calendar_connections {
+    key id
+  }
+  google_calendar_selections {
+    key id
+    ref connection_id
+  }
+  compass_project_calendar_events {
+    key id
+  }
+  daily_logs {
+    key id
+  }
+  project_operations {
+    key id
+  }
+  daily_logs |o--o{ internal_duty_entries : ""
+  google_calendar_connections ||--o{ google_calendar_selections : ""
+  internal_duty_entries |o--o{ recurring_duty_completions : ""
+  project_operations |o--o{ internal_duty_entries : ""
+  recurring_duties ||--o{ recurring_duty_completions : ""

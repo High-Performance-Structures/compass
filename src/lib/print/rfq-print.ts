@@ -1,4 +1,4 @@
-import type { ProjectRfqItem } from "@/app/actions/project-operations"
+import type { ProjectRfqItem } from "@/lib/domain/operations/types"
 import type { ProjectBrand } from "@/lib/project-branding"
 
 export function escapeHtml(value: string): string {
@@ -10,7 +10,7 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;")
 }
 
-export function plainText(value: string | null): string {
+function plainText(value: string | null): string {
   return value?.trim() ?? ""
 }
 

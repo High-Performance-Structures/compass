@@ -4,7 +4,7 @@ import type { NuTechStepId } from "@/lib/nutech/order-steps"
 /** Who a template goes to; decides the default recipients. */
 export type NuTechEmailAudience = "customer" | "manufacturer" | "warehouse" | "carrier"
 
-export type NuTechEmailTemplateId =
+type NuTechEmailTemplateId =
   | "price_sheets"
   | "estimate_pickup"
   | "estimate_delivery"
@@ -54,7 +54,7 @@ export const NUTECH_EMAIL_MERGE_FIELDS = [
   { name: "warehouseDockHours", label: "Warehouse dock hours" },
 ] as const
 
-export type NuTechEmailMergeField = (typeof NUTECH_EMAIL_MERGE_FIELDS)[number]["name"]
+type NuTechEmailMergeField = (typeof NUTECH_EMAIL_MERGE_FIELDS)[number]["name"]
 export type NuTechEmailContext = Readonly<Record<NuTechEmailMergeField, string>>
 
 /**

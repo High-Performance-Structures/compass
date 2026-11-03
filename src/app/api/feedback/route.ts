@@ -6,8 +6,7 @@ import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import { getCurrentUser } from "@/lib/auth"
-
-const FEEDBACK_TYPES = ["bug", "feature", "question", "general"] as const
+import { FEEDBACK_TYPES } from "@/lib/domain/feedback/statuses"
 
 function isFeedbackType(
   value: string,

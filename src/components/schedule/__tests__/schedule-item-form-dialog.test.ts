@@ -42,6 +42,9 @@ vi.mock("@/lib/work-calendar", () => ({
 vi.mock("@/app/actions/schedule", () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
+}))
+
+vi.mock("@/app/actions/schedule-dependencies", () => ({
   createDependency: vi.fn(),
   updateDependency: vi.fn(),
   deleteDependency: vi.fn(),
@@ -59,7 +62,7 @@ vi.mock("@/app/actions/schedule-confirmations", () => ({
   sendScheduleTaskReminder: vi.fn(),
 }))
 
-vi.mock("@/app/actions/project-operations", () => ({
+vi.mock("@/app/actions/project-todos", () => ({
   getScheduleTaskTodos: vi.fn(async () => []),
 }))
 

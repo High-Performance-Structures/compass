@@ -2,7 +2,6 @@
 
 import { and, eq, isNull, notExists, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { z } from "zod/v4"
 import {
   projectFinishSelections,
   projectChangeOrders,
@@ -14,30 +13,20 @@ import {
   projectSelectionRequests as requests,
   projectSelectionProcurementLinks as links,
 } from "@/db/schema-selection-decisions"
-import { selectionAccess } from "@/lib/selections/access"
+import { selectionAccess } from "@/lib/domain/selections/access"
+import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
   specificationJson,
 } from "@/lib/selections/decisions"
+import { publishSelectionSchema, type PublishSelectionInput } from "@/lib/selections/publish-input"
+
+export type { PublishSelectionInput } from "@/lib/selections/publish-input"
 
 type Result =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
-const publishSchema = z.object({
-  selectionId: z.string().min(1),
-  expectedRevision: z.number().int().nonnegative(),
-  selectionUpdatedAt: z.string(),
-  published: z.boolean(),
-  decisionDueDate: z.string().max(10),
-  allowance: z.string(),
-  price: z.string(),
-  scheduleImpact: z.string().max(2000),
-  ownerNote: z.string().max(4000),
-  requiresChangeOrder: z.boolean(),
-  changeOrderId: z.string(),
-})
-export type PublishSelectionInput = z.infer<typeof publishSchema>
 function failure(error: unknown): Result {
   return {
     success: false,
@@ -58,7 +47,7 @@ export async function publishSelectionDecision(
   raw: PublishSelectionInput
 ): Promise<Result> {
   try {
-    const input = publishSchema.parse(raw)
+    const input = publishSelectionSchema.parse(raw)
     const { db, user, actorName } = await selectionAccess(
       projectId,
       "staff",
@@ -209,20 +198,19 @@ export async function publishSelectionDecision(
     const result = await db.batch([
       mutation,
       audit,
-      db
-        .update(projectFinishSelections)
-        .set({
+      updateFinishSelectionsStatement(
+        db,
+        and(
+          eq(projectFinishSelections.id, row.id),
+          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${row.id} AND ${decisions.lastMutationId} = ${token})`
+        ),
+        {
           ownerVisible: input.published,
           ownerApproved: false,
           approvedBy: null,
           approvedAt: null,
-        })
-        .where(
-          and(
-            eq(projectFinishSelections.id, row.id),
-            sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${row.id} AND ${decisions.lastMutationId} = ${token})`
-          )
-        ),
+        }
+      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(
@@ -356,22 +344,21 @@ export async function approveSelectionDecision(
           .from(decisions)
           .where(eq(decisions.lastMutationId, token))
       ),
-      db
-        .update(projectFinishSelections)
-        .set({
+      updateFinishSelectionsStatement(
+        db,
+        and(
+          eq(projectFinishSelections.id, selectionId),
+          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
+        ),
+        {
           ownerApproved: true,
           approvedBy: user.id,
           approvedAt: now,
           // Signature collection must not rewind procurement or installation progress.
           status: sql`CASE WHEN ${projectFinishSelections.status} IN ('needed', 'proposed', 'owner_review') THEN 'approved' ELSE ${projectFinishSelections.status} END`,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectFinishSelections.id, selectionId),
-            sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
-          )
-        ),
+        }
+      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(

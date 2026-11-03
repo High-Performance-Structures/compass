@@ -80,7 +80,13 @@ function createD1(sqlite: Sqlite, controller: FailureController): TestD1 {
       },
       run: async () => {
         shouldFail()
-        const result = execute().run(...values.map(sqliteValue))
+        const prepared = execute()
+        // D1 batch() includes rows from UPDATE/DELETE ... RETURNING.
+        if (prepared.reader) {
+          const rows = prepared.all(...values.map(sqliteValue))
+          return { results: rows, success: true, meta: { duration: 0, changes: rows.length, last_row_id: 0, rows_read: rows.length, rows_written: rows.length } }
+        }
+        const result = prepared.run(...values.map(sqliteValue))
         return {
           results: [],
           success: true,
@@ -149,7 +155,8 @@ function createBaseSchema(sqlite: Sqlite): void {
     );
     CREATE TABLE projects (
       id TEXT PRIMARY KEY NOT NULL, organization_id TEXT, name TEXT NOT NULL,
-      project_number TEXT, FOREIGN KEY (organization_id) REFERENCES organizations(id)
+      project_number TEXT, imported_conversations_staff_only INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (organization_id) REFERENCES organizations(id)
     );
     CREATE TABLE organization_members (
       id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL,
@@ -220,6 +227,13 @@ export function openCorrespondenceTestDatabase(): CorrespondenceTestDatabase {
   // @ts-expect-error The SQLite adapter implements the D1 methods exercised by this integration test.
   const db = getDb(d1)
   return { sqlite, d1, db, failures, close: () => sqlite.close() }
+}
+
+/** A Drizzle handle over any better-sqlite3 database (for example one built from every migration). */
+export function drizzleOverSqlite(sqlite: Sqlite): ReturnType<typeof getDb> {
+  const failures: FailureController = { failNextMatching: () => {}, setBindLimit: () => {}, setBeforeBatchHook: () => {} }
+  // @ts-expect-error The SQLite adapter implements the D1 methods exercised by these integration tests.
+  return getDb(createD1(sqlite, failures))
 }
 
 function user(id: string, email: string, role: string, organizationId: string): CorrespondenceContext["user"] {

@@ -19,11 +19,11 @@ import type {
 } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { format, parseISO } from "date-fns"
 import {
   parseBaselineTasks,
   scheduleBaselineVariance,
 } from "@/lib/schedule/baseline-variance"
+import { formatDate } from "@/lib/format"
 
 interface ScheduleBaselineViewProps {
   projectId: string
@@ -31,12 +31,9 @@ interface ScheduleBaselineViewProps {
   currentTasks: ScheduleTaskData[]
 }
 
-function formatDate(dateStr: string): string {
-  try {
-    return format(parseISO(dateStr), "MMM d, yyyy")
-  } catch {
-    return dateStr
-  }
+/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
+function dateLabel(value: string): string {
+  return formatDate(value, "medium", value)
 }
 
 function varianceLabel(value: number | null): string {
@@ -137,7 +134,7 @@ export function ScheduleBaselineView({
                       {b.name}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(b.createdAt.split("T")[0])}
+                      {dateLabel(b.createdAt.split("T")[0])}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -182,7 +179,7 @@ export function ScheduleBaselineView({
                 Baseline finish
               </span>
               {comparison.baselineFinish
-                ? formatDate(comparison.baselineFinish)
+                ? dateLabel(comparison.baselineFinish)
                 : "—"}
             </div>
             <div>
@@ -190,7 +187,7 @@ export function ScheduleBaselineView({
                 Current finish
               </span>
               {comparison.currentFinish
-                ? formatDate(comparison.currentFinish)
+                ? dateLabel(comparison.currentFinish)
                 : "—"}
             </div>
             <div>
@@ -243,22 +240,22 @@ export function ScheduleBaselineView({
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {row.baselineStart
-                        ? formatDate(row.baselineStart)
+                        ? dateLabel(row.baselineStart)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {row.baselineFinish
-                        ? formatDate(row.baselineFinish)
+                        ? dateLabel(row.baselineFinish)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {row.currentStart
-                        ? formatDate(row.currentStart)
+                        ? dateLabel(row.currentStart)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {row.currentFinish
-                        ? formatDate(row.currentFinish)
+                        ? dateLabel(row.currentFinish)
                         : "—"}
                     </TableCell>
                     <TableCell>

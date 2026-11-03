@@ -96,7 +96,7 @@ export type OwnerUpdateComposerSnapshot = {
   readonly documents: readonly OwnerUpdateDocumentSelection[]
 }
 
-export function emptyOwnerUpdateComposerSnapshot(): OwnerUpdateComposerSnapshot {
+function emptyOwnerUpdateComposerSnapshot(): OwnerUpdateComposerSnapshot {
   return {
     version: 2,
     completedScheduleItems: [],

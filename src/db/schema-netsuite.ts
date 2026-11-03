@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
-import { projects, customers, vendors, organizations } from "./schema"
+import { projects, customers, vendors, organizations, projectBudgetApplications, users } from "./schema"
 
 // oauth token storage (encrypted at rest)
 export const netsuiteAuth = sqliteTable("netsuite_auth", {
@@ -93,6 +93,8 @@ export const invoices = sqliteTable("invoices", {
     .where(sql`${table.organizationId} IS NOT NULL AND ${table.sourceExternalId} IS NOT NULL AND trim(${table.sourceExternalId}) <> ''`),
   check("invoices_source_system_check", sql`${table.sourceSystem} IN ('buildertrend', 'compass', 'manual', 'sage')`),
   check("invoices_source_scope_check", sql`${table.sourceExternalId} IS NULL OR (trim(${table.sourceExternalId}) <> '' AND ${table.organizationId} IS NOT NULL AND ${table.projectId} IS NOT NULL)`),
+    index("invoices_project_id_idx").on(table.projectId),
+    index("invoices_customer_id_idx").on(table.customerId),
 ])
 
 export const vendorBills = sqliteTable("vendor_bills", {
@@ -116,7 +118,11 @@ export const vendorBills = sqliteTable("vendor_bills", {
   lineItems: text("line_items"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("vendor_bills_project_id_idx").on(table.projectId),
+    index("vendor_bills_vendor_id_idx").on(table.vendorId),
+  ])
 
 export const payments = sqliteTable("payments", {
   id: text("id").primaryKey(),
@@ -141,6 +147,10 @@ export const payments = sqliteTable("payments", {
   referenceNumber: text("reference_number"),
   memo: text("memo"),
   billingScope: text("billing_scope").notNull().default("construction"),
+  /** A payment is never deleted once applied; voiding it releases its allocations (0285). */
+  voidedAt: text("voided_at"),
+  voidedBy: text("voided_by").references(() => users.id, { onDelete: "set null" }),
+  voidReason: text("void_reason"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
@@ -159,6 +169,12 @@ export const payments = sqliteTable("payments", {
       AND typeof(${table.netAmountCents}) = 'integer' AND ${table.netAmountCents} BETWEEN 0 AND 9007199254740991
       AND ${table.grossAmountCents} = ${table.processingFeeCents} + ${table.netAmountCents})
   `),
+    index("payments_project_id_idx").on(table.projectId),
+    index("payments_vendor_id_idx").on(table.vendorId),
+    index("payments_customer_id_idx").on(table.customerId),
+  // Declared from drizzle/0285_payment_applications.sql.
+  index("payments_voided_by_idx").on(table.voidedBy),
+  check("payments_void_reason_check", sql`${table.voidReason} IS NULL OR length(trim(${table.voidReason})) > 0`),
 ])
 
 export const creditMemos = sqliteTable("credit_memos", {
@@ -191,6 +207,8 @@ export const creditMemos = sqliteTable("credit_memos", {
   check("credit_memos_source_system_check", sql`${table.sourceSystem} IN ('buildertrend', 'compass', 'manual', 'sage')`),
   check("credit_memos_source_scope_check", sql`${table.sourceExternalId} IS NULL OR (trim(${table.sourceExternalId}) <> '' AND ${table.organizationId} IS NOT NULL AND ${table.projectId} IS NOT NULL)`),
   check("credit_memos_non_cash_check", sql`${table.cashReceipt} = 0`),
+    index("credit_memos_project_id_idx").on(table.projectId),
+    index("credit_memos_customer_id_idx").on(table.customerId),
 ])
 
 export const invoicePaymentAllocations = sqliteTable(
@@ -203,6 +221,9 @@ export const invoicePaymentAllocations = sqliteTable(
     paymentId: text("payment_id").notNull(),
     allocationCents: integer("allocation_cents").notNull(),
     createdAt: text("created_at").notNull(),
+    /** Set when the payment is voided: the row stays as history and stops counting (0285). */
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
   },
   (table) => [
     uniqueIndex("invoice_payment_allocations_pair_unique").on(table.invoiceId, table.paymentId),
@@ -222,6 +243,95 @@ export const invoicePaymentAllocations = sqliteTable(
       columns: [table.organizationId, table.projectId, table.paymentId],
       foreignColumns: [payments.organizationId, payments.projectId, payments.id],
       name: "invoice_payment_allocations_payment_scope_fk",
+    }).onDelete("restrict"),
+    index("invoice_payment_allocations_project_id_idx").on(table.projectId),
+    // Declared from drizzle/0285_payment_applications.sql.
+    index("invoice_payment_allocations_payment_idx").on(table.paymentId),
+    index("invoice_payment_allocations_released_by_idx").on(table.releasedBy),
+  ],
+)
+
+/**
+ * A received payment applied to a billed pay application (G702 draw). The
+ * draw's paid and open amounts are the sum of its unreleased rows; nothing is
+ * copied onto the pay application. Voiding the payment releases the rows.
+ */
+export const payApplicationPaymentAllocations = sqliteTable(
+  "pay_application_payment_allocations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "restrict" }),
+    paymentId: text("payment_id").notNull(),
+    allocationCents: integer("allocation_cents").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("pay_application_payment_allocations_pair_unique").on(table.applicationId, table.paymentId),
+    index("pay_application_payment_allocations_payment_idx").on(table.paymentId),
+    index("pay_application_payment_allocations_scope_idx").on(table.organizationId, table.projectId),
+    index("pay_application_payment_allocations_project_id_idx").on(table.projectId),
+    index("pay_application_payment_allocations_created_by_idx").on(table.createdBy),
+    index("pay_application_payment_allocations_released_by_idx").on(table.releasedBy),
+    check(
+      "pay_application_payment_allocations_positive_check",
+      sql`typeof(${table.allocationCents}) = 'integer' AND ${table.allocationCents} BETWEEN 1 AND 9007199254740991`,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [projects.organizationId, projects.id],
+      name: "pay_application_payment_allocations_project_scope_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.projectId, table.paymentId],
+      foreignColumns: [payments.organizationId, payments.projectId, payments.id],
+      name: "pay_application_payment_allocations_payment_scope_fk",
+    }).onDelete("restrict"),
+  ],
+)
+
+/**
+ * Staff marks that an imported (Sage or Drive) draw was paid before Compass,
+ * so it counts as settled without payment details. Undoing a mark releases
+ * it with a reason; released rows stay as history (drizzle/0286).
+ */
+export const payApplicationPrepaidMarks = sqliteTable(
+  "pay_application_prepaid_marks",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "restrict" }),
+    note: text("note"),
+    markedBy: text("marked_by").references(() => users.id, { onDelete: "set null" }),
+    markedAt: text("marked_at").notNull(),
+    releasedAt: text("released_at"),
+    releasedBy: text("released_by").references(() => users.id, { onDelete: "set null" }),
+    releaseReason: text("release_reason"),
+  },
+  (table) => [
+    uniqueIndex("pay_application_prepaid_marks_active_unique").on(table.applicationId).where(sql`${table.releasedAt} IS NULL`),
+    index("pay_application_prepaid_marks_application_idx").on(table.applicationId),
+    index("pay_application_prepaid_marks_scope_idx").on(table.organizationId, table.projectId),
+    index("pay_application_prepaid_marks_project_id_idx").on(table.projectId),
+    index("pay_application_prepaid_marks_marked_by_idx").on(table.markedBy),
+    index("pay_application_prepaid_marks_released_by_idx").on(table.releasedBy),
+    check(
+      "pay_application_prepaid_marks_release_check",
+      sql`(${table.releasedAt} IS NULL AND ${table.releaseReason} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0)`,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [projects.organizationId, projects.id],
+      name: "pay_application_prepaid_marks_project_scope_fk",
     }).onDelete("restrict"),
   ],
 )
@@ -256,6 +366,7 @@ export const invoiceCreditAllocations = sqliteTable(
       foreignColumns: [creditMemos.organizationId, creditMemos.projectId, creditMemos.id],
       name: "invoice_credit_allocations_credit_scope_fk",
     }).onDelete("restrict"),
+    index("invoice_credit_allocations_project_id_idx").on(table.projectId),
   ],
 )
 
@@ -273,5 +384,6 @@ export type CreditMemo = typeof creditMemos.$inferSelect
 export type NewCreditMemo = typeof creditMemos.$inferInsert
 export type InvoicePaymentAllocation = typeof invoicePaymentAllocations.$inferSelect
 export type NewInvoicePaymentAllocation = typeof invoicePaymentAllocations.$inferInsert
+export type PayApplicationPaymentAllocation = typeof payApplicationPaymentAllocations.$inferSelect
 export type InvoiceCreditAllocation = typeof invoiceCreditAllocations.$inferSelect
 export type NewInvoiceCreditAllocation = typeof invoiceCreditAllocations.$inferInsert

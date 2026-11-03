@@ -1,0 +1,35 @@
+erDiagram
+  direction LR
+  message_reactions {
+    key id
+    ref message_id
+  }
+  messages {
+    key id
+    ref channel_id
+  }
+  typing_sessions {
+    key id
+    ref channel_id
+  }
+  voice_participants {
+    key id
+    ref channel_id
+  }
+  voice_realtimekit_meetings {
+    key id
+    ref channel_id
+  }
+  voice_signals {
+    key id
+    ref channel_id
+  }
+  channels {
+    key id
+  }
+  channels ||--o{ messages : ""
+  channels ||--o{ typing_sessions : ""
+  channels ||--o{ voice_participants : ""
+  channels ||--o{ voice_realtimekit_meetings : ""
+  channels ||--o{ voice_signals : ""
+  messages ||--o{ message_reactions : ""

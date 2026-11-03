@@ -4,17 +4,17 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import {
-  anthropicOauthTokens,
-  userProviderConfig,
-} from "@/db/schema-ai-config"
+import { anthropicOauthTokens } from "@/db/schema-ai-config"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt, decrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
+import { deleteUserProviderConfig, saveAnthropicOAuthProviderConfig } from "@/lib/domain/settings/store"
 import {
   exchangeCode as exchangeOAuthCode_,
   refreshAccessToken as refreshToken_,
 } from "agent-core"
+import { userContext } from "@/lib/server/action-context"
+import { envValue } from "@/lib/shared/env"
 
 export async function exchangeOAuthCode(
   code: string,
@@ -34,9 +34,7 @@ export async function exchangeOAuthCode(
     const tokens = await exchangeOAuthCode_(code, state, verifier)
 
     const { env } = await getCloudflareContext()
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
+    const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
     if (!encryptionKey) {
       return {
@@ -81,28 +79,7 @@ export async function exchangeOAuthCode(
       })
       .run()
 
-    await db
-      .insert(userProviderConfig)
-      .values({
-        userId: user.id,
-        providerType: "anthropic-oauth",
-        apiKey: null,
-        baseUrl: null,
-        modelOverrides: null,
-        isActive: 1,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userProviderConfig.userId,
-        set: {
-          providerType: "anthropic-oauth",
-          apiKey: null,
-          baseUrl: null,
-          isActive: 1,
-          updatedAt: now,
-        },
-      })
-      .run()
+    await saveAnthropicOAuthProviderConfig(db, user.id, now)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -134,9 +111,7 @@ export async function getOAuthAccessToken(
 
     if (!row) return null
 
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
+    const encryptionKey = envValue(env, "PROVIDER_KEY_ENCRYPTION_KEY")
 
     if (!encryptionKey) return null
 
@@ -204,10 +179,7 @@ export async function disconnectOAuth(): Promise<{
     .where(eq(anthropicOauthTokens.userId, user.id))
     .run()
 
-  await db
-    .delete(userProviderConfig)
-    .where(eq(userProviderConfig.userId, user.id))
-    .run()
+  await deleteUserProviderConfig(db, user.id)
 
   revalidatePath("/dashboard")
   return { success: true }
@@ -218,11 +190,9 @@ export async function getOAuthStatus(): Promise<{
   expiresAt?: string
 }> {
   try {
-    const user = await getCurrentUser()
-    if (!user) return { connected: false }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const context = await userContext()
+    if (!context.success) return { connected: false }
+    const { user, db } = context.data
 
     const row = await db
       .select()

@@ -1,7 +1,7 @@
 import type {
   CherishPulseResponseType,
   CherishValue,
-} from "@/app/actions/cherish-pulse"
+} from "@/lib/cherish/pulse-types"
 
 export type FieldOutboxJarvisPrompt = {
   readonly id: string

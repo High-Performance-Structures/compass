@@ -2,12 +2,12 @@ import { and, eq, inArray } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
+import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Db = ReturnType<typeof getDb>
-const ADMIN_ROLES = ["admin", "secondary_admin"]
 
 export type SquareAlertKind = "connection" | "payments"
 
@@ -40,7 +40,7 @@ export async function squareAlertRecipientIds(
         and(
           eq(organizationMembers.organizationId, organizationId),
           eq(users.isActive, true),
-          ids === null ? inArray(users.role, ADMIN_ROLES) : inArray(users.id, [...ids]),
+          ids === null ? inArray(users.role, [...ADMIN_USER_ROLES]) : inArray(users.id, [...ids]),
         ),
       )
   const staffIds = (rows: readonly { userId: string; role: string }[]): readonly string[] =>

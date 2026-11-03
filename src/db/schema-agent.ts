@@ -23,7 +23,10 @@ export const agentItems = sqliteTable("agent_items", {
   metadata: text("metadata"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("agent_items_user_id_idx").on(table.userId),
+  ])
 
 // One row per carried-out Ask Jarvis confirmation; the token id as primary
 // key makes each confirmation single-use (see drizzle/0207).

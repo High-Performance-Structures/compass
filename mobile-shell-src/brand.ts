@@ -6,7 +6,7 @@ import type { ProjectDepartment } from "../src/lib/project-branding"
 // inside it. Company names and uploaded logos come from the organization's
 // Department Profiles (Settings → Company) and are cached for offline use.
 
-export const fieldCompanySchema = z.object({
+const fieldCompanySchema = z.object({
   displayName: z.string(),
   shortName: z.string(),
   logoDataUrl: z.string(),

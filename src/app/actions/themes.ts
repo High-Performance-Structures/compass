@@ -1,31 +1,24 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
-  customThemes,
-  userThemePreference,
-} from "@/db/schema-theme"
+  deleteCustomTheme as deleteStoredCustomTheme,
+  resetUserThemePreference,
+} from "@/lib/domain/settings/store"
 import { getCurrentUser } from "@/lib/auth"
-import {
-  getCustomThemeForUser,
-  listCustomThemesForUser,
-  saveCustomThemeForUser,
-  setThemePreferenceForUser,
-} from "@/lib/theme/user-themes"
+import { listCustomThemesForUser, setThemePreferenceForUser } from "@/lib/theme/user-themes"
 import { revalidatePath } from "next/cache"
 import { isDemoUser } from "@/lib/demo"
+import { userContext } from "@/lib/server/action-context"
 
 export async function getUserThemePreference(): Promise<
   | { readonly success: true; readonly data: { readonly activeThemeId: string } }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { user, db } = context.data
 
   const pref = await db.query.userThemePreference.findFirst({
     where: (p, { eq: e }) => e(p.userId, user.id),
@@ -80,65 +73,19 @@ export async function getCustomThemes(): Promise<
   return { success: true, data: themes }
 }
 
-export async function getCustomThemeById(
-  themeId: string,
-): Promise<
-  | {
-      readonly success: true
-      readonly data: {
-        readonly id: string
-        readonly name: string
-        readonly description: string
-        readonly themeData: string
-      }
-    }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  return getCustomThemeForUser(getDb(env.DB), user.id, themeId)
-}
-
-export async function saveCustomTheme(
-  name: string,
-  description: string,
-  themeData: string,
-  existingId?: string,
-): Promise<
-  | { readonly success: true; readonly id: string }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
-
-  const { env } = await getCloudflareContext()
-  const result = await saveCustomThemeForUser(getDb(env.DB), user.id, {
-    name,
-    description,
-    themeData,
-    existingId,
-  })
-  if (result.success) revalidatePath("/", "layout")
-  return result
-}
-
 export async function deleteCustomTheme(
   themeId: string,
 ): Promise<
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  const context = await userContext()
+  if (!context.success) return { success: false, error: "not authenticated" }
+  const { user, db } = context.data
 
   if (isDemoUser(user.id)) {
     return { success: false, error: "DEMO_READ_ONLY" }
   }
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
 
   const existing = await db.query.customThemes.findFirst({
     where: (t, { eq: e, and: a }) =>
@@ -148,14 +95,7 @@ export async function deleteCustomTheme(
     return { success: false, error: "theme not found" }
   }
 
-  await db
-    .delete(customThemes)
-    .where(
-      and(
-        eq(customThemes.id, themeId),
-        eq(customThemes.userId, user.id),
-      ),
-    )
+  await deleteStoredCustomTheme(db, user.id, themeId)
 
   // reset preference if it was pointing to the deleted theme
   const pref = await db.query.userThemePreference.findFirst({
@@ -163,10 +103,7 @@ export async function deleteCustomTheme(
   })
   if (pref?.activeThemeId === themeId) {
     const now = new Date().toISOString()
-    await db
-      .update(userThemePreference)
-      .set({ activeThemeId: "native-compass", updatedAt: now })
-      .where(eq(userThemePreference.userId, user.id))
+    await resetUserThemePreference(db, user.id, "native-compass", now)
   }
 
   revalidatePath("/", "layout")

@@ -17,7 +17,7 @@ type Db = ReturnType<typeof getDb>
 /** Small images are usually email signatures and logos, not documents. */
 const MIN_IMAGE_BYTES = 40 * 1024
 
-export function isLikelyDocumentAttachment(attachment: { readonly mimeType: string; readonly size: number | null; readonly data: Uint8Array | null }): boolean {
+function isLikelyDocumentAttachment(attachment: { readonly mimeType: string; readonly size: number | null; readonly data: Uint8Array | null }): boolean {
   const size = attachment.size ?? attachment.data?.byteLength ?? 0
   if (size <= 0 || size > TRADE_DOC_LINK_MAX_BYTES) return false
   return !attachment.mimeType.startsWith("image/") || size >= MIN_IMAGE_BYTES

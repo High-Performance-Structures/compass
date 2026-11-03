@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
 import { getDb } from "@/db"
-import { dailyLogs, projects, projectVideos } from "@/db/schema"
+import { projects, projectVideos } from "@/db/schema"
+import { dailyLogInsertStatement } from "@/lib/domain/field/store"
+import { projectVideoInsertStatement } from "@/lib/domain/media/store"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -194,7 +196,7 @@ export async function POST(
       projectNumber: project.projectNumber,
     })
     const submitter = activityActorName(user)
-    const videoInsert = db.insert(projectVideos).values({
+    const videoInsert = projectVideoInsertStatement(db, {
       id: videoId,
       organizationId,
       projectId,
@@ -231,7 +233,7 @@ export async function POST(
     if (dailyLogId) {
       await db.batch([
         videoInsert,
-        db.insert(dailyLogs).values({
+        dailyLogInsertStatement(db, {
           id: dailyLogId,
           projectId,
           authorId: user.id,
@@ -250,7 +252,7 @@ export async function POST(
         }),
       ])
     } else {
-      await videoInsert.run()
+      await db.batch([videoInsert])
     }
 
     await recordActivityEvent({

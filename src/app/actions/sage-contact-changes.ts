@@ -6,13 +6,18 @@ import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import {
-  sageContactChangeEvents,
   sageContactChangeProposals,
   sageContactReadRequests,
   sageContactSnapshots,
 } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  insertSageContactChangeEvent,
+  insertSageContactChangeProposal,
+  insertSageContactReadRequest,
+  reviewSageContactChangeStatements,
+} from "@/lib/domain/sage-bridge/contact-store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
@@ -28,6 +33,7 @@ import {
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const kindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",
@@ -66,11 +72,9 @@ export type MySageContactProposalStatus = {
 }
 
 export async function listMySageContactProposalStatuses(): Promise<readonly MySageContactProposalStatus[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!user.isActive) return []
   const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   return db.select({
     id: sageContactChangeProposals.id,
     kind: sageContactChangeProposals.kind,
@@ -232,7 +236,7 @@ export async function requestSageContactRefresh(
     await requireEditAccess(user, kind.data, identity.linkedUserId, {})
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    await db.insert(sageContactReadRequests).values({
+    await insertSageContactReadRequest(db, {
       id, organizationId: orgId, kind: kind.data, entityId,
       sageRecordId: identity.sageRecordId,
       sageRecordNumber: identity.sageRecordNumber,
@@ -285,7 +289,7 @@ export async function proposeSageContactChange(
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     await db.batch([
-      db.insert(sageContactChangeProposals).values({
+      insertSageContactChangeProposal(db, {
         id, organizationId: orgId, kind: kind.data, entityId,
         sageRecordId: plan.plan.sageRecordId,
         parentSageRecordId: plan.plan.parentSageRecordId,
@@ -294,7 +298,7 @@ export async function proposeSageContactChange(
         status: "pending", requestedByUserId: user.id,
         requestedAt: now, updatedAt: now,
       }),
-      db.insert(sageContactChangeEvents).values({
+      insertSageContactChangeEvent(db, {
         id: crypto.randomUUID(), proposalId: id, organizationId: orgId,
         actorUserId: user.id, eventType: "proposed",
         detailJson: JSON.stringify({ baseRevision: plan.plan.baseRevision }),
@@ -309,11 +313,9 @@ export async function proposeSageContactChange(
 }
 
 export async function listSageContactChangeProposals(): Promise<readonly SageContactProposalListItem[]> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   const orgId = requireOrg(user)
   await requireFeaturePermission(user, "sage-contact-review", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const rows = await db.select().from(sageContactChangeProposals)
     .where(eq(sageContactChangeProposals.organizationId, orgId))
     .orderBy(desc(sageContactChangeProposals.requestedAt)).limit(100)
@@ -413,27 +415,12 @@ export async function reviewSageContactChange(
     }
     const now = new Date().toISOString()
     const status = decision === "approve" ? "approved" : "rejected"
-    const eventId = crypto.randomUUID()
     const noteValue = note.trim().slice(0, 1000)
-    const results = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE sage_contact_change_proposals
-         SET status = ?, reviewed_by_user_id = ?, reviewed_at = ?,
-             review_note = ?, updated_at = ?, completed_at = ?
-         WHERE id = ? AND organization_id = ? AND status = 'pending'`
-      ).bind(status, user.id, now, noteValue || null, now,
-        decision === "reject" ? now : null, proposalId, orgId),
-      env.DB.prepare(
-        `INSERT INTO sage_contact_change_events
-         (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
-         SELECT ?, id, organization_id, ?, ?, ?, ?
-         FROM sage_contact_change_proposals
-         WHERE id = ? AND organization_id = ? AND status = ?
-           AND reviewed_by_user_id = ? AND reviewed_at = ?`
-      ).bind(eventId, user.id, status,
-        JSON.stringify({ note: noteValue }), now,
-        proposalId, orgId, status, user.id, now),
-    ])
+    const results = await env.DB.batch(reviewSageContactChangeStatements(env.DB, {
+      proposalId, organizationId: orgId, reviewerUserId: user.id, status,
+      reviewNote: noteValue || null, noteJson: JSON.stringify({ note: noteValue }),
+      completedAt: decision === "reject" ? now : null, now,
+    }))
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
       return { success: false, error: "Proposal was reviewed concurrently." }
     }

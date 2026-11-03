@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, createContext, useContext, useCallback, type ReactNode } from "react"
+import { useEffect, useState, createContext, useCallback, type ReactNode } from "react"
 import { KeyRoundIcon, XIcon } from "lucide-react"
 import { useDesktop, useDesktopReady } from "@/hooks/use-desktop"
 import type { DesktopReadyState } from "@/types/desktop-bridge"
@@ -37,10 +37,6 @@ const DesktopContext = createContext<DesktopContextValue>({
   showCredentialsBanner: false,
   dismissCredentialsBanner: () => {},
 })
-
-export function useDesktopContext(): DesktopContextValue {
-  return useContext(DesktopContext)
-}
 
 interface DesktopShellProps {
   readonly children: ReactNode

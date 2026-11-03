@@ -1,5 +1,6 @@
 import { getDb } from "@/db"
 import { pushTokens } from "@/db/schema"
+import { deletePushToken } from "@/lib/domain/settings/store"
 import {
   getApnsAuthorizationToken,
   getFirebaseAccessToken,
@@ -90,7 +91,7 @@ async function applyProviderResult(
   }
   if (result.status === "invalid-token") {
     const db = getDb(d1)
-    await db.delete(pushTokens).where(eq(pushTokens.id, storedToken.id))
+    await deletePushToken(db, storedToken.id)
     return false
   }
 

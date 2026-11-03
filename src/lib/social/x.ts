@@ -48,7 +48,7 @@ export function createXCodeVerifier(): string {
   return base64Url(bytes)
 }
 
-export async function xCodeChallenge(verifier: string): Promise<string> {
+async function xCodeChallenge(verifier: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
   return base64Url(new Uint8Array(digest))
 }
@@ -215,8 +215,4 @@ export async function publishXPost(input: {
   const id = stringValue(data.id)
   if (!id) throw new Error("X did not return the Post ID.")
   return { id, url: `https://x.com/i/web/status/${id}` }
-}
-
-export function requiredXScopes(): readonly string[] {
-  return X_SCOPES
 }

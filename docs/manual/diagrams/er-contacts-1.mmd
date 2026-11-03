@@ -1,0 +1,41 @@
+erDiagram
+  direction LR
+  customer_contacts {
+    key id
+    ref customer_id
+  }
+  customers {
+    key id
+  }
+  internal_contact_private_addresses {
+    key internal_contact_id
+  }
+  internal_contacts {
+    key id
+  }
+  project_contact_source_links {
+    key id
+    ref project_contact_id
+  }
+  project_contacts {
+    key id
+    ref vendor_id
+    ref vendor_contact_id
+    ref customer_id
+    ref customer_contact_id
+    ref internal_contact_id
+  }
+  vendor_contacts {
+    key id
+  }
+  vendors {
+    key id
+  }
+  customer_contacts |o--o{ project_contacts : ""
+  customers |o--o{ project_contacts : ""
+  customers ||--o{ customer_contacts : ""
+  internal_contacts |o--o{ project_contacts : ""
+  internal_contacts ||--o{ internal_contact_private_addresses : ""
+  project_contacts |o--o{ project_contact_source_links : ""
+  vendor_contacts |o--o{ project_contacts : ""
+  vendors |o--o{ project_contacts : ""

@@ -72,7 +72,7 @@ describe("MessageList scrolling", () => {
     const { getMessages } = await import("@/app/actions/chat-messages")
     const createdAt = "2026-07-29T21:53:00.000Z"
     const message = (id: string) => ({ id, channelId: "archive", threadId: null, content: id, contentHtml: null,
-      editedAt: null, deletedAt: null, isPinned: false, replyCount: 0, lastReplyAt: null, createdAt, user: null })
+      editedAt: null, deletedAt: null, isPinned: false, replyCount: 0, lastReplyAt: null, createdAt, user: null, sourceSystem: null, importedSenderName: null })
     vi.mocked(getMessages).mockReset().mockResolvedValueOnce({ success: true, data: [{ ...message("message-099"), attachments: [], reactions: [] }] })
     const initialMessages = Array.from({ length: 50 }, (_, i) => message(`message-${149 - i}`))
     await act(async () => root.render(React.createElement(MessageList, { channelId: "archive", initialMessages, currentUserId: null })))

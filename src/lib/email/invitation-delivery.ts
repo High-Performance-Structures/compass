@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, asc, desc, eq, inArray, lte, notInArray, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, lte } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { organizationMembers, organizations, projectAccessInvitations, projectContacts, projects, users } from "@/db/schema"
 import { type ActivityActor, recordActivityEvent } from "@/lib/activity-log"
@@ -13,6 +13,15 @@ import { currentInvitationRecipient } from "./invitation-recipient"
 import { claimMailbox, mailboxCooldown, releaseMailbox } from "./mailbox-state"
 
 import { createSystemNotificationEvent } from "@/lib/notifications/create-event"
+import {
+  cancelClaimedInvitationEmail,
+  cancelObsoleteInvitationEmails as cancelObsoleteEmails,
+  claimInvitationEmail,
+  deferInvitationEmail,
+  finishInvitationEmail,
+  markStaleInvitationEmailsUnknown,
+  recordInvitationEmailAttempt,
+} from "@/lib/domain/identity/store"
 import { getPermissions } from "@/lib/permissions"
 
 type Db = ReturnType<typeof getDb>
@@ -34,18 +43,9 @@ export async function cancelObsoleteInvitationEmails(db: Db, input: {
   readonly role: string
   readonly now: string
 }): Promise<void> {
-  await db.update(projectAccessInvitations).set({ emailStatus: "cancelled", emailNextAttemptAt: null,
-    // Superseded pending access must not be claimed later with the old recipient/role.
-    // Accepted project access stays intact; this only cancels its obsolete welcome.
-    status: sql`CASE WHEN ${projectAccessInvitations.status} = 'sent' THEN 'revoked' ELSE ${projectAccessInvitations.status} END`,
-    emailClaimToken: null, emailClaimedAt: null, updatedAt: input.now,
-  }).where(and(eq(projectAccessInvitations.projectId, input.projectId),
-    eq(projectAccessInvitations.projectContactId, input.contactId),
-    inArray(projectAccessInvitations.emailStatus, ["queued", "retrying", "sending"]),
-    or(notInArray(projectAccessInvitations.status, ["sent", "accepted"]),
-      sql`${projectAccessInvitations.role} <> ${input.role}`,
-      sql`lower(trim(${projectAccessInvitations.email})) <> ${input.email.trim().toLowerCase()}`,
-      lte(projectAccessInvitations.workosExpiresAt, input.now)))).run()
+  // Superseded pending access must not be claimed later with the old recipient/role.
+  // Accepted project access stays intact; this only cancels its obsolete welcome.
+  await cancelObsoleteEmails(db, input)
 }
 
 async function emailContext(db: Db, invitation: Invitation): Promise<{
@@ -123,34 +123,25 @@ export async function deliverInvitationEmail(input: {
   const token = crypto.randomUUID()
   if (!await claimMailbox(db, mailbox, now, token)) {
     const nextAttemptAt = await mailboxCooldown(db, mailbox, now) ?? new Date(Date.parse(now) + 60_000).toISOString()
-    await db.update(projectAccessInvitations).set({ emailNextAttemptAt: nextAttemptAt })
-      .where(and(eq(projectAccessInvitations.id, row.id), inArray(projectAccessInvitations.emailStatus, ["queued", "retrying"]))).run()
+    await deferInvitationEmail(db, row.id, nextAttemptAt)
     return { status: row.emailStatus, nextAttemptAt }
   }
   let claimed = false
   let dispatched = false
   try {
-    const rows = await db.update(projectAccessInvitations).set({ emailStatus: "sending", emailClaimToken: token,
-      emailClaimedAt: now, updatedAt: now,
-    }).where(and(eq(projectAccessInvitations.id, row.id), inArray(projectAccessInvitations.emailStatus, ["queued", "retrying"])))
-      .returning({ id: projectAccessInvitations.id })
+    const rows = await claimInvitationEmail(db, row.id, token, now)
     if (rows.length === 0) return { status: row.emailStatus, nextAttemptAt: row.emailNextAttemptAt }
     claimed = true
     const context = await emailContext(db, row)
     const url = context ? await invitationUrl(env, row) : null
     if (!context || !url || !row.emailSubject || !row.emailMessage) {
-      await db.update(projectAccessInvitations).set({ emailStatus: "cancelled", emailNextAttemptAt: null,
-        status: sql`CASE WHEN ${projectAccessInvitations.status} = 'sent' THEN 'revoked' ELSE ${projectAccessInvitations.status} END`,
-        emailError: "Invitation, contact, or sending authorization changed. Review access before sending.", updatedAt: now,
-      }).where(and(eq(projectAccessInvitations.id, row.id), eq(projectAccessInvitations.emailClaimToken, token))).run()
+      await cancelClaimedInvitationEmail(db, { invitationId: row.id, token, now,
+        emailError: "Invitation, contact, or sending authorization changed. Review access before sending." })
       return { status: "cancelled", nextAttemptAt: null }
     }
     const attempts = row.emailAttempts + 1
     // Persist the attempt before provider I/O. A crashed Worker must not blindly resend it.
-    const attemptClaim = await db.update(projectAccessInvitations).set({ emailAttempts: attempts })
-      .where(and(eq(projectAccessInvitations.id, row.id), eq(projectAccessInvitations.emailClaimToken, token),
-        eq(projectAccessInvitations.emailStatus, "sending"), inArray(projectAccessInvitations.status, ["sent", "accepted"])))
-      .returning({ id: projectAccessInvitations.id })
+    const attemptClaim = await recordInvitationEmailAttempt(db, { invitationId: row.id, token, attempts })
     if (attemptClaim.length === 0) {
       const current = await db.select({ status: projectAccessInvitations.emailStatus, nextAttemptAt: projectAccessInvitations.emailNextAttemptAt })
         .from(projectAccessInvitations).where(eq(projectAccessInvitations.id, row.id)).get()
@@ -168,11 +159,11 @@ export async function deliverInvitationEmail(input: {
         : delivery.status === "rate_limited" && attempts < MAX_ATTEMPTS ? "retrying" : "failed"
     const nextAttemptAt = status === "retrying"
       ? emailRetryAt({ error: delivery.error, retryAfter: null, now: new Date(), attempt: attempts }) : null
-    await db.update(projectAccessInvitations).set({ emailStatus: status, emailNextAttemptAt: nextAttemptAt,
+    await finishInvitationEmail(db, { invitationId: row.id, token, emailStatus: status, emailNextAttemptAt: nextAttemptAt,
       emailProvider: delivery.provider, emailProviderMessageId: delivery.providerMessageId,
       emailError: delivery.error, emailSentAt: status === "sent" ? new Date().toISOString() : null,
-      emailClaimToken: null, emailClaimedAt: null, updatedAt: new Date().toISOString(),
-    }).where(and(eq(projectAccessInvitations.id, row.id), eq(projectAccessInvitations.emailClaimToken, token))).run()
+      updatedAt: new Date().toISOString(),
+    })
     if (status === "sent" || status === "failed" || status === "unknown") {
       await recordActivityEvent({ db, organizationId: row.organizationId, projectId: row.projectId, actor: context.actor,
         category: "email", action: `project.welcome_email_${status}`, entityType: "project_access_invitation", entityId: row.id,
@@ -186,10 +177,10 @@ export async function deliverInvitationEmail(input: {
   } catch {
     const status = dispatched ? "unknown" : "retrying"
     const nextAttemptAt = dispatched ? null : new Date(Date.now() + 300_000).toISOString()
-    if (claimed) await db.update(projectAccessInvitations).set({ emailStatus: status, emailNextAttemptAt: nextAttemptAt,
+    if (claimed) await finishInvitationEmail(db, { invitationId: row.id, token, emailStatus: status, emailNextAttemptAt: nextAttemptAt,
       emailError: dispatched ? "Email delivery is uncertain. Check the sending mailbox before resending." : "Could not verify the account invitation. Will retry shortly.",
-      emailClaimToken: null, emailClaimedAt: null, updatedAt: new Date().toISOString(),
-    }).where(and(eq(projectAccessInvitations.id, row.id), eq(projectAccessInvitations.emailClaimToken, token))).run()
+      updatedAt: new Date().toISOString(),
+    })
     if (claimed && dispatched) await notifyDeliveryProblem(db, row, status)
     return { status, nextAttemptAt }
   } finally {
@@ -203,11 +194,9 @@ export async function retryInvitationEmails(db: Db, env: unknown): Promise<{
 }> {
   const now = new Date().toISOString()
   // Expired claims may have sent successfully. Surface them; never reset to queued.
-  const stale = await db.update(projectAccessInvitations).set({ emailStatus: "unknown", emailNextAttemptAt: null,
-    emailError: "Email delivery could not be confirmed after an interrupted send. Check the sending mailbox before resending.", updatedAt: now,
-  }).where(and(eq(projectAccessInvitations.emailStatus, "sending"),
-    lte(projectAccessInvitations.emailClaimedAt, new Date(Date.now() - 300_000).toISOString())))
-    .returning()
+  const stale = await markStaleInvitationEmailsUnknown(db, { now,
+    emailError: "Email delivery could not be confirmed after an interrupted send. Check the sending mailbox before resending.",
+    claimedBefore: new Date(Date.now() - 300_000).toISOString() })
   for (const invitation of stale) await notifyDeliveryProblem(db, invitation, "unknown")
   // One email per minute, with a shared mailbox slot for simultaneous user sends.
   const due = await db.select({ id: projectAccessInvitations.id }).from(projectAccessInvitations)

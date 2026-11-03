@@ -5,10 +5,8 @@ import type * as React from "react"
 import { notFound } from "next/navigation"
 
 import { getProjectDailyLogWorkspace } from "@/app/actions/project-field"
-import {
-  getProjectTaskAssigneeOptions,
-  type ProjectTaskAssigneeOption,
-} from "@/app/actions/project-contacts"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ProjectDailyLogWorkspace } from "@/components/projects/project-daily-log-workspace"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"

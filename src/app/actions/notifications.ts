@@ -4,20 +4,30 @@ import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibil
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceRequestScope, requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed, isAudiencePreviewRequest } from "@/lib/project-audience-request-server"
 
-import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm"
+import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
-  notificationDeliveries,
   notificationEvents,
   notificationPreferences,
   notificationRecipients,
   projectRfis,
   projects,
 } from "@/db/schema"
-import { getCurrentUser, requireAuth, type AuthUser } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
 import { recipientNotificationHref } from "@/lib/conversations/notification-route"
+import { notificationSourceHref } from "@/lib/notifications/source-href"
+import {
+  dismissReadNotificationRecipients,
+  insertNotificationDelivery,
+  insertNotificationEvent,
+  insertNotificationRecipient,
+  markAllNotificationRecipientsRead,
+  markNotificationRecipientRead,
+  setNotificationRecipientsDismissed,
+  upsertNotificationPreferences,
+} from "@/lib/domain/notifications/store"
 import { getCloudflareContext } from "@/lib/db"
 import {
   isMissingNotificationTableError,
@@ -39,6 +49,7 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { isValidTimeZone } from "@/lib/work-calendar"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -146,18 +157,6 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   scheduleEnabled: true,
   poEnabled: true,
   timeZone: "America/Denver",
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
 }
 
 function preferenceFromRow(
@@ -282,9 +281,7 @@ export async function updateNotificationPreferences(
         error: "Choose valid SMS quiet-hour start and end times.",
       }
     }
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const now = new Date().toISOString()
     const smsPhoneNumber = input.smsPhoneNumber?.trim() || null
     const wantsSms = input.smsEnabled
@@ -347,20 +344,10 @@ export async function updateNotificationPreferences(
         : false,
     }
 
-    await db
-      .insert(notificationPreferences)
-      .values({
-        userId: user.id,
-        ...persistedInput,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: notificationPreferences.userId,
-        set: {
-          ...persistedInput,
-          updatedAt: now,
-        },
-      })
+    await upsertNotificationPreferences(db, user.id, {
+      ...persistedInput,
+      updatedAt: now,
+    })
 
     return { success: true }
   } catch (error) {
@@ -377,10 +364,8 @@ export async function updateNotificationPreferences(
 export async function sendTestSmsNotification(): Promise<NotificationSmsTestResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const now = new Date().toISOString()
     const preferences = await db
       .select()
@@ -415,7 +400,7 @@ export async function sendTestSmsNotification(): Promise<NotificationSmsTestResu
     const body =
       "Your Compass text notifications are connected. Reply STOP to opt out or HELP for help."
 
-    await db.insert(notificationEvents).values({
+    await insertNotificationEvent(db, {
       id: eventId,
       organizationId,
       projectId: null,
@@ -430,7 +415,7 @@ export async function sendTestSmsNotification(): Promise<NotificationSmsTestResu
       createdBy: user.id,
       createdAt: now,
     })
-    await db.insert(notificationRecipients).values({
+    await insertNotificationRecipient(db, {
       id: recipientId,
       eventId,
       userId: user.id,
@@ -450,7 +435,7 @@ export async function sendTestSmsNotification(): Promise<NotificationSmsTestResu
       body,
       null
     )
-    await db.insert(notificationDeliveries).values({
+    await insertNotificationDelivery(db, {
       id: crypto.randomUUID(),
       eventId,
       recipientId,
@@ -514,6 +499,7 @@ export async function getNotificationCenter(
         priority: notificationEvents.priority,
         eventType: notificationEvents.eventType,
         sourceType: notificationEvents.sourceType,
+        sourceId: notificationEvents.sourceId,
         projectId: notificationEvents.projectId,
         projectName: projects.name,
         projectNumber: projects.projectNumber,
@@ -552,7 +538,7 @@ export async function getNotificationCenter(
           projectLabel: projectName
             ? projectNumberAndName({ name: projectName, projectNumber })
             : null,
-          href: recipientNotificationHref(row.href, user.role),
+          href: recipientNotificationHref(notificationSourceHref(row), user.role),
         })),
       },
     }
@@ -576,26 +562,15 @@ export async function markNotificationRead(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
-    const scopedEventIds = db
-      .select({ id: notificationEvents.id })
-      .from(notificationEvents)
-      .where(notificationEventScopeCondition(scope))
-
-    await db
-      .update(notificationRecipients)
-      .set({ readAt: now })
-      .where(
-        and(
-          eq(notificationRecipients.id, recipientId),
-          eq(notificationRecipients.userId, user.id),
-          inArray(notificationRecipients.eventId, scopedEventIds)
-        )
-      )
+    await markNotificationRecipientRead(db, {
+      recipientId,
+      userId: user.id,
+      eventScope: notificationEventScopeCondition(scope),
+      now,
+    })
 
     revalidatePath("/", "layout")
     return { success: true }
@@ -615,26 +590,14 @@ export async function markAllNotificationsRead(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
-    const scopedEventIds = db
-      .select({ id: notificationEvents.id })
-      .from(notificationEvents)
-      .where(notificationEventScopeCondition(scope))
-
-    await db
-      .update(notificationRecipients)
-      .set({ readAt: now })
-      .where(
-        and(
-          eq(notificationRecipients.userId, user.id),
-          isNull(notificationRecipients.readAt),
-          inArray(notificationRecipients.eventId, scopedEventIds)
-        )
-      )
+    await markAllNotificationRecipientsRead(db, {
+      userId: user.id,
+      eventScope: notificationEventScopeCondition(scope),
+      now,
+    })
 
     revalidatePath("/", "layout")
     return { success: true }
@@ -674,31 +637,16 @@ export async function setNotificationsDismissed(
     ) {
       return { success: false, error: "Choose up to 100 notifications." }
     }
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
-    const scopedEventIds = db
-      .select({ id: notificationEvents.id })
-      .from(notificationEvents)
-      .where(notificationEventScopeCondition(scope))
-    for (let start = 0; start < recipientIds.length; start += 50) {
-      await db
-        .update(notificationRecipients)
-        .set(
-          dismissed
-            ? { dismissedAt: now, readAt: now }
-            : { dismissedAt: null }
-        )
-        .where(
-          and(
-            inArray(notificationRecipients.id, [...recipientIds.slice(start, start + 50)]),
-            eq(notificationRecipients.userId, user.id),
-            inArray(notificationRecipients.eventId, scopedEventIds)
-          )
-        )
-    }
+    await setNotificationRecipientsDismissed(db, {
+      recipientIds,
+      userId: user.id,
+      dismissed,
+      eventScope: notificationEventScopeCondition(scope),
+      now,
+    })
     return { success: true }
   } catch (error) {
     return {
@@ -714,42 +662,18 @@ export async function dismissReadNotifications(
 ): Promise<NotificationActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, db } = await requireUserContext()
     const scope = await resolveNotificationCenterScope(db, user, requestedScope)
-    const scopedEventIds = db
-      .select({ id: notificationEvents.id })
-      .from(notificationEvents)
-      .where(notificationEventScopeCondition(scope))
-    await db
-      .update(notificationRecipients)
-      .set({ dismissedAt: new Date().toISOString() })
-      .where(
-        and(
-          eq(notificationRecipients.userId, user.id),
-          isNotNull(notificationRecipients.readAt),
-          isNull(notificationRecipients.dismissedAt),
-          inArray(notificationRecipients.eventId, scopedEventIds)
-        )
-      )
+    await dismissReadNotificationRecipients(db, {
+      userId: user.id,
+      eventScope: notificationEventScopeCondition(scope),
+      now: new Date().toISOString(),
+    })
     return { success: true }
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to clear notifications",
     }
-  }
-}
-
-export async function getNotificationDebugStatus(): Promise<{
-  readonly signedIn: boolean
-  readonly configuredEmail: boolean
-}> {
-  const user = await getCurrentUser()
-  const { env } = await getCloudflareContext()
-  return {
-    signedIn: user !== null,
-    configuredEmail: envString(env, "RESEND_API_KEY") !== null,
   }
 }

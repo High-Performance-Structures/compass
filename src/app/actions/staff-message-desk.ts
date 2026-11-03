@@ -12,8 +12,7 @@ import {
   staffMessageRecords,
   users,
 } from "@/db/schema"
-import { requireAuth, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import type { AuthUser } from "@/lib/auth"
 import {
   buildGotoStaffMessageDraft,
   buildStaffMessageAssignmentNotification,
@@ -34,6 +33,8 @@ import {
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { countStaleMessagesForUser } from "@/lib/staff-message-desk/stale-reminders"
 import { clearStaleMessageReminders } from "@/lib/notifications/clear-on-read"
+import { insertStaffMessageEvents, insertStaffMessageRecords, updateStaffMessageRecords } from "@/lib/domain/feedback/inbound-store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
 
@@ -73,7 +74,7 @@ export type StaffMessageDeskRecordDto = Readonly<{
   readonly history: readonly StaffMessageEventDto[]
 }>
 
-export type StaffMessageEventDto = Readonly<{
+type StaffMessageEventDto = Readonly<{
   readonly id: string
   readonly actorName: string
   readonly eventType: string
@@ -89,7 +90,7 @@ export type StaffMessageAssigneeDto = Readonly<{
   readonly email: string
 }>
 
-export type StaffMessageInboundTextDto = Readonly<{
+type StaffMessageInboundTextDto = Readonly<{
   readonly id: string
   readonly senderPhone: string
   readonly messageBody: string | null
@@ -146,13 +147,11 @@ async function staffMessageContext(): Promise<{
   readonly organizationId: string
   readonly user: AuthUser
 }> {
-  const user = await requireAuth()
+  const { user, db } = await requireUserContext()
   if (!isStaffMessageDeskUser(deskUser(user))) {
     throw new Error("Staff Message Desk access is restricted to active internal staff")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const organization = await db
     .select({ id: organizations.id })
     .from(organizations)
@@ -473,7 +472,7 @@ async function insertStaffMessage(input: {
 }): Promise<string> {
   const now = new Date().toISOString()
   const id = crypto.randomUUID()
-  await input.db.insert(staffMessageRecords).values({
+  await insertStaffMessageRecords(input.db, {
     id,
     organizationId: input.organizationId,
     sourceType: input.sourceType,
@@ -503,7 +502,7 @@ async function insertStaffMessage(input: {
   return id
 }
 
-export async function createStaffMessage(
+async function createStaffMessage(
   formData: FormData
 ): Promise<ActionResult<{ readonly id: string }>> {
   try {
@@ -535,7 +534,7 @@ export async function createStaffMessage(
   }
 }
 
-export async function routeGotoTextToMessageDesk(
+async function routeGotoTextToMessageDesk(
   formData: FormData
 ): Promise<ActionResult<{ readonly id: string }>> {
   try {
@@ -657,9 +656,7 @@ export async function updateStaffMessages(input: {
       const statusChanged = nextStatus !== null && nextStatus !== fromStatus
       const reassigned = assignee !== null && assignee.id !== record.assigneeUserId
       if (!statusChanged && !reassigned && !note) continue
-      await db
-        .update(staffMessageRecords)
-        .set({
+      await updateStaffMessageRecords(db, {
           ...(statusChanged && nextStatus
             ? {
                 status: nextStatus,
@@ -671,9 +668,8 @@ export async function updateStaffMessages(input: {
           ...(reassigned && assignee ? { assigneeUserId: assignee.id } : {}),
           lastActivityAt: now,
           updatedAt: now,
-        })
-        .where(and(eq(staffMessageRecords.id, record.id), eq(staffMessageRecords.organizationId, organizationId)))
-      await db.insert(staffMessageEvents).values({
+        }, and(eq(staffMessageRecords.id, record.id), eq(staffMessageRecords.organizationId, organizationId)))
+      await insertStaffMessageEvents(db, {
         id: crypto.randomUUID(),
         organizationId,
         messageId: record.id,

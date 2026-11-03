@@ -15,10 +15,12 @@ $diagnosticLog = Join-Path $logsDirectory "diagnostic-task.log"
 $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe"
 $contactSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassContactWriter.cs"
 $squareFeeSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassSquareFeeWriter.cs"
+$vendorCertificateSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassVendorCertificateWriter.cs"
 
 if (-not (Test-Path $SourcePath)) { throw "Writer source not found: $SourcePath" }
 if (-not (Test-Path $contactSource)) { throw "Contact writer source not found: $contactSource" }
 if (-not (Test-Path $squareFeeSource)) { throw "Square fee writer source not found: $squareFeeSource" }
+if (-not (Test-Path $vendorCertificateSource)) { throw "Vendor certificate writer source not found: $vendorCertificateSource" }
 if (-not (Test-Path $binary)) { throw "Installed writer not found: $binary" }
 if (-not (Test-Path $compiler)) { throw "C# compiler not found: $compiler" }
 
@@ -43,7 +45,7 @@ try {
   }
 
   Remove-Item -Path $candidateBinary -Force -ErrorAction SilentlyContinue
-  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath $contactSource $squareFeeSource
+  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath $contactSource $squareFeeSource $vendorCertificateSource
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path $candidateBinary)) {
     throw "C# compilation failed."
   }

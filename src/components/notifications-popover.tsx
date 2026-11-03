@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -13,7 +12,6 @@ import { IconBell } from "@tabler/icons-react"
 
 import {
   dismissReadNotifications,
-  getNotificationCenter,
   markAllNotificationsRead,
   markNotificationRead,
   setNotificationsDismissed,
@@ -42,12 +40,14 @@ import {
   type InboxRow,
   type InboxSection,
 } from "@/lib/notifications/inbox"
-import { announceNotificationsChanged, NOTIFICATIONS_CHANGED_EVENT } from "@/lib/notifications/client-events"
+import { announceNotificationsChanged } from "@/lib/notifications/client-events"
+import { useNotificationCenter } from "@/components/notifications/notification-center-provider"
 import { InboxRowItem } from "@/components/notifications/inbox-row"
 import { portfolioMessagesHref } from "@/lib/notifications/message-stacks"
 import { cn } from "@/lib/utils"
 
 type Row = InboxRow<NotificationCenterItem>
+const NOTIFICATION_BELL_REFRESH_MS = 15_000
 type View = "unread" | "all"
 
 function InboxPanel({
@@ -214,16 +214,10 @@ export function NotificationsPopover({
   const isMobile = useIsMobile()
   const conversationPanel = useConversationPanelOptional()
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>("unread")
   const [undo, setUndo] = useState<{ readonly ids: readonly string[]; readonly count: number } | null>(null)
   const undoTimerRef = useRef<number | null>(null)
   const router = useRouter()
-  const [notifications, setNotifications] = useState<
-    readonly NotificationCenterItem[]
-  >([])
-  const mountedRef = useRef(true)
-  const requestSequenceRef = useRef(0)
   const scopedProjectId = scope?.projectId
   const scopedAudience = scope?.audience
   const notificationScope = useMemo(
@@ -233,6 +227,16 @@ export function NotificationsPopover({
         : undefined,
     [scopedAudience, scopedProjectId]
   )
+  // Shared with every other view of the same scope (both header bells, the
+  // map's Messages layer) through NotificationCenterProvider.
+  const center = useNotificationCenter(
+    notificationScope ? [notificationScope] : undefined,
+    { enabled: true, intervalMs: NOTIFICATION_BELL_REFRESH_MS, refreshOnFocus: true }
+  )
+  const notifications = center.items
+  const loading = !center.loaded
+  const setNotifications = center.update
+  const refreshNotifications = center.refresh
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.readAt === null).length,
     [notifications]
@@ -249,80 +253,6 @@ export function NotificationsPopover({
     [notifications]
   )
 
-  const loadNotifications = useCallback(
-    async (showLoading: boolean): Promise<void> => {
-      const requestSequence = ++requestSequenceRef.current
-      if (showLoading) setLoading(true)
-      try {
-        const result = await getNotificationCenter(notificationScope)
-        if (
-          !mountedRef.current ||
-          requestSequence !== requestSequenceRef.current
-        ) {
-          return
-        }
-        if (result.success) {
-          setNotifications(result.data.items)
-        } else if (notificationScope) {
-          setNotifications([])
-        }
-      } catch {
-        if (
-          mountedRef.current &&
-          requestSequence === requestSequenceRef.current &&
-          notificationScope
-        ) {
-          // External workspaces fail closed so stale items cannot cross scopes.
-          setNotifications([])
-        }
-      } finally {
-        if (
-          mountedRef.current &&
-          requestSequence === requestSequenceRef.current
-        ) {
-          setLoading(false)
-        }
-      }
-    },
-    [notificationScope]
-  )
-
-  useEffect(() => {
-    mountedRef.current = true
-    void loadNotifications(true)
-    const intervalId = window.setInterval(() => {
-      // Hidden tabs skip the poll; returning to the tab refreshes immediately.
-      if (document.visibilityState !== "visible") return
-      void loadNotifications(false)
-    }, 15_000)
-    function refreshWhenVisible(): void {
-      if (document.visibilityState === "visible") {
-        void loadNotifications(false)
-      }
-    }
-    // Reading a conversation elsewhere clears its items; refresh right away.
-    function refreshNow(): void {
-      void loadNotifications(false)
-    }
-    window.addEventListener("focus", refreshWhenVisible)
-    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNow)
-    document.addEventListener(
-      "visibilitychange",
-      refreshWhenVisible
-    )
-    return () => {
-      mountedRef.current = false
-      requestSequenceRef.current += 1
-      window.clearInterval(intervalId)
-      window.removeEventListener("focus", refreshWhenVisible)
-      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNow)
-      document.removeEventListener(
-        "visibilitychange",
-        refreshWhenVisible
-      )
-    }
-  }, [loadNotifications])
-
   useEffect(() => () => {
     if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current)
   }, [])
@@ -331,7 +261,7 @@ export function NotificationsPopover({
     setOpen(nextOpen)
     if (nextOpen) {
       setView(unreadCount > 0 ? "unread" : "all")
-      void loadNotifications(false)
+      void refreshNotifications()
     } else {
       setUndo(null)
     }
@@ -387,7 +317,7 @@ export function NotificationsPopover({
     setUndo({ ids, count: row.items.length })
     undoTimerRef.current = window.setTimeout(() => setUndo(null), 6000)
     const result = await setNotificationsDismissed(ids, true, notificationScope)
-    if (!result.success) void loadNotifications(false)
+    if (!result.success) void refreshNotifications()
     else announceNotificationsChanged()
   }
 

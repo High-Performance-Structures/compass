@@ -1,0 +1,127 @@
+/**
+ * Pure rules for keeping Sage's vendor certificates (Vendors → Certificates)
+ * in step with the trade docs on file in Compass. Compass is the source of
+ * truth: every required document becomes one certificate row, and the
+ * vendor's flag/hold choice sets that row's Warning and Stop Pay. No
+ * database or network access here.
+ */
+import type { TradeDocLine, TradeDocSummary } from "@/lib/trade-docs/status"
+import type { TradeDocBillMode } from "@/lib/trade-docs/settings"
+
+/** Sage's certificate description is at most 50 characters. */
+const SAGE_DESC_MAX = 50
+
+/**
+ * Sage requires an expiry on every certificate row, so documents that don't
+ * expire (a W-9, an accepted alternative) get one about 100 years out. It is a fixed date so rows aren't rewritten every day.
+ */
+export const SAGE_NEVER_EXPIRES = "2126-12-31"
+
+export type SageYesNo = "Y" | "N"
+
+/** One certificate row Compass wants on the vendor in Sage. */
+export type SageCertificateLine = {
+  readonly docTypeId: string
+  readonly desc: string
+  /** Descriptions (lowercased) that identify this row among the vendor's existing Sage certificates. */
+  readonly matchNames: readonly string[]
+  readonly receivedDate: string | null
+  readonly expiryDate: string
+  readonly warn: SageYesNo
+  readonly stopPay: SageYesNo
+  readonly memo: string
+}
+
+export type SageCertificatePlanInput = {
+  readonly summary: TradeDocSummary
+  /** The vendor's own choice, else the company default. */
+  readonly billMode: TradeDocBillMode
+  /** Rollout switch: warn on everything, never stop payment. */
+  readonly warnOnly: boolean
+  /** Sage's description for a document type, when it differs from the Compass label. */
+  readonly sageNames: Readonly<Record<string, string>>
+  /** Document types set to stay in Compass only (false). */
+  readonly sendToSage: Readonly<Record<string, boolean>>
+  /**
+   * The expiry Sage gets for a document never received, so Sage treats it as
+   * overdue (Sage only warns or stops payment on expired certificates).
+   */
+  readonly missingExpiresOn: string
+}
+
+function sageDesc(line: TradeDocLine, sageNames: Readonly<Record<string, string>>): string {
+  const named = sageNames[line.type.id]?.trim()
+  return (named && named.length > 0 ? named : line.type.label).slice(0, SAGE_DESC_MAX)
+}
+
+/**
+ * A name and its singular/plural twin ("trade agreement" and "trade
+ * agreements"), so a row named either way counts as the same document and
+ * Sage never ends up with both.
+ */
+function withPlural(name: string): readonly string[] {
+  return [name, name.endsWith("s") ? name.slice(0, -1) : `${name}s`]
+}
+
+function receivedOn(line: TradeDocLine): string | null {
+  const doc = line.doc
+  if (!doc) return null
+  return doc.effectiveOn ?? doc.createdAt.slice(0, 10)
+}
+
+/** Warning and Stop Pay for a document the vendor owes or may owe later. */
+export function sageCertificateFlags(billMode: TradeDocBillMode, warnOnly: boolean): { readonly warn: SageYesNo; readonly stopPay: SageYesNo } {
+  if (billMode === "off") return { warn: "N", stopPay: "N" }
+  return { warn: "Y", stopPay: billMode === "hold" && !warnOnly ? "Y" : "N" }
+}
+
+function lineFor(line: TradeDocLine, input: SageCertificatePlanInput): SageCertificateLine {
+  const desc = sageDesc(line, input.sageNames)
+  const names = [desc, line.type.label.slice(0, SAGE_DESC_MAX)].map((name) => name.trim().toLowerCase())
+  const matchNames = [...new Set(names.flatMap(withPlural))]
+  const base = { docTypeId: line.type.id, desc, matchNames }
+  if (line.state === "waived") {
+    return {
+      ...base,
+      receivedDate: receivedOn(line),
+      expiryDate: SAGE_NEVER_EXPIRES,
+      warn: "N",
+      stopPay: "N",
+      memo: `Alternative accepted in Compass${line.type.waiverLabel ? `: ${line.type.waiverLabel}` : ""}.`,
+    }
+  }
+  const flags = sageCertificateFlags(input.billMode, input.warnOnly)
+  if (line.state === "missing") {
+    return { ...base, receivedDate: null, expiryDate: input.missingExpiresOn, ...flags, memo: "Not received. Kept by Compass." }
+  }
+  const doc = line.doc
+  return {
+    ...base,
+    receivedDate: receivedOn(line),
+    expiryDate: line.type.expires ? doc?.expiresOn ?? SAGE_NEVER_EXPIRES : SAGE_NEVER_EXPIRES,
+    ...flags,
+    memo: `On file in Compass${doc?.fileName ? ` (${doc.fileName})` : ""}. Kept by Compass.`.slice(0, 500),
+  }
+}
+
+/** Whether a document type's certificate goes to Sage; types are sent unless turned off. */
+export function sendsToSage(docTypeId: string, sendToSage: Readonly<Record<string, boolean>>): boolean {
+  return sendToSage[docTypeId] !== false
+}
+
+/**
+ * The certificate rows Sage should have for one vendor: one per required
+ * document the company sends to Sage. Sage rows for types kept in Compass
+ * only aren't recognised, so the writer leaves them alone.
+ */
+export function planSageCertificates(input: SageCertificatePlanInput): readonly SageCertificateLine[] {
+  return input.summary.lines.filter((line) => line.required && sendsToSage(line.type.id, input.sendToSage)).map((line) => lineFor(line, input))
+}
+
+/** The day before `today` ("YYYY-MM-DD"), in UTC calendar days. */
+export function dayBefore(today: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today)
+  if (!match) throw new Error(`Not a date: ${today}`)
+  const day = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - 86_400_000)
+  return day.toISOString().slice(0, 10)
+}

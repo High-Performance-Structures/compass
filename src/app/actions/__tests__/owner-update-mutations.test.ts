@@ -28,7 +28,7 @@ const mocks = {
   announceOwnerUpdatePublished: vi.fn(),
 }
 
-vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({
   getCloudflareContext: mocks.getCloudflareContext,
 }))

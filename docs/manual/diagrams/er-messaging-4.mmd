@@ -1,0 +1,33 @@
+erDiagram
+  direction LR
+  channel_categories {
+    key id
+  }
+  channel_members {
+    key id
+    ref channel_id
+  }
+  channel_read_state {
+    key id
+    ref channel_id
+  }
+  channels {
+    key id
+    ref category_id
+  }
+  message_attachments {
+    key id
+    ref message_id
+  }
+  message_mentions {
+    key id
+    ref message_id
+  }
+  messages {
+    key id
+  }
+  channel_categories |o--o{ channels : ""
+  channels ||--o{ channel_members : ""
+  channels ||--o{ channel_read_state : ""
+  messages ||--o{ message_attachments : ""
+  messages ||--o{ message_mentions : ""

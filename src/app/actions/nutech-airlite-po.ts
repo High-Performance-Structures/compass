@@ -3,22 +3,21 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
 import { nuTechCatalogPrices, nuTechCatalogVersions, nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
 import { generateNuTechAirliteWorkbook } from "@/app/actions/nutech-order-items"
-import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput, type ProjectPurchaseOrderCostCodeOption } from "@/app/actions/project-operations"
+import { createPurchaseOrderRequest } from "@/app/actions/project-purchase-orders"
+import type { CreatePurchaseOrderLineInput, ProjectPurchaseOrderCostCodeOption } from "@/lib/domain/operations/types"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
+import { nuTechShippingCents } from "@/lib/domain/nutech/rules"
+import { linkNuTechOrderPurchaseOrder } from "@/lib/domain/nutech/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { assignNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { isNuTechFreight, loadNuTechFreight, nuTechProductCostCode } from "@/lib/nutech/freight"
-import { projectDepartment } from "@/lib/project-branding"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -52,20 +51,13 @@ async function fillOrderForm(
  */
 export async function createNuTechManufacturerPurchaseOrder(projectId: string, orderId?: string | null): Promise<Result<NuTechManufacturerPoResult>> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     await requireFeaturePermission(user, "nutech-orders", "update")
-    const organizationId = requireOrg(user)
     if (isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const project = await db
-      .select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name, address: projects.address })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .get()
+    const project = await readNuTechProject(db, organizationId, projectId)
     if (!project) return { success: false, error: "Project not found." }
-    if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
+    if (!isNuTechJob(project)) {
       return { success: false, error: "Manufacturer purchase orders are built from Nu-Tech orders on N jobs." }
     }
     const order = await findNuTechOrder(db, projectId, orderId)
@@ -133,11 +125,12 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
       quantity: item.quantity,
       unitCost: item.unitCostCents / 100,
       unit: item.unit,
-      amount: (item.unitCostCents * item.quantity) / 100,
+      // Priced on the server from quantity × unit cost.
+      amountOverride: null,
       taxGroup: null,
     }))
     // The freight quoted for a delivery is the manufacturer's charge too.
-    const freightCents = order.deliveryMethod === "delivery" ? (order.shippingCents ?? 0) : 0
+    const freightCents = nuTechShippingCents(order.deliveryMethod, order.shippingCents)
     if (freightCents > 0) {
       const freight = await loadNuTechFreight(db, organizationId)
       lines.push({
@@ -147,7 +140,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
         quantity: 1,
         unitCost: freightCents / 100,
         unit: "LS",
-        amount: freightCents / 100,
+        amountOverride: null,
         taxGroup: null,
       })
     }
@@ -176,10 +169,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
     if (!created.success) return { success: false, error: created.error }
     const purchaseOrderId = created.id
 
-    await db
-      .update(nuTechOrderWorkflows)
-      .set({ airlitePurchaseOrderOperationId: purchaseOrderId, updatedBy: user.id, updatedAt: new Date().toISOString() })
-      .where(eq(nuTechOrderWorkflows.id, order.id))
+    await linkNuTechOrderPurchaseOrder(db, { orderId: order.id, purchaseOrderId, userId: user.id, now: new Date().toISOString() })
     await assignNuTechAirlitePoNumber(db, {
       organizationId,
       workflowId: order.id,
@@ -201,10 +191,8 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string, o
 /** The manufacturer's name for button labels; blank when not set. */
 export async function getNuTechManufacturerName(): Promise<string> {
   try {
-    const user = await requireAuth()
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const settings = await readFeatureSettings(getDb(env.DB), organizationId, "nutech-emails")
+    const { db, organizationId } = await nuTechOrgContext()
+    const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
     return settings.manufacturerName.trim()
   } catch {
     return ""
@@ -217,10 +205,8 @@ export async function getNuTechManufacturerName(): Promise<string> {
  */
 export async function getNuTechManufacturerRecipients(): Promise<{ readonly to: string; readonly cc: string }> {
   try {
-    const user = await requireAuth()
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const settings = await readFeatureSettings(getDb(env.DB), organizationId, "nutech-emails")
+    const { db, organizationId } = await nuTechOrgContext()
+    const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
     return { to: settings.manufacturerOrdersEmail.trim(), cc: settings.manufacturerCcEmail.trim() }
   } catch {
     return { to: "", cc: "" }
@@ -234,17 +220,10 @@ export async function getNuTechManufacturerRecipients(): Promise<{ readonly to: 
  */
 export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<readonly PurchaseOrderCatalogItem[]> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const project = await db
-      .select({ id: projects.id, projectNumber: projects.projectNumber })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .get()
-    if (!project || projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return []
+    const project = await readNuTechProject(db, organizationId, projectId)
+    if (!project || !isNuTechJob(project)) return []
     const version = await db
       .select({ id: nuTechCatalogVersions.id })
       .from(nuTechCatalogVersions)
@@ -310,10 +289,9 @@ export type NuTechCostCodeOption = { readonly value: string; readonly label: str
 /** The company cost code list (numbered Sage codes plus named items like "ICF Shipping") for the Nu-Tech settings pickers. */
 export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCodeOption[]> {
   try {
-    const user = await requireAuth()
+    const { db, user } = await nuTechOrgContext()
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const { env } = await getCloudflareContext()
-    const sageRows = await getDb(env.DB)
+    const sageRows = await db
       .select({
         code: sageCostCodes.code,
         description: sageCostCodes.description,
@@ -337,11 +315,8 @@ export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCod
  */
 export async function getNuTechShippingCostCodeOption(): Promise<ProjectPurchaseOrderCostCodeOption | null> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const organizationId = requireOrg(user)
     const code = (await loadNuTechFreight(db, organizationId)).costCode ?? (await readFeatureSettings(db, organizationId, "nutech-emails")).shippingCostCode.trim()
     if (!code) return null
     const match = (await getNuTechCostCodeOptions()).find((option) => option.value === code)
@@ -362,11 +337,9 @@ export type NuTechOrderFormLink = {
 /** Each of the job's orders that has a manufacturer PO, with its order form. */
 export async function getNuTechOrderFormLinks(projectId: string): Promise<readonly NuTechOrderFormLink[]> {
   try {
-    const user = await requireAuth()
+    const { db, user, organizationId } = await nuTechOrgContext()
     await requireFeaturePermission(user, "nutech-orders", "read")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const rows = await getDb(env.DB)
+    const rows = await db
       .select({
         orderId: nuTechOrderWorkflows.id,
         purchaseOrderId: nuTechOrderWorkflows.airlitePurchaseOrderOperationId,

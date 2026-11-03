@@ -17,23 +17,26 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { insertProjectMember } from "@/lib/domain/project/store"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
-import { getProjects } from "@/app/actions/projects"
+import {
+  insertOrganizationMember,
+  insertOrganizationMemberStatement,
+  insertUser,
+  setOrganizationMemberRole,
+  updateUser,
+  updateUserStatement,
+} from "@/lib/domain/identity/store"
+import { isPendingInvitationPlaceholder } from "@/lib/domain/identity/rules"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import {
   getUserAvailabilityCondition,
   sortSettingsRosterUsers,
 } from "@/lib/user-availability"
 import { eq, and, getTableColumns, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import {
-  updateUserRoleSchema,
-  deactivateUserSchema,
-  inviteUserSchema,
-  assignUserToProjectSchema,
-  assignUserToTeamSchema,
-  assignUserToGroupSchema,
-} from "@/lib/validations/users"
+import { updateUserRoleSchema, deactivateUserSchema, inviteUserSchema, assignUserToProjectSchema } from "@/lib/validations/users"
 
 export type UserWithRelations = User & {
   teams: { id: string; name: string }[]
@@ -41,14 +44,6 @@ export type UserWithRelations = User & {
   projectCount: number
   organizationCount: number
   accessStatus: "active" | "invited"
-}
-
-function isPendingInvitationPlaceholder(user: User): boolean {
-  return (
-    !user.isActive &&
-    user.lastLoginAt === null &&
-    !user.id.startsWith("user_")
-  )
 }
 
 async function getOrganizationUsers(
@@ -215,17 +210,12 @@ export async function updateUserRole(
       return { success: false, error: "User not found in this organization" }
     }
 
-    await db
-      .update(users)
-      .set({ role: parseResult.data.role, updatedAt: now })
-      .where(eq(users.id, parseResult.data.userId))
-      .run()
+    await updateUser(db, parseResult.data.userId, {
+      role: parseResult.data.role,
+      updatedAt: now,
+    })
 
-    await db
-      .update(organizationMembers)
-      .set({ role: parseResult.data.role })
-      .where(eq(organizationMembers.id, targetMembership.id))
-      .run()
+    await setOrganizationMemberRole(db, targetMembership.id, parseResult.data.role)
 
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/people")
@@ -267,95 +257,12 @@ export async function deactivateUser(
     const db = getDb(env.DB)
     const now = new Date().toISOString()
 
-    await db
-      .update(users)
-      .set({ isActive: false, updatedAt: now })
-      .where(eq(users.id, parseResult.data.userId))
-      .run()
+    await updateUser(db, parseResult.data.userId, { isActive: false, updatedAt: now })
 
     revalidatePath("/dashboard/people")
     return { success: true }
   } catch (error) {
     console.error("Error deactivating user:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
-}
-
-export async function assignUserToProject(
-  userId: string,
-  projectId: string,
-  role: string
-): Promise<{ success: boolean; error?: string }> {
-  // validate input
-  const parseResult = assignUserToProjectSchema.safeParse({ userId, projectId, role })
-  if (!parseResult.success) {
-    const firstIssue = parseResult.error.issues[0]
-    return { success: false, error: firstIssue?.message || "Invalid input" }
-  }
-
-  const validated = parseResult.data
-
-  try {
-    const currentUser = await getCurrentUser()
-    requirePermission(currentUser, "project", "update")
-    if (!canManageUserAccess(currentUser)) {
-      return { success: false, error: "Only admins can assign project access" }
-    }
-
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
-      return { success: false, error: "Database not available" }
-    }
-
-    const db = getDb(env.DB)
-    const now = new Date().toISOString()
-
-    // check if already assigned
-    const existing = await db
-      .select()
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.userId, validated.userId),
-          eq(projectMembers.projectId, validated.projectId)
-        )
-      )
-      .get()
-
-    if (existing) {
-      // update role
-      await db
-        .update(projectMembers)
-        .set({ role: validated.role })
-        .where(
-          and(
-            eq(projectMembers.userId, validated.userId),
-            eq(projectMembers.projectId, validated.projectId)
-          )
-        )
-        .run()
-    } else {
-      // insert new assignment
-      await db
-        .insert(projectMembers)
-        .values({
-          id: crypto.randomUUID(),
-          userId: validated.userId,
-          projectId: validated.projectId,
-          role: validated.role,
-          assignedAt: now,
-        })
-        .run()
-    }
-
-    revalidatePath("/dashboard/people")
-    revalidatePath("/dashboard/projects")
-    return { success: true }
-  } catch (error) {
-    console.error("Error assigning user to project:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -369,7 +276,7 @@ export async function getAssignableContactProjects(): Promise<
   const currentUser = await getCurrentUser()
   if (!currentUser || !canManageUserAccess(currentUser) || !currentUser.organizationId) return []
   requirePermission(currentUser, "project", "update")
-  const visibleProjects = await getProjects()
+  const visibleProjects = await listProjectsForCurrentUser()
   return visibleProjects.map((project) => ({
     id: project.id,
     name: project.name,
@@ -404,7 +311,7 @@ export async function grantContactsProjectAccess(
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "Database not available" }
     const db = getDb(env.DB)
-    const visibleProjects = await getProjects()
+    const visibleProjects = await listProjectsForCurrentUser()
     if (!visibleProjects.some((candidate) => candidate.id === projectId)) {
       return { success: false, error: "Project is not available for assignment." }
     }
@@ -436,145 +343,19 @@ export async function grantContactsProjectAccess(
     const existingIds = new Set(existing.map((member) => member.userId))
     const newMembers = members.filter((member) => !existingIds.has(member.userId))
     if (newMembers.length > 0) {
-      await db.insert(projectMembers).values(newMembers.map((member) => ({
+      await insertProjectMember(db, newMembers.map((member) => ({
         id: crypto.randomUUID(),
         projectId,
         userId: member.userId,
         role: member.role,
         assignedAt: new Date().toISOString(),
-      }))).run()
+      })))
     }
     revalidatePath("/dashboard/contacts")
     revalidatePath(`/dashboard/projects/${projectId}`)
     return { success: true, added: newMembers.length, existing: uniqueIds.length - newMembers.length }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to grant project access" }
-  }
-}
-
-export async function assignUserToTeam(
-  userId: string,
-  teamId: string
-): Promise<{ success: boolean; error?: string }> {
-  // validate input
-  const parseResult = assignUserToTeamSchema.safeParse({ userId, teamId })
-  if (!parseResult.success) {
-    const firstIssue = parseResult.error.issues[0]
-    return { success: false, error: firstIssue?.message || "Invalid input" }
-  }
-
-  const validated = parseResult.data
-
-  try {
-    const currentUser = await getCurrentUser()
-    requirePermission(currentUser, "team", "update")
-    if (!canManageUserAccess(currentUser)) {
-      return { success: false, error: "Only admins can assign team access" }
-    }
-
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
-      return { success: false, error: "Database not available" }
-    }
-
-    const db = getDb(env.DB)
-    const now = new Date().toISOString()
-
-    // check if already assigned
-    const existing = await db
-      .select()
-      .from(teamMembers)
-      .where(
-        and(eq(teamMembers.userId, validated.userId), eq(teamMembers.teamId, validated.teamId))
-      )
-      .get()
-
-    if (existing) {
-      return { success: false, error: "User already in team" }
-    }
-
-    // insert new assignment
-    await db
-      .insert(teamMembers)
-      .values({
-        id: crypto.randomUUID(),
-        userId: validated.userId,
-        teamId: validated.teamId,
-        joinedAt: now,
-      })
-      .run()
-
-    revalidatePath("/dashboard/people")
-    return { success: true }
-  } catch (error) {
-    console.error("Error assigning user to team:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
-}
-
-export async function assignUserToGroup(
-  userId: string,
-  groupId: string
-): Promise<{ success: boolean; error?: string }> {
-  // validate input
-  const parseResult = assignUserToGroupSchema.safeParse({ userId, groupId })
-  if (!parseResult.success) {
-    const firstIssue = parseResult.error.issues[0]
-    return { success: false, error: firstIssue?.message || "Invalid input" }
-  }
-
-  const validated = parseResult.data
-
-  try {
-    const currentUser = await getCurrentUser()
-    requirePermission(currentUser, "group", "update")
-    if (!canManageUserAccess(currentUser)) {
-      return { success: false, error: "Only admins can assign group access" }
-    }
-
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
-      return { success: false, error: "Database not available" }
-    }
-
-    const db = getDb(env.DB)
-    const now = new Date().toISOString()
-
-    // check if already assigned
-    const existing = await db
-      .select()
-      .from(groupMembers)
-      .where(
-        and(eq(groupMembers.userId, validated.userId), eq(groupMembers.groupId, validated.groupId))
-      )
-      .get()
-
-    if (existing) {
-      return { success: false, error: "User already in group" }
-    }
-
-    // insert new assignment
-    await db
-      .insert(groupMembers)
-      .values({
-        id: crypto.randomUUID(),
-        userId: validated.userId,
-        groupId: validated.groupId,
-        joinedAt: now,
-      })
-      .run()
-
-    revalidatePath("/dashboard/people")
-    return { success: true }
-  } catch (error) {
-    console.error("Error assigning user to group:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
   }
 }
 
@@ -632,11 +413,10 @@ export async function inviteUser(input: {
       .get()
 
     // check if workos is configured
-    const envRecord = env as unknown as Record<string, string>
     const isWorkOSConfigured =
-      envRecord.WORKOS_API_KEY &&
-      envRecord.WORKOS_CLIENT_ID &&
-      !envRecord.WORKOS_API_KEY.includes("placeholder")
+      env.WORKOS_API_KEY &&
+      env.WORKOS_CLIENT_ID &&
+      !env.WORKOS_API_KEY.includes("placeholder")
 
     if (isWorkOSConfigured) {
       // send invitation through workos
@@ -666,7 +446,7 @@ export async function inviteUser(input: {
           }
 
           const resendResult = await sendOrResendWorkOSInvitation({
-            apiKey: envRecord.WORKOS_API_KEY,
+            apiKey: env.WORKOS_API_KEY,
             email: normalizedEmail,
           })
           if (!resendResult.success) return resendResult
@@ -681,43 +461,32 @@ export async function inviteUser(input: {
                 .join(" ")
             : ""
 
-          await db
-            .update(users)
-            .set({
-              role: validated.role,
-              displayName:
-                validated.displayName ||
-                workosDisplayName ||
-                existing.displayName,
-              firstName: workosUser?.firstName ?? existing.firstName,
-              lastName: workosUser?.lastName ?? existing.lastName,
-              avatarUrl: workosUser?.profilePictureUrl ?? existing.avatarUrl,
-              isActive: workosUser ? true : existing.isActive,
-              lastLoginAt: workosUser?.lastSignInAt ?? existing.lastLoginAt,
-              updatedAt: now,
-            })
-            .where(eq(users.id, existing.id))
-            .run()
+          await updateUser(db, existing.id, {
+            role: validated.role,
+            displayName:
+              validated.displayName ||
+              workosDisplayName ||
+              existing.displayName,
+            firstName: workosUser?.firstName ?? existing.firstName,
+            lastName: workosUser?.lastName ?? existing.lastName,
+            avatarUrl: workosUser?.profilePictureUrl ?? existing.avatarUrl,
+            isActive: workosUser ? true : existing.isActive,
+            lastLoginAt: workosUser?.lastSignInAt ?? existing.lastLoginAt,
+            updatedAt: now,
+          })
           if (existingMembership) {
-            await db
-              .update(organizationMembers)
-              .set({ role: validated.role })
-              .where(eq(organizationMembers.id, existingMembership.id))
-              .run()
+            await setOrganizationMemberRole(db, existingMembership.id, validated.role)
           } else {
             // Legacy imports could create a user without attaching them to an
             // organization. Reclaim only truly orphaned accounts; never cross
             // an existing organization boundary implicitly.
-            await db
-              .insert(organizationMembers)
-              .values({
-                id: crypto.randomUUID(),
-                organizationId: targetOrganizationId,
-                userId: existing.id,
-                role: validated.role,
-                joinedAt: now,
-              })
-              .run()
+            await insertOrganizationMember(db, {
+              id: crypto.randomUUID(),
+              organizationId: targetOrganizationId,
+              userId: existing.id,
+              role: validated.role,
+              joinedAt: now,
+            })
           }
           if (workosUser || existing.isActive) {
             await ensureInternalContactForStaff(db, {
@@ -740,7 +509,7 @@ export async function inviteUser(input: {
 
         // On first login, ensureUserExists() activates the pending local row.
         const invitationResult = await sendOrResendWorkOSInvitation({
-          apiKey: envRecord.WORKOS_API_KEY,
+          apiKey: env.WORKOS_API_KEY,
           email: normalizedEmail,
         })
         if (!invitationResult.success) return invitationResult
@@ -767,17 +536,14 @@ export async function inviteUser(input: {
             lastLoginAt: workosUser.lastSignInAt,
           }
 
-          await db.insert(users).values(newUser).run()
-          await db
-            .insert(organizationMembers)
-            .values({
-              id: crypto.randomUUID(),
-              organizationId: targetOrganizationId,
-              userId: newUser.id,
-              role: validated.role,
-              joinedAt: now,
-            })
-            .run()
+          await insertUser(db, newUser)
+          await insertOrganizationMember(db, {
+            id: crypto.randomUUID(),
+            organizationId: targetOrganizationId,
+            userId: newUser.id,
+            role: validated.role,
+            joinedAt: now,
+          })
 
           await ensureInternalContactForStaff(db, {
             organizationId: targetOrganizationId,
@@ -809,19 +575,16 @@ export async function inviteUser(input: {
           lastLoginAt: null,
         }
 
-        await db.insert(users).values(newUser).run()
+        await insertUser(db, newUser)
 
         // if organization specified, add to organization
-        await db
-          .insert(organizationMembers)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId: targetOrganizationId,
-            userId: newUser.id,
-            role: validated.role,
-            joinedAt: now,
-          })
-          .run()
+        await insertOrganizationMember(db, {
+          id: crypto.randomUUID(),
+          organizationId: targetOrganizationId,
+          userId: newUser.id,
+          role: validated.role,
+          joinedAt: now,
+        })
 
         revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
@@ -857,15 +620,12 @@ export async function inviteUser(input: {
         }
 
         await db.batch([
-          db
-            .update(users)
-            .set({
-              role: validated.role,
-              displayName: validated.displayName || existing.displayName,
-              updatedAt: now,
-            })
-            .where(eq(users.id, existing.id)),
-          db.insert(organizationMembers).values({
+          updateUserStatement(db, existing.id, {
+            role: validated.role,
+            displayName: validated.displayName || existing.displayName,
+            updatedAt: now,
+          }),
+          insertOrganizationMemberStatement(db, {
             id: crypto.randomUUID(),
             organizationId: targetOrganizationId,
             userId: existing.id,
@@ -905,18 +665,15 @@ export async function inviteUser(input: {
         lastLoginAt: null,
       }
 
-      await db.insert(users).values(newUser).run()
+      await insertUser(db, newUser)
 
-      await db
-        .insert(organizationMembers)
-        .values({
-          id: crypto.randomUUID(),
-          organizationId: targetOrganizationId,
-          userId: newUser.id,
-          role: validated.role,
-          joinedAt: now,
-        })
-        .run()
+      await insertOrganizationMember(db, {
+        id: crypto.randomUUID(),
+        organizationId: targetOrganizationId,
+        userId: newUser.id,
+        role: validated.role,
+        joinedAt: now,
+      })
 
       await ensureInternalContactForStaff(db, {
         organizationId: targetOrganizationId,

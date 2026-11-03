@@ -1,11 +1,12 @@
+import { WORKSPACE_KINDS, type WorkspaceKind } from "@/lib/domain/project/statuses"
 import type { InternalDutySettings } from "@/lib/feature-settings/registry"
+import type { RecurringDutyView } from "@/lib/internal-duties/recurring-data"
+import { isListValue } from "@/lib/shared/statuses"
 
-export const WORKSPACE_KINDS = ["office", "executive", "field"] as const
-
-export type WorkspaceKind = (typeof WORKSPACE_KINDS)[number]
+export type { WorkspaceKind }
 
 export function isWorkspaceKind(value: string): value is WorkspaceKind {
-  return WORKSPACE_KINDS.some((kind) => kind === value)
+  return isListValue(WORKSPACE_KINDS, value)
 }
 
 /** What each kind of internal workspace is for, as people pick it. */
@@ -67,4 +68,19 @@ export function uncategorizedLogs<T extends { readonly id: string }>(
   categorizedLogIds: ReadonlySet<string>,
 ): readonly T[] {
   return logs.filter((log) => !categorizedLogIds.has(log.id))
+}
+
+export type InternalWorkspaceSummary = {
+  readonly projectId: string
+  readonly workspaceKind: WorkspaceKind
+  /** Monday of the current week, YYYY-MM-DD. */
+  readonly weekStart: string
+  readonly weekHours: number
+  readonly byDuty: readonly DutySummaryRow[]
+  readonly byPerson: readonly { readonly name: string; readonly hours: number; readonly entries: number }[]
+  /** Daily logs written before the duty log that still need a duty. */
+  readonly waitingLogs: number
+  readonly canEdit: boolean
+  /** Recurring duties behind, due soon, or not started yet. */
+  readonly attention: readonly RecurringDutyView[]
 }

@@ -3,8 +3,7 @@
 import { assertAudiencePreviewWriteAllowed, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 
-import { and, desc, eq, notInArray } from "drizzle-orm"
-import type { BatchItem } from "drizzle-orm/batch"
+import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -23,8 +22,19 @@ import {
   scheduleTaskAssignees,
 } from "@/db/schema-participants"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import {
+  markTaskReminderSent,
+  recordAssigneeResponse,
+  updateTask,
+  updateTaskForAssignee,
+} from "@/lib/domain/schedule/store"
+import {
+  notifyScheduleAssignees,
+  publishedAssigneeUserIds,
+  scheduleConfirmationHref,
+} from "@/lib/domain/schedule/assignment-notices"
+import { loadTaskPeople } from "@/lib/domain/schedule/queries"
+import { scheduleItemAssigneeUserIds } from "@/lib/schedule/assignees"
 import { isDemoUser } from "@/lib/demo"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
@@ -49,6 +59,7 @@ import {
   type ScheduleAssigneeProposalInput,
   type ScheduleAssigneeResponse,
 } from "@/lib/schedule/multi-assignee"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type ConfirmationResponse = "confirmed" | "declined"
 
@@ -150,20 +161,6 @@ async function notifyInternalScheduleResponse(input: {
   })
 }
 
-function confirmationHref(
-  projectId: string,
-  taskId: string,
-  projectRole: string | null
-): string {
-  if (projectRole === "client" || projectRole === "owner") {
-    return `/preview/projects/${projectId}/owner/schedule`
-  }
-  if (projectRole === "subcontractor" || projectRole === "supplier") {
-    return `/preview/projects/${projectId}/sub-vendor/schedule`
-  }
-  return `/dashboard/projects/${projectId}/schedule?view=list&item=${taskId}`
-}
-
 function revalidateConfirmationPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/schedule`)
   revalidatePath(`/preview/projects/${projectId}/owner/schedule`)
@@ -182,26 +179,33 @@ async function isSchedulePublished(
   return project?.schedulePublished === true
 }
 
+/**
+ * Sends schedule.assigned for a published item. `recipientUserIds` narrows it
+ * to the people a publication added; without it every published assignee is
+ * told (the manual resend).
+ */
 export async function sendPublishedScheduleAssignment(
-  taskId: string
+  taskId: string,
+  recipientUserIds?: readonly string[]
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
         projectId: scheduleTasks.projectId,
         title: scheduleTasks.title,
+        assignedTo: scheduleTasks.assignedTo,
         assignedUserId: scheduleTasks.assignedUserId,
         confirmationRequired: scheduleTasks.confirmationRequired,
+        ownerVisible: scheduleTasks.ownerVisible,
+        subVendorVisible: scheduleTasks.subVendorVisible,
       })
       .from(scheduleTasks)
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
@@ -320,7 +324,7 @@ export async function sendPublishedScheduleAssignment(
             ? `Schedule confirmation requested: ${task.title}`
             : `Schedule item assigned: ${task.title}`,
           body: `${user.displayName ?? user.email} assigned this to you.`,
-          href: confirmationHref(task.projectId, task.id, membership?.role ?? null),
+          href: scheduleConfirmationHref(task.projectId, task.id, membership?.role ?? null),
           priority: task.confirmationRequired ? "high" : "normal",
           audience: "assignee",
           createdBy: user.id,
@@ -345,85 +349,34 @@ export async function sendPublishedScheduleAssignment(
       }
       return { success: true }
     }
-    if (!task.assignedUserId) {
+    // Every assignee is equal: each linked account on both the item and its
+    // publication is told, or only the ones the publication just added.
+    const people = (await loadTaskPeople(db, [task.id])).get(task.id) ?? []
+    const currentUserIds = scheduleItemAssigneeUserIds({ ...task, people })
+    if (currentUserIds.length === 0) {
       return {
         success: false,
         error: "The assignment is not linked to an active Compass user.",
       }
     }
-    if (!publishedTask || publishedTask.assignedUserId !== task.assignedUserId) {
+    const publishedUserIds = publishedTask ? publishedAssigneeUserIds(publishedTask) : []
+    const recipients = (recipientUserIds ?? currentUserIds).filter(
+      (userId) => currentUserIds.includes(userId) && publishedUserIds.includes(userId)
+    )
+    if (!publishedTask || recipients.length === 0) {
       return {
         success: false,
         error: "Publish this assignment before sending its notification.",
       }
     }
-
-    const recipient = await db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(and(eq(users.id, task.assignedUserId), eq(users.isActive, true)))
-      .get()
-    if (!recipient) {
-      return { success: false, error: "The assigned Compass user is inactive." }
-    }
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, task.projectId),
-          eq(projectMembers.userId, recipient.id)
-        )
-      )
-      .get()
-    if (!isPublishedScheduleAssignmentVisible({
-      currentAssignedUserId: task.assignedUserId,
-      publishedAssignedUserId: publishedTask.assignedUserId,
-      projectRole: membership?.role ?? null,
-      ownerVisible: publishedTask.ownerVisible,
-      subVendorVisible: publishedTask.subVendorVisible,
-    })) {
-      return {
-        success: false,
-        error: "The published item is not visible to the assigned user.",
-      }
-    }
-
-    await createNotificationEvent({
-      organizationId,
-      projectId: task.projectId,
-      eventType: "schedule.assigned",
-      sourceType: "schedule_item",
-      sourceId: task.id,
-      title: `Schedule item assigned: ${task.title}`,
-      body: `${user.displayName ?? user.email} assigned this to you.`,
-      href: confirmationHref(
-        task.projectId,
-        task.id,
-        membership?.role ?? null
-      ),
-      priority: "normal",
-      audience: "assignee",
-      createdBy: user.id,
-      recipients: [{ userId: recipient.id, email: recipient.email }],
-      delivery: {
-        inApp: true,
-        email: true,
-        push: true,
-      },
-    })
-    await recordActivityEvent({
+    return await notifyScheduleAssignees({
       db,
       organizationId,
-      projectId: task.projectId,
       actor: user,
-      category: "schedule",
-      action: "schedule.assignment_notified",
-      entityType: "schedule_item",
-      entityId: task.id,
-      summary: `Sent the published assignment for “${task.title}”.`,
+      task,
+      published: publishedTask,
+      recipientUserIds: recipients,
     })
-    return { success: true }
   } catch (error) {
     console.error("Unable to send published schedule assignment", error)
     return { success: false, error: "Unable to send the assignment notification." }
@@ -435,14 +388,12 @@ export async function sendScheduleTaskReminder(
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -550,7 +501,7 @@ export async function sendScheduleTaskReminder(
       sourceId: task.id,
       title: `Please confirm: ${task.title}`,
       body: `${user.displayName ?? user.email} is waiting for your schedule commitment response.`,
-      href: confirmationHref(
+      href: scheduleConfirmationHref(
         task.projectId,
         task.id,
         membership?.role ?? null
@@ -567,15 +518,7 @@ export async function sendScheduleTaskReminder(
     })
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({ reminderSentAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.projectId, task.projectId)
-        )
-      )
+    await markTaskReminderSent(db, task.id, task.projectId, now)
     await recordActivityEvent({
       db,
       organizationId,
@@ -608,10 +551,8 @@ export async function respondToScheduleTaskConfirmation(
     if (typeof note !== "string" || note.length > 1000) {
       return { success: false, error: "Notes must be 1,000 characters or fewer." }
     }
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select()
       .from(scheduleTasks)
@@ -698,23 +639,15 @@ export async function respondToScheduleTaskConfirmation(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: response,
-        confirmationRespondedAt: now,
-        proposedStartDate: null,
-        proposedWorkdays: null,
-        proposalNote: note.trim() || null,
-        proposalSubmittedAt: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.assignedUserId, user.id)
-        )
-      )
+    await updateTaskForAssignee(db, task.id, user.id, {
+      confirmationStatus: response,
+      confirmationRespondedAt: now,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: note.trim() || null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
@@ -757,10 +690,8 @@ export async function proposeScheduleTaskChange(
     await assertAudiencePreviewWriteAllowed()
     const validation = validateScheduleChangeProposal(input)
     if (!validation.success) return validation
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select()
       .from(scheduleTasks)
@@ -838,23 +769,15 @@ export async function proposeScheduleTaskChange(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: "proposed",
-        confirmationRespondedAt: now,
-        proposedStartDate: validation.proposal.startDate,
-        proposedWorkdays: validation.proposal.workdays,
-        proposalNote: validation.proposal.note,
-        proposalSubmittedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(scheduleTasks.id, task.id),
-          eq(scheduleTasks.assignedUserId, user.id)
-        )
-      )
+    await updateTaskForAssignee(db, task.id, user.id, {
+      confirmationStatus: "proposed",
+      confirmationRespondedAt: now,
+      proposedStartDate: validation.proposal.startDate,
+      proposedWorkdays: validation.proposal.workdays,
+      proposalNote: validation.proposal.note,
+      proposalSubmittedAt: now,
+      updatedAt: now,
+    })
     const proposal: ScheduleTaskChangeProposal = {
       startDate: validation.proposal.startDate,
       workdays: validation.proposal.workdays,
@@ -899,12 +822,12 @@ export async function proposeScheduleTaskChange(
 export async function getScheduleTaskChangeProposal(
   taskId: string
 ): Promise<ScheduleTaskChangeProposal | null> {
-  const user = await conversationRequestViewer(await requireAuth())
+  const context = await requireUserContext()
+  const user = await conversationRequestViewer(context.user)
   if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "update")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { db } = context
   const task = await db
     .select({
       projectId: scheduleTasks.projectId,
@@ -943,12 +866,10 @@ export async function rejectScheduleTaskChangeProposal(
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const task = await db
       .select({
         id: scheduleTasks.id,
@@ -970,18 +891,15 @@ export async function rejectScheduleTaskChangeProposal(
       return { success: false, error: "There is no pending date proposal." }
     }
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTasks)
-      .set({
-        confirmationStatus: "pending",
-        confirmationRespondedAt: null,
-        proposedStartDate: null,
-        proposedWorkdays: null,
-        proposalNote: null,
-        proposalSubmittedAt: null,
-        updatedAt: now,
-      })
-      .where(eq(scheduleTasks.id, task.id))
+    await updateTask(db, task.id, {
+      confirmationStatus: "pending",
+      confirmationRespondedAt: null,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId,
@@ -1001,7 +919,7 @@ export async function rejectScheduleTaskChangeProposal(
   }
 }
 
-export type ScheduleTaskAssigneeInput = {
+type ScheduleTaskAssigneeInput = {
   readonly participantId?: string
   readonly assignedUserId?: string | null
   readonly projectContactId?: string | null
@@ -1165,12 +1083,12 @@ async function resolveReviewedAssignmentTarget(
 export async function getScheduleTaskAssignees(
   taskId: string,
 ): Promise<readonly ScheduleTaskAssigneeView[]> {
-  const user = await conversationRequestViewer(await requireAuth())
+  const context = await requireUserContext()
+  const user = await conversationRequestViewer(context.user)
   if (!user) throw new Error("Unauthorized")
   requirePermission(user, "schedule", "read")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { db } = context
   const task = await db
     .select({ projectId: scheduleTasks.projectId })
     .from(scheduleTasks)
@@ -1235,193 +1153,6 @@ export async function getScheduleTaskAssignees(
   )
 }
 
-export async function setScheduleTaskAssignees(
-  taskId: string,
-  inputs: readonly (ScheduleTaskAssigneeInput | string)[],
-): Promise<ScheduleConfirmationResult> {
-  try {
-    await assertAudiencePreviewWriteAllowed()
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "schedule", "update")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    if (inputs.length > 50) {
-      return {
-        success: false,
-        error: "A schedule item may have at most 50 assignees.",
-      }
-    }
-    const task = await db
-      .select()
-      .from(scheduleTasks)
-      .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
-      .where(
-        and(
-          eq(scheduleTasks.id, taskId),
-          eq(projects.organizationId, organizationId),
-        ),
-      )
-      .get()
-    if (!task) return { success: false, error: "Schedule item not found." }
-    const targets: AssignmentTarget[] = []
-    const seen = new Set<string>()
-    for (const input of inputs) {
-      const assignmentInput: ScheduleTaskAssigneeInput =
-        typeof input === "string" ? { participantId: input } : input
-      const target = await resolveReviewedAssignmentTarget(
-        db,
-        organizationId,
-        task.schedule_tasks.projectId,
-        assignmentInput,
-      )
-      if (!target) {
-        return {
-          success: false,
-          error: "Every assignee must be a reviewed project participant with active access.",
-        }
-      }
-      const key = target.assignedUserId
-        ? `user:${target.assignedUserId}`
-        : `contact:${target.projectContactId ?? target.participantId}`
-      if (seen.has(key)) {
-        return { success: false, error: "An assignee may only be selected once." }
-      }
-      seen.add(key)
-      targets.push(target)
-    }
-    const now = new Date().toISOString()
-    const existingRows = await db
-      .select()
-      .from(scheduleTaskAssignees)
-      .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId))
-    const existingByParticipant = new Map(
-      existingRows.map((row) => [row.participantId, row]),
-    )
-    const assignmentStatements: BatchItem<"sqlite">[] = []
-    for (const [index, target] of targets.entries()) {
-      const existing = existingByParticipant.get(target.participantId)
-      const participantRole =
-        (typeof inputs[index] === "string"
-          ? undefined
-          : inputs[index]?.participantRole) ?? "assignee"
-      if (!existing) {
-        assignmentStatements.push(
-          db.insert(scheduleTaskAssignees).values({
-            id: crypto.randomUUID(),
-            scheduleTaskId: taskId,
-            participantId: target.participantId,
-            assignedUserId: target.assignedUserId,
-            projectContactId: target.projectContactId,
-            participantRole,
-            sourceStartDate: task.schedule_tasks.startDate,
-            sourceWorkdays: task.schedule_tasks.workdays,
-            sourceEndDate: task.schedule_tasks.endDateCalculated,
-            responseStatus: "pending",
-            dateResponseStatus: "pending",
-            durationResponseStatus: "pending",
-            assignedAt: now,
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-        continue
-      }
-
-      const sourceChanged =
-        existing.sourceStartDate !== task.schedule_tasks.startDate ||
-        existing.sourceWorkdays !== task.schedule_tasks.workdays ||
-        existing.sourceEndDate !== task.schedule_tasks.endDateCalculated
-      const targetChanged =
-        existing.assignedUserId !== target.assignedUserId ||
-        existing.projectContactId !== target.projectContactId
-      assignmentStatements.push(
-        db
-          .update(scheduleTaskAssignees)
-          .set(
-            sourceChanged || targetChanged
-              ? {
-                  assignedUserId: target.assignedUserId,
-                  projectContactId: target.projectContactId,
-                  participantRole,
-                  sourceStartDate: task.schedule_tasks.startDate,
-                  sourceWorkdays: task.schedule_tasks.workdays,
-                  sourceEndDate: task.schedule_tasks.endDateCalculated,
-                  responseStatus: "pending",
-                  dateResponseStatus: "pending",
-                  durationResponseStatus: "pending",
-                  proposedStartDate: null,
-                  proposedWorkdays: null,
-                  proposedEndDate: null,
-                  responseMessage: null,
-                  respondedAt: null,
-                  respondedByUserId: null,
-                  responseSource: null,
-                  assignedAt: now,
-                  updatedAt: now,
-                }
-              : {
-                  participantRole,
-                  updatedAt:
-                    participantRole === existing.participantRole
-                      ? existing.updatedAt
-                      : now,
-                },
-          )
-          .where(eq(scheduleTaskAssignees.id, existing.id)),
-      )
-    }
-    const targetParticipantIds = targets.map((target) => target.participantId)
-    const removalStatement = db
-      .delete(scheduleTaskAssignees)
-      .where(
-        targetParticipantIds.length === 0
-          ? eq(scheduleTaskAssignees.scheduleTaskId, taskId)
-          : and(
-              eq(scheduleTaskAssignees.scheduleTaskId, taskId),
-              notInArray(
-                scheduleTaskAssignees.participantId,
-                targetParticipantIds,
-              ),
-            ),
-      )
-    // Keep the legacy scalar useful for existing readers only when the child
-    // relation has exactly one internal-user target. A multi-target task must
-    // not accidentally route a response through the old scalar action.
-    await db.batch([
-      removalStatement,
-      db
-        .update(scheduleTasks)
-        .set({
-          assignedTo: null,
-          assignedUserId:
-            targets.length === 1 ? targets[0]?.assignedUserId ?? null : null,
-          updatedAt: now,
-        })
-        .where(eq(scheduleTasks.id, taskId)),
-      ...assignmentStatements,
-    ])
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: task.schedule_tasks.projectId,
-      actor: user,
-      category: "schedule",
-      action: "schedule.assignees_updated",
-      entityType: "schedule_item",
-      entityId: taskId,
-      summary: `Updated assignees for “${task.schedule_tasks.title}”.`,
-      metadata: { assigneeCount: targets.length },
-    })
-    revalidateConfirmationPaths(task.schedule_tasks.projectId)
-    return { success: true }
-  } catch (error) {
-    console.error("Unable to update schedule assignees", error)
-    return { success: false, error: "Unable to update schedule assignees." }
-  }
-}
-
 export async function respondToScheduleTaskAssignee(
   assignmentId: string,
   input: ScheduleAssigneeProposalInput | ScheduleAssigneeResponse,
@@ -1439,10 +1170,8 @@ export async function respondToScheduleTaskAssignee(
     }
     const state = scheduleAssigneeResponseState(responseInput)
     if ("error" in state) return { success: false, error: state.error }
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     requirePermission(user, "schedule", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const assignment = await db
       .select({
         id: scheduleTaskAssignees.id,
@@ -1551,21 +1280,18 @@ export async function respondToScheduleTaskAssignee(
       }
     }
     const now = new Date().toISOString()
-    await db
-      .update(scheduleTaskAssignees)
-      .set({
-        responseStatus: state.responseStatus,
-        dateResponseStatus: state.dateResponseStatus,
-        durationResponseStatus: state.durationResponseStatus,
-        proposedStartDate: responseInput.response === "proposed" ? responseInput.proposedStartDate?.trim() || null : null,
-        proposedWorkdays: responseInput.response === "proposed" ? responseInput.proposedWorkdays ?? null : null,
-        responseMessage: responseInput.message?.trim() || null,
-        respondedAt: now,
-        respondedByUserId: user.id,
-        responseSource: "compass",
-        updatedAt: now,
-      })
-      .where(eq(scheduleTaskAssignees.id, assignment.id))
+    await recordAssigneeResponse(db, assignment.id, {
+      responseStatus: state.responseStatus,
+      dateResponseStatus: state.dateResponseStatus,
+      durationResponseStatus: state.durationResponseStatus,
+      proposedStartDate: responseInput.response === "proposed" ? responseInput.proposedStartDate?.trim() || null : null,
+      proposedWorkdays: responseInput.response === "proposed" ? responseInput.proposedWorkdays ?? null : null,
+      responseMessage: responseInput.message?.trim() || null,
+      respondedAt: now,
+      respondedByUserId: user.id,
+      responseSource: "compass",
+      updatedAt: now,
+    })
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
@@ -1615,5 +1341,3 @@ export async function respondToScheduleTaskAssignee(
   }
 }
 
-export const respondToScheduleTaskAssignment = respondToScheduleTaskAssignee
-export const updateScheduleTaskAssignees = setScheduleTaskAssignees

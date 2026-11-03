@@ -1,0 +1,11 @@
+flowchart TD
+  A([New project intake]) --> B[createProjectIntake<br/>check permissions and<br/>required fields]
+  B --> C{Possible<br/>duplicates?}
+  C -->|unconfirmed| C1[Warn; user confirms<br/>or picks existing job]
+  C -->|no| D[Allocate next job number<br/>for the department]
+  D --> E{Collision?}
+  E -->|yes| E1[Sequence conflict:<br/>resubmit]
+  E -->|no| F[One db.batch: project,<br/>customer, contacts,<br/>tracker and accounting<br/>handoff queued]
+  F --> G[Provision Drive folder<br/>from template]
+  G --> H[Append tracker rows;<br/>Activity project.created]
+  H --> I[[Bridge agent creates<br/>client and job in accounting]]

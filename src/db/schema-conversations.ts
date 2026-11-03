@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   sqliteTable,
   text,
@@ -5,7 +6,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
-import { organizations, projects, users } from "./schema"
+import { organizations, projectContacts, projects, users } from "./schema"
 
 // channels - text, voice, announcement channels
 export const channels = sqliteTable("channels", {
@@ -33,7 +34,21 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+  /** Set when the conversation was created from an outside system's thread (0287). */
+  sourceSystem: text("source_system"),
+  sourceThreadId: text("source_thread_id"),
+  /** When staff closed this conversation in the project messages inbox; a newer message reopens it (0289). */
+  threadClosedAt: text("thread_closed_at"),
+},
+  (table) => [
+    index("channels_project_id_idx").on(table.projectId),
+    index("channels_organization_id_idx").on(table.organizationId),
+    index("channels_category_id_idx").on(table.categoryId),
+    // An outside thread becomes one conversation (migration 0287).
+    uniqueIndex("channels_source_thread_unique")
+      .on(table.organizationId, table.sourceSystem, table.sourceThreadId)
+      .where(sql`${table.sourceThreadId} IS NOT NULL`),
+  ])
 
 // messages - chat messages with markdown support, threading, pins
 // Note: threadId is a self-reference, which TypeScript handles via deferred evaluation
@@ -55,7 +70,30 @@ export const messages = sqliteTable("messages", {
   replyCount: integer("reply_count").notNull().default(0),
   lastReplyAt: text("last_reply_at"),
   createdAt: text("created_at").notNull(),
-})
+  /** Set on messages imported from an outside system; the pair is the import key (0287). */
+  sourceSystem: text("source_system"),
+  sourceMessageId: text("source_message_id"),
+  // snapshot: the sent date exactly as the source displayed it.
+  sourceSentAtSnapshot: text("source_sent_at_snapshot"),
+  /** The original sender while they are a directory contact without an account; cleared on adoption. */
+  importedSenderContactId: text("imported_sender_contact_id").references(() => projectContacts.id, {
+    onDelete: "set null",
+  }),
+  // snapshot: the sender exactly as the source showed it, set only when the
+  // sender could not be matched to a person (migration 0290).
+  sourceSenderLabelSnapshot: text("source_sender_label_snapshot"),
+},
+  (table) => [
+    uniqueIndex("messages_source_message_unique")
+      .on(table.sourceSystem, table.sourceMessageId)
+      .where(sql`${table.sourceMessageId} IS NOT NULL`),
+    index("messages_imported_sender_contact_idx").on(table.importedSenderContactId),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("messages_channel_thread_created_idx").on(table.channelId, table.threadId, table.createdAt),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("messages_thread_created_idx").on(table.threadId, table.createdAt),
+    index("messages_user_id_idx").on(table.userId),
+  ])
 
 // message_attachments - files, images, etc
 export const messageAttachments = sqliteTable("message_attachments", {
@@ -70,7 +108,17 @@ export const messageAttachments = sqliteTable("message_attachments", {
   width: integer("width"),
   height: integer("height"),
   uploadedAt: text("uploaded_at").notNull(),
-})
+  /** Content hash; an import reuses a stored file with the same bytes (0287). */
+  contentSha256: text("content_sha256"),
+  sourceAttachmentId: text("source_attachment_id"),
+},
+  (table) => [
+    index("message_attachments_message_id_idx").on(table.messageId),
+    index("message_attachments_content_sha256_idx").on(table.contentSha256),
+    uniqueIndex("message_attachments_source_unique")
+      .on(table.messageId, table.sourceAttachmentId)
+      .where(sql`${table.sourceAttachmentId} IS NOT NULL`),
+  ])
 
 // message_reactions - emoji reactions
 export const messageReactions = sqliteTable("message_reactions", {
@@ -83,7 +131,12 @@ export const messageReactions = sqliteTable("message_reactions", {
     .references(() => users.id, { onDelete: "cascade" }),
   emoji: text("emoji").notNull(),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("message_reactions_user_id_idx").on(table.userId),
+    index("message_reactions_message_id_idx").on(table.messageId),
+    uniqueIndex("message_reactions_message_user_emoji_unique").on(table.messageId, table.userId, table.emoji),
+  ])
 
 // message_mentions - @user, @channel, @here, @agent mentions
 export const messageMentions = sqliteTable("message_mentions", {
@@ -94,7 +147,10 @@ export const messageMentions = sqliteTable("message_mentions", {
   mentionType: text("mention_type").notNull(), // "user" | "channel" | "here" | "agent"
   targetId: text("target_id"), // userId for user, "compass-agent" for agent, null for channel/here
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("message_mentions_message_id_idx").on(table.messageId),
+  ])
 
 // channel_members - who can access which channels
 export const channelMembers = sqliteTable("channel_members", {
@@ -108,7 +164,15 @@ export const channelMembers = sqliteTable("channel_members", {
   role: text("role").notNull().default("member"), // owner | moderator | member
   notifyLevel: text("notify_level").notNull().default("all"), // all | mentions | none
   joinedAt: text("joined_at").notNull(),
-})
+},
+  (table) => [
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("channel_members_channel_user_idx").on(table.channelId, table.userId),
+    // Declared from drizzle/0274_hot_query_indexes.sql.
+    index("channel_members_user_idx").on(table.userId),
+    // One membership per person per channel (migration 0277).
+    uniqueIndex("channel_members_channel_user_unique").on(table.channelId, table.userId),
+  ])
 
 // typing_sessions - active typing indicators with TTL
 export const typingSessions = sqliteTable("typing_sessions", {
@@ -121,7 +185,11 @@ export const typingSessions = sqliteTable("typing_sessions", {
     .references(() => users.id, { onDelete: "cascade" }),
   startedAt: text("started_at").notNull(),
   expiresAt: text("expires_at").notNull(), // 5-second TTL
-})
+},
+  (table) => [
+    index("typing_sessions_user_id_idx").on(table.userId),
+    index("typing_sessions_channel_id_idx").on(table.channelId),
+  ])
 
 // user_presence - online status and activity
 export const userPresence = sqliteTable("user_presence", {
@@ -135,7 +203,10 @@ export const userPresence = sqliteTable("user_presence", {
   // Updated only by real user input, not by connection heartbeats.
   lastActiveAt: text("last_active_at"),
   updatedAt: text("updated_at").notNull(),
-})
+},
+  (table) => [
+    index("user_presence_user_id_idx").on(table.userId),
+  ])
 
 // channel_categories - organize channels into groups
 export const channelCategories = sqliteTable("channel_categories", {
@@ -147,7 +218,10 @@ export const channelCategories = sqliteTable("channel_categories", {
   position: integer("position").notNull().default(0),
   collapsedByDefault: integer("collapsed_by_default", { mode: "boolean" }).default(false),
   createdAt: text("created_at").notNull(),
-})
+},
+  (table) => [
+    index("channel_categories_organization_id_idx").on(table.organizationId),
+  ])
 
 // channel_read_state - unread tracking per user per channel
 export const channelReadState = sqliteTable("channel_read_state", {
@@ -161,7 +235,39 @@ export const channelReadState = sqliteTable("channel_read_state", {
   lastReadMessageId: text("last_read_message_id"),
   lastReadAt: text("last_read_at").notNull(),
   unreadCount: integer("unread_count").notNull().default(0),
-})
+},
+  (table) => [
+    index("channel_read_state_channel_id_idx").on(table.channelId),
+    index("channel_read_state_user_id_idx").on(table.userId),
+    uniqueIndex("channel_read_state_channel_user_unique").on(table.channelId, table.userId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("channel_read_state_last_read_message_id_idx").on(table.lastReadMessageId),
+  ])
+
+// channel_thread_user_state - a person's project messages inbox flags for a
+// channel conversation (Saved, Needs reply, Archive), as correspondence keeps
+// them (migration 0289). Null means off; the time is when it was turned on.
+export const channelThreadUserState = sqliteTable("channel_thread_user_state", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  channelId: text("channel_id")
+    .notNull()
+    .references(() => channels.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  savedAt: text("saved_at"),
+  needsReplyAt: text("needs_reply_at"),
+  archivedAt: text("archived_at"),
+  updatedAt: text("updated_at").notNull(),
+},
+  (table) => [
+    uniqueIndex("channel_thread_user_state_channel_user_unique").on(table.channelId, table.userId),
+    index("channel_thread_user_state_user_id_idx").on(table.userId),
+    index("channel_thread_user_state_organization_id_idx").on(table.organizationId),
+  ])
 
 export const voiceParticipants = sqliteTable(
   "voice_participants",
@@ -208,6 +314,7 @@ export const voiceSignals = sqliteTable(
   (table) => [
     index("voice_signals_target_idx").on(table.channelId, table.targetUserId),
     index("voice_signals_created_idx").on(table.channelId, table.createdAt),
+    index("voice_signals_target_user_id_idx").on(table.targetUserId),
   ]
 )
 

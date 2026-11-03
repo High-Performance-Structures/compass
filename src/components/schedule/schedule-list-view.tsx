@@ -34,14 +34,14 @@ import {
   assignScheduleTasks,
   completeScheduleTasks,
   deleteScheduleTasks,
-} from "@/app/actions/schedule"
-import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contacts"
+} from "@/app/actions/schedule-tasks"
+import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contact-assignees"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
@@ -52,7 +52,6 @@ import {
 } from "@/components/data-table-pagination"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { format, parseISO } from "date-fns"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { cn } from "@/lib/utils"
 import { scheduleItemHref } from "@/lib/work-calendar"
@@ -65,6 +64,8 @@ import {
   type ScheduleListColumn,
 } from "@/lib/schedule/saved-views"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ScheduleAssigneeStack } from "@/components/schedule/schedule-assignee-stack"
+import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,6 +76,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { formatDate } from "@/lib/format"
 
 interface ScheduleListViewProps {
   readonly projectId: string | null
@@ -122,32 +124,9 @@ function ProgressValue({ percent }: { readonly percent: number }) {
   )
 }
 
-function InitialsAvatar({ name }: { name: string }) {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-        {initials}
-      </div>
-      <span className="text-xs text-muted-foreground truncate max-w-[80px]">
-        {name}
-      </span>
-    </div>
-  )
-}
-
-function formatDate(dateStr: string): string {
-  try {
-    return format(parseISO(dateStr), "MMM d, yyyy")
-  } catch {
-    return dateStr
-  }
+/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
+function dateLabel(value: string): string {
+  return formatDate(value, "medium", value)
 }
 
 export function ScheduleListView({
@@ -327,7 +306,7 @@ export function ScheduleListView({
           const time = scheduleItemTimeLabel(row.original)
           return (
             <span className="text-xs text-muted-foreground">
-              {formatDate(row.original.startDate)}
+              {dateLabel(row.original.startDate)}
               {time ? <span className="block">{time}</span> : null}
             </span>
           )
@@ -338,19 +317,14 @@ export function ScheduleListView({
         header: "End",
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
-            {formatDate(row.original.endDateCalculated)}
+            {dateLabel(row.original.endDateCalculated)}
           </span>
         ),
       },
       {
         id: "assignedTo",
         header: "Responsible",
-        cell: ({ row }) =>
-          row.original.assignedTo ? (
-            <InitialsAvatar name={row.original.assignedTo} />
-          ) : (
-            <span className="text-xs text-muted-foreground">-</span>
-          ),
+        cell: ({ row }) => <ScheduleAssigneeStack names={scheduleItemAssigneeNames(row.original)} />,
       },
       {
         id: "actions",
@@ -368,7 +342,7 @@ export function ScheduleListView({
               )}
               defaultTitle={`Follow up: ${row.original.title}`}
               defaultDescription={`${row.original.phase} schedule item.`}
-              defaultAssigneeName={row.original.assignedTo}
+              defaultAssigneeName={scheduleItemAssigneeNames(row.original)[0] ?? null}
               defaultCompanyName={null}
               defaultDueDate={row.original.endDateCalculated}
               defaultPriority={
@@ -526,7 +500,7 @@ export function ScheduleListView({
     setLocalTasks((current) =>
       current.map((task) =>
         assignedIds.has(task.id)
-          ? { ...task, assignedTo: assignedName || null }
+          ? { ...task, assignedTo: assignedName || null, people: [] }
           : task
       )
     )

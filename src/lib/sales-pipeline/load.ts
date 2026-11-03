@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { getProjects } from "@/app/actions/projects"
+import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { resolveTown, spreadSharedTowns } from "@/lib/portfolio-map/model"
@@ -73,7 +73,7 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
       SALES_PIPELINE_DEPARTMENTS[department] ||
       `${profiles.departments[department].displayName} Sales`
 
-    const visible = await getProjects()
+    const visible = await listProjectsForCurrentUser()
     const staged = visible.flatMap((project) => {
       const stage = salesStageForJobStatus(project.jobStatusId)
       return stage ? [{ project, stage }] : []

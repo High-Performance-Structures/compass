@@ -8,21 +8,31 @@ function source(file: string): string {
 
 describe("schedule assignee directory data boundary", () => {
   it("loads the complete Compass directory with schedule permissions", () => {
-    const actions = source("src/app/actions/project-contacts.ts")
-    const scheduleStart = actions.indexOf(
+    const actions = source("src/app/actions/project-contact-assignees.ts")
+    const permissionStart = actions.indexOf(
       "export async function getScheduleTaskAssigneeOptions"
     )
-    const nextActionStart = actions.indexOf(
+    const permissionEnd = actions.indexOf(
       "export async function getProjectPurchaseOrderSiteContactOptions",
+      permissionStart
+    )
+    expect(permissionStart).toBeGreaterThan(-1)
+    expect(actions.slice(permissionStart, permissionEnd)).toContain(
+      'requireFeaturePermission(user, "schedule", "update")'
+    )
+
+    const domain = source("src/lib/domain/contacts/assignees.ts")
+    const scheduleStart = domain.indexOf(
+      "export async function loadScheduleTaskAssigneeOptions"
+    )
+    const nextActionStart = domain.indexOf(
+      "export async function loadPurchaseOrderSiteContactOptions",
       scheduleStart
     )
-    const scheduleAction = actions.slice(scheduleStart, nextActionStart)
+    const scheduleAction = domain.slice(scheduleStart, nextActionStart)
 
     expect(scheduleStart).toBeGreaterThan(-1)
     expect(nextActionStart).toBeGreaterThan(scheduleStart)
-    expect(scheduleAction).toContain(
-      'requireFeaturePermission(user, "schedule", "update")'
-    )
     expect(scheduleAction).toContain(".from(customers)")
     expect(scheduleAction).toContain(".from(vendors)")
     expect(scheduleAction).toContain(".from(vendorContacts)")

@@ -2,13 +2,9 @@
 
 import { and, desc, eq, inArray } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { financeReadContext } from "@/lib/domain/financials/access"
 import {
   hydrateLegacySageSquarePaymentScopes,
   sageSquareOrganizationId,
@@ -57,11 +53,7 @@ export async function getSageSquareReceipts(
 ): Promise<
   SquareReceiptListItem[]
 > {
-  const user = await requireAuth()
-  requirePermission(user, "finance", "read")
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const { db, env, organizationId } = await financeReadContext()
 
   if (sageSquareOrganizationId(env) === organizationId) {
     await hydrateLegacySageSquarePaymentScopes(env)

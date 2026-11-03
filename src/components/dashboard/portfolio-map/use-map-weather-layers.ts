@@ -59,8 +59,8 @@ export function useMapWeatherLayers(jobs: readonly PortfolioMapJob[], mapShown: 
     const fireData = fireOn ? fireLayer.data : null
     const at = Math.min(step, (weatherData?.steps ?? 1) - 1)
     return {
-      title: weatherOn ? "WEATHER ON YOUR JOBS" : "FIRE NEAR YOUR JOBS",
-      emptyText: weatherOn ? (weatherData ? "Nothing over the weather limits in the 24 hours from this time." : "Loading weather…") : fireData ? "No active fire is near." : "Loading fires…",
+      title: weatherOn ? "WEATHER ON YOUR JOBS" : "FIRE & SMOKE NEAR YOUR JOBS",
+      emptyText: weatherOn ? (weatherData ? "Nothing over the weather limits in the 24 hours from this time." : "Loading weather…") : fireData ? "No fire, smoke or poor air near." : "Loading fire and smoke…",
       rows: weatherData || fireData ? jobWeatherRows(jobs, weatherData, fireData, limits ?? DEFAULT_WEATHER_LIMITS, at, Date.now()) : [],
     }
   }, [fireLayer.data, fireOn, jobs, limits, step, weatherLayer.data, weatherOn])

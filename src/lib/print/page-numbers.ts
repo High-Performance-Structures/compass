@@ -1,8 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib"
 
-/** Above this, a PDF goes out as rendered rather than being read into memory. */
-export const PAGE_NUMBER_MAX_BYTES = 30 * 1024 * 1024
-
 /**
  * Adds "Page X of N" at the foot of every page, in the same place and style
  * as estimates. A one-page document is returned unchanged.

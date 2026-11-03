@@ -4,19 +4,18 @@ import { readEstimateMode } from "@/lib/estimates/numbering"
 import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
 import { projectEstimateLines, projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
-import { nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
+import { nuTechOrderItems, nuTechProducts } from "@/db/schema-nutech"
 import {
-  createProjectEstimateDraft,
-  deleteProjectEstimateLine,
-  saveProjectEstimateLine,
-  type ProjectEstimateLineInput,
-} from "@/app/actions/project-estimates"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+  createProjectEstimateDraftCommand as createProjectEstimateDraft,
+  deleteProjectEstimateLineCommand as deleteProjectEstimateLine,
+  saveProjectEstimateLineCommand as saveProjectEstimateLine,
+} from "@/lib/domain/estimates/commands"
+import type { ProjectEstimateLineInput } from "@/lib/domain/estimates/types"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { nuTechItemTaxable, nuTechShippingCents } from "@/lib/domain/nutech/rules"
+import { linkNuTechOrderEstimate } from "@/lib/domain/nutech/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { loadNuTechFreight, nuTechProductCostCode } from "@/lib/nutech/freight"
 import { nuTechEstimateLineDescription } from "@/lib/nutech/estimate-wording"
@@ -24,6 +23,8 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { updateEstimates } from "@/lib/domain/estimates/store"
+import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -48,13 +49,11 @@ export async function createNuTechEstimateFromOrder(
   orderId?: string | null,
 ): Promise<Result<NuTechEstimateFromOrderResult>> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     await requireFeaturePermission(user, "nutech-orders", "update")
     const organizationId = requireOrg(user)
     if (isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const project = await db
       .select({ id: projects.id, projectNumber: projects.projectNumber })
       .from(projects)
@@ -99,7 +98,7 @@ export async function createNuTechEstimateFromOrder(
     if (missingCode) {
       return { success: false, error: "Set the cost code for catalog products in Settings → Workflows → Nu-Tech emails first." }
     }
-    const shippingCents = order.deliveryMethod === "delivery" ? (order.shippingCents ?? 0) : 0
+    const shippingCents = nuTechShippingCents(order.deliveryMethod, order.shippingCents)
     if (shippingCents > 0 && !shippingCode) {
       return { success: false, error: "Map Freight to its Sage cost code on the Nu-Tech price list first." }
     }
@@ -152,36 +151,38 @@ export async function createNuTechEstimateFromOrder(
       estimateId = draft.id
       created = true
       if (order.title) {
-        await db.update(projectEstimates).set({ title: order.title }).where(eq(projectEstimates.id, estimateId))
+        await updateEstimates(db, eq(projectEstimates.id, estimateId), { title: order.title })
       }
     }
 
     // The order now fills this estimate (a new version or a new estimate).
     if (order.estimateId !== estimateId) {
-      await db
-        .update(nuTechOrderWorkflows)
-        .set({ estimateId, updatedAt: new Date().toISOString() })
-        .where(eq(nuTechOrderWorkflows.id, order.id))
+      await linkNuTechOrderEstimate(db, order.id, estimateId, new Date().toISOString())
     }
     // The order's district becomes the estimate's default, so new lines and the checklist follow it.
-    await db
-      .update(projectEstimates)
-      .set({ defaultTaxEntityId: district.id, defaultTaxRateBasisPoints: district.rateBasisPoints, updatedAt: new Date().toISOString() })
-      .where(eq(projectEstimates.id, estimateId))
+    await updateEstimates(db, eq(projectEstimates.id, estimateId), {
+      defaultTaxEntityId: district.id,
+      defaultTaxRateBasisPoints: district.rateBasisPoints,
+      updatedAt: new Date().toISOString(),
+    })
 
     const base = { assemblyId: null, reportPhaseId: null, markupPercent: 0, ownerVisible: true, includeInBuilderFee: false, insertAfterLineId: null }
-    const lines: ProjectEstimateLineInput[] = items.map((item) => ({
-      ...base,
-      costCode: nuTechProductCostCode(item) ?? productCode,
-      // Lines carry the customer's price; the manufacturer cost stays on the order and its PO.
-      description: nuTechEstimateLineDescription({ quantity: item.quantity, unit: item.unit, name: item.name, sku: item.sku, packageLabel: item.packageLabel }),
-      specifications: null,
-      quantity: item.quantity,
-      unit: item.unit,
-      unitCost: item.unitPriceCents / 100,
-      taxable: item.taxable,
-      taxEntityId: item.taxable ? district.id : null,
-    }))
+    const lines: ProjectEstimateLineInput[] = items.map((item) => {
+      // Taxed as the order workspace taxes it (`nuTechOrderTotals`).
+      const taxable = nuTechItemTaxable(item.taxable)
+      return {
+        ...base,
+        costCode: nuTechProductCostCode(item) ?? productCode,
+        // Lines carry the customer's price; the manufacturer cost stays on the order and its PO.
+        description: nuTechEstimateLineDescription({ quantity: item.quantity, unit: item.unit, name: item.name, sku: item.sku, packageLabel: item.packageLabel }),
+        specifications: null,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitCost: item.unitPriceCents / 100,
+        taxable,
+        taxEntityId: taxable ? district.id : null,
+      }
+    })
     if (shippingCents > 0) {
       lines.push({
         ...base,

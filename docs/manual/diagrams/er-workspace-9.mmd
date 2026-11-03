@@ -1,0 +1,25 @@
+erDiagram
+  direction LR
+  schedule_saved_views {
+    key id
+  }
+  slab_memories {
+    key id
+  }
+  social_project_albums {
+    key id
+    ref account_id
+  }
+  sync_checkpoint {
+    key id
+  }
+  sync_tombstone {
+    key id
+  }
+  user_model_preference {
+    key user_id
+  }
+  social_accounts {
+    key id
+  }
+  social_accounts ||--o{ social_project_albums : ""

@@ -1,11 +1,11 @@
 import Link from "next/link"
 import type { BracingInventory } from "@/app/actions/nutech-bracing"
 import { Badge } from "@/components/ui/badge"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 function dateLabel(value: string | null): string {
-  if (!value) return "No date"
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return formatDate(value, "short", "No date")
 }
 
 /**

@@ -164,12 +164,12 @@ describe("wildfires", () => {
   it("flags jobs near a fire and under a Red Flag Warning", () => {
     const fire = { id: "f1", name: "Spring Creek", acres: 1200, containedPercent: 20, discoveredAt: null, updatedAt: null, lon: -105, lat: 39, rings: [SQUARE] }
     const redFlag = { id: "r1", event: "Red Flag Warning", kind: "fire" as const, level: "warning" as const, headline: "Red Flag Warning until 8 PM", onset: null, ends: null, rings: [SQUARE], zoneIds: [] }
-    const near = fireFlags({ fires: [fire], alerts: [redFlag] }, -105.3, 39, DEFAULT_WEATHER_LIMITS, NOW)
+    const near = fireFlags({ fires: [fire], alerts: [redFlag], smoke: [], air: [] }, -105.3, 39, DEFAULT_WEATHER_LIMITS, NOW)
     expect(near.map((flag) => flag.kind)).toEqual(["fire"])
     expect(near[0]?.detail).toMatch(/Spring Creek, \d+ mi east/)
-    const inside = fireFlags({ fires: [fire], alerts: [redFlag] }, -105, 39, DEFAULT_WEATHER_LIMITS, NOW)
+    const inside = fireFlags({ fires: [fire], alerts: [redFlag], smoke: [], air: [] }, -105, 39, DEFAULT_WEATHER_LIMITS, NOW)
     expect(inside.map((flag) => flag.kind)).toEqual(["red_flag", "fire"])
-    expect(fireFlags({ fires: [fire], alerts: [] }, -108, 39, DEFAULT_WEATHER_LIMITS, NOW)).toEqual([])
+    expect(fireFlags({ fires: [fire], alerts: [], smoke: [], air: [] }, -108, 39, DEFAULT_WEATHER_LIMITS, NOW)).toEqual([])
   })
 })
 

@@ -39,6 +39,41 @@ import {
   SMS_OPT_IN_DISCLOSURE_VERSION,
 } from "@/lib/notifications/sms-consent"
 
+// During production slow spells individual actions complete in 5-12s, and
+// Next serializes server actions per tab, so a timeout below that abandons
+// requests that are about to succeed and each retry deepens the queue. Keep
+// the timeout above the observed worst case; it only needs to beat "never".
+const ACTION_TIMEOUT_MS = 20_000
+const ACTION_ATTEMPTS = 3
+
+/**
+ * The production Worker occasionally never answers an individual request, so
+ * a server-action promise can stay pending forever — a catch alone never
+ * fires. Race each attempt against a timeout and retry; both wrapped actions
+ * (a read and an upsert keyed on the user) are safe to re-send. The final
+ * failure rejects so callers surface their existing error message.
+ */
+async function callWithRetry<T>(action: () => Promise<T>): Promise<T> {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < ACTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("The request did not reach Compass in time."))
+          }, ACTION_TIMEOUT_MS)
+        }),
+      ])
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("The request did not reach Compass in time.")
+}
+
 export function PreferencesTab() {
   const [preferences, setPreferences] =
     React.useState<NotificationPreferenceState>({
@@ -91,11 +126,8 @@ export function PreferencesTab() {
   React.useEffect(() => {
     let cancelled = false
     async function loadPreferences(): Promise<void> {
-      // Server-action calls can reject outright (network loss, mid-deploy
-      // worker swap); without a catch the tab would stay on the loading
-      // placeholder forever.
       try {
-        const result = await getNotificationPreferences()
+        const result = await callWithRetry(() => getNotificationPreferences())
         if (cancelled) return
         if (result.success) {
           setPreferences(result.data)
@@ -199,8 +231,13 @@ export function PreferencesTab() {
       return
     }
     setSaving(true)
+    // Clear any notice from a previous attempt so the outcome shown always
+    // belongs to this save.
+    setMessage(null)
     try {
-      const result = await updateNotificationPreferences(preferences)
+      const result = await callWithRetry(() =>
+        updateNotificationPreferences(preferences)
+      )
       if (result.success) {
         setHasUnsavedChanges(false)
       }

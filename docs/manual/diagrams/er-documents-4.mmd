@@ -1,0 +1,28 @@
+erDiagram
+  direction LR
+  project_record_drive_snapshots {
+    key id
+  }
+  project_source_record_participants {
+    key id
+    ref project_contact_id
+  }
+  vendor_trade_doc_links {
+    key id
+    ref vendor_id
+    ref parent_link_id
+  }
+  vendor_trade_documents {
+    key id
+    ref vendor_id
+  }
+  project_contacts {
+    key id
+  }
+  vendors {
+    key id
+  }
+  project_contacts |o--o{ project_source_record_participants : ""
+  vendor_trade_doc_links |o--o{ vendor_trade_doc_links : ""
+  vendors ||--o{ vendor_trade_doc_links : ""
+  vendors ||--o{ vendor_trade_documents : ""

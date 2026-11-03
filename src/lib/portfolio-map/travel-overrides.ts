@@ -62,7 +62,7 @@ export function hasTravelOverride(override: TravelChargeOverride): boolean {
   )
 }
 
-export type CustomTravelField = "zone" | "zoneRate" | "elevation" | "mountainRate" | "lodging" | "lodgingRate" | "perDiem"
+type CustomTravelField = "zone" | "zoneRate" | "elevation" | "mountainRate" | "lodging" | "lodgingRate" | "perDiem"
 
 export type EffectiveTravelCharge = JobTravelCharge & {
   readonly elevationFt: number | null

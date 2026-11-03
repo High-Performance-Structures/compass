@@ -1,7 +1,9 @@
 import { isInternalStaffRole } from "@/lib/user-roles"
-
-export const TEAM_ACCESS_SECTIONS = ["internal", "vendors", "clients", "other"] as const
-export type TeamAccessSection = (typeof TEAM_ACCESS_SECTIONS)[number]
+export type TeamAccessSection =
+  | "internal"
+  | "vendors"
+  | "clients"
+  | "other"
 
 export function teamAccessSectionForRole(role: string): TeamAccessSection {
   if (isInternalStaffRole(role)) return "internal"

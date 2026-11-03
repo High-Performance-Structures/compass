@@ -4,6 +4,7 @@ import {
   parseSageTaxCatalog,
   type NormalizedSageTaxCatalog,
 } from "@/lib/sage/tax-catalog"
+import { sageBridgeHeartbeatStatement } from "@/lib/domain/sage-bridge/store"
 
 type CurrentTaxDistrict = {
   readonly sourceRecordId: string | null
@@ -44,13 +45,7 @@ function heartbeatStatement(
   env: CloudflareEnv,
   capturedAt: string
 ): D1PreparedStatement {
-  return env.DB.prepare(
-    `INSERT INTO sage_bridge_status (id, last_seen_at, updated_at)
-     VALUES ('tax-catalog-poller', ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       last_seen_at = excluded.last_seen_at,
-       updated_at = excluded.updated_at`
-  ).bind(capturedAt, capturedAt)
+  return sageBridgeHeartbeatStatement(env.DB, "tax-catalog-poller", capturedAt)
 }
 
 function upsertStatement(

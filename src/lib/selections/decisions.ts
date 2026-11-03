@@ -1,6 +1,6 @@
 import { z } from "zod/v4"
 
-export const selectionSpecificationSchema = z.object({
+const selectionSpecificationSchema = z.object({
   roomName: z.string(),
   name: z.string(),
   category: z.string(),
@@ -61,7 +61,7 @@ export function safeSelectionUrl(value: string | null): string | null {
     throw new Error("Use a public HTTP or HTTPS product link.")
   return url.toString()
 }
-export function approvedChangeOrder(status: string | null): boolean {
+function approvedChangeOrder(status: string | null): boolean {
   return (
     status !== null &&
     ["executed", "sage_pending", "synced", "closed"].includes(status)

@@ -1,7 +1,7 @@
 import * as React from "react"
 
 import { uploadCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
-import { getCorrespondenceDetail, saveCorrespondenceDraft } from "@/app/actions/project-correspondence"
+import { getCorrespondenceDetail } from "@/app/actions/project-correspondence"
 import type {
   CorrespondenceAttachment,
   CorrespondenceDetail,
@@ -71,16 +71,6 @@ export function applyMessageRevision(messages: readonly CorrespondenceMessage[],
     const readReceipts = message.readReceipts.map((receipt) => receipt.status === "unavailable" ? receipt : { ...receipt, status: "not_opened" as const, openedAt: null })
     return body === null ? { ...message, retractedAt: revisedAt, readReceipts } : { ...message, body, editedAt: revisedAt, readReceipts }
   })
-}
-
-export async function saveDraft(projectId: string, detail: CorrespondenceDetail, body: string, setDetail: React.Dispatch<React.SetStateAction<CorrespondenceDetail | null>>, setStatus: (status: string | null) => void): Promise<void> {
-  const expectedVersion = detail.draft?.version ?? 0
-  const result = await saveCorrespondenceDraft(projectId, detail.conversation.id, body, expectedVersion)
-  if (!result.success) {
-    setStatus(result.error)
-    return
-  }
-  setDetail((current) => current?.conversation.id === detail.conversation.id ? { ...current, draft: { body, version: result.data.version } } : current)
 }
 
 export async function uploadStagedAttachment(projectId: string, candidate: StagedAttachment, setStagedAttachments: React.Dispatch<React.SetStateAction<readonly StagedAttachment[]>>): Promise<void> {

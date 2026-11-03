@@ -1,0 +1,25 @@
+erDiagram
+  direction LR
+  organization_calendar_settings {
+    key organization_id
+  }
+  project_client_meetings {
+    key id
+    ref daily_log_id
+  }
+  project_videos {
+    key id
+  }
+  social_accounts {
+    key id
+  }
+  social_connection_drafts {
+    key id
+  }
+  youtube_channel_connections {
+    key id
+  }
+  daily_logs {
+    key id
+  }
+  daily_logs |o--o{ project_client_meetings : ""

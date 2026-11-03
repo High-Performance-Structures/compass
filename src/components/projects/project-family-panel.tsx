@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import type { ProjectFamilySummary } from "@/app/actions/project-families"
+import type { ProjectFamilySummary } from "@/lib/domain/families/rules"
 import { Badge } from "@/components/ui/badge"
 import {
   ProjectFamilyPhaseActivateButton,

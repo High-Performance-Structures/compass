@@ -15,6 +15,7 @@ import { gotoWebhookConfig } from "@/lib/goto/webhook-security"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
 import { requireOrg } from "@/lib/org-scope"
 import { can } from "@/lib/permissions"
+import { insertGotoInboundSettings } from "@/lib/domain/feedback/inbound-store"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const subscription = await responseValue(subscriptionResponse)
   const subscriptionId = stringField(subscription, "id")
   const now = new Date().toISOString()
-  await db.insert(gotoInboundSettings).values({
+  await insertGotoInboundSettings(db, {
     id: crypto.randomUUID(),
     organizationId,
     accountKey,

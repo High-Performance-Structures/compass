@@ -1,11 +1,8 @@
+import { cleanText } from "@/lib/shared/guards"
+
 export type PurchaseOrderShipToState = {
   readonly choice: "jobsite" | "pickup" | "other"
   readonly otherAddress: string
-}
-
-function cleanText(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  return trimmed.length > 0 ? trimmed : null
 }
 
 function normalizedComparisonValue(value: string): string {

@@ -8,24 +8,31 @@ function source(file: string): string {
 
 describe("purchase order site contact data boundary", () => {
   it("loads staff phone numbers only through the purchase-order-specific action", () => {
-    const actions = source("src/app/actions/project-contacts.ts")
-    const genericStart = actions.indexOf(
-      "export async function getProjectTaskAssigneeOptions"
+    const domain = source("src/lib/domain/contacts/assignees.ts")
+    const genericStart = domain.indexOf(
+      "export async function loadProjectTaskAssigneeOptions"
     )
-    const siteContactStart = actions.indexOf(
-      "export async function getProjectPurchaseOrderSiteContactOptions"
+    const siteContactStart = domain.indexOf(
+      "export async function loadPurchaseOrderSiteContactOptions"
     )
+    const siteContactEnd = domain.indexOf("export async function", siteContactStart + 1)
 
     expect(genericStart).toBeGreaterThan(-1)
     expect(siteContactStart).toBeGreaterThan(genericStart)
-    expect(actions.slice(genericStart, siteContactStart)).not.toContain(
+    expect(domain.slice(0, siteContactStart)).not.toContain(
       "phone: users.phone"
     )
-    const siteContactAction = actions.slice(siteContactStart)
+    expect(domain.slice(siteContactEnd)).not.toContain("phone: users.phone")
+    expect(domain.slice(siteContactStart, siteContactEnd)).toContain("phone: users.phone")
+
+    const actions = source("src/app/actions/project-contact-assignees.ts")
+    const siteContactAction = actions.slice(
+      actions.indexOf("export async function getProjectPurchaseOrderSiteContactOptions")
+    )
     expect(siteContactAction).toContain(
       'requireFeaturePermission(user, "purchase-orders", "read")'
     )
-    expect(siteContactAction).toContain("phone: users.phone")
+    expect(siteContactAction).toContain("loadPurchaseOrderSiteContactOptions(")
   })
 
   it("passes the narrow phone-aware options only to purchase-order forms", () => {

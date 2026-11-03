@@ -1,3 +1,5 @@
+import { isRecord } from "@/lib/shared/guards"
+
 export type PortalPurchaseOrderAcknowledgement = {
   readonly responderUserId: string
   readonly responderName: string
@@ -46,10 +48,6 @@ export type PortalPurchaseOrderPayload = {
   readonly acknowledgement: PortalPurchaseOrderAcknowledgement | null
   readonly latestStatus: PortalPurchaseOrderStatusUpdate | null
   readonly statusHistory: readonly PortalPurchaseOrderStatusUpdate[]
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function parseRecord(value: string | null): Record<string, unknown> {

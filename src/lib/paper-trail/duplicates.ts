@@ -10,7 +10,7 @@ function escapeRegExp(value: string): string {
 }
 
 /** A case-insensitive pattern for one key, or null when the key has no letters or digits. */
-export function duplicateKeyPattern(key: string): RegExp | null {
+function duplicateKeyPattern(key: string): RegExp | null {
   const tokens = key.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
   if (tokens.length === 0) return null
   return new RegExp(`(?<![a-z0-9])${tokens.map(escapeRegExp).join("[^a-z0-9]{0,3}")}(?![0-9])`, "i")

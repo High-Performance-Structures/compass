@@ -21,14 +21,6 @@ export function isChangeOrderBudgetTreatment(
   return value === "additive" || value === "baseline_replacement"
 }
 
-export function changeOrderBudgetTreatmentLabel(
-  treatment: ChangeOrderBudgetTreatment
-): string {
-  return treatment === "baseline_replacement"
-    ? "Baseline replacement"
-    : "Budget adjustment"
-}
-
 export function changeOrderAffectsBudgetAsAdjustment(
   treatment: ChangeOrderBudgetTreatment
 ): boolean {

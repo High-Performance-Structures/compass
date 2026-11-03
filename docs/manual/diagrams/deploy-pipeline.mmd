@@ -1,0 +1,13 @@
+flowchart TD
+  A[Pull request] --> B[CI: help, lint, knip,<br/>UI standards, build]
+  A --> C[Tests: Vitest incl. ratchets,<br/>E2E web x3, Electron]
+  B --> D[Review and merge]
+  C --> D
+  D --> E{Migration?}
+  E -->|yes| F[From merged main: list pending,<br/>read live schema, apply]
+  E -->|no| G
+  F --> G[bun run deploy]
+  G --> H[Verify: tail logs,<br/>job heartbeats]
+  H --> I[Daily regression:<br/>prod smoke, Android, iOS]
+  D -.version tag.-> J[Desktop release]
+  D -.native change.-> K[Mobile store builds]

@@ -8,7 +8,7 @@ import {
   MeshLambertMaterial,
   type Vector3,
 } from "three"
-import { MESSAGE_KINDS, type MessageKind, type MessageStacks } from "@/lib/notifications/message-stacks"
+import { MESSAGE_KINDS, type MessageKind, type MessageStacks, type MessageStackEntry } from "@/lib/notifications/message-stacks"
 
 export type MessageStackColors = Readonly<Record<MessageKind, number>>
 
@@ -17,6 +17,10 @@ const TILE_HEIGHT = 0.045
 const GAP = 0.012
 /** Taller stacks are capped so one busy job can't swallow the view. */
 const MAX_TILES = 12
+
+function tileKind(entry: MessageStackEntry): MessageKind {
+  return typeof entry === "string" ? entry : entry.kind
+}
 
 export type BuiltMessageStacks = {
   readonly group: Group
@@ -49,13 +53,14 @@ export function buildMessageStacks(
   for (const [jobId, kinds] of stacks) {
     const top = markerTops.get(jobId)
     if (!top || kinds.length === 0) continue
-    const ordered = [...kinds].sort((a, b) => MESSAGE_KINDS.indexOf(a) - MESSAGE_KINDS.indexOf(b)).slice(0, MAX_TILES)
-    ordered.forEach((kind, index) => {
-      const material = materials.get(kind)
+    const ordered = [...kinds].sort((a, b) => MESSAGE_KINDS.indexOf(tileKind(a)) - MESSAGE_KINDS.indexOf(tileKind(b))).slice(0, MAX_TILES)
+    ordered.forEach((entry, index) => {
+      const material = materials.get(tileKind(entry))
       if (!material) return
       const tile = new Mesh(geometry, material)
       tile.position.set(top.x, top.y + 0.04 + TILE_HEIGHT / 2 + index * (TILE_HEIGHT + GAP), top.z)
       tile.userData.jobId = jobId
+      if (typeof entry !== "string") tile.userData.notificationId = entry.notificationId
       tile.add(new LineSegments(edgeGeometry, edgeMaterial))
       group.add(tile)
       meshes.push(tile)

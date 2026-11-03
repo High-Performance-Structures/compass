@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
 import { cn } from "@/lib/utils"
 
-export function nuTechOrderLabel(order: { readonly orderNumber: number; readonly title: string | null }): string {
+function nuTechOrderLabel(order: { readonly orderNumber: number; readonly title: string | null }): string {
   return order.title ? `Order ${order.orderNumber} · ${order.title}` : `Order ${order.orderNumber}`
 }
 

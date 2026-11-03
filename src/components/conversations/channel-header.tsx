@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { PinnedMessagesPanel } from "@/components/conversations/pinned-messages-panel"
 import { SearchDialog } from "@/components/conversations/search-dialog"
+import { ImportedThreadShareMenu } from "@/components/conversations/imported-thread-share-menu"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
 type ChannelHeaderProps = {
@@ -28,6 +29,8 @@ type ChannelHeaderProps = {
   readonly memberCount: number
   readonly projectHref?: string
   readonly conversationBaseHref?: string
+  /** Staff on a staff-only imported conversation may share it with its owner or vendor. */
+  readonly canShareImported?: boolean
 }
 
 function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
@@ -44,6 +47,7 @@ export function ChannelHeader({
   memberCount,
   projectHref,
   conversationBaseHref,
+  canShareImported = false,
 }: ChannelHeaderProps) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -110,6 +114,7 @@ export function ChannelHeader({
           >
             <IconPin className="h-4 w-4" />
           </Button>
+          {canShareImported && <ImportedThreadShareMenu channelId={channelId} />}
         </div>
       </header>
       <SearchDialog

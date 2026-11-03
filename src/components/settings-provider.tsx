@@ -7,10 +7,6 @@ const SettingsContext = React.createContext<{
   open: () => void
 }>({ open: () => {} })
 
-export function useSettings() {
-  return React.useContext(SettingsContext)
-}
-
 /**
  * Settings is now a full page at /dashboard/settings.
  * This provider keeps the useSettings().open() API working

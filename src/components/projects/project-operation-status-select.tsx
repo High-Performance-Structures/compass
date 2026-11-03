@@ -3,10 +3,8 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import {
-  updateProjectOperationStatus,
-  type ProjectOperationKind,
-} from "@/app/actions/project-operations"
+import { updateProjectOperationStatus } from "@/app/actions/project-operations"
+import type { ProjectOperationKind } from "@/lib/domain/operations/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {

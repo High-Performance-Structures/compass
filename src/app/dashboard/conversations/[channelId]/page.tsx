@@ -13,6 +13,7 @@ import {
 } from "@/components/conversations/message-composer"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ChannelPage({
@@ -71,6 +72,7 @@ export default async function ChannelPage({
           description={channel.description ?? undefined}
           project={project}
           memberCount={channel.memberCount}
+          canShareImported={isInternalStaffRole(currentUser.role) && channel.sourceSystem !== null && channel.audience === "staff"}
         />
         <MessageList
           channelId={channelId}

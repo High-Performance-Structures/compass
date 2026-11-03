@@ -64,6 +64,7 @@ export const socialConnectionDrafts = sqliteTable(
       table.userId,
       table.expiresAt,
     ),
+    index("social_connection_drafts_organization_id_idx").on(table.organizationId),
   ],
 )
 
@@ -129,6 +130,8 @@ export const socialPostMedia = sqliteTable(
       table.postId,
       table.photoId,
     ),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("social_post_media_photo_id_idx").on(table.photoId),
   ],
 )
 
@@ -158,6 +161,7 @@ export const socialPostTargets = sqliteTable(
       table.accountId,
     ),
     index("social_post_targets_status_idx").on(table.status, table.updatedAt),
+    index("social_post_targets_account_id_idx").on(table.accountId),
   ],
 )
 
@@ -181,6 +185,7 @@ export const socialProjectAlbums = sqliteTable(
       table.accountId,
       table.projectId,
     ),
+    index("social_project_albums_project_id_idx").on(table.projectId),
   ],
 )
 

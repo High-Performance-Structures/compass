@@ -13,13 +13,18 @@ import {
 } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { getCloudflareContext } from "@/lib/db"
+import { updateProjects, updateProjectsStatement } from "@/lib/domain/project/store"
+import {
+  deleteProjectDocumentsStatement,
+  insertProjectDocumentStatement,
+  updateProjectDocuments,
+  updateProjectDocumentsStatement,
+} from "@/lib/domain/documents/store"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import type { DriveFile } from "@/lib/google/client/types"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
   isProjectDocumentCategory,
   isProjectDocumentStatus,
@@ -32,12 +37,15 @@ import {
   projectDocumentVisibilityLabel,
   type ProjectDocumentVisibility,
 } from "@/lib/project-document-audience"
+import { cleanDocumentDate, requiredText } from "@/lib/domain/documents/rules"
+import { projectContext } from "@/lib/server/action-context"
+import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 type DocumentsDb = ReturnType<typeof getDb>
 
-export type ProjectDocumentSourceFile = {
+type ProjectDocumentSourceFile = {
   readonly id: string
   readonly kind: "file" | "folder"
   readonly name: string
@@ -47,7 +55,7 @@ export type ProjectDocumentSourceFile = {
   readonly webViewLink: string | null
 }
 
-export type ProjectDocumentReference = {
+type ProjectDocumentReference = {
   readonly estimateId: string
   readonly estimateLabel: string
   readonly estimateStatus: string
@@ -115,26 +123,6 @@ type InternalDocumentAccess = {
   }
 }
 
-function cleanText(value: string | null): string | null {
-  const cleaned = value?.trim() ?? ""
-  return cleaned.length > 0 ? cleaned : null
-}
-
-function requiredText(value: string | null, label: string): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required.`)
-  return cleaned
-}
-
-function cleanDate(value: string | null): string | null {
-  const cleaned = cleanText(value)
-  if (!cleaned) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-    throw new Error("Document date must use YYYY-MM-DD.")
-  }
-  return cleaned
-}
-
 async function internalDocumentAccess(
   projectId: string,
   update: boolean
@@ -145,9 +133,10 @@ async function internalDocumentAccess(
     throw new Error("Only authorized internal staff can manage project documents.")
   }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const access = await assertProjectAccess(db, user, projectId)
+  // "member" scope: the same getProjectAccessRecord rule assertProjectAccess used.
+  const context = await projectContext(projectId, { scope: "member" })
+  if (!context.success) throw new Error(context.error)
+  const { db, env, project: access } = context.data
   if (!access.organizationId) throw new Error("Project organization is missing.")
 
   const project = await db
@@ -516,13 +505,13 @@ export async function publishProjectDocument(
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     const title = cleanText(input.title) ?? source.name
-    const insertDocument = access.db.insert(projectDocuments).values({
+    const insertDocument = insertProjectDocumentStatement(access.db, {
         id,
         projectId,
         category,
         title,
         description: cleanText(input.description),
-        documentDate: cleanDate(input.documentDate),
+        documentDate: cleanDocumentDate(input.documentDate),
         revision: cleanText(input.revision),
         status: "current",
         audience: coarseProjectDocumentAudience(visibility),
@@ -544,19 +533,18 @@ export async function publishProjectDocument(
       })
     if (supersedesDocumentId) {
       await access.db.batch([
-        access.db
-          .update(projectDocuments)
-          .set({ status: "superseded", updatedAt: now })
-          .where(
-            and(
-              eq(projectDocuments.id, supersedesDocumentId),
-              eq(projectDocuments.projectId, projectId)
-            )
+        updateProjectDocumentsStatement(
+          access.db,
+          and(
+            eq(projectDocuments.id, supersedesDocumentId),
+            eq(projectDocuments.projectId, projectId)
           ),
+          { status: "superseded", updatedAt: now }
+        ),
         insertDocument,
       ])
     } else {
-      await insertDocument.run()
+      await access.db.batch([insertDocument])
     }
     await recordActivityEvent({
       db: access.db,
@@ -610,23 +598,16 @@ export async function updateProjectDocumentStatus(
     const now = new Date().toISOString()
     // A plan set must stay current; leaving "current" clears the pin.
     await access.db.batch([
-      access.db
-        .update(projectDocuments)
-        .set({
-          status,
-          archivedAt: status === "archived" ? now : null,
-          updatedAt: now,
-        })
-        .where(eq(projectDocuments.id, documentId)),
-      access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.planSetDocumentId, documentId)
-          )
-        ),
+      updateProjectDocumentsStatement(access.db, eq(projectDocuments.id, documentId), {
+        status,
+        archivedAt: status === "archived" ? now : null,
+        updatedAt: now,
+      }),
+      updateProjectsStatement(
+        access.db,
+        and(eq(projects.id, projectId), eq(projects.planSetDocumentId, documentId)),
+        { planSetDocumentId: null, updatedAt: now }
+      ),
     ])
     await recordActivityEvent({
       db: access.db,
@@ -678,16 +659,11 @@ export async function updateProjectDocument(
       .then((rows) => rows[0] ?? null)
     if (!existing) throw new Error("Project document not found.")
     const now = new Date().toISOString()
-    await access.db
-      .update(projectDocuments)
-      .set({ ...metadata.value, updatedAt: now })
-      .where(
-        and(
-          eq(projectDocuments.id, documentId),
-          eq(projectDocuments.projectId, projectId)
-        )
-      )
-      .run()
+    await updateProjectDocuments(
+      access.db,
+      and(eq(projectDocuments.id, documentId), eq(projectDocuments.projectId, projectId)),
+      { ...metadata.value, updatedAt: now }
+    )
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -739,21 +715,16 @@ export async function setProjectDocumentVisibility(
       subVendor: input.visibleToSubVendor,
     })
     const now = new Date().toISOString()
-    await access.db
-      .update(projectDocuments)
-      .set({
+    await updateProjectDocuments(
+      access.db,
+      and(eq(projectDocuments.id, documentId), eq(projectDocuments.projectId, projectId)),
+      {
         visibleToOwner: visibility.owner,
         visibleToSubVendor: visibility.subVendor,
         audience: coarseProjectDocumentAudience(visibility),
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(projectDocuments.id, documentId),
-          eq(projectDocuments.projectId, projectId)
-        )
-      )
-      .run()
+      }
+    )
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,
@@ -803,11 +774,7 @@ export async function setProjectPlanSetDocument(
       if (document.status !== "current") {
         throw new Error("Only a current document can be the working plan set.")
       }
-      await access.db
-        .update(projects)
-        .set({ planSetDocumentId: documentId, updatedAt: now })
-        .where(eq(projects.id, projectId))
-        .run()
+      await updateProjects(access.db, eq(projects.id, projectId), { planSetDocumentId: documentId, updatedAt: now })
       await recordActivityEvent({
         db: access.db,
         organizationId: access.organizationId,
@@ -820,11 +787,7 @@ export async function setProjectPlanSetDocument(
         summary: `Set ${document.title} as the working plan set.`,
       })
     } else {
-      await access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(eq(projects.id, projectId))
-        .run()
+      await updateProjects(access.db, eq(projects.id, projectId), { planSetDocumentId: null, updatedAt: now })
     }
     refreshDocumentPaths(projectId)
     revalidatePath("/dashboard")
@@ -872,32 +835,23 @@ export async function removeProjectDocument(
     }
     const now = new Date().toISOString()
     await access.db.batch([
-      access.db
-        .update(projectDocuments)
-        .set({ supersedesDocumentId: null, updatedAt: now })
-        .where(
-          and(
-            eq(projectDocuments.projectId, projectId),
-            eq(projectDocuments.supersedesDocumentId, documentId)
-          )
+      updateProjectDocumentsStatement(
+        access.db,
+        and(
+          eq(projectDocuments.projectId, projectId),
+          eq(projectDocuments.supersedesDocumentId, documentId)
         ),
-      access.db
-        .delete(projectDocuments)
-        .where(
-          and(
-            eq(projectDocuments.id, documentId),
-            eq(projectDocuments.projectId, projectId)
-          )
-        ),
-      access.db
-        .update(projects)
-        .set({ planSetDocumentId: null, updatedAt: now })
-        .where(
-          and(
-            eq(projects.id, projectId),
-            eq(projects.planSetDocumentId, documentId)
-          )
-        ),
+        { supersedesDocumentId: null, updatedAt: now }
+      ),
+      deleteProjectDocumentsStatement(
+        access.db,
+        and(eq(projectDocuments.id, documentId), eq(projectDocuments.projectId, projectId))
+      ),
+      updateProjectsStatement(
+        access.db,
+        and(eq(projects.id, projectId), eq(projects.planSetDocumentId, documentId)),
+        { planSetDocumentId: null, updatedAt: now }
+      ),
     ])
     await recordActivityEvent({
       db: access.db,

@@ -14,7 +14,8 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 import { listChannels } from "@/app/actions/conversations"
 import { listCategories } from "@/app/actions/channel-categories"
-import { getProjects, type ProjectListItem } from "@/app/actions/projects"
+import type { ProjectListItem } from "@/app/actions/projects"
+import { useProjectList } from "@/components/project-list-provider"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -77,7 +78,8 @@ export function NavConversations() {
   const isExpanded = state === "expanded"
   const [channels, setChannels] = React.useState<ChannelData[]>([])
   const [categories, setCategories] = React.useState<CategoryData[]>([])
-  const [projects, setProjects] = React.useState<ProjectListItem[]>([])
+  // The dashboard layout already loaded the viewer's projects.
+  const projects = useProjectList()
   const [loading, setLoading] = React.useState(true)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [directDialogOpen, setDirectDialogOpen] = React.useState(false)
@@ -114,10 +116,9 @@ export function NavConversations() {
 
   React.useEffect(() => {
     async function loadData() {
-      const [channelsResult, categoriesResult, projectRows] = await Promise.all([
+      const [channelsResult, categoriesResult] = await Promise.all([
         listChannels(),
         listCategories(),
-        getProjects(),
       ])
 
       if (channelsResult.success && channelsResult.data) {
@@ -144,8 +145,6 @@ export function NavConversations() {
           }))
         )
       }
-
-      setProjects([...projectRows])
 
       setLoading(false)
     }

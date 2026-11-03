@@ -1,0 +1,28 @@
+erDiagram
+  direction LR
+  values_card_fulfillments {
+    key id
+    ref response_id
+  }
+  values_pulse_responses {
+    key id
+  }
+  values_pulse_story_replies {
+    key id
+    ref response_id
+  }
+  values_pulse_story_states {
+    key id
+    ref response_id
+  }
+  mcp_api_keys {
+    key id
+  }
+  mcp_usage {
+    key id
+    ref api_key_id
+  }
+  mcp_api_keys ||--o{ mcp_usage : ""
+  values_pulse_responses ||--o{ values_card_fulfillments : ""
+  values_pulse_responses ||--o{ values_pulse_story_replies : ""
+  values_pulse_responses ||--o{ values_pulse_story_states : ""

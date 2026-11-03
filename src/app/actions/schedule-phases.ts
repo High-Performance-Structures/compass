@@ -3,7 +3,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projects, schedulePhaseOptions, scheduleTasks } from "@/db/schema"
 import {
   projectTemplates,
@@ -11,12 +10,12 @@ import {
   scheduleTemplateItems,
 } from "@/db/schema-templates"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/schedule/phase-colors"
+import { userContext, type Db } from "@/lib/server/action-context"
 
 export type ReusableSchedulePhaseOption = {
   readonly id: string | null
@@ -54,18 +53,19 @@ async function verifyProject(input: {
   readonly projectId: string
   readonly action: "read" | "update" | "delete"
 }): Promise<{
-  readonly db: ReturnType<typeof getDb>
+  readonly db: Db
   readonly organizationId: string
   readonly userId: string
 }> {
-  const user = await requireAuth()
+  // Throws "Unauthorized" when signed out, as requireAuth did.
+  const context = await userContext()
+  if (!context.success) throw new Error(context.error)
+  const { user, db } = context.data
   requirePermission(user, "schedule", input.action)
   if (!isInternalStaffRole(user.role) && user.role !== "developer") {
     throw new Error("Only internal project staff can access working schedule phases.")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)

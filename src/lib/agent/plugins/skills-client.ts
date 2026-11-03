@@ -24,7 +24,7 @@ function unquote(s: string): string {
   return s
 }
 
-export function parseSkillMd(raw: string): ParsedSkill | null {
+function parseSkillMd(raw: string): ParsedSkill | null {
   const trimmed = raw.trim()
   if (!trimmed.startsWith("---")) return null
 

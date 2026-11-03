@@ -1,11 +1,9 @@
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projectBudgetApplications, projects, users } from "./schema"
-
-export const SHOP_TICKET_STATUSES = ["draft", "issued", "void"] as const
-export type ShopTicketStatus = (typeof SHOP_TICKET_STATUSES)[number]
-
-export const SHOP_TICKET_RATE_KINDS = ["labor", "machine"] as const
-export type ShopTicketRateKind = (typeof SHOP_TICKET_RATE_KINDS)[number]
+import { SHOP_TICKET_RATE_KINDS, SHOP_TICKET_STATUSES, type ShopTicketStatus, type ShopTicketRateKind } from "../lib/domain/operations/statuses"
+import { SAGE_LABOR_REQUEST_STATUSES, type SageLaborRequestStatus } from "../lib/domain/sage-bridge/statuses"
+export type { SageLaborRequestStatus }
+export type { ShopTicketStatus, ShopTicketRateKind }
 
 /**
  * A shop ticket bills a project for the company's own labor and machine hours
@@ -53,6 +51,7 @@ export const shopTickets = sqliteTable(
   (table) => ({
     numberIdx: uniqueIndex("shop_tickets_org_sequence_idx").on(table.organizationId, table.sequenceNumber),
     projectIdx: index("shop_tickets_project_idx").on(table.projectId, table.status),
+    shopTicketsBudgetApplicationIdIdx: index("shop_tickets_budget_application_id_idx").on(table.budgetApplicationId),
   }),
 )
 
@@ -79,11 +78,13 @@ export const shopTicketLines = sqliteTable(
   },
   (table) => ({
     ticketIdx: index("shop_ticket_lines_ticket_idx").on(table.ticketId, table.lineNumber),
+    // Declared from drizzle/0278_paper_trail_sweep_indexes.sql: the paper-trail
+    // sweep reads max(updated_at) per parent; this makes it one index seek.
+    ticketUpdatedIdx: index("shop_ticket_lines_ticket_updated_idx").on(table.ticketId, table.updatedAt),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    rateBookEntryIdRefIdx: index("shop_ticket_lines_rate_book_entry_id_idx").on(table.rateBookEntryId),
   }),
 )
-
-export const SAGE_LABOR_REQUEST_STATUSES = ["queued", "running", "done", "failed"] as const
-export type SageLaborRequestStatus = (typeof SAGE_LABOR_REQUEST_STATUSES)[number]
 
 /**
  * A request for a project's Sage timecard hours over a date range, picked up
@@ -119,6 +120,7 @@ export const sageLaborRequests = sqliteTable(
   (table) => ({
     statusIdx: index("sage_labor_requests_status_idx").on(table.status, table.requestedAt),
     projectIdx: index("sage_labor_requests_project_idx").on(table.projectId, table.requestedAt),
+    sageLaborRequestsOrganizationIdIdx: index("sage_labor_requests_organization_id_idx").on(table.organizationId),
   }),
 )
 
@@ -148,6 +150,7 @@ export const sageLaborLines = sqliteTable(
   },
   (table) => ({
     projectIdx: index("sage_labor_lines_project_idx").on(table.projectId, table.workDate),
+    sageLaborLinesOrganizationIdIdx: index("sage_labor_lines_organization_id_idx").on(table.organizationId),
   }),
 )
 

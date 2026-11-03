@@ -2,6 +2,7 @@ import { asc, desc, eq, inArray } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { users } from "@/db/schema"
 import { recurringDuties, recurringDutyCompletions } from "@/db/schema-internal-duties"
+import { chunkD1Values } from "@/lib/d1-query"
 import { dutyStatus, type DutyCadence, type DutyStatus } from "@/lib/internal-duties/recurring"
 
 type Db = ReturnType<typeof getDb>
@@ -43,16 +44,23 @@ export async function loadRecurringDuties(db: Db, projectId: string, today = com
     .where(eq(recurringDuties.projectId, projectId))
     .orderBy(asc(recurringDuties.sortOrder), asc(recurringDuties.createdAt))
   if (duties.length === 0) return []
-  const completions = await db
-    .select({
-      id: recurringDutyCompletions.id,
-      dutyId: recurringDutyCompletions.recurringDutyId,
-      period: recurringDutyCompletions.period,
-      completedOn: recurringDutyCompletions.completedOn,
-    })
-    .from(recurringDutyCompletions)
-    .where(inArray(recurringDutyCompletions.recurringDutyId, duties.map((row) => row.duty.id)))
-    .orderBy(desc(recurringDutyCompletions.period))
+  // Chunked to stay under D1's bound-parameter limit; each chunk is sorted
+  // newest period first, which is all the per-duty lookup below needs.
+  const completionChunks = await Promise.all(
+    chunkD1Values(duties.map((row) => row.duty.id)).map((ids) =>
+      db
+        .select({
+          id: recurringDutyCompletions.id,
+          dutyId: recurringDutyCompletions.recurringDutyId,
+          period: recurringDutyCompletions.period,
+          completedOn: recurringDutyCompletions.completedOn,
+        })
+        .from(recurringDutyCompletions)
+        .where(inArray(recurringDutyCompletions.recurringDutyId, ids))
+        .orderBy(desc(recurringDutyCompletions.period))
+    )
+  )
+  const completions = completionChunks.flat()
   return duties.map(({ duty, ...owner }) => {
     // Periods sort as text within a cadence ("2026-05" < "2026-06"), so the first is the latest.
     const last = completions.find((completion) => completion.dutyId === duty.id) ?? null

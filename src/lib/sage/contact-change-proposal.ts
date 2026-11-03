@@ -26,7 +26,7 @@ export type SageContactField =
   | "phoneExtension"
   | "cellPhone"
 
-export type SageContactFields = Readonly<Partial<Record<SageContactField, string | null>>>
+type SageContactFields = Readonly<Partial<Record<SageContactField, string | null>>>
 
 export type SageContactSnapshot = {
   readonly organizationId: string

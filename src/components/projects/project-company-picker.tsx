@@ -3,7 +3,7 @@
 import * as React from "react"
 import { IconCheck, IconChevronDown, IconPlus } from "@tabler/icons-react"
 
-import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {

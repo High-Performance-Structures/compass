@@ -15,17 +15,19 @@ describe("RFI contact options", () => {
     ])
 
     expect(result).toEqual([
-      { value: "Wes Jones", label: "Wes Jones", group: "internal" },
-      { value: "Tanis Loomis", label: "Tanis Loomis", group: "owner" },
+      { value: "Wes Jones", label: "Wes Jones", group: "internal", projectContactId: null },
+      { value: "Tanis Loomis", label: "Tanis Loomis", group: "owner", projectContactId: null },
       {
         value: "Acme Electric",
         label: "Acme Electric",
         group: "subcontractor",
+        projectContactId: null,
       },
       {
         value: "Front Range Supply",
         label: "Front Range Supply",
         group: "supplier",
+        projectContactId: null,
       },
     ])
     expect(RFI_CONTACT_GROUPS.map((group) => group.label)).toEqual([
@@ -34,6 +36,12 @@ describe("RFI contact options", () => {
       "Subcontractors",
       "Suppliers",
     ])
+  })
+
+  it("carries the project contact behind a name so the RFI can link to it", () => {
+    const [option] = buildRfiContactOptions([{ label: "Dana Cole", contactType: "subcontractor", projectContactId: "pc-1" }])
+
+    expect(option?.projectContactId).toBe("pc-1")
   })
 
   it("deduplicates the same person across project and directory sources", () => {
@@ -56,6 +64,7 @@ describe("RFI contact options", () => {
       value: "David and Katie Squires",
       label: "David and Katie Squires",
       group: "owner",
+      projectContactId: null,
     })
   })
 })

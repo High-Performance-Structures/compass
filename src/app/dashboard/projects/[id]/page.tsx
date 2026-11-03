@@ -32,28 +32,21 @@ import {
   getProjectRegistry,
   type ProjectRegistry,
 } from "@/app/actions/project-registry"
-import {
-  getProjectOperationsSummary,
-  type ProjectOperationsSummary,
-  getProjectSageSyncQueue,
-  type ProjectSageSyncQueue,
-} from "@/app/actions/project-operations"
+import { getProjectOperationsSummary } from "@/app/actions/project-operations"
+import type { ProjectOperationsSummary, ProjectSageSyncQueue } from "@/lib/domain/operations/types"
+import { getProjectSageSyncQueue } from "@/app/actions/project-sage-sync-queue"
 import {
   getProjectBudgetSummary,
   type ProjectBudgetSummary,
 } from "@/app/actions/project-budget"
-import {
-  getProjectContactsSummary,
-  type ProjectContactsSummary,
-} from "@/app/actions/project-contacts"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import type { ProjectContactsSummary } from "@/lib/domain/contacts/types"
 import {
   getProjectRfiSummary,
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
-import {
-  getProjectFamilySummary,
-  type ProjectFamilySummary,
-} from "@/app/actions/project-families"
+import { getProjectFamilySummary } from "@/app/actions/project-families"
+import type { ProjectFamilySummary } from "@/lib/domain/families/rules"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"

@@ -405,7 +405,7 @@ export function isPermissionAccessLevel(
   return PERMISSION_ACCESS_LEVELS.some((level) => level.value === value)
 }
 
-export function accessLevelToActions(
+function accessLevelToActions(
   level: PermissionAccessLevel
 ): readonly Action[] {
   switch (level) {
@@ -711,7 +711,7 @@ export function getPermissions(role: string, resource: Resource): Action[] {
   return rolePermissions[resource] ?? []
 }
 
-export function permissionAccessLevelFromActions(
+function permissionAccessLevelFromActions(
   actions: readonly Action[]
 ): PermissionAccessLevel {
   if (actions.includes("approve") || actions.includes("moderate")) {
@@ -723,7 +723,7 @@ export function permissionAccessLevelFromActions(
   return "none"
 }
 
-export function getPermissionAccessLevel(
+function getPermissionAccessLevel(
   role: string,
   resource: Resource
 ): PermissionAccessLevel {
@@ -763,19 +763,6 @@ export function getPermissionFeatureAccessLevel(
   }
 
   return baseline
-}
-
-export function hasAnyPermission(
-  user: AuthUser | null,
-  resource: Resource
-): boolean {
-  if (!user || !user.isActive) return false
-
-  const rolePermissions = PERMISSIONS[user.role]
-  if (!rolePermissions) return false
-
-  const resourcePermissions = rolePermissions[resource]
-  return !!resourcePermissions && resourcePermissions.length > 0
 }
 
 export function canCreateProject(user: AuthUser | null): boolean {

@@ -1,4 +1,6 @@
 import { z } from "zod/v4"
+
+import type { SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import {
   DEFAULT_PROJECT_HUB_STATUS_FILTER,
   projectHubStatusFilterKey,
@@ -30,7 +32,7 @@ export type SavedProjectView = {
   readonly id: string
   readonly name: string
   readonly ownerName: string
-  readonly visibility: "personal" | "shared"
+  readonly visibility: SavedViewVisibility
   readonly isOwner: boolean
   readonly definition: ProjectViewDefinition
 }

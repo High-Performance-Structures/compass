@@ -1,0 +1,17 @@
+erDiagram
+  direction LR
+  weather_points {
+    key point_key
+  }
+  weather_schedule_risks {
+    key schedule_task_id
+    key rule_id
+    key risk_date
+  }
+  weather_zone_shapes {
+    key zone_id
+  }
+  schedule_tasks {
+    key id
+  }
+  schedule_tasks ||--o{ weather_schedule_risks : ""

@@ -1,9 +1,9 @@
 import "server-only"
 
-import { and, desc, eq } from "drizzle-orm"
+import { desc } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { customDashboards } from "@/db/schema-dashboards"
 import { isDemoUser } from "@/lib/demo"
+import { deleteCustomDashboard as deleteStoredCustomDashboard } from "@/lib/domain/settings/store"
 
 // User-scoped dashboard operations shared by the dashboard server actions
 // (user from the session cookie) and the agent dashboard API (user from a
@@ -97,14 +97,7 @@ export async function deleteCustomDashboardForUser(
     return { success: false, error: "dashboard not found" }
   }
 
-  await db
-    .delete(customDashboards)
-    .where(
-      and(
-        eq(customDashboards.id, dashboardId),
-        eq(customDashboards.userId, userId),
-      ),
-    )
+  await deleteStoredCustomDashboard(db, userId, dashboardId)
 
   return { success: true }
 }

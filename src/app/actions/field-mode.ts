@@ -2,8 +2,9 @@
 
 import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { getMessages, sendMessage } from "@/app/actions/chat-messages"
-import { listChannels } from "@/app/actions/conversations"
+import { sendMessage } from "@/app/actions/chat-messages"
+import { readChannelMessages as getMessages } from "@/lib/domain/conversations/messages"
+import { readVisibleChannels as listChannels } from "@/lib/domain/conversations/channels"
 import { getNotificationCenter } from "@/app/actions/notifications"
 import {
   listProjectDriveFilesForField,
@@ -13,7 +14,7 @@ import {
   createProjectDailyLog,
   getProjectDailyLogWorkspace,
 } from "@/app/actions/project-field"
-import { getSchedule } from "@/app/actions/schedule"
+import { readProjectSchedule } from "@/lib/domain/schedule/access"
 import { getDb } from "@/db"
 import {
   organizationMembers,
@@ -159,7 +160,7 @@ export async function getFieldProjectPacket(
 
   const [schedule, operationTasks, dailyLogWorkspace, channelResult, fileResult, notificationResult, contactRows] =
     await Promise.all([
-      getSchedule(projectId),
+      readProjectSchedule(projectId),
       db
         .select({
           id: projectOperations.id,

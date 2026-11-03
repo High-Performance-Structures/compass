@@ -14,6 +14,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { contactAccountLinkStatements } from "@/lib/domain/contacts/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageUserAccess } from "@/lib/permissions"
@@ -130,25 +131,12 @@ export async function linkDirectoryPersonAccount(
     }
 
     const now = new Date().toISOString()
-    const updateSql = kind === "client_person"
-      ? `UPDATE customer_contacts SET user_id = ?, updated_at = ?
-         WHERE id = ? AND user_id IS ? AND customer_id IN
-           (SELECT id FROM customers WHERE organization_id = ?)`
-      : `UPDATE vendor_contacts SET user_id = ?, updated_at = ?
-         WHERE id = ? AND user_id IS ? AND vendor_id IN
-           (SELECT id FROM vendors WHERE organization_id = ?)`
     // D1 batch is transactional. The audit insert follows the compare-and-set
     // update only when that update actually changed one row.
-    const results = await env.DB.batch([
-      env.DB.prepare(updateSql).bind(nextUserId, now, personId, person.userId, manager.organizationId),
-      env.DB.prepare(
-        `INSERT INTO contact_account_link_events
-         (id, organization_id, person_kind, person_id, previous_user_id,
-          next_user_id, changed_by_user_id, created_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`
-      ).bind(crypto.randomUUID(), manager.organizationId, kind, personId,
-        person.userId, nextUserId, manager.userId, now),
-    ])
+    const results = await env.DB.batch(contactAccountLinkStatements(env.DB, {
+      kind, organizationId: manager.organizationId, personId, previousUserId: person.userId,
+      nextUserId, changedByUserId: manager.userId, now,
+    }))
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
       return { success: false, error: "The account link changed while you were editing. Reload and try again." }
     }

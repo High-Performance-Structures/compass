@@ -1,0 +1,38 @@
+erDiagram
+  direction LR
+  google_project_calendar_acl_members {
+    key id
+    ref project_calendar_id
+  }
+  google_project_calendar_subscriptions {
+    key id
+    ref project_calendar_id
+    ref connection_id
+  }
+  google_project_calendars {
+    key id
+    ref owner_connection_id
+    ref selection_id
+  }
+  drive_folder_share_checks {
+    key folder_id
+  }
+  google_auth {
+    key id
+  }
+  google_calendar_entity_links {
+    key id
+    ref connection_id
+  }
+  google_calendar_connections {
+    key id
+  }
+  google_calendar_selections {
+    key id
+  }
+  google_calendar_connections ||--o{ google_calendar_entity_links : ""
+  google_calendar_connections ||--o{ google_project_calendar_subscriptions : ""
+  google_calendar_connections ||--o{ google_project_calendars : ""
+  google_calendar_selections ||--o{ google_project_calendars : ""
+  google_project_calendars ||--o{ google_project_calendar_acl_members : ""
+  google_project_calendars ||--o{ google_project_calendar_subscriptions : ""

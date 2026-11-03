@@ -1,6 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 
 import { correspondenceAttachments, correspondenceMessages, correspondenceRecipients } from "@/db/schema-correspondence"
+import { insertAttachment, retireUnsentAttachment } from "@/lib/domain/correspondence/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import type { DriveFile } from "@/lib/google/client/types"
@@ -198,7 +199,7 @@ export async function stageCorrespondenceAttachment(input: {
   const id = crypto.randomUUID()
   const createdAt = new Date().toISOString()
   try {
-    await ctx.db.insert(correspondenceAttachments).values({
+    await insertAttachment(ctx.db, {
       id,
       organizationId: ctx.organizationId,
       projectId: ctx.projectId,
@@ -385,21 +386,13 @@ export async function deleteStagedCorrespondenceAttachment(input: {
   }
   const retiredAt = attachment.retiredAt ?? new Date().toISOString()
   if (attachment.retiredAt === null) {
-    const claimed = await ctx.db
-      .update(correspondenceAttachments)
-      .set({ retiredAt })
-      .where(
-        and(
-          eq(correspondenceAttachments.id, attachment.id),
-          eq(correspondenceAttachments.organizationId, ctx.organizationId),
-          eq(correspondenceAttachments.projectId, ctx.projectId),
-          eq(correspondenceAttachments.ownerUserId, ctx.user.id),
-          isNull(correspondenceAttachments.messageId),
-          isNull(correspondenceAttachments.retiredAt)
-        )
-      )
-      .returning({ id: correspondenceAttachments.id })
-      .then((rows) => rows[0] ?? null)
+    const claimed = await retireUnsentAttachment(ctx.db, {
+      id: attachment.id,
+      organizationId: ctx.organizationId,
+      projectId: ctx.projectId,
+      ownerUserId: ctx.user.id,
+      retiredAt,
+    })
     if (!claimed) {
       throw new CorrespondenceAttachmentError(404, "Attachment not found.")
     }

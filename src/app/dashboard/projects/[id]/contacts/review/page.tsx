@@ -3,10 +3,8 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { IconAddressBook, IconGitMerge, IconShieldCheck } from "@tabler/icons-react"
 
-import {
-  getProjectContactMatchReview,
-  type ProjectContactMatchReview,
-} from "@/app/actions/project-contacts"
+import { getProjectContactMatchReview } from "@/app/actions/project-contact-review"
+import type { ProjectContactMatchReview } from "@/lib/domain/contacts/types"
 import { ProjectContactMatchReviewPanel } from "@/components/projects/project-contact-match-review"
 import { Badge } from "@/components/ui/badge"
 import { getCurrentUser } from "@/lib/auth"

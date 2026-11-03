@@ -1,0 +1,35 @@
+erDiagram
+  direction LR
+  contract_document_template_versions {
+    key id
+    ref template_id
+  }
+  contract_document_templates {
+    key id
+  }
+  contract_packet_documents {
+    key id
+    ref packet_id
+    ref template_id
+    ref template_version_id
+  }
+  contract_packets {
+    key id
+    ref estimate_id
+  }
+  project_archive_documents {
+    key id
+  }
+  project_archive_recipients {
+    key archive_id
+    key user_id
+  }
+  project_estimates {
+    key id
+  }
+  contract_document_template_versions |o--o{ contract_packet_documents : ""
+  contract_document_templates |o--o{ contract_packet_documents : ""
+  contract_document_templates ||--o{ contract_document_template_versions : ""
+  contract_packets ||--o{ contract_packet_documents : ""
+  project_archive_documents ||--o{ project_archive_recipients : ""
+  project_estimates ||--o{ contract_packets : ""

@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm"
+import { markOwnNotificationRecipientRead } from "@/lib/domain/notifications/store"
 import { NextResponse } from "next/server"
 
 import { getDb } from "@/db"
@@ -30,15 +31,7 @@ async function markNotificationRead(
 
   if (!notification) return null
 
-  await db
-    .update(notificationRecipients)
-    .set({ readAt: new Date().toISOString() })
-    .where(
-      and(
-        eq(notificationRecipients.id, recipientId),
-        eq(notificationRecipients.userId, userId)
-      )
-    )
+  await markOwnNotificationRecipientRead(db, recipientId, userId, new Date().toISOString())
   return notification.href
 }
 

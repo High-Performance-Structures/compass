@@ -2,17 +2,14 @@
 
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
 import { conversationHistoryBefore, conversationHistoryOrder, type ConversationHistoryCursor } from "@/lib/conversations/message-pagination"
-
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-
+import { importedMessageColumns } from "@/lib/domain/conversations/imported"
 import { getCloudflareContext } from "@/lib/db"
 import {
   eq,
   and,
-  sql,
   like,
-  ne,
   or,
   inArray,
 } from "drizzle-orm"
@@ -24,11 +21,9 @@ import {
 import { getDb } from "@/db"
 import {
   messages,
-  messageAttachments,
   messageReactions,
   channelMembers,
   channelReadState,
-  messageMentions,
   channels,
   userPresence,
   type NewMessage,
@@ -37,6 +32,11 @@ import {
 } from "@/db/schema-conversations"
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import {
+  getAttachmentsByMessage,
+  getReactionsByMessage,
+  readChannelMessages,
+} from "@/lib/domain/conversations/messages"
 import { conversationFullViewHref } from "@/lib/conversations/notification-route"
 import {
   canUseAskCompass,
@@ -54,23 +54,21 @@ import {
   notifyChannelMessage,
 } from "@/lib/notifications/events"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  incrementUnreadForOthers,
+  insertMessage,
+  insertMessageMentions,
+  insertMessageReaction,
+  markChannelReadForUser,
+  recordThreadReply,
+  removeMessageReaction,
+  touchChannel,
+  updateMessage,
+  upsertChannelReadForUser,
+} from "@/lib/domain/conversations/store"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
-
-type MessageAttachmentItem = {
-  readonly id: string
-  readonly fileName: string
-  readonly mimeType: string
-  readonly fileSize: number
-  readonly storageUrl: string
-}
-
-type MessageReactionItem = {
-  readonly emoji: string
-  readonly count: number
-  readonly reactedByCurrentUser: boolean
-}
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -136,87 +134,6 @@ function sanitizeHtml(html: string): string {
 async function renderMarkdown(content: string): Promise<string> {
   const html = await marked(content)
   return sanitizeHtml(html)
-}
-
-async function getAttachmentsByMessage(
-  db: ReturnType<typeof getDb>,
-  messageIds: readonly string[]
-): Promise<ReadonlyMap<string, readonly MessageAttachmentItem[]>> {
-  if (messageIds.length === 0) return new Map()
-
-  const rows = await db
-    .select({
-      id: messageAttachments.id,
-      messageId: messageAttachments.messageId,
-      fileName: messageAttachments.fileName,
-      mimeType: messageAttachments.mimeType,
-      fileSize: messageAttachments.fileSize,
-      attachmentId: messageAttachments.id,
-    })
-    .from(messageAttachments)
-    .where(inArray(messageAttachments.messageId, messageIds))
-
-  const attachments = new Map<string, MessageAttachmentItem[]>()
-  for (const row of rows) {
-    const existing = attachments.get(row.messageId) ?? []
-    existing.push({
-      id: row.id,
-      fileName: row.fileName,
-      mimeType: row.mimeType,
-      fileSize: row.fileSize,
-      storageUrl: `/api/conversations/attachments/${encodeURIComponent(row.attachmentId)}`,
-    })
-    attachments.set(row.messageId, existing)
-  }
-  return attachments
-}
-
-async function getReactionsByMessage(
-  db: ReturnType<typeof getDb>,
-  messageIds: readonly string[],
-  currentUserId: string
-): Promise<ReadonlyMap<string, readonly MessageReactionItem[]>> {
-  if (messageIds.length === 0) return new Map()
-
-  const rows = await db
-    .select({
-      messageId: messageReactions.messageId,
-      userId: messageReactions.userId,
-      emoji: messageReactions.emoji,
-    })
-    .from(messageReactions)
-    .where(inArray(messageReactions.messageId, messageIds))
-
-  const counts = new Map<
-    string,
-    Map<string, { count: number; reactedByCurrentUser: boolean }>
-  >()
-  for (const row of rows) {
-    const messageCounts = counts.get(row.messageId) ?? new Map()
-    const reaction = messageCounts.get(row.emoji) ?? {
-      count: 0,
-      reactedByCurrentUser: false,
-    }
-    messageCounts.set(row.emoji, {
-      count: reaction.count + 1,
-      reactedByCurrentUser:
-        reaction.reactedByCurrentUser || row.userId === currentUserId,
-    })
-    counts.set(row.messageId, messageCounts)
-  }
-
-  const reactions = new Map<string, MessageReactionItem[]>()
-  for (const [messageId, messageCounts] of counts) {
-    reactions.set(
-      messageId,
-      Array.from(messageCounts.entries()).map(([emoji, reaction]) => ({
-        emoji,
-        count: reaction.count,
-        reactedByCurrentUser: reaction.reactedByCurrentUser,
-      }))
-    )
-  }
-  return reactions
 }
 
 export async function searchMentionableUsers(
@@ -497,7 +414,7 @@ export async function sendMessage(data: {
     ) {
       return {
         success: false,
-        error: "Buildertrend archive replies can only mention internal teammates.",
+        error: "Replies in an archived conversation can only mention internal teammates.",
       }
     }
     const mentionedUserIds = Array.from(
@@ -542,7 +459,7 @@ export async function sendMessage(data: {
       ) {
         return {
           success: false,
-          error: "Buildertrend archive replies can only mention internal teammates.",
+          error: "Replies in an archived conversation can only mention internal teammates.",
         }
       }
     }
@@ -597,14 +514,11 @@ export async function sendMessage(data: {
       createdAt: now,
     }
 
-    await db.insert(messages).values(newMessage)
+    await insertMessage(db, newMessage)
     // Keep conversation lists ordered by actual activity. Direct-message
     // channels are long-lived, so their creation time does not identify the
     // thread containing the newest message.
-    await db
-      .update(channels)
-      .set({ updatedAt: now })
-      .where(eq(channels.id, data.channelId))
+    await touchChannel(db, data.channelId, now)
     await recordActivityEvent({
       db,
       organizationId: activityChannel.organizationId,
@@ -630,7 +544,7 @@ export async function sendMessage(data: {
         targetId: m.targetId,
         createdAt: now,
       }))
-      await db.insert(messageMentions).values(mentionRows)
+      await insertMessageMentions(db, mentionRows)
 
       // Keep notification delivery alive after the server action responds.
       ctx.waitUntil(
@@ -661,13 +575,7 @@ export async function sendMessage(data: {
 
     // if this is a thread reply, update parent message
     if (data.threadId) {
-      await db
-        .update(messages)
-        .set({
-          replyCount: sql`${messages.replyCount} + 1`,
-          lastReplyAt: now,
-        })
-        .where(eq(messages.id, data.threadId))
+      await recordThreadReply(db, data.threadId, now)
     }
 
     const channel = await db
@@ -800,17 +708,7 @@ export async function sendMessage(data: {
       }
     }
 
-    await db
-      .update(channelReadState)
-      .set({
-        unreadCount: sql`${channelReadState.unreadCount} + 1`,
-      })
-      .where(
-        and(
-          eq(channelReadState.channelId, data.channelId),
-          ne(channelReadState.userId, user.id)
-        )
-      )
+    await incrementUnreadForOthers(db, data.channelId, user.id)
 
     if (channel && !isBuildertrendArchive) {
       try {
@@ -839,19 +737,12 @@ export async function sendMessage(data: {
     }
 
     // update read state for sender (mark as read)
-    await db
-      .update(channelReadState)
-      .set({
-        lastReadMessageId: messageId,
-        lastReadAt: now,
-        unreadCount: 0,
-      })
-      .where(
-        and(
-          eq(channelReadState.channelId, data.channelId),
-          eq(channelReadState.userId, user.id)
-        )
-      )
+    await markChannelReadForUser(db, {
+      channelId: data.channelId,
+      userId: user.id,
+      lastReadMessageId: messageId,
+      lastReadAt: now,
+    })
 
     // fetch the created message with user info
     const messageWithUser = await db
@@ -931,13 +822,7 @@ export async function deleteMessage(messageId: string) {
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(messages)
-      .set({
-        deletedAt: now,
-        deletedBy: user.id,
-      })
-      .where(eq(messages.id, messageId))
+    await updateMessage(db, messageId, { deletedAt: now, deletedBy: user.id })
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -953,90 +838,7 @@ export async function getMessages(
   channelId: string,
   options?: { readonly limit?: number; readonly cursor?: string | ConversationHistoryCursor }
 ) {
-  try {
-    const user = await conversationRequestViewer(await getCurrentUser())
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const channel = await getConversationChannelAccess({
-      db,
-      user,
-      channelId,
-    })
-    if (!channel) {
-      return { success: false, error: "Not a member of this channel" }
-    }
-
-    const limit = options?.limit ?? 50
-    const cursor = options?.cursor
-
-    const query = db
-      .select({
-        id: messages.id,
-        channelId: messages.channelId,
-        threadId: messages.threadId,
-        content: messages.content,
-        contentHtml: messages.contentHtml,
-        editedAt: messages.editedAt,
-        deletedAt: messages.deletedAt,
-        isPinned: messages.isPinned,
-        replyCount: messages.replyCount,
-        lastReplyAt: messages.lastReplyAt,
-        createdAt: messages.createdAt,
-        user: {
-          id: users.id,
-          displayName: users.displayName,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        },
-      })
-      .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
-      .where(
-        and(
-          eq(messages.channelId, channelId),
-          sql`${messages.threadId} IS NULL`, // only top-level messages
-          conversationHistoryBefore(cursor)
-        )
-      )
-      .orderBy(...conversationHistoryOrder())
-      .limit(limit)
-
-    const results = await query
-
-    // replace deleted content with placeholder
-    const attachmentsByMessage = await getAttachmentsByMessage(
-      db,
-      results.map((message) => message.id)
-    )
-    const reactionsByMessage = await getReactionsByMessage(
-      db,
-      results.map((message) => message.id),
-      user.id
-    )
-    const sanitized = results.map((msg) => ({
-      ...msg,
-      content: msg.deletedAt ? "[Message deleted]" : msg.content,
-      contentHtml: msg.deletedAt ? null : msg.contentHtml,
-      attachments: msg.deletedAt
-        ? []
-        : attachmentsByMessage.get(msg.id) ?? [],
-      reactions: msg.deletedAt
-        ? []
-        : reactionsByMessage.get(msg.id) ?? [],
-    }))
-
-    return { success: true, data: sanitized }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to get messages",
-    }
-  }
+  return readChannelMessages(channelId, options)
 }
 
 export async function getThreadMessages(
@@ -1089,6 +891,7 @@ export async function getThreadMessages(
         replyCount: messages.replyCount,
         lastReplyAt: messages.lastReplyAt,
         createdAt: messages.createdAt,
+        ...importedMessageColumns,
         user: {
           id: users.id,
           displayName: users.displayName,
@@ -1209,7 +1012,7 @@ export async function addReaction(messageId: string, emoji: string) {
       createdAt: now,
     }
 
-    await db.insert(messageReactions).values(newReaction)
+    await insertMessageReaction(db, newReaction)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -1260,15 +1063,7 @@ export async function removeReaction(messageId: string, emoji: string) {
       return { success: false, error: "Not a member of this channel" }
     }
 
-    await db
-      .delete(messageReactions)
-      .where(
-        and(
-          eq(messageReactions.messageId, messageId),
-          eq(messageReactions.userId, user.id),
-          eq(messageReactions.emoji, emoji)
-        )
-      )
+    await removeMessageReaction(db, messageId, user.id, emoji)
 
     revalidatePath("/dashboard")
     return { success: true }
@@ -1340,26 +1135,13 @@ export async function markChannelRead(
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
-    if (existing) {
-      await db
-        .update(channelReadState)
-        .set({
-          lastReadMessageId: lastMessageId,
-          lastReadAt: now,
-          unreadCount: 0,
-        })
-        .where(eq(channelReadState.id, existing.id))
-    } else {
-      const readStateId = crypto.randomUUID()
-      await db.insert(channelReadState).values({
-        id: readStateId,
-        userId: user.id,
-        channelId,
-        lastReadMessageId: lastMessageId,
-        lastReadAt: now,
-        unreadCount: 0,
-      })
-    }
+    await upsertChannelReadForUser(db, {
+      existingId: existing?.id ?? null,
+      channelId,
+      userId: user.id,
+      lastReadMessageId: lastMessageId,
+      lastReadAt: now,
+    })
 
     // Best effort: the read state above is what matters if this fails.
     await markChannelNotificationsRead(db, user.id, channelId, lastMessage.createdAt)

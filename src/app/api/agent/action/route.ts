@@ -1,8 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
-import {
-  actionRegistry,
-  checkActionPermission,
-} from "@/lib/agent/render/action-registry"
+import { checkActionPermission } from "@/lib/agent/render/action-registry"
+import { actionRegistry } from "@/app/api/agent/action/render-actions"
 import { canUseAskCompass } from "@/lib/permissions"
 
 export async function POST(
@@ -58,7 +56,7 @@ export async function POST(
     )
   }
 
-  if (!checkActionPermission(user, action)) {
+  if (!checkActionPermission(actionRegistry, user, action)) {
     return Response.json(
       {
         success: false,

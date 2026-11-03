@@ -2,16 +2,14 @@
 
 import { lt } from "drizzle-orm"
 
-import { getDb } from "@/db"
 import { printSnapshots } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
   PRINT_SNAPSHOT_LIFETIME_MS,
   PRINT_SNAPSHOT_MAX_HTML_LENGTH,
   isPrintSnapshotKind,
 } from "@/lib/print/snapshot-kinds"
+import { requireUserContext } from "@/lib/server/action-context"
 
 export type CreatePrintSnapshotInput = {
   readonly projectId: string | null
@@ -27,14 +25,12 @@ export async function createPrintSnapshot(
   input: CreatePrintSnapshotInput
 ): Promise<{ readonly success: true; readonly id: string } | { readonly success: false; readonly error: string }> {
   try {
-    const user = await requireAuth()
+    const { user, db } = await requireUserContext()
     if (!isPrintSnapshotKind(input.kind)) return { success: false, error: "That document can't be previewed." }
     if (input.html.length === 0) return { success: false, error: "There is nothing to print." }
     if (input.html.length > PRINT_SNAPSHOT_MAX_HTML_LENGTH) {
       return { success: false, error: "This document is too large to preview. Narrow the filters and try again." }
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     if (input.projectId) await assertProjectAccess(db, user, input.projectId)
     const now = new Date()
     // Expired snapshots are cleared as new ones are made.

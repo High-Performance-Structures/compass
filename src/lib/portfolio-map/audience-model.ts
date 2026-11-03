@@ -74,7 +74,7 @@ export function audienceMapJobs<R extends AudienceJobRow>(
   return spreadSharedTowns(jobs)
 }
 
-export type VendorJobScopeItem = {
+type VendorJobScopeItem = {
   readonly id: string
   readonly title: string
   readonly startDate: string
@@ -114,7 +114,7 @@ export function vendorJobScope(
 }
 
 /** Phase names written for homeowners. */
-export const OWNER_PHASE_LABEL: Readonly<Record<PortfolioPhaseId, string>> = {
+const OWNER_PHASE_LABEL: Readonly<Record<PortfolioPhaseId, string>> = {
   intake: "Getting started",
   estimating: "Pricing",
   design: "Design",

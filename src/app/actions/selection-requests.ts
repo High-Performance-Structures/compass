@@ -8,7 +8,7 @@ import {
   projectSelectionRequests as requests,
   projectSelectionDecisionEvents as events,
 } from "@/db/schema-selection-decisions"
-import { selectionAccess } from "@/lib/selections/access"
+import { selectionAccess } from "@/lib/domain/selections/access"
 import { safeSelectionUrl } from "@/lib/selections/decisions"
 
 type Result =

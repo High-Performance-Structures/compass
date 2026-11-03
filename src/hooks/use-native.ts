@@ -1,7 +1,7 @@
 "use client"
 
 import { useSyncExternalStore } from "react"
-import { isNative, isIOS, isAndroid, getMobilePlatform } from "@/lib/native/platform"
+import { isNative, getMobilePlatform } from "@/lib/native/platform"
 
 // Snapshot never changes after initial load (Capacitor injects before hydration)
 function subscribe(): () => void {
@@ -33,4 +33,3 @@ function getServerMobilePlatform(): "web" {
   return "web"
 }
 
-export { isIOS, isAndroid }

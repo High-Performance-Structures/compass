@@ -149,7 +149,7 @@ export function buildTodaysPlan(input: {
   }
 }
 
-export type WorkloadCandidate = {
+type WorkloadCandidate = {
   readonly key: string
   readonly title: string
   readonly projectLabel: string

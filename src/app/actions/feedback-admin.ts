@@ -16,14 +16,15 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isFeatureImplementationStatus } from "@/lib/jarvis/feedback-feature-priority"
 import {
-  FEEDBACK_DESK_STATUSES,
   feedbackIsOverdue,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { FEEDBACK_DESK_STATUSES } from "@/lib/domain/feedback/statuses"
 import { runFeedbackMaintenance } from "@/lib/jarvis/feedback-maintenance"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { canManageUserAccess } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { insertJarvisBridgeEvents, updateFeedbackDeskItems } from "@/lib/domain/feedback/store"
 
 const updateSchema = z.object({
   id: z.string().min(1),
@@ -297,11 +298,11 @@ export async function setFeedbackGithubIssueCreationApproval(
     const priorityFence = item.featurePriorityApprovedAt === null
       ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
       : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
-    const updatedRows = await db.update(feedbackDeskItems).set({
+    const updatedRows = await updateFeedbackDeskItems(db, {
       githubIssueCreationApprovedAt: parsed.approved ? now : null,
       githubIssueCreationApprovedBy: parsed.approved ? admin.id : null,
       updatedAt: now,
-    }).where(and(
+    }, and(
       eq(feedbackDeskItems.id, item.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
@@ -373,7 +374,7 @@ export async function setFeedbackFeaturePriorityApproval(
     const approvalFence = item.featurePriorityApprovedAt === null
       ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
       : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
-    const updatedRows = await db.update(feedbackDeskItems).set({
+    const updatedRows = await updateFeedbackDeskItems(db, {
       featurePriorityApprovedAt: parsed.approved ? now : null,
       featurePriorityApprovedBy: parsed.approved ? admin.id : null,
       ...(parsed.approved ? {} : {
@@ -381,7 +382,7 @@ export async function setFeedbackFeaturePriorityApproval(
         githubIssueCreationApprovedBy: null,
       }),
       updatedAt: now,
-    }).where(and(
+    }, and(
       eq(feedbackDeskItems.id, item.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
@@ -450,7 +451,7 @@ export async function queueFeedbackLifecycleRequest(
 
     const idempotencyKey = `feedback-lifecycle-request:${item.id}:${parsed.idempotencyKey}`
     const now = new Date().toISOString()
-    const inserted = await db.insert(jarvisBridgeEvents).values({
+    const inserted = await insertJarvisBridgeEvents(db, {
       id: crypto.randomUUID(),
       organizationId: item.organizationId,
       direction: "outbound",

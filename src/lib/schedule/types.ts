@@ -1,6 +1,6 @@
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED"
+import type { DependencyType, TaskStatus, WorkdayExceptionType } from "@/lib/domain/schedule/statuses"
 
-export type DependencyType = "FS" | "SS" | "FF" | "SF"
+export type { DependencyType, TaskStatus, WorkdayExceptionType }
 
 export type ConstructionPhase =
   | "preconstruction"
@@ -26,8 +26,6 @@ export type ExceptionCategory =
   | "extra_workday"
 
 export type ExceptionRecurrence = "one_time" | "yearly"
-
-export type WorkdayExceptionType = "non_working" | "working"
 
 export interface ScheduleTaskData {
   id: string
@@ -63,6 +61,15 @@ export interface ScheduleTaskData {
   createdAt: string
   updatedAt: string
   assignees?: readonly ScheduleTaskAssigneeData[]
+  /** Everyone assigned, in picked order (schedule_task_people). */
+  people?: readonly ScheduleTaskPersonData[]
+}
+
+/** One person assigned to a schedule item. All assignees are equal. */
+export interface ScheduleTaskPersonData {
+  readonly name: string
+  readonly assignedUserId: string | null
+  readonly projectContactId: string | null
 }
 
 export interface ScheduleTaskAssigneeData {
@@ -140,20 +147,4 @@ export const STATUS_OPTIONS: readonly { readonly value: TaskStatus; readonly lab
   { value: "IN_PROGRESS", label: "In Progress" },
   { value: "COMPLETE", label: "Complete" },
   { value: "BLOCKED", label: "Blocked" },
-] as const
-
-export const PHASE_OPTIONS: readonly { readonly value: ConstructionPhase; readonly label: string }[] = [
-  { value: "preconstruction", label: "Preconstruction" },
-  { value: "sitework", label: "Sitework" },
-  { value: "foundation", label: "Foundation" },
-  { value: "framing", label: "Framing" },
-  { value: "roofing", label: "Roofing" },
-  { value: "electrical", label: "Electrical" },
-  { value: "plumbing", label: "Plumbing" },
-  { value: "hvac", label: "HVAC" },
-  { value: "insulation", label: "Insulation" },
-  { value: "drywall", label: "Drywall" },
-  { value: "finish", label: "Finish" },
-  { value: "landscaping", label: "Landscaping" },
-  { value: "closeout", label: "Closeout" },
 ] as const

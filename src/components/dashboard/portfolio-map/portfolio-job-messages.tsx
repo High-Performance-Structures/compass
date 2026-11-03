@@ -11,6 +11,19 @@ export type PortfolioJobMessages = {
   readonly onDone: (row: NotificationRow) => void
 }
 
+/** Navigate before marking read so optimistic removal cannot swallow a click. */
+export function openPortfolioNotification(
+  row: NotificationRow,
+  event: React.MouseEvent<HTMLAnchorElement>,
+  navigate: (href: string) => void,
+  markRead: (row: NotificationRow) => void,
+): void {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  navigate(row.latest.href)
+  markRead(row)
+}
+
 /**
  * The selected job's unread items on the map's Messages layer. The same rows
  * and actions as the job's section in the bell; Open goes where the bell goes.
@@ -41,14 +54,7 @@ export function PortfolioJobMessageList({
             <InboxRowItem
               key={row.key}
               row={row}
-              onNavigate={(navigated, event) => {
-                const isPlainClick = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
-                if (isPlainClick) {
-                  event.preventDefault()
-                  router.push(navigated.latest.href)
-                }
-                messages.onMarkRead(navigated)
-              }}
+              onNavigate={(row, event) => openPortfolioNotification(row, event, router.push, messages.onMarkRead)}
               onMarkRead={messages.onMarkRead}
               onDone={messages.onDone}
             />

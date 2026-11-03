@@ -1,0 +1,36 @@
+stateDiagram-v2
+  direction TB
+  [*] --> draft: staff create
+  [*] --> submitted: owner or vendor request
+  draft --> submitted
+  submitted --> triage
+  submitted --> needs_information
+  triage --> needs_information
+  triage --> pricing
+  triage --> internal_review
+  needs_information --> submitted: outside party answers
+  needs_information --> triage
+  needs_information --> pricing
+  pricing --> needs_information
+  pricing --> internal_review
+  internal_review --> needs_information
+  internal_review --> pricing
+  internal_review --> approved_for_owner: requires approve
+  approved_for_owner --> internal_review
+  approved_for_owner --> signature_pending: e-sign handoff_ready
+  signature_pending --> approved_for_owner
+  signature_pending --> executed: signed document or accepted estimate
+  executed --> sage_pending: pending_manual_sync
+  executed --> closed
+  sage_pending --> executed
+  sage_pending --> synced: future connector only
+  synced --> closed
+  closed --> [*]
+  note right of executed
+    The contract budget is rebuilt
+    when a change order is executed
+  end note
+  note left of draft
+    Any non-terminal status can go to
+    declined or void (terminal)
+  end note

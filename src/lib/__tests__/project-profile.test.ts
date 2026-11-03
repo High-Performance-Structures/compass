@@ -2,10 +2,11 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
+import { PROJECT_CLIENT_STATUSES } from "@/lib/domain/project/statuses"
+
 import {
   customProjectInteractionType,
   FOLLOW_UP_EXCLUDED_JOB_STATUSES,
-  PROJECT_CLIENT_STATUSES,
   PROJECT_JOB_STATUS_DEFINITIONS,
   buildProjectNumberWithAddressSuffix,
   defaultFollowUpCadenceDays,

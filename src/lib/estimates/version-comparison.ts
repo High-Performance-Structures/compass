@@ -6,13 +6,13 @@ export type EstimateVersionComparisonLine = {
   readonly lineTotalCents: number
 }
 
-export type EstimateVersionComparisonChange =
+type EstimateVersionComparisonChange =
   | "added"
   | "removed"
   | "changed"
   | "unchanged"
 
-export type EstimateVersionComparisonRow = {
+type EstimateVersionComparisonRow = {
   readonly key: string
   readonly divisionCode: string
   readonly divisionName: string
@@ -25,7 +25,7 @@ export type EstimateVersionComparisonRow = {
   readonly change: EstimateVersionComparisonChange
 }
 
-export type EstimateVersionComparisonDivision = {
+type EstimateVersionComparisonDivision = {
   readonly divisionCode: string
   readonly divisionName: string
   readonly baseTotalCents: number

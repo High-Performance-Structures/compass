@@ -7,7 +7,7 @@ import { IconMailForward } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { sendProjectAccessInvitation } from "@/app/actions/project-access-invitations"
-import type { ProjectContactItem } from "@/app/actions/project-contacts"
+import type { ProjectContactItem } from "@/lib/domain/contacts/types"
 import { Button } from "@/components/ui/button"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import {

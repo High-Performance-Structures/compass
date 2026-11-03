@@ -103,16 +103,6 @@ interface RenderContextValue {
 const RenderContext =
   React.createContext<RenderContextValue | null>(null)
 
-export function useRenderState(): RenderContextValue {
-  const ctx = React.useContext(RenderContext)
-  if (!ctx) {
-    throw new Error(
-      "useRenderState must be used within a ChatProvider"
-    )
-  }
-  return ctx
-}
-
 // --- Bridge state (module-level store, works anywhere) ---
 
 export interface BridgeContextValue {
@@ -156,12 +146,6 @@ export function useBridgeDetection(active: boolean): void {
       })
   }, [])
   useVisibleInterval(check, BRIDGE_DETECT_INTERVAL_MS, active)
-}
-
-// --- Backward compat aliases ---
-
-export function useAgent(): PanelContextValue {
-  return useChatPanel()
 }
 
 export function useAgentOptional(): PanelContextValue | null {

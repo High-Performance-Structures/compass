@@ -13,7 +13,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import {
   Popover,
   PopoverContent,
@@ -27,11 +26,15 @@ import {
   removeReaction,
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
-import { normalizeConversationMentions } from "@/lib/conversations/message-content"
-import { importedConversationContent } from "@/lib/conversations/imported-message-content"
+import {
+  messageSenderDisplay,
+  type ImportedMessageFields,
+} from "@/lib/conversations/imported-message-content"
+import { SourceTag } from "@/components/shared/source-tag"
 import { getMessageAlignmentClass } from "./message-list-behavior"
+import { MessageContent } from "./message-content"
 
-type MessageData = {
+type MessageData = ImportedMessageFields & {
   readonly id: string
   readonly channelId: string
   readonly threadId: string | null
@@ -84,6 +87,8 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
   return (
     prevMsg.id === nextMsg.id &&
     prevMsg.content === nextMsg.content &&
+    prevMsg.sourceSystem === nextMsg.sourceSystem &&
+    prevMsg.importedSenderName === nextMsg.importedSenderName &&
     prevMsg.editedAt === nextMsg.editedAt &&
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
@@ -108,12 +113,20 @@ export const MessageItem = React.memo(function MessageItem({
   const { openThread } = useConversations()
   const router = useRouter()
 
-  const user = message.user
-  const displayName = user?.displayName ?? user?.email.split("@")[0] ?? "Unknown"
+  // An imported message whose sender has no account yet shows the sender's
+  // directory name, not the importing staff account it is stored under.
+  const sender = messageSenderDisplay({
+    message,
+    userId: message.user?.id ?? null,
+    userDisplayName: message.user?.displayName ?? null,
+    currentUserId,
+  })
+  const user = sender.senderUserId === null ? null : message.user
+  const displayName = sender.displayName ?? user?.email.split("@")[0] ?? "Unknown"
   const avatarFallback = displayName.substring(0, 2).toUpperCase()
   const roleBadge = user ? getRoleBadge(user.email) : null
-  const isOwnMessage = currentUserId !== null && user?.id === currentUserId
-  const alignmentClass = getMessageAlignmentClass(currentUserId, user?.id ?? null)
+  const isOwnMessage = sender.isOwnMessage
+  const alignmentClass = getMessageAlignmentClass(currentUserId, sender.senderUserId)
 
   const { hydrated, timeZone } = useConversationClock()
   const timestamp = parseISO(message.createdAt)
@@ -197,20 +210,18 @@ export const MessageItem = React.memo(function MessageItem({
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">{timeDisplay}</span>
+          {message.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
           {message.editedAt && (
             <span className="text-xs text-muted-foreground">(edited)</span>
           )}
         </div>
 
         <div className="chat-markdown mt-1 break-words text-sm">
-          <MarkdownRenderer>
-            {normalizeConversationMentions(
-              importedConversationContent({
-                id: message.id,
-                content: message.content,
-              })
-            )}
-          </MarkdownRenderer>
+          <MessageContent
+            id={message.id}
+            content={message.content}
+            sourceSystem={message.sourceSystem}
+          />
         </div>
 
         {message.attachments && message.attachments.length > 0 && (

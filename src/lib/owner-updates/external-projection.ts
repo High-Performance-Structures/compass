@@ -66,7 +66,7 @@ function containsProviderCapability(value: string): boolean {
   )
 }
 
-export function safeExternalText(value: string | null): string | null {
+function safeExternalText(value: string | null): string | null {
   if (value === null) return null
   const lines = value
     .trim()
@@ -101,7 +101,7 @@ function safeMimeType(value: string | null): string | null {
   return SAFE_MIME_TYPES.has(trimmed) ? trimmed : null
 }
 
-export function safeExternalDate(value: string | null): string | null {
+function safeExternalDate(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(trimmed)
     ? trimmed.slice(0, 10)

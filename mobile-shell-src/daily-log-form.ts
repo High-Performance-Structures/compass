@@ -31,7 +31,7 @@ import {
 
 export { localDateInputValue }
 
-export const LOG_DRAFT_KEY_PREFIX = "compass_field_log_draft_v1"
+const LOG_DRAFT_KEY_PREFIX = "compass_field_log_draft_v1"
 
 export const logDraftSchema = z.object({
   logDate: z.string(),

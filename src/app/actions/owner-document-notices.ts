@@ -5,7 +5,7 @@ import { and, eq, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import { notificationPreferences, projectBudgetApplications, projectContacts, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { requireAuth, type AuthUser } from "@/lib/auth"
+import type { AuthUser } from "@/lib/auth"
 import {
   isOwnerDocumentKind,
   ownerDocumentEmail,
@@ -14,7 +14,6 @@ import {
   type OwnerDocumentKind,
   type ProjectEmailPrefill,
 } from "@/lib/billing/owner-document-notices"
-import { getCloudflareContext } from "@/lib/db"
 import { depositRequestDocument } from "@/lib/deposits/deposit-requests"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
@@ -24,6 +23,7 @@ import { requirePermission } from "@/lib/permissions"
 import { printPdfHref } from "@/lib/print/print-documents"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { projectOwnerPortalUsers, type OwnerPortalUser } from "@/lib/owner-portal/recipients"
+import { requireUserContext } from "@/lib/server/action-context"
 
 /*
  * After a pay application is approved for billing or a deposit is requested,
@@ -57,12 +57,10 @@ function ownerPortalPath(projectId: string): string {
 }
 
 async function noticeAccess(projectId: string): Promise<NoticeContext> {
-  const user = await requireAuth()
+  const { user, db, env } = await requireUserContext()
   requirePermission(user, "project", "update")
   if (!isInternalStaffRole(user.role)) throw new Error("Only staff can notify the owner.")
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const project = await db
     .select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber })
     .from(projects)

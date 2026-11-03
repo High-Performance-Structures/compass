@@ -7,6 +7,17 @@ import {
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  SAGE_BRIDGE_NONCE_RETENTION_MS,
+  sageBridgeBatchLimit,
+  sageBridgeCutoff,
+} from "@/lib/domain/sage-bridge/rules"
+import {
+  deleteSageBridgeRequestNonces,
+  insertSageBridgeRequestNonce,
+  sageBridgeHeartbeatStatement,
+  updateSagePayApplicationSyncRuns,
+} from "@/lib/domain/sage-bridge/store"
+import {
   getSagePayApplicationBridgeSecret,
   SAGE_BRIDGE_REQUEST_ID_HEADER,
   verifySageBridgeRequest,
@@ -15,7 +26,6 @@ import {
 const MAX_BATCH = 20
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const INGEST_RETRY_MILLISECONDS = 15 * 60 * 1000
-const NONCE_RETENTION_MILLISECONDS = 15 * 60 * 1000
 
 function unauthorized(error: string): Response {
   return Response.json({ error }, { status: 401 })
@@ -36,29 +46,18 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const requestId = request.headers.get(SAGE_BRIDGE_REQUEST_ID_HEADER)
   if (!requestId) return unauthorized("Missing bridge signature")
-  const requestedLimit = Number(url.searchParams.get("limit") ?? "10")
-  const limit = Number.isInteger(requestedLimit)
-    ? Math.min(MAX_BATCH, Math.max(1, requestedLimit))
-    : 10
+  const limit = sageBridgeBatchLimit(url.searchParams.get("limit"), 10, MAX_BATCH)
   const now = new Date()
   const nowIso = now.toISOString()
-  const staleClaimIso = new Date(
-    now.getTime() - CLAIM_RETRY_MILLISECONDS
-  ).toISOString()
-  const staleIngestIso = new Date(
-    now.getTime() - INGEST_RETRY_MILLISECONDS
-  ).toISOString()
+  const staleClaimIso = sageBridgeCutoff(now, CLAIM_RETRY_MILLISECONDS)
+  const staleIngestIso = sageBridgeCutoff(now, INGEST_RETRY_MILLISECONDS)
   const db = getDb(env.DB)
-  await db
-    .delete(sageBridgeRequestNonces)
-    .where(
-      lt(
-        sageBridgeRequestNonces.createdAt,
-        new Date(now.getTime() - NONCE_RETENTION_MILLISECONDS).toISOString()
-      )
-    )
+  await deleteSageBridgeRequestNonces(
+    db,
+    lt(sageBridgeRequestNonces.createdAt, sageBridgeCutoff(now, SAGE_BRIDGE_NONCE_RETENTION_MS))
+  )
   try {
-    await db.insert(sageBridgeRequestNonces).values({
+    await insertSageBridgeRequestNonce(db, {
       requestId,
       route: url.pathname,
       createdAt: nowIso,
@@ -70,15 +69,7 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
 
-  await env.DB.prepare(
-    `INSERT INTO sage_bridge_status (id, last_seen_at, updated_at)
-     VALUES ('pay-application-poller', ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       last_seen_at = excluded.last_seen_at,
-       updated_at = excluded.updated_at`
-  )
-    .bind(nowIso, nowIso)
-    .run()
+  await sageBridgeHeartbeatStatement(env.DB, "pay-application-poller", nowIso).run()
 
   const candidates = await db
     .select({ id: sagePayApplicationSyncRuns.id })
@@ -110,31 +101,30 @@ export async function GET(request: Request): Promise<Response> {
   }[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    await db
-      .update(sagePayApplicationSyncRuns)
-      .set({
+    await updateSagePayApplicationSyncRuns(
+      db,
+      {
         status: "running",
         claimToken,
         claimedAt: nowIso,
         attemptCount: sql`${sagePayApplicationSyncRuns.attemptCount} + 1`,
         updatedAt: nowIso,
-      })
-      .where(
-        and(
-          eq(sagePayApplicationSyncRuns.id, candidate.id),
-          or(
-            eq(sagePayApplicationSyncRuns.status, "queued"),
-            and(
-              eq(sagePayApplicationSyncRuns.status, "running"),
-              lt(sagePayApplicationSyncRuns.claimedAt, staleClaimIso)
-            ),
-            and(
-              eq(sagePayApplicationSyncRuns.status, "processing"),
-              lt(sagePayApplicationSyncRuns.claimedAt, staleIngestIso)
-            )
+      },
+      and(
+        eq(sagePayApplicationSyncRuns.id, candidate.id),
+        or(
+          eq(sagePayApplicationSyncRuns.status, "queued"),
+          and(
+            eq(sagePayApplicationSyncRuns.status, "running"),
+            lt(sagePayApplicationSyncRuns.claimedAt, staleClaimIso)
+          ),
+          and(
+            eq(sagePayApplicationSyncRuns.status, "processing"),
+            lt(sagePayApplicationSyncRuns.claimedAt, staleIngestIso)
           )
         )
       )
+    )
     const claimed = await db
       .select()
       .from(sagePayApplicationSyncRuns)

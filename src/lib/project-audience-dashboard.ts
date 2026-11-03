@@ -1,9 +1,9 @@
 import type {
   AudienceScheduleItem,
   ProjectAudiencePreview,
-} from "@/app/actions/project-audience-preview"
-import type { ProjectBudgetApplicationItem } from "@/app/actions/project-budget"
-import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
+} from "@/lib/project-audience-preview-types"
+import type { ProjectBudgetApplicationItem } from "@/lib/financials/project-budget-types"
+import type { ProjectChangeOrderItem } from "@/lib/change-orders/types"
 import { changeOrderStatusLabel } from "@/lib/change-orders/status"
 import {
   ownerUpdatePreviewHref,
@@ -13,11 +13,11 @@ import { portalPurchaseOrderCanReceiveResponse } from "@/lib/purchase-orders/por
 import { portalRfqCanReceiveResponse } from "@/lib/rfqs/portal-response"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 
-export type DashboardChangeOrder = Pick<
+type DashboardChangeOrder = Pick<
   ProjectChangeOrderItem,
   "id" | "title" | "changeOrderNumber" | "status" | "canEdit"
 >
-export type DashboardPayApplication = Pick<
+type DashboardPayApplication = Pick<
   ProjectBudgetApplicationItem,
   "id" | "applicationNumber" | "periodTo"
 >

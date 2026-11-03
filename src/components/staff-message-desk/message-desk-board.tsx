@@ -19,7 +19,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   STAFF_MESSAGE_AGING,
   STAFF_MESSAGE_AGING_LABEL,
-  STAFF_MESSAGE_STATUSES,
   STAFF_MESSAGE_STATUS_LABEL,
   idleLabel,
   staffMessageAging,
@@ -27,6 +26,7 @@ import {
   type StaffMessageAgingLevel,
   type StaffMessageAgingThresholds,
 } from "@/lib/staff-message-desk/triage"
+import { STAFF_MESSAGE_STATUSES } from "@/lib/domain/feedback/statuses"
 import { cn } from "@/lib/utils"
 
 type DeskFilter = "open" | "mine" | "attention" | "closed" | "all"

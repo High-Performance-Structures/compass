@@ -1,11 +1,10 @@
 export const dynamic = "force-dynamic"
 
-import { eq } from "drizzle-orm"
 import type { Metadata } from "next"
 
 import { QuoteLinkForm } from "@/components/rfqs/quote-link-form"
-import { projectRfqQuoteLinks } from "@/db/schema-rfqs"
 import { getCloudflareContext } from "@/lib/db"
+import { updateRfqQuoteLinkById } from "@/lib/domain/operations/store"
 import { quoteLinkView, resolveQuoteLink } from "@/lib/rfqs/quote-link-server"
 
 export const metadata: Metadata = {
@@ -35,7 +34,7 @@ export default async function QuoteLinkPage({
       </main>
     )
   }
-  await context.db.update(projectRfqQuoteLinks).set({ lastOpenedAt: new Date().toISOString() }).where(eq(projectRfqQuoteLinks.id, context.link.id))
+  await updateRfqQuoteLinkById(context.db, context.link.id, { lastOpenedAt: new Date().toISOString() })
   const view = await quoteLinkView(context)
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-8 sm:px-6 sm:py-12">

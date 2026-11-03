@@ -2,6 +2,7 @@ import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } 
 import { sql } from "drizzle-orm"
 
 import { organizations, projects, users, vendors } from "./schema"
+import { TRADE_LETTER_KINDS, TRADE_LETTER_STATUSES } from "../lib/domain/trade-letters/statuses"
 
 /**
  * A trade document received from a vendor. The file itself lives in Google
@@ -77,6 +78,8 @@ export const vendorTradeDocLinks = sqliteTable(
   (table) => [
     uniqueIndex("vendor_trade_doc_links_token_uq").on(table.tokenHash),
     index("vendor_trade_doc_links_vendor_idx").on(table.vendorId, table.createdAt),
+    index("vendor_trade_doc_links_parent_link_id_idx").on(table.parentLinkId),
+    index("vendor_trade_doc_links_organization_id_idx").on(table.organizationId),
   ]
 )
 
@@ -100,10 +103,10 @@ export const tradeLetters = sqliteTable(
     vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
     vendorName: text("vendor_name").notNull(),
     /** "intent" or "award". */
-    kind: text("kind").notNull(),
+    kind: text("kind", { enum: TRADE_LETTER_KINDS }).notNull(),
     letterNumber: text("letter_number").notNull(),
     /** "draft", "preparing", "sent", "signed", "declined" or "cancelled". */
-    status: text("status").notNull().default("draft"),
+    status: text("status", { enum: TRADE_LETTER_STATUSES }).notNull().default("draft"),
     /** { costCode, description, amountCents }[] awarded by this letter. */
     scopeJson: text("scope_json").notNull(),
     totalCents: integer("total_cents").notNull(),
@@ -134,6 +137,10 @@ export const tradeLetters = sqliteTable(
     index("trade_letters_estimate_idx").on(table.projectId, table.estimateId, table.rfqOperationId),
     uniqueIndex("trade_letters_envelope_uq").on(table.foxitEnvelopeId).where(sql`${table.foxitEnvelopeId} IS NOT NULL`),
     uniqueIndex("trade_letters_number_uq").on(table.organizationId, table.letterNumber),
+    index("trade_letters_vendor_id_idx").on(table.vendorId),
+    // Declared from drizzle/0281_id_reference_triggers.sql.
+    index("trade_letters_estimate_id_idx").on(table.estimateId),
+    index("trade_letters_rfq_operation_id_idx").on(table.rfqOperationId),
   ]
 )
 

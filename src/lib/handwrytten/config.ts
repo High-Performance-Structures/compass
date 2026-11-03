@@ -1,6 +1,6 @@
 import "server-only"
 
-export type HandwryttenConfig = {
+type HandwryttenConfig = {
   readonly apiKey: string
   readonly fontLabel: string
   readonly sender: {

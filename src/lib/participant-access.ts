@@ -76,7 +76,7 @@ export function isReviewedActiveParticipant(
   )
 }
 
-export function hasParticipantCapability(
+function hasParticipantCapability(
   participant: ParticipantAccessRecord,
   capability: string,
 ): boolean {

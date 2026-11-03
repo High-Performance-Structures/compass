@@ -64,6 +64,7 @@ import {
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
+import { useAlertCount } from "@/hooks/use-alert-count"
 import type { SidebarUser } from "@/lib/auth"
 import {
   getProjectTargetSection,
@@ -95,7 +96,7 @@ const PLANNING_NAV: ReadonlyArray<NavLinkItem> = [
   {
     kind: "link",
     title: "Work Calendar",
-    url: "/dashboard/schedule",
+    url: "/dashboard/schedule?kind=event",
     icon: IconCalendarStats,
   },
   {
@@ -647,40 +648,6 @@ export function buildCherishNavigation(
         },
       ]
     : []
-}
-
-const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
-
-/**
- * A red-alert count for a sidebar link (stale messages, overdue follow-ups)
- * from a GET endpoint. Refreshes on page changes and every few minutes so the
- * red link appears without a reload; a plain GET never blocks navigation.
- */
-function useAlertCount(endpoint: string, enabled: boolean, pathname: string): number {
-  const [count, setCount] = React.useState(0)
-  React.useEffect(() => {
-    if (!enabled) {
-      setCount(0)
-      return
-    }
-    let cancelled = false
-    const load = (): void => {
-      void fetch(endpoint, { cache: "no-store" })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((body: unknown) => {
-          const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
-          if (!cancelled && typeof next === "number") setCount(next)
-        })
-        .catch(() => undefined)
-    }
-    load()
-    const timer = window.setInterval(load, STALE_MESSAGE_REFRESH_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [enabled, endpoint, pathname])
-  return count
 }
 
 function SidebarNav({

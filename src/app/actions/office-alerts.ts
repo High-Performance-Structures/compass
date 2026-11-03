@@ -18,7 +18,7 @@ import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-elig
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
 
-export type OfficeAlertRfi = {
+type OfficeAlertRfi = {
   readonly id: string
   readonly projectId: string
   readonly projectLabel: string
@@ -31,7 +31,7 @@ export type OfficeAlertRfi = {
   readonly assignedToName: string | null
 }
 
-export type OfficeAlertPhoto = {
+type OfficeAlertPhoto = {
   readonly id: string
   readonly projectId: string
   readonly projectLabel: string
@@ -43,7 +43,7 @@ export type OfficeAlertPhoto = {
   readonly createdAt: string
 }
 
-export type OfficeAlertOwnerUpdate = {
+type OfficeAlertOwnerUpdate = {
   readonly id: string
   readonly projectId: string
   readonly projectLabel: string
@@ -82,7 +82,7 @@ type OfficeAlertOwnerUpdateRow = Omit<
   "projectLabel" | "projectName"
 >
 
-export type OfficeAlertMissingDay = {
+type OfficeAlertMissingDay = {
   readonly date: string
   readonly people: readonly {
     readonly userId: string

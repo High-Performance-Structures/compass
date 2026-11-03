@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 import { projectFilesHref } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import { HEALTH_LABEL, healthColor, phaseColor } from "@/components/dashboard/portfolio-map/portfolio-style"
 import { FollowUpChip } from "@/components/projects/project-follow-up-aging"
+import { PortfolioNotificationIndicator } from "./portfolio-notification-indicator"
+import type { PortfolioMessagesForJob } from "./use-portfolio-messages"
 import {
   PORTFOLIO_PHASES,
   portfolioMarkerAlert,
@@ -22,6 +24,7 @@ type PortfolioPipelineProps = {
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
   /** Shows a Files link on each job row; staff only. */
   readonly canOpenFiles?: boolean
+  readonly messagesForJob?: PortfolioMessagesForJob
 }
 
 /**
@@ -35,6 +38,7 @@ export function PortfolioPipeline({
   onSelectJob,
   onSelectPhase,
   canOpenFiles = false,
+  messagesForJob,
 }: PortfolioPipelineProps): React.ReactElement {
   return (
     <div className="h-full overflow-auto bg-card">
@@ -62,7 +66,7 @@ export function PortfolioPipeline({
                   const progress = job.progress ?? 0
                   const alert = portfolioMarkerAlert(job)
                   return (
-                    <li key={job.id} className={cn("flex border-b border-border", selected && "bg-accent")}>
+                    <li key={job.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto] border-b border-border", selected && "bg-accent")}>
                       <button
                         type="button"
                         aria-pressed={selected}
@@ -95,8 +99,15 @@ export function PortfolioPipeline({
                           </span>
                         </span>
                       </button>
+                      <div className="col-span-2 row-start-2">
+                        <PortfolioNotificationIndicator
+                          messages={messagesForJob?.(job.id) ?? null}
+                          jobName={job.name}
+                          onOpen={() => onSelectJob(job.id)}
+                        />
+                      </div>
                       {canOpenFiles ? (
-                        <div className="flex w-9 shrink-0 flex-col border-l border-border">
+                        <div className="col-start-2 row-start-1 flex w-9 shrink-0 flex-col border-l border-border">
                           <Link
                             href={projectFilesHref(job.id)}
                             aria-label={`All files for ${job.name}`}

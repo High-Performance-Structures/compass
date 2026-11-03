@@ -5,6 +5,7 @@ import {
   notificationEvents,
   users,
 } from "@/db/schema"
+import { settleNotificationRecipientsWhereStatement } from "@/lib/domain/notifications/store"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 
@@ -125,18 +126,18 @@ export async function dismissSageSquareException(
   sourceId: string,
   now: string
 ): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE notification_recipients
-     SET read_at = COALESCE(read_at, ?),
-         dismissed_at = COALESCE(dismissed_at, ?)
-     WHERE event_id IN (
+  await settleNotificationRecipientsWhereStatement(env.DB, {
+    markRead: true,
+    now,
+    where: {
+      sql: `event_id IN (
        SELECT id
        FROM notification_events
        WHERE event_type = ? AND source_type = ? AND source_id = ?
-     )`
-  )
-    .bind(now, now, EXCEPTION_EVENT_TYPE, EXCEPTION_SOURCE_TYPE, sourceId)
-    .run()
+     )`,
+      binds: [EXCEPTION_EVENT_TYPE, EXCEPTION_SOURCE_TYPE, sourceId],
+    },
+  }).run()
 }
 
 export async function notifySageSquareManualReceipt(

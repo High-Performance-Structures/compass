@@ -18,6 +18,8 @@ import {
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
 import { getProjects } from "@/app/actions/projects"
+import { getProjectReceivablePayments } from "@/app/actions/received-payments"
+import { ReceivedPaymentsPanel } from "@/components/financials/received-payments-panel"
 import { SquareReceiptsTable } from "@/components/financials/square-receipts-table"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
@@ -32,6 +34,7 @@ export default async function ProjectFinancialsPage({
   readonly params: Promise<{ id: string }>
   readonly searchParams: Promise<{
     readonly squareReceipt?: string | readonly string[]
+    readonly recordPayment?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
@@ -70,6 +73,7 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project contract deposits unavailable", error)
   }
+  const receivables = await getProjectReceivablePayments(id)
   const selectedSquareReceipt = Array.isArray(query.squareReceipt)
     ? (query.squareReceipt[0] ?? null)
     : (query.squareReceipt ?? null)
@@ -97,6 +101,13 @@ export default async function ProjectFinancialsPage({
             selectedReceiptId={selectedSquareReceipt}
           />
           {deposits && <ProjectContractDepositsPanel projectId={id} summary={deposits} />}
+          {receivables.success && (
+            <ReceivedPaymentsPanel
+              projectId={id}
+              data={receivables.data}
+              recordPayment={Array.isArray(query.recordPayment) ? (query.recordPayment[0] ?? null) : (query.recordPayment ?? null)}
+            />
+          )}
           <ProjectFinancialWorkspace
             projectId={id}
             items={items}

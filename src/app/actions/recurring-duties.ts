@@ -4,30 +4,40 @@ import { and, eq, max } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { internalDutyEntries, recurringDuties, recurringDutyCompletions } from "@/db/schema-internal-duties"
-import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
+import { recurringDuties, recurringDutyCompletions } from "@/db/schema-internal-duties"
 import { isDemoUser } from "@/lib/demo"
+import { isUniqueConflict, nextRecurringDutySortOrder, recurringDoneEntryNote } from "@/lib/domain/duties/rules"
+import {
+  deleteDutyEntry,
+  deleteRecurringDuty as deleteRecurringDutyRow,
+  deleteRecurringDutyCompletion,
+  insertDutyEntry,
+  insertRecurringDuty,
+  insertRecurringDutyCompletion,
+  updateRecurringDuty,
+} from "@/lib/domain/duties/store"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { dutiesFor, parseHours } from "@/lib/internal-duties/model"
 import { periodEndIndex, periodLabel } from "@/lib/internal-duties/recurring"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { orgContext, type Db } from "@/lib/server/action-context"
 
 const FEATURE = "internal-duties"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
+/**
+ * Staff of the workspace's own organization with update permission. The
+ * demo check keeps its own message, so it is not the context's mutation flag.
+ */
 async function context(projectId: string) {
-  const user = await requireAuth()
+  const ctx = await orgContext()
+  if (!ctx.success) throw new Error(ctx.error)
+  const { user, organizationId: orgId, db } = ctx.data
   if (isDemoUser(user.id)) throw new Error("The demo account can't change recurring duties.")
   await requireFeaturePermission(user, FEATURE, "update")
-  const orgId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   const [project] = await db
     .select({ id: projects.id, workspaceKind: projects.workspaceKind })
     .from(projects)
@@ -37,7 +47,7 @@ async function context(projectId: string) {
   return { db, user, orgId, workspaceKind: project.workspaceKind }
 }
 
-async function dutyFor(db: ReturnType<typeof getDb>, projectId: string, dutyId: string) {
+async function dutyFor(db: Db, projectId: string, dutyId: string) {
   const [duty] = await db
     .select()
     .from(recurringDuties)
@@ -85,7 +95,7 @@ export async function markRecurringDutyDone(projectId: string, dutyId: string, r
       const settings = await readFeatureSettings(db, orgId, "internal-duties")
       const option = dutiesFor(settings, workspaceKind).find((item) => item.code === duty.dutyCode)
       dutyEntryId = crypto.randomUUID()
-      await db.insert(internalDutyEntries).values({
+      await insertDutyEntry(db, {
         id: dutyEntryId,
         organizationId: orgId,
         projectId,
@@ -94,16 +104,19 @@ export async function markRecurringDutyDone(projectId: string, dutyId: string, r
         dutyCode: duty.dutyCode,
         dutyLabel: option?.label ?? duty.title,
         hours: hours.hours,
-        notes: [`${duty.title}${duty.accountName ? ` · ${duty.accountName}` : ""}: ${periodLabel(input.period)}`, input.notes.trim()]
-          .filter(Boolean)
-          .join(". "),
+        notes: recurringDoneEntryNote({
+          title: duty.title,
+          accountName: duty.accountName,
+          periodLabel: periodLabel(input.period),
+          notes: input.notes,
+        }),
         createdBy: user.id,
         createdAt: now,
         updatedAt: now,
       })
     }
     try {
-      await db.insert(recurringDutyCompletions).values({
+      await insertRecurringDutyCompletion(db, {
         id: crypto.randomUUID(),
         recurringDutyId: dutyId,
         period: input.period,
@@ -114,8 +127,8 @@ export async function markRecurringDutyDone(projectId: string, dutyId: string, r
         createdAt: now,
       })
     } catch (error) {
-      if (dutyEntryId) await db.delete(internalDutyEntries).where(eq(internalDutyEntries.id, dutyEntryId))
-      if (error instanceof Error && /UNIQUE/i.test(error.message)) {
+      if (dutyEntryId) await deleteDutyEntry(db, dutyEntryId)
+      if (isUniqueConflict(error)) {
         return { success: false, error: `${periodLabel(input.period)} is already marked done.` }
       }
       throw error
@@ -146,8 +159,8 @@ export async function undoRecurringDutyDone(projectId: string, completionId: str
     if (completion.completedBy !== user.id && !canEditFeatureSettings(user.role, FEATURE)) {
       return { success: false, error: "Only the person who marked it, or an admin, can undo it." }
     }
-    await db.delete(recurringDutyCompletions).where(eq(recurringDutyCompletions.id, completionId))
-    if (completion.dutyEntryId) await db.delete(internalDutyEntries).where(eq(internalDutyEntries.id, completion.dutyEntryId))
+    await deleteRecurringDutyCompletion(db, completionId)
+    if (completion.dutyEntryId) await deleteDutyEntry(db, completion.dutyEntryId)
     revalidate(projectId)
     return { success: true, data: null }
   } catch (error) {
@@ -188,13 +201,13 @@ export async function saveRecurringDuty(projectId: string, dutyId: string | null
     }
     if (dutyId) {
       if (!(await dutyFor(db, projectId, dutyId))) return { success: false, error: "That recurring duty no longer exists." }
-      await db.update(recurringDuties).set(values).where(eq(recurringDuties.id, dutyId))
+      await updateRecurringDuty(db, dutyId, values)
       revalidate(projectId)
       return { success: true, data: { id: dutyId } }
     }
     const [last] = await db.select({ order: max(recurringDuties.sortOrder) }).from(recurringDuties).where(eq(recurringDuties.projectId, projectId))
     const id = crypto.randomUUID()
-    await db.insert(recurringDuties).values({ id, organizationId: orgId, projectId, sortOrder: (last?.order ?? 0) + 1, createdAt: now, ...values })
+    await insertRecurringDuty(db, { id, organizationId: orgId, projectId, sortOrder: nextRecurringDutySortOrder(last?.order), createdAt: now, ...values })
     revalidate(projectId)
     return { success: true, data: { id } }
   } catch (error) {
@@ -214,11 +227,11 @@ export async function deleteRecurringDuty(projectId: string, dutyId: string): Pr
       .where(eq(recurringDutyCompletions.recurringDutyId, dutyId))
       .limit(1)
     if (history) {
-      await db.update(recurringDuties).set({ active: false, updatedAt: new Date().toISOString() }).where(eq(recurringDuties.id, dutyId))
+      await updateRecurringDuty(db, dutyId, { active: false, updatedAt: new Date().toISOString() })
       revalidate(projectId)
       return { success: true, data: { deactivated: true } }
     }
-    await db.delete(recurringDuties).where(eq(recurringDuties.id, dutyId))
+    await deleteRecurringDutyRow(db, dutyId)
     revalidate(projectId)
     return { success: true, data: { deactivated: false } }
   } catch (error) {

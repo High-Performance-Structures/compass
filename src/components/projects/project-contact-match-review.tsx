@@ -17,12 +17,14 @@ import {
   ignoreContactSourceLink,
   restoreContactSourceLink,
   updateProjectContactTypeFromReview,
-  type ProjectContactItem,
-  type ProjectContactMatchReview,
-  type ProjectContactSourceLinkItem,
-  type ProjectContactType,
-  type IndependentContactItem,
-} from "@/app/actions/project-contacts"
+} from "@/app/actions/project-contact-review"
+import type {
+  ProjectContactItem,
+  ProjectContactMatchReview,
+  ProjectContactSourceLinkItem,
+  ProjectContactType,
+  IndependentContactItem,
+} from "@/lib/domain/contacts/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {

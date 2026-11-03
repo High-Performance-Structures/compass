@@ -4,8 +4,10 @@ import {
   departmentLogoSrc,
   type DepartmentProfiles,
 } from "@/lib/department-profiles"
+import { PROJECT_DEPARTMENTS, type ProjectDepartmentCode } from "@/lib/domain/project/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 
-export type ProjectDepartment = "O" | "H" | "N" | "D"
+export type ProjectDepartment = ProjectDepartmentCode
 
 export type ProjectBrand = {
   readonly companyName: string
@@ -22,7 +24,7 @@ export type ProjectBrand = {
 }
 
 export function isProjectDepartment(value: string): value is ProjectDepartment {
-  return value === "O" || value === "H" || value === "N" || value === "D"
+  return isListValue(PROJECT_DEPARTMENTS, value)
 }
 
 export function projectDepartmentFromDivisionLabel(

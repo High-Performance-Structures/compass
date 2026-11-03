@@ -1,0 +1,34 @@
+erDiagram
+  direction LR
+  equipment_log_entries {
+    key id
+    ref machine_id
+    ref service_item_id
+  }
+  equipment_machines {
+    key id
+    ref rate_book_entry_id
+  }
+  equipment_service_items {
+    key id
+    ref machine_id
+  }
+  project_photo_source_dates {
+    key project_id
+    key source_system
+    key source_external_id
+  }
+  weather_area_snapshots {
+    key area_key
+    key kind
+  }
+  weather_cells {
+    key cell_key
+  }
+  rate_book_entries {
+    key id
+  }
+  equipment_machines ||--o{ equipment_log_entries : ""
+  equipment_machines ||--o{ equipment_service_items : ""
+  equipment_service_items |o--o{ equipment_log_entries : ""
+  rate_book_entries |o--o{ equipment_machines : ""

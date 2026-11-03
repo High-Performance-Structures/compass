@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-export interface MobileListCardAction {
+interface MobileListCardAction {
   label: string
   onClick: () => void
   destructive?: boolean

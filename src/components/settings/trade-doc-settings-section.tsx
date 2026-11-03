@@ -18,9 +18,11 @@ import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-brand
 import { DriveItemField } from "@/components/google/drive-item-field"
 import { TradeDocImportDialog } from "@/components/settings/trade-doc-import-dialog"
 import { TradeDocInfoSheetSettings } from "@/components/settings/trade-doc-info-sheet-settings"
+import { TradeDocSageSettingsFields } from "@/components/settings/trade-doc-sage-settings"
 import { TradeLetterSettingsFields } from "@/components/settings/trade-letter-settings"
 import {
   DEFAULT_INFO_SHEET,
+  DEFAULT_TRADE_DOC_SAGE_SETTINGS,
   DEFAULT_TRADE_LETTER_SETTINGS,
   TRADE_DOC_BILL_MODES,
   TRADE_DOC_BILL_MODE_LABELS,
@@ -31,6 +33,7 @@ import {
   type InfoSheetSettings,
   type TradeDocBillMode,
   type TradeDocType,
+  type TradeDocSageSettings,
   type TradeLetterSettings,
 } from "@/lib/trade-docs/settings"
 
@@ -65,6 +68,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
   const [certificateHolder, setCertificateHolder] = React.useState("")
   const [infoSheet, setInfoSheet] = React.useState<InfoSheetSettings>(DEFAULT_INFO_SHEET)
   const [letters, setLetters] = React.useState<TradeLetterSettings>(DEFAULT_TRADE_LETTER_SETTINGS)
+  const [sage, setSage] = React.useState<TradeDocSageSettings>(DEFAULT_TRADE_DOC_SAGE_SETTINGS)
   const [importOpen, setImportOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
@@ -87,6 +91,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       setCertificateHolder(parsed.data.certificateHolder)
       setInfoSheet(parsed.data.infoSheet)
       setLetters(parsed.data.letters)
+      setSage(parsed.data.sage)
     }
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -169,6 +174,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       certificateHolder,
       infoSheet,
       letters,
+      sage,
     })
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the documents and try again.")
@@ -406,6 +412,13 @@ export function TradeDocSettingsSection(): React.ReactElement {
       <TradeLetterSettingsFields
         value={letters}
         onChange={setLetters}
+        docTypes={types.filter((type) => savedIds.has(type.id))}
+        disabled={!canEdit || pending}
+      />
+
+      <TradeDocSageSettingsFields
+        value={sage}
+        onChange={setSage}
         docTypes={types.filter((type) => savedIds.has(type.id))}
         disabled={!canEdit || pending}
       />

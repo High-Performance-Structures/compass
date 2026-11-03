@@ -4,7 +4,7 @@ import * as React from "react"
 import { useFormStatus } from "react-dom"
 import { Check, ChevronsUpDown } from "lucide-react"
 
-import type { IndependentContactItem } from "@/app/actions/project-contacts"
+import type { IndependentContactItem } from "@/lib/domain/contacts/types"
 import { Button } from "@/components/ui/button"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {

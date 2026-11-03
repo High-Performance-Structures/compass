@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, or, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
+import { eq, and, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
@@ -9,6 +9,7 @@ import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { updateMessage } from "@/lib/domain/conversations/store"
 
 const MAX_QUERY_LENGTH = 100
 
@@ -209,85 +210,6 @@ export async function getPinnedMessages(
   }
 }
 
-export async function pinMessage(
-  messageId: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // fetch the message
-    const message = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, messageId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!message) {
-      return { success: false, error: "Message not found" }
-    }
-
-    // verify user is a channel member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
-
-    // check permission: message author or moderator+
-    const isAuthor = message.userId === user.id
-    const canModerate = (() => {
-      try {
-        requirePermission(user, "channels", "moderate")
-        return true
-      } catch {
-        return false
-      }
-    })()
-
-    // also allow if user has moderator role in the channel
-    const isChannelModerator =
-      membership.role === "moderator" || membership.role === "owner"
-
-    if (!isAuthor && !canModerate && !isChannelModerator) {
-      return {
-        success: false,
-        error: "Must be message author or have moderator permission to pin",
-      }
-    }
-
-    if (message.isPinned) {
-      return { success: false, error: "Message is already pinned" }
-    }
-
-    await db.update(messages).set({ isPinned: true }).where(eq(messages.id, messageId))
-
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to pin message",
-    }
-  }
-}
-
 export async function unpinMessage(
   messageId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -353,10 +275,7 @@ export async function unpinMessage(
       return { success: false, error: "Message is not pinned" }
     }
 
-    await db
-      .update(messages)
-      .set({ isPinned: false })
-      .where(eq(messages.id, messageId))
+    await updateMessage(db, messageId, { isPinned: false })
 
     revalidatePath("/dashboard")
     return { success: true }
