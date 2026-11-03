@@ -4,12 +4,17 @@ import type { InternalDirectoryContact } from "@/app/actions/vendors"
 import type { CustomerDirectoryRow, DirectorySummary } from "@/lib/domain/contacts/directory-page"
 import type { RecordPage } from "@/lib/record-page"
 import type { UnassignedPerson } from "@/lib/domain/contacts/unassigned-people"
+import type { ImportedParticipantReviewRow } from "@/lib/domain/conversations/imported-participant-review"
 
-export type ContactsTab = "customers" | "vendors" | "internal" | "unassigned"
+export type ContactsTab = "customers" | "vendors" | "internal" | "unassigned" | "review"
 
-/** The directory permission each tab reads with; unassigned people are a vendor-side list. */
+/**
+ * The directory permission each tab reads with; unassigned people are a
+ * vendor-side list. Needs review is staff-only and is shown only when the
+ * server sent its first page.
+ */
 export function contactsTabAccess(tab: ContactsTab): "customers" | "vendors" | "internal" {
-  return tab === "unassigned" ? "vendors" : tab
+  return tab === "unassigned" || tab === "review" ? "vendors" : tab
 }
 
 type DirectoryCapabilities = Awaited<ReturnType<typeof getContactDirectoryAccess>>
@@ -32,11 +37,14 @@ export type ContactsBootstrap = {
   readonly internal: readonly InternalDirectoryContact[]
   /** People from imported messages not yet connected to a company. */
   readonly unassigned: readonly UnassignedPerson[]
+  /** Imported conversation participants to review (Needs review); null for non-staff. */
+  readonly participantReview: RecordPage<ImportedParticipantReviewRow> | null
 }
 
 export function toContactsTab(value: string | null | undefined): ContactsTab {
   if (value === "vendors") return "vendors"
   if (value === "internal") return "internal"
   if (value === "unassigned") return "unassigned"
+  if (value === "review") return "review"
   return "customers"
 }

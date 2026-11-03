@@ -55,6 +55,7 @@ import { addCompaniesToProject } from "@/app/actions/contact-project-association
 import { getUnassignedPeople } from "@/app/actions/unassigned-people"
 import { contactsTabAccess, toContactsTab, type ContactsBootstrap, type ContactsTab } from "@/components/contacts/contacts-bootstrap"
 import { UnassignedPeopleTable } from "@/components/contacts/unassigned-people-table"
+import { ParticipantReviewTable } from "@/components/contacts/participant-review-table"
 import type { ConnectCompanyKind } from "@/lib/domain/contacts/connect-unassigned-person"
 
 type Tab = ContactsTab
@@ -225,7 +226,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
   }, [])
 
   const pageActions = React.useMemo(() => {
-    if (tab === "internal" || tab === "unassigned" || !directoryAccess?.[tab].create) return []
+    if (tab === "internal" || tab === "unassigned" || tab === "review" || !directoryAccess?.[tab].create) return []
     return [tab === "customers"
       ? { id: "add-customer", label: "Add Client / Lead", onSelect: openCustomer, icon: Plus }
       : { id: "add-vendor", label: "Add Vendor", onSelect: openVendor, icon: Plus }]
@@ -358,7 +359,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
     <CompassAccessDialog
       open={accessDialogOpen}
       onOpenChange={setAccessDialogOpen}
-      initialSection={tab === "customers" ? "clients" : tab === "unassigned" ? "vendors" : tab}
+      initialSection={tab === "customers" ? "clients" : tab === "unassigned" || tab === "review" ? "vendors" : tab}
     />
   ) : null
 
@@ -426,6 +427,12 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
                 Unassigned
                 <span className="ml-1.5 text-muted-foreground tabular-nums">{unassigned.length}</span>
               </TabsTrigger>
+              {bootstrap.participantReview ? (
+                <TabsTrigger value="review" className="text-xs sm:text-sm">
+                  Needs review
+                  <span className="ml-1.5 text-muted-foreground tabular-nums">{bootstrap.participantReview.total}</span>
+                </TabsTrigger>
+              ) : null}
             </TabsList>
 
             <div className="flex items-center gap-2">
@@ -441,7 +448,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
                   Manage Compass access
                 </Button>
               )}
-              {tab !== "internal" && tab !== "unassigned" && directoryAccess?.[tab].create ? (
+              {tab !== "internal" && tab !== "unassigned" && tab !== "review" && directoryAccess?.[tab].create ? (
                 <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
                   <IconPlus className="size-3.5" />
                   <span className="hidden sm:inline ml-1.5">{addLabel}</span>
@@ -455,7 +462,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
             </div>
           </div>
 
-          {tab !== "internal" && (associationProjects.length > 0 || canMergeTab) ? (
+          {(tab === "customers" || tab === "vendors") && (associationProjects.length > 0 || canMergeTab) ? (
             <CompanySelectionBar
               noun={tab === "vendors" ? "vendors" : "clients/leads"}
               selectedCount={selectedCompanies.length}
@@ -467,7 +474,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               onMerge={openCompanyMerge}
               onClear={clearSelection}
             />
-          ) : tab !== "internal" && directoryAccess?.canManageAccounts ? (
+          ) : (tab === "customers" || tab === "vendors") && directoryAccess?.canManageAccounts ? (
             <p className="mt-2 text-xs text-muted-foreground">To grant people project access, select their accounts in Manage Compass access.</p>
           ) : null}
 
@@ -518,6 +525,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
 
           <TabsContent value="unassigned" className="mt-3 flex-1 min-h-0 flex flex-col">
             <UnassignedPeopleTable people={unassigned} connectKinds={connectKinds} onConnected={unassignedConnected} />
+          </TabsContent>
+          <TabsContent value="review" className="mt-3 flex-1 min-h-0 flex flex-col">
+            {/* Split names may add new unassigned people, so Unassigned is re-read. */}
+            <ParticipantReviewTable initialPage={bootstrap.participantReview} onReviewed={() => void getUnassignedPeople().then(setUnassigned)} />
           </TabsContent>
         </Tabs>
       </div>

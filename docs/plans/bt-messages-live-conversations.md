@@ -382,9 +382,25 @@ unless exact dictionary segmentation resolves it:
   name of two or more words, with no separator inside it. Only known people
   may keep a comma ("Smith, John").
 - It is accepted only if exactly one complete way to cut the literal exists.
-  An unknown one-word piece, zero ways or two or more ways hold the whole
-  thread (`participant_ambiguous`).
-- A sender is one entity, so an undivided sender must be exactly one person.
+  Otherwise its person boundaries are unproven
+  (`participant_boundary_unproven`, `split`: `none` for an unknown one-word
+  piece or no complete cut, `several` for two or more cuts).
+- A sender is one entity, so an undivided sender must be exactly one person;
+  one that splits into several people is unproven too
+  (`split: "sender_several"`).
+- Lead decision 2026-11-02: an unproven literal does **not** hold the thread.
+  The thread imports staff-only (only staff join). No person is derived from
+  the literal (not even from a partial split): nothing is attached, joined or
+  created as a contact from it. The literal is kept whole as its
+  `<kind>_literal` participant row with `identity_status =
+  'boundary_unproven:<split>'` and `review_status = 'unreviewed'` so staff can
+  resolve it; an unproven sender shows the literal in
+  `messages.source_sender_label_snapshot` with no contact link. Other,
+  separately proven participants of the message are matched normally
+  (zero-match people still become new uninvited contacts), but the thread
+  stays staff-only. `summary.json` counts these threads in
+  `imported_staff_only_boundary_unproven` (a subset of
+  `imported_staff_only_pending_identity`).
 - Each resulting piece is then matched by the rules below. `summary.json`
   counts `segmented_by_dictionary` (fields split).
 - The original field is kept whole as a message participant row
@@ -464,8 +480,15 @@ stops at the first that decides:
      project's contacts) and use **Share with owner…/vendor…**. Connecting a
      person never opens a thread by itself.
 6. Otherwise (ambiguous) the participant is ambiguous
-   (`participant_ambiguous`): the thread imports staff-only, pending review
-   (below).
+   (`participant_ambiguous`: one proven participant matching more than one
+   exact candidate): the thread imports staff-only, pending review (below).
+   The participant is kept exactly as shown (unmatched source participant
+   row, no contact id, no user id); no candidate is attached or joined, and
+   no new contact is created (new contacts are only for zero matches). An
+   ambiguous sender shows the label as shown
+   (`source_sender_label_snapshot`). `summary.json` counts these threads in
+   `imported_staff_only_ambiguous` (a subset of
+   `imported_staff_only_pending_identity`).
 
 A matched person without a Compass account is added to the project as a
 directory contact without an invitation (linked to their vendor or customer
@@ -478,7 +501,9 @@ directory snapshot also carries `vendors` (BT-registered vendors),
 `vendorNames` (active vendors) and `projects` (each project's client
 customers) for these steps. `summary.json` also reports `new_people_created`
 (`by_email`, `by_name`), `reused_new_people`, `former_employees_archived`,
-`staff_only_pending_identity` and `still_held` (counts by reason).
+`staff_only_pending_identity`, `imported_staff_only_ambiguous`,
+`imported_staff_only_boundary_unproven` and `still_held` (counts by reason, only reasons that hold a thread: identity
+reasons that import staff-only are not counted there).
 
 ## Review queue
 
@@ -614,3 +639,42 @@ WHERE content_sha256 IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT r2_path) > 1;
   stay as they are (see "Legacy archives in production").
 - Legacy archive rows with staff thread replies are not exposed. Staff decide
   per thread whether to move the replies too (a separate, reviewed step).
+
+## Staff review of unresolved participants (Contacts → Needs review)
+
+Participants the importer could not resolve are listed for staff on the
+Contacts page, **Needs review** tab (next to Unassigned), one row per
+conversation and literal, server-paged. Code:
+`src/lib/domain/conversations/imported-participant-review.ts` (list),
+`imported-participant-resolve.ts` (decisions) and
+`src/lib/domain/contacts/people-search.ts` (directory people search).
+
+This is a manual review, so staff choose (owner decision 2026-11-03). The
+importer itself stays exact-only.
+
+- **Pick person**: staff may pick anyone in the company directory: staff
+  accounts and internal contacts (archived too), vendor people, client
+  people, and unassigned or project-only contacts. The search runs on the
+  server (bounded, per source LIMIT 20) by name, email or phone. Each result
+  shows type (Staff / Archived staff / Vendor: X / Client: Y / Unassigned),
+  email and phone. People whose full name or email is exactly the text shown
+  are listed first as **Suggested**, a hint only.
+- **Split into people**: staff mark one name per line, using only text from
+  the literal. For each name they keep a suggestion, pick anyone, or add a
+  new uninvited unassigned contact (`buildertrend_new_person`). A sender is
+  one person.
+- *Leave as is*: reviewed, no person.
+
+The server re-reads every chosen person within the organization (another
+company's person is refused). The literal is never edited. Picked rows get
+the person and `identity_status = 'matched'`; split literal rows become
+`boundary_split` with additive per-message rows for each name (inactive). A
+person new to the project is added as a project contact without an
+invitation, with the importer's own row builder. A thread-level row is added
+so "Share with owner/vendor…" can include the person; it is active only while
+the conversation is still staff-only, so nothing becomes visible until staff
+share. Projects with `imported_conversations_staff_only` (legal hold) are
+listed read only. Every decision is recorded in Activity as a manual choice,
+with the actor and the chosen directory references. No notification or email
+is sent. A repeat of the same decision is a no-op; changing a reviewed
+decision is not offered (it is refused).

@@ -31,7 +31,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { createParticipantResolver, normalizeEmail, normalizeName, parseDirectory, parsePeopleCatalog } from "./import-buildertrend-participants.mjs"
+import {
+  contactFor, createParticipantResolver, importedContactId, importedProjectContactRow, normalizeEmail, parseDirectory, parsePeopleCatalog, participantKey,
+} from "./import-buildertrend-participants.mjs"
 
 export const CAPTURE_SCHEMA = "bt-message-capture/v1"
 export const PARTICIPANT_MAP_SCHEMA = "bt-participant-map/v1"
@@ -89,12 +91,6 @@ function numericId(value, label) {
  * showed one, else the email, else the normalized name (BT message pages often
  * show only names).
  */
-function participantKey(participant) {
-  if (participant.participantId) return `${participant.namespace}:${participant.participantId}`
-  const email = normalizeEmail(participant.email)
-  if (email) return `${participant.namespace}:email:${email}`
-  return `${participant.namespace}:name:${normalizeName(participant.displayName) ?? "unknown"}`
-}
 
 // ---------------------------------------------------------------------------
 // Ids (deterministic, so every run produces the same rows)
@@ -115,9 +111,7 @@ export function conversationId(organizationId, btThreadId) {
 export function importedMessageId(btMessageId) {
   return shortId("bt-msg", btMessageId)
 }
-export function importedContactId(projectId, key) {
-  return shortId("bt-contact", projectId, key)
-}
+export { importedContactId }
 
 // ---------------------------------------------------------------------------
 // Sent date: the literal text is kept; the ISO value orders the conversation.
@@ -216,11 +210,17 @@ export function expandParticipants(message, projectId, resolve) {
   const expand = (ref, kind) => {
     if (!isUndividedParticipant(ref)) return [{ ...ref, kind }]
     const literal = ref.displayName ?? ref.email ?? ""
-    literals.push({ kind, namespace: ref.namespace, literal })
+    const entry = { kind, namespace: ref.namespace, literal, unresolved: null }
+    literals.push(entry)
     const result = projectId && typeof resolve.segment === "function" ? resolve.segment(literal, projectId) : { reason: "participant_boundary_unproven" }
     if (!result.tokens || (kind === "sender" && result.tokens.length !== 1)) {
-      // A literal that does not split into people in exactly one way holds the thread.
-      reviews.push({ reason: result.tokens ? "participant_ambiguous" : result.reason, literal, kind, hold: result.tokens ? true : result.hold === true })
+      // A literal that does not split into people in exactly one way (or an
+      // undivided sender that splits into several people) has unproven person
+      // boundaries. Lead decision 2026-11-02: the thread imports staff-only,
+      // the literal is kept whole and flagged, and no person is derived from it.
+      const split = result.tokens ? "sender_several" : result.split ?? "none"
+      entry.unresolved = split
+      reviews.push({ reason: result.tokens ? "participant_boundary_unproven" : result.reason, literal, kind, split })
       return []
     }
     segmented += 1
@@ -359,6 +359,16 @@ export function parsePrecheck(value) {
 /** Review reasons about who a participant is; alone, they import staff-only. */
 const IDENTITY_REASONS = new Set(["participant_boundary_unproven", "participant_unmatched", "participant_ambiguous"])
 
+/**
+ * Does this review item hold its thread? Identity reasons never do (the
+ * thread imports staff-only); the per-thread `staff_only_pending_identity`
+ * item records an import, not a hold.
+ */
+export function isHoldingReview(item) {
+  if (item.reason === "staff_only_pending_identity") return false
+  return !IDENTITY_REASONS.has(item.reason)
+}
+
 function audienceFor(kinds) {
   const owner = kinds.has("owner")
   const vendor = kinds.has("vendor")
@@ -381,6 +391,10 @@ export function planImport(input) {
   const { capture, projects, timeZone, organizationId } = input
   const resolve = input.resolveParticipant ?? createParticipantResolver({ participantMap: input.participants ?? new Map(), directory: null, catalog: [] })
   let imported_staff_only_pending_identity = 0
+  // Of those, threads with a participant who matched several exact candidates,
+  // and threads with an undivided literal whose person boundaries are unproven.
+  let imported_staff_only_ambiguous = 0
+  let imported_staff_only_boundary_unproven = 0
   const matches = {
     by_map: 0, by_email: 0, by_name_project: 0, by_email_catalog: 0, by_name_catalog: 0, new_contact_from_catalog: 0,
     connected_by_vendor_name: 0, new_person_by_email: 0, new_person_by_name: 0, former_employee_archived: 0,
@@ -434,7 +448,7 @@ export function planImport(input) {
       const expanded = expandParticipants(message, projectId, resolve)
       matches.segmented_by_dictionary += expanded.segmented
       matches.review += expanded.reviews.length
-      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind, hold: item.hold }))
+      for (const item of expanded.reviews) threadReviews.push(review(item.reason, message, { literal: item.literal, participantKind: item.kind, ...(item.split ? { split: item.split } : {}) }))
       const refs = [...(expanded.sender ? [expanded.sender] : []), ...expanded.recipients]
       for (const ref of refs) {
         if (ref.kind === "bcc") threadReviews.push(review("bcc_recipient", message, { participant: participantKey(ref) }))
@@ -466,7 +480,9 @@ export function planImport(input) {
     // Owner decision 2026-11-02: a thread whose only problems are people who
     // could not be identified exactly is imported now, staff-only, and flagged
     // so staff can open it to the owner or vendor later. Anything else holds.
-    const identityReviews = threadReviews.filter((item) => IDENTITY_REASONS.has(item.reason) && item.hold !== true)
+    // A participant matching several exact candidates is the same: kept as
+    // shown, joined to nobody, no contact created, thread staff-only.
+    const identityReviews = threadReviews.filter((item) => !isHoldingReview(item))
     if (threadReviews.length > identityReviews.length) {
       reviews.push(...threadReviews)
       continue
@@ -475,12 +491,14 @@ export function planImport(input) {
     const audience = pendingIdentity ? "staff" : audienceFor(kinds)
     if (pendingIdentity) {
       imported_staff_only_pending_identity += 1
+      if (identityReviews.some((item) => item.reason === "participant_ambiguous")) imported_staff_only_ambiguous += 1
+      if (identityReviews.some((item) => item.reason === "participant_boundary_unproven")) imported_staff_only_boundary_unproven += 1
       reviews.push({
         reason: "staff_only_pending_identity", btJobId: first.btJobId, btThreadId, projectId,
         channelId: conversationId(organizationId, btThreadId),
         unresolved: [
           ...identityReviews.map((item) => ({
-            reason: item.reason, kind: item.participantKind ?? item.role ?? null,
+            reason: item.reason, kind: item.participantKind ?? item.role ?? null, ...(item.split ? { split: item.split } : {}),
             literalSha256: hash(String(item.literal ?? item.displayName ?? item.participant ?? "")),
           })),
           ...[...unassignedPeople.values()].map((ref) => ({
@@ -506,7 +524,7 @@ export function planImport(input) {
       messages: planned,
     })
   }
-  return { threads, reviews, pending, matches, imported_staff_only_pending_identity }
+  return { threads, reviews, pending, matches, imported_staff_only_pending_identity, imported_staff_only_ambiguous, imported_staff_only_boundary_unproven }
 }
 
 // ---------------------------------------------------------------------------
@@ -518,14 +536,6 @@ function insertSelect(table, row, where) {
   return `INSERT INTO ${table} (${columns.join(", ")}) SELECT ${columns.map((column) => sqlValue(row[column])).join(", ")} WHERE ${where} ON CONFLICT DO NOTHING;`
 }
 
-/** Directory contact id for a person on a project, or null for an account holder. */
-function contactFor(person, projectId) {
-  const mapped = person.entry.contactIds?.[projectId]
-  if (typeof mapped === "string" && mapped !== "") return { id: mapped, create: false }
-  if (person.entry.decision === "user") return null
-  // One contact per person, however many ways the pages named them.
-  return { id: importedContactId(projectId, person.entry.identity ?? person.key), create: true }
-}
 
 /** Vendor, vendor contact and customer contact rows for a person new to Compass. */
 function directoryStatements(create, organizationId, now, guard) {
@@ -580,8 +590,6 @@ export function newCatalogContacts(plan) {
   return [...seen.values()]
 }
 
-/** Project contact type for a new directory person. */
-const CONTACT_TYPE_FOR_KIND = { owner: "owner", vendor: "subcontractor", former_staff: "internal" }
 
 /** New people, reuse and former employees across the imported threads. */
 export function newPeopleCounts(plan) {
@@ -636,23 +644,7 @@ export function threadStatements(thread, input) {
       // records first (ids from the BT ids, so a re-run adds nothing).
       statements.push(...directoryStatements(person.entry.createDirectory, thread.organizationId, now, guard))
       // Added to the directory without an invitation (owner decision 1).
-      statements.push(insertSelect("project_contacts", {
-        id: contact.id, project_id: thread.projectId,
-        contact_type: CONTACT_TYPE_FOR_KIND[person.entry.kind] ?? "subcontractor",
-        source_system: SOURCE_SYSTEM,
-        // New people and former employees are keyed by their identity, so one
-        // person is one row per project however the pages named them.
-        source_entity_type: person.entry.unassigned ? "buildertrend_new_person" : person.entry.kind === "former_staff" ? "buildertrend_former_employee" : "buildertrend_participant",
-        source_entity_id: person.entry.unassigned || person.entry.kind === "former_staff" ? person.entry.identity : person.key,
-        internal_contact_id: person.entry.links?.internalContactId ?? null,
-        display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
-        // Linked to the matched directory company/contact when there is one.
-        vendor_id: person.entry.links?.vendorId ?? null, vendor_contact_id: person.entry.links?.vendorContactId ?? null,
-        customer_id: person.entry.links?.customerId ?? null, customer_contact_id: person.entry.links?.customerContactId ?? null,
-        // A former employee is archived: never listed, only named on messages.
-        owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: person.entry.kind === "former_staff" ? 0 : 1,
-        created_at: now, updated_at: now,
-      }, guard))
+      statements.push(insertSelect("project_contacts", importedProjectContactRow(person, { contactId: contact.id, projectId: thread.projectId, now }), guard))
     }
     statements.push(insertSelect("project_source_record_participants", {
       id: shortId("bt-participant", thread.projectId, THREAD_RECORD_TYPE, thread.btThreadId, person.key),
@@ -722,7 +714,10 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
       source_record_type: MESSAGE_RECORD_TYPE, source_record_id: message.btMessageId, source_participant_id: `${item.kind}:${literalKey}`,
       source_contact_name: item.literal, participant_role: `${item.kind}_literal`, audience: "external",
       project_contact_id: null, user_id: null,
-      identity_status: "unmatched", membership_status: "pending", review_status: "reviewed", active: 0,
+      // A literal no person could be derived from stays flagged for staff:
+      // identity_status names the split problem (none, several, sender_several).
+      identity_status: item.unresolved ? `boundary_unproven:${item.unresolved}` : "unmatched", membership_status: "pending",
+      review_status: item.unresolved ? "unreviewed" : "reviewed", active: 0,
       created_at: now, updated_at: now,
     }, guard))
   }
@@ -928,12 +923,18 @@ function main() {
     messages: plan.threads.reduce((count, thread) => count + thread.messages.length, 0),
     mixed_kept_internal: plan.threads.filter((thread) => thread.mixedKeptInternal).length,
     imported_staff_only_pending_identity: plan.imported_staff_only_pending_identity,
+    // Subset of the above: threads with a participant matching several exact candidates.
+    imported_staff_only_ambiguous: plan.imported_staff_only_ambiguous,
+    // Subset too: threads with an undivided literal whose person boundaries are unproven.
+    imported_staff_only_boundary_unproven: plan.imported_staff_only_boundary_unproven,
     // How each thread participant was matched (per thread); review = unmatched or ambiguous.
     participant_matches: plan.matches,
     new_contact_from_catalog: newContacts.length,
     ...newPeopleCounts(plan),
     staff_only_pending_identity: plan.imported_staff_only_pending_identity,
-    still_held: plan.reviews.filter((item) => item.reason !== "staff_only_pending_identity")
+    // Only reasons that hold a thread; identity reasons in a thread held for
+    // something else would import staff-only once that is fixed.
+    still_held: plan.reviews.filter(isHoldingReview)
       .reduce((counts, item) => ({ ...counts, [item.reason]: (counts[item.reason] ?? 0) + 1 }), {}),
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,

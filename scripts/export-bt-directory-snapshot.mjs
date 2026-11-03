@@ -28,8 +28,6 @@
  *   reviewed access candidates matched to a staff user -> internal_user:<buildertrend_contact_id>
  * A BT id on more than one person makes the importer treat it as ambiguous.
  */
-import { spawnSync } from "node:child_process"
-import { writeFileSync } from "node:fs"
 import { pathToFileURL } from "node:url"
 
 import { DIRECTORY_SCHEMA } from "./import-buildertrend-participants.mjs"
@@ -213,8 +211,12 @@ function args(argv) {
   return out
 }
 
-function wranglerSelect(db, sql) {
+// node:child_process and node:fs load only for the command line: the app
+// reuses directoryQueries/buildDirectorySnapshot on the server (imported
+// participant review), where those modules are not available.
+async function wranglerSelect(db, sql) {
   if (!/^SELECT\s/i.test(sql)) throw new Error("only SELECT statements are allowed")
+  const { spawnSync } = await import("node:child_process")
   const result = spawnSync("bunx", ["wrangler", "d1", "execute", db, "--remote", "--json", "--command", sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
   if (result.status !== 0) throw new Error(`wrangler failed: ${result.stderr || result.stdout}`)
   const parsed = JSON.parse(result.stdout)
@@ -232,6 +234,7 @@ async function main() {
   }
   const rows = await collectDirectoryRows(options.org, (sql) => wranglerSelect(options.db, sql))
   const snapshot = buildDirectorySnapshot(rows)
+  const { writeFileSync } = await import("node:fs")
   writeFileSync(options.out, `${JSON.stringify(snapshot, null, 2)}\n`)
   console.log(JSON.stringify({ out: options.out, people: snapshot.people.length }))
 }

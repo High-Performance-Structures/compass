@@ -18,8 +18,11 @@
  *      parent's exact BT id (the vendor is created too when it is missing), or
  *      a customer contact under the project's single client. Staff
  *      (internal_user) must be real users, so they go to review;
- *   d. otherwise the participant is unmatched or ambiguous and the whole
- *      thread goes to review.
+ *   d. otherwise the participant is unmatched or ambiguous. Owner decision
+ *      2026-11-02: the thread imports STAFF-ONLY with the participant kept
+ *      exactly as shown and unresolved. An ambiguous participant (several
+ *      exact candidates) is never attached to any candidate and never becomes
+ *      a new contact; only a zero-match person may become a new contact.
  * Used by scripts/import-buildertrend-messages.mjs; see
  * docs/plans/bt-messages-live-conversations.md.
  */
@@ -148,6 +151,55 @@ function entryFor(person) {
 
 function shortId(prefix, ...parts) {
   return `${prefix}-${createHash("sha256").update(parts.join("\u0000"), "utf8").digest("hex").slice(0, 32)}`
+}
+
+/** The exact source key of a participant: its id, else its email, else its name. */
+export function participantKey(participant) {
+  if (participant.participantId) return `${participant.namespace}:${participant.participantId}`
+  const email = normalizeEmail(participant.email)
+  if (email) return `${participant.namespace}:email:${email}`
+  return `${participant.namespace}:name:${normalizeName(participant.displayName) ?? "unknown"}`
+}
+
+export function importedContactId(projectId, key) {
+  return shortId("bt-contact", projectId, key)
+}
+
+/** Directory contact id for a person on a project, or null for an account holder. */
+export function contactFor(person, projectId) {
+  const mapped = person.entry.contactIds?.[projectId]
+  if (typeof mapped === "string" && mapped !== "") return { id: mapped, create: false }
+  if (person.entry.decision === "user") return null
+  // One contact per person, however many ways the pages named them.
+  return { id: importedContactId(projectId, person.entry.identity ?? person.key), create: true }
+}
+
+/** Project contact type for a new directory person. */
+const CONTACT_TYPE_FOR_KIND = { owner: "owner", vendor: "subcontractor", former_staff: "internal" }
+
+/**
+ * The project_contacts row (snake_case columns) for a person new to the
+ * project: added to the directory without an invitation (owner decision 1).
+ * Shared by the importer and staff review of imported participants.
+ */
+export function importedProjectContactRow(person, { contactId, projectId, now }) {
+  return {
+    id: contactId, project_id: projectId,
+    contact_type: CONTACT_TYPE_FOR_KIND[person.entry.kind] ?? "subcontractor",
+    source_system: "buildertrend",
+    // New people and former employees are keyed by their identity, so one
+    // person is one row per project however the pages named them.
+    source_entity_type: person.entry.unassigned ? "buildertrend_new_person" : person.entry.kind === "former_staff" ? "buildertrend_former_employee" : "buildertrend_participant",
+    source_entity_id: person.entry.unassigned || person.entry.kind === "former_staff" ? person.entry.identity : person.key,
+    internal_contact_id: person.entry.links?.internalContactId ?? null,
+    display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
+    // Linked to the matched directory company/contact when there is one.
+    vendor_id: person.entry.links?.vendorId ?? null, vendor_contact_id: person.entry.links?.vendorContactId ?? null,
+    customer_id: person.entry.links?.customerId ?? null, customer_contact_id: person.entry.links?.customerContactId ?? null,
+    // A former employee is archived: never listed, only named on messages.
+    owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: person.entry.kind === "former_staff" ? 0 : 1,
+    created_at: now, updated_at: now,
+  }
 }
 
 /**
@@ -364,9 +416,31 @@ export function createParticipantResolver(input) {
     }
     const result = ways[0]
     if (result.count === 1 && result.tokens) return { tokens: result.tokens }
-    // Owner decision 2026-11-02: a literal that does not split in exactly one
-    // way (an unknown one-word piece, or two valid cuts) holds the thread.
-    return { reason: "participant_ambiguous", hold: true }
+    // A literal that does not split in exactly one way (an unknown one-word
+    // piece, or two valid cuts) has unproven person boundaries. Lead decision
+    // 2026-11-02: its thread imports staff-only with the literal kept whole;
+    // no person is derived from it (not even from a partial split).
+    return { reason: "participant_boundary_unproven", split: result.count === 0 ? "none" : "several" }
+  }
+
+  /**
+   * The directory people the exact email shown points to, else those whose
+   * exact full name is on this project: the tier `resolve` decides on before
+   * the BT catalog. One person is a match; several make the participant
+   * ambiguous, and they are exactly the candidates staff may pick from.
+   */
+  function directoryTier(ref, projectId) {
+    const email = normalizeEmail(ref.email)
+    if (email) {
+      const hits = byEmail(email)
+      if (hits.length > 0) return { people: hits, rule: "by_email" }
+    }
+    const name = normalizeName(ref.displayName)
+    if (name) {
+      const inProject = people.filter((person) => person.names.has(name) && (person.projectIds.has(projectId) || person.projectContactIds[projectId]))
+      if (inProject.length > 0) return { people: inProject, rule: "by_name_project" }
+    }
+    return { people: [], rule: null }
   }
 
   const resolve = function resolve(ref, projectId) {
@@ -375,18 +449,11 @@ export function createParticipantResolver(input) {
       if (mapped) return { entry: mapped, rule: "by_map" }
     }
     const email = normalizeEmail(ref.email)
-    if (email) {
-      const hit = one(byEmail(email))
-      if (hit === "ambiguous") return { reason: "participant_ambiguous" }
-      if (hit) return { entry: entryFor(hit), rule: "by_email" }
-    }
     const name = normalizeName(ref.displayName)
-    if (name) {
-      const named = people.filter((person) => person.names.has(name))
-      const inProject = one(named.filter((person) => person.projectIds.has(projectId) || person.projectContactIds[projectId]))
-      if (inProject === "ambiguous") return { reason: "participant_ambiguous" }
-      if (inProject) return { entry: entryFor(inProject), rule: "by_name_project" }
-    }
+    const tier = directoryTier(ref, projectId)
+    const hit = one(tier.people)
+    if (hit === "ambiguous") return { reason: "participant_ambiguous" }
+    if (hit) return { entry: entryFor(hit), rule: tier.rule }
     // The BT catalog: by the email shown first, else by the exact name.
     const byCatalogEmail = email ? catalog.filter((row) => row.email === email) : []
     const catalogHit = one(byCatalogEmail.length > 0 ? byCatalogEmail : name ? catalog.filter((row) => row.name === name) : [])
@@ -408,5 +475,19 @@ export function createParticipantResolver(input) {
     return { entry: entryFor(resolved), rule: byCatalogEmail.length > 0 ? "by_email_catalog" : "by_name_catalog" }
   }
   resolve.segment = segment
+  /**
+   * The exact-match candidates for a participant (see directoryTier), each
+   * with the entry `resolve` would give it. Never fuzzy; empty when no
+   * directory person matches exactly.
+   */
+  resolve.candidates = function candidates(ref, projectId) {
+    return directoryTier(ref, projectId).people.map((person) => ({
+      personKey: person.personKey,
+      displayName: person.displayName,
+      kind: person.kind,
+      emails: [...person.emails],
+      entry: entryFor(person),
+    }))
+  }
   return resolve
 }
