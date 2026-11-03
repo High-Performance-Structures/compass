@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { format, parseISO } from "date-fns"
+import { conversationDayKey, conversationDayLabel } from "@/lib/conversations/message-dates"
+import { useConversationClock } from "@/hooks/use-conversation-clock"
 import { ArrowDown } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -340,7 +341,7 @@ export function MessageList({
     try {
       const result = await getMessages(channelId, {
         limit: HISTORY_PAGE_SIZE,
-        cursor: oldestMessage.createdAt,
+        cursor: { createdAt: oldestMessage.createdAt, id: oldestMessage.id },
       })
 
       if (!isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
@@ -388,13 +389,15 @@ export function MessageList({
     }
   }, [channelId, getScrollViewport, hasMore, loading, messages])
 
+  const { timeZone } = useConversationClock()
+
   const groupedMessages = React.useMemo(() => {
     const groups: { date: string; messages: readonly MessageData[] }[] = []
     let currentGroup: MessageData[] = []
     let currentDate = ""
 
     messages.forEach((msg) => {
-      const msgDate = format(parseISO(msg.createdAt), "yyyy-MM-dd")
+      const msgDate = conversationDayKey(msg.createdAt, timeZone)
       if (msgDate !== currentDate) {
         if (currentGroup.length > 0) {
           groups.push({ date: currentDate, messages: currentGroup })
@@ -411,7 +414,7 @@ export function MessageList({
     }
 
     return groups
-  }, [messages])
+  }, [messages, timeZone])
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -455,7 +458,7 @@ export function MessageList({
                   <div className="sticky top-0 z-10 -mx-4 my-4 bg-background/95 px-4 py-2 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80">
                     <Separator />
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs font-medium text-muted-foreground">
-                      {format(parseISO(group.date), "MMMM d, yyyy")}
+                      {conversationDayLabel(group.date)}
                     </div>
                   </div>
                   {group.messages.map((message) => (

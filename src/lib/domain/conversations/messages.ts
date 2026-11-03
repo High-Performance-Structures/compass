@@ -1,4 +1,9 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
+import {
+  conversationHistoryBefore,
+  conversationHistoryOrder,
+  type ConversationHistoryCursor,
+} from "@/lib/conversations/message-pagination"
 
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
@@ -113,7 +118,7 @@ export async function getReactionsByMessage(
 /** A channel's top-level messages, newest first, for the signed-in member. */
 export async function readChannelMessages(
   channelId: string,
-  options?: { limit?: number; cursor?: string }
+  options?: { readonly limit?: number; readonly cursor?: string | ConversationHistoryCursor }
 ) {
   try {
     const user = await conversationRequestViewer(await getCurrentUser())
@@ -163,10 +168,10 @@ export async function readChannelMessages(
         and(
           eq(messages.channelId, channelId),
           sql`${messages.threadId} IS NULL`, // only top-level messages
-          cursor ? lt(messages.createdAt, cursor) : undefined
+          conversationHistoryBefore(cursor)
         )
       )
-      .orderBy(desc(messages.createdAt))
+      .orderBy(...conversationHistoryOrder())
       .limit(limit)
 
     const results = await query

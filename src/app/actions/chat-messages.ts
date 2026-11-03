@@ -1,6 +1,7 @@
 "use server"
 
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
+import { conversationHistoryBefore, conversationHistoryOrder, type ConversationHistoryCursor } from "@/lib/conversations/message-pagination"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { importedMessageColumns } from "@/lib/domain/conversations/imported"
@@ -8,8 +9,6 @@ import { getCloudflareContext } from "@/lib/db"
 import {
   eq,
   and,
-  desc,
-  lt,
   like,
   or,
   inArray,
@@ -837,14 +836,14 @@ export async function deleteMessage(messageId: string) {
 
 export async function getMessages(
   channelId: string,
-  options?: { limit?: number; cursor?: string }
+  options?: { readonly limit?: number; readonly cursor?: string | ConversationHistoryCursor }
 ) {
   return readChannelMessages(channelId, options)
 }
 
 export async function getThreadMessages(
   parentMessageId: string,
-  options?: { limit?: number; cursor?: string }
+  options?: { readonly limit?: number; readonly cursor?: string | ConversationHistoryCursor }
 ) {
   try {
     const user = await conversationRequestViewer(await getCurrentUser())
@@ -905,10 +904,10 @@ export async function getThreadMessages(
       .where(
         and(
           eq(messages.threadId, parentMessageId),
-          cursor ? lt(messages.createdAt, cursor) : undefined
+          conversationHistoryBefore(cursor)
         )
       )
-      .orderBy(desc(messages.createdAt))
+      .orderBy(...conversationHistoryOrder())
       .limit(limit)
 
     const results = await query
