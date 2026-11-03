@@ -168,6 +168,11 @@ export async function insertProjectContact(db: Db, values: ProjectContactInsert)
   await db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS))
 }
 
+/** One project contact, left alone when a row with its id already exists. */
+export function insertProjectContactIfMissingStatement(db: Db, values: ProjectContactInsert): Statement {
+  return db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS)).onConflictDoNothing()
+}
+
 /**
  * Bulk directory association: an id that already exists is left alone.
  * Rows are split to stay under D1's bound-parameter limit and written in

@@ -639,3 +639,30 @@ WHERE content_sha256 IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT r2_path) > 1;
   stay as they are (see "Legacy archives in production").
 - Legacy archive rows with staff thread replies are not exposed. Staff decide
   per thread whether to move the replies too (a separate, reviewed step).
+
+## Staff review of unresolved participants (Contacts → Needs review)
+
+Participants the importer could not resolve are listed for staff on the
+Contacts page, **Needs review** tab (next to Unassigned), one row per
+conversation and literal, server-paged. Code:
+`src/lib/domain/conversations/imported-participant-review.ts` (list) and
+`imported-participant-resolve.ts` (decisions).
+
+- **Name matches more than one contact** (`identity_status = 'unmatched'` on
+  a full name or email): *Pick person* offers only the exact candidates the
+  importer's own resolver ties on (`resolve.candidates`).
+- **Several names run together** (`boundary_unproven:*` literal rows):
+  *Split into people*. Staff mark one name per line, using only text from
+  the literal; each name goes through the importer's resolver, so it links
+  to its single exact match or becomes a new uninvited unassigned contact
+  (`buildertrend_new_person`). A sender is one person.
+- *Leave as is*: reviewed, no person.
+
+The literal is never edited. Picked rows get the person and
+`identity_status = 'matched'`; split literal rows become `boundary_split`
+with additive per-message rows for each name (inactive). A thread-level row
+is added so "Share with owner/vendor…" can include the person; it is active
+only while the conversation is still staff-only, so nothing becomes visible
+until staff share. Projects with `imported_conversations_staff_only` (legal
+hold) are listed read only. Every decision is recorded in Activity. No
+notification or email is sent. A repeat of the same decision is a no-op.

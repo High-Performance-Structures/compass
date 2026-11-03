@@ -31,7 +31,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { createParticipantResolver, normalizeEmail, normalizeName, parseDirectory, parsePeopleCatalog } from "./import-buildertrend-participants.mjs"
+import {
+  contactFor, createParticipantResolver, importedContactId, importedProjectContactRow, normalizeEmail, parseDirectory, parsePeopleCatalog, participantKey,
+} from "./import-buildertrend-participants.mjs"
 
 export const CAPTURE_SCHEMA = "bt-message-capture/v1"
 export const PARTICIPANT_MAP_SCHEMA = "bt-participant-map/v1"
@@ -89,12 +91,6 @@ function numericId(value, label) {
  * showed one, else the email, else the normalized name (BT message pages often
  * show only names).
  */
-function participantKey(participant) {
-  if (participant.participantId) return `${participant.namespace}:${participant.participantId}`
-  const email = normalizeEmail(participant.email)
-  if (email) return `${participant.namespace}:email:${email}`
-  return `${participant.namespace}:name:${normalizeName(participant.displayName) ?? "unknown"}`
-}
 
 // ---------------------------------------------------------------------------
 // Ids (deterministic, so every run produces the same rows)
@@ -115,9 +111,7 @@ export function conversationId(organizationId, btThreadId) {
 export function importedMessageId(btMessageId) {
   return shortId("bt-msg", btMessageId)
 }
-export function importedContactId(projectId, key) {
-  return shortId("bt-contact", projectId, key)
-}
+export { importedContactId }
 
 // ---------------------------------------------------------------------------
 // Sent date: the literal text is kept; the ISO value orders the conversation.
@@ -542,14 +536,6 @@ function insertSelect(table, row, where) {
   return `INSERT INTO ${table} (${columns.join(", ")}) SELECT ${columns.map((column) => sqlValue(row[column])).join(", ")} WHERE ${where} ON CONFLICT DO NOTHING;`
 }
 
-/** Directory contact id for a person on a project, or null for an account holder. */
-function contactFor(person, projectId) {
-  const mapped = person.entry.contactIds?.[projectId]
-  if (typeof mapped === "string" && mapped !== "") return { id: mapped, create: false }
-  if (person.entry.decision === "user") return null
-  // One contact per person, however many ways the pages named them.
-  return { id: importedContactId(projectId, person.entry.identity ?? person.key), create: true }
-}
 
 /** Vendor, vendor contact and customer contact rows for a person new to Compass. */
 function directoryStatements(create, organizationId, now, guard) {
@@ -604,8 +590,6 @@ export function newCatalogContacts(plan) {
   return [...seen.values()]
 }
 
-/** Project contact type for a new directory person. */
-const CONTACT_TYPE_FOR_KIND = { owner: "owner", vendor: "subcontractor", former_staff: "internal" }
 
 /** New people, reuse and former employees across the imported threads. */
 export function newPeopleCounts(plan) {
@@ -660,23 +644,7 @@ export function threadStatements(thread, input) {
       // records first (ids from the BT ids, so a re-run adds nothing).
       statements.push(...directoryStatements(person.entry.createDirectory, thread.organizationId, now, guard))
       // Added to the directory without an invitation (owner decision 1).
-      statements.push(insertSelect("project_contacts", {
-        id: contact.id, project_id: thread.projectId,
-        contact_type: CONTACT_TYPE_FOR_KIND[person.entry.kind] ?? "subcontractor",
-        source_system: SOURCE_SYSTEM,
-        // New people and former employees are keyed by their identity, so one
-        // person is one row per project however the pages named them.
-        source_entity_type: person.entry.unassigned ? "buildertrend_new_person" : person.entry.kind === "former_staff" ? "buildertrend_former_employee" : "buildertrend_participant",
-        source_entity_id: person.entry.unassigned || person.entry.kind === "former_staff" ? person.entry.identity : person.key,
-        internal_contact_id: person.entry.links?.internalContactId ?? null,
-        display_name: person.entry.displayName, company_name: person.entry.companyName ?? null, email: person.entry.email ?? null,
-        // Linked to the matched directory company/contact when there is one.
-        vendor_id: person.entry.links?.vendorId ?? null, vendor_contact_id: person.entry.links?.vendorContactId ?? null,
-        customer_id: person.entry.links?.customerId ?? null, customer_contact_id: person.entry.links?.customerContactId ?? null,
-        // A former employee is archived: never listed, only named on messages.
-        owner_portal_visible: 0, sub_vendor_portal_visible: 0, internal_visible: 1, active: person.entry.kind === "former_staff" ? 0 : 1,
-        created_at: now, updated_at: now,
-      }, guard))
+      statements.push(insertSelect("project_contacts", importedProjectContactRow(person, { contactId: contact.id, projectId: thread.projectId, now }), guard))
     }
     statements.push(insertSelect("project_source_record_participants", {
       id: shortId("bt-participant", thread.projectId, THREAD_RECORD_TYPE, thread.btThreadId, person.key),
