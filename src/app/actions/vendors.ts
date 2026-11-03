@@ -31,7 +31,7 @@ import {
 } from "@/lib/contact-identity-ownership"
 import {
   changesSageLinkedVendorIdentity,
-  sameSageLinkedVendorContacts,
+  sageLinkedVendorPeopleChangeError,
 } from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
@@ -101,7 +101,8 @@ function nullableOptionalText(value: string | null | undefined): string | null {
 }
 
 function normalizedContactInputs(
-  contacts: readonly VendorContactMutationInput[]
+  contacts: readonly VendorContactMutationInput[],
+  options: { readonly assignPrimary: boolean } = { assignPrimary: true }
 ): readonly VendorContactMutationInput[] {
   const normalized = contacts
     .map((contact) => ({
@@ -113,6 +114,9 @@ function normalizedContactInputs(
     }))
     .filter((contact) => contact.name.length > 0)
   const primaryIndex = normalized.findIndex((contact) => contact.isPrimary)
+  if (!options.assignPrimary) {
+    return normalized.map((contact, index) => ({ ...contact, isPrimary: index === primaryIndex }))
+  }
 
   return normalized.map((contact, index) => ({
     ...contact,
@@ -328,21 +332,24 @@ export async function updateVendor(
       return { success: false, error: "This vendor was archived or merged. Edit the surviving directory record instead." }
     }
 
-    const contactInputs = normalizedContactInputs(data.contacts ?? [])
+    const sageLinked = Boolean(existing.sageVendorId || existing.sageVendorNumber)
+    // On a Sage-linked vendor primary belongs to Sage's people, so it is
+    // never moved to the first person here.
+    const contactInputs = normalizedContactInputs(data.contacts ?? [], { assignPrimary: !sageLinked })
     const existingContacts = data.contacts === undefined
       ? []
       : await db.select().from(vendorContacts)
           .where(eq(vendorContacts.vendorId, id))
 
-    if (
-      (existing.sageVendorId || existing.sageVendorNumber) &&
-      (changesSageLinkedVendorIdentity(existing, data) ||
-        (data.contacts !== undefined && !sameSageLinkedVendorContacts(contactInputs, existingContacts)))
-    ) {
-      return {
-        success: false,
-        error: "This vendor is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+    if (sageLinked) {
+      if (changesSageLinkedVendorIdentity(existing, data)) {
+        return {
+          success: false,
+          error: "This vendor is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+        }
       }
+      const peopleError = data.contacts === undefined ? null : sageLinkedVendorPeopleChangeError(contactInputs, existingContacts)
+      if (peopleError) return { success: false, error: peopleError }
     }
 
     const name = data.name?.trim() ?? existing.name

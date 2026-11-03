@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
 
 type ContactDraft = {
   readonly key: string
@@ -66,6 +67,15 @@ export function VendorDialog({
   const sageLinked = Boolean(initialData?.sageVendorId || initialData?.sageVendorNumber)
   const sageVerified = Boolean(initialData?.sageVendorId)
   const locked = sageLinked || readOnly
+  // On a Sage-linked vendor the company and Sage's people stay read-only, but
+  // Compass-only people (no Sage ids) are edited here. They never become
+  // primary: primary belongs to the people Sage manages.
+  const sagePersonIds = React.useMemo(
+    () => new Set((initialData?.contacts ?? []).filter(isSageLinkedPerson).map((contact) => contact.id)),
+    [initialData],
+  )
+  const personLocked = (contact: ContactDraft): boolean =>
+    readOnly || (sageLinked && contact.id !== null && sagePersonIds.has(contact.id))
 
   React.useEffect(() => {
     setSelectedPeopleIds([])
@@ -126,7 +136,7 @@ export function VendorDialog({
         title: "",
         email: "",
         phone: "",
-        isPrimary: current.length === 0,
+        isPrimary: current.length === 0 && !sageLinked,
       },
     ])
   }
@@ -156,7 +166,7 @@ export function VendorDialog({
     setContacts((current) => {
       const removed = current.find((contact) => contact.key === key)
       const remaining = current.filter((contact) => contact.key !== key)
-      if (!removed?.isPrimary || remaining.length === 0) return remaining
+      if (!removed?.isPrimary || remaining.length === 0 || sageLinked) return remaining
       return remaining.map((contact, index) => ({
         ...contact,
         isPrimary: index === 0,
@@ -261,7 +271,7 @@ export function VendorDialog({
                   Add multiple contacts, each with their own email and phone.
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addContact} disabled={locked}>
+              <Button type="button" variant="outline" size="sm" onClick={addContact} disabled={readOnly}>
                 <IconPlus className="size-4" />
                 Add person
               </Button>
@@ -290,7 +300,7 @@ export function VendorDialog({
                       /> : null}
                       <p className="text-sm font-medium">
                         Contact {index + 1}
-                        {sageLinked && contact.id && !initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) ? (
+                        {sageLinked && !(contact.id && sagePersonIds.has(contact.id)) ? (
                           <span className="ml-2 text-xs font-normal text-muted-foreground">Compass only, not in Sage</span>
                         ) : null}
                       </p>
@@ -325,7 +335,7 @@ export function VendorDialog({
                           size="icon-sm"
                           onClick={() => removeContact(contact.key)}
                           aria-label={`Remove contact ${index + 1}`}
-                          disabled={locked}
+                          disabled={personLocked(contact)}
                         >
                           <IconTrash className="size-4" />
                         </Button>
@@ -334,7 +344,7 @@ export function VendorDialog({
                     <div className="grid grid-cols-2 gap-3">
                       <Input
                         required
-                        disabled={locked}
+                        disabled={personLocked(contact)}
                         value={contact.name}
                         onChange={(event) =>
                           updateContact(contact.key, "name", event.target.value)
@@ -343,7 +353,7 @@ export function VendorDialog({
                       />
                       <Input
                         value={contact.title}
-                        disabled={locked}
+                        disabled={personLocked(contact)}
                         onChange={(event) =>
                           updateContact(contact.key, "title", event.target.value)
                         }
@@ -352,7 +362,7 @@ export function VendorDialog({
                       <Input
                         type="email"
                         value={contact.email}
-                        disabled={locked}
+                        disabled={personLocked(contact)}
                         onChange={(event) =>
                           updateContact(contact.key, "email", event.target.value)
                         }
@@ -361,7 +371,7 @@ export function VendorDialog({
                       <Input
                         type="tel"
                         value={contact.phone}
-                        disabled={locked}
+                        disabled={personLocked(contact)}
                         onChange={(event) =>
                           updateContact(contact.key, "phone", event.target.value)
                         }
@@ -388,11 +398,14 @@ export function VendorDialog({
             <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
           ) : null}
           {sageLinked && !readOnly ? (
-            sageVerified ? (
-              <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
-                Propose Sage company edit
-              </Button>
-            ) : null
+            <>
+              <Button type="submit" variant="outline" className="h-9">Save Compass-only people</Button>
+              {sageVerified ? (
+                <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
+                  Propose Sage company edit
+                </Button>
+              ) : null}
+            </>
           ) : !readOnly ? (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Create Vendor"}
