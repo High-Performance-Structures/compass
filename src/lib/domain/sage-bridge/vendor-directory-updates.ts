@@ -13,7 +13,7 @@
 
 import type { SageVendorDirectoryDetails } from "@/lib/domain/sage-bridge/store"
 
-export type SageSyncedVendorField =
+type SageSyncedVendorField =
   | "name"
   | "category"
   | "ownerName"
@@ -36,7 +36,7 @@ export type SageVendorEntry = {
   readonly details: SageVendorDirectoryDetails
 }
 
-export type SageVendorFieldChange = {
+type SageVendorFieldChange = {
   readonly field: SageSyncedVendorField
   readonly before: string | null
   readonly after: string
