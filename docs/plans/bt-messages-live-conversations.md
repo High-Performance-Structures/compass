@@ -645,24 +645,36 @@ WHERE content_sha256 IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT r2_path) > 1;
 Participants the importer could not resolve are listed for staff on the
 Contacts page, **Needs review** tab (next to Unassigned), one row per
 conversation and literal, server-paged. Code:
-`src/lib/domain/conversations/imported-participant-review.ts` (list) and
-`imported-participant-resolve.ts` (decisions).
+`src/lib/domain/conversations/imported-participant-review.ts` (list),
+`imported-participant-resolve.ts` (decisions) and
+`src/lib/domain/contacts/people-search.ts` (directory people search).
 
-- **Name matches more than one contact** (`identity_status = 'unmatched'` on
-  a full name or email): *Pick person* offers only the exact candidates the
-  importer's own resolver ties on (`resolve.candidates`).
-- **Several names run together** (`boundary_unproven:*` literal rows):
-  *Split into people*. Staff mark one name per line, using only text from
-  the literal; each name goes through the importer's resolver, so it links
-  to its single exact match or becomes a new uninvited unassigned contact
-  (`buildertrend_new_person`). A sender is one person.
+This is a manual review, so staff choose (owner decision 2026-11-03). The
+importer itself stays exact-only.
+
+- **Pick person**: staff may pick anyone in the company directory: staff
+  accounts and internal contacts (archived too), vendor people, client
+  people, and unassigned or project-only contacts. The search runs on the
+  server (bounded, per source LIMIT 20) by name, email or phone. Each result
+  shows type (Staff / Archived staff / Vendor: X / Client: Y / Unassigned),
+  email and phone. People whose full name or email is exactly the text shown
+  are listed first as **Suggested**, a hint only.
+- **Split into people**: staff mark one name per line, using only text from
+  the literal. For each name they keep a suggestion, pick anyone, or add a
+  new uninvited unassigned contact (`buildertrend_new_person`). A sender is
+  one person.
 - *Leave as is*: reviewed, no person.
 
-The literal is never edited. Picked rows get the person and
-`identity_status = 'matched'`; split literal rows become `boundary_split`
-with additive per-message rows for each name (inactive). A thread-level row
-is added so "Share with owner/vendor…" can include the person; it is active
-only while the conversation is still staff-only, so nothing becomes visible
-until staff share. Projects with `imported_conversations_staff_only` (legal
-hold) are listed read only. Every decision is recorded in Activity. No
-notification or email is sent. A repeat of the same decision is a no-op.
+The server re-reads every chosen person within the organization (another
+company's person is refused). The literal is never edited. Picked rows get
+the person and `identity_status = 'matched'`; split literal rows become
+`boundary_split` with additive per-message rows for each name (inactive). A
+person new to the project is added as a project contact without an
+invitation, with the importer's own row builder. A thread-level row is added
+so "Share with owner/vendor…" can include the person; it is active only while
+the conversation is still staff-only, so nothing becomes visible until staff
+share. Projects with `imported_conversations_staff_only` (legal hold) are
+listed read only. Every decision is recorded in Activity as a manual choice,
+with the actor and the chosen directory references. No notification or email
+is sent. A repeat of the same decision is a no-op; changing a reviewed
+decision is not offered (it is refused).

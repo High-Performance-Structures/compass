@@ -29,8 +29,7 @@ const MESSAGE_RECORD_SUFFIX = "_message"
 /** The thread-level participant rows that conversation access reads. */
 export const THREAD_RECORD_SUFFIX = "_message_thread"
 
-const REVIEW_KINDS = ["ambiguous", "run_together", "not_full_name"] as const
-type ReviewKind = (typeof REVIEW_KINDS)[number]
+type ReviewKind = "ambiguous" | "run_together" | "not_full_name"
 
 /** identity_status values written by review (the importer writes `matched`, `unmatched`, `boundary_unproven:*`). */
 export const REVIEW_IDENTITY_STATUSES = { matched: "matched", split: "boundary_split" } as const
