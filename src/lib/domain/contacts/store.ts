@@ -40,7 +40,7 @@ type ProjectContactPatch = Partial<Omit<ProjectContactInsert, "id" | "projectId"
 type CustomerInsert = typeof customers.$inferInsert
 type CustomerPatch = Partial<Omit<CustomerInsert, "id" | "organizationId" | "createdAt">>
 type VendorInsert = typeof vendors.$inferInsert
-type VendorPatch = Partial<Omit<VendorInsert, "id" | "organizationId" | "createdAt">>
+export type VendorPatch = Partial<Omit<VendorInsert, "id" | "organizationId" | "createdAt">>
 type VendorContactInsert = typeof vendorContacts.$inferInsert
 type VendorContactPatch = Partial<Omit<VendorContactInsert, "id" | "vendorId" | "createdAt">>
 type CustomerContactInsert = typeof customerContacts.$inferInsert
@@ -543,6 +543,19 @@ export async function adoptSageCompanyName(
   await db.update(projectContacts).set({ companyName: input.name, updatedAt: input.now })
     .where(eq(projectContacts.vendorId, input.id))
   return true
+}
+
+/** A Sage list update, fenced on the vendor still being active and linked to that Sage record. */
+export function sageVendorUpdateStatement(db: Db, input: { readonly vendorId: string; readonly organizationId: string; readonly sageRecordId: string; readonly patch: VendorPatch; readonly now: string }) {
+  return db.update(vendors).set({ ...input.patch, updatedAt: input.now }).where(and(
+    eq(vendors.id, input.vendorId), eq(vendors.organizationId, input.organizationId), eq(vendors.directoryStatus, "active"),
+    isNull(vendors.mergedIntoVendorId), eq(vendors.sageVendorId, input.sageRecordId)
+  )).returning({ id: vendors.id })
+}
+
+/** Project contacts keep a copy of their vendor's name for readers that still use it. */
+export function vendorProjectContactNameStatement(db: Db, input: { readonly vendorId: string; readonly name: string; readonly now: string }) {
+  return db.update(projectContacts).set({ companyName: input.name, updatedAt: input.now }).where(eq(projectContacts.vendorId, input.vendorId))
 }
 
 export async function deleteVendor(db: Db, input: { readonly vendorId: string; readonly organizationId: string }): Promise<void> {

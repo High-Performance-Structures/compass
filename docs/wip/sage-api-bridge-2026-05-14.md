@@ -95,6 +95,21 @@ company sends to Sage (`sage.send` in the trade-docs settings marks types
 kept in Compass only). `SAGE_VENDOR_CERTIFICATE_DRY_RUN=true` on the writer
 reports the plan as a failed sync without writing anything.
 
+Once a day (when a poll's `directoryWanted` is true) the same writer posts
+Sage's whole vendor list to `/api/integrations/sage/vendor-certificates/directory`:
+record id, number, name and primary email, plus `details` (owner, address,
+phone and the vendor type name from Sage's Vendor Types list). Compass
+replaces its copy in `sage_vendor_directory_entries`; rows from an older
+writer have `details_received = 0`. While `sage.updateVendors` is on (the
+default), every active vendor linked to a Sage record then takes Sage's
+name, owner, address, phone and primary email (`applySageVendorDirectory`).
+A blank in Sage leaves Compass's value alone. The category follows Sage's
+vendor type through `sage.vendorTypes`, else a Compass category of the same
+name; a vendor with no type in Sage keeps its category. Each change is
+logged on the vendor's Activity as `vendor.sage_updated`, and a vendor whose
+category changed has its certificates queued again. Nothing is written to
+Sage by this step.
+
 ### Private poller deployment
 
 The reference poller is `scripts/sage_pay_application_poller.py`; its systemd

@@ -251,7 +251,10 @@ namespace CompassSageClientProjectWriter
         {
             List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
             using (SqlConnection connection = OpenSql())
-            using (SqlCommand command = new SqlCommand("SELECT _idnum, recnum, vndnme, prmeml FROM dbo.actpay ORDER BY recnum", connection))
+            // Owner, address, phone and vendor type let Compass keep linked vendors in step with Sage.
+            using (SqlCommand command = new SqlCommand(
+                "SELECT a._idnum, a.recnum, a.vndnme, a.prmeml, a.ownnme, a.addrs1, a.addrs2, a.ctynme, a.state_, a.zipcde, a.phnnum, t.typnme " +
+                "FROM dbo.actpay a LEFT JOIN dbo.vndtyp t ON t.recnum = a.vndtyp ORDER BY a.recnum", connection))
             using (SqlDataReader reader = command.ExecuteReader())
             {
                 while (reader.Read())
@@ -264,14 +267,27 @@ namespace CompassSageClientProjectWriter
                     if (reader.IsDBNull(1) || !Int32.TryParse(Convert.ToString(reader[1]), NumberStyles.None, CultureInfo.InvariantCulture, out number) || number <= 0) continue;
                     if (name.Length == 0) continue;
                     string email = reader.IsDBNull(3) ? null : Convert.ToString(reader[3]).Trim();
+                    Dictionary<string, object> details = new Dictionary<string, object> {
+                        { "ownerName", DirectoryText(reader, 4, 100) }, { "addressLine1", DirectoryText(reader, 5, 100) },
+                        { "addressLine2", DirectoryText(reader, 6, 100) }, { "city", DirectoryText(reader, 7, 100) },
+                        { "state", DirectoryText(reader, 8, 10) }, { "postalCode", DirectoryText(reader, 9, 20) },
+                        { "phone", DirectoryText(reader, 10, 30) }, { "vendorType", DirectoryText(reader, 11, 100) } };
                     entries.Add(new Dictionary<string, object> {
                         { "sageRecordId", id.ToString() }, { "sageVendorNumber", number.ToString(CultureInfo.InvariantCulture) },
-                        { "name", Truncate(name, 200) }, { "email", String.IsNullOrEmpty(email) ? null : Truncate(email, 255) } });
+                        { "name", Truncate(name, 200) }, { "email", String.IsNullOrEmpty(email) ? null : Truncate(email, 255) },
+                        { "details", details } });
                 }
             }
             if (entries.Count == 0) return;
             Send("POST", CertificateDirectoryTarget, Json.Serialize(new Dictionary<string, object> { { "organizationId", organizationId }, { "entries", entries } }));
             WriteLog("INFO", "Sent Sage's vendor list to Compass: " + entries.Count + " vendors.");
+        }
+
+        private static string DirectoryText(SqlDataReader reader, int column, int max)
+        {
+            if (reader.IsDBNull(column)) return null;
+            string value = Convert.ToString(reader[column], CultureInfo.InvariantCulture).Trim();
+            return value.Length == 0 ? null : Truncate(value, max);
         }
 
         private static int ValidateCertificatePayload(CertificateRequest request)

@@ -2,14 +2,28 @@ import { z } from "zod/v4"
 
 import { replaceSageVendorDirectory } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
+import { applySageVendorDirectory } from "@/lib/sage/vendor-directory-sync"
 import { authorizeVendorCertificateBridge } from "@/lib/sage/vendor-certificate-bridge"
 
 const MAX_DIRECTORY_BYTES = 4 * 1024 * 1024
+const sageText = (max: number) => z.string().max(max).nullable().transform((value) => value?.trim() || null)
+/** Sent by writers new enough to read it; older writers send names and emails only. */
+const detailsSchema = z.strictObject({
+  ownerName: sageText(100),
+  addressLine1: sageText(100),
+  addressLine2: sageText(100),
+  city: sageText(100),
+  state: sageText(10),
+  postalCode: sageText(20),
+  phone: sageText(30),
+  vendorType: sageText(100),
+})
 const entrySchema = z.strictObject({
   sageRecordId: z.guid(),
   sageVendorNumber: z.string().regex(/^[1-9]\d{0,9}$/),
   name: z.string().trim().min(1).max(200),
   email: z.string().max(255).nullable(),
+  details: detailsSchema.optional(),
 })
 const directorySchema = z.strictObject({ organizationId: z.string().min(1), entries: z.array(entrySchema).min(1).max(5000) })
 
@@ -37,11 +51,15 @@ export async function POST(request: Request): Promise<Response> {
   if (ids.size !== entries.length || numbers.size !== entries.length) {
     return Response.json({ error: "Duplicate Sage vendor in the directory" }, { status: 400 })
   }
-  await replaceSageVendorDirectory(
-    bridge.db,
-    bridge.organizationId,
-    entries.map((entry) => ({ ...entry, sageRecordId: entry.sageRecordId.toLowerCase(), email: entry.email?.trim() || null })),
-    new Date().toISOString()
-  )
-  return Response.json({ success: true, count: entries.length }, { status: 202 })
+  const rows = entries.map((entry) => ({
+    ...entry,
+    sageRecordId: entry.sageRecordId.toLowerCase(),
+    email: entry.email?.trim() || null,
+    details: entry.details ?? null,
+  }))
+  const now = new Date().toISOString()
+  await replaceSageVendorDirectory(bridge.db, bridge.organizationId, rows, now)
+  // Linked vendors take Sage's changes; this never fails the stored list.
+  const { updated } = await applySageVendorDirectory(bridge.db, bridge.organizationId, rows, now)
+  return Response.json({ success: true, count: entries.length, updated }, { status: 202 })
 }

@@ -116,10 +116,24 @@ const tradeDocSageSettingsSchema = z.object({
   names: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.string().trim().max(50)),
   /** Document types kept in Compass only (false); every other required type goes to Sage. */
   send: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.boolean()).default({}),
+  /**
+   * Each time the Sage writer sends Sage's vendor list, linked vendors take
+   * Sage's name, owner, address, phone and email. Blanks in Sage leave
+   * Compass alone.
+   */
+  updateVendors: z.boolean().default(true),
+  /**
+   * The Compass category for each Sage vendor type. A type that isn't listed
+   * uses the Compass category of the same name, if there is one; otherwise,
+   * and for vendors with no type in Sage, Compass keeps its category.
+   */
+  vendorTypes: z.record(z.string().trim().min(1).max(100), z.string().trim().min(1).max(60)).default({}),
 })
 export type TradeDocSageSettings = z.infer<typeof tradeDocSageSettingsSchema>
 
-export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = { enabled: false, warnOnly: true, names: {}, send: {} }
+export const DEFAULT_TRADE_DOC_SAGE_SETTINGS: TradeDocSageSettings = {
+  enabled: false, warnOnly: true, names: {}, send: {}, updateVendors: true, vendorTypes: {},
+}
 
 export const tradeDocSettingsSchema = z.object({
   docTypes: z.array(tradeDocTypeSchema).min(1).max(30),

@@ -23,12 +23,29 @@ export type SageVendorCertificateOverview = {
   /** Exact one-to-one matches staff can link in one step. */
   readonly matches: readonly SageVendorMatch[]
   readonly syncCounts: Readonly<Record<SageVendorCertificateSyncStatus, number>>
+  /** Whether Sage's list carries owners, addresses and types (newer writers only). */
+  readonly detailsReceived: boolean
+  /** Sage's vendor types in use, with how many vendors have each. */
+  readonly sageVendorTypes: readonly { readonly name: string; readonly count: number }[]
+  /** Categories already used by Compass vendors, for mapping Sage's types. */
+  readonly compassCategories: readonly string[]
 }
 
-async function loadMatches(db: Db, organizationId: string): Promise<{ readonly matches: readonly SageVendorMatch[]; readonly compassVendorCount: number; readonly linkedCount: number; readonly sageVendorCount: number; readonly capturedAt: string | null }> {
+type LoadedMatches = {
+  readonly matches: readonly SageVendorMatch[]
+  readonly compassVendorCount: number
+  readonly linkedCount: number
+  readonly sageVendorCount: number
+  readonly capturedAt: string | null
+  readonly detailsReceived: boolean
+  readonly sageVendorTypes: readonly { readonly name: string; readonly count: number }[]
+  readonly compassCategories: readonly string[]
+}
+
+async function loadMatches(db: Db, organizationId: string): Promise<LoadedMatches> {
   const [vendorRows, contactRows, entries] = await Promise.all([
     db
-      .select({ id: vendors.id, name: vendors.name, email: vendors.email, primaryEmail: vendors.primaryEmail, sageVendorId: vendors.sageVendorId })
+      .select({ id: vendors.id, name: vendors.name, email: vendors.email, primaryEmail: vendors.primaryEmail, sageVendorId: vendors.sageVendorId, category: vendors.category })
       .from(vendors)
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"))),
     db
@@ -51,7 +68,19 @@ async function loadMatches(db: Db, organizationId: string): Promise<{ readonly m
     linkedCount: vendorRows.filter((row) => row.sageVendorId).length,
     sageVendorCount: entries.length,
     capturedAt,
+    detailsReceived: entries.some((entry) => entry.detailsReceived),
+    sageVendorTypes: countSageVendorTypes(entries.map((entry) => entry.vendorType)),
+    compassCategories: [...new Set(vendorRows.map((row) => row.category.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
   }
+}
+
+function countSageVendorTypes(types: readonly (string | null)[]): readonly { readonly name: string; readonly count: number }[] {
+  const counts = new Map<string, number>()
+  for (const type of types) {
+    const name = type?.trim()
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  return [...counts].map(([name, total]) => ({ name, count: total })).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Settings → Trade docs → Sage: how many vendors are linked, ready to link, and synced. */
@@ -82,6 +111,9 @@ export async function getSageVendorCertificateOverview(): Promise<ActionResult<S
           succeeded: syncCounts.succeeded ?? 0,
           failed: syncCounts.failed ?? 0,
         },
+        detailsReceived: loaded.detailsReceived,
+        sageVendorTypes: loaded.sageVendorTypes,
+        compassCategories: loaded.compassCategories,
       },
     }
   } catch (error) {
