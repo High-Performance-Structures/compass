@@ -233,14 +233,13 @@ describe("split into people", () => {
     expect(rows("SELECT count(*) AS n FROM project_source_record_participants")).toEqual(before)
   })
 
-  it("follows staff's choice even for an ambiguous name, but keeps names to the original text", async () => {
+  it("follows staff's choice even for an ambiguous name or a name not in the original text", async () => {
     insert("project_source_record_participants", {
       id: "p-literal-2", organization_id: ORG, project_id: PROJECT, source_record_type: "buildertrend_message", source_record_id: "m-2",
       source_participant_id: "cc:owner:literal:xyz", source_contact_name: "Daniel Vogel, Jane Doe", participant_role: "cc_literal",
       identity_status: "boundary_unproven:several", audience: "external", membership_status: "pending", review_status: "unreviewed", active: 0,
       created_at: NOW, updated_at: NOW,
     })
-    expect(await resolve("p-literal", { type: "split", pieces: [{ text: "Janet Doe", choice: { type: "new" } }] })).toMatchObject({ success: false })
     expect(await resolve("p-literal-2", { type: "split", pieces: [{ text: "Daniel Vogel", choice: { type: "person", ref: "vendor_contact:vc-other" } }] })).toMatchObject({ success: false })
     expect(await resolve("p-literal-2", { type: "split", pieces: [
       { text: "Daniel Vogel", choice: { type: "person", ref: "internal:ic-dan" } },
@@ -248,12 +247,19 @@ describe("split into people", () => {
     ] })).toMatchObject({ success: true, data: { people: ["Daniel Vogel", "Jane Doe"] } })
   })
 
-  it("resolves an undivided sender's plain sender row with it, and a sender is one person", async () => {
-    expect(await resolve("p-sender-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "new" } }, { text: "Someone", choice: { type: "new" } }] }))
-      .toMatchObject({ success: false, error: expect.stringContaining("one person") })
+  it("resolves an undivided sender's plain sender row with its one person", async () => {
     expect(await resolve("p-sender-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } }] })).toMatchObject({ success: true })
     expect(rows("SELECT project_contact_id, review_status FROM project_source_record_participants WHERE id = 'p-sender-plain'"))
       .toEqual([{ project_contact_id: "pc-jane", review_status: "reviewed" }])
+  })
+
+  it("splits a sender into several people, including names typed in full", async () => {
+    expect(await resolve("p-sender-literal", { type: "split", pieces: [
+      { text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } },
+      { text: "Someone Typed In Full", choice: { type: "new" } },
+    ] })).toMatchObject({ success: true, data: { people: ["Jane Doe", "Someone Typed In Full"] } })
+    expect(rows("SELECT project_contact_id, review_status FROM project_source_record_participants WHERE id = 'p-sender-plain'"))
+      .toEqual([{ project_contact_id: null, review_status: "reviewed" }])
   })
 })
 
@@ -277,11 +283,11 @@ describe("legal hold", () => {
 })
 
 describe("piece rules", () => {
-  it("reads names and emails and keeps to the original text", () => {
+  it("reads names and emails, and accepts names not in the original text", () => {
     expect(parsePiece("Bob Smith <bob@example.com>")).toEqual({ displayName: "Bob Smith", email: "bob@example.com" })
     expect(parsePiece("bob@example.com")).toEqual({ displayName: null, email: "bob@example.com" })
-    expect(checkPieces(LITERAL, ["Jane Doe", " Bob Smith "], "to")).toEqual(["Jane Doe", "Bob Smith"])
-    expect(checkPieces(LITERAL, ["Jane Doe", "Jane Doe"], "to")).toBe("The same name is marked twice.")
-    expect(checkPieces(LITERAL, ["Someone Else"], "to")).toContain("not part of the original")
+    expect(checkPieces(["Jane Doe", " Bob Smith "])).toEqual(["Jane Doe", "Bob Smith"])
+    expect(checkPieces(["Jane Doe", "Jane Doe"])).toBe("The same name is marked twice.")
+    expect(checkPieces(["Someone Else"])).toEqual(["Someone Else"])
   })
 })

@@ -48,7 +48,8 @@ import {
  *   vendor person, client person, or unassigned / project-only contact.
  * - Split into people: staff mark the names; for each one they keep the
  *   suggested person, pick anyone, or add a new uninvited, unassigned
- *   contact. A sender is one person.
+ *   contact. Staff may type any name (the literal is only a guide) and a
+ *   sender may resolve to several people (owner decision 2026-11-03).
  * - Leave as is: reviewed, no person.
  *
  * The original literal is never edited. Resolution is written on the
@@ -124,18 +125,16 @@ export function parsePiece(piece: string): { readonly displayName: string | null
 const squash = (value: string): string => value.trim().replace(/\s+/g, " ")
 
 /**
- * Staff mark the boundaries; they never type new text. Every piece must be
- * text from the literal, and a sender is one person.
+ * Staff write one person per line. The literal is a guide, not a limit: the
+ * imported text may be truncated or mangled, so staff may type the full name
+ * they know. The original literal itself is never edited.
  */
-export function checkPieces(literal: string, pieces: readonly string[], role: string): readonly string[] | string {
+export function checkPieces(pieces: readonly string[]): readonly string[] | string {
   const cleaned = pieces.map(squash).filter((piece) => piece !== "")
   if (cleaned.length === 0) return "Mark at least one name."
   if (cleaned.length > MAX_PIECES) return `Mark at most ${MAX_PIECES} names.`
-  if (role === "sender" && cleaned.length !== 1) return "A sender is one person: mark exactly one name."
-  const whole = squash(literal)
   for (const piece of cleaned) {
     if (piece.length > MAX_PIECE_LENGTH) return "A name is too long."
-    if (!whole.includes(piece)) return `"${piece}" is not part of the original text.`
   }
   if (new Set(cleaned).size !== cleaned.length) return "The same name is marked twice."
   return cleaned
@@ -387,7 +386,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
   if (unreviewed.length === 0) return recordedDecision(group) === "split" ? repeat : fail(ALREADY_REVIEWED)
   const literalRows = unreviewed.filter((row) => row.role.endsWith("_literal"))
   const role = (literalRows[0]?.role ?? group.anchor.role).replace(/_literal$/, "")
-  const checked = checkPieces(group.literal, decision.pieces.map((piece) => piece.text), role)
+  const checked = checkPieces(decision.pieces.map((piece) => piece.text))
   if (typeof checked === "string") return fail(checked)
   const namespace = literalNamespace(literalRows[0]?.participantKey ?? group.anchor.participantKey)
   const people: Resolved[] = []
@@ -434,7 +433,8 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
     createdAt: now,
     updatedAt: now,
   })))
-  // An undivided sender's plain sender row is that one person.
+  // An undivided sender's plain sender row takes the person only when there is
+  // exactly one; a sender split into several people is reviewed without one.
   const senderRows = unreviewed.filter((row) => !row.role.endsWith("_literal"))
   const sender = people[0]
   const statements = [
