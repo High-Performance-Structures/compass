@@ -120,7 +120,7 @@ function PeopleSearch({ rowId, selectedRef, onSelect }: {
  * One review decision for an unresolved imported participant. Staff may
  * choose anyone in the directory; people whose exact name or email matches
  * are suggested first. "Split into people" lets staff mark the names (one
- * per line, text from the original only) and choose, for each, a suggested
+ * per line; staff may type full names the imported text cut short) and choose, for each, a suggested
  * person, anyone else, or a new uninvited contact. After saving, a
  * staff-only conversation stays staff-only, and the dialog says so.
  */
@@ -238,7 +238,7 @@ export function ParticipantReviewDialog({
         ) : action === "split" && rowId ? (
           lines === null ? (
             <div className="space-y-2">
-              <Label htmlFor="participant-split">One person per line, using only text from the original</Label>
+              <Label htmlFor="participant-split">One person per line. Type the full name if the imported text is cut short.</Label>
               <Textarea
                 id="participant-split"
                 value={pieces}
