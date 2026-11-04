@@ -17,7 +17,7 @@ permissions:
 jobs:
   production-smoke:
     name: Production Smoke (${{ matrix.project }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright does not support ubuntu-latest (26.04) yet
     timeout-minutes: 30
     strategy:
       fail-fast: false
