@@ -15,6 +15,7 @@ import {
   type SageCompanyNameEntry,
   type SageCompanyNameStatus,
 } from "@/lib/sage/company-name-adoption"
+import { heldSageFields } from "@/lib/sage/sage-held-fields"
 import { orgContext, type Db } from "@/lib/server/action-context"
 
 export type SageCompanyNameState = {
@@ -80,8 +81,10 @@ async function loadState(db: Db, organizationId: string, kind: SageCompanyKind, 
   const entry = company.sageRecordId
     ? await sageEntry(db, organizationId, kind, company.sageRecordId, company.sageNumber)
     : null
+  const held = await heldSageFields(db, organizationId, kind, entityId)
   const status = sageCompanyNameStatus({
     compassName: company.name, sageRecordId: company.sageRecordId, sageNumber: company.sageNumber, entry,
+    namePending: held.has("name"),
   })
   return {
     compassName: company.name,

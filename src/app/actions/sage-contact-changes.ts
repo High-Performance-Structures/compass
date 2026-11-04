@@ -37,6 +37,8 @@ import {
   sageSnapshotFromRow,
 } from "@/lib/sage/contact-proposal-service"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
+import type { SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
+import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 
@@ -286,6 +288,36 @@ function isSageContactFieldChange(field: string, kind: SageContactKind): field i
   return sageContactProposalFields(kind).some((known) => known === field)
 }
 
+/**
+ * Puts Sage's values back in Compass for the fields of a rejected change:
+ * Sage's last read, or the change's own before-value when that read lacks
+ * the field. True when Compass was updated.
+ */
+async function revertToSageValues(
+  db: Db,
+  organizationId: string,
+  kind: SageLinkedEditKind,
+  entityId: string,
+  changes: readonly SageContactFieldChange[],
+  now: string
+): Promise<boolean> {
+  const snapshotRow = await db.select().from(sageContactSnapshots).where(and(
+    eq(sageContactSnapshots.organizationId, organizationId),
+    eq(sageContactSnapshots.kind, kind),
+    eq(sageContactSnapshots.entityId, entityId)
+  )).get()
+  const sageFields: Readonly<Record<string, string | null | undefined>> =
+    (snapshotRow ? sageSnapshotFromRow(snapshotRow)?.fields : undefined) ?? {}
+  const values: Record<string, string | null> = {}
+  for (const change of changes) {
+    values[change.field] = Object.prototype.hasOwnProperty.call(sageFields, change.field)
+      ? sageFields[change.field] ?? null
+      : change.before
+  }
+  const applied = await applySageLinkedValuesInCompass(db, organizationId, kind, entityId, values, now)
+  return applied.success
+}
+
 export async function reviewSageContactChange(
   proposalId: string,
   decision: "approve" | "reject",
@@ -307,10 +339,12 @@ export async function reviewSageContactChange(
       return { success: false, error: "Sage contact writes are paused. Approval is unavailable until the bridge is validated and enabled." }
     }
     const db = getDb(env.DB)
+    // A write that failed or did not read back can still be rejected (never approved again).
+    const fromStatuses = decision === "approve" ? ["pending"] as const : ["pending", "conflict", "failed"] as const
     const proposal = await db.select().from(sageContactChangeProposals).where(and(
       eq(sageContactChangeProposals.id, proposalId),
       eq(sageContactChangeProposals.organizationId, orgId),
-      eq(sageContactChangeProposals.status, "pending")
+      inArray(sageContactChangeProposals.status, [...fromStatuses])
     )).get()
     if (!proposal) return { success: false, error: "Proposal is no longer pending." }
     if (proposal.requestedByUserId === user.id) {
@@ -356,16 +390,20 @@ export async function reviewSageContactChange(
       proposalId, organizationId: orgId, reviewerUserId: user.id, status,
       reviewNote: noteValue || null, noteJson: JSON.stringify({ note: noteValue }),
       completedAt: decision === "reject" ? now : null, now,
+      fromStatuses: decision === "reject" ? [...fromStatuses] : undefined,
     }))
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
       return { success: false, error: "Proposal was reviewed concurrently." }
     }
+    const reviewed = changes.data.filter((change): change is SageContactFieldChange =>
+      isSageContactFieldChange(change.field, kind.data))
+    // Compass already showed the requested values; a rejection puts Sage's back.
+    const reverted = decision === "reject" && kind.data !== "employee"
+      ? await revertToSageValues(db, orgId, kind.data, proposal.entityId, reviewed, now)
+      : false
     await recordSageChangeActivity(db, {
       organizationId: orgId, actor: user, kind: kind.data, entityId: proposal.entityId,
-      proposalId, step: status,
-      changes: changes.data.filter((change): change is SageContactFieldChange =>
-        isSageContactFieldChange(change.field, kind.data)),
-      note: noteValue || null,
+      proposalId, step: status, changes: reviewed, note: noteValue || null, reverted,
     })
     revalidatePath("/dashboard/contacts")
     return { success: true, id: proposalId, status }

@@ -3,21 +3,26 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { requestSageContactRefresh } from "@/app/actions/sage-contact-changes"
+import { requestSageContactRefresh, reviewSageContactChange } from "@/app/actions/sage-contact-changes"
 import {
   getSageLinkedEditState,
+  retrySageLinkedChange,
   type SageEditOutcomeItem,
   type SageLinkedEditState,
   type SagePendingChange,
 } from "@/app/actions/sage-linked-edits"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 
 /**
  * Shared pieces of the inline Sage-linked edit forms (vendors, clients and
- * their Sage people): the edit state, per-field notes, and the save outcome
- * messages. Sage-shared fields save as a reviewed Sage change request.
+ * their Sage people): the edit state, per-field markers, and the save outcome
+ * messages. Compass shows a saved value at once; Sage-shared fields also go
+ * to Sage as a reviewed change request, marked "Sage update pending" until
+ * Sage has the value.
  */
 
-export const SAGE_PENDING_LABEL = "Pending Sage approval"
+const SAGE_PENDING_LABEL = "Sage update pending"
 
 /**
  * Loads the record's Sage edit state. When the company's last Sage read is
@@ -64,16 +69,30 @@ export function sageFieldLockedReason(
   if (options.company && state.unavailableFields.includes(field)) {
     return "The Sage writer on the Sage computer needs its update before this can change here."
   }
-  if (state.pending[entityId]) return "Waiting on the Sage change already requested."
+  // Editing again replaces a waiting request; only a write in progress locks the record.
+  if (state.pending[entityId]?.status === "running") return SAGE_WRITING_REASON
   return null
 }
 
-function pendingValue(pending: SagePendingChange | undefined, field: string): string | null | undefined {
-  const change = pending?.changes.find((item) => item.field === field)
-  return change ? change.after : undefined
+const SAGE_WRITING_REASON = "Sage is writing the last change now. Try again in a minute."
+
+/** True when the field's value in Compass is still on its way to Sage. */
+function isSagePendingField(pending: SagePendingChange | undefined, field: string): boolean {
+  return Boolean(pending?.changes.some((item) => item.field === field))
 }
 
-/** The note under a Sage-shared field: its pending value, or why it is locked. */
+/** The small "Sage update pending" marker beside a field. */
+export function SagePendingMarker({ pending }: { readonly pending: SagePendingChange }): React.ReactElement {
+  return pending.error ? (
+    <Badge variant="destructive" title={pending.error}>Sage update failed</Badge>
+  ) : (
+    <Badge variant="secondary" title="Compass shows the new value; Sage gets it once the change is approved.">
+      {SAGE_PENDING_LABEL}
+    </Badge>
+  )
+}
+
+/** The note under a Sage-shared field: its pending marker, or why it is locked. */
 export function SageFieldNote({
   pending,
   field,
@@ -83,18 +102,72 @@ export function SageFieldNote({
   readonly field: string
   readonly lockedReason: string | null
 }): React.ReactElement | null {
-  const value = pendingValue(pending, field)
-  if (value !== undefined) {
+  if (lockedReason && lockedReason !== SAGE_WRITING_REASON) {
+    return <p className="text-xs text-muted-foreground">{lockedReason}</p>
+  }
+  if (pending && isSagePendingField(pending, field)) return <SagePendingMarker pending={pending} />
+  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
+  return null
+}
+
+/**
+ * The record's line about its Sage change: waiting for approval, or (when the
+ * write failed or did not read back) the error with Retry and Reject. A
+ * rejection puts Sage's values back in Compass.
+ */
+export function SagePendingNotice({
+  kind,
+  entityId,
+  pending,
+  canEdit,
+  onChanged,
+}: {
+  readonly kind: "client_company" | "vendor_company" | "client_person" | "vendor_person"
+  readonly entityId: string
+  readonly pending: SagePendingChange | undefined
+  readonly canEdit: boolean
+  readonly onChanged: () => void | Promise<void>
+}): React.ReactElement | null {
+  const [busy, setBusy] = React.useState(false)
+  if (!pending) return null
+  if (!pending.error) {
     return (
       <p className="text-xs text-muted-foreground">
-        {SAGE_PENDING_LABEL}: <span className="font-medium text-foreground">{value ?? "(blank)"}</span>
+        {SAGE_PENDING_LABEL}: Compass already shows the new values; Sage gets them once a different staff member approves.
       </p>
     )
   }
-  if (lockedReason && lockedReason !== "Waiting on the Sage change already requested.") {
-    return <p className="text-xs text-muted-foreground">{lockedReason}</p>
+  const run = async (action: () => Promise<{ readonly success: boolean; readonly error?: string }>, done: string) => {
+    setBusy(true)
+    try {
+      const result = await action()
+      if (result.success) toast.success(done)
+      else toast.error(result.error ?? "Could not update the Sage change")
+      await onChanged()
+    } finally {
+      setBusy(false)
+    }
   }
-  return null
+  return (
+    <div className="space-y-2 text-xs">
+      <p className="text-destructive">Sage update failed: {pending.error}</p>
+      {canEdit ? (
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
+            const result = await retrySageLinkedChange(kind, entityId)
+            if (result.success) announceSageOutcomes(result.data.sage)
+            return result
+          }, "Sage change sent again")}>
+            Retry
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={busy}
+            onClick={() => void run(() => reviewSageContactChange(pending.proposalId, "reject"), "Rejected; Compass shows the Sage value again")}>
+            Reject
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /**
@@ -106,7 +179,10 @@ export function announceSageOutcomes(items: readonly SageEditOutcomeItem[]): boo
   for (const { label, outcome } of items) {
     switch (outcome.status) {
       case "requested":
-        toast.success(`Sent for Sage approval: ${label}. Compass shows the new values once Sage confirms them.`)
+        toast.success(`Saved ${label}. Sage update pending: it goes to Sage once approved.`)
+        break
+      case "updated":
+        toast.success(`Saved ${label}. The waiting Sage change now asks for these values.`)
         break
       case "already_requested":
         toast.info(`${label}: this change is already waiting for Sage approval.`)
@@ -116,7 +192,7 @@ export function announceSageOutcomes(items: readonly SageEditOutcomeItem[]): boo
         break
       case "reading_sage":
         done = false
-        toast.info(`Reading ${label} from Sage. Save again in a minute to send the change for approval.`)
+        toast.info(`Reading ${label} from Sage for the first time. Save again in a minute to change it.`)
         break
       case "blocked":
         done = false

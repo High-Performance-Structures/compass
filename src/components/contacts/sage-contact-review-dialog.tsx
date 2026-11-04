@@ -218,6 +218,11 @@ export function SageContactReviewDialog({
                   <Button size="sm" onClick={() => void decide(proposal.id, "approve")} disabled={busyId !== null}>Approve</Button>
                   <Button size="sm" variant="outline" onClick={() => void decide(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button>
                 </div>
+              ) : (proposal.status === "conflict" || proposal.status === "failed") && canApprove && proposal.kind !== "employee" ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Compass still shows the requested values. Retry from the record, or reject to put the Sage values back.</p>
+                  <Button size="sm" variant="outline" onClick={() => void decide(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button>
+                </div>
               ) : proposal.status === "pending" ? <p className="text-xs text-muted-foreground">View-only review access.</p> : null}
             </section>
           ))}

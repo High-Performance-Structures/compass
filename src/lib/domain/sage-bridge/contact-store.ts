@@ -324,18 +324,25 @@ export type SageProposalReview = {
   readonly noteJson: string
   readonly completedAt: string | null
   readonly now: string
+  /**
+   * Change proposals only: the states the decision may come from. Default
+   * pending; a rejection may also close a write that failed or did not read back.
+   */
+  readonly fromStatuses?: readonly ("pending" | "conflict" | "failed")[]
 }
 
 /** Decides a pending change proposal, then its audit event (two batch items). */
 export function reviewSageContactChangeStatements(database: D1Database, review: SageProposalReview): D1PreparedStatement[] {
+  const from = review.fromStatuses ?? []
+  const fence = from.length > 0 ? `status IN (${from.map(() => "?").join(", ")})` : "status = 'pending'"
   return [
     database.prepare(
       `UPDATE sage_contact_change_proposals
          SET status = ?, reviewed_by_user_id = ?, reviewed_at = ?,
              review_note = ?, updated_at = ?, completed_at = ?
-         WHERE id = ? AND organization_id = ? AND status = 'pending'`
+         WHERE id = ? AND organization_id = ? AND ${fence}`
     ).bind(review.status, review.reviewerUserId, review.now, review.reviewNote, review.now,
-      review.completedAt, review.proposalId, review.organizationId),
+      review.completedAt, review.proposalId, review.organizationId, ...from),
     database.prepare(
       `INSERT INTO sage_contact_change_events
          (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)

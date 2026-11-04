@@ -80,12 +80,17 @@ export function formatVendorAddress(parts: Readonly<Record<(typeof ADDRESS_FIELD
   return [clean(parts.addressLine1), clean(parts.addressLine2), place || null].filter(Boolean).join(", ") || null
 }
 
-/** What changes on one linked vendor, or null when Compass already matches Sage. */
+/**
+ * What changes on one linked vendor, or null when Compass already matches Sage.
+ * `held` fields have an unfinished Sage change whose new value Compass already
+ * shows (see sage-held-fields.ts); Sage's list does not overwrite them.
+ */
 export function planSageVendorUpdate(
   vendor: SageSyncedVendor,
   entry: SageVendorEntry,
   categoryMapping: Readonly<Record<string, string>>,
-  categories: readonly string[]
+  categories: readonly string[],
+  held: ReadonlySet<string> = new Set()
 ): SageVendorUpdate | null {
   const sage: Readonly<Record<SageSyncedVendorField, string | null>> = {
     name: clean(entry.name),
@@ -102,6 +107,7 @@ export function planSageVendorUpdate(
   const changes: SageVendorFieldChange[] = []
   const patch: Partial<Record<SageSyncedVendorField | "address", string>> = {}
   for (const field of Object.keys(sage).filter(isSyncedField)) {
+    if (held.has(field)) continue
     const after = sage[field]
     const before = clean(vendor[field])
     if (after === null || after === before) continue

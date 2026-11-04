@@ -281,9 +281,12 @@ export async function POST(request: Request): Promise<Response> {
   const confirmed = readbackConfirmsChanges(changes.data.filter(
     (change): change is SageContactFieldChange => sageContactProposalFields(kind.data).some((field) => field === change.field)
   ), snapshot.fields)
-  // Name, email and phone reach Compass only on a confirmed write.
+  // Name, email and phone reach Compass only on a confirmed write. A confirmed
+  // write releases this change's fields; a conflict keeps holding them, so
+  // Compass keeps the requested values while staff retry or reject.
   const applied = await applySageContactSnapshotToCanonical(env.DB, proposal.organizationId, identity, snapshot,
-    confirmed ? changes.data.map((change) => change.field) : [])
+    confirmed ? changes.data.map((change) => change.field) : [],
+    confirmed ? { releaseProposalId: proposal.id } : {})
   if (!applied.success) return Response.json({ error: applied.error }, { status: 409 })
   const status = confirmed ? "succeeded" : "conflict"
   await db.batch([

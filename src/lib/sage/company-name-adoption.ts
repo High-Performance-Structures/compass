@@ -28,6 +28,11 @@ export type SageCompanyNameStatus =
   | "stale"
   | "same"
   | "differs"
+  /**
+   * Compass shows a new name that a Sage change request is still sending to
+   * Sage: the difference is expected, not drift.
+   */
+  | "pending"
 
 export type SageCompanyNameEntry = {
   readonly sageRecordId: string
@@ -41,8 +46,11 @@ export function sageCompanyNameStatus(input: {
   readonly sageRecordId: string | null
   readonly sageNumber: string | null
   readonly entry: SageCompanyNameEntry | null
+  /** The name has an unfinished Sage change (see sage-held-fields.ts). */
+  readonly namePending?: boolean
 }, now = Date.now()): SageCompanyNameStatus {
   if (!input.sageRecordId) return "unlinked"
+  if (input.namePending) return "pending"
   const entry = input.entry
   if (!entry || !entry.name.trim() ||
     !sameSageRecordId(entry.sageRecordId, input.sageRecordId) ||
@@ -54,6 +62,7 @@ export function sageCompanyNameStatus(input: {
 
 export function sageCompanyNameError(kind: SageCompanyKind, status: SageCompanyNameStatus): string | null {
   const list = kind === "client_company" ? "client" : "vendor"
+  if (status === "pending") return "A Sage name change is waiting. Reject it to keep the name Sage has."
   if (status === "unlinked") return "Review and link the stable Sage record ID before using the Sage name."
   if (status === "missing") return `This company was not found in Sage's ${list} list. Refresh this contact from Sage, then try again.`
   if (status === "stale") {

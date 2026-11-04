@@ -20,9 +20,10 @@ import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-di
 import type { SagePendingChange } from "@/app/actions/sage-linked-edits"
 import {
   announceSageOutcomes,
-  SAGE_PENDING_LABEL,
   SageFieldNote,
   sageFieldLockedReason,
+  SagePendingMarker,
+  SagePendingNotice,
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
@@ -299,12 +300,11 @@ export function VendorDialog({
           {sageLinked && initialData ? (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Linked to Sage. Changes to name, owner, email, phone and address go to Sage for approval;
-                Compass shows them once Sage confirms the write. Category and Compass-only people save now.
+                Linked to Sage. Every change shows in Compass when you save. Changes to name, owner, email,
+                phone, address and Sage people also go to Sage for approval.
               </p>
-              {sageState && initialData.id in sageState.pending ? (
-                <p className="text-xs font-medium">A Sage change for this vendor is waiting for approval.</p>
-              ) : null}
+              <SagePendingNotice kind="vendor_company" entityId={initialData.id} pending={sageState?.pending[initialData.id]}
+                canEdit={!readOnly} onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }} />
               {sageVerified ? <SageCompanyNameRow kind="vendor_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
               <div className="grid grid-cols-5 gap-3">
                 <div className="col-span-3 space-y-1.5">
@@ -557,8 +557,11 @@ export function VendorDialog({
                     </div>
                     {contact.id && isSagePerson(contact) ? (
                       <SagePersonNote
+                        contactId={contact.id}
                         pending={sageState?.pending[contact.id]}
                         lockedReason={readOnly ? null : personLockedReason(contact)}
+                        canEdit={!readOnly}
+                        onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }}
                       />
                     ) : null}
                   </div>
@@ -595,20 +598,31 @@ export function VendorDialog({
 
 /** Under a Sage person: the pending Sage change, or why the person is locked. */
 function SagePersonNote({
+  contactId,
   pending,
   lockedReason,
+  canEdit,
+  onChanged,
 }: {
+  readonly contactId: string
   readonly pending: SagePendingChange | undefined
   readonly lockedReason: string | null
+  readonly canEdit: boolean
+  readonly onChanged: () => Promise<void>
 }): React.ReactElement | null {
+  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
   if (pending) {
     return (
-      <p className="text-xs text-muted-foreground">
-        {SAGE_PENDING_LABEL}:{" "}
-        {pending.changes.map((change) => `${SAGE_FIELD_LABELS[change.field]} → ${change.after ?? "(blank)"}`).join("; ")}
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <SagePendingMarker pending={pending} />
+        <span className="text-xs text-muted-foreground">
+          {pending.changes.map((change) => SAGE_FIELD_LABELS[change.field]).join(", ")}
+        </span>
+        {pending.error ? (
+          <SagePendingNotice kind="vendor_person" entityId={contactId} pending={pending} canEdit={canEdit} onChanged={onChanged} />
+        ) : null}
+      </div>
     )
   }
-  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
-  return <p className="text-xs text-muted-foreground">In Sage: changes here go to Sage for approval.</p>
+  return <p className="text-xs text-muted-foreground">In Sage: changes show here at once and go to Sage for approval.</p>
 }
