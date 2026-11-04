@@ -1,10 +1,11 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
+import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
 import {
   sageContactChangeProposals,
   sageContactReadRequests,
@@ -13,8 +14,6 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
-  insertSageContactChangeEvent,
-  insertSageContactChangeProposal,
   insertSageContactReadRequest,
   reviewSageContactChangeStatements,
 } from "@/lib/domain/sage-bridge/contact-store"
@@ -24,16 +23,21 @@ import { requireOrg } from "@/lib/org-scope"
 import {
   isPrivateEmployeeContactField,
   isSageContactProposalCurrent,
-  planSageContactChange,
   sageContactProposalFields,
   type SageContactFieldChange,
   type SageContactKind,
-  type SageContactSnapshot,
 } from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import {
+  canAccessEmployeePrivate,
+  createSageContactProposal,
+  isRecentSageRead,
+  recordSageChangeActivity,
+  requireSageContactEditAccess,
+  sageSnapshotFromRow,
+} from "@/lib/sage/contact-proposal-service"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
-import { isInternalStaffRole } from "@/lib/user-roles"
-import { requireUserContext } from "@/lib/server/action-context"
+import { requireUserContext, type Db } from "@/lib/server/action-context"
 
 const kindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",
@@ -42,7 +46,6 @@ const fieldsSchema = z.record(z.string(), z.string().nullable())
 const changesSchema = z.array(z.object({
   field: z.string(), before: z.string().nullable(), after: z.string().nullable(),
 }))
-const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000
 
 type ActionResult =
   | { readonly success: true; readonly id: string; readonly status: string }
@@ -52,6 +55,8 @@ export type SageContactProposalListItem = {
   readonly id: string
   readonly kind: SageContactKind
   readonly entityId: string
+  /** The directory record's current Compass name, for the reviewer. */
+  readonly entityName: string | null
   readonly status: string
   readonly changes: readonly SageContactFieldChange[]
   readonly requestedByUserId: string
@@ -98,28 +103,6 @@ export type SageContactEditorState = {
   readonly editableFields: readonly string[]
 }
 
-function isRecent(iso: string): boolean {
-  const value = Date.parse(iso)
-  return Number.isFinite(value) && value <= Date.now() &&
-    Date.now() - value <= SNAPSHOT_MAX_AGE_MS
-}
-
-function snapshotFromRow(row: typeof sageContactSnapshots.$inferSelect): SageContactSnapshot | null {
-  let parsed: unknown
-  try { parsed = JSON.parse(row.fieldsJson) } catch { return null }
-  const fields = fieldsSchema.safeParse(parsed)
-  const kind = kindSchema.safeParse(row.kind)
-  if (!fields.success || !kind.success) return null
-  return {
-    organizationId: row.organizationId,
-    kind: kind.data,
-    sageRecordId: row.sageRecordId,
-    parentSageRecordId: row.parentSageRecordId,
-    revision: row.revision,
-    fields: fields.data,
-  }
-}
-
 export async function getSageContactEditorState(
   kindInput: string,
   entityId: string
@@ -133,7 +116,7 @@ export async function getSageContactEditorState(
   const db = getDb(env.DB)
   const identity = await getSageContactEntityIdentity(db, orgId, kind.data, entityId)
   if (!identity) return null
-  await requireEditAccess(user, kind.data, identity.linkedUserId, {})
+  await requireSageContactEditAccess(user, kind.data, identity.linkedUserId, {})
   const [snapshotRow, refreshRow] = await Promise.all([
     db.select().from(sageContactSnapshots).where(and(
       eq(sageContactSnapshots.organizationId, orgId),
@@ -147,7 +130,7 @@ export async function getSageContactEditorState(
         eq(sageContactReadRequests.entityId, entityId)
       )).orderBy(desc(sageContactReadRequests.requestedAt)).limit(1).get(),
   ])
-  const snapshot = snapshotRow ? snapshotFromRow(snapshotRow) : null
+  const snapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
   const canSeePrivate = kind.data !== "employee" ||
     await canAccessEmployeePrivate(user, identity.linkedUserId)
   const editableFields = sageContactProposalFields(kind.data).filter((field) =>
@@ -165,48 +148,12 @@ export async function getSageContactEditorState(
   return {
     linked: Boolean(identity.sageRecordId),
     capturedAt: snapshotRow?.capturedAt ?? null,
-    fresh: Boolean(snapshotRow && snapshot && isRecent(snapshotRow.capturedAt) &&
+    fresh: Boolean(snapshotRow && snapshot && isRecentSageRead(snapshotRow.capturedAt) &&
       snapshot.sageRecordId === identity.sageRecordId &&
       snapshot.parentSageRecordId === identity.parentSageRecordId),
     refreshStatus: refreshRow?.status ?? null,
     fields,
     editableFields,
-  }
-}
-
-async function canAccessEmployeePrivate(
-  user: Awaited<ReturnType<typeof requireAuth>>,
-  linkedUserId: string | null
-): Promise<boolean> {
-  if (linkedUserId === user.id) return true
-  try {
-    await requireFeaturePermission(user, "employee-contact-private", "read")
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function requireEditAccess(
-  user: Awaited<ReturnType<typeof requireAuth>>,
-  kind: SageContactKind,
-  linkedUserId: string | null,
-  proposed: Readonly<Record<string, string | null>>
-): Promise<void> {
-  if (!user.isActive) throw new Error("Inactive accounts cannot edit contacts.")
-  if (linkedUserId === user.id && (
-    (kind === "employee" && isInternalStaffRole(user.role)) ||
-    (kind === "client_person" && user.role === "client") ||
-    (kind === "vendor_person" && (user.role === "supplier" || user.role === "subcontractor"))
-  )) return
-  const feature = kind === "employee"
-    ? "internal-directory"
-    : kind.startsWith("client") ? "customers" : "vendors"
-  await requireFeaturePermission(user, feature, "update")
-  if (kind === "employee" && Object.keys(proposed).some((field) =>
-    isPrivateEmployeeContactField(field)
-  )) {
-    await requireFeaturePermission(user, "employee-contact-private", "read")
   }
 }
 
@@ -233,7 +180,7 @@ export async function requestSageContactRefresh(
       !identity.parentSageRecordId) {
       return { success: false, error: "Link the Sage parent company before refreshing this person." }
     }
-    await requireEditAccess(user, kind.data, identity.linkedUserId, {})
+    await requireSageContactEditAccess(user, kind.data, identity.linkedUserId, {})
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     await insertSageContactReadRequest(db, {
@@ -264,49 +211,11 @@ export async function proposeSageContactChange(
     if (!submitted.success) return { success: false, error: "Invalid contact fields" }
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
-    if (!sageContactOrganizationMatches(env, orgId)) {
-      return { success: false, error: "Sage contact sync is not configured for this organization." }
-    }
-    const db = getDb(env.DB)
-    const identity = await getSageContactEntityIdentity(db, orgId, kind.data, entityId)
-    if (!identity?.sageRecordId) return { success: false, error: "A stable Sage record ID is required." }
-    await requireEditAccess(user, kind.data, identity.linkedUserId, submitted.data)
-    const snapshotRow = await db.select().from(sageContactSnapshots).where(and(
-      eq(sageContactSnapshots.organizationId, orgId),
-      eq(sageContactSnapshots.kind, kind.data),
-      eq(sageContactSnapshots.entityId, entityId)
-    )).get()
-    if (!snapshotRow || !isRecent(snapshotRow.capturedAt)) {
-      return { success: false, error: "Refresh this contact from Sage before proposing changes." }
-    }
-    const snapshot = snapshotFromRow(snapshotRow)
-    if (!snapshot || snapshot.sageRecordId !== identity.sageRecordId ||
-      snapshot.parentSageRecordId !== identity.parentSageRecordId) {
-      return { success: false, error: "The Sage identity changed. Refresh before editing." }
-    }
-    const plan = planSageContactChange({ snapshot, proposed: submitted.data })
-    if (!plan.success) return plan
-    const now = new Date().toISOString()
-    const id = crypto.randomUUID()
-    await db.batch([
-      insertSageContactChangeProposal(db, {
-        id, organizationId: orgId, kind: kind.data, entityId,
-        sageRecordId: plan.plan.sageRecordId,
-        parentSageRecordId: plan.plan.parentSageRecordId,
-        baseRevision: plan.plan.baseRevision,
-        changesJson: JSON.stringify(plan.plan.changes),
-        status: "pending", requestedByUserId: user.id,
-        requestedAt: now, updatedAt: now,
-      }),
-      insertSageContactChangeEvent(db, {
-        id: crypto.randomUUID(), proposalId: id, organizationId: orgId,
-        actorUserId: user.id, eventType: "proposed",
-        detailJson: JSON.stringify({ baseRevision: plan.plan.baseRevision }),
-        createdAt: now,
-      }),
-    ])
-    revalidatePath("/dashboard/contacts")
-    return { success: true, id, status: "pending" }
+    const result = await createSageContactProposal(
+      { user, organizationId: orgId, db: getDb(env.DB), env }, kind.data, entityId, submitted.data
+    )
+    if (result.success) revalidatePath("/dashboard/contacts")
+    return result
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not propose contact change" }
   }
@@ -320,6 +229,7 @@ export async function listSageContactChangeProposals(): Promise<readonly SageCon
     .where(eq(sageContactChangeProposals.organizationId, orgId))
     .orderBy(desc(sageContactChangeProposals.requestedAt)).limit(100)
   const privateAccess = await canAccessEmployeePrivate(user, null)
+  const names = await directoryNames(db, orgId, rows.map((row) => row.entityId))
   const result: SageContactProposalListItem[] = []
   for (const row of rows) {
     const kind = kindSchema.safeParse(row.kind)
@@ -332,6 +242,7 @@ export async function listSageContactChangeProposals(): Promise<readonly SageCon
     )) continue
     result.push({
       id: row.id, kind: kind.data, entityId: row.entityId,
+      entityName: names.get(row.entityId) ?? null,
       status: row.status,
       changes: changes.data.filter((change): change is SageContactFieldChange =>
         isSageContactFieldChange(change.field, kind.data)
@@ -344,6 +255,30 @@ export async function listSageContactChangeProposals(): Promise<readonly SageCon
     })
   }
   return result
+}
+
+/** Current Compass names of the proposals' directory records, by id. */
+async function directoryNames(db: Db, organizationId: string, ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)]
+  const names = new Map<string, string>()
+  if (unique.length === 0) return names
+  const [vendorRows, customerRows, vendorPeople, customerPeople, staff] = await Promise.all([
+    db.select({ id: vendors.id, name: vendors.name }).from(vendors)
+      .where(and(eq(vendors.organizationId, organizationId), inArray(vendors.id, unique))),
+    db.select({ id: customers.id, name: customers.name }).from(customers)
+      .where(and(eq(customers.organizationId, organizationId), inArray(customers.id, unique))),
+    db.select({ id: vendorContacts.id, name: vendorContacts.name, company: vendors.name }).from(vendorContacts)
+      .innerJoin(vendors, eq(vendorContacts.vendorId, vendors.id))
+      .where(and(eq(vendors.organizationId, organizationId), inArray(vendorContacts.id, unique))),
+    db.select({ id: customerContacts.id, name: customerContacts.name, company: customers.name }).from(customerContacts)
+      .innerJoin(customers, eq(customerContacts.customerId, customers.id))
+      .where(and(eq(customers.organizationId, organizationId), inArray(customerContacts.id, unique))),
+    db.select({ id: internalContacts.id, name: internalContacts.name }).from(internalContacts)
+      .where(and(eq(internalContacts.organizationId, organizationId), inArray(internalContacts.id, unique))),
+  ])
+  for (const row of [...vendorRows, ...customerRows, ...staff]) names.set(row.id, row.name)
+  for (const row of [...vendorPeople, ...customerPeople]) names.set(row.id, `${row.name} (${row.company})`)
+  return names
 }
 
 function isSageContactFieldChange(field: string, kind: SageContactKind): field is SageContactFieldChange["field"] {
@@ -399,8 +334,8 @@ export async function reviewSageContactChange(
         eq(sageContactSnapshots.kind, kind.data),
         eq(sageContactSnapshots.entityId, proposal.entityId)
       )).get()
-      const snapshot = snapshotRow ? snapshotFromRow(snapshotRow) : null
-      if (!snapshotRow || !snapshot || !isRecent(snapshotRow.capturedAt) ||
+      const snapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
+      if (!snapshotRow || !snapshot || !isRecentSageRead(snapshotRow.capturedAt) ||
         !isSageContactProposalCurrent({
           organizationId: orgId, kind: kind.data,
           sageRecordId: proposal.sageRecordId,
@@ -424,6 +359,13 @@ export async function reviewSageContactChange(
     if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
       return { success: false, error: "Proposal was reviewed concurrently." }
     }
+    await recordSageChangeActivity(db, {
+      organizationId: orgId, actor: user, kind: kind.data, entityId: proposal.entityId,
+      proposalId, step: status,
+      changes: changes.data.filter((change): change is SageContactFieldChange =>
+        isSageContactFieldChange(change.field, kind.data)),
+      note: noteValue || null,
+    })
     revalidatePath("/dashboard/contacts")
     return { success: true, id: proposalId, status }
   } catch (error) {

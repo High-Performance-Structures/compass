@@ -3,8 +3,10 @@
  * reviewed contact-write path has returned a verified Sage read-back.
  * Local-only directory metadata remains editable.
  */
+// Client "company" is not here: Sage has no such column (its client name is
+// "name"), so it is a Compass-only directory field.
 const CUSTOMER_IDENTITY_FIELDS = [
-  "name", "company", "email", "phone", "address", "addressLine1",
+  "name", "email", "phone", "address", "addressLine1",
   "addressLine2", "city", "state", "postalCode", "billingAddressLine1",
   "billingAddressLine2", "billingCity", "billingState",
   "billingPostalCode", "primaryEmail",

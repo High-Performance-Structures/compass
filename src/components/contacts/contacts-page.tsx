@@ -598,10 +598,8 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           setCustomerDialogOpen(false)
           setPeopleCustomer(editingCustomer)
         } : undefined}
-        onSageEditCompany={editingCustomer ? () => {
-          setCustomerDialogOpen(false)
-          setSageEditorTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name })
-        } : undefined}
+        onSageLinkedSaved={reloadLists}
+        canEdit={directoryAccess?.customers.edit ?? false}
         onSageLinkCompany={editingCustomer && directoryAccess?.canReadSageReview ? () => {
           setCustomerDialogOpen(false)
           setSageLinkTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name, sageRecordNumber: editingCustomer.sageClientNumber })
@@ -615,17 +613,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
         readOnly={vendorReadOnly}
         categories={vendorCategories}
         onSubmit={handleVendorSubmit}
-        onSageEditCompany={editingVendor ? () => {
-          setVendorDialogOpen(false)
-          setSageEditorTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name })
-        } : undefined}
+        onSageLinkedSaved={reloadLists}
         onSageLinkCompany={editingVendor && directoryAccess?.canReadSageReview ? () => {
           setVendorDialogOpen(false)
           setSageLinkTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name, sageRecordNumber: editingVendor.sageVendorNumber })
-        } : undefined}
-        onSageEditContact={directoryAccess?.vendors.edit ? (contactId, name) => {
-          setVendorDialogOpen(false)
-          setSageEditorTarget({ kind: "vendor_person", entityId: contactId, name })
         } : undefined}
         onSageLinkContact={directoryAccess?.canReadSageReview ? (contactId, name, lineNumber) => {
           setVendorDialogOpen(false)
@@ -652,10 +643,6 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
         canCreate={directoryAccess?.customers.create ?? false}
         canDelete={directoryAccess?.customers.delete ?? false}
         canLinkAccounts={directoryAccess?.canManageAccounts ?? false}
-        onSageEdit={(person: CustomerDirectoryPerson) => {
-          setPeopleCustomer(null)
-          setSageEditorTarget({ kind: "client_person", entityId: person.id, name: person.name })
-        }}
         onSageLink={directoryAccess?.canReadSageReview ? (person: CustomerDirectoryPerson) => {
           setPeopleCustomer(null)
           setSageLinkTarget({ kind: "client_person", entityId: person.id, name: person.name, sageRecordNumber: person.sageLineNumber === null ? null : String(person.sageLineNumber) })

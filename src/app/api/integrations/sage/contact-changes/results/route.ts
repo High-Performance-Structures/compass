@@ -33,10 +33,20 @@ import {
   sageContactWriteResultSchema,
 } from "@/lib/sage/contact-bridge"
 import { applySageContactSnapshotToCanonical } from "@/lib/sage/contact-canonical"
-import { sageContactProposalFields, type SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
+import {
+  sageContactProposalFields,
+  sageContactRequiredSnapshotFields,
+  type SageContactFieldChange,
+} from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { handleSageContactCreateResult } from "@/lib/sage/contact-create-result"
+import { parseSageChanges, recordSageChangeActivity } from "@/lib/sage/contact-proposal-service"
+import type { ActivityActor } from "@/lib/activity-log"
+
+const SAGE_WRITER: ActivityActor = {
+  id: null, email: "sage", displayName: "Sage writer", firstName: null, lastName: null, role: "system",
+}
 
 const messageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("read"), result: sageContactReadResultSchema }),
@@ -49,7 +59,8 @@ const changesSchema = z.array(z.object({
 
 function validSnapshotFields(kind: z.infer<typeof sageContactKindSchema>, fields: Readonly<Record<string, string | null>>): boolean {
   return hasOnlySageContactFields(kind, fields) &&
-    sageContactProposalFields(kind).every((field) => Object.prototype.hasOwnProperty.call(fields, field)) &&
+    // An older Sage writer omits the extended company fields; see contact-change-proposal.ts.
+    sageContactRequiredSnapshotFields(kind).every((field) => Object.prototype.hasOwnProperty.call(fields, field)) &&
     ((kind !== "client_person" && kind !== "vendor_person") || Boolean(fields.name?.trim()))
 }
 
@@ -241,6 +252,14 @@ export async function POST(request: Request): Promise<Response> {
         eventType: "failed", detailJson: JSON.stringify({ error: result.error }), createdAt: now,
       }),
     ])
+    const failedKind = sageContactKindSchema.safeParse(proposal.kind)
+    if (failedKind.success) {
+      await recordSageChangeActivity(db, {
+        organizationId: proposal.organizationId, actor: SAGE_WRITER, kind: failedKind.data,
+        entityId: proposal.entityId, proposalId: proposal.id, step: "failed",
+        changes: parseSageChanges(proposal.changesJson) ?? [], note: result.error.slice(0, 200),
+      })
+    }
     return accepted("failed")
   }
   const snapshot = result.snapshot
@@ -258,11 +277,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   const identity = await getSageContactEntityIdentity(db, proposal.organizationId, kind.data, proposal.entityId)
   if (!identity) return Response.json({ error: "Directory record is missing" }, { status: 409 })
-  const applied = await applySageContactSnapshotToCanonical(env.DB, proposal.organizationId, identity, snapshot)
-  if (!applied.success) return Response.json({ error: applied.error }, { status: 409 })
   const confirmed = readbackConfirmsChanges(changes.data.filter(
     (change): change is SageContactFieldChange => sageContactProposalFields(kind.data).some((field) => field === change.field)
   ), snapshot.fields)
+  // Name, email and phone reach Compass only on a confirmed write.
+  const applied = await applySageContactSnapshotToCanonical(env.DB, proposal.organizationId, identity, snapshot,
+    confirmed ? changes.data.map((change) => change.field) : [])
+  if (!applied.success) return Response.json({ error: applied.error }, { status: 409 })
   const status = confirmed ? "succeeded" : "conflict"
   await db.batch([
     insertSageContactSnapshot(db, {
@@ -288,5 +309,10 @@ export async function POST(request: Request): Promise<Response> {
       eventType: status, detailJson: JSON.stringify({ revision: snapshot.revision }), createdAt: now,
     }),
   ])
+  await recordSageChangeActivity(db, {
+    organizationId: proposal.organizationId, actor: SAGE_WRITER, kind: kind.data,
+    entityId: proposal.entityId, proposalId: proposal.id, step: status,
+    changes: parseSageChanges(proposal.changesJson) ?? [],
+  })
   return accepted(status)
 }

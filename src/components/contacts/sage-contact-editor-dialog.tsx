@@ -49,7 +49,7 @@ export type SageContactEditorTarget = {
  * Compass's and Sage's company names side by side, with "Use Sage name" when
  * they differ. Copies Sage's value into Compass; nothing is sent to Sage.
  */
-function SageCompanyNameRow({
+export function SageCompanyNameRow({
   kind,
   entityId,
   onChanged,

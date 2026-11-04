@@ -23,6 +23,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { findExistingNamedPerson } from "@/lib/customer-person-match"
+import { saveSageLinkedCustomerPerson } from "@/app/actions/sage-linked-edits"
+import {
+  announceSageOutcomes,
+  SAGE_PENDING_LABEL,
+  sageFieldLockedReason,
+  useSageLinkedEditState,
+} from "@/components/contacts/sage-linked-edit"
+import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
 
 const EMPTY: CustomerPersonInput = { name: "", title: "", email: "", phone: "", isPrimary: false }
 
@@ -33,7 +41,6 @@ export function CustomerPeopleDialog({
   canCreate,
   canDelete,
   canLinkAccounts,
-  onSageEdit,
   onSageLink,
   onSageCreate,
   onVerifySageCompany,
@@ -46,7 +53,6 @@ export function CustomerPeopleDialog({
   readonly canCreate: boolean
   readonly canDelete: boolean
   readonly canLinkAccounts: boolean
-  readonly onSageEdit: (person: CustomerDirectoryPerson) => void
   readonly onSageLink?: (person: CustomerDirectoryPerson) => void
   readonly onSageCreate?: () => void
   readonly onVerifySageCompany?: () => void
@@ -62,6 +68,10 @@ export function CustomerPeopleDialog({
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
 
   const customerId = customer?.id
+  const { state: sageState, reload: reloadSageState } = useSageLinkedEditState(
+    "client_company", customer?.sageLinked ? customer.id : null, canEdit)
+  const editingPerson = people.find((person) => person.id === editingId) ?? null
+  const editingSagePerson = Boolean(editingPerson?.sageContactId)
   const reload = React.useCallback(async () => {
     if (!customerId) return
     setLoading(true)
@@ -86,6 +96,25 @@ export function CustomerPeopleDialog({
     }
     setBusy(true)
     try {
+      // A Sage person's changes become a Sage change request; Compass keeps
+      // the current values until Sage confirms the write.
+      if (editingId && editingSagePerson) {
+        const sageResult = await saveSageLinkedCustomerPerson(editingId, {
+          name: draft.name, title: draft.title, email: draft.email, phone: draft.phone,
+        })
+        if (!sageResult.success) {
+          toast.error(sageResult.error)
+          return
+        }
+        if (sageResult.data.sage.length === 0) toast.info("Nothing changed")
+        const done = announceSageOutcomes(sageResult.data.sage)
+        await reloadSageState()
+        if (done) {
+          setEditingId(null)
+          setDraft(EMPTY)
+        }
+        return
+      }
       const result = await saveCustomerDirectoryPerson(customer.id, editingId, draft)
       if (!result.success) {
         toast.error(result.error)
@@ -135,12 +164,18 @@ export function CustomerPeopleDialog({
                   {customer?.sageLinked && !person.sageContactId ? <span className="ml-2 text-xs font-normal text-muted-foreground">Compass only, not in Sage</span> : null}
                 </div>
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
+                {sageState?.pending[person.id] ? (
+                  <div className="text-xs text-muted-foreground">
+                    {SAGE_PENDING_LABEL}: {sageState.pending[person.id]?.changes
+                      .map((change) => `${SAGE_FIELD_LABELS[change.field]} → ${change.after ?? "(blank)"}`).join("; ")}
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
-                {person.sageContactId && canEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(person)}>Propose Sage edit</Button> : null}
                 {!person.sageContactId && customer?.sageVerified && onSageLink ? <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(person)}>Verify Sage link</Button> : null}
                 {canLinkAccounts ? <Button type="button" size="sm" variant="outline" onClick={() => onLinkAccount(person)}>Compass account</Button> : null}
-                {canEdit && !person.sageContactId ? <Button type="button" size="sm" variant="outline" onClick={() => edit(person)}>Edit</Button> : null}
+                {canEdit && (!person.sageContactId || sageFieldLockedReason(sageState, person.id, "name", { company: false }) === null)
+                  ? <Button type="button" size="sm" variant="outline" onClick={() => edit(person)}>Edit</Button> : null}
                 {canDelete && !person.sageContactId && !person.userId ? <Button type="button" size="sm" variant="ghost" onClick={() => void remove(person)} disabled={busy}>Remove</Button> : null}
               </div>
             </div>
@@ -153,14 +188,15 @@ export function CustomerPeopleDialog({
         {((editingId && canEdit) || (!editingId && canCreate)) ? (
           <form onSubmit={(event) => void save(event)} className="space-y-3">
             <p className="text-sm font-medium">{editingId ? "Edit person" : "Add person"}</p>
-            {customer?.sageLinked ? <p className="text-xs text-muted-foreground">Saved in Compass only. Adding this person does not create or change a Sage contact.</p> : null}
+            {editingSagePerson ? <p className="text-xs text-muted-foreground">In Sage: changes go to Sage for approval, and Compass shows them once Sage confirms the write.</p>
+              : customer?.sageLinked ? <p className="text-xs text-muted-foreground">Saved in Compass only. Adding this person does not create or change a Sage contact.</p> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label htmlFor="customer-person-name">Name</Label><Input id="customer-person-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required /></div>
               <div className="space-y-1"><Label htmlFor="customer-person-title">Job title</Label><Input id="customer-person-title" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} /></div>
               <div className="space-y-1"><Label htmlFor="customer-person-email">Email</Label><Input id="customer-person-email" type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} /></div>
               <div className="space-y-1"><Label htmlFor="customer-person-phone">Phone</Label><Input id="customer-person-phone" value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} /></div>
             </div>
-            <label className="flex items-center gap-2 text-sm"><Checkbox checked={draft.isPrimary} onCheckedChange={(checked) => setDraft((current) => ({ ...current, isPrimary: checked === true }))} />Primary contact</label>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={draft.isPrimary} disabled={editingSagePerson} onCheckedChange={(checked) => setDraft((current) => ({ ...current, isPrimary: checked === true }))} />Primary contact</label>
             <DialogFooter>
               {editingId ? <Button type="button" variant="outline" onClick={() => { setEditingId(null); setDraft(EMPTY) }}>Cancel edit</Button> : null}
               <Button type="submit" disabled={busy}>{editingId ? "Save person" : "Add person"}</Button>

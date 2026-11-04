@@ -14,7 +14,36 @@ import {
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { requestSageLinkedVendorChanges } from "@/app/actions/sage-linked-edits"
+import { updateVendor } from "@/app/actions/vendors"
+import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-dialog"
+import type { SagePendingChange } from "@/app/actions/sage-linked-edits"
+import {
+  announceSageOutcomes,
+  SAGE_PENDING_LABEL,
+  SageFieldNote,
+  sageFieldLockedReason,
+  useSageLinkedEditState,
+} from "@/components/contacts/sage-linked-edit"
 import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
+import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
+import { toast } from "sonner"
+
+/** Company fields shared with Sage, edited inline on a Sage-linked vendor. */
+const SAGE_COMPANY_FIELDS = [
+  "ownerName", "primaryEmail", "addressLine1", "addressLine2", "city", "state", "postalCode",
+] as const
+type SageCompanyField = "name" | "email" | "phone" | (typeof SAGE_COMPANY_FIELDS)[number]
+type SageCompanyDraft = Readonly<Record<SageCompanyField, string>>
+
+function sageCompanyDraft(vendor: VendorDirectoryCompany | null | undefined): SageCompanyDraft {
+  return {
+    name: vendor?.name ?? "", email: vendor?.email ?? "", phone: vendor?.phone ?? "",
+    ownerName: vendor?.ownerName ?? "", primaryEmail: vendor?.primaryEmail ?? "",
+    addressLine1: vendor?.addressLine1 ?? "", addressLine2: vendor?.addressLine2 ?? "",
+    city: vendor?.city ?? "", state: vendor?.state ?? "", postalCode: vendor?.postalCode ?? "",
+  }
+}
 
 type ContactDraft = {
   readonly key: string
@@ -32,10 +61,10 @@ interface VendorDialogProps {
   initialData?: VendorDirectoryCompany | null
   categories: readonly string[]
   onSubmit: (data: VendorCompanyMutationInput) => void
-  onSageEditContact?: (contactId: string, name: string) => void
+  /** After a Sage-linked vendor saves inline: refresh the directory. */
+  onSageLinkedSaved?: () => void
   onSageLinkContact?: (contactId: string, name: string, lineNumber: number | null) => void
   onSageCreateContact?: () => void
-  onSageEditCompany?: () => void
   onSageLinkCompany?: () => void
   onLinkAccount?: (contactId: string, name: string, userId: string | null) => void
   onMergePeople?: (people: readonly [VendorContactItem, VendorContactItem]) => void
@@ -48,10 +77,9 @@ export function VendorDialog({
   initialData,
   categories,
   onSubmit,
-  onSageEditContact,
+  onSageLinkedSaved,
   onSageLinkContact,
   onSageCreateContact,
-  onSageEditCompany,
   onSageLinkCompany,
   onLinkAccount,
   onMergePeople,
@@ -64,21 +92,44 @@ export function VendorDialog({
   const [address, setAddress] = React.useState("")
   const [contacts, setContacts] = React.useState<readonly ContactDraft[]>([])
   const [selectedPeopleIds, setSelectedPeopleIds] = React.useState<readonly string[]>([])
+  const [sageDraft, setSageDraft] = React.useState<SageCompanyDraft>(() => sageCompanyDraft(initialData))
+  const [saving, setSaving] = React.useState(false)
   const sageLinked = Boolean(initialData?.sageVendorId || initialData?.sageVendorNumber)
   const sageVerified = Boolean(initialData?.sageVendorId)
+  // Primary belongs to the people Sage manages, so it stays put on a Sage-linked vendor.
   const locked = sageLinked || readOnly
-  // On a Sage-linked vendor the company and Sage's people stay read-only, but
-  // Compass-only people (no Sage ids) are edited here. They never become
-  // primary: primary belongs to the people Sage manages.
+  const { state: sageState, reload: reloadSageState } = useSageLinkedEditState(
+    "vendor_company", sageLinked && open && initialData ? initialData.id : null, !readOnly)
+  // Sage's people are edited here too: their changes become Sage change
+  // requests. Compass-only people (no Sage ids) save directly and never
+  // become primary.
   const sagePersonIds = React.useMemo(
     () => new Set((initialData?.contacts ?? []).filter(isSageLinkedPerson).map((contact) => contact.id)),
     [initialData],
   )
-  const personLocked = (contact: ContactDraft): boolean =>
-    readOnly || (sageLinked && contact.id !== null && sagePersonIds.has(contact.id))
+  const isSagePerson = (contact: ContactDraft): boolean => contact.id !== null && sagePersonIds.has(contact.id)
+  const personLockedReason = (contact: ContactDraft): string | null => {
+    if (readOnly) return "Read only"
+    if (!sageLinked || !contact.id || !isSagePerson(contact)) return null
+    // Sage people need a Sage contact id for a change request.
+    if (!initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId)) {
+      return "Verify this person's Sage link first."
+    }
+    const reason = sageFieldLockedReason(sageState, contact.id, "name", { company: false })
+    return reason
+  }
+  const personLocked = (contact: ContactDraft): boolean => personLockedReason(contact) !== null
+  const companyLockedReason = (field: SageCompanyField): string | null =>
+    readOnly ? "Read only" : initialData ? sageFieldLockedReason(sageState, initialData.id, field, { company: true }) : null
+  const categoryLockedReason = readOnly
+    ? "Read only"
+    : sageState?.categoryFromSageType
+      ? `Follows the Sage vendor type "${sageState.categoryFromSageType}". Change the type in Sage.`
+      : null
 
   React.useEffect(() => {
     setSelectedPeopleIds([])
+    setSageDraft(sageCompanyDraft(initialData))
     if (initialData) {
       setName(initialData.name)
       setCategory(initialData.category)
@@ -106,8 +157,71 @@ export function VendorDialog({
     }
   }, [initialData, open])
 
+  const contactPayload = () => contacts.map((contact) => ({
+    id: contact.id,
+    name: contact.name,
+    title: contact.title,
+    email: contact.email,
+    phone: contact.phone,
+    isPrimary: contact.isPrimary,
+  }))
+
+  /**
+   * Compass-only fields (category, Compass-only people) save with the normal
+   * vendor update, with Sage people passed as saved; then Sage-shared changes
+   * go to Sage as change requests.
+   */
+  const saveSageLinked = async () => {
+    if (!initialData) return
+    setSaving(true)
+    try {
+      const savedById = new Map(initialData.contacts.map((saved) => [saved.id, saved]))
+      const compassContacts = contactPayload().map((contact) => {
+        const saved = contact.id && sagePersonIds.has(contact.id) ? savedById.get(contact.id) : undefined
+        return saved ? {
+          id: saved.id, name: saved.name, title: saved.title ?? "", email: saved.email ?? "",
+          phone: saved.phone ?? "", isPrimary: saved.isPrimary,
+        } : contact
+      })
+      const initialContacts = initialData.contacts.map((saved) => ({
+        id: saved.id, name: saved.name, title: saved.title ?? "", email: saved.email ?? "",
+        phone: saved.phone ?? "", isPrimary: saved.isPrimary,
+      }))
+      const compassChanged = category !== initialData.category ||
+        JSON.stringify(compassContacts) !== JSON.stringify(initialContacts)
+      if (compassChanged) {
+        const saved = await updateVendor(initialData.id, { category, contacts: compassContacts })
+        if (!saved.success) {
+          toast.error(saved.error)
+          return
+        }
+        if ("warning" in saved && saved.warning) toast.warning(saved.warning)
+      }
+      const result = await requestSageLinkedVendorChanges(initialData.id, {
+        sage: sageDraft,
+        contacts: contactPayload().filter((contact) => contact.id !== null && sagePersonIds.has(contact.id)),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.data.sage.length === 0) toast.success(compassChanged ? "Vendor updated" : "Nothing changed")
+      const done = announceSageOutcomes(result.data.sage)
+      await reloadSageState()
+      onSageLinkedSaved?.()
+      if (done) onOpenChange(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (sageLinked && initialData) {
+      if (!sageDraft.name.trim()) return
+      void saveSageLinked()
+      return
+    }
     if (!name.trim()) return
     onSubmit({
       name: name.trim(),
@@ -182,87 +296,155 @@ export function VendorDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
-          <div className="grid grid-cols-5 gap-3">
-            <div className="col-span-3 space-y-1.5">
-              <Label htmlFor="vendor-name" className="text-xs">
-                Company name *
-              </Label>
-              <Input
-                id="vendor-name"
-                className="h-9"
-                placeholder="Vendor company name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoFocus
-                disabled={locked}
-              />
+          {sageLinked && initialData ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Linked to Sage. Changes to name, owner, email, phone and address go to Sage for approval;
+                Compass shows them once Sage confirms the write. Category and Compass-only people save now.
+              </p>
+              {sageState && initialData.id in sageState.pending ? (
+                <p className="text-xs font-medium">A Sage change for this vendor is waiting for approval.</p>
+              ) : null}
+              {sageVerified ? <SageCompanyNameRow kind="vendor_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
+              <div className="grid grid-cols-5 gap-3">
+                <div className="col-span-3 space-y-1.5">
+                  <Label htmlFor="vendor-name" className="text-xs">Company name *</Label>
+                  <Input
+                    id="vendor-name"
+                    className="h-9"
+                    value={sageDraft.name}
+                    onChange={(e) => setSageDraft((current) => ({ ...current, name: e.target.value }))}
+                    required
+                    disabled={companyLockedReason("name") !== null}
+                  />
+                  <SageFieldNote pending={sageState?.pending[initialData.id]} field="name" lockedReason={companyLockedReason("name")} />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="vendor-category" className="text-xs">Category *</Label>
+                  <SearchableCombobox
+                    id="vendor-category"
+                    className="h-9"
+                    value={category}
+                    onValueChange={(value) => {
+                      if (value !== "") setCategory(value)
+                    }}
+                    disabled={categoryLockedReason !== null}
+                    options={categories.map((categoryOption) => ({ value: categoryOption, label: categoryOption }))}
+                    ariaLabel="Vendor category"
+                    placeholder="Choose category"
+                    searchPlaceholder="Search categories..."
+                    emptyMessage="No matching categories."
+                  />
+                  {categoryLockedReason && !readOnly ? <p className="text-xs text-muted-foreground">{categoryLockedReason}</p> : null}
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(["email", "phone", ...SAGE_COMPANY_FIELDS] as const).map((field) => (
+                  <div key={field} className="space-y-1.5">
+                    <Label htmlFor={`vendor-sage-${field}`} className="text-xs">
+                      {field === "email" ? "Company email" : field === "phone" ? "Company phone" : SAGE_FIELD_LABELS[field]}
+                    </Label>
+                    <Input
+                      id={`vendor-sage-${field}`}
+                      type={field === "email" || field === "primaryEmail" ? "email" : field === "phone" ? "tel" : "text"}
+                      className="h-9"
+                      value={sageDraft[field]}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setSageDraft((current) => ({ ...current, [field]: next }))
+                      }}
+                      disabled={companyLockedReason(field) !== null}
+                    />
+                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} lockedReason={companyLockedReason(field)} />
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="vendor-category" className="text-xs">
-                Category *
-              </Label>
-              <SearchableCombobox
-                id="vendor-category"
-                className="h-9"
-                value={category}
-                onValueChange={(value) => {
-                  if (value !== "") setCategory(value)
-                }}
-                disabled={locked}
-                options={categories.map((categoryOption) => ({
-                  value: categoryOption,
-                  label: categoryOption,
-                }))}
-                ariaLabel="Vendor category"
-                placeholder="Choose category"
-                searchPlaceholder="Search categories..."
-                emptyMessage="No matching categories."
-              />
+          ) : (
+            <>
+            <div className="grid grid-cols-5 gap-3">
+              <div className="col-span-3 space-y-1.5">
+                <Label htmlFor="vendor-name" className="text-xs">
+                  Company name *
+                </Label>
+                <Input
+                  id="vendor-name"
+                  className="h-9"
+                  placeholder="Vendor company name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  autoFocus
+                  disabled={locked}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="vendor-category" className="text-xs">
+                  Category *
+                </Label>
+                <SearchableCombobox
+                  id="vendor-category"
+                  className="h-9"
+                  value={category}
+                  onValueChange={(value) => {
+                    if (value !== "") setCategory(value)
+                  }}
+                  disabled={locked}
+                  options={categories.map((categoryOption) => ({
+                    value: categoryOption,
+                    label: categoryOption,
+                  }))}
+                  ariaLabel="Vendor category"
+                  placeholder="Choose category"
+                  searchPlaceholder="Search categories..."
+                  emptyMessage="No matching categories."
+                />
+              </div>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="vendor-email" className="text-xs">
+                  Company email
+                </Label>
+                <Input
+                  id="vendor-email"
+                  type="email"
+                  className="h-9"
+                  placeholder="email@example.com"
+                  value={email}
+                  disabled={locked}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="vendor-phone" className="text-xs">
+                  Company phone
+                </Label>
+                <Input
+                  id="vendor-phone"
+                  className="h-9"
+                  placeholder="(555) 123-4567"
+                  value={phone}
+                  disabled={locked}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="vendor-email" className="text-xs">
-                Company email
+              <Label htmlFor="vendor-address" className="text-xs">
+                Address
               </Label>
               <Input
-                id="vendor-email"
-                type="email"
+                id="vendor-address"
                 className="h-9"
-                placeholder="email@example.com"
-                value={email}
+                placeholder="Street, city, state"
+                value={address}
                 disabled={locked}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setAddress(e.target.value)}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="vendor-phone" className="text-xs">
-                Company phone
-              </Label>
-              <Input
-                id="vendor-phone"
-                className="h-9"
-                placeholder="(555) 123-4567"
-                value={phone}
-                disabled={locked}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendor-address" className="text-xs">
-              Address
-            </Label>
-            <Input
-              id="vendor-address"
-              className="h-9"
-              placeholder="Street, city, state"
-              value={address}
-              disabled={locked}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-          </div>
+            </>
+          )}
           <div className="space-y-3 border-t pt-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -314,11 +496,6 @@ export function VendorDialog({
                         >
                           {contact.isPrimary ? "Primary" : "Make primary"}
                         </Button>
-                        {contact.id && initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) && onSageEditContact ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => onSageEditContact(contact.id ?? "", contact.name)}>
-                            Propose Sage edit
-                          </Button>
-                        ) : null}
                         {contact.id && sageVerified && !initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) && onSageLinkContact ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => onSageLinkContact(contact.id ?? "", contact.name, initialData?.contacts.find((saved) => saved.id === contact.id)?.sageLineNumber ?? null)}>
                             Verify Sage link
@@ -335,7 +512,7 @@ export function VendorDialog({
                           size="icon-sm"
                           onClick={() => removeContact(contact.key)}
                           aria-label={`Remove contact ${index + 1}`}
-                          disabled={personLocked(contact)}
+                          disabled={readOnly || isSagePerson(contact)}
                         >
                           <IconTrash className="size-4" />
                         </Button>
@@ -378,6 +555,12 @@ export function VendorDialog({
                         placeholder="Phone"
                       />
                     </div>
+                    {contact.id && isSagePerson(contact) ? (
+                      <SagePersonNote
+                        pending={sageState?.pending[contact.id]}
+                        lockedReason={readOnly ? null : personLockedReason(contact)}
+                      />
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -398,14 +581,7 @@ export function VendorDialog({
             <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
           ) : null}
           {sageLinked && !readOnly ? (
-            <>
-              <Button type="submit" variant="outline" className="h-9">Save Compass-only people</Button>
-              {sageVerified ? (
-                <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
-                  Propose Sage company edit
-                </Button>
-              ) : null}
-            </>
+            <Button type="submit" className="h-9" disabled={saving}>Save</Button>
           ) : !readOnly ? (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Create Vendor"}
@@ -415,4 +591,24 @@ export function VendorDialog({
       </form>
     </ResponsiveDialog>
   )
+}
+
+/** Under a Sage person: the pending Sage change, or why the person is locked. */
+function SagePersonNote({
+  pending,
+  lockedReason,
+}: {
+  readonly pending: SagePendingChange | undefined
+  readonly lockedReason: string | null
+}): React.ReactElement | null {
+  if (pending) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {SAGE_PENDING_LABEL}:{" "}
+        {pending.changes.map((change) => `${SAGE_FIELD_LABELS[change.field]} → ${change.after ?? "(blank)"}`).join("; ")}
+      </p>
+    )
+  }
+  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
+  return <p className="text-xs text-muted-foreground">In Sage: changes here go to Sage for approval.</p>
 }

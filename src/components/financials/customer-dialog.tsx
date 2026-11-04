@@ -20,6 +20,40 @@ import {
 import type { Customer } from "@/db/schema"
 import type { CustomerRelationshipType } from "@/app/actions/customers"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { toast } from "sonner"
+import { requestSageLinkedCustomerChanges } from "@/app/actions/sage-linked-edits"
+import { updateCustomer } from "@/app/actions/customers"
+import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-dialog"
+import {
+  announceSageOutcomes,
+  SageFieldNote,
+  sageFieldLockedReason,
+  useSageLinkedEditState,
+} from "@/components/contacts/sage-linked-edit"
+import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
+
+/** Client fields shared with Sage, edited inline on a Sage-linked client. */
+const SAGE_CLIENT_FIELDS = [
+  "name", "email", "phone",
+  "addressLine1", "addressLine2", "city", "state", "postalCode",
+  "billingAddressLine1", "billingAddressLine2", "billingCity", "billingState", "billingPostalCode",
+] as const
+type SageClientField = (typeof SAGE_CLIENT_FIELDS)[number]
+type SageClientDraft = Readonly<Record<SageClientField, string>>
+
+function sageClientDraft(customer: Customer | null | undefined): SageClientDraft {
+  return {
+    name: customer?.name ?? "", email: customer?.email ?? "", phone: customer?.phone ?? "",
+    addressLine1: customer?.addressLine1 ?? "", addressLine2: customer?.addressLine2 ?? "",
+    city: customer?.city ?? "", state: customer?.state ?? "", postalCode: customer?.postalCode ?? "",
+    billingAddressLine1: customer?.billingAddressLine1 ?? "", billingAddressLine2: customer?.billingAddressLine2 ?? "",
+    billingCity: customer?.billingCity ?? "", billingState: customer?.billingState ?? "",
+    billingPostalCode: customer?.billingPostalCode ?? "",
+  }
+}
+
+/** Sage's client primary email screen binding is unverified, so it is read-only here. */
+const CLIENT_PRIMARY_EMAIL_LOCK = "Change the client's primary email in Sage. Compass cannot send it to Sage yet."
 
 interface CustomerDialogProps {
   open: boolean
@@ -35,8 +69,10 @@ interface CustomerDialogProps {
     relationshipType: CustomerRelationshipType
   }) => void
   onManagePeople?: () => void
-  onSageEditCompany?: () => void
   onSageLinkCompany?: () => void
+  /** After a Sage-linked client saves inline: refresh the directory. */
+  onSageLinkedSaved?: () => void
+  canEdit?: boolean
 }
 
 export function CustomerDialog({
@@ -45,8 +81,9 @@ export function CustomerDialog({
   initialData,
   onSubmit,
   onManagePeople,
-  onSageEditCompany,
   onSageLinkCompany,
+  onSageLinkedSaved,
+  canEdit = true,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
   const [name, setName] = React.useState("")
@@ -59,8 +96,15 @@ export function CustomerDialog({
     React.useState<CustomerRelationshipType>("client")
   const sageLinked = Boolean(initialData?.sageClientId || initialData?.sageClientNumber)
   const sageVerified = Boolean(initialData?.sageClientId)
+  const [sageDraft, setSageDraft] = React.useState<SageClientDraft>(() => sageClientDraft(initialData))
+  const [saving, setSaving] = React.useState(false)
+  const { state: sageState, reload: reloadSageState } = useSageLinkedEditState(
+    "client_company", sageLinked && open && initialData ? initialData.id : null, canEdit)
+  const lockedReason = (field: SageClientField): string | null =>
+    !canEdit ? "Read only" : initialData ? sageFieldLockedReason(sageState, initialData.id, field, { company: true }) : null
 
   React.useEffect(() => {
+    setSageDraft(sageClientDraft(initialData))
     if (initialData) {
       setName(initialData.name)
       setCompany(initialData.company ?? "")
@@ -86,8 +130,42 @@ export function CustomerDialog({
     }
   }, [initialData, open])
 
+  const saveSageLinked = async () => {
+    if (!initialData) return
+    setSaving(true)
+    try {
+      // Company and notes are Compass's own; the rest go to Sage for approval.
+      const compassChanged = company.trim() !== (initialData.company ?? "").trim() ||
+        notes.trim() !== (initialData.notes ?? "").trim()
+      if (compassChanged) {
+        const saved = await updateCustomer(initialData.id, { company: company.trim() || null, notes: notes.trim() || null })
+        if (!saved.success) {
+          toast.error(saved.error ?? "Could not save client")
+          return
+        }
+      }
+      const result = await requestSageLinkedCustomerChanges(initialData.id, { sage: sageDraft })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.data.sage.length === 0) toast.success(compassChanged ? "Client updated" : "Nothing changed")
+      const done = announceSageOutcomes(result.data.sage)
+      await reloadSageState()
+      onSageLinkedSaved?.()
+      if (done) onOpenChange(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (sageLinked && initialData) {
+      if (!sageDraft.name.trim()) return
+      void saveSageLinked()
+      return
+    }
     if (!name.trim()) return
     onSubmit({
       name: name.trim(),
@@ -107,7 +185,7 @@ export function CustomerDialog({
       title={initialData ? "Edit Client / Lead" : "Add Client / Lead"}
       description={
         sageLinked
-          ? "Sage is the source of truth. Use a reviewed proposal to change company details."
+          ? "Linked to Sage. Changes to name, email, phone and addresses go to Sage for approval; Compass shows them once Sage confirms the write. Company and notes save now."
           : developerModeEnabled
           ? "Maintain the directory record without granting project access or creating a Sage client. Add individual people separately."
           : "Maintain the directory record without granting project access. Add individual people separately."
@@ -115,121 +193,177 @@ export function CustomerDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-name" className="text-xs">
-              Directory display name *
-            </Label>
-            <Input
-              id="cust-name"
-              className="h-9"
-              placeholder="Client or lead name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoFocus
-              disabled={sageLinked}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-relationship" className="text-xs">
-              Contact status
-            </Label>
-            <Select
-              value={relationshipType}
-              onValueChange={(value) => {
-                if (value === "client" || value === "lead") {
-                  setRelationshipType(value)
-                }
-              }}
-              disabled={Boolean(
-                initialData?.sageClientId || initialData?.sageClientNumber
-              )}
-            >
-              <SelectTrigger id="cust-relationship" className="h-9">
-                <SelectValue placeholder="Client or lead" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="client">Client</SelectItem>
-                <SelectItem value="lead">Lead</SelectItem>
-              </SelectContent>
-            </Select>
-            {(initialData?.sageClientId || initialData?.sageClientNumber) && (
-              <p className="text-xs text-muted-foreground">
-                {developerModeEnabled
-                  ? "Sage-linked directory records remain clients."
-                  : "Linked directory records remain clients."}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-company" className="text-xs">
-              Company
-            </Label>
-            <Input
-              id="cust-company"
-              className="h-9"
-              placeholder="Company or organization"
-              value={company}
-              disabled={sageLinked}
-              onChange={(e) => setCompany(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="cust-email" className="text-xs">
-                Email
-              </Label>
-              <Input
-                id="cust-email"
-                type="email"
-                className="h-9"
-                placeholder="email@example.com"
-                value={email}
-                disabled={sageLinked}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+          {sageLinked && initialData ? (
+            <div className="space-y-3">
+              {sageState && initialData.id in sageState.pending ? (
+                <p className="text-xs font-medium">A Sage change for this client is waiting for approval.</p>
+              ) : null}
+              {sageVerified ? <SageCompanyNameRow kind="client_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {SAGE_CLIENT_FIELDS.map((field) => (
+                  <div key={field} className={field === "name" ? "space-y-1.5 sm:col-span-2" : "space-y-1.5"}>
+                    <Label htmlFor={`cust-sage-${field}`} className="text-xs">
+                      {field === "name" ? "Client name *" : SAGE_FIELD_LABELS[field]}
+                    </Label>
+                    <Input
+                      id={`cust-sage-${field}`}
+                      type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                      className="h-9"
+                      value={sageDraft[field]}
+                      required={field === "name"}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setSageDraft((current) => ({ ...current, [field]: next }))
+                      }}
+                      disabled={lockedReason(field) !== null}
+                    />
+                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} lockedReason={lockedReason(field)} />
+                  </div>
+                ))}
+                <div className="space-y-1.5">
+                  <Label htmlFor="cust-primary-email" className="text-xs">Primary email</Label>
+                  <Input id="cust-primary-email" className="h-9" value={initialData.primaryEmail ?? ""} disabled readOnly />
+                  <p className="text-xs text-muted-foreground">{CLIENT_PRIMARY_EMAIL_LOCK}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-company" className="text-xs">Company</Label>
+                <Input
+                  id="cust-company"
+                  className="h-9"
+                  placeholder="Company or organization"
+                  value={company}
+                  disabled={!canEdit}
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Compass only; Sage has no separate company field.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-notes" className="text-xs">Notes</Label>
+                <Textarea
+                  id="cust-notes"
+                  value={notes}
+                  disabled={!canEdit}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Additional notes..."
+                  className="text-sm resize-none"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cust-phone" className="text-xs">
-                Phone
-              </Label>
-              <Input
-                id="cust-phone"
-                className="h-9"
-                placeholder="(555) 123-4567"
-                value={phone}
-                disabled={sageLinked}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-address" className="text-xs">
-              Address
-            </Label>
-            <Input
-              id="cust-address"
-              className="h-9"
-              placeholder="Street, city, state"
-              value={address}
-              disabled={sageLinked}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-notes" className="text-xs">
-              Notes
-            </Label>
-            <Textarea
-              id="cust-notes"
-              value={notes}
-              disabled={sageLinked}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              placeholder="Additional notes..."
-              className="text-sm resize-none"
-            />
-          </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-name" className="text-xs">
+                  Directory display name *
+                </Label>
+                <Input
+                  id="cust-name"
+                  className="h-9"
+                  placeholder="Client or lead name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-relationship" className="text-xs">
+                  Contact status
+                </Label>
+                <Select
+                  value={relationshipType}
+                  onValueChange={(value) => {
+                    if (value === "client" || value === "lead") {
+                      setRelationshipType(value)
+                    }
+                  }}
+                  disabled={Boolean(
+                    initialData?.sageClientId || initialData?.sageClientNumber
+                  )}
+                >
+                  <SelectTrigger id="cust-relationship" className="h-9">
+                    <SelectValue placeholder="Client or lead" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="client">Client</SelectItem>
+                    <SelectItem value="lead">Lead</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(initialData?.sageClientId || initialData?.sageClientNumber) && (
+                  <p className="text-xs text-muted-foreground">
+                    {developerModeEnabled
+                      ? "Sage-linked directory records remain clients."
+                      : "Linked directory records remain clients."}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-company" className="text-xs">
+                  Company
+                </Label>
+                <Input
+                  id="cust-company"
+                  className="h-9"
+                  placeholder="Company or organization"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cust-email" className="text-xs">
+                    Email
+                  </Label>
+                  <Input
+                    id="cust-email"
+                    type="email"
+                    className="h-9"
+                    placeholder="email@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cust-phone" className="text-xs">
+                    Phone
+                  </Label>
+                  <Input
+                    id="cust-phone"
+                    className="h-9"
+                    placeholder="(555) 123-4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-address" className="text-xs">
+                  Address
+                </Label>
+                <Input
+                  id="cust-address"
+                  className="h-9"
+                  placeholder="Street, city, state"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cust-notes" className="text-xs">
+                  Notes
+                </Label>
+                <Textarea
+                  id="cust-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Additional notes..."
+                  className="text-sm resize-none"
+                />
+              </div>
+            </>
+          )}
         </ResponsiveDialogBody>
 
         <ResponsiveDialogFooter>
@@ -248,9 +382,7 @@ export function CustomerDialog({
             <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
           ) : null}
           {sageLinked ? (
-            sageVerified ? (
-              <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
-            ) : null
+            canEdit ? <Button type="submit" className="h-9" disabled={saving}>Save</Button> : null
           ) : (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Add to Contacts"}

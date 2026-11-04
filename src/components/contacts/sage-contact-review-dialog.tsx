@@ -1,5 +1,6 @@
 "use client"
 
+import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -195,14 +196,17 @@ export function SageContactReviewDialog({
             <p className="text-sm text-muted-foreground">No contact change proposals yet.</p>
           ) : proposals.map((proposal) => (
             <section key={proposal.id} className="space-y-3 border-b pb-4 last:border-b-0">
-              <div className="text-sm font-medium">{proposal.kind.replaceAll("_", " ")} · {proposal.entityId} · {proposal.status}</div>
+              <div className="text-sm font-medium">{proposal.kind.replaceAll("_", " ")} · {proposal.entityName ?? proposal.entityId} · {proposal.status}</div>
               <div className="text-xs text-muted-foreground">Requested {new Date(proposal.requestedAt).toLocaleString()} by {proposal.requestedByUserId}</div>
               {proposal.errorMessage ? <p className="text-sm text-destructive">{proposal.errorMessage}</p> : null}
               {proposal.reviewNote ? <p className="text-sm text-muted-foreground">Review note: {proposal.reviewNote}</p> : null}
               <dl className="grid gap-1 text-sm">
+                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  <span>Field</span><span>In Sage now</span><span>Requested</span>
+                </div>
                 {proposal.changes.map((change) => (
                   <div key={change.field} className="grid grid-cols-3 gap-2">
-                    <dt className="font-medium">{change.field}</dt>
+                    <dt className="font-medium">{SAGE_FIELD_LABELS[change.field]}</dt>
                     <dd className="text-muted-foreground break-words">{change.before ?? "(blank)"}</dd>
                     <dd className="break-words">{change.after ?? "(blank)"}</dd>
                   </div>

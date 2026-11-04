@@ -42,6 +42,7 @@ import {
   sageLinkedVendorPeopleChangeError,
 } from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
+import { sageVendorTypeCategoryError, vendorCategoryFromSage } from "@/lib/sage/vendor-category-lock"
 import { requireUserContext } from "@/lib/server/action-context"
 import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 import { addVendorPerson } from "@/lib/domain/contacts/directory-people"
@@ -388,6 +389,10 @@ export async function updateVendor(
       }
       const peopleError = data.contacts === undefined ? null : sageLinkedVendorPeopleChangeError(contactInputs, existingContacts)
       if (peopleError) return { success: false, error: peopleError }
+      if (data.category !== undefined && data.category.trim() !== existing.category) {
+        const sageType = await vendorCategoryFromSage(db, orgId, existing)
+        if (sageType) return { success: false, error: sageVendorTypeCategoryError(sageType) }
+      }
     }
 
     const name = data.name?.trim() ?? existing.name
