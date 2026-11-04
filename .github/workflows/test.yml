@@ -28,7 +28,7 @@ jobs:
   # E2E tests for web browsers
   e2e-web:
     name: E2E Web (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright does not support ubuntu-latest (26.04) yet
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +69,7 @@ jobs:
   # before merge. The full cross-platform matrix also runs at the PR head.
   e2e-desktop-pr:
     name: E2E Desktop (PR smoke)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright does not support ubuntu-latest (26.04) yet
     if: github.event_name == 'pull_request'
     env:
       LOCAL_DB_PATH: .e2e/compass.db
@@ -112,7 +112,7 @@ jobs:
   # Desktop E2E tests: the full matrix proves every exact candidate.
   e2e-desktop:
     name: E2E Desktop
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}  # Playwright: no 26.04 support yet
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     env:
       LOCAL_DB_PATH: .e2e/compass.db

@@ -6,6 +6,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
+using System.Xml.Schema;
 
 namespace CompassSageClientProjectWriter
 {
@@ -116,6 +117,94 @@ namespace CompassSageClientProjectWriter
             new ContactField("cellPhone", "cllphn", "Mobile"),
             new ContactField("email", "e_mail", "Email"),
         };
+
+        // Company name, email and phone. A Sage host whose company database or
+        // installed mbxml.xsd lacks one of these simply leaves it out of the
+        // read-back, so Compass keeps that field read-only; nothing is guessed.
+        // The XML name is taken from the installed schema, never assumed.
+        private sealed class ExtendedContactField
+        {
+            public string Key;
+            public string Table;
+            public string Sql;
+            public string[] XmlCandidates;
+            public ExtendedContactField(string key, string table, string sql, string[] xmlCandidates)
+            { Key = key; Table = table; Sql = sql; XmlCandidates = xmlCandidates; }
+        }
+        private static readonly ExtendedContactField[] ClientCompanyExtendedFields = {
+            new ExtendedContactField("name", "reccln", "clnnme", new string[] { "ClientName", "Name" }),
+            new ExtendedContactField("email", "reccln", "e_mail", new string[] { "Email", "Email1" }),
+            new ExtendedContactField("phone", "reccln", "phnnum", new string[] { "Phone", "Phone1", "PhoneNumber" }),
+        };
+        private static readonly ExtendedContactField[] VendorCompanyExtendedFields = {
+            new ExtendedContactField("name", "actpay", "vndnme", new string[] { "VendorName", "Name" }),
+            new ExtendedContactField("email", "actpay", "e_mail", new string[] { "Email" }),
+            new ExtendedContactField("phone", "actpay", "phnnum", new string[] { "Phone", "Phone1", "PhoneNumber" }),
+        };
+        private static readonly Dictionary<string, List<XmlSchemaElement>> ModRequestFieldCache =
+            new Dictionary<string, List<XmlSchemaElement>>(StringComparer.Ordinal);
+
+        private static ExtendedContactField[] ExtendedFieldsFor(string kind)
+        {
+            if (kind == "client_company") return ClientCompanyExtendedFields;
+            if (kind == "vendor_company") return VendorCompanyExtendedFields;
+            return new ExtendedContactField[0];
+        }
+
+        private static string ModRequestName(string kind)
+        {
+            return kind == "client_company" || kind == "client_person" ? "ClientModRq" :
+                kind == "vendor_company" || kind == "vendor_person" ? "VendorModRq" : "EmployeeModRq";
+        }
+
+        private static string SchemaElementName(XmlSchemaElement element)
+        {
+            return String.IsNullOrWhiteSpace(element.Name) ? element.RefName.Name : element.Name;
+        }
+
+        /** The Mod request's top-level elements from the installed mbxml.xsd, or an empty list. */
+        private static List<XmlSchemaElement> ModRequestFields(string kind)
+        {
+            string request = ModRequestName(kind);
+            List<XmlSchemaElement> fields;
+            if (ModRequestFieldCache.TryGetValue(request, out fields)) return fields;
+            try { fields = RequestFields(request); }
+            catch { fields = new List<XmlSchemaElement>(); }
+            ModRequestFieldCache[request] = fields;
+            return fields;
+        }
+
+        /** The installed schema element for an extended field, or null when Sage has none. */
+        private static XmlSchemaElement ExtendedXmlElement(string kind, ExtendedContactField field)
+        {
+            List<XmlSchemaElement> available = ModRequestFields(kind);
+            foreach (string candidate in field.XmlCandidates)
+                foreach (XmlSchemaElement element in available)
+                    if (String.Equals(Normalize(SchemaElementName(element)), Normalize(candidate), StringComparison.Ordinal))
+                        return element;
+            return null;
+        }
+
+        private static bool SageColumnExists(SqlConnection connection, string table, string column)
+        {
+            using (SqlCommand command = new SqlCommand("SELECT COL_LENGTH(@table, @column)", connection))
+            {
+                command.Parameters.AddWithValue("@table", "dbo." + table);
+                command.Parameters.AddWithValue("@column", column);
+                object length = command.ExecuteScalar();
+                return length != null && length != DBNull.Value;
+            }
+        }
+
+        /** Extended fields this host can both read (SQL column) and write (schema element). */
+        private static List<ExtendedContactField> AvailableExtendedFields(SqlConnection connection, string kind)
+        {
+            List<ExtendedContactField> available = new List<ExtendedContactField>();
+            foreach (ExtendedContactField field in ExtendedFieldsFor(kind))
+                if (ExtendedXmlElement(kind, field) != null && SageColumnExists(connection, field.Table, field.Sql))
+                    available.Add(field);
+            return available;
+        }
 
         private static ContactField[] FieldsFor(string kind)
         {
@@ -689,7 +778,7 @@ namespace CompassSageClientProjectWriter
         {
             foreach (string kind in new string[] { "client_company", "client_person", "vendor_company", "vendor_person", "employee" })
             {
-                ContactField[] fields = FieldsFor(kind);
+                ContactField[] fields = WritableFieldsFor(kind);
                 ContactChange[] changes = new ContactChange[fields.Length];
                 for (int index = 0; index < fields.Length; index++)
                 {
@@ -952,43 +1041,51 @@ namespace CompassSageClientProjectWriter
             // Names are read-only identity evidence, not contact edits.
             if (task.kind == "employee") query.Append(", fstnme, lstnme");
             if (task.kind == "client_company") query.Append(", clnnme");
-            query.Append(" FROM dbo.").Append(table)
-                .Append(" WHERE ((@id IS NOT NULL AND _idnum = @id) OR (@id IS NULL AND ")
-                .Append(idColumn).Append(" = @number))");
-            if (person) query.Append(" AND _idref = @parent");
             using (SqlConnection connection = OpenContactSql(company))
-            using (SqlCommand command = new SqlCommand(query.ToString(), connection))
             {
-                command.Parameters.AddWithValue("@id", String.IsNullOrWhiteSpace(task.sageRecordId) ? (object)DBNull.Value : task.sageRecordId);
-                command.Parameters.AddWithValue("@number", String.IsNullOrWhiteSpace(task.sageRecordNumber) ? (object)DBNull.Value : task.sageRecordNumber);
-                if (person) command.Parameters.AddWithValue("@parent", task.parentSageRecordId ?? "");
-                using (SqlDataReader reader = command.ExecuteReader())
+                List<ExtendedContactField> extended = AvailableExtendedFields(connection, task.kind);
+                int extendedStart = fields.Length + 3 + (task.kind == "employee" ? 2 : task.kind == "client_company" ? 1 : 0);
+                foreach (ExtendedContactField field in extended) query.Append(", ").Append(field.Sql);
+                query.Append(" FROM dbo.").Append(table)
+                    .Append(" WHERE ((@id IS NOT NULL AND _idnum = @id) OR (@id IS NULL AND ")
+                    .Append(idColumn).Append(" = @number))");
+                if (person) query.Append(" AND _idref = @parent");
+                using (SqlCommand command = new SqlCommand(query.ToString(), connection))
                 {
-                    if (!reader.Read()) throw new InvalidOperationException("Sage contact record was not found by its exact key.");
-                    ContactSnapshot snapshot = new ContactSnapshot {
-                        kind = task.kind, entityId = task.entityId,
-                        sageRecordId = Convert.ToString(reader[0]),
-                        sageRecordNumber = Convert.ToString(reader[1]),
-                        parentSageRecordId = reader.IsDBNull(2) ? null : Convert.ToString(reader[2]),
-                        fields = new Dictionary<string, string>(StringComparer.Ordinal)
-                    };
-                    for (int index = 0; index < fields.Length; index++)
-                        snapshot.fields.Add(fields[index].Key, reader.IsDBNull(index + 3) ? null : Convert.ToString(reader[index + 3]).Trim());
-                    if (task.kind == "employee")
+                    command.Parameters.AddWithValue("@id", String.IsNullOrWhiteSpace(task.sageRecordId) ? (object)DBNull.Value : task.sageRecordId);
+                    command.Parameters.AddWithValue("@number", String.IsNullOrWhiteSpace(task.sageRecordNumber) ? (object)DBNull.Value : task.sageRecordNumber);
+                    if (person) command.Parameters.AddWithValue("@parent", task.parentSageRecordId ?? "");
+                    using (SqlDataReader reader = command.ExecuteReader())
                     {
-                        string first = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
-                        string last = reader.IsDBNull(fields.Length + 4) ? "" : Convert.ToString(reader[fields.Length + 4]).Trim();
-                        string fullName = (first + " " + last).Trim();
-                        snapshot.identityName = fullName.Length == 0 ? null : fullName;
+                        if (!reader.Read()) throw new InvalidOperationException("Sage contact record was not found by its exact key.");
+                        ContactSnapshot snapshot = new ContactSnapshot {
+                            kind = task.kind, entityId = task.entityId,
+                            sageRecordId = Convert.ToString(reader[0]),
+                            sageRecordNumber = Convert.ToString(reader[1]),
+                            parentSageRecordId = reader.IsDBNull(2) ? null : Convert.ToString(reader[2]),
+                            fields = new Dictionary<string, string>(StringComparer.Ordinal)
+                        };
+                        for (int index = 0; index < fields.Length; index++)
+                            snapshot.fields.Add(fields[index].Key, reader.IsDBNull(index + 3) ? null : Convert.ToString(reader[index + 3]).Trim());
+                        if (task.kind == "employee")
+                        {
+                            string first = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
+                            string last = reader.IsDBNull(fields.Length + 4) ? "" : Convert.ToString(reader[fields.Length + 4]).Trim();
+                            string fullName = (first + " " + last).Trim();
+                            snapshot.identityName = fullName.Length == 0 ? null : fullName;
+                        }
+                        if (task.kind == "client_company")
+                        {
+                            string clientName = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
+                            snapshot.identityName = clientName.Length == 0 ? null : clientName;
+                        }
+                        for (int index = 0; index < extended.Count; index++)
+                            snapshot.fields.Add(extended[index].Key, reader.IsDBNull(extendedStart + index) ? null :
+                                Convert.ToString(reader[extendedStart + index]).Trim());
+                        if (reader.Read()) throw new InvalidOperationException("Sage contact key resolved more than one row.");
+                        snapshot.revision = ContactRevision(snapshot);
+                        return snapshot;
                     }
-                    if (task.kind == "client_company")
-                    {
-                        string clientName = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
-                        snapshot.identityName = clientName.Length == 0 ? null : clientName;
-                    }
-                    if (reader.Read()) throw new InvalidOperationException("Sage contact key resolved more than one row.");
-                    snapshot.revision = ContactRevision(snapshot);
-                    return snapshot;
                 }
             }
         }
@@ -1031,10 +1128,46 @@ namespace CompassSageClientProjectWriter
             BuildContactXml(kind, recordNumber, parentNumber, changes, company);
         }
 
+        /** The approved fields plus the extended company fields the installed schema names. */
+        private static ContactField[] WritableFieldsFor(string kind)
+        {
+            List<ContactField> fields = new List<ContactField>(FieldsFor(kind));
+            foreach (ExtendedContactField field in ExtendedFieldsFor(kind))
+            {
+                XmlSchemaElement element = ExtendedXmlElement(kind, field);
+                if (element != null) fields.Add(new ContactField(field.Key, field.Sql, SchemaElementName(element)));
+            }
+            return fields.ToArray();
+        }
+
+        /**
+         * Company Mod elements in the installed schema's sequence order, so an
+         * extended field lands where mbxml.xsd expects it. Falls back to the
+         * approved order when any element is not found at the top level.
+         */
+        private static ContactField[] OrderedForSchema(string kind, ContactField[] fields)
+        {
+            if (ExtendedFieldsFor(kind).Length == 0) return fields;
+            List<XmlSchemaElement> sequence = ModRequestFields(kind);
+            Dictionary<string, int> position = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int index = 0; index < sequence.Count; index++)
+            {
+                string name = Normalize(SchemaElementName(sequence[index]));
+                if (!position.ContainsKey(name)) position.Add(name, index);
+            }
+            foreach (ContactField field in fields)
+                if (!position.ContainsKey(Normalize(field.Xml))) return fields;
+            List<ContactField> ordered = new List<ContactField>(fields);
+            ordered.Sort(delegate(ContactField left, ContactField right) {
+                return position[Normalize(left.Xml)].CompareTo(position[Normalize(right.Xml)]);
+            });
+            return ordered.ToArray();
+        }
+
         private static string BuildContactXml(string kind, int recordNumber, int parentNumber, ContactChange[] changes, string company)
         {
             if (recordNumber < 1) throw new InvalidOperationException("Sage contact number is invalid.");
-            ContactField[] allowed = FieldsFor(kind);
+            ContactField[] allowed = WritableFieldsFor(kind);
             Dictionary<string, string> proposed = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (ContactChange change in changes)
             {
@@ -1044,15 +1177,24 @@ namespace CompassSageClientProjectWriter
                     throw new InvalidOperationException("Unknown or duplicate Sage contact field.");
                 proposed.Add(change.field, change.after);
             }
+            // Sage would truncate an over-long value; refuse instead.
+            foreach (ExtendedContactField field in ExtendedFieldsFor(kind))
+            {
+                XmlSchemaElement element = ExtendedXmlElement(kind, field);
+                if (element != null && proposed.ContainsKey(field.Key) && proposed[field.Key] != null &&
+                    proposed[field.Key].Length > MaxLength(element))
+                    throw new InvalidOperationException("Sage " + field.Key + " is longer than Sage allows; no write attempted.");
+                if (field.Key == "name" && proposed.ContainsKey("name") && String.IsNullOrWhiteSpace(proposed["name"]))
+                    throw new InvalidOperationException("A Sage company name cannot be cleared; no write attempted.");
+            }
             bool person = kind == "client_person" || kind == "vendor_person";
             if (person && parentNumber < 1) throw new InvalidOperationException("Sage person parent number is invalid.");
-            string requestName = kind == "client_company" || kind == "client_person" ? "ClientModRq" :
-                kind == "vendor_company" || kind == "vendor_person" ? "VendorModRq" : "EmployeeModRq";
+            string requestName = ModRequestName(kind);
             StringBuilder body = new StringBuilder("<ObjectRef><ObjectID>")
                 .Append(person ? parentNumber : recordNumber).Append("</ObjectID></ObjectRef>");
             if (person) body.Append(kind == "client_person" ? "<ClientContactMod>" : "<VendorContactMod>")
                 .Append("<ObjectRef><LineID>").Append(recordNumber).Append("</LineID></ObjectRef>");
-            foreach (ContactField field in allowed)
+            foreach (ContactField field in OrderedForSchema(kind, allowed))
                 if (proposed.ContainsKey(field.Key)) body.Append('<').Append(field.Xml).Append('>')
                     .Append(XmlEscape(proposed[field.Key] ?? "")).Append("</").Append(field.Xml).Append('>');
             if (person) body.Append(kind == "client_person" ? "</ClientContactMod>" : "</VendorContactMod>");

@@ -5,7 +5,9 @@ import {
   isPrivateEmployeeContactField,
   isSageContactProposalCurrent,
   planSageContactChange,
+  sageContactExtendedFields,
   sageContactProposalFields,
+  sageContactRequiredSnapshotFields,
   type SageContactSnapshot,
 } from "@/lib/sage/contact-change-proposal"
 
@@ -52,10 +54,10 @@ describe("reviewed Sage contact change planning", () => {
   })
 
   it("fails closed on unverified or unobserved fields", () => {
-    expect(sageContactProposalFields("vendor_company")).not.toContain("email")
+    expect(sageContactProposalFields("vendor_company")).not.toContain("cellPhone")
     expect(planSageContactChange({
       snapshot: { ...vendorPerson, kind: "vendor_company" },
-      proposed: { email: "new@example.com" },
+      proposed: { cellPhone: "555-0101" },
     })).toMatchObject({ success: false, error: expect.stringContaining("not approved") })
     expect(planSageContactChange({
       snapshot: vendorPerson,
@@ -152,5 +154,32 @@ describe("reviewed Sage child-contact creation", () => {
       .toMatchObject({ success: false, error: expect.stringContaining("not approved") })
     expect(planSageContactCreate("client_person", { name: "x".repeat(51) }))
       .toMatchObject({ success: false, error: expect.stringContaining("field limit") })
+  })
+
+  it("plans company name, email and phone only against a read that carried them", () => {
+    const olderWriter: SageContactSnapshot = {
+      organizationId: "org-1", kind: "vendor_company", sageRecordId: "vendor-4", parentSageRecordId: null,
+      revision: "sage-revision-1", fields: { ownerName: "Pat" },
+    }
+    expect(planSageContactChange({ snapshot: olderWriter, proposed: { phone: "555-0100" } }))
+      .toMatchObject({ success: false, error: expect.stringContaining("Sage writer") })
+    for (const kind of ["vendor_company", "client_company"] as const) {
+      expect(sageContactExtendedFields(kind)).toEqual(["name", "email", "phone"])
+      expect(sageContactRequiredSnapshotFields(kind)).not.toContain("name")
+      expect(planSageContactChange({
+        snapshot: { ...olderWriter, kind, fields: { name: "Acme", email: null, phone: "555-0100" } },
+        proposed: { name: "Acme Inc", email: "ap@acme.example" },
+      })).toMatchObject({
+        success: true,
+        plan: { changes: [
+          { field: "email", before: null, after: "ap@acme.example" },
+          { field: "name", before: "Acme", after: "Acme Inc" },
+        ] },
+      })
+      expect(planSageContactChange({
+        snapshot: { ...olderWriter, kind, fields: { name: "Acme" } }, proposed: { name: " " },
+      })).toMatchObject({ success: false, error: expect.stringContaining("cannot be cleared") })
+    }
+    expect(sageContactRequiredSnapshotFields("vendor_person")).toEqual(sageContactProposalFields("vendor_person"))
   })
 })

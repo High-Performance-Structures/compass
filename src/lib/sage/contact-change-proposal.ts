@@ -77,9 +77,13 @@ const FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField
     "addressLine1", "addressLine2", "city", "state", "postalCode",
     "billingAddressLine1", "billingAddressLine2", "billingCity",
     "billingState", "billingPostalCode",
+    "name", "email", "phone",
   ],
   client_person: ["name", "title", "phone", "phoneExtension", "email", "cellPhone"],
-  vendor_company: ["ownerName", "addressLine1", "addressLine2", "city", "state", "postalCode", "primaryEmail"],
+  vendor_company: [
+    "ownerName", "addressLine1", "addressLine2", "city", "state", "postalCode", "primaryEmail",
+    "name", "email", "phone",
+  ],
   vendor_person: ["name", "title", "phone", "phoneExtension", "email", "cellPhone"],
   employee: ["addressLine1", "addressLine2", "city", "state", "postalCode", "phone", "cellPhone", "email"],
 }
@@ -93,8 +97,34 @@ const FIELD_MAX_LENGTH: Readonly<Partial<Record<SageContactField, number>>> = {
   email: 75, primaryEmail: 75, phoneExtension: 6,
 }
 
+/**
+ * Company name, email and phone (client reccln clnnme/e_mail/phnnum, vendor
+ * actpay vndnme/e_mail/phnnum). The Sage writer sends them only once its
+ * host has both the column and the installed API element, so an older
+ * writer's read-back may leave them out: they are optional in a snapshot,
+ * and a proposal for one needs a read that carried it.
+ */
+const EXTENDED_FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField[]>> = {
+  client_company: ["name", "email", "phone"],
+  client_person: [],
+  vendor_company: ["name", "email", "phone"],
+  vendor_person: [],
+  employee: [],
+}
+
 export function sageContactProposalFields(kind: SageContactKind): readonly SageContactField[] {
   return FIELDS_BY_KIND[kind]
+}
+
+/** Fields a Sage read-back must always carry for this kind. */
+export function sageContactRequiredSnapshotFields(kind: SageContactKind): readonly SageContactField[] {
+  const extended = EXTENDED_FIELDS_BY_KIND[kind]
+  return FIELDS_BY_KIND[kind].filter((field) => !extended.includes(field))
+}
+
+/** Fields only a Sage writer that knows them sends; see EXTENDED_FIELDS_BY_KIND. */
+export function sageContactExtendedFields(kind: SageContactKind): readonly SageContactField[] {
+  return EXTENDED_FIELDS_BY_KIND[kind]
 }
 
 export function isPrivateEmployeeContactField(field: string): boolean {
@@ -168,7 +198,12 @@ export function planSageContactChange(input: {
       return { success: false, error: `Sage contact field ${key} is not approved for ${snapshot.kind}.` }
     }
     if (!Object.prototype.hasOwnProperty.call(snapshot.fields, key)) {
-      return { success: false, error: `No Sage read value is available for ${key}.` }
+      return {
+        success: false,
+        error: EXTENDED_FIELDS_BY_KIND[snapshot.kind].includes(key)
+          ? `Sage does not send ${key} to Compass yet. The Sage writer on the Sage computer needs its update first.`
+          : `No Sage read value is available for ${key}.`,
+      }
     }
     if (submitted !== null && typeof submitted !== "string") {
       return { success: false, error: `Invalid value for ${key}.` }
@@ -178,7 +213,7 @@ export function planSageContactChange(input: {
       return { success: false, error: `${key} exceeds the Sage field limit.` }
     }
     if (key === "name" && after === null) {
-      return { success: false, error: "A Sage contact name cannot be cleared." }
+      return { success: false, error: "A Sage name cannot be cleared." }
     }
     const before = normalized(snapshot.fields[key])
     if (before !== after) changes.push({ field: key, before, after })

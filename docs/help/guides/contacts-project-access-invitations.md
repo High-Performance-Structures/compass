@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-04"
 }
 ---
 
@@ -32,7 +32,7 @@ Clients, vendors, and internal people are separate Contacts views. A client or v
 
 The **Internal** directory has separate **Email** and **Phone** columns. The Phone column shows stored employee phone and mobile numbers, including Sage-synced values; select a number to call it. A dash means neither number is available.
 
-For a Sage-linked record, choose **Propose Sage edit** rather than directly changing its contact fields. Request a current Sage refresh first; the read must be recent. The proposal appears in **Sage review** for an authorized reviewer other than the proposer. When Sage contact sync is enabled, approval queues a Sage update, and Compass updates the contact only after the bridge reads it back. Approval is unavailable while writes are paused. If Sage changed in the meantime, the proposal is held as a conflict. Employee home addresses are never shown in project contact lists and require a separate confidential-contact permission for staff review.
+For a Sage-linked client or vendor, edit the fields in place and choose **Save**. Fields Compass keeps on its own (a vendor's category, a client's company and notes, and Compass-only people) save immediately. Fields shared with Sage (name, owner, email, phone and addresses, and the details of people who are in Sage) become one Sage change request instead; each shows **Pending Sage approval** with its new value until the request is decided. A reviewer other than the requester approves it in **Sage review**, and Compass shows the new value only after the Sage writer reads it back from Sage. A rejected request leaves the value as it was. If Compass needs a fresh read from Sage first, it asks for one; save again a minute later. A vendor's category follows its Sage vendor type when the company maps one, so change the type in Sage. A client's primary email is changed in Sage. For Sage-linked staff, choose **Propose Sage edit**. Approval is unavailable while Sage writes are paused, and if Sage changed in the meantime, the request is held as a conflict. Employee home addresses are never shown in project contact lists and require a separate confidential-contact permission for staff review.
 
 For an unlinked contact, **Verify Sage link** looks up the exact Sage number without changing the directory record. Only one lookup can be active for a contact: selecting the same number again reuses a pending lookup, while a different number requires rejecting the existing candidate in **Sage review** first. If a read-back is older than 15 minutes or an employee name was not returned, use **Refresh Sage read-back** in the review. This requests a new read of the same number and retains the review history; it does not link the contact or write to Sage. Compare the fresh Sage evidence before linking. An employee may review their own matching-name link only when individually granted **Self-review Sage employee identity** under **Settings > Permissions**; other identity links require a separate reviewer.
 

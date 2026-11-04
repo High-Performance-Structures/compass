@@ -7,6 +7,7 @@ import {
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactIdentityError } from "@/lib/sage/contact-bridge"
+import { formatVendorAddress } from "@/lib/domain/sage-bridge/vendor-directory-updates"
 
 type Snapshot = {
   readonly kind: SageContactKind
@@ -34,6 +35,15 @@ const VENDOR_COMPANY: Readonly<Record<string, string>> = {
   addressLine2: "address_line_2", city: "city", state: "state",
   postalCode: "postal_code", primaryEmail: "primary_email",
 }
+/**
+ * Company name, email and phone take Sage's value only when an approved
+ * proposal wrote them, never on a plain read: Compass's display name may
+ * differ on purpose ("Use Sage name" adopts it explicitly).
+ */
+const COMPANY_WRITTEN_ONLY: Readonly<Record<string, string>> = {
+  name: "name", email: "email", phone: "phone",
+}
+const ADDRESS_PARTS = ["addressLine1", "addressLine2", "city", "state", "postalCode"] as const
 const PERSON: Readonly<Record<string, string>> = {
   name: "name", title: "title", email: "email", phone: "phone",
   phoneExtension: "phone_extension", cellPhone: "cell_phone",
@@ -64,23 +74,52 @@ function updateAssignments(sageIdColumn: string, patch: { readonly clauses: read
   return [`\`${sageIdColumn}\` = ?`, ...patch.clauses, "updated_at = ?"].join(", ")
 }
 
+/**
+ * The company columns an approved write confirmed: name, email and phone it
+ * changed (a blank name is never copied), and the one-line address rebuilt
+ * when an address part changed.
+ */
+function writtenCompanyPatch(
+  fields: Readonly<Record<string, string | null>>,
+  writtenFields: readonly string[]
+): { readonly clauses: readonly string[]; readonly values: readonly (string | null)[] } {
+  const written = Object.fromEntries(Object.entries(COMPANY_WRITTEN_ONLY).filter(([field]) =>
+    writtenFields.includes(field) && (field !== "name" || Boolean(fields[field]?.trim()))))
+  const patch = patchFor(fields, written)
+  if (!ADDRESS_PARTS.some((part) => writtenFields.includes(part))) return patch
+  const address = formatVendorAddress({
+    addressLine1: fields.addressLine1 ?? null, addressLine2: fields.addressLine2 ?? null,
+    city: fields.city ?? null, state: fields.state ?? null, postalCode: fields.postalCode ?? null,
+  })
+  return { clauses: [...patch.clauses, "`address` = ?"], values: [...patch.values, address] }
+}
+
+function merged(
+  left: { readonly clauses: readonly string[]; readonly values: readonly (string | null)[] },
+  right: { readonly clauses: readonly string[]; readonly values: readonly (string | null)[] }
+): { readonly clauses: readonly string[]; readonly values: readonly (string | null)[] } {
+  return { clauses: [...left.clauses, ...right.clauses], values: [...left.values, ...right.values] }
+}
+
 /** Only signed, validated Sage snapshots may call this function. */
 export async function applySageContactSnapshotToCanonical(
   database: D1Database,
   organizationId: string,
   identity: SageContactEntityIdentity,
-  snapshot: Snapshot
+  snapshot: Snapshot,
+  /** The fields an approved proposal wrote; empty for a plain read. */
+  writtenFields: readonly string[] = []
 ): Promise<CanonicalUpdateResult> {
   const identityError = sageContactIdentityError(identity, snapshot)
   if (identityError) return { success: false, error: identityError }
   const now = new Date().toISOString()
   let statement: D1PreparedStatement
   if (snapshot.kind === "client_company") {
-    const patch = patchFor(snapshot.fields, CLIENT_COMPANY)
+    const patch = merged(patchFor(snapshot.fields, CLIENT_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_client_id", patch),
       [snapshot.sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
   } else if (snapshot.kind === "vendor_company") {
-    const patch = patchFor(snapshot.fields, VENDOR_COMPANY)
+    const patch = merged(patchFor(snapshot.fields, VENDOR_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_vendor_id", patch),
       [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
   } else if (snapshot.kind === "client_person") {

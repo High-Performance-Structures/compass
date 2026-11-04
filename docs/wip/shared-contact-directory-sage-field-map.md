@@ -239,6 +239,33 @@ set the contact bridge credential or any write switch; read-only polling and
 reviewed writes require separate activation and verification after Compass
 migrations and deployment.
 
+## Inline edits of Sage-linked companies (2026-11-04)
+
+Owner decision: "Edit here, Sage after OK". The client and vendor forms edit a
+Sage-linked company in place. Compass-only fields save immediately; changes to
+Sage-shared fields become one change request per record through the same
+reviewed proposal pipeline (fresh read, different approver, writer with
+identity, revision and before-value checks, read-back). The form shows each
+requested value as "Pending Sage approval".
+
+| Record | Sage-shared | Compass-only |
+| --- | --- | --- |
+| Vendor | name (`actpay.vndnme`), owner, email (`e_mail`), phone (`phnnum`), primary email (`prmeml`), address 1/2, city, state, ZIP | category (locked while it follows a mapped Sage vendor type), Compass-only people |
+| Client | name (`reccln.clnnme`), email (`e_mail`), phone (`phnnum`), address and billing address | company, notes, Compass-only people |
+| Client/vendor person in Sage | name, job title, email, phone | none |
+
+Client primary email stays read-only: its Sage binding is still unverified
+(see above). Primary-contact changes among Sage people stay in Sage.
+
+Company name, email and phone are "extended" proposal fields. The contact
+writer reads each one only when the company table has the column and the
+installed `mbxml.xsd` has a matching Mod element (`VendorName`/`ClientName`/
+`Name`, `Email`, `Phone`), and it orders Mod elements by the installed schema.
+A writer without them omits the fields from its read-back; Compass then keeps
+them read-only. A confirmed write copies name, email and phone into Compass; a
+plain read does not, so "Use Sage name" stays the explicit way to adopt Sage's
+name.
+
 ## Compass storage and privacy
 
 - Existing `customers` and `vendors` become canonical company records with
