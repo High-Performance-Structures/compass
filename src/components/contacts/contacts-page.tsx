@@ -47,7 +47,7 @@ import { SageClientMatchingDialog } from "@/components/contacts/sage-client-matc
 import { ContactMergeDialog } from "@/components/contacts/contact-merge-dialog"
 import { CompanyMergePicker, type MergeChoice } from "@/components/contacts/company-merge-picker"
 import { CompanySelectionBar } from "@/components/contacts/company-selection-bar"
-import { InternalContactsTable } from "@/components/contacts/internal-contacts-table"
+import { InternalContactsPanel } from "@/components/contacts/internal-contacts-panel"
 import { MyContactInformationDialog } from "@/components/contacts/my-contact-information-dialog"
 import { ProjectAssociationConfirmDialog } from "@/components/contacts/project-association-confirm-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
@@ -292,6 +292,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
       return
     }
     toast.success(editingVendor ? "Vendor updated" : "Vendor created")
+    if ("warning" in result && result.warning) toast.warning(result.warning)
     setVendorDialogOpen(false)
     await refresh()
   }
@@ -516,15 +517,24 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           </TabsContent>
 
           <TabsContent value="internal" className="mt-3 flex-1 min-h-0 flex flex-col">
-            <InternalContactsTable
+            <InternalContactsPanel
               contacts={internalContactsList}
+              canEdit={Boolean(directoryAccess?.internal.edit)}
+              canArchive={Boolean(directoryAccess?.internal.delete)}
+              onChanged={reloadLists}
               onSageEdit={directoryAccess?.internal.edit ? (contact) => setSageEditorTarget({ kind: "employee", entityId: contact.id, name: contact.name }) : undefined}
               onSageLink={directoryAccess?.canReadSageReview && directoryAccess.canReadEmployeePrivate && directoryAccess.internal.read ? (contact) => setSageLinkTarget({ kind: "employee", entityId: contact.id, name: contact.name, sageRecordNumber: contact.sageEmployeeNumber }) : undefined}
             />
           </TabsContent>
 
           <TabsContent value="unassigned" className="mt-3 flex-1 min-h-0 flex flex-col">
-            <UnassignedPeopleTable people={unassigned} connectKinds={connectKinds} onConnected={unassignedConnected} />
+            <UnassignedPeopleTable
+              people={unassigned}
+              connectKinds={connectKinds}
+              canEdit={Boolean(directoryAccess?.canEditProjectContacts)}
+              onConnected={unassignedConnected}
+              onChanged={() => void getUnassignedPeople().then(setUnassigned)}
+            />
           </TabsContent>
           <TabsContent value="review" className="mt-3 flex-1 min-h-0 flex flex-col">
             {/* Split names may add new unassigned people, so Unassigned is re-read. */}

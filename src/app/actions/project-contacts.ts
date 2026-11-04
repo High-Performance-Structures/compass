@@ -2,6 +2,7 @@
 
 import { and, eq, inArray } from "drizzle-orm"
 import { projectMembers } from "@/db/schema"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { contactsProjectContext } from "@/lib/domain/contacts/access"
@@ -147,6 +148,15 @@ export async function saveProjectContact(
     }
 
     const contactId = await commitProjectContactSave(db, { organizationId: orgId, plan })
+    await recordActivityEvent({
+      db, organizationId: orgId, projectId: input.projectId, actor: user,
+      category: "account",
+      action: plan.contactId ? "project_contact.updated" : "project_contact.created",
+      entityType: "project_contact",
+      entityId: contactId,
+      summary: `${plan.contactId ? "Updated" : "Added"} project contact ${plan.values.displayName}.`,
+      metadata: { contactType: plan.values.contactType, ...(warning ? { pendingInvitationRevoked: true } : {}) },
+    })
     await queueProjectContactTrackerRefresh({ db, organizationId: orgId, projectId: input.projectId })
     revalidateProjectContactPaths(input.projectId)
     return { success: true, contactId, ...(warning ? { warning } : {}) }
@@ -185,6 +195,14 @@ export async function removeProjectContact(
       )
     }
 
+    await recordActivityEvent({
+      db, organizationId: orgId, projectId, actor: user,
+      category: "account",
+      action: "project_contact.removed",
+      entityType: "project_contact",
+      entityId: contactId,
+      summary: "Removed a project contact.",
+    })
     await queueProjectContactTrackerRefresh({ db, organizationId: orgId, projectId })
     revalidateProjectContactPaths(projectId)
     return { success: true, contactId }

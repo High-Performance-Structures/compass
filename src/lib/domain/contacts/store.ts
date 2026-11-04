@@ -14,17 +14,7 @@
 import { and, asc, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
-import {
-  customerContacts,
-  customers,
-  internalContacts,
-  organizationMembers,
-  projectContacts,
-  projectContactSourceLinks,
-  users,
-  vendorContacts,
-  vendors,
-} from "@/db/schema"
+import { customerContacts, customers, internalContacts, organizationMembers, projectContacts, projectContactSourceLinks, users, vendorContacts, vendors } from "@/db/schema"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
@@ -601,6 +591,18 @@ export async function deactivateVendorPeople(db: Db, input: { readonly personIds
 
 export function insertInternalContactStatement(db: Db, values: InternalContactInsert): Statement {
   return db.insert(internalContacts).values(values)
+}
+
+/** Staff edit of an internal person and the copies on project contacts that name them (an archived person is read only from those copies). */
+export async function updateInternalPerson(db: Db, input: { readonly organizationId: string; readonly personId: string; readonly values: Partial<Pick<InternalContactInsert, "name" | "jobTitle" | "email" | "phone" | "cellPhone" | "active">>; readonly now: string }): Promise<void> {
+  const { name, email, phone, cellPhone } = input.values
+  const copies = { ...(name !== undefined ? { displayName: name } : {}), ...(email !== undefined ? { email } : {}), ...(phone !== undefined || cellPhone !== undefined ? { phone: phone ?? cellPhone ?? null } : {}) }
+  const person = db.update(internalContacts).set({ ...input.values, updatedAt: input.now }).where(and(eq(internalContacts.id, input.personId), eq(internalContacts.organizationId, input.organizationId)))
+  await (Object.keys(copies).length === 0 ? person.run() : db.batch([person, db.update(projectContacts).set({ ...copies, updatedAt: input.now }).where(eq(projectContacts.internalContactId, input.personId))]))
+}
+/** One unassigned (imported) person's rows on the organization's projects. */
+export async function updateUnassignedPersonRows(db: Db, input: { readonly contactIds: readonly string[]; readonly values: Pick<ProjectContactPatch, "displayName" | "companyName" | "email" | "phone" | "updatedAt"> }): Promise<void> {
+  if (input.contactIds.length > 0) await db.update(projectContacts).set(input.values).where(inArray(projectContacts.id, [...input.contactIds])).run()
 }
 
 /** Provisioning is idempotent: an existing person for the user is kept. */

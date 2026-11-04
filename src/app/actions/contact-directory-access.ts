@@ -22,14 +22,17 @@ export async function getContactDirectoryAccess(): Promise<{
   readonly canApproveSageReview: boolean
   readonly canReadEmployeePrivate: boolean
   readonly canCreateSagePeople: boolean
+  /** May edit and archive people on the Unassigned tab (the project contact editor's permission). */
+  readonly canEditProjectContacts: boolean
 }> {
   const user = await requireAuth()
-  const [customers, vendors, internal, sageReview, employeePrivate] = await Promise.all([
+  const [customers, vendors, internal, sageReview, employeePrivate, projectContacts] = await Promise.all([
     getEffectivePermissionAccessLevel(user, "customers"),
     getEffectivePermissionAccessLevel(user, "vendors"),
     getEffectivePermissionAccessLevel(user, "internal-directory"),
     getEffectivePermissionAccessLevel(user, "sage-contact-review"),
     getEffectivePermissionAccessLevel(user, "employee-contact-private"),
+    getEffectivePermissionAccessLevel(user, "project-contacts"),
   ])
   const toAccess = (
     featureId: string,
@@ -54,5 +57,7 @@ export async function getContactDirectoryAccess(): Promise<{
     canApproveSageReview: accessLevelToFeatureActions("sage-contact-review", sageReview).includes("approve"),
     canReadEmployeePrivate: accessLevelToFeatureActions("employee-contact-private", employeePrivate).includes("read"),
     canCreateSagePeople: sageContactCreationEnabled(env),
+    canEditProjectContacts:
+      accessLevelToFeatureActions("project-contacts", projectContacts).includes("update") && can(user, "project", "update"),
   }
 }

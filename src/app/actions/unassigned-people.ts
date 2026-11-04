@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/contacts/connect-unassigned-person"
 import { INTERNAL_MERGE_BLOCKER, searchCompanyMergeCandidates, type CompanyMergeCandidate } from "@/lib/domain/contacts/directory-page"
 import { revalidateProjectContactPaths } from "@/lib/domain/contacts/paths"
+import { archiveUnassignedPerson, saveUnassignedPerson } from "@/lib/domain/contacts/unassigned-person-edit"
 import {
   listUnassignedPeople,
   suggestCompanyForImportedName,
@@ -129,5 +130,100 @@ export async function connectUnassignedPersonToCompany(
   } catch (error) {
     console.error("Failed to connect unassigned person", error)
     return actionFailure("Could not connect this person to the company.")
+  }
+}
+
+const editInput = z.object({
+  identity: z.string().trim().min(1).max(300),
+  name: z.string().trim().min(1).max(200),
+  email: z.union([z.literal(""), z.email().max(254)]),
+  phone: z.string().trim().max(60),
+  companyName: z.string().trim().max(200),
+})
+
+/** Same people who can add or remove project contacts may edit and archive an unassigned person. */
+async function unassignedEditContext() {
+  const context = await orgContext({ feature: "project-contacts", action: "update", mutation: true })
+  if (!context.success) return context
+  if (!can(context.data.user, "project", "update")) return actionFailure("You do not have permission to edit project contacts.")
+  return context
+}
+
+/**
+ * Edit an unassigned person's name, email, phone and imported company on
+ * every project they appear on. Allowed until they accept a Compass
+ * invitation. Nobody is invited, emailed or notified.
+ */
+export async function editUnassignedPerson(
+  raw: z.input<typeof editInput>,
+): Promise<ActionResult<{ readonly warning: string | null }>> {
+  try {
+    const parsed = editInput.safeParse({ ...raw, email: raw.email?.trim().toLowerCase() ?? "" })
+    if (!parsed.success) return actionFailure("Enter a name and a valid email, or leave the email blank.")
+    const input = parsed.data
+    const context = await unassignedEditContext()
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    const result = await saveUnassignedPerson(db, {
+      organizationId,
+      identity: input.identity,
+      person: { name: input.name, email: input.email, phone: input.phone, companyName: input.companyName },
+      now: new Date().toISOString(),
+    })
+    if (!result.success) return result
+    if (result.changed.length > 0) {
+      await recordActivityEvent({
+        db, organizationId, actor: user,
+        category: "account",
+        action: "unassigned_person.updated",
+        entityType: "project_contact",
+        entityId: result.contactIds[0] ?? null,
+        summary: `Updated ${input.name}'s contact information (unassigned person from imported messages).`,
+        metadata: { identity: input.identity, changed: result.changed, projectIds: result.projectIds },
+      })
+      for (const projectId of result.projectIds) {
+        await queueProjectContactTrackerRefresh({ db, organizationId, projectId })
+        revalidateProjectContactPaths(projectId)
+      }
+      revalidatePath("/dashboard/contacts")
+    }
+    return { success: true, data: { warning: result.warning } }
+  } catch (error) {
+    console.error("Failed to edit unassigned person", error)
+    return actionFailure("Could not save this person.")
+  }
+}
+
+/**
+ * Archive an unassigned person: they leave every project's contact list.
+ * Their rows are kept, never deleted, because imported messages name them.
+ */
+export async function archiveUnassignedPersonAction(identity: string): Promise<ActionResult<{ readonly name: string }>> {
+  try {
+    const parsed = z.string().trim().min(1).max(300).safeParse(identity)
+    if (!parsed.success) return actionFailure("Choose a person to archive.")
+    const context = await unassignedEditContext()
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    const result = await archiveUnassignedPerson(db, { organizationId, identity: parsed.data, now: new Date().toISOString() })
+    if (!result.success) return result
+    await recordActivityEvent({
+      db, organizationId, actor: user,
+      category: "account",
+      action: "unassigned_person.archived",
+      entityType: "project_contact",
+      entityId: result.contactIds[0] ?? null,
+      summary: `Archived ${result.name} (unassigned person from imported messages) from ${result.projectIds.length} project contact list${result.projectIds.length === 1 ? "" : "s"}.`,
+      metadata: { identity: parsed.data, contactIds: [...result.contactIds], projectIds: [...result.projectIds] },
+    })
+    for (const projectId of result.projectIds) {
+      await queueProjectContactTrackerRefresh({ db, organizationId, projectId })
+      revalidateProjectContactPaths(projectId)
+    }
+    revalidatePath("/dashboard/contacts")
+    return { success: true, data: { name: result.name } }
+  } catch (error) {
+    console.error("Failed to archive unassigned person", error)
+    return actionFailure("Could not archive this person.")
   }
 }

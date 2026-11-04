@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { customerContacts, customers, projectContacts } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { saveCustomerPerson } from "@/lib/domain/contacts/directory-people"
+import { stalePendingInvitationCount, stalePendingInvitationWarning } from "@/lib/domain/contacts/pending-invitations"
 import { updateCustomerPerson } from "@/lib/domain/contacts/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -34,7 +35,7 @@ export type CustomerPersonInput = {
 }
 
 type MutationResult =
-  | { readonly success: true; readonly id: string }
+  | { readonly success: true; readonly id: string; readonly warning?: string }
   | { readonly success: false; readonly error: string }
 
 export async function getCustomerDirectoryPeople(customerId: string): Promise<readonly CustomerDirectoryPerson[]> {
@@ -68,11 +69,23 @@ export async function saveCustomerDirectoryPerson(
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "customers", personId ? "update" : "create")
     const orgId = requireOrg(user)
+    const now = new Date().toISOString()
+    const before = personId
+      ? await db.select({ email: customerContacts.email }).from(customerContacts)
+          .where(and(eq(customerContacts.id, personId), eq(customerContacts.customerId, customerId))).get()
+      : undefined
     const saved = await saveCustomerPerson(db, {
-      organizationId: orgId, customerId, personId, person: input, now: new Date().toISOString(),
+      organizationId: orgId, customerId, personId, person: input, now,
     })
     if (!saved.success) return saved
     const { id } = saved
+    // A pending (unaccepted) invitation stays at the old address; warn, never resend.
+    const nextEmail = input.email.trim().toLowerCase()
+    const warning = before && (before.email?.trim().toLowerCase() ?? "") !== nextEmail
+      ? stalePendingInvitationWarning(await stalePendingInvitationCount(db, {
+          organizationId: orgId, person: { kind: "customer_contact", id }, nextEmail, now,
+        }))
+      : null
     await recordActivityEvent({
       db, organizationId: orgId,
       actor: { id: user.id, email: user.email, displayName: user.displayName,
@@ -84,7 +97,7 @@ export async function saveCustomerDirectoryPerson(
     })
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
-    return { success: true, id }
+    return warning ? { success: true, id, warning } : { success: true, id }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not save contact." }
   }
