@@ -252,6 +252,20 @@ describe("inline edits of a Sage-linked client", () => {
       { field: "email", before: "kelly@paint.example", after: "billing@paint.example" },
     ])
   })
+
+  it("uses a fresh read whose Sage GUID differs from the stored link only in case", async () => {
+    sqlite.prepare("UPDATE customers SET sage_client_id = ?").run(CLIENT_SAGE_ID.toUpperCase())
+    snapshot("client_company", "customer-sage", CLIENT_SAGE_ID, {
+      addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null,
+      billingAddressLine1: null, billingAddressLine2: null, billingCity: null, billingState: null, billingPostalCode: null,
+      name: "Kelly Painting", email: "kelly@paint.example", phone: "555-0200",
+    })
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "billing@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["requested"])
+    expect(rows("SELECT count(*) AS n FROM sage_contact_read_requests")).toEqual([{ n: 0 }])
+  })
 })
 
 describe("a confirmed Sage write reaching Compass", () => {

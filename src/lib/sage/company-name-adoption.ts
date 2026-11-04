@@ -1,3 +1,5 @@
+import { sameSageRecordId } from "@/lib/sage/record-id"
+
 /**
  * "Use Sage name": a Sage-linked client or vendor company takes the exact
  * company name Sage holds. Nothing is written to Sage; Compass copies Sage's
@@ -42,9 +44,8 @@ export function sageCompanyNameStatus(input: {
 }, now = Date.now()): SageCompanyNameStatus {
   if (!input.sageRecordId) return "unlinked"
   const entry = input.entry
-  // Sage record ids are GUIDs; the writers do not agree on their case.
   if (!entry || !entry.name.trim() ||
-    entry.sageRecordId.toLowerCase() !== input.sageRecordId.toLowerCase() ||
+    !sameSageRecordId(entry.sageRecordId, input.sageRecordId) ||
     (input.sageNumber !== null && entry.sageNumber !== input.sageNumber)) return "missing"
   const captured = Date.parse(entry.capturedAt)
   if (!Number.isFinite(captured) || captured > now || now - captured > SAGE_COMPANY_NAME_MAX_AGE_MS) return "stale"

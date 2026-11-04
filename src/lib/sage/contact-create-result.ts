@@ -16,6 +16,7 @@ import {
 } from "@/lib/domain/sage-bridge/contact-store"
 import { readbackConfirmsCreateFields, sageContactCreateResultSchema, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, sageContactProposalFields } from "@/lib/sage/contact-change-proposal"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
 const fieldsSchema = z.record(z.string(), z.string().nullable())
@@ -93,7 +94,7 @@ export async function handleSageContactCreateResult(
       Object.prototype.hasOwnProperty.call(snapshot.fields, field))
   const identityValid = kind.success && plan?.success &&
     snapshot.kind === kind.data && snapshot.entityId === proposal.id &&
-    snapshot.parentSageRecordId === proposal.parentSageRecordId &&
+    sameSageRecordId(snapshot.parentSageRecordId, proposal.parentSageRecordId) &&
     snapshot.sageRecordId.trim().length > 0 &&
     lineNumber !== null && Number.isSafeInteger(lineNumber) &&
     fieldsComplete && readbackConfirmsCreateFields(plan.fields, snapshot.fields)
@@ -111,7 +112,7 @@ export async function handleSageContactCreateResult(
         eq(vendors.id, proposal.vendorId), eq(vendors.organizationId, proposal.organizationId),
         eq(vendors.directoryStatus, "active"))).get()
       : null
-  if (!company || company.sageRecordId !== proposal.parentSageRecordId) {
+  if (!company || !sameSageRecordId(company.sageRecordId, proposal.parentSageRecordId)) {
     return finishUncertain(database, proposal, result.claimToken, now,
       "Parent directory Sage link changed after Add.", snapshot.sageRecordId, lineNumber)
   }

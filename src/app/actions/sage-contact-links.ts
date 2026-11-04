@@ -28,6 +28,7 @@ import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { SAGE_LINK_CANDIDATE_MAX_AGE_MS, sageContactLinkCandidateError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, sageLinkReadbackRefreshReason } from "@/lib/sage/contact-link-review"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import { requireUserContext } from "@/lib/server/action-context"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 type LinkResult =
   | { readonly success: true; readonly id: string; readonly status: string; readonly disposition?: "new" | "existing" | "refreshed" }
@@ -135,7 +136,7 @@ export async function requestSageContactLinkCandidate(
         inArray(sageContactReadRequests.status, ["queued", "running", "awaiting_review"])
       )).get()
     const handleActiveLookup = async (existing: typeof sageContactReadRequests.$inferSelect): Promise<LinkResult> => {
-      if (existing.sageRecordNumber !== number || existing.parentSageRecordId !== identity.parentSageRecordId) {
+      if (existing.sageRecordNumber !== number || !sameSageRecordId(existing.parentSageRecordId, identity.parentSageRecordId)) {
         return { success: false, error: "Another Sage number or parent identity is already pending for this contact. Reject that lookup in Sage review before choosing a different one." }
       }
       let snapshot: unknown
@@ -156,7 +157,7 @@ export async function requestSageContactLinkCandidate(
       if (results[0]?.meta.changes === 0) {
         const current = await activeLookup()
         if (current?.sageRecordNumber === number &&
-          current.parentSageRecordId === identity.parentSageRecordId) {
+          sameSageRecordId(current.parentSageRecordId, identity.parentSageRecordId)) {
           return { success: true, id: current.id, status: current.status, disposition: "existing" }
         }
       }

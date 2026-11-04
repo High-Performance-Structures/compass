@@ -7,6 +7,7 @@ import {
   type SageContactKind,
 } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 export function sageContactIdentityError(
   identity: SageContactEntityIdentity,
@@ -20,13 +21,13 @@ export function sageContactIdentityError(
   if (!identity.sageRecordId) {
     return "Review and link the stable Sage record ID before synchronizing this contact."
   }
-  if (identity.sageRecordId !== snapshot.sageRecordId) {
+  if (!sameSageRecordId(identity.sageRecordId, snapshot.sageRecordId)) {
     return "Sage record ID does not match the directory link."
   }
   if (identity.sageRecordNumber && identity.sageRecordNumber !== snapshot.sageRecordNumber) {
     return "Sage record number does not match the directory link."
   }
-  if (identity.parentSageRecordId !== snapshot.parentSageRecordId) {
+  if (!sameSageRecordId(identity.parentSageRecordId, snapshot.parentSageRecordId)) {
     return "Sage parent company does not match the directory link."
   }
   return null

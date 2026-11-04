@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 type Props = {
   readonly open: boolean
@@ -36,7 +37,7 @@ export function SageClientMatchingDialog({ open, onOpenChange, customers, onVeri
   const numberOwner = sage?.claimedBy ? customers.find((row) => row.id === sage.claimedBy?.id) ?? null : null
   const numberHasMultipleOwners = Boolean(sage && sage.claimCount > 1)
   const numberClaimedElsewhere = Boolean(sage?.claimedBy && sage.claimedBy.id !== compassId)
-  const compassAlreadyLinkedElsewhere = Boolean(compass?.sageClientId && compass.sageClientId !== sage?.sageRecordId)
+  const compassAlreadyLinkedElsewhere = Boolean(compass?.sageClientId && !sameSageRecordId(compass.sageClientId, sage?.sageRecordId))
   const compassNumberDiffers = Boolean(compass?.sageClientNumber && compass.sageClientNumber !== sage?.sageClientNumber)
   const canVerifyPair = canVerifyClientPair(compass, sage)
 

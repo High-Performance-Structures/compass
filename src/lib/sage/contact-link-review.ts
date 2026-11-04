@@ -1,5 +1,6 @@
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 export type SageContactLinkLookup = {
   readonly kind: SageContactKind
@@ -84,12 +85,12 @@ export function sageContactLinkCandidateError(
   if (identity.sageRecordId) return "Directory contact already has a verified Sage ID."
   if (lookup.kind !== readback.kind || lookup.entityId !== readback.entityId ||
     lookup.sageRecordNumber !== readback.sageRecordNumber ||
-    lookup.parentSageRecordId !== readback.parentSageRecordId ||
+    !sameSageRecordId(lookup.parentSageRecordId, readback.parentSageRecordId) ||
     !readback.sageRecordId.trim()) return "Sage read-back differs from the exact requested identity."
   if (identity.sageRecordNumber && identity.sageRecordNumber !== lookup.sageRecordNumber) {
     return "Directory Sage number changed since lookup."
   }
-  if (identity.parentSageRecordId !== lookup.parentSageRecordId) {
+  if (!sameSageRecordId(identity.parentSageRecordId, lookup.parentSageRecordId)) {
     return "Directory Sage parent changed since lookup."
   }
   return null
