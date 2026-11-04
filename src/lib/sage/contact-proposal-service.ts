@@ -42,7 +42,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  */
 
 const fieldsSchema = z.record(z.string(), z.string().nullable())
-export const sageContactChangesSchema = z.array(z.object({
+const sageContactChangesSchema = z.array(z.object({
   field: z.string(), before: z.string().nullable(), after: z.string().nullable(),
 }))
 const sageContactFieldSchema = z.enum([
@@ -262,7 +262,7 @@ export async function createSageContactProposal(
 }
 
 /** The record's open change request, if any. */
-export async function openSageChangeRequest(
+async function openSageChangeRequest(
   db: Db,
   organizationId: string,
   kind: SageContactKind,

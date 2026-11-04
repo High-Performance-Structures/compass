@@ -68,7 +68,7 @@ export function sageFieldLockedReason(
   return null
 }
 
-export function pendingValue(pending: SagePendingChange | undefined, field: string): string | null | undefined {
+function pendingValue(pending: SagePendingChange | undefined, field: string): string | null | undefined {
   const change = pending?.changes.find((item) => item.field === field)
   return change ? change.after : undefined
 }
