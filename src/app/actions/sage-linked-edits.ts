@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm"
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
@@ -18,29 +18,34 @@ import {
 import {
   isRecentSageRead,
   latestSageSnapshot,
-  OPEN_SAGE_CHANGE_STATUSES,
   parseSageChanges,
   requestSageEditFromCompass,
   sageSnapshotFromRow,
   type SageEditRequestOutcome,
   type SageProposalContext,
 } from "@/lib/sage/contact-proposal-service"
-import { sageSharedChanges, type SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
+import { HOLDING_SAGE_CHANGE_STATUSES, holdingSageChange } from "@/lib/sage/sage-held-fields"
+import { SAGE_SHARED_FIELDS, sageSharedChanges, type SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
 import { vendorCategoryFromSage } from "@/lib/sage/vendor-category-lock"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
 
 /**
- * Inline editing of Sage-linked clients and vendors ("Edit here, Sage after
- * OK"): Compass-only fields save at once; Sage-shared fields become one
- * reviewed Sage change request per record (see sage-linked-edit-fields.ts).
+ * Inline editing of Sage-linked clients and vendors: every field shows its
+ * new value in Compass at once. Sage-shared fields also become one reviewed
+ * Sage change request per record (see sage-linked-edit-fields.ts), and Sage
+ * → Compass syncs leave those fields alone until the request is finished
+ * (sage-held-fields.ts).
  */
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
 export type SagePendingChange = {
   readonly proposalId: string
+  /** pending, approved or running; conflict or failed when the write needs a retry or a rejection. */
   readonly status: string
   readonly changes: readonly SageContactFieldChange[]
+  /** Why the Sage write failed or did not read back, for conflict and failed. */
+  readonly error: string | null
 }
 
 export type SageLinkedEditState = {
@@ -52,7 +57,7 @@ export type SageLinkedEditState = {
   readonly fresh: boolean
   /** Sage-shared fields the Sage writer has not sent yet (writer update pending). */
   readonly unavailableFields: readonly string[]
-  /** Open change requests by record id: the company and its Sage people. */
+  /** Unfinished change requests by record id: the company and its Sage people. */
   readonly pending: Readonly<Record<string, SagePendingChange>>
   /** Vendors only: Sage's vendor type when it sets the Compass category. */
   readonly categoryFromSageType: string | null
@@ -81,15 +86,20 @@ async function pendingFor(
     entityId: sageContactChangeProposals.entityId,
     status: sageContactChangeProposals.status,
     changesJson: sageContactChangeProposals.changesJson,
+    errorMessage: sageContactChangeProposals.errorMessage,
   }).from(sageContactChangeProposals).where(and(
     eq(sageContactChangeProposals.organizationId, organizationId),
     inArray(sageContactChangeProposals.entityId, ids),
-    inArray(sageContactChangeProposals.status, [...OPEN_SAGE_CHANGE_STATUSES])
-  ))
+    inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES])
+  )).orderBy(asc(sageContactChangeProposals.requestedAt))
   const pending: Record<string, SagePendingChange> = {}
+  // Oldest first, so the latest request is the one shown.
   for (const row of rows) {
     if (!records.some((record) => record.id === row.entityId && record.kind === row.kind)) continue
-    pending[row.entityId] = { proposalId: row.id, status: row.status, changes: parseSageChanges(row.changesJson) ?? [] }
+    pending[row.entityId] = {
+      proposalId: row.id, status: row.status, changes: parseSageChanges(row.changesJson) ?? [],
+      error: row.status === "conflict" || row.status === "failed" ? row.errorMessage ?? "The Sage write did not finish." : null,
+    }
   }
   return pending
 }
@@ -177,7 +187,7 @@ const vendorRequestSchema = z.object({
  * The Sage half of saving a Sage-linked vendor's inline form, after the form
  * has saved its Compass-only fields with updateVendor: changes to the
  * company's Sage fields and to each Sage person become Sage change requests.
- * Compass keeps the current values until Sage confirms each write.
+ * Compass shows the new values at once; Sage catches up after approval.
  */
 export async function requestSageLinkedVendorChanges(vendorId: string, input: unknown): Promise<SageLinkedSaveResult> {
   try {
@@ -264,5 +274,68 @@ export async function saveSageLinkedCustomerPerson(personId: string, input: unkn
     return { success: true, data: { sage: item ? [item] : [] } }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not save contact" }
+  }
+}
+
+const linkedKindSchema = z.enum(["client_company", "vendor_company", "client_person", "vendor_person"])
+
+/** Compass's current Sage-shared values of one record, or null when it is not in the organization. */
+async function compassSageValues(
+  db: Db,
+  organizationId: string,
+  kind: SageLinkedEditKind,
+  entityId: string
+): Promise<Readonly<Record<string, unknown>> | null> {
+  if (kind === "vendor_company") {
+    return await db.select().from(vendors)
+      .where(and(eq(vendors.id, entityId), eq(vendors.organizationId, organizationId))).get() ?? null
+  }
+  if (kind === "client_company") {
+    return await db.select().from(customers)
+      .where(and(eq(customers.id, entityId), eq(customers.organizationId, organizationId))).get() ?? null
+  }
+  if (kind === "vendor_person") {
+    const row = await db.select({ person: vendorContacts }).from(vendorContacts)
+      .innerJoin(vendors, eq(vendorContacts.vendorId, vendors.id))
+      .where(and(eq(vendorContacts.id, entityId), eq(vendors.organizationId, organizationId))).get()
+    return row?.person ?? null
+  }
+  const row = await db.select({ person: customerContacts }).from(customerContacts)
+    .innerJoin(customers, eq(customerContacts.customerId, customers.id))
+    .where(and(eq(customerContacts.id, entityId), eq(customers.organizationId, organizationId))).get()
+  return row?.person ?? null
+}
+
+/**
+ * Sends a Sage change that failed or did not read back again, asking Sage
+ * for the values Compass shows now. Needs a fresh approval like any request.
+ */
+export async function retrySageLinkedChange(kindInput: string, entityId: string): Promise<SageLinkedSaveResult> {
+  try {
+    const kind = linkedKindSchema.safeParse(kindInput)
+    if (!kind.success || !entityId.trim()) return { success: false, error: "Invalid record" }
+    const context = await proposalContext()
+    if (isDemoUser(context.user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(context.user, kind.data.startsWith("client") ? "customers" : "vendors", "update")
+    const { db, organizationId } = context
+    const stalled = await holdingSageChange(db, organizationId, kind.data, entityId)
+    if (!stalled || (stalled.status !== "conflict" && stalled.status !== "failed")) {
+      return { success: false, error: "There is no failed Sage change to retry for this record." }
+    }
+    const current = await compassSageValues(db, organizationId, kind.data, entityId)
+    if (!current) return { success: false, error: "Record not found" }
+    const fields = (parseSageChanges(stalled.changesJson) ?? []).map((change) => change.field)
+      .filter((field) => SAGE_SHARED_FIELDS[kind.data].includes(field))
+    const values: Record<string, string | null> = {}
+    for (const field of fields) {
+      const value = current[field]
+      values[field] = typeof value === "string" ? value : null
+    }
+    const name = typeof current.name === "string" ? current.name : "Record"
+    const outcome = await requestSageEditFromCompass(context, kind.data, entityId, values)
+    revalidatePath("/dashboard/contacts")
+    return { success: true, data: { sage: [{ label: name, outcome }] } }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not retry the Sage change" }
   }
 }

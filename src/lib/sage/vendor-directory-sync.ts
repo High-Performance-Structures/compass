@@ -5,6 +5,7 @@ import { applySageVendorUpdates, listSageLinkedVendors } from "@/lib/domain/cont
 import type { SageVendorDirectoryRow } from "@/lib/domain/sage-bridge/store"
 import { planSageVendorUpdate, sageVendorUpdateSummary, type SageVendorEntry, type SageVendorUpdate } from "@/lib/domain/sage-bridge/vendor-directory-updates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { heldSageFieldsByEntity } from "@/lib/sage/sage-held-fields"
 import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import type { Db } from "@/lib/server/action-context"
 
@@ -38,12 +39,14 @@ export async function applySageVendorDirectory(
       ...linked.map((vendor) => vendor.category),
       ...settings.docTypes.flatMap((type) => type.requiredFor),
     ])]
+    // Fields with an unfinished Sage change keep Compass's new value.
+    const held = await heldSageFieldsByEntity(db, organizationId, "vendor_company")
     const plans: { readonly update: SageVendorUpdate; readonly sageRecordId: string }[] = []
     for (const vendor of linked) {
       const sageRecordId = vendor.sageRecordId
       const entry = sageRecordId ? byRecord.get(sageRecordId.toLowerCase()) : undefined
       if (!sageRecordId || !entry) continue
-      const update = planSageVendorUpdate(vendor, entry, settings.sage.vendorTypes, categories)
+      const update = planSageVendorUpdate(vendor, entry, settings.sage.vendorTypes, categories, held.get(vendor.id))
       if (update) plans.push({ update, sageRecordId })
     }
     if (plans.length === 0) return { updated: 0 }

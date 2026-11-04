@@ -2,10 +2,10 @@
  * Which fields of a Sage-linked client or vendor (and their Sage people) are
  * shared with Sage and which are Compass's own, for the inline edit forms.
  *
- * A save on a Compass-only field writes Compass directly. A change to a
- * Sage-shared field becomes one reviewed Sage change request per record
- * (sage_contact_change_proposals); Compass takes the new value only after
- * the Sage writer's read-back confirms the write. Pure: no I/O.
+ * Every save writes Compass directly. A change to a Sage-shared field also
+ * becomes one reviewed Sage change request per record
+ * (sage_contact_change_proposals); until it is written or rejected, Sage
+ * syncs leave the field alone (sage-held-fields.ts). Pure: no I/O.
  */
 import type { SageContactField, SageContactKind } from "@/lib/sage/contact-change-proposal"
 

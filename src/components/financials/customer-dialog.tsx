@@ -28,6 +28,7 @@ import {
   announceSageOutcomes,
   SageFieldNote,
   sageFieldLockedReason,
+  SagePendingNotice,
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
@@ -185,7 +186,7 @@ export function CustomerDialog({
       title={initialData ? "Edit Client / Lead" : "Add Client / Lead"}
       description={
         sageLinked
-          ? "Linked to Sage. Changes to name, email, phone and addresses go to Sage for approval; Compass shows them once Sage confirms the write. Company and notes save now."
+          ? "Linked to Sage. Every change shows in Compass when you save. Changes to name, email, phone and addresses also go to Sage for approval."
           : developerModeEnabled
           ? "Maintain the directory record without granting project access or creating a Sage client. Add individual people separately."
           : "Maintain the directory record without granting project access. Add individual people separately."
@@ -195,9 +196,8 @@ export function CustomerDialog({
         <ResponsiveDialogBody>
           {sageLinked && initialData ? (
             <div className="space-y-3">
-              {sageState && initialData.id in sageState.pending ? (
-                <p className="text-xs font-medium">A Sage change for this client is waiting for approval.</p>
-              ) : null}
+              <SagePendingNotice kind="client_company" entityId={initialData.id} pending={sageState?.pending[initialData.id]}
+                canEdit={canEdit} onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }} />
               {sageVerified ? <SageCompanyNameRow kind="client_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 {SAGE_CLIENT_FIELDS.map((field) => (

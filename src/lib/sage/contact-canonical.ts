@@ -1,5 +1,6 @@
 import "server-only"
 
+import { getDb } from "@/db"
 import {
   sageSnapshotDirectoryUpdateStatement,
   upsertInternalContactPrivateAddressStatement,
@@ -8,6 +9,7 @@ import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactIdentityError } from "@/lib/sage/contact-bridge"
 import { formatVendorAddress } from "@/lib/domain/sage-bridge/vendor-directory-updates"
+import { heldSageFields, withoutHeldFields } from "@/lib/sage/sage-held-fields"
 
 type Snapshot = {
   readonly kind: SageContactKind
@@ -87,6 +89,8 @@ function writtenCompanyPatch(
     writtenFields.includes(field) && (field !== "name" || Boolean(fields[field]?.trim()))))
   const patch = patchFor(fields, written)
   if (!ADDRESS_PARTS.some((part) => writtenFields.includes(part))) return patch
+  // A held address part is missing here; the one-line address keeps Compass's value.
+  if (!ADDRESS_PARTS.every((part) => Object.prototype.hasOwnProperty.call(fields, part))) return patch
   const address = formatVendorAddress({
     addressLine1: fields.addressLine1 ?? null, addressLine2: fields.addressLine2 ?? null,
     city: fields.city ?? null, state: fields.state ?? null, postalCode: fields.postalCode ?? null,
@@ -108,10 +112,31 @@ export async function applySageContactSnapshotToCanonical(
   identity: SageContactEntityIdentity,
   snapshot: Snapshot,
   /** The fields an approved proposal wrote; empty for a plain read. */
-  writtenFields: readonly string[] = []
+  writtenFields: readonly string[] = [],
+  /** The proposal whose confirmed write this is: its fields are no longer held. */
+  options: { readonly releaseProposalId?: string } = {}
 ): Promise<CanonicalUpdateResult> {
   const identityError = sageContactIdentityError(identity, snapshot)
   if (identityError) return { success: false, error: identityError }
+  // Compass already shows the value of an unfinished Sage change: Sage's
+  // older value must not overwrite it. Every other field syncs as usual.
+  const held = await heldSageFields(getDb(database), organizationId, snapshot.kind, snapshot.entityId,
+    { exceptProposalId: options.releaseProposalId })
+  if (held.size > 0) {
+    return applySnapshotFields(database, organizationId, identity, {
+      ...snapshot, fields: withoutHeldFields(snapshot.fields, held),
+    }, writtenFields.filter((field) => !held.has(field)))
+  }
+  return applySnapshotFields(database, organizationId, identity, snapshot, writtenFields)
+}
+
+async function applySnapshotFields(
+  database: D1Database,
+  organizationId: string,
+  identity: SageContactEntityIdentity,
+  snapshot: Snapshot,
+  writtenFields: readonly string[]
+): Promise<CanonicalUpdateResult> {
   // The snapshot names the same Sage record (ids compare case-insensitively), but the
   // guards below match the directory row exactly, so bind the id spelling it stores.
   const sageRecordId = identity.sageRecordId

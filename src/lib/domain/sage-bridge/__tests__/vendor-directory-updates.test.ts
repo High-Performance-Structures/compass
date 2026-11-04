@@ -73,6 +73,15 @@ describe("planSageVendorUpdate", () => {
     expect(planSageVendorUpdate(vendor(), entry({ phone: null, addressLine1: "  " }, { email: null }), {}, CATEGORIES)).toBeNull()
   })
 
+  it("leaves fields with an unfinished Sage change alone", () => {
+    const update = planSageVendorUpdate(
+      vendor({ primaryEmail: "billing@crete.example", city: "Golden" }),
+      entry({ phone: "719-555-0199", city: "Denver" }, { email: "office@crete.example" }),
+      {}, CATEGORIES, new Set(["primaryEmail", "city"])
+    )
+    expect(update?.patch).toEqual({ phone: "719-555-0199" })
+  })
+
   it("rewrites the address text when a part of it changes", () => {
     const update = planSageVendorUpdate(vendor(), entry({ addressLine1: "9 Pine Rd", addressLine2: "Unit B" }), {}, CATEGORIES)
     expect(update?.patch).toEqual({ addressLine1: "9 Pine Rd", addressLine2: "Unit B", address: "9 Pine Rd, Unit B, Denver, CO 80202" })

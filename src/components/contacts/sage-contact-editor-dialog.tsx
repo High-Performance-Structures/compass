@@ -102,6 +102,9 @@ export function SageCompanyNameRow({
         <p><span className="text-muted-foreground">Compass name: </span>{state.compassName}</p>
         <p><span className="text-muted-foreground">Sage name: </span>{state.sageName ?? "Not available"}</p>
       </div>
+      {state.status === "pending" ? (
+        <p className="text-xs text-muted-foreground">Sage update pending: Sage gets the Compass name once the change is approved.</p>
+      ) : null}
       {state.status === "differs" ? (
         <Button type="button" size="sm" variant="outline" onClick={() => void adopt()} disabled={busy}>
           Use Sage name

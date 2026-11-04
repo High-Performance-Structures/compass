@@ -6,11 +6,11 @@ import { migratedDatabase } from "@/lib/domain/contacts/__tests__/directory-seed
 import { isRecord } from "@/lib/shared/guards"
 
 /*
- * "Edit here, Sage after OK" (owner decision 2026-11-04): on a Sage-linked
- * client or vendor, Compass-only fields save at once and Sage-shared fields
- * become one reviewed Sage change request. Compass keeps the old value until
- * the Sage writer's read-back confirms the write. Runs against a database
- * built from every migration.
+ * "Edit here, Sage after OK" (owner decisions 2026-11-04): on a Sage-linked
+ * client or vendor, every field shows its new value in Compass at once, and
+ * Sage-shared fields also become one reviewed Sage change request (see
+ * sage-edit-immediate.test.ts for the sync and outcome rules). Runs against
+ * a database built from every migration.
  */
 
 const state = vi.hoisted(() => {
@@ -135,7 +135,7 @@ describe("inline edits of a Sage-linked vendor", () => {
     expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 0 }])
   })
 
-  it("turns Sage-shared changes into one request and leaves Compass unchanged until Sage confirms", async () => {
+  it("turns Sage-shared changes into one request and shows them in Compass at once", async () => {
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields)
     const result = await saveSageLinkedVendor("vendor-sage", {
       ...vendorForm,
@@ -143,8 +143,7 @@ describe("inline edits of a Sage-linked vendor", () => {
       sage: { ...vendorForm.sage, name: "Sage Framing Inc", phone: "555-0199" },
     })
     expect(statuses(result)).toEqual(["requested"])
-    // Compass-only category saved; Sage fields not.
-    expect(rows("SELECT category, name, phone FROM vendors")).toEqual([{ category: "Supplier", name: "Sage Framing", phone: "555-0100" }])
+    expect(rows("SELECT category, name, phone FROM vendors")).toEqual([{ category: "Supplier", name: "Sage Framing Inc", phone: "555-0199" }])
     const proposals = rows("SELECT kind, entity_id, status, changes_json FROM sage_contact_change_proposals")
     expect(proposals).toHaveLength(1)
     expect(proposals[0]).toMatchObject({ kind: "vendor_company", entity_id: "vendor-sage", status: "pending" })
@@ -163,13 +162,14 @@ describe("inline edits of a Sage-linked vendor", () => {
     const again = await saveSageLinkedVendor("vendor-sage", {
       ...vendorForm, category: "Supplier", sage: { ...vendorForm.sage, name: "Sage Framing Inc", phone: "555-0199" },
     })
-    expect(statuses(again)).toEqual(["already_requested"])
+    expect(statuses(again)).toEqual([])
     expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 1 }])
   })
 
-  it("leaves the value unchanged when the request is rejected, and after approval until the write is confirmed", async () => {
+  it("puts the Sage value back when the request is rejected, and keeps the new value through approval", async () => {
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields)
     await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0199" } })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
     const [proposal] = rows("SELECT id FROM sage_contact_change_proposals")
     state.userId = "reviewer-1"
     await expect(reviewSageContactChange(String(proposal?.id), "reject", "Wrong number"))
@@ -184,14 +184,14 @@ describe("inline edits of a Sage-linked vendor", () => {
     state.userId = "reviewer-1"
     await expect(reviewSageContactChange(String(second?.id), "approve"))
       .resolves.toMatchObject({ success: true, status: "approved" })
-    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0100" }])
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0177" }])
   })
 
-  it("asks Sage for a fresh read instead of requesting against an old one", async () => {
+  it("requests against an old Sage read and asks Sage for a fresh one for approval", async () => {
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields, "2026-10-01T00:00:00.000Z")
     const result = await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0199" } })
-    expect(statuses(result)).toEqual(["reading_sage"])
-    expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 0 }])
+    expect(statuses(result)).toEqual(["requested"])
+    expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 1 }])
     expect(rows("SELECT kind, entity_id, status FROM sage_contact_read_requests"))
       .toEqual([{ kind: "vendor_company", entity_id: "vendor-sage", status: "queued" }])
   })
@@ -217,7 +217,7 @@ describe("inline edits of a Sage-linked vendor", () => {
     expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 0 }])
   })
 
-  it("sends a Sage person's change for approval and keeps the person as is in Compass", async () => {
+  it("sends a Sage person's change for approval and shows it in Compass at once", async () => {
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields)
     snapshot("vendor_person", "vp-sage", "SC-1", {
       name: "Sage Person", title: "Owner", phone: "555-0101", phoneExtension: null, email: "owner@sage.example", cellPhone: null,
@@ -226,7 +226,7 @@ describe("inline edits of a Sage-linked vendor", () => {
       ...vendorForm, contacts: [{ ...vendorForm.contacts[0], phone: "555-0222" }],
     })
     expect(statuses(result)).toEqual(["requested"])
-    expect(rows("SELECT phone FROM vendor_contacts")).toEqual([{ phone: "555-0101" }])
+    expect(rows("SELECT phone FROM vendor_contacts")).toEqual([{ phone: "555-0222" }])
     expect(rows("SELECT kind, entity_id FROM sage_contact_change_proposals")).toEqual([{ kind: "vendor_person", entity_id: "vp-sage" }])
   })
 })
@@ -245,7 +245,7 @@ describe("inline edits of a Sage-linked client", () => {
     })
     expect(statuses(result)).toEqual(["requested"])
     expect(rows("SELECT company, notes, email FROM customers"))
-      .toEqual([{ company: "Kelly Painting LLC", notes: "Gate code 1234", email: "kelly@paint.example" }])
+      .toEqual([{ company: "Kelly Painting LLC", notes: "Gate code 1234", email: "billing@paint.example" }])
     const [proposal] = rows("SELECT kind, changes_json FROM sage_contact_change_proposals")
     expect(proposal?.kind).toBe("client_company")
     expect(JSON.parse(String(proposal?.changes_json))).toEqual([

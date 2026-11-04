@@ -26,8 +26,9 @@ import { findExistingNamedPerson } from "@/lib/customer-person-match"
 import { saveSageLinkedCustomerPerson } from "@/app/actions/sage-linked-edits"
 import {
   announceSageOutcomes,
-  SAGE_PENDING_LABEL,
   sageFieldLockedReason,
+  SagePendingMarker,
+  SagePendingNotice,
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
@@ -96,8 +97,8 @@ export function CustomerPeopleDialog({
     }
     setBusy(true)
     try {
-      // A Sage person's changes become a Sage change request; Compass keeps
-      // the current values until Sage confirms the write.
+      // A Sage person's changes show in Compass at once and also become a
+      // Sage change request.
       if (editingId && editingSagePerson) {
         const sageResult = await saveSageLinkedCustomerPerson(editingId, {
           name: draft.name, title: draft.title, email: draft.email, phone: draft.phone,
@@ -108,7 +109,7 @@ export function CustomerPeopleDialog({
         }
         if (sageResult.data.sage.length === 0) toast.info("Nothing changed")
         const done = announceSageOutcomes(sageResult.data.sage)
-        await reloadSageState()
+        await Promise.all([reloadSageState(), reload()])
         if (done) {
           setEditingId(null)
           setDraft(EMPTY)
@@ -165,9 +166,13 @@ export function CustomerPeopleDialog({
                 </div>
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
                 {sageState?.pending[person.id] ? (
-                  <div className="text-xs text-muted-foreground">
-                    {SAGE_PENDING_LABEL}: {sageState.pending[person.id]?.changes
-                      .map((change) => `${SAGE_FIELD_LABELS[change.field]} → ${change.after ?? "(blank)"}`).join("; ")}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SagePendingMarker pending={sageState.pending[person.id]} />
+                    <span className="text-xs text-muted-foreground">
+                      {sageState.pending[person.id].changes.map((change) => SAGE_FIELD_LABELS[change.field]).join(", ")}
+                    </span>
+                    <SagePendingNotice kind="client_person" entityId={person.id} pending={sageState.pending[person.id]}
+                      canEdit={canEdit} onChanged={async () => { await Promise.all([reloadSageState(), reload()]) }} />
                   </div>
                 ) : null}
               </div>
@@ -188,7 +193,7 @@ export function CustomerPeopleDialog({
         {((editingId && canEdit) || (!editingId && canCreate)) ? (
           <form onSubmit={(event) => void save(event)} className="space-y-3">
             <p className="text-sm font-medium">{editingId ? "Edit person" : "Add person"}</p>
-            {editingSagePerson ? <p className="text-xs text-muted-foreground">In Sage: changes go to Sage for approval, and Compass shows them once Sage confirms the write.</p>
+            {editingSagePerson ? <p className="text-xs text-muted-foreground">In Sage: changes show in Compass when you save and also go to Sage for approval.</p>
               : customer?.sageLinked ? <p className="text-xs text-muted-foreground">Saved in Compass only. Adding this person does not create or change a Sage contact.</p> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label htmlFor="customer-person-name">Name</Label><Input id="customer-person-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required /></div>
