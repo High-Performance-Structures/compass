@@ -33,6 +33,7 @@ import {
 } from "@/lib/sage/contact-bridge"
 import { sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { planSageContactCreate } from "@/lib/sage/contact-change-proposal"
+import { normalizeSageRecordId, sameSageRecordId } from "@/lib/sage/record-id"
 
 const CLAIM_RETRY_MS = 10 * 60 * 1000
 const MAX_BATCH = 5
@@ -111,9 +112,9 @@ export async function GET(request: Request): Promise<Response> {
       id: candidate.id, claimToken, organizationId: candidate.organizationId,
       kind: candidate.kind, entityId: candidate.entityId,
       purpose: candidate.purpose,
-      sageRecordId: candidate.sageRecordId,
+      sageRecordId: normalizeSageRecordId(candidate.sageRecordId),
       sageRecordNumber: candidate.sageRecordNumber,
-      parentSageRecordId: candidate.parentSageRecordId,
+      parentSageRecordId: normalizeSageRecordId(candidate.parentSageRecordId),
     })
   }
 
@@ -147,8 +148,8 @@ export async function GET(request: Request): Promise<Response> {
       )).get()
       const capturedAt = snapshot ? Date.parse(snapshot.capturedAt) : Number.NaN
       if (!snapshot || snapshot.revision !== candidate.baseRevision ||
-        snapshot.sageRecordId !== candidate.sageRecordId ||
-        snapshot.parentSageRecordId !== candidate.parentSageRecordId ||
+        !sameSageRecordId(snapshot.sageRecordId, candidate.sageRecordId) ||
+        !sameSageRecordId(snapshot.parentSageRecordId, candidate.parentSageRecordId) ||
         !Number.isFinite(capturedAt) || now.getTime() - capturedAt > CLAIM_RETRY_MS) {
         await db.batch([
           updateSageContactChangeProposals(db, {
@@ -177,8 +178,8 @@ export async function GET(request: Request): Promise<Response> {
       writes.push({
         id: candidate.id, claimToken, organizationId: candidate.organizationId,
         kind: candidate.kind, entityId: candidate.entityId,
-        sageRecordId: candidate.sageRecordId,
-        parentSageRecordId: candidate.parentSageRecordId,
+        sageRecordId: normalizeSageRecordId(candidate.sageRecordId),
+        parentSageRecordId: normalizeSageRecordId(candidate.parentSageRecordId),
         baseRevision: candidate.baseRevision,
         changes: changes.data,
       })
@@ -228,7 +229,7 @@ export async function GET(request: Request): Promise<Response> {
             eq(vendors.id, candidate.vendorId), eq(vendors.organizationId, candidate.organizationId),
             eq(vendors.directoryStatus, "active"))).get()
           : null
-      if (!plan?.success || !company || company.sageRecordId !== candidate.parentSageRecordId ||
+      if (!plan?.success || !company || !sameSageRecordId(company.sageRecordId, candidate.parentSageRecordId) ||
         candidate.attemptCount !== 0) {
         const failed = await updateSageContactCreateProposals(db, {
           status: "failed", completedAt: nowIso, updatedAt: nowIso,
@@ -258,7 +259,7 @@ export async function GET(request: Request): Promise<Response> {
       creates.push({
         id: candidate.id, claimToken, organizationId: candidate.organizationId,
         kind: candidate.kind, companyId: candidate.customerId ?? candidate.vendorId,
-        parentSageRecordId: candidate.parentSageRecordId,
+        parentSageRecordId: normalizeSageRecordId(candidate.parentSageRecordId),
         fields: plan.fields,
       })
       break // One Add per bridge poll; never mix two additions in one session.

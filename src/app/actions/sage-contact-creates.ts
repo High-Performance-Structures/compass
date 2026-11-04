@@ -20,6 +20,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
 import { requireUserContext } from "@/lib/server/action-context"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
 const fieldsSchema = z.record(z.string(), z.string().nullable())
@@ -200,7 +201,7 @@ export async function reviewSageContactCreate(
           eq(vendors.id, proposal.vendorId), eq(vendors.organizationId, orgId),
           eq(vendors.directoryStatus, "active"))).get()
         : null
-    if (!company || company.sageRecordId !== proposal.parentSageRecordId) {
+    if (!company || !sameSageRecordId(company.sageRecordId, proposal.parentSageRecordId)) {
       return { success: false, error: "Parent Sage identity changed. Propose this person again." }
     }
     let raw: unknown

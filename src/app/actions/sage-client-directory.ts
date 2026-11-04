@@ -13,6 +13,7 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { getSageContactBridgeSecret } from "@/lib/sage/bridge-auth"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 type SageClientDirectoryRow = {
   readonly sageRecordId: string
@@ -82,7 +83,7 @@ export async function listSageClientDirectory(query: string): Promise<SageClient
         sageRecordId: row.sageRecordId, sageClientNumber: row.sageClientNumber,
         name: row.name, email: row.email, capturedAt: row.capturedAt,
         claimCount: owners.length,
-        claimedBy: owner ? { id: owner.id, name: owner.name, verified: owner.sageClientId === row.sageRecordId } : null,
+        claimedBy: owner ? { id: owner.id, name: owner.name, verified: sameSageRecordId(owner.sageClientId, row.sageRecordId) } : null,
       }
     }),
     hasMore: entries.length > 50,

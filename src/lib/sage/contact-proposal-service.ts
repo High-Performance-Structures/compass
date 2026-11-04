@@ -33,6 +33,7 @@ import {
 } from "@/lib/sage/sage-linked-edit-fields"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 /**
  * The reviewed Sage contact change pipeline shared by "Propose Sage edit"
@@ -229,8 +230,8 @@ export async function createSageContactProposal(
     return { success: false, error: "Refresh this contact from Sage before proposing changes." }
   }
   const snapshot = sageSnapshotFromRow(snapshotRow)
-  if (!snapshot || snapshot.sageRecordId !== identity.sageRecordId ||
-    snapshot.parentSageRecordId !== identity.parentSageRecordId) {
+  if (!snapshot || !sameSageRecordId(snapshot.sageRecordId, identity.sageRecordId) ||
+    !sameSageRecordId(snapshot.parentSageRecordId, identity.parentSageRecordId)) {
     return { success: false, error: "The Sage identity changed. Refresh before editing." }
   }
   const plan = planSageContactChange({ snapshot, proposed })
@@ -336,8 +337,8 @@ export async function requestSageEditFromCompass(
     return { status: "reading_sage" }
   }
   const snapshot = sageSnapshotFromRow(snapshotRow)
-  if (!snapshot || snapshot.sageRecordId !== guard.identity.sageRecordId ||
-    snapshot.parentSageRecordId !== guard.identity.parentSageRecordId) {
+  if (!snapshot || !sameSageRecordId(snapshot.sageRecordId, guard.identity.sageRecordId) ||
+    !sameSageRecordId(snapshot.parentSageRecordId, guard.identity.parentSageRecordId)) {
     return { status: "blocked", error: "The Sage identity changed. Refresh before editing." }
   }
   // Values Sage already holds need no request: the fresh read confirms them,

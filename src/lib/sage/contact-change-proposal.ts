@@ -1,3 +1,5 @@
+import { sameSageRecordId } from "@/lib/sage/record-id"
+
 /** Contact changes are proposals against an authoritative Sage read snapshot. */
 export type SageContactKind =
   | "client_company"
@@ -241,7 +243,7 @@ export function isSageContactProposalCurrent(
 ): boolean {
   return plan.organizationId === latest.organizationId &&
     plan.kind === latest.kind &&
-    plan.sageRecordId === latest.sageRecordId &&
-    plan.parentSageRecordId === normalized(latest.parentSageRecordId) &&
+    sameSageRecordId(plan.sageRecordId, latest.sageRecordId) &&
+    sameSageRecordId(plan.parentSageRecordId, normalized(latest.parentSageRecordId)) &&
     plan.baseRevision === latest.revision
 }

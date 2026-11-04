@@ -39,6 +39,7 @@ import {
   type SageContactFieldChange,
 } from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sameSageRecordId, withNormalizedSageRecordIds } from "@/lib/sage/record-id"
 import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { handleSageContactCreateResult } from "@/lib/sage/contact-create-result"
 import { parseSageChanges, recordSageChangeActivity } from "@/lib/sage/contact-proposal-service"
@@ -141,13 +142,13 @@ export async function POST(request: Request): Promise<Response> {
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
-    const snapshot = result.snapshot
+    const snapshot = withNormalizedSageRecordIds(result.snapshot)
     const kind = sageContactKindSchema.safeParse(read.kind)
     if (!kind.success || snapshot.kind !== kind.data || snapshot.entityId !== read.entityId ||
       !validSnapshotFields(snapshot.kind, snapshot.fields) ||
-      (read.sageRecordId !== null && read.sageRecordId !== snapshot.sageRecordId) ||
+      (read.sageRecordId !== null && !sameSageRecordId(read.sageRecordId, snapshot.sageRecordId)) ||
       (read.sageRecordId === null && read.sageRecordNumber !== snapshot.sageRecordNumber) ||
-      read.parentSageRecordId !== snapshot.parentSageRecordId) {
+      !sameSageRecordId(read.parentSageRecordId, snapshot.parentSageRecordId)) {
       if (read.purpose === "link_candidate") {
         return rejectCandidateRead(env.DB, {
           id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
@@ -262,15 +263,15 @@ export async function POST(request: Request): Promise<Response> {
     }
     return accepted("failed")
   }
-  const snapshot = result.snapshot
+  const snapshot = withNormalizedSageRecordIds(result.snapshot)
   const kind = sageContactKindSchema.safeParse(proposal.kind)
   let storedChanges: unknown
   try { storedChanges = JSON.parse(proposal.changesJson) } catch { storedChanges = null }
   const changes = changesSchema.safeParse(storedChanges)
   if (!kind.success || !changes.success ||
     snapshot.kind !== kind.data || snapshot.entityId !== proposal.entityId ||
-    snapshot.sageRecordId !== proposal.sageRecordId ||
-    snapshot.parentSageRecordId !== proposal.parentSageRecordId ||
+    !sameSageRecordId(snapshot.sageRecordId, proposal.sageRecordId) ||
+    !sameSageRecordId(snapshot.parentSageRecordId, proposal.parentSageRecordId) ||
     !validSnapshotFields(snapshot.kind, snapshot.fields) ||
     changes.data.some((change) => !sageContactProposalFields(kind.data).some((field) => field === change.field))) {
     return Response.json({ error: "Sage write read-back identity or fields are invalid" }, { status: 409 })

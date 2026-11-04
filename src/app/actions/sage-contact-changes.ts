@@ -38,6 +38,7 @@ import {
 } from "@/lib/sage/contact-proposal-service"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
+import { sameSageRecordId } from "@/lib/sage/record-id"
 
 const kindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",
@@ -137,8 +138,8 @@ export async function getSageContactEditorState(
     canSeePrivate || !isPrivateEmployeeContactField(field)
   )
   const fields: Record<string, string | null> = {}
-  if (snapshot && snapshot.sageRecordId === identity.sageRecordId &&
-    snapshot.parentSageRecordId === identity.parentSageRecordId) {
+  if (snapshot && sameSageRecordId(snapshot.sageRecordId, identity.sageRecordId) &&
+    sameSageRecordId(snapshot.parentSageRecordId, identity.parentSageRecordId)) {
     for (const field of editableFields) {
       if (Object.prototype.hasOwnProperty.call(snapshot.fields, field)) {
         fields[field] = snapshot.fields[field] ?? null
@@ -149,8 +150,8 @@ export async function getSageContactEditorState(
     linked: Boolean(identity.sageRecordId),
     capturedAt: snapshotRow?.capturedAt ?? null,
     fresh: Boolean(snapshotRow && snapshot && isRecentSageRead(snapshotRow.capturedAt) &&
-      snapshot.sageRecordId === identity.sageRecordId &&
-      snapshot.parentSageRecordId === identity.parentSageRecordId),
+      sameSageRecordId(snapshot.sageRecordId, identity.sageRecordId) &&
+      sameSageRecordId(snapshot.parentSageRecordId, identity.parentSageRecordId)),
     refreshStatus: refreshRow?.status ?? null,
     fields,
     editableFields,

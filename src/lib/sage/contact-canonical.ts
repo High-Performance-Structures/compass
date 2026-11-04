@@ -112,30 +112,35 @@ export async function applySageContactSnapshotToCanonical(
 ): Promise<CanonicalUpdateResult> {
   const identityError = sageContactIdentityError(identity, snapshot)
   if (identityError) return { success: false, error: identityError }
+  // The snapshot names the same Sage record (ids compare case-insensitively), but the
+  // guards below match the directory row exactly, so bind the id spelling it stores.
+  const sageRecordId = identity.sageRecordId
+  if (!sageRecordId) return { success: false, error: "Review and link the stable Sage record ID before synchronizing this contact." }
+  const parentSageRecordId = identity.parentSageRecordId
   const now = new Date().toISOString()
   let statement: D1PreparedStatement
   if (snapshot.kind === "client_company") {
     const patch = merged(patchFor(snapshot.fields, CLIENT_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_client_id", patch),
-      [snapshot.sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
+      [sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, sageRecordId])
   } else if (snapshot.kind === "vendor_company") {
     const patch = merged(patchFor(snapshot.fields, VENDOR_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_vendor_id", patch),
-      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
+      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId])
   } else if (snapshot.kind === "client_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
-      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, snapshot.sageRecordId,
-        organizationId, snapshot.parentSageRecordId])
+      [sageRecordId, ...patch.values, now, now, snapshot.entityId, sageRecordId,
+        organizationId, parentSageRecordId])
   } else if (snapshot.kind === "vendor_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
-      [snapshot.sageRecordId, ...patch.values, now, snapshot.entityId, snapshot.sageRecordId,
-        organizationId, snapshot.parentSageRecordId])
+      [sageRecordId, ...patch.values, now, snapshot.entityId, sageRecordId,
+        organizationId, parentSageRecordId])
   } else {
     const patch = patchFor(snapshot.fields, EMPLOYEE)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_employee_id", patch),
-      [snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, snapshot.sageRecordId])
+      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId])
   }
   const result = await statement.run()
   if (result.meta.changes !== 1) {
