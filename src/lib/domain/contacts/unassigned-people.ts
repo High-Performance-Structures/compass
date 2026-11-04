@@ -18,6 +18,7 @@ export type UnassignedPerson = {
   readonly identity: string
   readonly name: string
   readonly email: string | null
+  readonly phone: string | null
   /** The company name the imported messages showed, if any. */
   readonly companyName: string | null
   readonly projects: readonly {
@@ -52,6 +53,7 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
       identity: projectContacts.sourceEntityId,
       name: projectContacts.displayName,
       email: projectContacts.email,
+      phone: projectContacts.phone,
       companyName: projectContacts.companyName,
       projectId: projects.id,
       projectName: projects.name,
@@ -63,13 +65,14 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
     .orderBy(asc(projectContacts.displayName), asc(projects.name))
     .limit(MAX_ROWS)
 
-  type Person = { name: string; email: string | null; companyName: string | null; projects: UnassignedPerson["projects"][number][] }
+  type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; projects: UnassignedPerson["projects"][number][] }
   const people = new Map<string, Person>()
   for (const row of rows) {
     const identity = row.identity ?? row.contactId
-    const person = people.get(identity) ?? { name: row.name, email: row.email, companyName: null, projects: [] }
+    const person = people.get(identity) ?? { name: row.name, email: row.email, phone: row.phone, companyName: null, projects: [] }
     person.projects.push({ projectId: row.projectId, projectName: row.projectName, projectNumber: row.projectNumber, contactId: row.contactId })
     if (!person.email && row.email) person.email = row.email
+    if (!person.phone && row.phone) person.phone = row.phone
     if (!person.companyName && row.companyName?.trim()) person.companyName = row.companyName.trim()
     people.set(identity, person)
   }

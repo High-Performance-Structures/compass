@@ -93,6 +93,7 @@ export function CustomerPeopleDialog({
         return
       }
       toast.success("Client contact saved")
+      if (result.warning) toast.warning(result.warning)
       setEditingId(null)
       setDraft(EMPTY)
       await reload()

@@ -23,6 +23,7 @@ const person: UnassignedPerson = {
   identity: "bt-person:jane",
   name: "Jane Doe",
   email: "jane@acme.example",
+  phone: null,
   companyName: "Acme Framing, L.L.C.",
   projects: [{ projectId: "project-1", projectName: "Smith Residence", projectNumber: "O-1", contactId: "pc-1" }],
 }

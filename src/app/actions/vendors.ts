@@ -25,6 +25,14 @@ import {
 } from "@/lib/domain/contacts/store"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { recordActivityEvent } from "@/lib/activity-log"
+import type { AuthUser } from "@/lib/auth"
+import {
+  internalPersonAccountState,
+  stalePendingInvitationCount,
+  stalePendingInvitationWarning,
+} from "@/lib/domain/contacts/pending-invitations"
+import type { Db } from "@/lib/server/action-context"
 import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
@@ -43,11 +51,16 @@ export type InternalDirectoryContact = {
   readonly name: string
   readonly company: string | null
   readonly role: string | null
+  readonly jobTitle: string | null
   readonly email: string | null
   readonly phone: string | null
   readonly cellPhone: string | null
   readonly sourceLabel: string
   readonly accessStatus: "active" | "invited" | "no_access"
+  /** Accepted a Compass invitation: they own their contact information. */
+  readonly accountHolder: boolean
+  readonly linkedToUser: boolean
+  readonly active: boolean
   readonly sageEmployeeId: string | null
   readonly sageEmployeeNumber: string | null
 }
@@ -84,7 +97,7 @@ export type VendorMutationResult =
   | { readonly success: false; readonly error: string }
 
 export type VendorUpdateResult =
-  | { readonly success: true }
+  | { readonly success: true; readonly warning?: string }
   | { readonly success: false; readonly error: string }
 
 export type VendorContactMutationResult =
@@ -183,9 +196,10 @@ export async function getVendors(): Promise<VendorDirectoryCompany[]> {
   }))
 }
 
-export async function getInternalDirectoryContacts(): Promise<
-  readonly InternalDirectoryContact[]
-> {
+/** Active internal people, or with `archived` the archived ones (such as people imported from Buildertrend). */
+export async function getInternalDirectoryContacts(
+  options: { readonly archived?: boolean } = {}
+): Promise<readonly InternalDirectoryContact[]> {
   const { user, db } = await requireUserContext()
   await requireFeaturePermission(user, "internal-directory", "read")
   const orgId = requireOrg(user)
@@ -218,7 +232,7 @@ export async function getInternalDirectoryContacts(): Promise<
     .where(
       and(
         eq(internalContacts.organizationId, orgId),
-        eq(internalContacts.active, true)
+        eq(internalContacts.active, options.archived !== true)
       )
     )
 
@@ -226,6 +240,12 @@ export async function getInternalDirectoryContacts(): Promise<
       id: contact.id,
       name: contact.name,
       company: null,
+      jobTitle: contact.jobTitle,
+      active: options.archived !== true,
+      linkedToUser: contact.userId !== null,
+      accountHolder: internalPersonAccountState(
+        contact.userId === null ? null : { id: contact.userId, isActive: contact.userActive === true }
+      ) === "account",
       role:
         contact.jobTitle ??
         (contact.membershipRole ? userRoleLabel(contact.membershipRole) : null),
@@ -307,6 +327,24 @@ export async function createVendor(
         err instanceof Error ? err.message : "Failed to create vendor",
     }
   }
+}
+
+/** Vendor edits are logged to Activity like client contact edits. */
+async function recordVendorUpdateActivity(
+  db: Db,
+  input: { readonly user: AuthUser; readonly organizationId: string; readonly vendorId: string; readonly name: string; readonly peopleChanged: readonly string[] }
+): Promise<void> {
+  await recordActivityEvent({
+    db, organizationId: input.organizationId, actor: input.user,
+    category: "account",
+    action: "vendor.updated",
+    entityType: "vendor",
+    entityId: input.vendorId,
+    summary: input.peopleChanged.length > 0
+      ? `Updated vendor ${input.name} and its people: ${input.peopleChanged.join(", ")}.`.slice(0, 480)
+      : `Updated vendor ${input.name}.`,
+    metadata: { peopleChanged: [...input.peopleChanged] },
+  })
 }
 
 export async function updateVendor(
@@ -461,6 +499,7 @@ export async function updateVendor(
     })
 
     if (data.contacts === undefined) {
+      await recordVendorUpdateActivity(db, { user, organizationId: orgId, vendorId: id, name, peopleChanged: [] })
       revalidatePath("/dashboard/vendors")
       revalidatePath("/dashboard/contacts")
       revalidatePath("/dashboard/projects", "layout")
@@ -522,10 +561,39 @@ export async function updateVendor(
       .filter((contactId) => !retainedIds.has(contactId))
     await deactivateVendorPeople(db, { personIds: removedIds, now: updatedAt })
 
+    // An edited email leaves any pending (unaccepted) project invitation at
+    // the old address. Nothing is revoked or resent here; staff are warned.
+    const emailChangedIds = contactInputs.flatMap((contact) => {
+      const existingContact = contact.id ? existingById.get(contact.id) : undefined
+      return existingContact && (existingContact.email?.trim().toLowerCase() ?? "") !== contact.email ? [existingContact.id] : []
+    })
+    let staleInvitations = 0
+    for (const personId of emailChangedIds) {
+      const nextEmail = contactInputs.find((contact) => contact.id === personId)?.email ?? null
+      staleInvitations += await stalePendingInvitationCount(db, {
+        organizationId: orgId, person: { kind: "vendor_contact", id: personId }, nextEmail, now: updatedAt,
+      })
+    }
+    const peopleChanged = contactInputs.flatMap((contact) => {
+      const existingContact = contact.id ? existingById.get(contact.id) : undefined
+      if (!existingContact) return [contact.name]
+      const unchanged = existingContact.name === contact.name &&
+        (existingContact.title ?? "") === contact.title &&
+        (existingContact.email?.trim().toLowerCase() ?? "") === contact.email &&
+        (existingContact.phone ?? "") === contact.phone &&
+        existingContact.isPrimary === contact.isPrimary
+      return unchanged ? [] : [contact.name]
+    })
+    await recordVendorUpdateActivity(db, {
+      user, organizationId: orgId, vendorId: id, name,
+      peopleChanged: [...peopleChanged, ...existingContacts.filter((contact) => contact.active && removedIds.includes(contact.id)).map((contact) => `${contact.name} (removed)`)],
+    })
+
     revalidatePath("/dashboard/vendors")
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
-    return { success: true }
+    const warning = stalePendingInvitationWarning(staleInvitations)
+    return warning ? { success: true, warning } : { success: true }
   } catch (err) {
     return {
       success: false,
