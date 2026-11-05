@@ -24,11 +24,7 @@ import {
   saveProjectNuTechOrder,
   type ProjectNuTechOrderWorkspace,
 } from "@/app/actions/nutech-orders"
-import {
-  deleteNuTechOrderItem,
-  generateNuTechAirliteWorkbook,
-  saveNuTechOrderItem,
-} from "@/app/actions/nutech-order-items"
+import { deleteNuTechOrderItem, generateNuTechAirliteWorkbook, saveNuTechOrderItem } from "@/app/actions/nutech-order-items"
 import {
   Select,
   SelectContent,
@@ -37,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_CLASS } from "@/lib/ui/document-fields"
 import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
@@ -972,7 +969,7 @@ export function NuTechOrderWorkspace({
                   <NuTechManufacturerPoButton projectId={workspace.projectId} orderId={order?.id ?? null} manufacturerName={manufacturerName} size="sm" />
                 )}
                 <Button asChild variant="outline" size="sm">
-                  <Link href={`/dashboard/projects/${workspace.projectId}/purchase-orders`}>
+                  <Link href={order?.airlitePurchaseOrderOperationId ? purchaseOrderRecordHref(workspace.projectId, order.airlitePurchaseOrderOperationId) : `/dashboard/projects/${workspace.projectId}/purchase-orders`}>
                     <IconShoppingCart className="size-4" />
                     Open purchase orders
                   </Link>

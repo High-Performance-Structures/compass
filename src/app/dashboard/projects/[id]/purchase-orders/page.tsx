@@ -48,6 +48,7 @@ import {
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
+import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 import {
@@ -255,7 +256,7 @@ function PurchaseOrderCard({
               sourceLabel="Purchase Order"
               sourceRecordId={order.id}
               sourceRecordNumber={order.sourceRecordNumber}
-              sourceHref={`/dashboard/projects/${projectId}/purchase-orders`}
+              sourceHref={purchaseOrderRecordHref(projectId, order.id)}
               defaultTitle={purchaseOrderTaskTitle(order)}
               defaultDescription={purchaseOrderTaskDescription(order)}
               defaultAssigneeName={order.assigneeName}

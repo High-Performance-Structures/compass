@@ -13,15 +13,14 @@ import type { PriorityOrderScope, PurchaseOrderListRow } from "@/lib/domain/oper
 import { formatDate } from "@/lib/format"
 import { statusLabel } from "@/lib/project-operations/status"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
+import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 
 const rowId = (row: PurchaseOrderListRow): string => row.id
 const rowLabel = (row: PurchaseOrderListRow): string => row.number ?? row.title
 
 /** The PO's record on its job's purchase order page. */
-function purchaseOrderRecordHref(row: PurchaseOrderListRow, statusFilter: string): string {
-  const project = encodeURIComponent(row.projectId)
-  const item = encodeURIComponent(row.id)
-  return `/dashboard/projects/${project}/purchase-orders?status=${encodeURIComponent(statusFilter)}&item=${item}#purchase-order-${item}`
+function rowHref(row: PurchaseOrderListRow, statusFilter: string): string {
+  return purchaseOrderRecordHref(row.projectId, row.id, statusFilter)
 }
 
 function projectLabel(row: PurchaseOrderListRow): string {
@@ -56,7 +55,7 @@ function purchaseOrderColumns(showProject: boolean, statusFilter: string): Colum
       size: 140,
       cell: ({ row: { original } }) => (
         <Link
-          href={purchaseOrderRecordHref(original, statusFilter)}
+          href={rowHref(original, statusFilter)}
           className="whitespace-nowrap font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {original.number ?? "Unnumbered"}
@@ -170,7 +169,9 @@ export function PurchaseOrderPriorityTable({
   const onReorder = React.useCallback(
     async (previousIds: readonly string[], orderedIds: readonly string[]): Promise<ActionDone> => {
       const result = await reorderPurchaseOrderPriority({ scope, previousIds, orderedIds })
-      if (result.success) router.refresh()
+      // On failure too: the table rolls back, and the refresh shows the
+      // current stored order (someone else may have just changed it).
+      router.refresh()
       return result
     },
     [scope, router],
@@ -205,7 +206,7 @@ export function PurchaseOrderPriorityTable({
         itemLabel="purchase orders"
         emptyMessage={query ? "No purchase orders match this search." : emptyMessage}
         rowIdPrefix="purchase-order-row"
-        getRowHref={(row) => purchaseOrderRecordHref(row, statusFilter)}
+        getRowHref={(row) => rowHref(row, statusFilter)}
       />
     </div>
   )

@@ -177,13 +177,17 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
     cross pages. Drag works within the visible page.
   - Sorting by a column header is temporary and pauses reordering, with a
     **Back to priority order** control. Searching also pauses it.
-  - A move shows at once and rolls back with a message if saving fails. The
-    server checks the order the person saw (a stale guard) before saving.
+  - A move shows at once and rolls back with a message if saving fails. Only
+    the span that moved is sent. The server checks the order the person saw
+    (a stale guard) and writes the whole move or none of it, and the list
+    then refreshes to the stored order.
   - Only people allowed to edit the records may reorder; everyone else sees
     the order read-only.
   - Store the order as one shared rank per record (an additive, nullable
     column), written only by the owning domain store. A filtered list, such
     as one job's records, reorders only the rank slots its own records hold.
+    Unranked records sort after ranked ones, oldest first; the first move
+    that touches one ranks them all in that same order, so nothing jumps.
 
 ### Imported-record source tag (owner-approved standard)
 

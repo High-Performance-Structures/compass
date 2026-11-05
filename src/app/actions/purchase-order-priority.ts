@@ -7,9 +7,9 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { actionFailure, errorMessage, type ActionDone, type ActionResult } from "@/lib/action-result"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { operationsContext } from "@/lib/domain/operations/access"
-import { planPriorityReorder, PRIORITY_REORDER_MAX_ITEMS } from "@/lib/domain/operations/priority-order"
-import { loadMaxPriorityRank, loadPriorityOrderRows, loadPurchaseOrderQueue } from "@/lib/domain/operations/priority-queries"
-import { applyPriorityRankUpdates } from "@/lib/domain/operations/store"
+import { savePriorityReorder } from "@/lib/domain/operations/priority-commands"
+import { PRIORITY_REORDER_MAX_ITEMS } from "@/lib/domain/operations/priority-order"
+import { loadPurchaseOrderQueue } from "@/lib/domain/operations/priority-queries"
 import type { PriorityOrderScope, PurchaseOrderListRow } from "@/lib/domain/operations/types"
 import { canFeature } from "@/lib/permission-enforcement"
 import { orgContext, type OrgContext } from "@/lib/server/action-context"
@@ -22,13 +22,15 @@ import { orgContext, type OrgContext } from "@/lib/server/action-context"
  */
 
 const PURCHASE_ORDER = "purchase_order"
-const STALE = "The order changed since this list loaded. Refresh and try again."
+const STALE = "The order changed since this list loaded. The current order is shown; try again."
+const ACTIVITY_ORDER_LIMIT = 50
 
 const reorderInput = z.object({
   scope: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("project"), projectId: z.string().min(1) }),
     z.object({ kind: z.literal("organization") }),
   ]),
+  // Only the span that moved: from the record's old place to its new one.
   previousIds: z.array(z.string().min(1)).min(1).max(PRIORITY_REORDER_MAX_ITEMS),
   orderedIds: z.array(z.string().min(1)).min(1).max(PRIORITY_REORDER_MAX_ITEMS),
 })
@@ -92,35 +94,33 @@ export async function reorderPurchaseOrderPriority(input: {
     if (!context.success) return context
     const { db, organizationId, user } = context.data
 
-    const [rows, maxRank] = await Promise.all([
-      loadPriorityOrderRows(db, { organizationId, recordType: PURCHASE_ORDER, scope, ids: previousIds }),
-      loadMaxPriorityRank(db, organizationId, PURCHASE_ORDER),
-    ])
-    const plan = planPriorityReorder({ items: rows, previousIds, orderedIds, maxRank })
-    if (plan.kind === "invalid") return actionFailure(plan.reason)
-    if (plan.kind === "stale") return actionFailure(STALE)
-    if (plan.kind === "unchanged") return { success: true }
+    const saved = await savePriorityReorder(db, {
+      organizationId,
+      recordType: PURCHASE_ORDER,
+      scope,
+      previousIds,
+      orderedIds,
+    })
+    if (saved.kind === "invalid") return actionFailure(saved.reason)
+    if (saved.kind === "stale") return actionFailure(STALE)
+    if (saved.kind === "unchanged") return { success: true }
 
-    const changed = await applyPriorityRankUpdates(db, { organizationId, recordType: PURCHASE_ORDER, updates: plan.updates })
-    if (changed !== plan.updates.length) return actionFailure(STALE)
-
-    const projectIds = new Set(rows.map((row) => row.projectId))
+    const projectIds = saved.projectIds
     const [onlyProjectId] = projectIds
     await recordActivityEvent({
       db,
       organizationId,
-      projectId: projectIds.size === 1 ? onlyProjectId : null,
+      projectId: projectIds.length === 1 ? onlyProjectId : null,
       actor: user,
       category: "financial",
       action: "purchase_orders_reordered",
       entityType: "project_operation",
       entityId: null,
-      summary: `Changed the ordering priority of ${plan.updates.length} purchase order${plan.updates.length === 1 ? "" : "s"}.`,
-      metadata: {
-        scope: scope.kind,
-        previousOrder: JSON.stringify(previousIds),
-        savedOrder: JSON.stringify(orderedIds),
-      },
+      summary: `Changed the ordering priority of ${saved.changed} purchase order${saved.changed === 1 ? "" : "s"}.`,
+      // The moved span; a long one (a move to the top of a long queue) is summarized.
+      metadata: previousIds.length <= ACTIVITY_ORDER_LIMIT
+        ? { scope: scope.kind, previousOrder: JSON.stringify(previousIds), savedOrder: JSON.stringify(orderedIds) }
+        : { scope: scope.kind, movedCount: previousIds.length },
     })
 
     revalidatePath("/dashboard/purchase-orders")

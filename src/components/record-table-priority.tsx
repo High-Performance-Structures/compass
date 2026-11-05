@@ -22,8 +22,10 @@ export type RecordPriorityOrder<T> = {
   readonly searching: boolean
   readonly getLabel: (row: T) => string
   /**
-   * Saves the new order of the whole list (every page). `previousIds` is the
-   * order the person saw, for the server's stale check.
+   * Saves one move. Only the span that moved is sent, from the record's old
+   * place to its new one: `previousIds` is that span as the person saw it
+   * (for the server's stale check) and `orderedIds` the same rows in their
+   * new order. The server reassigns only those rows' places.
    */
   readonly onReorder: (previousIds: readonly string[], orderedIds: readonly string[]) => Promise<ActionDone>
 }
@@ -90,7 +92,9 @@ export function usePriorityRecordTable<T>({
       if (Math.abs(to - from) === 1 && Math.floor(to / pageSize) !== Math.floor(from / pageSize)) {
         table.setPageIndex(Math.floor(to / pageSize))
       }
-      onReorder(orderedIds, next)
+      const low = Math.min(from, to)
+      const high = Math.max(from, to) + 1
+      onReorder(orderedIds.slice(low, high), next.slice(low, high))
         .then((result) => {
           if (result.success) return
           setOptimisticIds(null)

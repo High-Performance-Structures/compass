@@ -13,10 +13,10 @@
  * `updatedAt` check, a status guard), it passes that condition in; the store
  * still owns the statement.
  */
-import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
-import { projectOperations, projectPurchaseOrderLines, projectTodoEvents, projects } from "@/db/schema"
+import { projectOperations, projectPurchaseOrderLines, projectTodoEvents } from "@/db/schema"
 import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
@@ -470,11 +470,43 @@ export async function setSquareInvoiceOperationStatus(
 }
 
 /**
- * Ordering priority writes, as planned by priority-order.ts. Each update is
- * guarded by the rank it replaces and by the organization, so a concurrent
- * reorder changes nothing for that row. Returns how many rows changed.
- * The rank is not an edit of the record, so updatedAt (the edit form's
- * version) is left alone.
+ * Gives every unranked row of the organization's record type a rank after the
+ * current highest, in the order they already sort in (created date, number,
+ * id: PRIORITY_ORDER_BY), so the shared order does not change. One set-based
+ * statement: the highest rank is read inside it, so two concurrent calls
+ * cannot hand out the same ranks. Returns how many rows were ranked.
+ */
+export async function rankUnrankedOperations(
+  db: Db,
+  input: { readonly organizationId: string; readonly recordType: string },
+): Promise<number> {
+  const result = await db.run(sql`
+    UPDATE project_operations SET priority_rank = ranked.base + ranked.n
+    FROM (
+      SELECT o.id AS id,
+        ROW_NUMBER() OVER (ORDER BY o.created_at, o.source_record_number, o.id) AS n,
+        (SELECT COALESCE(MAX(m.priority_rank), 0) FROM project_operations m
+          JOIN projects mp ON mp.id = m.project_id
+          WHERE mp.organization_id = ${input.organizationId} AND m.source_record_type = ${input.recordType}) AS base
+      FROM project_operations o
+      JOIN projects p ON p.id = o.project_id
+      WHERE p.organization_id = ${input.organizationId}
+        AND o.source_record_type = ${input.recordType}
+        AND o.priority_rank IS NULL
+    ) AS ranked
+    WHERE project_operations.id = ranked.id AND project_operations.priority_rank IS NULL
+  `)
+  return result.meta.changes ?? 0
+}
+
+/**
+ * Ordering priority writes, as planned by priority-order.ts: one statement,
+ * all or nothing. It writes only if every planned row is still in the
+ * organization with the rank the plan expects, so a concurrent reorder leaves
+ * the order exactly as it was. The plan travels as one JSON parameter, so a
+ * long span stays within D1's bound-parameter limit. Returns how many rows
+ * changed: the plan's length, or 0. The rank is not an edit of the record,
+ * so updatedAt (the edit form's version) is left alone.
  */
 export async function applyPriorityRankUpdates(
   db: Db,
@@ -484,30 +516,28 @@ export async function applyPriorityRankUpdates(
     readonly updates: readonly PriorityRankUpdate[]
   },
 ): Promise<number> {
-  const organizationProjects = db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.organizationId, input.organizationId))
-  const queries = input.updates.map((update) =>
-    db
-      .update(projectOperations)
-      .set({ priorityRank: update.nextRank })
-      .where(
-        and(
-          eq(projectOperations.id, update.id),
-          eq(projectOperations.sourceRecordType, input.recordType),
-          update.previousRank === null
-            ? isNull(projectOperations.priorityRank)
-            : eq(projectOperations.priorityRank, update.previousRank),
-          inArray(projectOperations.projectId, organizationProjects),
-        ),
-      )
-      .returning({ id: projectOperations.id }),
-  )
-  const [first, ...rest] = queries
-  if (!first) return 0
-  const results = await db.batch([first, ...rest])
-  return results.reduce((total, rows) => total + rows.length, 0)
+  if (input.updates.length === 0) return 0
+  const plan = JSON.stringify(input.updates.map((update) => [update.id, update.previousRank, update.nextRank]))
+  const result = await db.run(sql`
+    WITH plan AS (
+      SELECT json_extract(value, '$[0]') AS id,
+        json_extract(value, '$[1]') AS old_rank,
+        json_extract(value, '$[2]') AS new_rank
+      FROM json_each(${plan})
+    )
+    UPDATE project_operations
+    SET priority_rank = (SELECT plan.new_rank FROM plan WHERE plan.id = project_operations.id)
+    WHERE project_operations.id IN (SELECT id FROM plan)
+      AND (
+        SELECT COUNT(*) FROM plan
+        JOIN project_operations stored ON stored.id = plan.id
+        JOIN projects owner ON owner.id = stored.project_id
+        WHERE owner.organization_id = ${input.organizationId}
+          AND stored.source_record_type = ${input.recordType}
+          AND stored.priority_rank IS plan.old_rank
+      ) = ${input.updates.length}
+  `)
+  return result.meta.changes ?? 0
 }
 
 // ---------------------------------------------------------------------------

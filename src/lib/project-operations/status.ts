@@ -122,7 +122,7 @@ export function projectOperationMatchesStatusFilter(
  * doesn't list) is still waiting to be ordered, so it belongs in the
  * ordering queue.
  */
-export const PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES = [
+const PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES = [
   "ordered",
   "partially_received",
   "received",
@@ -130,6 +130,14 @@ export const PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES = [
   "completed",
   "closed",
   "void",
+  "voided",
+  "archived",
   "cancelled",
   "canceled",
 ] as const satisfies readonly string[]
+
+/** Still waiting to be ordered: compared the way `normalizedStatus` spells statuses. */
+export function isPurchaseOrderAwaitingOrder(status: string): boolean {
+  const normalized = normalizedStatus(status)
+  return !PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES.some((value) => value === normalized)
+}

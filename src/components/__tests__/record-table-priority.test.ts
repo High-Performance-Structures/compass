@@ -166,15 +166,14 @@ describe("record table priority order mode", () => {
     expect(host.querySelector("tbody tr td")?.textContent).toBe("1")
   })
 
-  it("moves at once, saves the whole order, and rolls back with a toast when the save fails", async () => {
+  it("moves at once, saves only the moved span, and rolls back with a toast when the save fails", async () => {
     await act(async () => root.render(React.createElement(PriorityHarness)))
     await act(async () => button("Move Record 0 down").click())
     expect(names().slice(0, 2)).toEqual(["Record 1", "Record 0"])
     expect(onReorder).toHaveBeenCalledTimes(1)
     const [previousIds, orderedIds] = onReorder.mock.calls[0] ?? [[], []]
-    expect(previousIds.slice(0, 2)).toEqual(["id-0", "id-1"])
-    expect(orderedIds.slice(0, 2)).toEqual(["id-1", "id-0"])
-    expect(orderedIds).toHaveLength(30)
+    expect(previousIds).toEqual(["id-0", "id-1"])
+    expect(orderedIds).toEqual(["id-1", "id-0"])
     // Further moves wait for the save.
     expect(priority.dragEnabled).toBe(false)
 
@@ -187,7 +186,10 @@ describe("record table priority order mode", () => {
   it("moves a record to the bottom across pages", async () => {
     await act(async () => root.render(React.createElement(PriorityHarness)))
     await act(async () => priority.move("id-0", priority.count - 1))
-    const [, orderedIds] = onReorder.mock.calls[0] ?? [[], []]
+    const [previousIds, orderedIds] = onReorder.mock.calls[0] ?? [[], []]
+    // The span runs from the old place to the new one: here, the whole list.
+    expect(previousIds).toHaveLength(30)
+    expect(previousIds[0]).toBe("id-0")
     expect(orderedIds.at(-1)).toBe("id-0")
     expect(names()[0]).toBe("Record 1")
     await act(async () => resolveSave?.({ success: true }))

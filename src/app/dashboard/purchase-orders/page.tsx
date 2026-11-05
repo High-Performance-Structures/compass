@@ -3,6 +3,7 @@ import { IconShoppingCart } from "@tabler/icons-react"
 import { getProjects } from "@/app/actions/projects"
 import { getPurchaseOrderQueue } from "@/app/actions/purchase-order-priority"
 import { PageHeader } from "@/components/page-header"
+import { ActiveProjectSectionShortcut } from "@/components/projects/active-project-section-redirect"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { PurchaseOrderPriorityTable } from "@/components/purchase-orders/purchase-order-priority-table"
@@ -29,10 +30,13 @@ export default async function PurchaseOrderQueuePage() {
           <div>
             <h2 className="text-sm font-semibold">Ordering queue</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Purchase orders from every job that still need to be ordered, in the order to place them.
+              Purchase orders from every open job that still need to be ordered, in the order to place them.
             </p>
           </div>
-          {queue.success && <Badge variant="secondary">{queue.data.rows.length} to order</Badge>}
+          <div className="flex flex-wrap items-center gap-2">
+            {queue.success && <Badge variant="secondary">{queue.data.rows.length} to order</Badge>}
+            <ActiveProjectSectionShortcut targetSection="purchase-orders" noun="POs" />
+          </div>
         </div>
         {queue.success ? (
           <PurchaseOrderPriorityTable

@@ -3,17 +3,20 @@
  * Every query is scoped to the caller's organization (through the row's
  * project) in SQL.
  */
-import { and, asc, eq, inArray, max, notInArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, sql } from "drizzle-orm"
 
-import { projectOperations, projects } from "@/db/schema"
-import { chunkD1Values } from "@/lib/d1-query"
-import { PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES } from "@/lib/project-operations/status"
+import { projectJobStatuses, projectOperations, projects } from "@/db/schema"
+import { isPurchaseOrderAwaitingOrder } from "@/lib/project-operations/status"
+import { projectJobStatusBucket, projectJobStatusLabel } from "@/lib/project-profile"
 import type { Db } from "@/lib/server/action-context"
 
 import type { PriorityRankedItem } from "./priority-order"
 import type { PriorityOrderScope, PurchaseOrderListRow } from "./types"
 
-/** Ranked rows first by rank, then unranked oldest first (priority-order.ts). */
+/**
+ * Ranked rows first by rank, then unranked oldest first. priority-order.ts
+ * compares in exactly this order, and rankUnrankedOperations ranks in it.
+ */
 export const PRIORITY_ORDER_BY = [
   sql`${projectOperations.priorityRank} IS NULL`,
   asc(projectOperations.priorityRank),
@@ -24,7 +27,10 @@ export const PRIORITY_ORDER_BY = [
 
 export type PriorityOrderRow = PriorityRankedItem & { readonly projectId: string }
 
-/** The rows a reorder names, as stored now, limited to the scope it came from. */
+/**
+ * The rows a reorder names, as stored now, limited to the scope it came from.
+ * The ids travel as one JSON parameter, so a long span is one query.
+ */
 export async function loadPriorityOrderRows(
   db: Db,
   input: {
@@ -34,39 +40,25 @@ export async function loadPriorityOrderRows(
     readonly ids: readonly string[]
   },
 ): Promise<readonly PriorityOrderRow[]> {
-  const chunks = await Promise.all(
-    chunkD1Values(input.ids).map((ids) =>
-      db
-        .select({
-          id: projectOperations.id,
-          projectId: projectOperations.projectId,
-          priorityRank: projectOperations.priorityRank,
-          createdAt: projectOperations.createdAt,
-          number: projectOperations.sourceRecordNumber,
-        })
-        .from(projectOperations)
-        .innerJoin(projects, eq(projects.id, projectOperations.projectId))
-        .where(
-          and(
-            inArray(projectOperations.id, ids),
-            eq(projectOperations.sourceRecordType, input.recordType),
-            eq(projects.organizationId, input.organizationId),
-            input.scope.kind === "project" ? eq(projectOperations.projectId, input.scope.projectId) : undefined,
-          ),
-        ),
-    ),
-  )
-  return chunks.flat()
-}
-
-/** The highest rank in the organization's shared order for a record type. */
-export async function loadMaxPriorityRank(db: Db, organizationId: string, recordType: string): Promise<number | null> {
-  const [row] = await db
-    .select({ value: max(projectOperations.priorityRank) })
+  if (input.ids.length === 0) return []
+  return db
+    .select({
+      id: projectOperations.id,
+      projectId: projectOperations.projectId,
+      priorityRank: projectOperations.priorityRank,
+      createdAt: projectOperations.createdAt,
+      number: projectOperations.sourceRecordNumber,
+    })
     .from(projectOperations)
     .innerJoin(projects, eq(projects.id, projectOperations.projectId))
-    .where(and(eq(projectOperations.sourceRecordType, recordType), eq(projects.organizationId, organizationId)))
-  return row?.value ?? null
+    .where(
+      and(
+        sql`${projectOperations.id} IN (SELECT value FROM json_each(${JSON.stringify(input.ids)}))`,
+        eq(projectOperations.sourceRecordType, input.recordType),
+        eq(projects.organizationId, input.organizationId),
+        input.scope.kind === "project" ? eq(projectOperations.projectId, input.scope.projectId) : undefined,
+      ),
+    )
 }
 
 const purchaseOrderListColumns = {
@@ -86,10 +78,42 @@ const purchaseOrderListColumns = {
 }
 
 /**
- * The ordering queue: every purchase order across the organization's jobs
- * that is not yet ordered, received or finished, in priority order.
+ * The ordering queue: every purchase order on the organization's open jobs
+ * (not complete, closed or archived) that is not yet ordered, received or
+ * finished, in priority order.
+ *
+ * Stored statuses and job statuses vary in spelling, so the few distinct
+ * values are read first and classified with the same rules the rest of
+ * Compass uses; the queue itself then filters on the exact stored values.
  */
 export async function loadPurchaseOrderQueue(db: Db, organizationId: string): Promise<readonly PurchaseOrderListRow[]> {
+  const [statusRows, jobStatusRows] = await Promise.all([
+    db
+      .selectDistinct({ status: projectOperations.status })
+      .from(projectOperations)
+      .innerJoin(projects, eq(projects.id, projectOperations.projectId))
+      .where(and(eq(projectOperations.sourceRecordType, "purchase_order"), eq(projects.organizationId, organizationId))),
+    db
+      .selectDistinct({ jobStatusId: projects.jobStatusId, customLabel: projectJobStatuses.label })
+      .from(projects)
+      .leftJoin(projectJobStatuses, eq(projectJobStatuses.id, projects.jobStatusId))
+      .where(eq(projects.organizationId, organizationId)),
+  ])
+  const awaiting = statusRows.map((row) => row.status).filter(isPurchaseOrderAwaitingOrder)
+  const openJobStatusIds = [
+    ...new Set(
+      jobStatusRows
+        .filter((row) => {
+          const bucket = projectJobStatusBucket({
+            jobStatusId: row.jobStatusId,
+            jobStatusLabel: projectJobStatusLabel(row),
+          })
+          return bucket !== "complete" && bucket !== "archive"
+        })
+        .map((row) => row.jobStatusId),
+    ),
+  ]
+  if (awaiting.length === 0 || openJobStatusIds.length === 0) return []
   return db
     .select(purchaseOrderListColumns)
     .from(projectOperations)
@@ -98,8 +122,8 @@ export async function loadPurchaseOrderQueue(db: Db, organizationId: string): Pr
       and(
         eq(projectOperations.sourceRecordType, "purchase_order"),
         eq(projects.organizationId, organizationId),
-        // Stored statuses can differ in case or spacing ("Partially received").
-        notInArray(sql`replace(lower(trim(${projectOperations.status})), ' ', '_')`, [...PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES]),
+        inArray(projectOperations.status, awaiting),
+        inArray(projects.jobStatusId, openJobStatusIds),
       ),
     )
     .orderBy(...PRIORITY_ORDER_BY)

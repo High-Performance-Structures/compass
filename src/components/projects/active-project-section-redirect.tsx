@@ -49,3 +49,27 @@ export function ActiveProjectSectionRedirect({
     </div>
   )
 }
+
+/**
+ * A visible shortcut into the active project's section, without leaving the
+ * page on its own (for company-wide pages such as the ordering queue).
+ */
+export function ActiveProjectSectionShortcut({
+  targetSection,
+  noun,
+}: {
+  readonly targetSection: string
+  /** What the section holds, such as "POs": the button reads "Open <project> POs". */
+  readonly noun: string
+}): React.ReactElement | null {
+  const { activeProject, activeProjectReady } = useActiveProject()
+  if (!activeProjectReady || !activeProject) return null
+  const name = activeProject.projectNumber ?? activeProject.name
+  return (
+    <Button asChild size="sm" variant="outline">
+      <Link href={sectionHref(activeProject.id, targetSection)}>
+        Open {name} {noun}
+      </Link>
+    </Button>
+  )
+}

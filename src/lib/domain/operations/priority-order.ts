@@ -5,11 +5,14 @@
  * Each row carries one shared rank, compared among the organization's rows of
  * the same record type. Lower ranks come first. Rows without a rank sort after
  * every ranked row, oldest first, so a new row lands at the bottom without
- * being written.
+ * being written. The first reorder that touches an unranked row ranks every
+ * unranked row of the organization in that same order (the store's
+ * `rankUnrankedOperations`), so nothing moves.
  *
  * A list (one job's POs, or the company-wide ordering queue) is a subset of
- * that shared order. Reordering a subset only reassigns the rank slots its own
- * rows hold, so rows outside it keep their place.
+ * that shared order, and a reorder sends only the span of the list that moved.
+ * Reordering a span only reassigns the rank slots its own rows hold, so rows
+ * outside it keep their place.
  */
 
 export type PriorityRankedItem = {
@@ -31,12 +34,27 @@ export type PriorityReorderPlan =
   | { readonly kind: "unchanged" }
   | { readonly kind: "updates"; readonly updates: readonly PriorityRankUpdate[] }
   | { readonly kind: "stale" }
+  /** Some rows have no rank yet: rank the organization's unranked rows, then plan again. */
+  | { readonly kind: "unranked" }
   | { readonly kind: "invalid"; readonly reason: string }
 
-/** Upper bound on one reorder: keeps the write batch well inside D1's limits. */
-export const PRIORITY_REORDER_MAX_ITEMS = 500
+/**
+ * Upper bound on one moved span. The write is one statement whose plan is a
+ * single JSON parameter, so this is about request size, not D1's
+ * bound-parameter limit.
+ */
+export const PRIORITY_REORDER_MAX_ITEMS = 2000
 
-/** Ranked first by rank, then unranked oldest first; ties by number, then id. */
+/** Plain code-unit order, as SQLite's default BINARY collation compares ASCII text. */
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+/**
+ * Exactly the SQL order (PRIORITY_ORDER_BY in priority-queries.ts): ranked
+ * first by rank, then unranked; then created date, then number with a blank
+ * number first (SQLite sorts NULL first ascending), then id.
+ */
 function comparePriorityOrder(left: PriorityRankedItem, right: PriorityRankedItem): number {
   const leftRanked = left.priorityRank !== null
   const rightRanked = right.priorityRank !== null
@@ -44,10 +62,14 @@ function comparePriorityOrder(left: PriorityRankedItem, right: PriorityRankedIte
   if (left.priorityRank !== null && right.priorityRank !== null && left.priorityRank !== right.priorityRank) {
     return left.priorityRank - right.priorityRank
   }
-  if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt ? -1 : 1
-  const numbers = (left.number ?? "").localeCompare(right.number ?? "", undefined, { numeric: true })
-  if (numbers !== 0) return numbers
-  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+  const created = compareText(left.createdAt, right.createdAt)
+  if (created !== 0) return created
+  if (left.number !== right.number) {
+    if (left.number === null) return -1
+    if (right.number === null) return 1
+    return compareText(left.number, right.number)
+  }
+  return compareText(left.id, right.id)
 }
 
 export function sortByPriorityOrder<T extends PriorityRankedItem>(items: readonly T[]): T[] {
@@ -61,26 +83,20 @@ function samePriorityOrder(left: readonly string[], right: readonly string[]): b
 /**
  * Plans the rank writes that put `orderedIds` in that order.
  *
- * - `items` are the rows the list showed, as stored now (any order).
- * - `previousIds` is the order the person saw. If the stored order of those
- *   rows differs, someone else changed it: the plan is "stale".
- * - `maxRank` is the highest rank in the organization's shared order (for
- *   the record type), or null when nothing is ranked yet.
+ * - `items` are the rows of the moved span, as stored now (any order).
+ * - `previousIds` is the span's order as the person saw it. If the stored
+ *   order of those rows differs, someone else changed it: the plan is "stale".
  *
- * Unranked rows in the list first get ranks after `maxRank` in their current
- * order, which keeps them where they were. Then the list's rank slots, lowest
- * first, are handed out in the new order.
+ * The span's rank slots, lowest first, are handed out in the new order.
  */
 export function planPriorityReorder({
   items,
   previousIds,
   orderedIds,
-  maxRank,
 }: {
   readonly items: readonly PriorityRankedItem[]
   readonly previousIds: readonly string[]
   readonly orderedIds: readonly string[]
-  readonly maxRank: number | null
 }): PriorityReorderPlan {
   if (orderedIds.length > PRIORITY_REORDER_MAX_ITEMS) {
     return { kind: "invalid", reason: `Reorder at most ${PRIORITY_REORDER_MAX_ITEMS} items at a time.` }
@@ -101,14 +117,13 @@ export function planPriorityReorder({
   const current = sortByPriorityOrder(previousIds.flatMap((id) => byId.get(id) ?? []))
   if (!samePriorityOrder(current.map((item) => item.id), previousIds)) return { kind: "stale" }
   if (samePriorityOrder(previousIds, orderedIds)) return { kind: "unchanged" }
+  if (current.some((item) => item.priorityRank === null)) return { kind: "unranked" }
 
-  let nextFreeRank = Math.max(maxRank ?? 0, ...current.map((item) => item.priorityRank ?? 0)) + 1
-  // `current` is sorted, so unranked rows are its tail and take rising ranks.
   // Slots rise strictly: two rows sharing a rank would otherwise fall back to
   // their creation dates and ignore the order the person chose.
   const slots: number[] = []
   for (const item of current) {
-    const slot = item.priorityRank ?? nextFreeRank++
+    const slot = item.priorityRank ?? 0
     const previousSlot = slots.at(-1)
     slots.push(previousSlot !== undefined && slot <= previousSlot ? previousSlot + 1 : slot)
   }
