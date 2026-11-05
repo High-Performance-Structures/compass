@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache"
 
 import { customerContacts, customers, projectContacts } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  contactEmailChanged,
+  directoryIdentityManagedByActiveUser,
+  SIGN_IN_EMAIL_LOCK,
+} from "@/lib/contact-identity-ownership"
 import { saveCustomerPerson } from "@/lib/domain/contacts/directory-people"
 import { stalePendingInvitationCount, stalePendingInvitationWarning } from "@/lib/domain/contacts/pending-invitations"
 import { updateCustomerPerson } from "@/lib/domain/contacts/store"
@@ -74,6 +79,18 @@ export async function saveCustomerDirectoryPerson(
       ? await db.select({ email: customerContacts.email }).from(customerContacts)
           .where(and(eq(customerContacts.id, personId), eq(customerContacts.customerId, customerId))).get()
       : undefined
+    // Everything about an accepted Compass user is staff-editable except the
+    // email they sign in with.
+    if (
+      personId &&
+      before &&
+      contactEmailChanged(before.email, input.email) &&
+      (await directoryIdentityManagedByActiveUser({
+        db, organizationId: orgId, entityType: "customer_contact", entityId: personId,
+      }))
+    ) {
+      return { success: false, error: SIGN_IN_EMAIL_LOCK }
+    }
     const saved = await saveCustomerPerson(db, {
       organizationId: orgId, customerId, personId, person: input, now,
     })

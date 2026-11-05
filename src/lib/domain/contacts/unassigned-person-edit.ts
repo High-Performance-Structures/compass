@@ -5,15 +5,18 @@
  * project-contact row on each project they appear on; an edit changes every
  * row together.
  *
- * Staff may edit until the person ACCEPTS a Compass invitation on any of
- * those rows (owner decision 2026-11-03). A pending invitation does not
- * lock; changing the email then returns a warning instead of resending.
+ * Staff may edit everything about the person. Once they ACCEPT a Compass
+ * invitation on any of those rows, their email is their sign-in email and
+ * stays theirs (owner decision 2026-11-04), and they are no longer archived
+ * from here. A pending invitation does not lock; changing the email then
+ * returns a warning instead of resending.
  * Callers check permissions, log activity and revalidate.
  */
 import { and, eq, inArray, isNull, or } from "drizzle-orm"
 
 import { organizationMembers, projectAccessInvitations, projectContacts, projectMembers, users } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import type { Db } from "@/lib/server/action-context"
 
 import { stalePendingInvitationCount, stalePendingInvitationWarning } from "./pending-invitations"
@@ -28,8 +31,9 @@ export type UnassignedPersonInput = {
   readonly companyName: string
 }
 
+/** Archiving someone with an accepted invitation would take away their project access. */
 export const UNASSIGNED_ACCOUNT_LOCK =
-  "This person has accepted a Compass invitation and manages their own contact information."
+  "This person has accepted a Compass invitation. Remove them from each project's contacts to take away their access."
 
 type Row = {
   readonly id: string
@@ -120,7 +124,6 @@ export async function saveUnassignedPerson(
   const rows = await personRows(db, input.organizationId, input.identity)
   const first = rows[0]
   if (!first) return { success: false, error: "This person is no longer unassigned. Refresh the list." }
-  if (await unassignedPersonHasAccount(db, input.organizationId, rows)) return { success: false, error: UNASSIGNED_ACCOUNT_LOCK }
 
   const values = {
     displayName: name,
@@ -134,6 +137,13 @@ export async function saveUnassignedPerson(
     ...(rows.some((row) => (row.phone?.trim() ?? "") !== (values.phone ?? "")) ? ["phone"] : []),
     ...(rows.some((row) => (row.companyName?.trim() ?? "") !== (values.companyName ?? "")) ? ["companyName"] : []),
   ]
+  // Copying their current email onto rows that had none is not a change of
+  // sign-in email; replacing or clearing it is.
+  const knownEmails = new Set(rows.map((row) => normalizeEmailKey(row.email)).filter(Boolean))
+  const signInEmailChanged = knownEmails.size > 0 && !knownEmails.has(normalizeEmailKey(values.email))
+  if (signInEmailChanged && (await unassignedPersonHasAccount(db, input.organizationId, rows))) {
+    return { success: false, error: SIGN_IN_EMAIL_LOCK }
+  }
   const contactIds = rows.map((row) => row.id)
   const projectIds = [...new Set(rows.map((row) => row.projectId))]
   if (changed.length === 0) return { success: true, contactIds, projectIds, changed, warning: null }

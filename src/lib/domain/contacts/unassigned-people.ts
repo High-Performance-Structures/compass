@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm"
 
-import { customers, projectContacts, projects, vendors } from "@/db/schema"
+import { customers, projectAccessInvitations, projectContacts, projects, users, vendors } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeCompanyName } from "./rules"
@@ -21,6 +21,11 @@ export type UnassignedPerson = {
   readonly phone: string | null
   /** The company name the imported messages showed, if any. */
   readonly companyName: string | null
+  /**
+   * True once they accepted a Compass invitation on one of these rows: the
+   * edit form then locks their sign-in email (the save re-checks this).
+   */
+  readonly hasAccount: boolean
   readonly projects: readonly {
     readonly projectId: string
     readonly projectName: string
@@ -58,6 +63,7 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
       projectId: projects.id,
       projectName: projects.name,
       projectNumber: projects.projectNumber,
+      accepted: sql<number>`exists (select 1 from ${projectAccessInvitations} inner join ${users} on ${users.id} = ${projectAccessInvitations.acceptedBy} where ${projectAccessInvitations.projectContactId} = ${projectContacts.id} and ${projectAccessInvitations.status} = 'accepted' and ${users.isActive} = 1)`,
     })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
@@ -65,13 +71,14 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
     .orderBy(asc(projectContacts.displayName), asc(projects.name))
     .limit(MAX_ROWS)
 
-  type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; projects: UnassignedPerson["projects"][number][] }
+  type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; hasAccount: boolean; projects: UnassignedPerson["projects"][number][] }
   const people = new Map<string, Person>()
   for (const row of rows) {
     const identity = row.identity ?? row.contactId
-    const person = people.get(identity) ?? { name: row.name, email: row.email, phone: row.phone, companyName: null, projects: [] }
+    const person = people.get(identity) ?? { name: row.name, email: row.email, phone: row.phone, companyName: null, hasAccount: false, projects: [] }
     person.projects.push({ projectId: row.projectId, projectName: row.projectName, projectNumber: row.projectNumber, contactId: row.contactId })
     if (!person.email && row.email) person.email = row.email
+    if (Number(row.accepted) === 1) person.hasAccount = true
     if (!person.phone && row.phone) person.phone = row.phone
     if (!person.companyName && row.companyName?.trim()) person.companyName = row.companyName.trim()
     people.set(identity, person)

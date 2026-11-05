@@ -22,8 +22,9 @@ import {
   type SageClientStatusId,
 } from "@/lib/sage/client-project-write"
 import {
-  contactIdentityChanged,
+  contactEmailChanged,
   directoryIdentityManagedByActiveUser,
+  SIGN_IN_EMAIL_LOCK,
 } from "@/lib/contact-identity-ownership"
 import {
   changesSageLinkedCustomerIdentity,
@@ -318,9 +319,10 @@ export async function updateCustomer(
       phone: patch.phone === undefined ? existing.phone : patch.phone,
       address: patch.address === undefined ? existing.address : patch.address,
     }
-    const identityChanged = contactIdentityChanged(existing, nextIdentity)
+    // An accepted Compass user's other details are staff-editable; only the
+    // email they sign in with stays theirs.
     if (
-      identityChanged &&
+      contactEmailChanged(existing.email, nextIdentity.email) &&
       (await directoryIdentityManagedByActiveUser({
         db,
         organizationId: orgId,
@@ -328,11 +330,7 @@ export async function updateCustomer(
         entityId: id,
       }))
     ) {
-      return {
-        success: false,
-        error:
-          "This active Compass user manages their own phone, email, and address.",
-      }
+      return { success: false, error: SIGN_IN_EMAIL_LOCK }
     }
 
     const updatedAt = new Date().toISOString()

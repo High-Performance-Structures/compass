@@ -6,12 +6,12 @@ import { migratedDatabase } from "@/lib/domain/contacts/__tests__/directory-seed
 import { isRecord } from "@/lib/shared/guards"
 
 /*
- * Owner rule 2026-11-03: staff edit a person's contact information for as
- * long as the person has not ACCEPTED a Compass invitation. A pending
- * invitation does not lock; changing the email then warns staff (nothing is
- * revoked from the directory, resent or emailed). Accepted account holders
- * keep today's rules, and Sage-linked people still go through Sage review.
- * Runs against a database built from every migration.
+ * Owner rules: staff edit a person's contact information (2026-11-03). A
+ * pending invitation does not lock; changing the email then warns staff
+ * (nothing is revoked from the directory, resent or emailed). Once the person
+ * ACCEPTS a Compass invitation, staff still edit everything except the email
+ * they sign in with (2026-11-04). Sage-linked people still go through Sage
+ * review. Runs against a database built from every migration.
  */
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn() }))
@@ -31,6 +31,8 @@ import { archiveUnassignedPersonAction, editUnassignedPerson } from "@/app/actio
 import { getInternalDirectoryContacts, updateVendor } from "@/app/actions/vendors"
 import { INTERNAL_ACCOUNT_LOCK, INTERNAL_SAGE_LOCK } from "@/lib/domain/contacts/internal-people"
 import { initialInput } from "@/components/projects/contact-editor/contact-editor-rules"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
+import { listUnassignedPeople } from "@/lib/domain/contacts/unassigned-people"
 import { toContactItem } from "@/lib/domain/contacts/rules"
 import { UNASSIGNED_ACCOUNT_LOCK } from "@/lib/domain/contacts/unassigned-person-edit"
 
@@ -135,12 +137,17 @@ describe("Contacts → Unassigned", () => {
       .toEqual({ status: "sent", email: "jane@acme.example", email_attempts: 0 })
   })
 
-  it("keeps today's lock once the person accepted an invitation", async () => {
+  it("edits everything but the sign-in email once the person accepted an invitation", async () => {
     user("user_jane", "jane@acme.example", 1)
     invitation("inv-1", "pc-1", "accepted", "jane@acme.example", "user_jane")
-    const result = await editUnassignedPerson({ identity: IDENTITY, name: "Someone Else", email: "", phone: "", companyName: "" })
-    expect(result).toEqual({ success: false, error: UNASSIGNED_ACCOUNT_LOCK })
+    expect((await listUnassignedPeople(drizzle(d1Over(sqlite)), ORG)).map((person) => person.hasAccount)).toEqual([true])
+    const moved = await editUnassignedPerson({ identity: IDENTITY, name: "Someone Else", email: "", phone: "", companyName: "" })
+    expect(moved).toEqual({ success: false, error: SIGN_IN_EMAIL_LOCK })
     expect(one("SELECT display_name FROM project_contacts WHERE id = 'pc-1'").display_name).toBe("Jane Doe")
+    const result = await editUnassignedPerson({ identity: IDENTITY, name: "Jane Q. Doe", email: "JANE@acme.example", phone: "555-0107", companyName: "Acme Framing" })
+    expect(result).toEqual({ success: true, data: { warning: null } })
+    expect(one("SELECT display_name, email, phone, company_name FROM project_contacts WHERE id = 'pc-1'"))
+      .toEqual({ display_name: "Jane Q. Doe", email: "jane@acme.example", phone: "555-0107", company_name: "Acme Framing" })
     expect(await archiveUnassignedPersonAction(IDENTITY)).toEqual({ success: false, error: UNASSIGNED_ACCOUNT_LOCK })
   })
 
@@ -186,11 +193,29 @@ describe("vendor and client people", () => {
     expect(one("SELECT status FROM project_access_invitations WHERE id = 'inv-v'").status).toBe("sent")
   })
 
-  it("keeps today's lock for a vendor person who accepted", async () => {
+  it("edits a vendor person who accepted, except their sign-in email", async () => {
     user("user_jane", "jane@acme.example", 1)
     invitation("inv-v", "pc-v", "accepted", "jane@acme.example", "user_jane")
     const result = await updateVendor("vendor-1", { ...company, contacts: [vendorPerson("other@acme.example")] })
-    expect(result).toEqual({ success: false, error: "Jane Doe manages their own email and phone in Compass." })
+    expect(result).toEqual({ success: false, error: `Jane Doe: ${SIGN_IN_EMAIL_LOCK}` })
+    expect(one("SELECT email FROM vendor_contacts WHERE id = 'vp-1'").email).toBe("jane@acme.example")
+    const renamed = await updateVendor("vendor-1", {
+      ...company, contacts: [{ ...vendorPerson("jane@acme.example"), name: "Jane Q. Doe", title: "Superintendent", phone: "555-0108" }],
+    })
+    expect(renamed).toEqual({ success: true })
+    expect(one("SELECT name, title, email, phone FROM vendor_contacts WHERE id = 'vp-1'"))
+      .toEqual({ name: "Jane Q. Doe", title: "Superintendent", email: "jane@acme.example", phone: "555-0108" })
+  })
+
+  it("edits a client person who accepted, except their sign-in email", async () => {
+    user("user_olive", "olive@owner.example", 1)
+    invitation("inv-c", "pc-c", "accepted", "olive@owner.example", "user_olive")
+    const moved = await saveCustomerDirectoryPerson("cust-1", "cp-1", { name: "Olive Owner", title: "", email: "olive@new.example", phone: "", isPrimary: true })
+    expect(moved).toEqual({ success: false, error: SIGN_IN_EMAIL_LOCK })
+    const renamed = await saveCustomerDirectoryPerson("cust-1", "cp-1", { name: "Olive O. Owner", title: "Owner", email: "olive@owner.example", phone: "555-0109", isPrimary: true })
+    expect(renamed).toEqual({ success: true, id: "cp-1" })
+    expect(one("SELECT name, title, email, phone FROM customer_contacts WHERE id = 'cp-1'"))
+      .toEqual({ name: "Olive O. Owner", title: "Owner", email: "olive@owner.example", phone: "555-0109" })
   })
 
   it("edits an uninvited client person, and warns when a pending invitation is left at the old email", async () => {
@@ -254,12 +279,16 @@ describe("project contacts", () => {
     expect(one("SELECT status, email_attempts FROM project_access_invitations WHERE id = 'inv-p'")).toEqual({ status: "revoked", email_attempts: 0 })
   })
 
-  it("keeps today's lock once the contact accepted", async () => {
+  it("edits a contact who accepted, except their sign-in email", async () => {
     user("user_pat", "pat@owner.example", 1)
     invitation("inv-p", "pc-p", "accepted", "pat@owner.example", "user_pat")
     const result = await saveProjectContact(input({ email: "pat@new.example" }))
-    expect(result.success).toBe(false)
+    expect(result).toEqual({ success: false, error: SIGN_IN_EMAIL_LOCK })
     expect(one("SELECT email FROM project_contacts WHERE id = 'pc-p'").email).toBe("pat@owner.example")
+    const edited = await saveProjectContact(input({ displayName: "Pat Q. Owner", phone: "555-0110", address: "10 Example Way" }))
+    expect(edited).toEqual({ success: true, contactId: "pc-p" })
+    expect(one("SELECT display_name, email, phone, address FROM project_contacts WHERE id = 'pc-p'"))
+      .toEqual({ display_name: "Pat Q. Owner", email: "pat@owner.example", phone: "555-0110", address: "10 Example Way" })
   })
 })
 
@@ -291,10 +320,15 @@ describe("internal people", () => {
     expect(one("SELECT email FROM users WHERE id = 'pending-ivy'").email).toBe("ivy@old.example")
   })
 
-  it("keeps an accepted account holder's information theirs", async () => {
+  it("edits an accepted account holder, except their sign-in email", async () => {
     user("user_ivy", "ivy@old.example", 1)
     internal("ic-1", { user_id: "user_ivy", active: 1 })
-    expect(await edit("ic-1", { name: "Changed" })).toEqual({ success: false, error: INTERNAL_ACCOUNT_LOCK })
+    expect(INTERNAL_ACCOUNT_LOCK).toBe(SIGN_IN_EMAIL_LOCK)
+    expect(await edit("ic-1", { name: "Changed", email: "ivy@new.example" })).toEqual({ success: false, error: SIGN_IN_EMAIL_LOCK })
+    expect(one("SELECT name FROM internal_contacts WHERE id = 'ic-1'").name).toBe("Ivy Imported")
+    expect(await edit("ic-1", { name: "Ivy Field", jobTitle: "PM", phone: "555-0111", cellPhone: "555-0112" })).toEqual({ success: true, data: { warning: null } })
+    expect(one("SELECT name, job_title, email, phone, cell_phone FROM internal_contacts WHERE id = 'ic-1'"))
+      .toEqual({ name: "Ivy Field", job_title: "PM", email: "ivy@old.example", phone: "555-0111", cell_phone: "555-0112" })
   })
 
   it("edits a Sage-linked employee's name and title but sends email and phones through Sage", async () => {

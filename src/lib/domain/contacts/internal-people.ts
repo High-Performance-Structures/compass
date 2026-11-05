@@ -4,7 +4,8 @@
  * (owner decision 2026-11-03):
  * - Until the person accepts a Compass invitation, staff edit their name,
  *   job title, email, phone and mobile. A pending invitation does not lock.
- * - Once they have a Compass account, they own their contact information.
+ * - Once they have a Compass account, staff still edit everything except
+ *   the email they sign in with (owner decision 2026-11-04).
  * - A Sage-linked employee's email, phone and mobile belong to Sage and are
  *   changed through "Propose Sage edit"; name and job title are Compass-only
  *   (Sage read-back never writes them) and stay editable here.
@@ -14,6 +15,7 @@ import { and, eq } from "drizzle-orm"
 
 import { internalContacts } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import type { Db } from "@/lib/server/action-context"
 
 import {
@@ -33,8 +35,8 @@ export type InternalPersonInput = {
   readonly cellPhone: string
 }
 
-export const INTERNAL_ACCOUNT_LOCK =
-  "This person has accepted their Compass invitation and manages their own contact information."
+/** An accepted person's sign-in email is theirs; everything else is staff-editable. */
+export const INTERNAL_ACCOUNT_LOCK = SIGN_IN_EMAIL_LOCK
 export const INTERNAL_SAGE_LOCK =
   "This employee is linked to Sage. Change their email, phone or mobile with Propose Sage edit."
 
@@ -74,7 +76,6 @@ export async function saveInternalPerson(
   const existing = await loadPerson(db, input.organizationId, input.personId)
   if (!existing) return { success: false, error: "Internal contact was not found." }
   const linkedUser = await loadLinkedUser(db, existing.userId)
-  if (internalPersonAccountState(linkedUser) === "account") return { success: false, error: INTERNAL_ACCOUNT_LOCK }
 
   const next = {
     name,
@@ -84,6 +85,7 @@ export async function saveInternalPerson(
     cellPhone: text(input.person.cellPhone),
   }
   const emailChanged = normalizeEmailKey(existing.email) !== normalizeEmailKey(next.email)
+  if (emailChanged && internalPersonAccountState(linkedUser) === "account") return { success: false, error: INTERNAL_ACCOUNT_LOCK }
   const sageFieldsChanged = emailChanged || !same(existing.phone, next.phone) || !same(existing.cellPhone, next.cellPhone)
   if (isSageLinkedEmployee(existing) && sageFieldsChanged) return { success: false, error: INTERNAL_SAGE_LOCK }
 

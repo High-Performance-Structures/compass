@@ -29,6 +29,9 @@ function normalizedIdentityValue(
   return lowercase ? normalized.toLowerCase() : normalized
 }
 
+// Accepted Compass users: staff edit everything except the sign-in email.
+export { contactEmailChanged, SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
+
 export function contactIdentityChanged(
   current: ContactIdentityFields,
   next: ContactIdentityFields

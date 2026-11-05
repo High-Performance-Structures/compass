@@ -28,7 +28,7 @@ Open **Contacts**, choose the relevant customer, vendor, or internal directory, 
 
 Use one directory record when the same company works on several projects. Use separate person records when individuals need separate accounts. Do not create placeholder users for “TBD,” and do not recreate employees as customers or vendors.
 
-Clients, vendors, and internal people are separate Contacts views. A client or vendor company can contain several named people. Open the company action menu to view those people. Staff can have separate permissions to edit each directory under **Settings > Permissions**. An external user sees only a person explicitly linked to their own Compass account, not the full directory.
+Clients, vendors, and internal people are separate Contacts views. A client or vendor company can contain several named people. Open the company action menu to view those people. Staff can have separate permissions to edit each directory under **Settings > Permissions**. An external user sees only a person explicitly linked to their own Compass account, not the full directory. Staff with edit access can change a person's name, phone, address, title, and company, including for someone who has accepted a Compass invitation. The one exception is that person's sign-in email: it shows as locked with the note "This is their Compass sign-in email; they change it themselves." Until an invitation is accepted, the email stays editable; changing it while an invitation is pending warns that the invitation went to the old address.
 
 The **Internal** directory has separate **Email** and **Phone** columns. The Phone column shows stored employee phone and mobile numbers, including Sage-synced values; select a number to call it. A dash means neither number is available.
 

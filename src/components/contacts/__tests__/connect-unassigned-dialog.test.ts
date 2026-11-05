@@ -25,6 +25,7 @@ const person: UnassignedPerson = {
   email: "jane@acme.example",
   phone: null,
   companyName: "Acme Framing, L.L.C.",
+  hasAccount: false,
   projects: [{ projectId: "project-1", projectName: "Smith Residence", projectNumber: "O-1", contactId: "pc-1" }],
 }
 const KINDS = ["vendor", "customer"] as const

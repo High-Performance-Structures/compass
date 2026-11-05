@@ -80,6 +80,7 @@ export function ProjectContactEditor({
     isPending,
     selectedDirectory,
     identityManagedByActiveUser,
+    signInEmailLocked,
     resetEditor,
     applyDirectoryOption,
     submit,
@@ -101,7 +102,9 @@ export function ProjectContactEditor({
           <SheetHeader>
             <SheetTitle>{isEditing ? "Edit project contact" : "Add project contact"}</SheetTitle>
             <SheetDescription>
-              {identityManagedByActiveUser
+              {signInEmailLocked
+                ? "This person has a Compass account. Their sign-in email is theirs to change; everything else can be edited here."
+                : identityManagedByActiveUser
                 ? "Contact details are managed in Contacts; Sage-linked changes require review. Project role and visibility remain editable here."
                 : selectedDirectory
                   ? "Phone, email, and address stay synchronized with the linked directory record."

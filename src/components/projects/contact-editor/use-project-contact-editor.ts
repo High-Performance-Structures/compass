@@ -92,7 +92,12 @@ export function useProjectContactEditor({
         selectedDirectory?.identityManagedByActiveUser ??
         contact?.identityManagedByActiveUser ??
         false)
-  const identityReadOnly = selectedDirectory !== null || identityManagedByActiveUser
+  // A directory-linked contact's details are edited in Contacts. A
+  // standalone contact who accepted a Compass invitation stays editable here
+  // except for the email they sign in with (owner decision 2026-11-04).
+  const identityReadOnly =
+    selectedDirectory !== null || (identityManagedByActiveUser && input.directorySourceType !== null)
+  const signInEmailLocked = !identityReadOnly && identityManagedByActiveUser
 
   function updateInput<Key extends keyof ProjectContactMutationInput>(
     key: Key,
@@ -218,6 +223,7 @@ export function useProjectContactEditor({
     filteredCostCodes,
     identityManagedByActiveUser,
     identityReadOnly,
+    signInEmailLocked,
     resetEditor,
     refreshDirectory,
     applyDirectoryOption,

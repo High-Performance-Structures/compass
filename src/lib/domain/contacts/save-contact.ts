@@ -26,7 +26,7 @@ import {
 } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
-import { directoryIdentityManagedByActiveUser, type ContactIdentityFields } from "@/lib/contact-identity-ownership"
+import { directoryIdentityManagedByActiveUser, SIGN_IN_EMAIL_LOCK, type ContactIdentityFields } from "@/lib/contact-identity-ownership"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
   isCanonicalDirectoryAssignment,
@@ -111,8 +111,6 @@ type Scope = { readonly db: Db; readonly user: AuthUser; readonly organizationId
 
 const fail = (error: string): ActionFailure => ({ success: false, error })
 
-const MANAGED_IDENTITY_ERROR =
-  "Phone, email, and address are managed by this active Compass user. You can still update their project role and visibility."
 
 /** Validation that needs no database. */
 export function projectContactInputError(input: ProjectContactMutationInput): string | null {
@@ -456,11 +454,11 @@ type ExistingContact = {
 }
 
 /**
- * Who owns this contact's email, phone and address. A contact whose
- * identity belongs to an active Compass user (accepted invitation, project
- * membership, or a directory record that user manages) cannot have it
- * changed from a project. Returns the invitations to revoke when the email
- * changes.
+ * Who owns this contact's email. Staff may change everything else, but the
+ * email of an active Compass user (accepted invitation, project membership,
+ * or a directory record that user manages) is their sign-in email and cannot
+ * be changed from a project. Returns the invitations to revoke when the
+ * email changes.
  */
 async function identityChangeGate(
   scope: Scope,
@@ -476,11 +474,10 @@ async function identityChangeGate(
   const { existing, values, managedExistingIdentity, projectId, contactId } = input
   const existingEmail = normalizeEmailKey(existing.email)
   const updatedEmail = values.email?.toLowerCase() ?? ""
-  const identityChanged =
-    existingEmail !== updatedEmail ||
-    (existing.phone?.trim() ?? "") !== (values.phone ?? "") ||
-    (existing.address?.trim() ?? "") !== (values.address ?? "")
-  if (!identityChanged) return { pendingInvitations: [] }
+  // Staff may change anything about an active Compass user except the email
+  // they sign in with (owner decision 2026-11-04), so only an email change
+  // needs the ownership checks below.
+  if (existingEmail === updatedEmail) return { pendingInvitations: [] }
 
   const existingDirectoryEntityType = existing.customerContactId
     ? "customer_contact"
@@ -501,7 +498,7 @@ async function identityChangeGate(
       entityId: existingDirectoryEntityId,
     }))
   ) {
-    return fail(MANAGED_IDENTITY_ERROR)
+    return fail(SIGN_IN_EMAIL_LOCK)
   }
   const [activeInvitationRows, organizationUserRows] = await Promise.all([
     db
@@ -539,9 +536,8 @@ async function identityChangeGate(
           .limit(1)
       : []
   if (!managedExistingIdentity && (activeInvitationRows.length > 0 || linkedMembership.length > 0)) {
-    return fail(MANAGED_IDENTITY_ERROR)
+    return fail(SIGN_IN_EMAIL_LOCK)
   }
-  if (existingEmail === updatedEmail) return { pendingInvitations: [] }
 
   const pendingInvitations = await db
     .select({ id: projectAccessInvitations.id, workosInvitationId: projectAccessInvitations.workosInvitationId })
