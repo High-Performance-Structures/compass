@@ -509,3 +509,32 @@ describe("no Sage state blocks a contact correction", () => {
     ])
   })
 })
+
+describe("a Sage person who accepted a Compass invite", () => {
+  beforeEach(() => {
+    insert("projects", { id: "project-1", organization_id: ORG, name: "Test Barn", created_at: NOW, updated_at: NOW })
+    insert("project_contacts", {
+      id: "pc-1", project_id: "project-1", contact_type: "vendor", source_entity_type: "vendor_contact",
+      source_entity_id: "vp-sage", vendor_id: "vendor-sage", vendor_contact_id: "vp-sage", display_name: "Sage Person",
+      email: "owner@sage.example", created_at: NOW, updated_at: NOW,
+    })
+    insert("users", { id: "user-sage", email: "owner@sage.example", role: "subcontractor", is_active: 1, created_at: NOW, updated_at: NOW })
+    insert("project_access_invitations", {
+      id: "inv-1", organization_id: ORG, project_id: "project-1", project_contact_id: "pc-1", email: "owner@sage.example",
+      role: "subcontractor", status: "accepted", workos_expires_at: "2099-01-01T00:00:00.000Z", invited_by: "staff-1",
+      invited_at: NOW, accepted_by: "user-sage", created_at: NOW, updated_at: NOW,
+    })
+  })
+
+  it("keeps their sign-in email but lets staff change everything else", async () => {
+    const blocked = await saveVendor({}, { email: "someone@sage.example" })
+    expect(blocked.success && blocked.data.sage[0]?.outcome).toEqual({
+      status: "blocked", error: "This is their Compass sign-in email; they change it themselves.",
+    })
+    expect(rows("SELECT email FROM vendor_contacts")).toEqual([{ email: "owner@sage.example" }])
+
+    const saved = await saveVendor({}, { phone: "555-0109" })
+    expect(saved.success && saved.data.sage[0]?.outcome.status).not.toBe("blocked")
+    expect(rows("SELECT phone FROM vendor_contacts")).toEqual([{ phone: "555-0109" }])
+  })
+})

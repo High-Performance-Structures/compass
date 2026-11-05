@@ -6,6 +6,7 @@ import { z } from "zod/v4"
 
 import { customerContacts, customers, vendorContacts, vendors } from "@/db/schema"
 import { sageContactChangeProposals } from "@/db/schema-sage"
+import { contactEmailChanged, directoryIdentityManagedByActiveUser, SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import { isDemoUser } from "@/lib/demo"
 import { clearOtherCustomerPrimaryPeople, updateCustomerPerson } from "@/lib/domain/contacts/store"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -170,6 +171,10 @@ async function proposalContext(): Promise<SageProposalContext> {
   return { user, organizationId: requireOrg(user), db, env }
 }
 
+const DIRECTORY_ENTITY = {
+  client_company: "customer", vendor_company: "vendor", client_person: "customer_contact", vendor_person: "vendor_contact",
+} as const satisfies Record<SageLinkedEditKind, string>
+
 async function requestIfChanged(
   context: SageProposalContext,
   kind: SageLinkedEditKind,
@@ -180,6 +185,14 @@ async function requestIfChanged(
 ): Promise<SageEditOutcomeItem | null> {
   const changes = sageSharedChanges(kind, current, submitted)
   if (Object.keys(changes).length === 0) return null
+  // Someone who accepted a Compass invite keeps their sign-in email; everything else is staff's to edit.
+  if (Object.prototype.hasOwnProperty.call(changes, "email") && contactEmailChanged(
+    typeof current.email === "string" ? current.email : null, changes.email ?? null
+  ) && await directoryIdentityManagedByActiveUser({
+    db: context.db, organizationId: context.organizationId, entityType: DIRECTORY_ENTITY[kind], entityId,
+  })) {
+    return { label, outcome: { status: "blocked", error: SIGN_IN_EMAIL_LOCK } }
+  }
   return { label, outcome: await requestSageEditFromCompass(context, kind, entityId, changes) }
 }
 
