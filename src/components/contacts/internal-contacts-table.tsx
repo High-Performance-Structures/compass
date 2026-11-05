@@ -31,6 +31,7 @@ import {
   DEFAULT_TABLE_PAGE_SIZE,
 } from "@/components/data-table-pagination"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
 
 type EditKey = "name" | "jobTitle" | "email" | "phone" | "cellPhone"
 const SAGE_FIELD_LOCK = "Linked to Sage. Change it with Propose Sage edit."
@@ -38,19 +39,22 @@ const SAGE_FIELD_LOCK = "Linked to Sage. Change it with Propose Sage edit."
 function editFields(contact: InternalDirectoryContact): readonly PersonEditField<EditKey>[] {
   // A Sage-linked employee's email and phones are Sage's; name and title are Compass-only.
   const sageLock = contact.sageEmployeeId || contact.sageEmployeeNumber ? SAGE_FIELD_LOCK : null
+  // Someone who accepted their invitation signs in with this email, so only they change it.
+  const emailLock = sageLock ?? (contact.accountHolder ? SIGN_IN_EMAIL_LOCK : null)
   return [
     { key: "name", label: "Name", required: true },
     { key: "jobTitle", label: "Job title" },
-    { key: "email", label: "Email", type: "email", lockedReason: sageLock },
+    { key: "email", label: "Email", type: "email", lockedReason: emailLock },
     { key: "phone", label: "Phone", type: "tel", lockedReason: sageLock },
     { key: "cellPhone", label: "Mobile", type: "tel", lockedReason: sageLock },
   ]
 }
 
 /**
- * Staff directory. Until a person accepts a Compass invitation, staff with
- * edit access edit their contact information here (archived people too, such
- * as those imported from Buildertrend); after that the person owns it.
+ * Staff directory. Staff with edit access edit people's contact information
+ * here (archived people too, such as those imported from Buildertrend). Once
+ * a person accepts a Compass invitation, their sign-in email is theirs; every
+ * other field stays editable.
  */
 export function InternalContactsTable({
   contacts,
@@ -215,7 +219,7 @@ export function InternalContactsTable({
                   {hasActions ? (
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
-                      {canEdit && !contact.accountHolder ? (
+                      {canEdit ? (
                         <Button type="button" size="sm" variant="outline" onClick={() => setEditing(contact)}>
                           Edit
                         </Button>

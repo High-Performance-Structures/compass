@@ -31,23 +31,28 @@ import { Input } from "@/components/ui/input"
 import { TanstackSortableHeader } from "@/components/ui/sortable-header"
 import type { ConnectCompanyKind } from "@/lib/domain/contacts/connect-unassigned-person"
 import type { UnassignedPerson } from "@/lib/domain/contacts/unassigned-people"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { toast } from "sonner"
 
 type EditKey = "name" | "email" | "phone" | "companyName"
-const EDIT_FIELDS: readonly PersonEditField<EditKey>[] = [
-  { key: "name", label: "Name", required: true },
-  { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone", type: "tel" },
-  { key: "companyName", label: "Imported company" },
-]
+function editFields(person: UnassignedPerson): readonly PersonEditField<EditKey>[] {
+  return [
+    { key: "name", label: "Name", required: true },
+    // Someone who accepted an invitation signs in with this email, so only they change it.
+    { key: "email", label: "Email", type: "email", lockedReason: person.hasAccount ? SIGN_IN_EMAIL_LOCK : null },
+    { key: "phone", label: "Phone", type: "tel" },
+    { key: "companyName", label: "Imported company" },
+  ]
+}
 
 /**
  * People added from imported messages who are not connected to a vendor or
  * customer yet. Staff connect each person to the company they work for with
- * "Connect to company…", or open the project's contacts. Until a person
- * accepts a Compass invitation, staff with project-contact edit access can
- * edit their contact information here or archive them.
+ * "Connect to company…", or open the project's contacts. Staff with
+ * project-contact edit access edit their contact information here (except
+ * the sign-in email of someone who accepted a Compass invitation) or archive
+ * people who have not accepted one.
  */
 export function UnassignedPeopleTable({
   people,
@@ -182,7 +187,7 @@ export function UnassignedPeopleTable({
                             Connect to company…
                           </Button>
                         ) : null}
-                        {canEdit ? (
+                        {canEdit && !person.hasAccount ? (
                           <Button type="button" variant="ghost" size="sm" onClick={() => setArchiving(person)}>
                             Archive
                           </Button>
@@ -202,7 +207,7 @@ export function UnassignedPeopleTable({
           key={editing.identity}
           title={`Edit ${editing.name}`}
           description="Changes apply on every project this person appears on. Nobody is invited or emailed."
-          fields={EDIT_FIELDS}
+          fields={editFields(editing)}
           initial={{ name: editing.name, email: editing.email ?? "", phone: editing.phone ?? "", companyName: editing.companyName ?? "" }}
           open
           onOpenChange={(open) => { if (!open) setEditing(null) }}

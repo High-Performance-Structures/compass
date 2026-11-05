@@ -5,6 +5,7 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
 import { PROJECT_WORKFLOW_ROLE_LENSES } from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
 
@@ -34,6 +35,7 @@ export function ContactDetailsFields({
     customRoleSelected,
     setCustomRoleSelected,
     identityReadOnly,
+    signInEmailLocked,
     filteredCostCodes,
     applyDivision,
     applyCostCode,
@@ -132,8 +134,11 @@ export function ContactDetailsFields({
                   type="email"
                   value={input.email}
                   onChange={(event) => updateInput("email", event.target.value)}
-                  disabled={identityReadOnly}
+                  disabled={identityReadOnly || signInEmailLocked}
                 />
+                {signInEmailLocked ? (
+                  <p className="text-xs text-muted-foreground">{SIGN_IN_EMAIL_LOCK}</p>
+                ) : null}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-phone">Phone</Label>

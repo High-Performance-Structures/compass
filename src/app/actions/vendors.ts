@@ -34,8 +34,9 @@ import {
 } from "@/lib/domain/contacts/pending-invitations"
 import type { Db } from "@/lib/server/action-context"
 import {
-  contactIdentityChanged,
+  contactEmailChanged,
   directoryIdentityManagedByActiveUser,
+  SIGN_IN_EMAIL_LOCK,
 } from "@/lib/contact-identity-ownership"
 import {
   changesSageLinkedVendorIdentity,
@@ -413,9 +414,10 @@ export async function updateVendor(
           ? existing.address
           : nullableOptionalText(data.address),
     }
-    const identityChanged = contactIdentityChanged(existing, nextIdentity)
+    // An accepted Compass user's other details are staff-editable; only the
+    // email they sign in with stays theirs.
     if (
-      identityChanged &&
+      contactEmailChanged(existing.email, nextIdentity.email) &&
       (await directoryIdentityManagedByActiveUser({
         db,
         organizationId: orgId,
@@ -423,11 +425,7 @@ export async function updateVendor(
         entityId: id,
       }))
     ) {
-      return {
-        success: false,
-        error:
-          "This active Compass user manages their own phone, email, and address.",
-      }
+      return { success: false, error: SIGN_IN_EMAIL_LOCK }
     }
 
     const existingById = new Map(
@@ -445,16 +443,13 @@ export async function updateVendor(
     const editedChecks = await Promise.all(
       contactInputs.map(async (contact) => {
         const existingContact = contact.id ? existingById.get(contact.id) : undefined
-        const identityChanged =
+        const emailChanged =
           existingContact !== undefined &&
-          contactIdentityChanged(
-            { email: existingContact.email, phone: existingContact.phone, address: null },
-            { email: nullableText(contact.email), phone: nullableText(contact.phone), address: null }
-          )
+          contactEmailChanged(existingContact.email, nullableText(contact.email))
         return {
           contact,
           existingContact,
-          managed: existingContact && identityChanged ? await managedByActiveUser(existingContact.id) : false,
+          managed: existingContact && emailChanged ? await managedByActiveUser(existingContact.id) : false,
         }
       })
     )
@@ -465,7 +460,7 @@ export async function updateVendor(
       if (existingContact && managed) {
         return {
           success: false,
-          error: `${existingContact.name} manages their own email and phone in Compass.`,
+          error: `${existingContact.name}: ${SIGN_IN_EMAIL_LOCK}`,
         }
       }
     }
