@@ -206,15 +206,19 @@ describe("inline edits of a Sage-linked vendor", () => {
     expect(rows("SELECT category FROM vendors")).toEqual([{ category: "Subcontractor" }])
   })
 
-  it("keeps a field an older Sage writer did not send locked", async () => {
+  it("saves a field an older Sage writer did not send and requests it with an unknown before-value", async () => {
     const olderWriter = Object.fromEntries(Object.entries(vendorSageFields)
       .filter(([field]) => field !== "name" && field !== "email" && field !== "phone"))
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, olderWriter)
     const editState = await getSageLinkedEditState("vendor_company", "vendor-sage")
     expect(editState.success && editState.data.unavailableFields).toEqual(["name", "email", "phone"])
     const result = await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0199" } })
-    expect(result.success && result.data.sage[0]?.outcome).toMatchObject({ status: "blocked" })
-    expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 0 }])
+    expect(result.success && result.data.sage[0]?.outcome).toMatchObject({ status: "requested" })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
+    // The writer refuses a field its own read lacks, so this fails visibly rather than misapplying.
+    expect(rows("SELECT status, changes_json FROM sage_contact_change_proposals")).toEqual([{
+      status: "pending", changes_json: JSON.stringify([{ field: "phone", before: null, after: "555-0199" }]),
+    }])
   })
 
   it("sends a Sage person's change for approval and shows it in Compass at once", async () => {

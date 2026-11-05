@@ -6,7 +6,9 @@ import { z } from "zod/v4"
 
 import { customerContacts, customers, vendorContacts, vendors } from "@/db/schema"
 import { sageContactChangeProposals } from "@/db/schema-sage"
+import { contactEmailChanged, directoryIdentityManagedByActiveUser, SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import { isDemoUser } from "@/lib/demo"
+import { clearOtherCustomerPrimaryPeople, updateCustomerPerson } from "@/lib/domain/contacts/store"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
@@ -20,12 +22,14 @@ import {
   latestSageSnapshot,
   parseSageChanges,
   requestSageEditFromCompass,
+  requireSageContactEditAccess,
   sageSnapshotFromRow,
   type SageEditRequestOutcome,
   type SageProposalContext,
 } from "@/lib/sage/contact-proposal-service"
-import { HOLDING_SAGE_CHANGE_STATUSES, holdingSageChange } from "@/lib/sage/sage-held-fields"
+import { HOLDING_SAGE_CHANGE_STATUSES, holdingSageChanges } from "@/lib/sage/sage-held-fields"
 import { SAGE_SHARED_FIELDS, sageSharedChanges, type SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
+import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
 import { vendorCategoryFromSage } from "@/lib/sage/vendor-category-lock"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
 
@@ -93,12 +97,20 @@ async function pendingFor(
     inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES])
   )).orderBy(asc(sageContactChangeProposals.requestedAt))
   const pending: Record<string, SagePendingChange> = {}
-  // Oldest first, so the latest request is the one shown.
+  // Oldest first. A record can have a failed write and a newer queued edit:
+  // the marker lists every held field, and a failed write stays the one
+  // shown so its Retry and Reject stay in reach.
   for (const row of rows) {
     if (!records.some((record) => record.id === row.entityId && record.kind === row.kind)) continue
-    pending[row.entityId] = {
-      proposalId: row.id, status: row.status, changes: parseSageChanges(row.changesJson) ?? [],
-      error: row.status === "conflict" || row.status === "failed" ? row.errorMessage ?? "The Sage write did not finish." : null,
+    const stalled = row.status === "conflict" || row.status === "failed"
+    const shown = pending[row.entityId]
+    const changes = [
+      ...(shown?.changes ?? []).filter((change) => !(parseSageChanges(row.changesJson) ?? []).some((next) => next.field === change.field)),
+      ...(parseSageChanges(row.changesJson) ?? []),
+    ]
+    pending[row.entityId] = shown?.error && !stalled ? { ...shown, changes } : {
+      proposalId: row.id, status: row.status, changes,
+      error: stalled ? row.errorMessage ?? "The Sage write did not finish." : null,
     }
   }
   return pending
@@ -159,6 +171,10 @@ async function proposalContext(): Promise<SageProposalContext> {
   return { user, organizationId: requireOrg(user), db, env }
 }
 
+const DIRECTORY_ENTITY = {
+  client_company: "customer", vendor_company: "vendor", client_person: "customer_contact", vendor_person: "vendor_contact",
+} as const satisfies Record<SageLinkedEditKind, string>
+
 async function requestIfChanged(
   context: SageProposalContext,
   kind: SageLinkedEditKind,
@@ -169,6 +185,14 @@ async function requestIfChanged(
 ): Promise<SageEditOutcomeItem | null> {
   const changes = sageSharedChanges(kind, current, submitted)
   if (Object.keys(changes).length === 0) return null
+  // Someone who accepted a Compass invite keeps their sign-in email; everything else is staff's to edit.
+  if (Object.prototype.hasOwnProperty.call(changes, "email") && contactEmailChanged(
+    typeof current.email === "string" ? current.email : null, changes.email ?? null
+  ) && await directoryIdentityManagedByActiveUser({
+    db: context.db, organizationId: context.organizationId, entityType: DIRECTORY_ENTITY[kind], entityId,
+  })) {
+    return { label, outcome: { status: "blocked", error: SIGN_IN_EMAIL_LOCK } }
+  }
   return { label, outcome: await requestSageEditFromCompass(context, kind, entityId, changes) }
 }
 
@@ -203,9 +227,10 @@ export async function requestSageLinkedVendorChanges(vendorId: string, input: un
     if (!vendor.sageVendorId && !vendor.sageVendorNumber) {
       return { success: false, error: "This vendor is not linked to Sage." }
     }
+    // Every person Sage knows, verified or not: an unverified one saves in Compass only.
     const people = await db.select().from(vendorContacts).where(and(
-      eq(vendorContacts.vendorId, vendorId), eq(vendorContacts.active, true), isNotNull(vendorContacts.sageContactId)))
-    const sagePeople = new Map(people.map((person) => [person.id, person]))
+      eq(vendorContacts.vendorId, vendorId), eq(vendorContacts.active, true)))
+    const sagePeople = new Map(people.filter(isSageLinkedPerson).map((person) => [person.id, person]))
     const sage: SageEditOutcomeItem[] = []
     const company = await requestIfChanged(context, "vendor_company", vendorId, vendor.name, vendor, parsed.data.sage)
     if (company) sage.push(company)
@@ -252,9 +277,14 @@ const personSaveSchema = z.object({
   title: z.string(),
   email: z.string(),
   phone: z.string(),
+  /** Compass's own: Sage has no primary person, so it saves here only. */
+  isPrimary: z.boolean().optional(),
 })
 
-/** A Sage person at a client: every edited field is Sage-shared, so it becomes a change request. */
+/**
+ * A Sage person at a client: name, title, email and phone show in Compass at
+ * once and become a Sage change request; primary is Compass's own.
+ */
 export async function saveSageLinkedCustomerPerson(personId: string, input: unknown): Promise<SageLinkedSaveResult> {
   try {
     const parsed = personSaveSchema.safeParse(input)
@@ -265,11 +295,20 @@ export async function saveSageLinkedCustomerPerson(personId: string, input: unkn
     const person = await db.select({
       id: customerContacts.id, name: customerContacts.name, title: customerContacts.title,
       email: customerContacts.email, phone: customerContacts.phone, sageContactId: customerContacts.sageContactId,
+      customerId: customerContacts.customerId, isPrimary: customerContacts.isPrimary, userId: customerContacts.userId,
     }).from(customerContacts).innerJoin(customers, eq(customerContacts.customerId, customers.id)).where(and(
       eq(customerContacts.id, personId), eq(customers.organizationId, organizationId), eq(customerContacts.active, true))).get()
     if (!person) return { success: false, error: "Client contact not found" }
     if (!person.sageContactId) return { success: false, error: "This person is not linked to Sage." }
+    await requireSageContactEditAccess(context.user, "client_person", person.userId, {})
     const item = await requestIfChanged(context, "client_person", person.id, person.name, person, parsed.data)
+    if (item?.outcome.status === "blocked") return { success: true, data: { sage: [item] } }
+    const isPrimary = parsed.data.isPrimary
+    if (isPrimary !== undefined && isPrimary !== person.isPrimary) {
+      const now = new Date().toISOString()
+      await updateCustomerPerson(db, { personId: person.id, values: { isPrimary, updatedAt: now } })
+      if (isPrimary) await clearOtherCustomerPrimaryPeople(db, { customerId: person.customerId, keepPersonId: person.id, now })
+    }
     revalidatePath("/dashboard/contacts")
     return { success: true, data: { sage: item ? [item] : [] } }
   } catch (error) {
@@ -318,8 +357,9 @@ export async function retrySageLinkedChange(kindInput: string, entityId: string)
     if (isDemoUser(context.user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(context.user, kind.data.startsWith("client") ? "customers" : "vendors", "update")
     const { db, organizationId } = context
-    const stalled = await holdingSageChange(db, organizationId, kind.data, entityId)
-    if (!stalled || (stalled.status !== "conflict" && stalled.status !== "failed")) {
+    const stalled = (await holdingSageChanges(db, organizationId, kind.data, entityId))
+      .findLast((row) => row.status === "conflict" || row.status === "failed")
+    if (!stalled) {
       return { success: false, error: "There is no failed Sage change to retry for this record." }
     }
     const current = await compassSageValues(db, organizationId, kind.data, entityId)

@@ -27,8 +27,9 @@ import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-di
 import {
   announceSageOutcomes,
   SageFieldNote,
-  sageFieldLockedReason,
+  sageFieldNote,
   SagePendingNotice,
+  sageSaveNote,
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
@@ -53,8 +54,8 @@ function sageClientDraft(customer: Customer | null | undefined): SageClientDraft
   }
 }
 
-/** Sage's client primary email screen binding is unverified, so it is read-only here. */
-const CLIENT_PRIMARY_EMAIL_LOCK = "Change the client's primary email in Sage. Compass cannot send it to Sage yet."
+/** Sage's client primary email screen binding is unverified, so it is Compass's own for now. */
+const CLIENT_PRIMARY_EMAIL_NOTE = "Saved in Compass only; Compass cannot send the client's primary email to Sage yet."
 
 interface CustomerDialogProps {
   open: boolean
@@ -98,14 +99,17 @@ export function CustomerDialog({
   const sageLinked = Boolean(initialData?.sageClientId || initialData?.sageClientNumber)
   const sageVerified = Boolean(initialData?.sageClientId)
   const [sageDraft, setSageDraft] = React.useState<SageClientDraft>(() => sageClientDraft(initialData))
+  const [primaryEmail, setPrimaryEmail] = React.useState(initialData?.primaryEmail ?? "")
   const [saving, setSaving] = React.useState(false)
   const { state: sageState, reload: reloadSageState } = useSageLinkedEditState(
     "client_company", sageLinked && open && initialData ? initialData.id : null, canEdit)
-  const lockedReason = (field: SageClientField): string | null =>
-    !canEdit ? "Read only" : initialData ? sageFieldLockedReason(sageState, initialData.id, field, { company: true }) : null
+  // Every field always saves in Compass; the notes only say what Sage does with it.
+  const fieldNote = (field: SageClientField): string | null => canEdit ? sageFieldNote(sageState, field) : null
+  const saveNote = canEdit && initialData ? sageSaveNote(sageState, initialData.id, { verified: sageVerified }) : null
 
   React.useEffect(() => {
     setSageDraft(sageClientDraft(initialData))
+    setPrimaryEmail(initialData?.primaryEmail ?? "")
     if (initialData) {
       setName(initialData.name)
       setCompany(initialData.company ?? "")
@@ -135,11 +139,14 @@ export function CustomerDialog({
     if (!initialData) return
     setSaving(true)
     try {
-      // Company and notes are Compass's own; the rest go to Sage for approval.
+      // Company, notes and primary email are Compass's own; the rest also go to Sage.
       const compassChanged = company.trim() !== (initialData.company ?? "").trim() ||
-        notes.trim() !== (initialData.notes ?? "").trim()
+        notes.trim() !== (initialData.notes ?? "").trim() ||
+        primaryEmail.trim() !== (initialData.primaryEmail ?? "").trim()
       if (compassChanged) {
-        const saved = await updateCustomer(initialData.id, { company: company.trim() || null, notes: notes.trim() || null })
+        const saved = await updateCustomer(initialData.id, {
+          company: company.trim() || null, notes: notes.trim() || null, primaryEmail: primaryEmail.trim() || null,
+        })
         if (!saved.success) {
           toast.error(saved.error ?? "Could not save client")
           return
@@ -199,6 +206,7 @@ export function CustomerDialog({
               <SagePendingNotice kind="client_company" entityId={initialData.id} pending={sageState?.pending[initialData.id]}
                 canEdit={canEdit} onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }} />
               {sageVerified ? <SageCompanyNameRow kind="client_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
+              {saveNote ? <p className="text-xs text-muted-foreground">{saveNote}</p> : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 {SAGE_CLIENT_FIELDS.map((field) => (
                   <div key={field} className={field === "name" ? "space-y-1.5 sm:col-span-2" : "space-y-1.5"}>
@@ -215,15 +223,16 @@ export function CustomerDialog({
                         const next = e.target.value
                         setSageDraft((current) => ({ ...current, [field]: next }))
                       }}
-                      disabled={lockedReason(field) !== null}
+                      disabled={!canEdit}
                     />
-                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} lockedReason={lockedReason(field)} />
+                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} note={fieldNote(field)} />
                   </div>
                 ))}
                 <div className="space-y-1.5">
                   <Label htmlFor="cust-primary-email" className="text-xs">Primary email</Label>
-                  <Input id="cust-primary-email" className="h-9" value={initialData.primaryEmail ?? ""} disabled readOnly />
-                  <p className="text-xs text-muted-foreground">{CLIENT_PRIMARY_EMAIL_LOCK}</p>
+                  <Input id="cust-primary-email" type="email" className="h-9" value={primaryEmail} disabled={!canEdit}
+                    onChange={(e) => setPrimaryEmail(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{CLIENT_PRIMARY_EMAIL_NOTE}</p>
                 </div>
               </div>
               <div className="space-y-1.5">

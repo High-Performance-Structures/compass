@@ -15,14 +15,15 @@ describe("Sage-linked contact edit gate", () => {
     })).toBe(false)
   })
 
-  it("detects customer address and primary-email changes", () => {
+  it("detects customer address changes; client primary email is Compass's own", () => {
     const existing = { addressLine1: "1 Main", primaryEmail: null }
     expect(changesSageLinkedCustomerIdentity(existing, {
       addressLine1: "2 Main",
     })).toBe(true)
+    // Its Sage binding is unverified and no Sage read writes it.
     expect(changesSageLinkedCustomerIdentity(existing, {
       primaryEmail: "owner@example.com",
-    })).toBe(true)
+    })).toBe(false)
   })
 
   it("detects vendor identity changes but permits Compass-only category edits", () => {

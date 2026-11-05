@@ -29,6 +29,7 @@ import {
 } from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import {
+  advanceQueuedSageChanges,
   canAccessEmployeePrivate,
   createSageContactProposal,
   isRecentSageRead,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/sage/contact-proposal-service"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import type { SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
+import { heldSageFields } from "@/lib/sage/sage-held-fields"
 import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
 import { sameSageRecordId } from "@/lib/sage/record-id"
@@ -308,8 +310,10 @@ async function revertToSageValues(
   )).get()
   const sageFields: Readonly<Record<string, string | null | undefined>> =
     (snapshotRow ? sageSnapshotFromRow(snapshotRow)?.fields : undefined) ?? {}
+  // A newer Compass edit still waiting for Sage keeps its own value.
+  const stillHeld = await heldSageFields(db, organizationId, kind, entityId)
   const values: Record<string, string | null> = {}
-  for (const change of changes) {
+  for (const change of changes.filter((item) => !stillHeld.has(item.field))) {
     values[change.field] = Object.prototype.hasOwnProperty.call(sageFields, change.field)
       ? sageFields[change.field] ?? null
       : change.before
@@ -405,6 +409,8 @@ export async function reviewSageContactChange(
       organizationId: orgId, actor: user, kind: kind.data, entityId: proposal.entityId,
       proposalId, step: status, changes: reviewed, note: noteValue || null, reverted,
     })
+    // A Compass edit that waited behind the rejected change now goes to review.
+    if (decision === "reject") await advanceQueuedSageChanges(db, env, orgId, kind.data, proposal.entityId)
     revalidatePath("/dashboard/contacts")
     return { success: true, id: proposalId, status }
   } catch (error) {

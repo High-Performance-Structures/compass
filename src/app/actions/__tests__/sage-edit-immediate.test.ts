@@ -14,7 +14,7 @@ import { isRecord } from "@/lib/shared/guards"
  */
 
 const state = vi.hoisted(() => {
-  const initial: { d1: unknown; userId: string } = { d1: null, userId: "staff-1" }
+  const initial: { d1: unknown; userId: string; syncConfigured: boolean } = { d1: null, userId: "staff-1", syncConfigured: true }
   return initial
 })
 function user(): Record<string, unknown> {
@@ -29,7 +29,7 @@ vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => user(), requireAuth: 
 vi.mock("@/lib/db", () => ({
   getCloudflareContext: async () => ({
     env: {
-      DB: state.d1, SAGE_CONTACT_ORGANIZATION_ID: ORG, SAGE_CONTACT_WRITES_ENABLED: "true",
+      DB: state.d1, SAGE_CONTACT_ORGANIZATION_ID: state.syncConfigured ? ORG : undefined, SAGE_CONTACT_WRITES_ENABLED: "true",
       SAGE_CONTACT_BRIDGE_SECRET: "test-secret",
     },
   }),
@@ -54,6 +54,7 @@ import {
   requestSageLinkedCustomerChanges,
   requestSageLinkedVendorChanges,
   retrySageLinkedChange,
+  saveSageLinkedCustomerPerson,
   type SageLinkedSaveResult,
 } from "@/app/actions/sage-linked-edits"
 import { applySageVendorDirectory } from "@/lib/sage/vendor-directory-sync"
@@ -90,6 +91,13 @@ function snapshot(kind: string, entityId: string, sageRecordId: string, fields: 
     id: `snap-${entityId}`, organization_id: ORG, kind, entity_id: entityId, sage_record_id: sageRecordId,
     parent_sage_record_id: parent, revision: `rev-${entityId}`, fields_json: JSON.stringify(fields), captured_at: capturedAt,
   })
+}
+
+/** What Sage holds for the client. */
+const clientSageFields = {
+  addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null,
+  billingAddressLine1: null, billingAddressLine2: null, billingCity: null, billingState: null, billingPostalCode: null,
+  name: "Kelly Painting", email: "kelly@paint.example", phone: "555-0200",
 }
 
 const vendorSage = {
@@ -144,6 +152,7 @@ beforeEach(() => {
   sqlite.pragma("foreign_keys = OFF")
   state.d1 = d1Over(sqlite)
   state.userId = "staff-1"
+  state.syncConfigured = true
   insert("vendors", {
     id: "vendor-sage", organization_id: ORG, name: "Sage Framing", category: "Subcontractor",
     email: "office@framing.example", phone: "555-0100", owner_name: "Pat Owner", address_line_1: "1 Main St",
@@ -201,13 +210,46 @@ describe("saving a Sage-shared field", () => {
     expect(rows("SELECT kind, status FROM sage_contact_read_requests")).toEqual([{ kind: "vendor_company", status: "queued" }])
   })
 
-  it("changes nothing yet when Compass has never read the record from Sage", async () => {
+  it("saves at once when Compass has never read the record from Sage; the request follows the read", async () => {
     const result = await requestSageLinkedCustomerChanges("customer-sage", {
       sage: { name: "Kelly Painting", email: "office@paint.example", phone: "555-0200" },
     })
-    expect(statuses(result)).toEqual(["reading_sage"])
-    expect(rows("SELECT email FROM customers")).toEqual([{ email: "kelly@paint.example" }])
-    expect(proposals()).toEqual([])
+    expect(statuses(result)).toEqual(["queued"])
+    expect(rows("SELECT email FROM customers")).toEqual([{ email: "office@paint.example" }])
+    expect(proposals().map((row) => [row.status, JSON.parse(String(row.changes_json))])).toEqual([
+      ["queued", [{ field: "email", before: null, after: "office@paint.example" }]],
+    ])
+    expect(rows("SELECT kind, status FROM sage_contact_read_requests")).toEqual([{ kind: "client_company", status: "queued" }])
+    const editState = await getSageLinkedEditState("client_company", "customer-sage")
+    expect(editState.success && editState.data.pending["customer-sage"]).toMatchObject({ status: "queued", error: null })
+
+    // The read lands: Sage's old email does not come back, and the request is planned against the read.
+    sqlite.prepare("UPDATE sage_contact_read_requests SET id = ?, status = 'running', claim_token = ?, claimed_at = ?")
+      .run(READ_ID, CLAIM, new Date().toISOString())
+    const response = await postResult({
+      type: "read",
+      result: {
+        outcome: "succeeded", id: READ_ID, claimToken: CLAIM,
+        snapshot: {
+          kind: "client_company", entityId: "customer-sage", sageRecordId: CLIENT_SAGE_ID, sageRecordNumber: "52",
+          parentSageRecordId: null, revision: "rev-client", identityName: "Kelly Painting",
+          fields: { ...clientSageFields, city: "Golden" },
+        },
+      },
+    })
+    expect(response.status).toBe(202)
+    expect(rows("SELECT email, city FROM customers")).toEqual([{ email: "office@paint.example", city: "Golden" }])
+    expect(proposals().map((row) => [row.status, JSON.parse(String(row.changes_json))])).toEqual([
+      ["superseded", [{ field: "email", before: null, after: "office@paint.example" }]],
+      ["pending", [{ field: "email", before: "kelly@paint.example", after: "office@paint.example" }]],
+    ])
+    expect(rows("SELECT requested_by_user_id, base_revision FROM sage_contact_change_proposals WHERE status = 'pending'"))
+      .toEqual([{ requested_by_user_id: "staff-1", base_revision: "rev-client" }])
+    // A different staff member still approves it.
+    const [open] = rows("SELECT id FROM sage_contact_change_proposals WHERE status = 'pending'")
+    await expect(reviewSageContactChange(String(open?.id), "approve")).resolves.toMatchObject({ success: false })
+    state.userId = "reviewer-1"
+    await expect(reviewSageContactChange(String(open?.id), "approve")).resolves.toMatchObject({ success: true, status: "approved" })
   })
 
   it("updates the waiting request when the field is edited again, and withdraws it when Sage's value returns", async () => {
@@ -235,12 +277,26 @@ describe("saving a Sage-shared field", () => {
     ])
   })
 
-  it("cannot change a record while Sage is writing its last change", async () => {
+  it("saves while Sage is writing the last change; the new edit follows the write", async () => {
     await saveVendor({ phone: "555-0199" })
-    await approveAndClaim()
+    const running = await approveAndClaim()
     const result = await saveVendor({ phone: "555-0177" })
-    expect(result.success && result.data.sage[0]?.outcome).toMatchObject({ status: "blocked" })
-    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "queued", reason: "sage_writing" })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0177" }])
+    expect(proposals().map((row) => row.status)).toEqual(["running", "queued"])
+
+    // The running write lands; Compass keeps the newer value and asks Sage for it.
+    const response = await postResult({
+      type: "write",
+      result: { outcome: "succeeded", id: running, claimToken: CLAIM, snapshot: vendorReadBack({ ...sageVendor, phone: "555-0199" }) },
+    })
+    await expect(response.json()).resolves.toEqual({ success: true, status: "succeeded" })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0177" }])
+    expect(proposals().map((row) => [row.status, JSON.parse(String(row.changes_json))])).toEqual([
+      ["succeeded", [{ field: "phone", before: "555-0100", after: "555-0199" }]],
+      ["superseded", [{ field: "phone", before: "555-0100", after: "555-0177" }]],
+      ["pending", [{ field: "phone", before: "555-0199", after: "555-0177" }]],
+    ])
   })
 })
 
@@ -345,5 +401,140 @@ describe("how an unfinished change ends", () => {
     expect(String(activity?.summary)).toMatch(/^Sage change rejected, reverted to Sage value/)
     const editState = await getSageLinkedEditState("vendor_company", "vendor-sage")
     expect(editState.success && editState.data.pending).toEqual({})
+  })
+})
+
+/*
+ * Compass is where contact corrections are made first (owner decision
+ * 2026-11-04): no Sage state may block a save. Only the Sage side differs.
+ */
+describe("no Sage state blocks a contact correction", () => {
+  function clientPerson(id: string, sageContactId: string | null, lineNumber: number | null): void {
+    insert("customer_contacts", {
+      id, customer_id: "customer-sage", name: "Tad Example", title: null, email: "tad@exmaple.test", phone: "555-0300",
+      sage_contact_id: sageContactId, sage_line_number: lineNumber, is_primary: 0, active: 1, created_at: NOW, updated_at: NOW,
+    })
+  }
+  const fixed = { name: "Ted Example", title: "", email: "ted@example.test", phone: "555-0300" }
+
+  it("a client not linked to a verified Sage record saves in Compass only", async () => {
+    sqlite.prepare("UPDATE customers SET sage_client_id = NULL").run()
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting Co", email: "office@paint.example", phone: "555-0200" },
+    })
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "compass_only", reason: "not_linked" })
+    expect(rows("SELECT name, email FROM customers")).toEqual([{ name: "Kelly Painting Co", email: "office@paint.example" }])
+    expect(proposals()).toEqual([])
+    expect(rows("SELECT count(*) AS n FROM sage_contact_read_requests")).toEqual([{ n: 0 }])
+  })
+
+  it("a client person whose Sage record was never read saves at once and waits for the read", async () => {
+    clientPerson("cp-sage", "CC-1", 1)
+    const result = await saveSageLinkedCustomerPerson("cp-sage", { ...fixed, isPrimary: true })
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "queued", reason: "reading_sage" })
+    expect(rows("SELECT name, email, is_primary FROM customer_contacts"))
+      .toEqual([{ name: "Ted Example", email: "ted@example.test", is_primary: 1 }])
+    expect(proposals().map((row) => [row.kind, row.status, JSON.parse(String(row.changes_json))])).toEqual([
+      ["client_person", "queued", [
+        { field: "email", before: null, after: "ted@example.test" },
+        { field: "name", before: null, after: "Ted Example" },
+      ]],
+    ])
+  })
+
+  it("a client person under an unverified client saves in Compass only", async () => {
+    sqlite.prepare("UPDATE customers SET sage_client_id = NULL").run()
+    clientPerson("cp-sage", "CC-1", 1)
+    const result = await saveSageLinkedCustomerPerson("cp-sage", fixed)
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "compass_only", reason: "not_linked" })
+    expect(rows("SELECT name, email FROM customer_contacts")).toEqual([{ name: "Ted Example", email: "ted@example.test" }])
+    expect(proposals()).toEqual([])
+  })
+
+  it("an unverified vendor person (Sage line only) saves in Compass only", async () => {
+    sqlite.prepare("UPDATE vendor_contacts SET sage_contact_id = NULL").run()
+    const result = await saveVendor({}, { email: "pat@framing.example" })
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "compass_only", reason: "not_linked" })
+    expect(rows("SELECT email FROM vendor_contacts")).toEqual([{ email: "pat@framing.example" }])
+    expect(proposals()).toEqual([])
+  })
+
+  it("with Sage contact sync not set up, saves in Compass only and Sage's vendor list cannot put the old value back", async () => {
+    state.syncConfigured = false
+    const result = await saveVendor({ phone: "555-0199" })
+    expect(result.success && result.data.sage[0]?.outcome).toEqual({ status: "compass_only", reason: "sync_off" })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
+    // Held, never sent: no read is asked for and nothing is reviewable.
+    expect(proposals().map((row) => row.status)).toEqual(["queued"])
+    expect(rows("SELECT count(*) AS n FROM sage_contact_read_requests")).toEqual([{ n: 0 }])
+    await applySageVendorDirectory(getDb(state.d1 as never), ORG, [{
+      sageRecordId: VENDOR_SAGE_ID, sageVendorNumber: "38", name: "Sage Framing", email: "ap@framing.example",
+      details: {
+        ownerName: "Pat Owner", addressLine1: "1 Main St", addressLine2: null, city: "Denver", state: "CO",
+        postalCode: "80202", phone: "555-0100", vendorType: null,
+      },
+    }], new Date().toISOString())
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
+  })
+
+  it("rejecting a failed write keeps a newer edit's value and sends it for review", async () => {
+    await saveVendor({ phone: "555-0199" })
+    const running = await approveAndClaim()
+    await saveVendor({ phone: "555-0177" })
+    await postResult({ type: "write", result: { outcome: "failed", id: running, claimToken: CLAIM, error: "Sage was locked" } })
+    // The failure stays visible with Retry and Reject.
+    const editState = await getSageLinkedEditState("vendor_company", "vendor-sage")
+    expect(editState.success && editState.data.pending["vendor-sage"]).toMatchObject({ status: "failed", error: "Sage was locked" })
+    state.userId = "reviewer-1"
+    await expect(reviewSageContactChange(running, "reject")).resolves.toMatchObject({ success: true, status: "rejected" })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0177" }])
+    expect(proposals().map((row) => row.status)).toEqual(["rejected", "superseded", "pending"])
+  })
+
+  it("a waiting request is replanned when a newer Sage read lands", async () => {
+    await saveVendor({ phone: "555-0199" })
+    insert("sage_contact_read_requests", {
+      id: READ_ID, organization_id: ORG, kind: "vendor_company", entity_id: "vendor-sage", sage_record_id: VENDOR_SAGE_ID,
+      sage_record_number: "38", parent_sage_record_id: null, purpose: "refresh", status: "running",
+      claim_token: CLAIM, claimed_at: new Date().toISOString(), requested_at: NOW,
+    })
+    await postResult({
+      type: "read",
+      result: { outcome: "succeeded", id: READ_ID, claimToken: CLAIM, snapshot: vendorReadBack({ ...sageVendor, phone: "555-0111" }, "rev-new") },
+    })
+    expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0199" }])
+    expect(proposals().map((row) => [row.status, JSON.parse(String(row.changes_json))])).toEqual([
+      ["superseded", [{ field: "phone", before: "555-0100", after: "555-0199" }]],
+      ["pending", [{ field: "phone", before: "555-0111", after: "555-0199" }]],
+    ])
+  })
+})
+
+describe("a Sage person who accepted a Compass invite", () => {
+  beforeEach(() => {
+    insert("projects", { id: "project-1", organization_id: ORG, name: "Test Barn", created_at: NOW, updated_at: NOW })
+    insert("project_contacts", {
+      id: "pc-1", project_id: "project-1", contact_type: "vendor", source_entity_type: "vendor_contact",
+      source_entity_id: "vp-sage", vendor_id: "vendor-sage", vendor_contact_id: "vp-sage", display_name: "Sage Person",
+      email: "owner@sage.example", created_at: NOW, updated_at: NOW,
+    })
+    insert("users", { id: "user-sage", email: "owner@sage.example", role: "subcontractor", is_active: 1, created_at: NOW, updated_at: NOW })
+    insert("project_access_invitations", {
+      id: "inv-1", organization_id: ORG, project_id: "project-1", project_contact_id: "pc-1", email: "owner@sage.example",
+      role: "subcontractor", status: "accepted", workos_expires_at: "2099-01-01T00:00:00.000Z", invited_by: "staff-1",
+      invited_at: NOW, accepted_by: "user-sage", created_at: NOW, updated_at: NOW,
+    })
+  })
+
+  it("keeps their sign-in email but lets staff change everything else", async () => {
+    const blocked = await saveVendor({}, { email: "someone@sage.example" })
+    expect(blocked.success && blocked.data.sage[0]?.outcome).toEqual({
+      status: "blocked", error: "This is their Compass sign-in email; they change it themselves.",
+    })
+    expect(rows("SELECT email FROM vendor_contacts")).toEqual([{ email: "owner@sage.example" }])
+
+    const saved = await saveVendor({}, { phone: "555-0109" })
+    expect(saved.success && saved.data.sage[0]?.outcome.status).not.toBe("blocked")
+    expect(rows("SELECT phone FROM vendor_contacts")).toEqual([{ phone: "555-0109" }])
   })
 })

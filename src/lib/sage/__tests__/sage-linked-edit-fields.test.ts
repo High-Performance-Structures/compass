@@ -17,7 +17,7 @@ describe("Sage-linked inline edit fields", () => {
     }
     expect(SAGE_SHARED_FIELDS.client_company).not.toContain("primaryEmail")
     expect(COMPASS_ONLY_FIELDS.vendor_company).toEqual(["category"])
-    expect(COMPASS_ONLY_FIELDS.client_company).toEqual(["company", "notes"])
+    expect(COMPASS_ONLY_FIELDS.client_company).toEqual(["company", "notes", "primaryEmail"])
   })
 
   it("finds only Sage-shared fields that changed", () => {
