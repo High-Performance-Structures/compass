@@ -647,7 +647,7 @@ export async function updateTask(
       })
     }
 
-    await recalcCriticalPath(db, task.projectId)
+    if (scheduleDatesChanged) await recalcCriticalPath(db, task.projectId)
     for (const path of schedulePaths(task.projectId)) revalidatePath(path)
     return { success: true }
   } catch (error) {
