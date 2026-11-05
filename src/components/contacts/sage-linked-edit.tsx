@@ -75,7 +75,7 @@ export function sageSaveNote(
   return null
 }
 
-export const SAGE_NOT_LINKED_NOTE = "Saved in Compass only; Sage isn't linked yet."
+const SAGE_NOT_LINKED_NOTE = "Saved in Compass only; Sage isn't linked yet."
 
 /** A company field the installed Sage writer cannot send yet. */
 export function sageFieldNote(state: SageLinkedEditState | null, field: string): string | null {
