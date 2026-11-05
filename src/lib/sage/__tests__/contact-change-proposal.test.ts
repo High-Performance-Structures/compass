@@ -163,6 +163,12 @@ describe("reviewed Sage child-contact creation", () => {
     }
     expect(planSageContactChange({ snapshot: olderWriter, proposed: { phone: "555-0100" } }))
       .toMatchObject({ success: false, error: expect.stringContaining("Sage writer") })
+    // An inline Compass edit plans it with an unknown before-value; the writer refuses it until updated.
+    expect(planSageContactChange({ snapshot: olderWriter, proposed: { phone: "555-0100" }, allowUnreadExtended: true }))
+      .toMatchObject({ success: true, plan: { changes: [{ field: "phone", before: null, after: "555-0100" }] } })
+    // Only the extended fields: a missing required field is still refused.
+    expect(planSageContactChange({ snapshot: olderWriter, proposed: { city: "Denver" }, allowUnreadExtended: true }))
+      .toMatchObject({ success: false })
     for (const kind of ["vendor_company", "client_company"] as const) {
       expect(sageContactExtendedFields(kind)).toEqual(["name", "email", "phone"])
       expect(sageContactRequiredSnapshotFields(kind)).not.toContain("name")

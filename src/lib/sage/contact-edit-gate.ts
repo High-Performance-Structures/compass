@@ -4,12 +4,14 @@
  * Local-only directory metadata remains editable.
  */
 // Client "company" is not here: Sage has no such column (its client name is
-// "name"), so it is a Compass-only directory field.
+// "name"), so it is a Compass-only directory field. Neither is client primary
+// email: its Sage binding is unverified, nothing from Sage writes it, so it is
+// Compass's own until that binding is proven.
 const CUSTOMER_IDENTITY_FIELDS = [
   "name", "email", "phone", "address", "addressLine1",
   "addressLine2", "city", "state", "postalCode", "billingAddressLine1",
   "billingAddressLine2", "billingCity", "billingState",
-  "billingPostalCode", "primaryEmail",
+  "billingPostalCode",
 ] as const
 
 const VENDOR_IDENTITY_FIELDS = [

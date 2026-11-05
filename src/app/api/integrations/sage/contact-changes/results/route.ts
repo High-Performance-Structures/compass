@@ -42,7 +42,7 @@ import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sameSageRecordId, withNormalizedSageRecordIds } from "@/lib/sage/record-id"
 import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { handleSageContactCreateResult } from "@/lib/sage/contact-create-result"
-import { parseSageChanges, recordSageChangeActivity } from "@/lib/sage/contact-proposal-service"
+import { advanceQueuedSageChanges, parseSageChanges, recordSageChangeActivity } from "@/lib/sage/contact-proposal-service"
 import type { ActivityActor } from "@/lib/activity-log"
 
 const SAGE_WRITER: ActivityActor = {
@@ -228,6 +228,8 @@ export async function POST(request: Request): Promise<Response> {
     })
     await updateSageContactReadRequests(db, { status: "succeeded", completedAt: now, errorMessage: null },
       and(eq(sageContactReadRequests.id, read.id), eq(sageContactReadRequests.claimToken, result.claimToken)))
+    // A Compass edit that was waiting for this read now goes to Sage review.
+    await advanceQueuedSageChanges(db, env, read.organizationId, kind.data, read.entityId)
     return accepted("succeeded")
   }
 
@@ -318,5 +320,7 @@ export async function POST(request: Request): Promise<Response> {
     entityId: proposal.entityId, proposalId: proposal.id, step: status,
     changes: parseSageChanges(proposal.changesJson) ?? [],
   })
+  // An edit saved while Sage was writing now follows as its own request.
+  await advanceQueuedSageChanges(db, env, proposal.organizationId, kind.data, proposal.entityId)
   return accepted(status)
 }

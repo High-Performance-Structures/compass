@@ -8,14 +8,20 @@
  * syncing the rest. A change that failed or did not read back keeps holding
  * its fields, so Compass keeps the new value while staff retry or reject.
  */
-import { and, desc, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { sageContactChangeProposals } from "@/db/schema-sage"
 import type { Db } from "@/lib/server/action-context"
 
-/** Proposal states that hold their fields in Compass. */
-export const HOLDING_SAGE_CHANGE_STATUSES = ["pending", "approved", "running", "conflict", "failed"] as const
+/**
+ * Proposal states that hold their fields in Compass. "queued" is a Compass
+ * edit whose Sage request waits: for Compass's first Sage read of the record,
+ * for the write Sage is running now, or for Sage contact sync to be set up.
+ * It is never reviewed or sent as it is; once it can, it becomes a pending
+ * request planned against the newest Sage read (contact-proposal-service.ts).
+ */
+export const HOLDING_SAGE_CHANGE_STATUSES = ["pending", "approved", "running", "conflict", "failed", "queued"] as const
 
 /** Records whose Compass values the inline edits change (staff records keep the old flow). */
 const HOLDING_KINDS: ReadonlySet<string> = new Set(["client_company", "vendor_company", "client_person", "vendor_person"])
@@ -90,6 +96,22 @@ export async function holdingSageChange(
     eq(sageContactChangeProposals.entityId, entityId),
     inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES])
   )).orderBy(desc(sageContactChangeProposals.requestedAt)).limit(1).get()
+}
+
+/** Every unfinished Sage change of one record, oldest first. */
+export async function holdingSageChanges(
+  db: Db,
+  organizationId: string,
+  kind: string,
+  entityId: string
+): Promise<readonly (typeof sageContactChangeProposals.$inferSelect)[]> {
+  if (!HOLDING_KINDS.has(kind)) return []
+  return db.select().from(sageContactChangeProposals).where(and(
+    eq(sageContactChangeProposals.organizationId, organizationId),
+    eq(sageContactChangeProposals.kind, kind),
+    eq(sageContactChangeProposals.entityId, entityId),
+    inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES])
+  )).orderBy(asc(sageContactChangeProposals.requestedAt), asc(sageContactChangeProposals.id))
 }
 
 /** `fields` without the held ones. */

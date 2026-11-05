@@ -22,6 +22,7 @@ import { sageContactKindSchema, sageContactOrganizationMatches } from "@/lib/sag
 import {
   isPrivateEmployeeContactField,
   planSageContactChange,
+  sageContactProposalFields,
   type SageContactFieldChange,
   type SageContactKind,
   type SageContactProposalPlan,
@@ -34,7 +35,7 @@ import {
   sameRequestedChanges,
   type SageLinkedEditKind,
 } from "@/lib/sage/sage-linked-edit-fields"
-import { holdingSageChange } from "@/lib/sage/sage-held-fields"
+import { holdingSageChange, holdingSageChanges } from "@/lib/sage/sage-held-fields"
 import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -162,7 +163,7 @@ export async function recordSageChangeActivity(
     readonly kind: SageContactKind
     readonly entityId: string
     readonly proposalId: string
-    readonly step: "requested" | "updated" | "withdrawn" | "approved" | "rejected" | "succeeded" | "conflict" | "failed"
+    readonly step: "requested" | "queued" | "updated" | "withdrawn" | "approved" | "rejected" | "succeeded" | "conflict" | "failed"
     readonly changes: readonly SageContactFieldChange[]
     readonly note?: string | null
     /** A rejection that put Sage's values back in Compass. */
@@ -173,6 +174,7 @@ export async function recordSageChangeActivity(
   const described = describeSageChanges(input.changes)
   const lead = input.step === "rejected" && input.reverted ? "Sage change rejected, reverted to Sage value" : {
     requested: "Requested a Sage change",
+    queued: "Saved in Compass; the Sage change request follows",
     updated: "Updated the Sage change request",
     withdrawn: "Withdrew the Sage change request; Compass matches Sage",
     approved: "Approved a Sage change",
@@ -280,7 +282,7 @@ function closeSageChangeStatements(
   db: Db,
   input: {
     readonly organizationId: string
-    readonly actorUserId: string
+    readonly actorUserId: string | null
     readonly proposal: { readonly id: string; readonly status: string }
     readonly status: "superseded" | "withdrawn"
     readonly supersededBy?: string
@@ -334,27 +336,96 @@ export type SageEditRequestOutcome =
   | { readonly status: "already_requested" }
   /** Sage already holds these values; Compass now matches it and nothing is requested. */
   | { readonly status: "in_sage" }
-  /** Compass has never read this record from Sage; a read is queued. Save again shortly. */
-  | { readonly status: "reading_sage" }
+  /**
+   * Compass shows the new values and holds them; the Sage request follows on
+   * its own once Compass has read the record from Sage, or once the write
+   * Sage is running now finishes.
+   */
+  | { readonly status: "queued"; readonly reason: "reading_sage" | "sage_writing" }
+  /**
+   * Compass shows the new values; nothing goes to Sage because the record is
+   * not linked to a verified Sage record, or Sage contact sync is not set up
+   * (then the values are held so Sage's lists cannot put old ones back).
+   */
+  | { readonly status: "compass_only"; readonly reason: "not_linked" | "sync_off" }
   | { readonly status: "blocked"; readonly error: string }
+
+type HoldingRow = typeof sageContactChangeProposals.$inferSelect
+
+/** Stand-in base revision of a request planned before Compass ever read the record. */
+const UNREAD_REVISION = "unread"
+
+const SAGE_READ_ACTOR: ActivityActor = {
+  id: null, email: "sage", displayName: "Sage read", firstName: null, lastName: null, role: "system",
+}
 
 function cleanValue(value: string | null | undefined): string | null {
   const text = value?.trim()
   return text ? text : null
 }
 
+/** What Sage should end up holding: each unfinished change's new values, oldest first. */
+function desiredValues(rows: readonly HoldingRow[]): Record<string, string | null> {
+  const desired: Record<string, string | null> = {}
+  for (const row of rows) {
+    for (const change of parseSageChanges(row.changesJson) ?? []) desired[change.field] = change.after
+  }
+  return desired
+}
+
+/** The desired values Sage does not hold yet (a field Sage's read lacks counts as differing). */
+function differingFromSage(
+  desired: Readonly<Record<string, string | null>>,
+  sageFields: Readonly<Record<string, string | null | undefined>>
+): Record<string, string | null> {
+  return Object.fromEntries(Object.entries(desired).filter(([field, value]) =>
+    !Object.prototype.hasOwnProperty.call(sageFields, field) || cleanValue(sageFields[field]) !== value))
+}
+
+function isPersonKind(kind: SageContactKind): boolean {
+  return kind === "client_person" || kind === "vendor_person"
+}
+
+/** True when the stored Sage read is of the record Compass links to now. */
+function snapshotMatches(
+  snapshot: SageContactSnapshot | null,
+  identity: { readonly sageRecordId: string; readonly parentSageRecordId: string | null }
+): snapshot is SageContactSnapshot {
+  return snapshot !== null && sameSageRecordId(snapshot.sageRecordId, identity.sageRecordId) &&
+    sameSageRecordId(snapshot.parentSageRecordId, identity.parentSageRecordId)
+}
+
+async function applyInCompass(
+  context: SageProposalContext,
+  kind: SageLinkedEditKind,
+  entityId: string,
+  values: Readonly<Record<string, string | null>>,
+  now: string,
+  outcome: SageEditRequestOutcome
+): Promise<SageEditRequestOutcome> {
+  const applied = await applySageLinkedValuesInCompass(context.db, context.organizationId, kind, entityId, values, now)
+  return applied.success ? outcome : { status: "blocked", error: applied.error }
+}
+
 /**
- * An inline edit of Sage-shared fields: Compass takes the new values at once
- * and the record's one Sage change request asks Sage for them.
+ * An inline edit of Sage-shared fields. Compass always takes the new values
+ * at once; only what happens on the Sage side depends on the Sage link:
  *
- * The request is planned against the last Sage read (its before-values and
- * revision); approval still needs a fresh read and a different person, so a
- * read is queued when the last one is old. While the request is unfinished
- * its fields are held (sage-held-fields.ts): Sage → Compass syncs leave them
- * alone. Editing again replaces the waiting request instead of adding one;
- * a change Sage is writing at this moment cannot be edited until it lands.
- * With no Sage read at all there are no before-values, so nothing changes
- * yet: a read is queued and the person saves again.
+ * - Not linked to a verified Sage record: Compass only. No Sage read path
+ *   touches a record without a Sage id, so nothing needs holding.
+ * - Sage contact sync not set up: Compass only, but the values are held by a
+ *   "queued" change so Sage's daily vendor list cannot put old ones back.
+ * - Never read from Sage, or Sage is writing an earlier change right now:
+ *   the values are held by a "queued" change and a read is asked for; the
+ *   request is planned and sent for review on its own once the read or the
+ *   running write lands (advanceQueuedSageChanges).
+ * - Otherwise the record's one Sage change request is planned against the
+ *   last Sage read (its before-values and revision). Editing again replaces
+ *   the waiting request instead of adding one. Approval still needs a fresh
+ *   read and a different person, so a read is queued when the last is old.
+ *
+ * While a request is unfinished its fields are held (sage-held-fields.ts):
+ * Sage → Compass syncs leave them alone.
  */
 export async function requestSageEditFromCompass(
   context: SageProposalContext,
@@ -364,68 +435,60 @@ export async function requestSageEditFromCompass(
 ): Promise<SageEditRequestOutcome> {
   const proposed: Record<string, string | null> = {}
   for (const [field, value] of Object.entries(changes)) proposed[field] = cleanValue(value)
-  const guard = await proposalIdentity(context, kind, entityId, proposed)
-  if (!guard.success) return { status: "blocked", error: guard.error }
-  const { db, organizationId, user } = context
-  const open = await holdingSageChange(db, organizationId, kind, entityId)
-  if (open?.status === "running") {
-    return { status: "blocked", error: "Sage is writing the earlier change for this record right now. Try again in a minute." }
+  const { db, organizationId, user, env } = context
+  const found = await getSageContactEntityIdentity(db, organizationId, kind, entityId)
+  if (!found) return { status: "blocked", error: "This record was not found." }
+  await requireSageContactEditAccess(user, kind, found.linkedUserId, proposed)
+  const now = new Date().toISOString()
+  const sageRecordId = found.sageRecordId
+  // A Sage person also needs its company's verified Sage id to be addressed in Sage.
+  if (!sageRecordId || (isPersonKind(kind) && !found.parentSageRecordId)) {
+    return applyInCompass(context, kind, entityId, proposed, now, { status: "compass_only", reason: "not_linked" })
   }
-  const snapshotRow = await latestSageSnapshot(db, organizationId, kind, entityId)
-  if (!snapshotRow) {
-    await queueSageRead(context, kind, entityId, guard.identity)
-    return { status: "reading_sage" }
+  const identity = { ...found, sageRecordId }
+  const configured = sageContactOrganizationMatches(env, organizationId)
+  const rows = await holdingSageChanges(db, organizationId, kind, entityId)
+  const running = rows.find((row) => row.status === "running")
+  // The running write is left alone; every other unfinished change folds into this one.
+  const others = rows.filter((row) => row.status !== "running")
+  const desired = { ...desiredValues(others), ...proposed }
+  const snapshotRow = configured ? await latestSageSnapshot(db, organizationId, kind, entityId) : undefined
+  const parsedSnapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
+  // A read of a record Compass no longer links to counts as no read.
+  const snapshot = snapshotMatches(parsedSnapshot, identity) ? parsedSnapshot : null
+  if (configured && snapshotRow && (!snapshot || !isRecentSageRead(snapshotRow.capturedAt))) {
+    await queueSageRead(context, kind, entityId, identity)
   }
-  const snapshot = sageSnapshotFromRow(snapshotRow)
-  if (!snapshot || !sameSageRecordId(snapshot.sageRecordId, guard.identity.sageRecordId) ||
-    !sameSageRecordId(snapshot.parentSageRecordId, guard.identity.parentSageRecordId)) {
-    return { status: "blocked", error: "The Sage identity changed. Refresh before editing." }
+  if (!configured || running || !snapshot) {
+    if (configured && !snapshotRow) await queueSageRead(context, kind, entityId, identity)
+    const outcome: SageEditRequestOutcome = !configured
+      ? { status: "compass_only", reason: "sync_off" }
+      : { status: "queued", reason: running ? "sage_writing" : "reading_sage" }
+    return deferSageEdit(context, kind, entityId, { identity, snapshot, others, desired, proposed, now, outcome })
   }
-  if (!isRecentSageRead(snapshotRow.capturedAt)) await queueSageRead(context, kind, entityId, guard.identity)
 
-  // What Sage should end up holding: the waiting request's values, then this edit.
-  const openChanges = open ? parseSageChanges(open.changesJson) ?? [] : []
-  const desired: Record<string, string | null> = Object.fromEntries(openChanges.map((change) => [change.field, change.after]))
-  Object.assign(desired, proposed)
-  const sageValues: Readonly<Record<string, string | null | undefined>> = snapshot.fields
-  const toRequest = Object.fromEntries(Object.entries(desired).filter(([field, value]) =>
-    !Object.prototype.hasOwnProperty.call(sageValues, field) || cleanValue(sageValues[field]) !== value))
+  const toRequest = differingFromSage(desired, snapshot.fields)
   let plan: SageContactProposalPlan | null = null
   if (Object.keys(toRequest).length > 0) {
-    const planned = planSageContactChange({ snapshot, proposed: toRequest })
+    const planned = planSageContactChange({ snapshot, proposed: toRequest, allowUnreadExtended: true })
     if (!planned.success) return { status: "blocked", error: planned.error }
     plan = planned.plan
   }
-  const now = new Date().toISOString()
-  const stillWaiting = open && (open.status === "pending" || open.status === "approved")
-  if (stillWaiting && plan && sameRequestedChanges(openChanges, toRequest)) {
-    const applied = await applySageLinkedValuesInCompass(db, organizationId, kind, entityId, proposed, now)
-    return applied.success ? { status: "already_requested" } : { status: "blocked", error: applied.error }
+  const [only] = others
+  const waiting = others.length === 1 && only && (only.status === "pending" || only.status === "approved") ? only : undefined
+  if (waiting && plan && sameRequestedChanges(parseSageChanges(waiting.changesJson) ?? [], toRequest)) {
+    return applyInCompass(context, kind, entityId, proposed, now, { status: "already_requested" })
   }
 
   const id = crypto.randomUUID()
   const statements: BatchItem<"sqlite">[] = [
-    ...(open ? closeSageChangeStatements(db, {
-      organizationId, actorUserId: user.id, proposal: open,
+    ...others.flatMap((row) => closeSageChangeStatements(db, {
+      organizationId, actorUserId: user.id, proposal: row,
       status: plan ? "superseded" : "withdrawn", supersededBy: plan ? id : undefined, now,
+    })),
+    ...(plan ? insertProposalStatements(db, {
+      id, entityId, plan, status: "pending", requestedByUserId: user.id, replaces: others.at(-1)?.id ?? null, now,
     }) : []),
-    ...(plan ? [
-      insertSageContactChangeProposal(db, {
-        id, organizationId, kind, entityId,
-        sageRecordId: plan.sageRecordId,
-        parentSageRecordId: plan.parentSageRecordId,
-        baseRevision: plan.baseRevision,
-        changesJson: JSON.stringify(plan.changes),
-        status: "pending", requestedByUserId: user.id,
-        requestedAt: now, updatedAt: now,
-      }),
-      insertSageContactChangeEvent(db, {
-        id: crypto.randomUUID(), proposalId: id, organizationId,
-        actorUserId: user.id, eventType: "proposed",
-        detailJson: JSON.stringify({ baseRevision: plan.baseRevision, replaces: open?.id ?? null }),
-        createdAt: now,
-      }),
-    ] : []),
   ]
   const [first, ...rest] = statements
   if (first) {
@@ -438,17 +501,185 @@ export async function requestSageEditFromCompass(
   }
   const applied = await applySageLinkedValuesInCompass(db, organizationId, kind, entityId, proposed, now)
   if (!applied.success) return { status: "blocked", error: applied.error }
+  const replaced = others.at(-1)
   if (plan) {
     await recordSageChangeActivity(db, {
       organizationId, actor: user, kind, entityId, proposalId: id,
-      step: open ? "updated" : "requested", changes: plan.changes,
+      step: replaced ? "updated" : "requested", changes: plan.changes,
     })
-    return open ? { status: "updated", proposalId: id } : { status: "requested", proposalId: id }
+    return replaced ? { status: "updated", proposalId: id } : { status: "requested", proposalId: id }
   }
-  if (open) {
+  if (replaced) {
     await recordSageChangeActivity(db, {
-      organizationId, actor: user, kind, entityId, proposalId: open.id, step: "withdrawn", changes: openChanges,
+      organizationId, actor: user, kind, entityId, proposalId: replaced.id, step: "withdrawn",
+      changes: parseSageChanges(replaced.changesJson) ?? [],
     })
   }
   return { status: "in_sage" }
+}
+
+function insertProposalStatements(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly entityId: string
+    readonly plan: SageContactProposalPlan
+    readonly status: "pending" | "queued"
+    readonly requestedByUserId: string
+    readonly actorUserId?: string | null
+    readonly replaces: string | null
+    readonly now: string
+  }
+): BatchItem<"sqlite">[] {
+  const { id, plan, now } = input
+  return [
+    insertSageContactChangeProposal(db, {
+      id, organizationId: plan.organizationId, kind: plan.kind, entityId: input.entityId,
+      sageRecordId: plan.sageRecordId,
+      parentSageRecordId: plan.parentSageRecordId,
+      baseRevision: plan.baseRevision,
+      changesJson: JSON.stringify(plan.changes),
+      status: input.status, requestedByUserId: input.requestedByUserId,
+      requestedAt: now, updatedAt: now,
+    }),
+    insertSageContactChangeEvent(db, {
+      id: crypto.randomUUID(), proposalId: id, organizationId: plan.organizationId,
+      actorUserId: input.actorUserId === undefined ? input.requestedByUserId : input.actorUserId,
+      eventType: input.status === "queued" ? "queued" : "proposed",
+      detailJson: JSON.stringify({ baseRevision: plan.baseRevision, replaces: input.replaces }),
+      createdAt: now,
+    }),
+  ]
+}
+
+/**
+ * Holds an edit whose Sage request cannot be planned or sent yet: one
+ * "queued" change carries every unfinished new value of the record (except
+ * the write Sage is running), planned against the last Sage read or, before
+ * any read, against unknown before-values. It is replanned before review.
+ */
+async function deferSageEdit(
+  context: SageProposalContext,
+  kind: SageLinkedEditKind,
+  entityId: string,
+  input: {
+    readonly identity: SageContactEntityIdentity & { readonly sageRecordId: string }
+    readonly snapshot: SageContactSnapshot | null
+    readonly others: readonly HoldingRow[]
+    readonly desired: Readonly<Record<string, string | null>>
+    readonly proposed: Readonly<Record<string, string | null>>
+    readonly now: string
+    readonly outcome: SageEditRequestOutcome
+  }
+): Promise<SageEditRequestOutcome> {
+  const { db, organizationId, user } = context
+  const { identity, snapshot, others, desired, now } = input
+  const base: SageContactSnapshot = snapshot ?? {
+    organizationId, kind, sageRecordId: identity.sageRecordId, parentSageRecordId: identity.parentSageRecordId,
+    revision: UNREAD_REVISION,
+    fields: Object.fromEntries(sageContactProposalFields(kind).map((field) => [field, null])),
+  }
+  // Before any read, a blank value has nothing to ask Sage for.
+  const toRequest = snapshot
+    ? differingFromSage(desired, snapshot.fields)
+    : Object.fromEntries(Object.entries(desired).filter(([, value]) => value !== null))
+  let plan: SageContactProposalPlan | null = null
+  if (Object.keys(toRequest).length > 0) {
+    const planned = planSageContactChange({ snapshot: base, proposed: toRequest, allowUnreadExtended: true })
+    if (!planned.success) return { status: "blocked", error: planned.error }
+    plan = { ...planned.plan, organizationId }
+  }
+  const id = crypto.randomUUID()
+  const statements: BatchItem<"sqlite">[] = [
+    ...others.flatMap((row) => closeSageChangeStatements(db, {
+      organizationId, actorUserId: user.id, proposal: row,
+      status: plan ? "superseded" : "withdrawn", supersededBy: plan ? id : undefined, now,
+    })),
+    ...(plan ? insertProposalStatements(db, {
+      id, entityId, plan, status: "queued", requestedByUserId: user.id, replaces: others.at(-1)?.id ?? null, now,
+    }) : []),
+  ]
+  const [first, ...rest] = statements
+  if (first) {
+    try {
+      await db.batch([first, ...rest])
+    } catch {
+      return { status: "blocked", error: "The Sage change for this record changed while saving. Reload and try again." }
+    }
+  }
+  const applied = await applySageLinkedValuesInCompass(db, organizationId, kind, entityId, input.proposed, now)
+  if (!applied.success) return { status: "blocked", error: applied.error }
+  if (plan) {
+    await recordSageChangeActivity(db, {
+      organizationId, actor: user, kind, entityId, proposalId: id, step: "queued", changes: plan.changes,
+    })
+  }
+  return input.outcome
+}
+
+/** Unfinished states that wait on Sage or on staff, so a queued change keeps waiting. */
+const BUSY_STATUSES: ReadonlySet<string> = new Set(["running", "approved", "conflict", "failed"])
+
+/**
+ * After a Sage read or write of a record lands: a change that was waiting
+ * (queued, or pending against an older Sage read) becomes one pending
+ * request planned against the newest read, for review by a different staff
+ * member as usual. It is still requested by the person who saved it. Waits
+ * while Sage is writing, an approved write is not yet claimed, or a failed
+ * write is waiting for staff to retry or reject it. Never throws.
+ */
+export async function advanceQueuedSageChanges(
+  db: Db,
+  env: object,
+  organizationId: string,
+  kind: SageContactKind,
+  entityId: string
+): Promise<void> {
+  try {
+    if (!sageContactOrganizationMatches(env, organizationId)) return
+    const rows = await holdingSageChanges(db, organizationId, kind, entityId)
+    const latest = rows.at(-1)
+    if (!latest || rows.some((row) => BUSY_STATUSES.has(row.status))) return
+    const snapshotRow = await latestSageSnapshot(db, organizationId, kind, entityId)
+    const snapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
+    if (!snapshot) return
+    if (!rows.some((row) => row.status === "queued" || row.baseRevision !== snapshot.revision)) return
+    const identity = await getSageContactEntityIdentity(db, organizationId, kind, entityId)
+    const sageRecordId = identity?.sageRecordId
+    if (!identity || !sageRecordId ||
+      !snapshotMatches(snapshot, { sageRecordId, parentSageRecordId: identity.parentSageRecordId })) return
+    const toRequest = differingFromSage(desiredValues(rows), snapshot.fields)
+    let plan: SageContactProposalPlan | null = null
+    if (Object.keys(toRequest).length > 0) {
+      const planned = planSageContactChange({ snapshot, proposed: toRequest, allowUnreadExtended: true })
+      // An invalid value stays held in Compass; staff see it pending and can edit it.
+      if (!planned.success) return
+      plan = planned.plan
+    }
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    const [first, ...rest]: BatchItem<"sqlite">[] = [
+      ...rows.flatMap((row) => closeSageChangeStatements(db, {
+        organizationId, actorUserId: null, proposal: row,
+        status: plan ? "superseded" : "withdrawn", supersededBy: plan ? id : undefined, now,
+      })),
+      ...(plan ? insertProposalStatements(db, {
+        id, entityId, plan, status: "pending", requestedByUserId: latest.requestedByUserId,
+        actorUserId: null, replaces: latest.id, now,
+      }) : []),
+    ]
+    if (!first) return
+    try {
+      await db.batch([first, ...rest])
+    } catch {
+      return
+    }
+    await recordSageChangeActivity(db, {
+      organizationId, actor: SAGE_READ_ACTOR, kind, entityId,
+      proposalId: plan ? id : latest.id, step: plan ? "updated" : "withdrawn",
+      changes: plan ? plan.changes : parseSageChanges(latest.changesJson) ?? [],
+    })
+  } catch (error) {
+    console.error("Could not send a waiting Sage change for review", error)
+  }
 }

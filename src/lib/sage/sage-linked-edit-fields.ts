@@ -15,7 +15,8 @@ export type SageLinkedEditKind = Extract<SageContactKind, "client_company" | "ve
  * Sage-shared fields edited on the Contacts forms. Each is a Sage proposal
  * field of the same name and a Compass column of the same name.
  * Client primary email is not here: its Sage screen binding is unverified
- * (docs/wip/shared-contact-directory-sage-field-map.md), so it stays locked.
+ * (docs/wip/shared-contact-directory-sage-field-map.md), so it is saved in
+ * Compass only (no Sage read writes it either).
  */
 export const SAGE_SHARED_FIELDS: Readonly<Record<SageLinkedEditKind, readonly SageContactField[]>> = {
   vendor_company: [
@@ -36,7 +37,7 @@ export const COMPASS_ONLY_FIELDS: Readonly<Record<SageLinkedEditKind, readonly s
   // Category follows Sage's vendor type when the company maps one (#1142);
   // otherwise it is Compass's own.
   vendor_company: ["category"],
-  client_company: ["company", "notes"],
+  client_company: ["company", "notes", "primaryEmail"],
   vendor_person: [],
   client_person: [],
 }

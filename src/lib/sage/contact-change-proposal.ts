@@ -182,6 +182,14 @@ export function planSageContactCreate(
 export function planSageContactChange(input: {
   readonly snapshot: SageContactSnapshot
   readonly proposed: Readonly<Record<string, string | null>>
+  /**
+   * Inline Compass edits only: an extended field the Sage writer has not read
+   * yet is planned with an unknown (null) before-value instead of refused.
+   * Every Sage writer refuses a change to a field its own read did not carry
+   * ("unsupported field"), so such a request fails visibly and writes nothing
+   * until the writer's update is installed and a new read re-plans it.
+   */
+  readonly allowUnreadExtended?: boolean
 }): PlanResult {
   const { snapshot } = input
   if (!snapshot.organizationId.trim() || !snapshot.sageRecordId.trim() || !snapshot.revision.trim()) {
@@ -199,10 +207,11 @@ export function planSageContactChange(input: {
     if (!isFieldName(key) || !allowed.includes(key)) {
       return { success: false, error: `Sage contact field ${key} is not approved for ${snapshot.kind}.` }
     }
-    if (!Object.prototype.hasOwnProperty.call(snapshot.fields, key)) {
+    const extended = EXTENDED_FIELDS_BY_KIND[snapshot.kind].includes(key)
+    if (!Object.prototype.hasOwnProperty.call(snapshot.fields, key) && !(extended && input.allowUnreadExtended)) {
       return {
         success: false,
-        error: EXTENDED_FIELDS_BY_KIND[snapshot.kind].includes(key)
+        error: extended
           ? `Sage does not send ${key} to Compass yet. The Sage writer on the Sage computer needs its update first.`
           : `No Sage read value is available for ${key}.`,
       }

@@ -56,25 +56,33 @@ export function useSageLinkedEditState(
   return { state, reload }
 }
 
-/** Why a Sage-shared field of one record cannot be edited now, or null. */
-export function sageFieldLockedReason(
+/**
+ * What happens on the Sage side when this record is saved, when it is not
+ * the usual Sage change request. Never locks: every field always saves in
+ * Compass and shows at once.
+ */
+export function sageSaveNote(
   state: SageLinkedEditState | null,
   entityId: string,
-  field: string,
-  options: { readonly company: boolean }
+  options: { readonly verified: boolean }
 ): string | null {
-  if (!state) return "Loading Sage details…"
-  if (!state.bridgeConfigured) return "Sage contact sync is not set up. Change this in Sage."
-  if (!state.verified) return "Verify the Sage link first."
-  if (options.company && state.unavailableFields.includes(field)) {
-    return "The Sage writer on the Sage computer needs its update before this can change here."
+  if (!options.verified || (state !== null && !state.verified)) return SAGE_NOT_LINKED_NOTE
+  if (!state) return null
+  if (!state.bridgeConfigured) return "Saved in Compass only; Sage contact sync isn't set up yet."
+  if (state.pending[entityId]?.status === "running") {
+    return "Sage is writing an earlier change now. Your edit saves in Compass and goes to Sage right after."
   }
-  // Editing again replaces a waiting request; only a write in progress locks the record.
-  if (state.pending[entityId]?.status === "running") return SAGE_WRITING_REASON
   return null
 }
 
-const SAGE_WRITING_REASON = "Sage is writing the last change now. Try again in a minute."
+export const SAGE_NOT_LINKED_NOTE = "Saved in Compass only; Sage isn't linked yet."
+
+/** A company field the installed Sage writer cannot send yet. */
+export function sageFieldNote(state: SageLinkedEditState | null, field: string): string | null {
+  return state?.verified && state.bridgeConfigured && state.unavailableFields.includes(field)
+    ? "Saves in Compass. Sage takes it once the Sage writer on the Sage computer is updated."
+    : null
+}
 
 /** True when the field's value in Compass is still on its way to Sage. */
 function isSagePendingField(pending: SagePendingChange | undefined, field: string): boolean {
@@ -92,21 +100,18 @@ export function SagePendingMarker({ pending }: { readonly pending: SagePendingCh
   )
 }
 
-/** The note under a Sage-shared field: its pending marker, or why it is locked. */
+/** The note under a Sage-shared field: its pending marker, or what the save does on the Sage side. */
 export function SageFieldNote({
   pending,
   field,
-  lockedReason,
+  note,
 }: {
   readonly pending: SagePendingChange | undefined
   readonly field: string
-  readonly lockedReason: string | null
+  readonly note: string | null
 }): React.ReactElement | null {
-  if (lockedReason && lockedReason !== SAGE_WRITING_REASON) {
-    return <p className="text-xs text-muted-foreground">{lockedReason}</p>
-  }
   if (pending && isSagePendingField(pending, field)) return <SagePendingMarker pending={pending} />
-  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
+  if (note) return <p className="text-xs text-muted-foreground">{note}</p>
   return null
 }
 
@@ -133,7 +138,9 @@ export function SagePendingNotice({
   if (!pending.error) {
     return (
       <p className="text-xs text-muted-foreground">
-        {SAGE_PENDING_LABEL}: Compass already shows the new values; Sage gets them once a different staff member approves.
+        {pending.status === "queued"
+          ? "Compass shows the new values. The Sage change request follows on its own once Sage has been read or finishes its current write."
+          : `${SAGE_PENDING_LABEL}: Compass already shows the new values; Sage gets them once a different staff member approves.`}
       </p>
     )
   }
@@ -190,9 +197,15 @@ export function announceSageOutcomes(items: readonly SageEditOutcomeItem[]): boo
       case "in_sage":
         toast.success(`${label}: Sage already has these values; Compass now matches Sage.`)
         break
-      case "reading_sage":
-        done = false
-        toast.info(`Reading ${label} from Sage for the first time. Save again in a minute to change it.`)
+      case "queued":
+        toast.success(outcome.reason === "sage_writing"
+          ? `Saved ${label}. Sage is writing an earlier change; this one goes to Sage right after.`
+          : `Saved ${label}. Compass is reading it from Sage; the Sage change request follows on its own.`)
+        break
+      case "compass_only":
+        toast.success(outcome.reason === "not_linked"
+          ? `Saved ${label} in Compass only; Sage isn't linked yet.`
+          : `Saved ${label} in Compass only; Sage contact sync isn't set up yet.`)
         break
       case "blocked":
         done = false

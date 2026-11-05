@@ -21,9 +21,10 @@ import type { SagePendingChange } from "@/app/actions/sage-linked-edits"
 import {
   announceSageOutcomes,
   SageFieldNote,
-  sageFieldLockedReason,
+  sageFieldNote,
   SagePendingMarker,
   SagePendingNotice,
+  sageSaveNote,
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
@@ -109,19 +110,15 @@ export function VendorDialog({
     [initialData],
   )
   const isSagePerson = (contact: ContactDraft): boolean => contact.id !== null && sagePersonIds.has(contact.id)
-  const personLockedReason = (contact: ContactDraft): string | null => {
-    if (readOnly) return "Read only"
-    if (!sageLinked || !contact.id || !isSagePerson(contact)) return null
-    // Sage people need a Sage contact id for a change request.
-    if (!initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId)) {
-      return "Verify this person's Sage link first."
-    }
-    const reason = sageFieldLockedReason(sageState, contact.id, "name", { company: false })
-    return reason
+  // Every field always saves in Compass; the notes only say what Sage does with it.
+  const personSaveNote = (contact: ContactDraft): string | null => {
+    if (readOnly || !sageLinked || !contact.id || !isSagePerson(contact)) return null
+    // Without its own and its company's Sage ids a person is not addressable in Sage.
+    const verified = sageVerified && Boolean(initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId))
+    return sageSaveNote(sageState, contact.id, { verified })
   }
-  const personLocked = (contact: ContactDraft): boolean => personLockedReason(contact) !== null
-  const companyLockedReason = (field: SageCompanyField): string | null =>
-    readOnly ? "Read only" : initialData ? sageFieldLockedReason(sageState, initialData.id, field, { company: true }) : null
+  const companyFieldNote = (field: SageCompanyField): string | null => readOnly ? null : sageFieldNote(sageState, field)
+  const companySaveNote = !readOnly && initialData ? sageSaveNote(sageState, initialData.id, { verified: sageVerified }) : null
   const categoryLockedReason = readOnly
     ? "Read only"
     : sageState?.categoryFromSageType
@@ -306,6 +303,7 @@ export function VendorDialog({
               <SagePendingNotice kind="vendor_company" entityId={initialData.id} pending={sageState?.pending[initialData.id]}
                 canEdit={!readOnly} onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }} />
               {sageVerified ? <SageCompanyNameRow kind="vendor_company" entityId={initialData.id} onChanged={onSageLinkedSaved} /> : null}
+              {companySaveNote ? <p className="text-xs text-muted-foreground">{companySaveNote}</p> : null}
               <div className="grid grid-cols-5 gap-3">
                 <div className="col-span-3 space-y-1.5">
                   <Label htmlFor="vendor-name" className="text-xs">Company name *</Label>
@@ -315,9 +313,9 @@ export function VendorDialog({
                     value={sageDraft.name}
                     onChange={(e) => setSageDraft((current) => ({ ...current, name: e.target.value }))}
                     required
-                    disabled={companyLockedReason("name") !== null}
+                    disabled={readOnly}
                   />
-                  <SageFieldNote pending={sageState?.pending[initialData.id]} field="name" lockedReason={companyLockedReason("name")} />
+                  <SageFieldNote pending={sageState?.pending[initialData.id]} field="name" note={companyFieldNote("name")} />
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label htmlFor="vendor-category" className="text-xs">Category *</Label>
@@ -353,9 +351,9 @@ export function VendorDialog({
                         const next = e.target.value
                         setSageDraft((current) => ({ ...current, [field]: next }))
                       }}
-                      disabled={companyLockedReason(field) !== null}
+                      disabled={readOnly}
                     />
-                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} lockedReason={companyLockedReason(field)} />
+                    <SageFieldNote pending={sageState?.pending[initialData.id]} field={field} note={companyFieldNote(field)} />
                   </div>
                 ))}
               </div>
@@ -521,7 +519,7 @@ export function VendorDialog({
                     <div className="grid grid-cols-2 gap-3">
                       <Input
                         required
-                        disabled={personLocked(contact)}
+                        disabled={readOnly}
                         value={contact.name}
                         onChange={(event) =>
                           updateContact(contact.key, "name", event.target.value)
@@ -530,7 +528,7 @@ export function VendorDialog({
                       />
                       <Input
                         value={contact.title}
-                        disabled={personLocked(contact)}
+                        disabled={readOnly}
                         onChange={(event) =>
                           updateContact(contact.key, "title", event.target.value)
                         }
@@ -539,7 +537,7 @@ export function VendorDialog({
                       <Input
                         type="email"
                         value={contact.email}
-                        disabled={personLocked(contact)}
+                        disabled={readOnly}
                         onChange={(event) =>
                           updateContact(contact.key, "email", event.target.value)
                         }
@@ -548,7 +546,7 @@ export function VendorDialog({
                       <Input
                         type="tel"
                         value={contact.phone}
-                        disabled={personLocked(contact)}
+                        disabled={readOnly}
                         onChange={(event) =>
                           updateContact(contact.key, "phone", event.target.value)
                         }
@@ -559,7 +557,7 @@ export function VendorDialog({
                       <SagePersonNote
                         contactId={contact.id}
                         pending={sageState?.pending[contact.id]}
-                        lockedReason={readOnly ? null : personLockedReason(contact)}
+                        note={personSaveNote(contact)}
                         canEdit={!readOnly}
                         onChanged={async () => { await reloadSageState(); onSageLinkedSaved?.() }}
                       />
@@ -596,21 +594,20 @@ export function VendorDialog({
   )
 }
 
-/** Under a Sage person: the pending Sage change, or why the person is locked. */
+/** Under a Sage person: the pending Sage change, and what saving does on the Sage side. */
 function SagePersonNote({
   contactId,
   pending,
-  lockedReason,
+  note,
   canEdit,
   onChanged,
 }: {
   readonly contactId: string
   readonly pending: SagePendingChange | undefined
-  readonly lockedReason: string | null
+  readonly note: string | null
   readonly canEdit: boolean
   readonly onChanged: () => Promise<void>
 }): React.ReactElement | null {
-  if (lockedReason) return <p className="text-xs text-muted-foreground">{lockedReason}</p>
   if (pending) {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -621,8 +618,9 @@ function SagePersonNote({
         {pending.error ? (
           <SagePendingNotice kind="vendor_person" entityId={contactId} pending={pending} canEdit={canEdit} onChanged={onChanged} />
         ) : null}
+        {note ? <span className="text-xs text-muted-foreground">{note}</span> : null}
       </div>
     )
   }
-  return <p className="text-xs text-muted-foreground">In Sage: changes show here at once and go to Sage for approval.</p>
+  return <p className="text-xs text-muted-foreground">{note ?? "In Sage: changes show here at once and go to Sage for approval."}</p>
 }
