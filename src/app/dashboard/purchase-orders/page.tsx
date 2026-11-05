@@ -1,14 +1,20 @@
 import { IconShoppingCart } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
-import { ActiveProjectSectionRedirect } from "@/components/projects/active-project-section-redirect"
+import { getPurchaseOrderQueue } from "@/app/actions/purchase-order-priority"
+import { PageHeader } from "@/components/page-header"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import { PurchaseOrderPriorityTable } from "@/components/purchase-orders/purchase-order-priority-table"
 import { Badge } from "@/components/ui/badge"
-import { PageHeader } from "@/components/page-header"
 
-export default async function PurchaseOrderProjectPickerPage() {
-  const projects = await getProjects()
+/**
+ * The company-wide ordering queue: every PO across the jobs that still has to
+ * be ordered, in the purchaser's priority order, plus a way into one job's
+ * full PO list.
+ */
+export default async function PurchaseOrderQueuePage() {
+  const [queue, projects] = await Promise.all([getPurchaseOrderQueue(), getProjects()])
 
   return (
     <ProjectContextWatermarkShell>
@@ -18,53 +24,50 @@ export default async function PurchaseOrderProjectPickerPage() {
         title="Purchase Orders"
       />
 
-      <section className="clarity-panel border-l-[6px] border-l-brand-hps-primary p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
           <div>
-            <p className="text-sm font-semibold">Project required first</p>
-            <p className="mt-1 text-sm opacity-80">
-              Keeps vendor commitments tied to the right job.
+            <h2 className="text-sm font-semibold">Ordering queue</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Purchase orders from every job that still need to be ordered, in the order to place them.
             </p>
           </div>
-          <Badge variant="secondary">Project lock</Badge>
+          {queue.success && <Badge variant="secondary">{queue.data.rows.length} to order</Badge>}
         </div>
+        {queue.success ? (
+          <PurchaseOrderPriorityTable
+            rows={queue.data.rows}
+            scope={{ kind: "organization" }}
+            canReorder={queue.data.canReorder}
+            statusFilter="all"
+            emptyMessage="Nothing waiting to be ordered. New purchase orders appear here until they are ordered."
+          />
+        ) : (
+          // Without the purchase order permission the job picker below still works.
+          <p className="text-sm text-muted-foreground">
+            The ordering queue isn&apos;t available to you. Open a job&apos;s purchase orders below.
+          </p>
+        )}
       </section>
-
-      <ActiveProjectSectionRedirect
-        targetSection="purchase-orders"
-        label="Open POs"
-      />
 
       <section className="space-y-3">
         <div>
-          <div>
-            <h2 className="text-sm font-semibold">Select project</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Search by project number, name, client, or accounting context.
-            </p>
-          </div>
+          <h2 className="text-sm font-semibold">A job&apos;s purchase orders</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Open one project to create POs or see its ordered, received and closed POs.
+          </p>
         </div>
-
         {projects.length > 0 ? (
-          <div className="max-w-xl rounded-lg border bg-background p-4 shadow-sm">
+          <div className="max-w-xl">
             <ProjectQuickSwitcher
               projects={projects}
               targetSection="purchase-orders"
               placeholder="Search projects for POs..."
               className="w-full"
             />
-            <p className="mt-3 text-xs text-muted-foreground">
-              Opens the PO queue for the selected project.
-            </p>
           </div>
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
-            <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No projects available</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add or sync projects first.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">No projects yet. Add or sync projects first.</p>
         )}
       </section>
     </ProjectContextWatermarkShell>

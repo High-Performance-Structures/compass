@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   flexRender,
   getCoreRowModel,
@@ -8,6 +9,7 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type Row,
   type RowSelectionState,
   type SortingState,
   type Table as TableInstance,
@@ -18,6 +20,13 @@ import { IconSearch } from "@tabler/icons-react"
 import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table-pagination"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import {
+  PriorityDndContext,
+  PriorityOrderStatus,
+  PriorityRowControls,
+  SortableRecordRow,
+  type RecordPriorityController,
+} from "@/components/record-table-sortable"
 import {
   ariaSort,
   compareSortValues,
@@ -132,35 +141,207 @@ export function recordSelectionColumn<T>(getLabel: (item: T) => string): ColumnD
   }
 }
 
+/**
+ * Clicks that belong to a control inside the row, not to the row: checkboxes,
+ * buttons, links, inputs, menus and drag handles. Mark anything else with
+ * `data-row-click-ignore`.
+ */
+const ROW_CLICK_IGNORE = [
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "summary",
+  "[role='button']",
+  "[role='checkbox']",
+  "[role='menuitem']",
+  "[role='combobox']",
+  "[role='switch']",
+  "[contenteditable='true']",
+  "[data-row-click-ignore]",
+].join(",")
+
+/** Whether a click on a row should open its record. */
+function isRowOpenClick(event: React.MouseEvent<HTMLElement>): boolean {
+  if (event.defaultPrevented || event.button !== 0) return false
+  const target = event.target
+  // Clicks inside a portal (a dialog or menu opened from the row) bubble
+  // through React to the row but are not inside it.
+  if (!(target instanceof Element) || !event.currentTarget.contains(target)) return false
+  const control = target.closest(ROW_CLICK_IGNORE)
+  if (control && event.currentTarget.contains(control)) return false
+  // Selecting text to copy it is not a request to open the record.
+  const selection = typeof window === "undefined" ? null : window.getSelection()
+  if (selection && !selection.isCollapsed && selection.toString().trim() !== "") return false
+  return true
+}
+
 type RecordTableState =
   | { readonly kind: "ready" }
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
 
-/** Presentation shared by growing record lists; mutations stay with each domain. */
-export function RecordTable<T>({
-  table,
-  itemLabel,
-  emptyMessage,
-  state = { kind: "ready" },
-  focusedRowId = null,
-  rowIdPrefix = "record",
-}: {
+type RecordTableProps<T> = {
   readonly table: TableInstance<T>
   readonly itemLabel: string
   readonly emptyMessage: string
   readonly state?: RecordTableState
   readonly focusedRowId?: string | null
   readonly rowIdPrefix?: string
-}): React.ReactElement {
+  /** Priority order mode, from `usePriorityRecordTable`. */
+  readonly priority?: RecordPriorityController<T>
+  /**
+   * Makes the whole row open the record (except its controls). Keep a link or
+   * button on the record's name for keyboard and screen reader users.
+   */
+  readonly onRowOpen?: (row: T) => void
+  readonly getRowHref?: (row: T) => string
+}
+
+/** Presentation shared by growing record lists; mutations stay with each domain. */
+export function RecordTable<T>(props: RecordTableProps<T>): React.ReactElement {
+  // Only linked rows need the router, so tables without links render anywhere.
+  return props.getRowHref && !props.onRowOpen ? (
+    <LinkedRecordTable {...props} />
+  ) : (
+    <RecordTableView {...props} navigate={null} />
+  )
+}
+
+function LinkedRecordTable<T>(props: RecordTableProps<T>): React.ReactElement {
+  const router = useRouter()
+  return <RecordTableView {...props} navigate={(href) => router.push(href)} />
+}
+
+function RecordTableView<T>({
+  table,
+  itemLabel,
+  emptyMessage,
+  state = { kind: "ready" },
+  focusedRowId = null,
+  rowIdPrefix = "record",
+  priority,
+  onRowOpen,
+  getRowHref,
+  navigate,
+}: RecordTableProps<T> & { readonly navigate: ((href: string) => void) | null }): React.ReactElement {
   const pageIndex = table.getState().pagination.pageIndex
   const paginationId = React.useId()
+  const rows = table.getRowModel().rows
+  const rowsOpen = Boolean(onRowOpen || getRowHref)
+  const columnCount = table.getVisibleLeafColumns().length + (priority ? 1 : 0)
+
+  function openRow(event: React.MouseEvent<HTMLTableRowElement>, row: Row<T>): void {
+    if (!isRowOpenClick(event)) return
+    if (onRowOpen) {
+      onRowOpen(row.original)
+      return
+    }
+    const href = getRowHref?.(row.original)
+    if (!href || !navigate) return
+    if (event.metaKey || event.ctrlKey) window.open(href, "_blank", "noopener")
+    else navigate(href)
+  }
+
+  function renderRow(row: Row<T>): React.ReactElement {
+    const rowProps = {
+      "data-focused": row.id === focusedRowId ? "true" : undefined,
+      tabIndex: row.id === focusedRowId ? -1 : undefined,
+      "data-state": row.getIsSelected() ? "selected" : undefined,
+      onClick: rowsOpen ? (event: React.MouseEvent<HTMLTableRowElement>) => openRow(event, row) : undefined,
+      className: cn(
+        rowsOpen && "cursor-pointer",
+        row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring",
+      ),
+    }
+    const cells = row.getVisibleCells().map((cell) => (
+      <TableCell key={cell.id} className="whitespace-normal align-top py-3">
+        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      </TableCell>
+    ))
+    if (!priority) {
+      return (
+        <TableRow key={row.id} id={`${rowIdPrefix}-${row.id}`} {...rowProps}>
+          {cells}
+        </TableRow>
+      )
+    }
+    return (
+      <SortableRecordRow
+        key={row.id}
+        rowId={row.id}
+        domId={`${rowIdPrefix}-${row.id}`}
+        disabled={!priority.dragEnabled}
+        {...rowProps}
+      >
+        <PriorityRowControls priority={priority} row={row.original} rowId={row.id} />
+        {cells}
+      </SortableRecordRow>
+    )
+  }
+
+  const body = rows.map(renderRow)
   React.useEffect(() => {
     if (!focusedRowId) return
     const element = document.getElementById(`${rowIdPrefix}-${focusedRowId}`)
     element?.scrollIntoView({ block: "center" })
     element?.focus({ preventScroll: true })
   }, [focusedRowId, pageIndex, rowIdPrefix])
+
+  const tableElement = (
+    <Table aria-label={itemLabel} className="min-w-[52rem]" containerClassName="border-y">
+      <TableHeader className="bg-muted/50">
+        {table.getHeaderGroups().map((group) => (
+          <TableRow key={group.id}>
+            {priority && (
+              <TableHead scope="col" style={{ width: priority.canReorder ? 132 : 48 }}>
+                <span aria-hidden>#</span>
+                <span className="sr-only">{priority.label}</span>
+              </TableHead>
+            )}
+            {group.headers.map((header) => (
+              <TableHead
+                key={header.id}
+                scope="col"
+                style={{ width: header.getSize() }}
+                aria-sort={
+                  header.column.getCanSort() ? ariaSort(header.column.getIsSorted()) : undefined
+                }
+              >
+                <TanstackSortableHeader header={header} />
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {state.kind === "loading" ? (
+          <TableRow>
+            <TableCell
+              colSpan={columnCount}
+              className="h-24 text-center"
+              role="status"
+            >
+              Loading {itemLabel}…
+            </TableCell>
+          </TableRow>
+        ) : rows.length ? (
+          body
+        ) : (
+          <TableRow>
+            <TableCell
+              colSpan={columnCount}
+              className="h-24 text-center text-muted-foreground"
+            >
+              {emptyMessage}
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
+  )
 
   return (
     <div className="min-w-0 space-y-4" aria-busy={state.kind === "loading"}>
@@ -169,69 +350,19 @@ export function RecordTable<T>({
           {state.message}
         </p>
       )}
-      <Table aria-label={itemLabel} className="min-w-[52rem]" containerClassName="border-y">
-        <TableHeader className="bg-muted/50">
-          {table.getHeaderGroups().map((group) => (
-            <TableRow key={group.id}>
-              {group.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  scope="col"
-                  style={{ width: header.getSize() }}
-                  aria-sort={
-                    header.column.getCanSort() ? ariaSort(header.column.getIsSorted()) : undefined
-                  }
-                >
-                  <TanstackSortableHeader header={header} />
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {state.kind === "loading" ? (
-            <TableRow>
-              <TableCell
-                colSpan={table.getVisibleLeafColumns().length}
-                className="h-24 text-center"
-                role="status"
-              >
-                Loading {itemLabel}…
-              </TableCell>
-            </TableRow>
-          ) : table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                id={`${rowIdPrefix}-${row.id}`}
-                data-focused={row.id === focusedRowId ? "true" : undefined}
-                tabIndex={row.id === focusedRowId ? -1 : undefined}
-                data-state={row.getIsSelected() ? "selected" : undefined}
-                className={cn(row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring")}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="whitespace-normal align-top py-3">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell
-                colSpan={table.getVisibleLeafColumns().length}
-                className="h-24 text-center text-muted-foreground"
-              >
-                {emptyMessage}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      {priority && <PriorityOrderStatus priority={priority} />}
+      {priority ? (
+        <PriorityDndContext priority={priority} rowIds={rows.map((row) => row.id)}>
+          {tableElement}
+        </PriorityDndContext>
+      ) : (
+        tableElement
+      )}
       <DataTablePagination table={table} itemLabel={itemLabel} id={paginationId} />
     </div>
   )
 }
+
 
 /** The search box over a record list's text columns. */
 export function RecordSearchInput({

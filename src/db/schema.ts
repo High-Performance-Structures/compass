@@ -2051,6 +2051,12 @@ export const projectOperations = sqliteTable("project_operations", {
   awardedRfqId: text("awarded_rfq_id"),
   /** The directory vendor an RFQ or purchase order is with (0280); null when typed or unlinked. */
   vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+  /**
+   * Ordering priority (0292): a person's chosen order among the organization's
+   * rows of the same record type. Lower comes first; null sorts after ranked
+   * rows by creation date. See src/lib/domain/operations/priority-order.ts.
+   */
+  priorityRank: integer("priority_rank"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 },
@@ -2065,6 +2071,10 @@ export const projectOperations = sqliteTable("project_operations", {
     index("project_operations_awarded_rfq_idx").on(table.awardedRfqId).where(sql`"awarded_rfq_id" IS NOT NULL`),
     // Declared from drizzle/0280_relational_directory_links.sql.
     index("project_operations_vendor_id_idx").on(table.vendorId),
+    // Declared from drizzle/0292_operation_priority_rank.sql.
+    index("project_operations_priority_rank_idx")
+      .on(table.sourceRecordType, table.priorityRank)
+      .where(sql`"priority_rank" IS NOT NULL`),
   ])
 
 export const organizationCalendarSettings = sqliteTable(

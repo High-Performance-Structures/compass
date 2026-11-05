@@ -421,3 +421,28 @@ export type NormalizedRfqDocumentLink = {
   readonly url: string
   readonly notes: string | null
 }
+
+/**
+ * One purchase order in a priority-ordered list: a job's PO table or the
+ * company-wide ordering queue. Lists arrive already in priority order.
+ */
+export type PurchaseOrderListRow = {
+  readonly id: string
+  readonly projectId: string
+  readonly projectNumber: string | null
+  readonly projectName: string | null
+  readonly number: string | null
+  readonly title: string
+  readonly description: string | null
+  readonly vendorName: string | null
+  readonly status: string
+  readonly siteContactName: string | null
+  readonly orderDate: string | null
+  readonly dueDate: string | null
+  readonly amount: number | null
+}
+
+/** Which list a priority reorder came from; the server checks every row is in it. */
+export type PriorityOrderScope =
+  | { readonly kind: "project"; readonly projectId: string }
+  | { readonly kind: "organization" }

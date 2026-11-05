@@ -115,3 +115,21 @@ export function projectOperationMatchesStatusFilter(
   if (filter === "closed") return isClosedProjectOperationStatus(status)
   return normalizedStatus(status) === normalizedStatus(filter)
 }
+
+/**
+ * Purchase orders that are ordered, received or finished, in normalized form.
+ * Everything else (draft, approved, sent, or an imported status Compass
+ * doesn't list) is still waiting to be ordered, so it belongs in the
+ * ordering queue.
+ */
+export const PURCHASE_ORDER_ORDERED_OR_DONE_STATUSES = [
+  "ordered",
+  "partially_received",
+  "received",
+  "complete",
+  "completed",
+  "closed",
+  "void",
+  "cancelled",
+  "canceled",
+] as const satisfies readonly string[]

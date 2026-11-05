@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-05"
 }
 ---
 
@@ -51,6 +51,8 @@ RFQs, purchase orders, and RFIs emailed from Compass carry a reply address for t
 ## Purchase Orders {#purchase-orders}
 
 Enter the vendor, scope, internal owner, ship-to details, dates, priority, and separately coded lines. Check quantities, units, costs, tax, and totals. A P.O. saved in Compass may still require approval or Sage synchronization; check status before representing it as processed.
+
+**Purchase Orders** in the sidebar opens the **Ordering queue**: every P.O. across your jobs that is not yet ordered, received, or closed, in the order to place them, with its project. Staff who can edit purchase orders set that order: drag a row by its handle, use the up and down arrows, or choose **Move to top** or **Move to bottom** from the row's menu. The order saves automatically. Each job's P.O. list shows the same order for that job, and moving POs there only changes their places among that job's POs. Sorting by a column header is temporary; choose **Back to priority order** to reorder again. New POs start at the bottom. Click a row to open the P.O. with its details, email, and print options.
 
 Use **Print Preview** on a project P.O. when you need a printed vendor copy. It opens the P.O. in a new tab with **Print / Save PDF**, which opens the PDF in a browser tab, and **Email report link**. Review every page, including repeated headings, line details, totals, and the vendor signature area. Printing is a document action; it does not approve the P.O. or confirm Sage processing. Nu-Tech orders keep **Pickup copy**, which prints on the manufacturer's own form.
 

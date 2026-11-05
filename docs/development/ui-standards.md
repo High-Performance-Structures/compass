@@ -163,6 +163,27 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
 - **Exceptions.** Lists whose order carries meaning keep their order on
   purpose. Examples are estimate and document line items, ranked queues and
   hand-arranged lists.
+- **Whole-row click.** Where a record has a detail view, give `RecordTable`
+  `onRowOpen` or `getRowHref` so a click anywhere on the row opens it. Clicks
+  on checkboxes, buttons, links, inputs, menus and drag handles, and text
+  selection, keep their own meaning. Keep the name or reference as a link or
+  button for keyboard and screen reader users.
+- **Priority order.** Use `usePriorityRecordTable` only where a person's
+  chosen order matters, such as the purchaser's ordering queue for purchase
+  orders. Never add it to a list the data already orders (by date, status or
+  number).
+  - The default view is the priority order, with a `#` rank, a drag handle,
+    up and down arrows, and Move to top / Move to bottom so a record can
+    cross pages. Drag works within the visible page.
+  - Sorting by a column header is temporary and pauses reordering, with a
+    **Back to priority order** control. Searching also pauses it.
+  - A move shows at once and rolls back with a message if saving fails. The
+    server checks the order the person saw (a stale guard) before saving.
+  - Only people allowed to edit the records may reorder; everyone else sees
+    the order read-only.
+  - Store the order as one shared rank per record (an additive, nullable
+    column), written only by the owning domain store. A filtered list, such
+    as one job's records, reorders only the rank slots its own records hold.
 
 ### Imported-record source tag (owner-approved standard)
 

@@ -13,10 +13,10 @@
  * `updatedAt` check, a status guard), it passes that condition in; the store
  * still owns the statement.
  */
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
-import { projectOperations, projectPurchaseOrderLines, projectTodoEvents } from "@/db/schema"
+import { projectOperations, projectPurchaseOrderLines, projectTodoEvents, projects } from "@/db/schema"
 import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
@@ -28,6 +28,7 @@ import {
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
 
+import type { PriorityRankUpdate } from "./priority-order"
 import { todoEventRow, type TodoEventInput } from "./rules"
 
 export type OperationRow = typeof projectOperations.$inferSelect
@@ -466,6 +467,47 @@ export async function setSquareInvoiceOperationStatus(
     )
     .bind(input.status, input.now, input.operationId, input.projectId)
     .run()
+}
+
+/**
+ * Ordering priority writes, as planned by priority-order.ts. Each update is
+ * guarded by the rank it replaces and by the organization, so a concurrent
+ * reorder changes nothing for that row. Returns how many rows changed.
+ * The rank is not an edit of the record, so updatedAt (the edit form's
+ * version) is left alone.
+ */
+export async function applyPriorityRankUpdates(
+  db: Db,
+  input: {
+    readonly organizationId: string
+    readonly recordType: string
+    readonly updates: readonly PriorityRankUpdate[]
+  },
+): Promise<number> {
+  const organizationProjects = db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.organizationId, input.organizationId))
+  const queries = input.updates.map((update) =>
+    db
+      .update(projectOperations)
+      .set({ priorityRank: update.nextRank })
+      .where(
+        and(
+          eq(projectOperations.id, update.id),
+          eq(projectOperations.sourceRecordType, input.recordType),
+          update.previousRank === null
+            ? isNull(projectOperations.priorityRank)
+            : eq(projectOperations.priorityRank, update.previousRank),
+          inArray(projectOperations.projectId, organizationProjects),
+        ),
+      )
+      .returning({ id: projectOperations.id }),
+  )
+  const [first, ...rest] = queries
+  if (!first) return 0
+  const results = await db.batch([first, ...rest])
+  return results.reduce((total, rows) => total + rows.length, 0)
 }
 
 // ---------------------------------------------------------------------------
