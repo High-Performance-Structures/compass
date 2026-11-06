@@ -1,9 +1,9 @@
 "use server"
 
-import { and, asc, eq, isNotNull, like } from "drizzle-orm"
+import { and, asc, eq, isNotNull, like, sql } from "drizzle-orm"
 
 import { projects } from "@/db/schema"
-import { nuTechOrderWorkflows } from "@/db/schema-nutech"
+import { nuTechOrderInvoices, nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { nuTechOrgContext } from "@/lib/domain/nutech/access"
 import {
   storedNuTechDeliveryMethod,
@@ -48,7 +48,8 @@ export async function getNuTechOrderBoard(): Promise<NuTechOrderBoardView> {
         customerPaidAt: nuTechOrderWorkflows.customerPaidAt,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
         vendorConfirmationNumber: nuTechOrderWorkflows.vendorConfirmationNumber,
-        vendorInvoiceNumber: nuTechOrderWorkflows.vendorInvoiceNumber,
+        // The order's invoice list; orders from before it keep their old typed number.
+        vendorInvoiceNumber: sql<string | null>`coalesce((select group_concat(${nuTechOrderInvoices.invoiceNumber}, ', ') from ${nuTechOrderInvoices} where ${nuTechOrderInvoices.workflowId} = ${nuTechOrderWorkflows.id}), ${nuTechOrderWorkflows.vendorInvoiceNumber})`,
         vendorInvoiceStatus: nuTechOrderWorkflows.vendorInvoiceStatus,
         updatedAt: nuTechOrderWorkflows.updatedAt,
       })

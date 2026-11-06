@@ -181,9 +181,6 @@ export type SaveNuTechOrderInput = {
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderStatus: string
   readonly vendorConfirmationNumber: string | null
-  readonly vendorInvoiceNumber: string | null
-  readonly vendorInvoiceStatus: string
-  readonly vendorInvoiceReceivedAt: string | null
   readonly shippingCents: number | null
   readonly shippingNote: string | null
   readonly taxEntityId: string | null
@@ -489,7 +486,6 @@ export async function saveProjectNuTechOrder(
         throw new Error("Choose a purchase order from this Nu-Tech project.")
       }
     }
-    const vendorInvoiceReceivedAt = parseNuTechDate(input.vendorInvoiceReceivedAt, "Vendor invoice received date")
     const requestedDeliveryDate = parseNuTechDate(input.requestedDeliveryDate, "Requested delivery date")
     const customerPaidAt = parseNuTechDate(input.customerPaidAt, "Customer paid date")
     const paymentMethod = cleanText(input.customerPaymentMethod)
@@ -521,9 +517,10 @@ export async function saveProjectNuTechOrder(
       if (!district) throw new Error("Choose an active sales tax district.")
     }
     const parsedOrderStatus = storedNuTechOrderStatus(input.orderStatus)
-    const parsedVendorInvoiceStatus = storedNuTechVendorInvoiceStatus(input.vendorInvoiceStatus)
     const existing = await findNuTechOrder(access.db, projectId, input.orderId)
     if (input.orderId && !existing) throw new Error("That order is no longer on this job.")
+    // Invoices are added on the order's invoice list, which keeps these in step.
+    const parsedVendorInvoiceStatus = storedNuTechVendorInvoiceStatus(existing?.vendorInvoiceStatus ?? "not_received")
     const releaseAuditIssues = nuTechReleaseAuditIssues({
       orderStatus: parsedOrderStatus,
       vendorInvoiceStatus: parsedVendorInvoiceStatus,
@@ -592,9 +589,9 @@ export async function saveProjectNuTechOrder(
       vendorConfirmationNumber: cleanText(input.vendorConfirmationNumber),
       purchaseOrderReleasedAt: existing?.purchaseOrderReleasedAt ?? null,
       purchaseOrderReleasedBy: existing?.purchaseOrderReleasedBy ?? null,
-      vendorInvoiceNumber: cleanText(input.vendorInvoiceNumber),
+      vendorInvoiceNumber: existing?.vendorInvoiceNumber ?? null,
       vendorInvoiceStatus: parsedVendorInvoiceStatus,
-      vendorInvoiceReceivedAt,
+      vendorInvoiceReceivedAt: existing?.vendorInvoiceReceivedAt ?? null,
       vendorInvoiceReleasedAt: existing?.vendorInvoiceReleasedAt ?? null,
       vendorInvoiceReleasedBy: existing?.vendorInvoiceReleasedBy ?? null,
       shippingCents,
@@ -727,8 +724,8 @@ export async function releaseNuTechVendorInvoice(
     if (order.vendorInvoiceReleasedAt !== null) {
       return { success: true, id: order.id }
     }
-    if (cleanText(order.vendorInvoiceNumber) === null) {
-      throw new Error("Enter and save the Airlite vendor invoice number first.")
+    if (order.vendorInvoiceStatus === "not_received") {
+      throw new Error("Add the manufacturer's invoice to the order's invoices first.")
     }
     if (order.purchaseOrderReleasedAt === null) {
       throw new Error("Record the Airlite PO release before releasing its invoice.")

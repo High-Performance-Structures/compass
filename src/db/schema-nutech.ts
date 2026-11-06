@@ -6,9 +6,10 @@ import {
   projects,
   sageCostCodes,
   users,
+  vendors,
 } from "./schema"
 import { projectEstimates } from "./schema-estimates"
-import { BRACING_RENTAL_STATUSES } from "../lib/domain/nutech/statuses"
+import { BRACING_RENTAL_STATUSES, NUTECH_ORDER_INVOICE_KINDS } from "../lib/domain/nutech/statuses"
 
 export const nuTechCatalogVersions = sqliteTable(
   "nutech_catalog_versions",
@@ -286,6 +287,34 @@ export const nuTechOrderItems = sqliteTable(
     ),
     index("nutech_order_items_catalog_version_id_idx").on(table.catalogVersionId),
     index("nutech_order_items_product_id_idx").on(table.productId),
+  ]
+)
+
+/**
+ * Each manufacturer invoice, freight invoice and credit memo on an order
+ * (see drizzle/0294). A null vendor is the manufacturer.
+ */
+export const nuTechOrderInvoices = sqliteTable(
+  "nutech_order_invoices",
+  {
+    id: text("id").primaryKey(),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => nuTechOrderWorkflows.id, { onDelete: "cascade" }),
+    vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "restrict" }),
+    kind: text("kind", { enum: NUTECH_ORDER_INVOICE_KINDS }).notNull().default("invoice"),
+    invoiceNumber: text("invoice_number").notNull(),
+    /** Positive for every kind; a credit memo subtracts. */
+    amountCents: integer("amount_cents"),
+    receivedOn: text("received_on"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("nutech_order_invoices_workflow_number_uq").on(table.workflowId, table.invoiceNumber),
+    index("nutech_order_invoices_vendor_id_idx").on(table.vendorId),
+    index("nutech_order_invoices_created_by_idx").on(table.createdBy),
   ]
 )
 

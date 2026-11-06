@@ -105,6 +105,7 @@ export const COMPANY_REFERENCES: readonly CompanyReference[] = [
   { side: "vendor", table: "trade_letters", column: "vendor_id", handling: move("trade_letters") },
   { side: "vendor", table: "vendor_bills", column: "vendor_id", handling: move("bills_payments") },
   { side: "vendor", table: "payments", column: "vendor_id", handling: move("bills_payments") },
+  { side: "vendor", table: "nutech_order_invoices", column: "vendor_id", handling: move("bills_payments") },
   { side: "vendor", table: "email_reply_threads", column: "source_id", when: "source_type = 'vendor'", handling: move("email_threads") },
   { side: "vendor", table: "activity_events", column: "entity_id", when: "entity_type = 'vendor'", handling: move("activity") },
   { side: "vendor", table: "vendors", column: "merged_into_vendor_id", handling: move("merged_records") },

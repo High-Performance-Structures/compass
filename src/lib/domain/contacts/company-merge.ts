@@ -13,6 +13,7 @@ import { companyMergeBudgetLineStatements } from "@/lib/domain/budget/store"
 import { companyMergeEmailThreadStatements } from "@/lib/domain/correspondence/email-store"
 import { companyMergeTradeDocStatements } from "@/lib/domain/documents/store"
 import { companyMergeFinancialStatements } from "@/lib/domain/financials/store"
+import { companyMergeNuTechInvoiceStatements } from "@/lib/domain/nutech/store"
 import { companyMergeOperationStatements } from "@/lib/domain/operations/store"
 import { companyMergeProjectStatements } from "@/lib/domain/project/store"
 import { companyMergeTradeLetterStatements } from "@/lib/domain/trade-letters/store"
@@ -52,6 +53,7 @@ export function companyReferenceMoveStatements(database: D1Database, move: Compa
     ...companyMergeBudgetLineStatements(database, move),
     ...companyMergeWarrantyStatements(database, move),
     ...companyMergeTradeLetterStatements(database, move),
+    ...companyMergeNuTechInvoiceStatements(database, move),
     ...companyMergeFinancialStatements(database, move),
     ...companyMergeProjectStatements(database, move),
     ...companyMergeEmailThreadStatements(database, move),
