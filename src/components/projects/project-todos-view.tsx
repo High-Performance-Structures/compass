@@ -79,6 +79,7 @@ export function ProjectTodosView({
     initialItemId,
     revealReady: filter === todoFilterForItem(initialItem, statuses),
     enableSelection: canManage,
+    sheetId: "todos.job",
   })
 
   React.useEffect(() => {

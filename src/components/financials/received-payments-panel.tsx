@@ -115,6 +115,128 @@ function centsColumn<T>(id: string, header: string, read: (row: T) => number): C
   }
 }
 
+/** The billed items sheet's columns (sheet "payments.billed"). */
+export function billedItemColumns({ projectId, canRecord, canSettle, onRecord, onPrepaid }: {
+  readonly projectId: string
+  readonly canRecord: boolean
+  readonly canSettle: boolean
+  readonly onRecord: (item: ReceivableRow) => void
+  readonly onPrepaid: (target: PrepaidDrawTarget) => void
+}): ColumnDef<ReceivableRow>[] {
+  return [
+    {
+      id: "item",
+      header: "Item",
+      accessorFn: (item) => item.label,
+      cell: ({ row }) => {
+        const href = itemHref(projectId, row.original)
+        return (
+          <div className="min-w-0">
+            {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
+            {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
+            {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
+            {row.original.paymentBlocker && !row.original.prepaid && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
+            {row.original.prepaid && <p className="text-xs text-muted-foreground">{prepaidText(row.original)}</p>}
+            {row.original.sharedSageInvoiceWith && (
+              <p className="text-xs text-warning">
+                Same Sage invoice number as {row.original.sharedSageInvoiceWith}. It may be the same billing: apply a payment to only one.
+              </p>
+            )}
+          </div>
+        )
+      },
+    },
+    { id: "date", header: "Billed", accessorFn: (item) => item.date ?? undefined, cell: ({ row }) => formatDate(row.original.date, "medium", "-") },
+    centsColumn<ReceivableRow>("billed", "Amount", (item) => item.billedCents),
+    centsColumn<ReceivableRow>("paid", "Paid", (item) => item.paidCents),
+    centsColumn<ReceivableRow>("open", "Outstanding", (item) => item.openCents),
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: itemStatusLabel,
+      cell: ({ row }) => (
+        <Badge variant={itemStatusVariant(row.original)}>{itemStatusLabel(row.original)}</Badge>
+      ),
+    },
+    {
+      id: "actions",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <ItemActions item={row.original} canRecord={canRecord} canSettle={canSettle} onRecord={onRecord} onPrepaid={onPrepaid} />
+      ),
+    },
+  ]
+}
+
+/** The received payments sheet's columns (sheet "payments.received"). */
+export function receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }: {
+  readonly canRecord: boolean
+  readonly canVoid: boolean
+  readonly onApply: (payment: ReceivedPaymentView) => void
+  readonly onVoid: (payment: ReceivedPaymentView) => void
+}): ColumnDef<ReceivedPaymentView>[] {
+  return [
+    {
+      id: "reference",
+      header: "Reference",
+      accessorFn: (payment) => payment.referenceNumber ?? undefined,
+      cell: ({ row }) => <span className="font-medium">{row.original.referenceNumber || "-"}</span>,
+    },
+    { id: "received", header: "Received", accessorFn: (payment) => payment.paymentDate, cell: ({ row }) => formatDate(row.original.paymentDate, "medium", "-") },
+    { id: "method", header: "Method", accessorFn: (payment) => paymentMethodLabel(payment.paymentMethod) },
+    centsColumn<ReceivedPaymentView>("amount", "Amount", (payment) => payment.amountCents),
+    {
+      id: "appliedTo",
+      header: "Applied to",
+      accessorFn: appliedTo,
+      cell: ({ row }) => (
+        <ul className="space-y-0.5 text-sm">
+          {row.original.allocations.map((allocation) => (
+            <li key={allocation.id} className={allocation.released ? "text-muted-foreground line-through" : undefined}>
+              {allocation.itemLabel} {formatCents(allocation.cents)}
+            </li>
+          ))}
+          {row.original.allocations.length === 0 && <li>-</li>}
+        </ul>
+      ),
+    },
+    centsColumn<ReceivedPaymentView>("unapplied", "Unapplied", (payment) => payment.unappliedCents),
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: paymentState,
+      cell: ({ row }) => (
+        <div>
+          <Badge variant={row.original.voidedAt ? "destructive" : "secondary"}>{paymentState(row.original)}</Badge>
+          {row.original.voidedAt && (
+            <p className="mt-1 max-w-56 text-xs text-muted-foreground">
+              {row.original.voidReason}
+              {row.original.voidedByName ? ` (${row.original.voidedByName})` : ""}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    { id: "sage", header: "Sage", accessorFn: sageStatus },
+    {
+      id: "actions",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const payment = row.original
+        if (!canChange(payment)) return null
+        return (
+          <div className="flex justify-end gap-2">
+            {canRecord && payment.unappliedCents > 0 && (
+              <Button size="sm" variant="outline" onClick={() => onApply(payment)}>Apply</Button>
+            )}
+            {canVoid && <Button size="sm" variant="outline" onClick={() => onVoid(payment)}>Void</Button>}
+          </div>
+        )
+      },
+    },
+  ]
+}
+
 function canChange(payment: ReceivedPaymentView): boolean {
   return !payment.voidedAt && (payment.sourceSystem === "compass" || payment.sourceSystem === "manual")
 }
@@ -193,50 +315,11 @@ function BilledItemsList({
     () => items.filter((item) => matches(query, [item.label, item.sageInvoiceNumber, item.sourceLabel, itemStatusLabel(item), prepaidText(item)])),
     [items, query],
   )
-  const columns = React.useMemo<ColumnDef<ReceivableRow>[]>(() => [
-    {
-      id: "item",
-      header: "Item",
-      accessorFn: (item) => item.label,
-      cell: ({ row }) => {
-        const href = itemHref(projectId, row.original)
-        return (
-          <div className="min-w-0">
-            {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
-            {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
-            {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
-            {row.original.paymentBlocker && !row.original.prepaid && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
-            {row.original.prepaid && <p className="text-xs text-muted-foreground">{prepaidText(row.original)}</p>}
-            {row.original.sharedSageInvoiceWith && (
-              <p className="text-xs text-warning">
-                Same Sage invoice number as {row.original.sharedSageInvoiceWith}. It may be the same billing: apply a payment to only one.
-              </p>
-            )}
-          </div>
-        )
-      },
-    },
-    { id: "date", header: "Billed", accessorFn: (item) => item.date ?? undefined, cell: ({ row }) => formatDate(row.original.date, "medium", "-") },
-    centsColumn<ReceivableRow>("billed", "Amount", (item) => item.billedCents),
-    centsColumn<ReceivableRow>("paid", "Paid", (item) => item.paidCents),
-    centsColumn<ReceivableRow>("open", "Outstanding", (item) => item.openCents),
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: itemStatusLabel,
-      cell: ({ row }) => (
-        <Badge variant={itemStatusVariant(row.original)}>{itemStatusLabel(row.original)}</Badge>
-      ),
-    },
-    {
-      id: "actions",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <ItemActions item={row.original} canRecord={canRecord} canSettle={canSettle} onRecord={onRecord} onPrepaid={onPrepaid} />
-      ),
-    },
-  ], [projectId, canRecord, canSettle, onRecord, onPrepaid])
-  const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query })
+  const columns = React.useMemo(
+    () => billedItemColumns({ projectId, canRecord, canSettle, onRecord, onPrepaid }),
+    [projectId, canRecord, canSettle, onRecord, onPrepaid],
+  )
+  const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query, sheetId: "payments.billed" })
   return (
     <div className="space-y-3">
       <SearchBox value={query} onChange={setQuery} label="Search billed items" />
@@ -265,67 +348,11 @@ function PaymentsList({
     ])),
     [payments, query],
   )
-  const columns = React.useMemo<ColumnDef<ReceivedPaymentView>[]>(() => [
-    {
-      id: "reference",
-      header: "Reference",
-      accessorFn: (payment) => payment.referenceNumber ?? undefined,
-      cell: ({ row }) => <span className="font-medium">{row.original.referenceNumber || "-"}</span>,
-    },
-    { id: "received", header: "Received", accessorFn: (payment) => payment.paymentDate, cell: ({ row }) => formatDate(row.original.paymentDate, "medium", "-") },
-    { id: "method", header: "Method", accessorFn: (payment) => paymentMethodLabel(payment.paymentMethod) },
-    centsColumn<ReceivedPaymentView>("amount", "Amount", (payment) => payment.amountCents),
-    {
-      id: "appliedTo",
-      header: "Applied to",
-      accessorFn: appliedTo,
-      cell: ({ row }) => (
-        <ul className="space-y-0.5 text-sm">
-          {row.original.allocations.map((allocation) => (
-            <li key={allocation.id} className={allocation.released ? "text-muted-foreground line-through" : undefined}>
-              {allocation.itemLabel} {formatCents(allocation.cents)}
-            </li>
-          ))}
-          {row.original.allocations.length === 0 && <li>-</li>}
-        </ul>
-      ),
-    },
-    centsColumn<ReceivedPaymentView>("unapplied", "Unapplied", (payment) => payment.unappliedCents),
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: paymentState,
-      cell: ({ row }) => (
-        <div>
-          <Badge variant={row.original.voidedAt ? "destructive" : "secondary"}>{paymentState(row.original)}</Badge>
-          {row.original.voidedAt && (
-            <p className="mt-1 max-w-56 text-xs text-muted-foreground">
-              {row.original.voidReason}
-              {row.original.voidedByName ? ` (${row.original.voidedByName})` : ""}
-            </p>
-          )}
-        </div>
-      ),
-    },
-    { id: "sage", header: "Sage", accessorFn: sageStatus },
-    {
-      id: "actions",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const payment = row.original
-        if (!canChange(payment)) return null
-        return (
-          <div className="flex justify-end gap-2">
-            {canRecord && payment.unappliedCents > 0 && (
-              <Button size="sm" variant="outline" onClick={() => onApply(payment)}>Apply</Button>
-            )}
-            {canVoid && <Button size="sm" variant="outline" onClick={() => onVoid(payment)}>Void</Button>}
-          </div>
-        )
-      },
-    },
-  ], [canRecord, canVoid, onApply, onVoid])
-  const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query })
+  const columns = React.useMemo(
+    () => receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }),
+    [canRecord, canVoid, onApply, onVoid],
+  )
+  const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query, sheetId: "payments.received" })
   return (
     <div className="space-y-3">
       <SearchBox value={query} onChange={setQuery} label="Search payments" />

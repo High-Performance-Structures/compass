@@ -2,7 +2,7 @@ import type { VendorDirectoryPage } from "@/app/actions/contact-directory"
 import type { getContactDirectoryAccess } from "@/app/actions/contact-directory-access"
 import type { InternalDirectoryContact } from "@/app/actions/vendors"
 import type { CustomerDirectoryRow, DirectorySummary } from "@/lib/domain/contacts/directory-page"
-import type { RecordPage } from "@/lib/record-page"
+import type { RecordPage, RecordPageQuery } from "@/lib/record-page"
 import type { UnassignedPerson } from "@/lib/domain/contacts/unassigned-people"
 import type { ImportedParticipantReviewRow } from "@/lib/domain/conversations/imported-participant-review"
 
@@ -39,6 +39,12 @@ export type ContactsBootstrap = {
   readonly unassigned: readonly UnassignedPerson[]
   /** Imported conversation participants to review (Needs review); null for non-staff. */
   readonly participantReview: RecordPage<ImportedParticipantReviewRow> | null
+  /** The query each first page was read with: page one in its sheet's opening sort. */
+  readonly firstPageQueries: {
+    readonly vendors: RecordPageQuery
+    readonly customers: RecordPageQuery
+    readonly participantReview: RecordPageQuery
+  }
 }
 
 export function toContactsTab(value: string | null | undefined): ContactsTab {

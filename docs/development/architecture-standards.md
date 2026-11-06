@@ -118,6 +118,9 @@ The database is the source of truth, and each fact is stored once.
   list of child records in a text column. Use a child table. JSON columns are
   for raw provider payloads and named snapshots only, and they carry a
   `// json:` comment saying which.
+  A list of code-constant ids (such as a list sheet's column ids from its
+  registry) is not a list of records and may be a validated JSON column,
+  as saved view definitions are.
 - **Status and type values come from one list.** Each status, state, type,
   kind, or role column uses `enum:` from an exported `as const` array in its
   domain module (`src/lib/domain/<module>/statuses.ts`), and the code imports

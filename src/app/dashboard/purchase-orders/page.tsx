@@ -8,6 +8,7 @@ import { ProjectContextWatermarkShell } from "@/components/projects/project-cont
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
 import { ALL_JOBS_PURCHASE_ORDER_LIMIT } from "@/lib/domain/operations/purchase-order-lists"
 import { purchaseOrderFilterOptions } from "@/lib/purchase-orders/status-filter"
 
@@ -20,7 +21,12 @@ export default async function AllJobsPurchaseOrdersPage({
 }: {
   readonly searchParams: Promise<{ readonly status?: string | readonly string[] }>
 }) {
-  const [list, projects] = await Promise.all([getAllJobsPurchaseOrders((await searchParams).status), getProjects()])
+  // Without ?status= the sheet opens on the company's filter (Settings > Lists).
+  const requested = (await searchParams).status
+  const [list, projects] = await Promise.all([
+    getAllJobsPurchaseOrders(requested ?? (await listSheetStartFilter("purchase-orders.all-jobs")) ?? undefined),
+    getProjects(),
+  ])
   const statusFilter = list.success ? list.data.statusFilter : "open"
 
   return (

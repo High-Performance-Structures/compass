@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import type { ColumnDef, SortingState } from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { RecordStatusBadge } from "@/components/record-status-badge"
@@ -18,8 +18,6 @@ import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 
 const rowId = (row: PurchaseOrderListRow): string => row.id
-// PO sheets open sorted by required date, soonest first (blank dates last).
-const REQUIRED_DATE_FIRST: SortingState = [{ id: "dueDate", desc: false }]
 
 /** The PO's record on its job's purchase order page. */
 function rowHref(row: PurchaseOrderListRow, statusFilter: string): string {
@@ -49,7 +47,7 @@ function DateCell({ value }: { readonly value: string | null }): React.ReactElem
   return <span className="whitespace-nowrap tabular-nums">{formatDate(value, "medium", "—")}</span>
 }
 
-function purchaseOrderColumns(
+export function purchaseOrderColumns(
   showProject: boolean,
   statusFilter: string,
   statuses: RecordStatusList,
@@ -153,7 +151,8 @@ function purchaseOrderColumns(
 
 /**
  * A purchase order sheet: a job's POs, or every job's (with a Project
- * column). It opens sorted by required date. Sort by a column header, search,
+ * column). It opens sorted by required date unless the company set another
+ * sort in Settings > Lists. Sort by a column header, search,
  * and click a row to open the PO's record. The status filter buttons sit
  * above it, on the page.
  */
@@ -191,7 +190,8 @@ export function PurchaseOrderRecordTable({
     getRowId: rowId,
     resetKey: query,
     initialItemId: selectedId,
-    initialSorting: REQUIRED_DATE_FIRST,
+    // Opens sorted by required date unless the company chose another sort.
+    sheetId: allJobs ? "purchase-orders.all-jobs" : "purchase-orders.job",
   })
 
   return (

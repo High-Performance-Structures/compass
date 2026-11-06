@@ -2,7 +2,8 @@
  * The only code that writes the settings and per-user preference tables
  * (architecture standard, section 1): company feature settings, AI provider
  * config, themes, custom dashboards, MCP keys, morning-plan preferences,
- * view preferences, saved views and their defaults, and push tokens. The desktop
+ * view preferences, saved views and their defaults, list sheet layouts and
+ * column preferences, and push tokens. The desktop
  * offline mutation queue has its own client-safe store in ./offline-queue.
  * Callers resolve access first; nothing here checks
  * who is asking. Functions named `…Statement` return a statement for the
@@ -15,18 +16,21 @@ import type { DrizzleD1Database } from "drizzle-orm/d1"
 import {
   morningPlanPreferences,
   organizationFeatureSettings,
+  organizationListSheetSettings,
   projectSavedViews,
   pushTokens,
   savedViewDefaults,
   savedViews,
   scheduleSavedViews,
+  userListSheetColumnPreferences,
   userViewPreferences,
 } from "@/db/schema"
 import { userProviderConfig } from "@/db/schema-ai-config"
 import { customDashboards } from "@/db/schema-dashboards"
 import { mcpApiKeys, type NewMcpApiKey } from "@/db/schema-mcp"
 import { customThemes, userThemePreference } from "@/db/schema-theme"
-import { SAVED_VIEW_VISIBILITIES, type SavedViewScope, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
+import { assertListFields } from "@/lib/shared/statuses"
+import { LIST_SHEET_SORT_DIRECTIONS, SAVED_VIEW_VISIBILITIES, type ListSheetSortDirection, type SavedViewScope, type SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 type Statement = BatchItem<"sqlite">
@@ -571,4 +575,96 @@ export async function deleteUserPushTokens(db: Db, userId: string, token: string
 /** A provider reported the token invalid; stop sending to it. */
 export async function deletePushToken(db: Db, tokenId: string): Promise<void> {
   await db.delete(pushTokens).where(eq(pushTokens.id, tokenId))
+}
+
+// ---------------------------------------------------------------------------
+// List sheet layouts (Settings > Lists) and personal column preferences
+// ---------------------------------------------------------------------------
+
+type CompanyListSheetValues = {
+  readonly organizationId: string
+  readonly sheetKey: string
+  /** JSON checked by listSheetColumnsSchema. */
+  readonly columns: string
+  readonly sortColumn: string | null
+  readonly sortDirection: ListSheetSortDirection | null
+  readonly startFilter: string | null
+  readonly updatedBy: string
+  readonly now: string
+}
+
+/** Saves (or replaces) a company's layout for one sheet. Scoped to the caller's organization by the unique key. */
+export async function saveOrganizationListSheetSetting(db: Db, input: CompanyListSheetValues): Promise<void> {
+  const { columns, sortColumn, sortDirection, startFilter, updatedBy, now } = input
+  assertListFields("organization_list_sheet_settings", input, { sortDirection: LIST_SHEET_SORT_DIRECTIONS })
+  await db
+    .insert(organizationListSheetSettings)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: input.organizationId,
+      sheetKey: input.sheetKey,
+      columns,
+      sortColumn,
+      sortDirection,
+      startFilter,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy,
+    })
+    .onConflictDoUpdate({
+      target: [organizationListSheetSettings.organizationId, organizationListSheetSettings.sheetKey],
+      set: { columns, sortColumn, sortDirection, startFilter, updatedAt: now, updatedBy },
+    })
+}
+
+/** Removes a company's layout so the sheet uses its code default again. */
+export async function deleteOrganizationListSheetSetting(db: Db, organizationId: string, sheetKey: string): Promise<void> {
+  await db
+    .delete(organizationListSheetSettings)
+    .where(and(eq(organizationListSheetSettings.organizationId, organizationId), eq(organizationListSheetSettings.sheetKey, sheetKey)))
+}
+
+type PersonalListSheetValues = {
+  readonly userId: string
+  readonly organizationId: string
+  readonly sheetKey: string
+  /** JSON checked by listSheetColumnIdsSchema. */
+  readonly hiddenColumnIds: string
+  readonly shownColumnIds: string
+  readonly now: string
+}
+
+/** Saves (or replaces) one person's columns on one sheet in one organization. */
+export async function saveUserListSheetColumnPreference(db: Db, input: PersonalListSheetValues): Promise<void> {
+  const { hiddenColumnIds, shownColumnIds, now } = input
+  await db
+    .insert(userListSheetColumnPreferences)
+    .values({
+      id: crypto.randomUUID(),
+      userId: input.userId,
+      organizationId: input.organizationId,
+      sheetKey: input.sheetKey,
+      hiddenColumnIds,
+      shownColumnIds,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [userListSheetColumnPreferences.userId, userListSheetColumnPreferences.organizationId, userListSheetColumnPreferences.sheetKey],
+      set: { hiddenColumnIds, shownColumnIds, updatedAt: now },
+    })
+}
+
+/** Removes one person's columns on one sheet, back to the company layout. */
+export async function deleteUserListSheetColumnPreference(
+  db: Db,
+  input: { readonly userId: string; readonly organizationId: string; readonly sheetKey: string },
+): Promise<void> {
+  await db
+    .delete(userListSheetColumnPreferences)
+    .where(and(
+      eq(userListSheetColumnPreferences.userId, input.userId),
+      eq(userListSheetColumnPreferences.organizationId, input.organizationId),
+      eq(userListSheetColumnPreferences.sheetKey, input.sheetKey),
+    ))
 }
