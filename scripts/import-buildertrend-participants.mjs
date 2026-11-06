@@ -84,9 +84,11 @@ export function parseDirectory(value) {
     if (!personKey) throw new Error(`directory people[${index}].personKey is required`)
     if (!KINDS.has(row.kind)) throw new Error(`directory people[${index}].kind must be staff, owner or vendor`)
     if (row.kind === "staff" && !text(row.userId)) throw new Error(`directory people[${index}]: staff need a userId`)
+    if (row.unassigned !== undefined && typeof row.unassigned !== "boolean") throw new Error(`directory people[${index}].unassigned must be a boolean`)
     return {
       personKey,
       kind: row.kind,
+      unassigned: row.unassigned === true,
       displayName: text(row.displayName) ?? personKey,
       names: new Set([row.displayName, ...(Array.isArray(row.names) ? row.names : [])].map(normalizeName).filter(Boolean)),
       emails: new Set((Array.isArray(row.emails) ? row.emails : []).map(normalizeEmail).filter(Boolean)),
@@ -141,7 +143,7 @@ export function parsePeopleCatalog(textValue) {
 
 /** The importer's participant entry for a matched directory person on a project. */
 function entryFor(person) {
-  const base = { kind: person.kind, identity: `person:${person.personKey}`, contactIds: person.projectContactIds }
+  const base = { kind: person.kind, identity: `person:${person.personKey}`, contactIds: person.projectContactIds, ...(person.unassigned ? { unassigned: true } : {}) }
   if (person.userId) return { ...base, decision: "user", userId: person.userId }
   return {
     ...base, decision: "new_contact", userId: null,

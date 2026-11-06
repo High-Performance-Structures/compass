@@ -59,7 +59,7 @@ export function directoryQueries(organizationId) {
     { name: "internalContacts", sql: page(`SELECT ic.id AS cursor, ic.id, ic.user_id, ic.name, ic.email FROM internal_contacts ic WHERE ic.organization_id = ${org} AND ic.active = 1 AND ic.user_id IS NOT NULL`, "ic.id") },
     { name: "vendorContacts", sql: page(`SELECT vc.id AS cursor, vc.id, vc.vendor_id, vc.user_id, vc.name, vc.email, vc.source_system, vc.source_record_id, v.source_system AS vendor_source_system, v.source_record_id AS vendor_source_record_id FROM vendor_contacts vc JOIN vendors v ON v.id = vc.vendor_id WHERE v.organization_id = ${org} AND vc.active = 1 AND vc.merged_into_person_id IS NULL AND v.merged_into_vendor_id IS NULL`, "vc.id") },
     { name: "customerContacts", sql: page(`SELECT cc.id AS cursor, cc.id, cc.customer_id, cc.user_id, cc.name, cc.email, cc.source_system, cc.source_record_id, c.buildertrend_contact_id AS customer_bt_id FROM customer_contacts cc JOIN customers c ON c.id = cc.customer_id WHERE c.organization_id = ${org} AND cc.active = 1 AND cc.merged_into_person_id IS NULL AND c.merged_into_customer_id IS NULL`, "cc.id") },
-    { name: "projectContacts", sql: page(`SELECT pc.id AS cursor, pc.id, pc.project_id, pc.contact_type, pc.display_name, pc.email, pc.source_entity_type, pc.source_entity_id, pc.internal_contact_id, pc.vendor_contact_id, pc.customer_id, pc.customer_contact_id FROM project_contacts pc JOIN projects p ON p.id = pc.project_id WHERE p.organization_id = ${org} AND pc.active = 1`, "pc.id") },
+    { name: "projectContacts", sql: page(`SELECT pc.id AS cursor, pc.id, pc.project_id, pc.contact_type, pc.display_name, pc.email, pc.source_entity_type, pc.source_entity_id, pc.internal_contact_id, pc.vendor_id, pc.vendor_contact_id, pc.customer_id, pc.customer_contact_id FROM project_contacts pc JOIN projects p ON p.id = pc.project_id WHERE p.organization_id = ${org} AND pc.active = 1`, "pc.id") },
     { name: "btVendors", sql: page(`SELECT v.id AS cursor, v.id, v.source_record_id FROM vendors v WHERE v.organization_id = ${org} AND v.source_system = 'buildertrend' AND v.source_record_id IS NOT NULL AND v.merged_into_vendor_id IS NULL`, "v.id") },
     { name: "vendorNames", sql: page(`SELECT v.id AS cursor, v.id, v.name FROM vendors v WHERE v.organization_id = ${org} AND v.directory_status = 'active' AND v.merged_into_vendor_id IS NULL AND lower(trim(COALESCE(v.category, ''))) <> 'internal'`, "v.id") },
     { name: "projects", sql: page(`SELECT p.id AS cursor, p.id, p.client_customer_id FROM projects p WHERE p.organization_id = ${org}`, "p.id") },
@@ -153,6 +153,14 @@ export function buildDirectorySnapshot(rows) {
     // An unlinked internal contact has no account, so it can never be staff.
     if (!linked && row.contact_type === "internal") continue
     const target = linked ?? person(`project_contact:${row.id}`, row.contact_type === "owner" ? "owner" : "vendor")
+    if (!linked) {
+      if (text(row.vendor_id)) target.links.vendorId = row.vendor_id
+      if (text(row.customer_id)) target.links.customerId = row.customer_id
+      // Finding an existing contact proves identity, not a staff decision to
+      // connect that new person to a company or release their conversation.
+      target.unassigned = row.source_entity_type === "buildertrend_new_person"
+        && ![row.internal_contact_id, row.vendor_id, row.vendor_contact_id, row.customer_id, row.customer_contact_id].some(text)
+    }
     target.projectIds.add(row.project_id)
     target.projectContactIds[row.project_id] ??= row.id
     addName(target, row.display_name)
@@ -185,6 +193,7 @@ export function buildDirectorySnapshot(rows) {
         names: entry.names,
         emails: [...entry.emails].sort(),
         userId: entry.userId,
+        unassigned: entry.unassigned === true,
         projectIds: [...entry.projectIds].sort(),
         projectContactIds: entry.projectContactIds,
         vendorId: entry.links.vendorId ?? null, vendorContactId: entry.links.vendorContactId ?? null,
