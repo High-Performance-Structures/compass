@@ -13,15 +13,12 @@ import { channelMembers, channels, messages } from "@/db/schema-conversations"
 import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import {
-  createNotificationEvent,
-  createSystemNotificationEvent,
-  type NotificationRecipientInput,
-} from "@/lib/notifications/create-event"
+import { createNotificationEvent, createSystemNotificationEvent, type NotificationRecipientInput } from "@/lib/notifications/create-event"
 import { channelMessageNotificationDelivery } from "@/lib/notifications/delivery"
 import { channelNotificationRecipients, type ChannelMessageMention } from "@/lib/notifications/audience"
 import { shouldNotifyForMessage } from "@/lib/domain/conversations/imported"
 import { workflowRoleIdFromString } from "@/lib/project-workflow-roles"
+import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { portalPurchaseOrderVendorStatusLabel, type PortalPurchaseOrderVendorStatus } from "@/lib/purchase-orders/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -745,7 +742,7 @@ export async function notifyPurchaseOrderVendorUpdate(
     body: `${responder} ${updateLabel}.${
       input.note ? ` ${notificationPreview(input.note)}` : ""
     }`,
-    href: `/dashboard/projects/${input.projectId}/purchase-orders`,
+    href: purchaseOrderRecordHref(input.projectId, input.purchaseOrderId),
     priority: input.update === "on_hold" ? "high" : "normal",
     audience: "project_team",
     createdBy: input.respondedBy.id,

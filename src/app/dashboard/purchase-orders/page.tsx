@@ -1,14 +1,27 @@
 import { IconShoppingCart } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
-import { ActiveProjectSectionRedirect } from "@/components/projects/active-project-section-redirect"
+import { getAllJobsPurchaseOrders } from "@/app/actions/purchase-order-lists"
+import { PageHeader } from "@/components/page-header"
+import { ActiveProjectSectionShortcut } from "@/components/projects/active-project-section-redirect"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
-import { Badge } from "@/components/ui/badge"
-import { PageHeader } from "@/components/page-header"
+import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
+import { ALL_JOBS_PURCHASE_ORDER_LIMIT } from "@/lib/domain/operations/purchase-order-lists"
+import { parsePurchaseOrderStatusFilter, purchaseOrderFilterOptions } from "@/lib/purchase-orders/status-filter"
 
-export default async function PurchaseOrderProjectPickerPage() {
-  const projects = await getProjects()
+/**
+ * Every job's purchase orders on one sheet, opening on the open POs sorted by
+ * required date, plus a way into one job's PO list.
+ */
+export default async function AllJobsPurchaseOrdersPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly status?: string | readonly string[] }>
+}) {
+  const statusFilter = parsePurchaseOrderStatusFilter((await searchParams).status)
+  const [list, projects] = await Promise.all([getAllJobsPurchaseOrders(statusFilter), getProjects()])
 
   return (
     <ProjectContextWatermarkShell>
@@ -18,53 +31,68 @@ export default async function PurchaseOrderProjectPickerPage() {
         title="Purchase Orders"
       />
 
-      <section className="clarity-panel border-l-[6px] border-l-brand-hps-primary p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
           <div>
-            <p className="text-sm font-semibold">Project required first</p>
-            <p className="mt-1 text-sm opacity-80">
-              Keeps vendor commitments tied to the right job.
+            <h2 className="text-sm font-semibold">All jobs</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Purchase orders from every job. Open a row to see the P.O. on its job.
             </p>
           </div>
-          <Badge variant="secondary">Project lock</Badge>
+          <ActiveProjectSectionShortcut targetSection="purchase-orders" noun="POs" />
         </div>
+        {list.success ? (
+          <>
+            <StatusFilterBar
+              kind="link"
+              label="Filter purchase orders by status"
+              options={purchaseOrderFilterOptions(list.data.statusCounts)}
+              selected={statusFilter}
+              hrefFor={(value) => `/dashboard/purchase-orders?status=${value}`}
+            />
+            {list.data.truncated && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Showing the first {ALL_JOBS_PURCHASE_ORDER_LIMIT} purchase orders by required date. Choose a status to
+                narrow the list; search looks only within these.
+              </p>
+            )}
+            <PurchaseOrderRecordTable
+              rows={list.data.rows}
+              allJobs
+              statusFilter="all"
+              emptyMessage={
+                statusFilter === "open"
+                  ? "No open purchase orders. Choose All to see every P.O."
+                  : "No purchase orders match this filter."
+              }
+            />
+          </>
+        ) : (
+          // Without the purchase order permission the job picker below still works.
+          <p className="text-sm text-muted-foreground">
+            Every job&apos;s purchase orders aren&apos;t available to you. Open a job&apos;s purchase orders below.
+          </p>
+        )}
       </section>
-
-      <ActiveProjectSectionRedirect
-        targetSection="purchase-orders"
-        label="Open POs"
-      />
 
       <section className="space-y-3">
         <div>
-          <div>
-            <h2 className="text-sm font-semibold">Select project</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Search by project number, name, client, or accounting context.
-            </p>
-          </div>
+          <h2 className="text-sm font-semibold">A job&apos;s purchase orders</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Open one project to create POs and manage them.
+          </p>
         </div>
-
         {projects.length > 0 ? (
-          <div className="max-w-xl rounded-lg border bg-background p-4 shadow-sm">
+          <div className="max-w-xl">
             <ProjectQuickSwitcher
               projects={projects}
               targetSection="purchase-orders"
               placeholder="Search projects for POs..."
               className="w-full"
             />
-            <p className="mt-3 text-xs text-muted-foreground">
-              Opens the PO queue for the selected project.
-            </p>
           </div>
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
-            <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No projects available</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add or sync projects first.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">No projects yet. Add or sync projects first.</p>
         )}
       </section>
     </ProjectContextWatermarkShell>

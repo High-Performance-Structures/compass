@@ -54,10 +54,10 @@
     "channelReadState": [
       "src/lib/domain/conversations/store.ts"
     ],
-    "channelThreadUserState": [
+    "channels": [
       "src/lib/domain/conversations/store.ts"
     ],
-    "channels": [
+    "channelThreadUserState": [
       "src/lib/domain/conversations/store.ts"
     ],
     "cherishCardFulfillments": [
@@ -903,7 +903,7 @@
     "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
-    "src/components/nutech/nutech-order-workspace.tsx": 1182,
+    "src/components/nutech/nutech-order-workspace.tsx": 1179,
     "src/components/projects/owner-update-draft-editor.tsx": 1125,
     "src/components/projects/project-audience-preview.tsx": 923,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
@@ -923,7 +923,7 @@
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1040,
     "src/lib/notifications/create-event.ts": 843,
-    "src/lib/notifications/events.ts": 955,
+    "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1333,
     "src/lib/sync/engine.ts": 864,

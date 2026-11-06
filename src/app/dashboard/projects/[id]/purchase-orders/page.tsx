@@ -14,7 +14,10 @@ import {
 } from "@tabler/icons-react"
 
 import { getProjectPurchaseOrderFormOptions, getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
-import type { ProjectPurchaseOrderItem } from "@/lib/domain/operations/types"
+import type { ProjectPurchaseOrderItem, PurchaseOrderListRow } from "@/lib/domain/operations/types"
+import { PURCHASE_ORDER_DESCRIPTION_PREVIEW } from "@/lib/domain/operations/purchase-order-lists"
+import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
@@ -40,12 +43,13 @@ import { cn } from "@/lib/utils"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
 import {
-  isClosedProjectOperationStatus,
-  parseProjectOperationStatusFilter,
-  projectOperationMatchesStatusFilter,
-  type ProjectOperationStatusFilter,
-} from "@/lib/project-operations/status"
+  isOpenPurchaseOrder,
+  parsePurchaseOrderStatusFilter,
+  purchaseOrderFilterOptions,
+  purchaseOrderMatchesFilter,
+} from "@/lib/purchase-orders/status-filter"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
+import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 import {
@@ -73,22 +77,28 @@ function label(value: string): string {
     .join(" ")
 }
 
-const PURCHASE_ORDER_FILTERS: readonly {
-  readonly value: ProjectOperationStatusFilter
-  readonly label: string
-}[] = [
-  { value: "open", label: "Open" },
-  { value: "draft", label: "Draft" },
-  { value: "approved", label: "Approved" },
-  { value: "sent", label: "Sent" },
-  { value: "ordered", label: "Ordered" },
-  { value: "partially_received", label: "Partially received" },
-  { value: "received", label: "Received" },
-  { value: "complete", label: "Complete" },
-  { value: "closed", label: "Closed" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "All" },
-]
+function purchaseOrderListRow(
+  order: ProjectPurchaseOrderItem,
+  projectId: string,
+  project: { readonly projectNumber: string | null; readonly name: string } | undefined,
+): PurchaseOrderListRow {
+  return {
+    id: order.id,
+    projectId,
+    projectNumber: project?.projectNumber ?? null,
+    projectName: project?.name ?? null,
+    number: order.sourceRecordNumber,
+    title: order.title,
+    // The table shows a short preview; the full text stays on the record.
+    description: order.description?.slice(0, PURCHASE_ORDER_DESCRIPTION_PREVIEW) ?? null,
+    vendorName: order.companyName,
+    status: order.status,
+    siteContactName: order.assigneeName,
+    orderDate: order.sageOrderDate,
+    dueDate: order.dueDate,
+    amount: order.amount,
+  }
+}
 
 function purchaseOrderTaskTitle(order: ProjectPurchaseOrderItem): string {
   return `Follow up P.O.: ${order.sourceRecordNumber ?? order.title}`
@@ -184,7 +194,7 @@ function PurchaseOrderCard({
           <div className="flex flex-wrap gap-1">
             {isCreated && <Badge variant="secondary">Just created</Badge>}
             {isFocused && !isCreated && (
-              <Badge variant="secondary">Selected from calendar</Badge>
+              <Badge variant="secondary">Selected</Badge>
             )}
             <ProjectOperationStatusSelect
               projectId={projectId}
@@ -231,7 +241,7 @@ function PurchaseOrderCard({
               sourceLabel="Purchase Order"
               sourceRecordId={order.id}
               sourceRecordNumber={order.sourceRecordNumber}
-              sourceHref={`/dashboard/projects/${projectId}/purchase-orders`}
+              sourceHref={purchaseOrderRecordHref(projectId, order.id)}
               defaultTitle={purchaseOrderTaskTitle(order)}
               defaultDescription={purchaseOrderTaskDescription(order)}
               defaultAssigneeName={order.assigneeName}
@@ -380,7 +390,7 @@ export default async function ProjectPurchaseOrdersPage({
   const focusedPurchaseOrderId = Array.isArray(query.item)
     ? query.item[0] ?? null
     : query.item ?? null
-  const statusFilter = parseProjectOperationStatusFilter(query.status)
+  const statusFilter = parsePurchaseOrderStatusFilter(query.status)
   const currentUser = await getCurrentUser()
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
@@ -446,10 +456,17 @@ export default async function ProjectPurchaseOrdersPage({
     contactsSummary.allContacts
   )
   const openPurchaseOrders = purchaseOrders.filter(
-    (order) => !isClosedProjectOperationStatus(order.status)
+    (order) => isOpenPurchaseOrder(order.status)
   )
   const visiblePurchaseOrders = purchaseOrders.filter((order) =>
-    projectOperationMatchesStatusFilter(order.status, statusFilter)
+    purchaseOrderMatchesFilter(order.status, statusFilter)
+  )
+  // The list opens one PO at a time below it (a row click, a calendar or
+  // email link, or a PO just created).
+  const selectedPurchaseOrderId = focusedPurchaseOrderId ?? createdPurchaseOrderId
+  const selectedPurchaseOrders = purchaseOrders.filter((order) => order.id === selectedPurchaseOrderId)
+  const listRows = visiblePurchaseOrders.map((order) =>
+    purchaseOrderListRow(order, id, project),
   )
   const openTotal = openPurchaseOrders.reduce(
     (total, order) => total + (order.amount ?? 0),
@@ -487,7 +504,7 @@ export default async function ProjectPurchaseOrdersPage({
           />
           <div className="flex flex-wrap justify-end gap-2">
             <Badge variant="secondary">
-              {openPurchaseOrders.length} open / draft
+              {openPurchaseOrders.length} open
             </Badge>
             <Badge variant="outline">{formatPurchaseOrderMoney(openTotal)}</Badge>
           </div>
@@ -532,32 +549,32 @@ export default async function ProjectPurchaseOrdersPage({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <nav
-            aria-label="Filter purchase orders by status"
-            className="flex flex-wrap gap-1"
-          >
-            {PURCHASE_ORDER_FILTERS.map((option) => (
-              <Button
-                key={option.value}
-                asChild
-                size="sm"
-                variant={statusFilter === option.value ? "secondary" : "ghost"}
-              >
-                <Link
-                  href={`/dashboard/projects/${id}/purchase-orders?status=${option.value}`}
-                >
-                  {option.label}
-                </Link>
-              </Button>
-            ))}
-          </nav>
+          <StatusFilterBar
+            kind="link"
+            label="Filter purchase orders by status"
+            options={purchaseOrderFilterOptions(purchaseOrders.map((order) => ({ status: order.status, count: 1 })))}
+            selected={statusFilter}
+            hrefFor={(value) => `/dashboard/projects/${id}/purchase-orders?status=${value}`}
+          />
           <p className="text-xs text-muted-foreground">
             {visiblePurchaseOrders.length} of {purchaseOrders.length} shown
           </p>
         </div>
 
-        {visiblePurchaseOrders.length > 0 ? (
-          visiblePurchaseOrders.map((order) => (
+        <PurchaseOrderRecordTable
+          rows={listRows}
+          allJobs={false}
+          statusFilter={statusFilter}
+          selectedId={selectedPurchaseOrderId}
+          emptyMessage={
+            purchaseOrders.length === 0
+              ? "No PO requests yet. Create a PO when a vendor commitment is ready."
+              : "No purchase orders match this filter. Choose another status to see the rest."
+          }
+        />
+
+        {selectedPurchaseOrders.length > 0 ? (
+          selectedPurchaseOrders.map((order) => (
             <PurchaseOrderCard
               key={order.id}
               brand={brand}
@@ -602,21 +619,11 @@ export default async function ProjectPurchaseOrdersPage({
               }
             />
           ))
-        ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
-            <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">
-              {purchaseOrders.length === 0
-                ? "No PO requests yet"
-                : "No purchase orders match this filter"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {purchaseOrders.length === 0
-                ? "Create a PO when a vendor commitment is ready."
-                : "Choose another status to see the rest of the PO queue."}
-            </p>
-          </div>
-        )}
+        ) : purchaseOrders.length > 0 ? (
+          <p className="text-sm text-muted-foreground print:hidden">
+            Select a purchase order to see its details, lines, email and print options.
+          </p>
+        ) : null}
       </section>
     </div>
   )

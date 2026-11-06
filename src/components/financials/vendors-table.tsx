@@ -251,6 +251,7 @@ export function VendorsTable({
         emptyMessage={list.search ? "No vendors match this search." : "No vendors yet."}
         state={list.state}
         rowIdPrefix="vendor"
+        onRowOpen={onView ?? onEdit}
       />
     </div>
   )

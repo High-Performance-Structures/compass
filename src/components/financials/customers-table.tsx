@@ -210,6 +210,7 @@ export function CustomersTable({
         emptyMessage={list.search ? "No clients or leads match this search." : "No client or lead contacts yet."}
         state={list.state}
         rowIdPrefix="customer"
+        onRowOpen={onViewPeople ?? onEdit}
       />
     </div>
   )

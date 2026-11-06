@@ -165,6 +165,7 @@ export function ProjectTodosView({
         emptyMessage="No to-dos match this view."
         focusedRowId={initialItemId}
         rowIdPrefix="todo"
+        onRowOpen={setEditingItem}
       />
       {editingItem &&
         (canManage ? (

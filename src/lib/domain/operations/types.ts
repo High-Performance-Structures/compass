@@ -421,3 +421,20 @@ export type NormalizedRfqDocumentLink = {
   readonly url: string
   readonly notes: string | null
 }
+
+/** One purchase order as a row of a PO sheet: a job's POs or every job's. */
+export type PurchaseOrderListRow = {
+  readonly id: string
+  readonly projectId: string
+  readonly projectNumber: string | null
+  readonly projectName: string | null
+  readonly number: string | null
+  readonly title: string
+  readonly description: string | null
+  readonly vendorName: string | null
+  readonly status: string
+  readonly siteContactName: string | null
+  readonly orderDate: string | null
+  readonly dueDate: string | null
+  readonly amount: number | null
+}

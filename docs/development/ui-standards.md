@@ -160,9 +160,32 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
 - **Writes.** Bulk actions call the owning domain store, following
   docs/development/architecture-standards.md, never a table write from the
   component or action.
-- **Exceptions.** Lists whose order carries meaning keep their order on
-  purpose. Examples are estimate and document line items, ranked queues and
-  hand-arranged lists.
+- **Exceptions.** Rows inside one record whose order carries meaning, such
+  as estimate and document line items, keep their order on purpose (see
+  "Dragging is for rows inside one record" below).
+- **Whole-row click.** Where a record has a detail view, give `RecordTable`
+  `onRowOpen` or `getRowHref` so a click anywhere on the row opens it. Clicks
+  on checkboxes, buttons, links, inputs, menus and drag handles, and text
+  selection, keep their own meaning; a click in a checkbox cell toggles the
+  checkbox. A middle-click or Ctrl/Cmd-click on a linked row opens a new tab.
+  Keep the name or reference as a link or button for keyboard and screen
+  reader users.
+- **Status filters.** Status filter buttons sit above the sheet, built with
+  `StatusFilterBar` (`src/components/status-filter-bar.tsx`): Open first,
+  then the record type's own statuses (such as Draft, Sent, Received,
+  Closed), then All, each with its count. Statuses with no records hide.
+  A list opens on Open unless it has a reason not to. Keep the filter in the
+  URL (`?status=`) where the page loads on the server. There are no
+  per-column filter menus.
+- **Rule for every growing list (owner, 2026-11-05).** Any growing list (POs,
+  RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
+  column header, use the status filter buttons above it, search, and click a
+  row to open the record. Lists never drag.
+- **Dragging is for rows inside one record.** Line items inside a single PO,
+  RFQ or estimate may be dragged into order, because that order is part of
+  the record. Follow `src/components/projects/project-estimate-line-order.tsx`:
+  a grip handle with up and down arrows for keyboard and touch, an optimistic
+  move with rollback, and a stale check on the server.
 
 ### Imported-record source tag (owner-approved standard)
 
