@@ -3,14 +3,17 @@
 -- regroup, reorder or hide a status Compass code depends on; other rows are
 -- statuses the company added. A record type with no rows keeps its code
 -- defaults, so nothing changes until a company edits its statuses.
--- Additive only: one new table and its unique index.
+-- record_type and color are checked in the app (their lists in
+-- src/lib/domain/record-statuses/statuses.ts can grow, and changing a CHECK
+-- on D1 means rebuilding the table). Only status_group, whose values never
+-- grow, has a CHECK. Additive only: one new table and its unique index.
 CREATE TABLE `organization_record_statuses` (
   `id` text PRIMARY KEY NOT NULL,
   `organization_id` text NOT NULL,
-  `record_type` text NOT NULL CHECK (`record_type` IN ('purchase_order', 'rfq', 'rfi', 'todo')),
+  `record_type` text NOT NULL,
   `status_key` text NOT NULL,
   `label` text NOT NULL,
-  `color` text NOT NULL DEFAULT 'gray' CHECK (`color` IN ('gray', 'blue', 'green', 'orange', 'red')),
+  `color` text NOT NULL DEFAULT 'gray',
   `status_group` text NOT NULL DEFAULT 'open' CHECK (`status_group` IN ('open', 'closed', 'void')),
   `sort_order` integer NOT NULL DEFAULT 0,
   `show_as_button` integer NOT NULL DEFAULT true,

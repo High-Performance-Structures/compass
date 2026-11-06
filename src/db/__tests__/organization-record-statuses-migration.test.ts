@@ -4,7 +4,7 @@ import { migratedSqlite, type Sqlite } from "@/lib/daily-logs/__tests__/sqlite-d
 
 /*
  * Replays every migration, then checks 0292's organization_record_statuses:
- * the defaults, the CHECK lists, one row per (organization, record type,
+ * the defaults, the group CHECK (and no CHECK on the growing lists), one row per (organization, record type,
  * key), and that a company's rows go with the company.
  */
 
@@ -46,12 +46,14 @@ describe("migration 0292: organization_record_statuses", () => {
     insert(sqlite, "s4", "org-b", "purchase_order", "backordered")
   })
 
-  it("accepts only the listed record types, colors and groups", () => {
+  it("checks only the group in SQL; record types and colors grow in the app", () => {
     const sqlite = database()
-    expect(() => insert(sqlite, "s1", "org-a", "invoice", "x")).toThrow(/CHECK/)
-    expect(() => insert(sqlite, "s2", "org-a", "rfi", "x", "color='purple'")).toThrow(/CHECK/)
-    expect(() => insert(sqlite, "s3", "org-a", "rfi", "y", "status_group='pending'")).toThrow(/CHECK/)
-    insert(sqlite, "s4", "org-a", "todo", "z", "status_group='void'")
+    expect(() => insert(sqlite, "s1", "org-a", "rfi", "y", "status_group='pending'")).toThrow(/CHECK/)
+    insert(sqlite, "s2", "org-a", "todo", "z", "status_group='void'")
+    // A record type or color added later needs no table rebuild.
+    insert(sqlite, "s3", "org-a", "change_order", "x", "color='purple'")
+    const [sql] = sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'organization_record_statuses'").all()
+    expect(String(sql?.sql)).not.toMatch(/CHECK \(`record_type`|CHECK \(`color`/)
   })
 
   it("requires a real organization and removes its rows with it", () => {
