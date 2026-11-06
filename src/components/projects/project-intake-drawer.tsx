@@ -21,6 +21,7 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { createLinkedProject } from "@/app/actions/project-links"
+import { NuTechRepeatOrderChoices } from "@/components/nutech/nutech-repeat-order-choices"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -526,6 +527,16 @@ export function ProjectIntakeDrawer({
             or confirm that this is a separate project before creating it.
           </DialogDescription>
         </DialogHeader>
+        {duplicateReview?.input.department === "N" ? (
+          <NuTechRepeatOrderChoices
+            projects={duplicateReview.candidates.map(existingDuplicateProject)}
+            onStarted={(href) => {
+              setDuplicateReview(null)
+              setOpen(false)
+              router.push(href)
+            }}
+          />
+        ) : null}
         <div className="divide-y border-y">
           {duplicateReview?.candidates.map((candidate) => {
             const project = existingDuplicateProject(candidate)

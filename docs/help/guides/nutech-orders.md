@@ -44,6 +44,8 @@ The job overview shows **Intake**, **Quantities**, **Estimate**, **Approval & pa
 
 A Nu-Tech job can have several orders, for example block for each phase of a build, and several estimates (bracing rental, ICF block, and so on). The order page lists the job's orders at the top; choose one to open it, or choose **New order** to start another. A new order copies the open order's customer, pricing, delivery and tax district, and starts with no products. Give an order a name, such as "Phase 2 walls", to tell orders apart.
 
+A repeat order for a site that already has an N job belongs on that job, not a new N number. When you create a Nu-Tech project in **New project** and Compass finds an N job with the same customer or site address, the **This project may already exist** window offers **Add as Order 2 on N-…** (the job's next order number). Choose it to start the new order there, copying the job's latest order; choose **Not a duplicate — create project** only for a different site.
+
 Each order fills its own estimate: **Create estimate from order** fills that order's estimate (its newest version) or starts a new estimate for an order that has none. Each order has its own manufacturer PO and order form.
 
 On the Estimate page, **Next step** shows the order filling each estimate. An accepted estimate with no order yet offers **Start order** and a link to bracing rentals. Whether a department allows several estimates per job is set in **Settings → Workflows → Estimates**.
