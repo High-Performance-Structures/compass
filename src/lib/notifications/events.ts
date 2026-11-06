@@ -653,7 +653,7 @@ export async function notifyRfqResponseReceived(
     title: `${input.rfqNumber ?? "RFQ"}: ${input.title}`,
     body: `${responder} ${responseLabel}.`,
     href:
-      `/dashboard/projects/${input.projectId}/rfqs?status=response_received` +
+      `/dashboard/projects/${input.projectId}/rfqs?status=all&item=${encodeURIComponent(input.rfqId)}` +
       `#rfq-${encodeURIComponent(input.rfqId)}`,
     priority: "normal",
     audience: "project_team",

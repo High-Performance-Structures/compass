@@ -30,7 +30,7 @@ Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. D
 
 ## Choose List Columns {#lists}
 
-Admins open **Settings → Lists** to set how each sheet looks for the whole company: purchase orders (a job's and all jobs), RFIs, to-dos, billed items and received payments, vendors, clients, and contacts to review. Pick a sheet on the left, then:
+Admins open **Settings → Lists** to set how each sheet looks for the whole company: purchase orders (a job's and all jobs), RFQs, RFIs, to-dos, billed items and received payments, vendors, clients, and contacts to review. Pick a sheet on the left, then:
 
 - tick **Show** for the columns the sheet shows, and drag a column by its handle (or use the up and down arrows) to change the order. The column that names the record is always shown, because it opens the record;
 - choose the **Default sort** column and direction, or **The list's own order**. Only shown columns can be the sort; a person who hides the sort column sees the sheet in its built-in sort;

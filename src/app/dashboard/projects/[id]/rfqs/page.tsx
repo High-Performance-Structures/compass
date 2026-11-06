@@ -2,7 +2,6 @@ import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import {
-  IconClock,
   IconExternalLink,
   IconFileText,
   IconShoppingCartQuestion,
@@ -48,6 +47,7 @@ import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-dup
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
 import { ProjectRfqQuoteLinks } from "@/components/projects/project-rfq-quote-links"
+import { ProjectRfqRecordTable } from "@/components/projects/project-rfq-record-table"
 import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
 import { RecordEmailReplies } from "@/components/projects/record-email-replies"
 import { buildProjectEmailRecipientOptions, type ProjectEmailContact } from "@/lib/email/recipient-options"
@@ -77,6 +77,8 @@ import {
 } from "@/lib/project-branding"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { formatDate } from "@/lib/format"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
+import { rfqListRow, rfqRecordHref } from "@/lib/rfqs/record-list"
 
 export const dynamic = "force-dynamic"
 
@@ -270,7 +272,7 @@ function RfqCard({
             sourceLabel="RFQ"
             sourceRecordId={rfq.id}
             sourceRecordNumber={rfq.sourceRecordNumber}
-            sourceHref={`/dashboard/projects/${projectId}/rfqs`}
+            sourceHref={rfqRecordHref(projectId, rfq.id, "all")}
             defaultTitle={rfqTaskTitle(rfq)}
             defaultDescription={rfqTaskDescription(rfq)}
             defaultAssigneeName={rfq.assigneeName}
@@ -466,6 +468,7 @@ export default async function ProjectRfqsPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly item?: string | readonly string[]
     readonly status?: string | readonly string[]
     readonly historyAfter?: string | readonly string[]
   }>
@@ -476,6 +479,9 @@ export default async function ProjectRfqsPage({
   const createdRfqId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const focusedRfqId = Array.isArray(query.item)
+    ? query.item[0] ?? null
+    : query.item ?? null
   const historyCursor = typeof query.historyAfter === "string"
     ? query.historyAfter : query.historyAfter?.[0] ?? null
   const currentUser = await getCurrentUser()
@@ -526,8 +532,12 @@ export default async function ProjectRfqsPage({
     emailContacts,
     rfqStatuses,
   ] = loaded.data
-  // Buttons, Open and the filter follow the company's RFQ statuses (Settings › Statuses).
-  const statusFilter = parseRecordStatusFilter(rfqStatuses, query.status)
+  // Buttons, Open and the filter follow the company's RFQ statuses (Settings › Statuses);
+  // without ?status= the list opens on the company's filter (Settings › Lists).
+  const statusFilter = parseRecordStatusFilter(
+    rfqStatuses,
+    query.status ?? (await listSheetStartFilter("rfqs.job")) ?? undefined,
+  )
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
@@ -537,6 +547,10 @@ export default async function ProjectRfqsPage({
   const visibleRfqs = rfqs.filter((rfq) =>
     recordStatusMatchesFilter(rfqStatuses, rfq.status, statusFilter)
   )
+  // The list opens one RFQ at a time below it (a row click, a notification
+  // or email link, or an RFQ just created), whatever the filter.
+  const selectedRfqId = focusedRfqId ?? createdRfqId
+  const selectedRfqs = rfqs.filter((rfq) => rfq.id === selectedRfqId)
   const overdueCount = openRfqs.filter((rfq) => {
     if (!rfq.dueDate) return false
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
@@ -607,8 +621,21 @@ export default async function ProjectRfqsPage({
           </p>
         </div>
 
-        {visibleRfqs.length > 0 ? (
-          visibleRfqs.map((rfq) => (
+        <ProjectRfqRecordTable
+          rows={visibleRfqs.map(rfqListRow)}
+          projectId={id}
+          statuses={rfqStatuses}
+          statusFilter={statusFilter}
+          selectedId={selectedRfqId}
+          emptyMessage={
+            rfqs.length === 0
+              ? "No RFQs yet. Create the first quote request for this project."
+              : "No RFQs match this filter. Choose another status to see the rest of the RFQ queue."
+          }
+        />
+
+        {selectedRfqs.length > 0 ? (
+          selectedRfqs.map((rfq) => (
             <RfqCard
               key={rfq.id}
               brand={brand}
@@ -637,19 +664,11 @@ export default async function ProjectRfqsPage({
               statuses={rfqStatuses}
             />
           ))
-        ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
-            <IconClock className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">
-              {rfqs.length === 0 ? "No RFQs yet" : "No RFQs match this filter"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {rfqs.length === 0
-                ? "Create the first quote request for this project."
-                : "Choose another status to see the rest of the RFQ queue."}
-            </p>
-          </div>
-        )}
+        ) : rfqs.length > 0 ? (
+          <p className="text-sm text-muted-foreground print:hidden">
+            Select an RFQ to see its scope, documents, vendor response and quote tools.
+          </p>
+        ) : null}
       </section>
       {historicalWorkspace && (
         <ProjectHistoricalRfqList workspace={historicalWorkspace} statusFilter={statusFilter} />
