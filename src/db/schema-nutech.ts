@@ -63,6 +63,8 @@ export const nuTechProducts = sqliteTable(
     origin: text("origin").notNull(),
     priceUnit: text("price_unit").notNull(),
     packageQuantity: integer("package_quantity").notNull().default(1),
+    /** Bundles of this product that fill a manufacturer truck; staff set it, the price-list import leaves it alone. */
+    bundlesPerTruckload: integer("bundles_per_truckload"),
     packageLabel: text("package_label").notNull(),
     minimumOrderIncrement: integer("minimum_order_increment")
       .notNull()

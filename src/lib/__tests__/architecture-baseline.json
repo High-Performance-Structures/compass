@@ -903,7 +903,7 @@
     "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
-    "src/components/nutech/nutech-order-workspace.tsx": 1179,
+    "src/components/nutech/nutech-order-workspace.tsx": 1175,
     "src/components/projects/owner-update-draft-editor.tsx": 1125,
     "src/components/projects/project-audience-preview.tsx": 866,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,

@@ -17,6 +17,7 @@ import {
   deleteNuTechCatalogVersion as deleteCatalogVersion,
   ensureNuTechFreightProduct,
   replaceNuTechCatalogPrices,
+  setNuTechProductBundlesPerTruckload as storeProductBundlesPerTruckload,
   setNuTechProductCostCode,
   setNuTechProductTaxable as storeProductTaxable,
   upsertNuTechCatalogProducts,
@@ -52,6 +53,8 @@ type NuTechCatalogProductItem = {
   readonly priceUnit: string
   readonly packageLabel: string
   readonly minimumOrderIncrement: number
+  /** Bundles that fill a truck; null when not set. */
+  readonly bundlesPerTruckload: number | null
   readonly airliteMappingStatus: string
   readonly airliteTemplateRow: number | null
   readonly sageMappingStatus: string
@@ -135,6 +138,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
           priceUnit: nuTechProducts.priceUnit,
           packageLabel: nuTechProducts.packageLabel,
           minimumOrderIncrement: nuTechProducts.minimumOrderIncrement,
+          bundlesPerTruckload: nuTechProducts.bundlesPerTruckload,
           airliteMappingStatus: nuTechProducts.airliteMappingStatus,
           airliteTemplateRow: nuTechProducts.airliteTemplateRow,
           sageMappingStatus: nuTechProducts.sageMappingStatus,
@@ -210,6 +214,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
             priceUnit: row.priceUnit,
             packageLabel: row.packageLabel,
             minimumOrderIncrement: row.minimumOrderIncrement,
+            bundlesPerTruckload: row.bundlesPerTruckload,
             airliteMappingStatus: row.airliteMappingStatus,
             airliteTemplateRow: row.airliteTemplateRow,
             sageMappingStatus: row.sageMappingStatus,
@@ -488,6 +493,27 @@ export async function setNuTechProductTaxable(productId: string, taxable: boolea
     return { success: true, id: productId }
   } catch (error) {
     return errorResult(error, "Failed to update the tax setting.")
+  }
+}
+
+/** How many bundles of a product fill a truck, for the order's truckload share; null clears it. */
+export async function setNuTechProductBundlesPerTruckload(
+  productId: string,
+  bundlesPerTruckload: number | null
+): Promise<NuTechCatalogActionResult> {
+  try {
+    const { db, user, organizationId } = await nuTechOrgContext()
+    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
+    await requireFeaturePermission(user, "nutech-orders", "approve")
+    if (bundlesPerTruckload !== null && (!Number.isInteger(bundlesPerTruckload) || bundlesPerTruckload < 1 || bundlesPerTruckload > 1000)) {
+      throw new Error("Bundles per truckload must be a whole number from 1 to 1000.")
+    }
+    const updated = await storeProductBundlesPerTruckload(db, { organizationId, productId, bundlesPerTruckload, now: new Date().toISOString() })
+    if (!updated) throw new Error("Nu-Tech product not found.")
+    revalidateCatalogPaths()
+    return { success: true, id: productId }
+  } catch (error) {
+    return errorResult(error, "Failed to update the truckload size.")
   }
 }
 

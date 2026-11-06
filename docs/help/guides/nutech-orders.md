@@ -7,7 +7,7 @@
   "summary": "Move Nu-Tech jobs from sales intake through catalog quantities, approval, payment, Airlite ordering, and fulfillment.",
   "contextSummary": "The order stepper links to missing requirements. Verify quantities, acknowledgement, payment, delivery or pickup details, PO release, and manufacturer confirmation separately.",
   "category": "Project Operations",
-  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "sales", "delivery", "pickup", "takeoff", "EPS", "order emails"],
+  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "truckload", "sales", "delivery", "pickup", "takeoff", "EPS", "order emails"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/nutech", "/dashboard/nutech/catalog", "/dashboard/projects/[id]/nutech"],
@@ -50,6 +50,8 @@ On the Estimate page, **Next step** shows the order filling each estimate. An ac
 Add the customer as a client contact, choose delivery or customer pickup, supply a delivery address when required, and save intake with the quantity source. A staff takeoff requires the signed takeoff acknowledgement; customer-supplied quantities follow their own recorded responsibility.
 
 Use the active product catalog to add items. Review SKU, whole-bundle/package increments, quantities, and standard or cash-discount pricing. Import and activate the approved catalog before entering catalog quantities when no active version exists. **Product catalog** is available from the order workspace and **Settings → Workflows**. Authorized staff can maintain catalog data; verify the active version before using a rate.
+
+Under the product list, **Truck** shows about how much of a full manufacturer truckload the order takes, for example "About 81% of a full truckload." Each product's bundles are divided by the bundles of that product that fill a truck, and the results are added together; a part bundle counts as a whole one. Set **Bundles / truck** for each block on the **Product catalog**. A block without it is listed as not counted. Importing a new price list keeps these numbers.
 
 ## Approve, Take Payment, and Check Fulfillment {#ready}
 

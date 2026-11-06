@@ -213,6 +213,19 @@ export async function setNuTechProductTaxable(
   return updated.length > 0
 }
 
+/** Sets how many bundles of a product fill a truck (null clears it); false when the product isn't the company's. */
+export async function setNuTechProductBundlesPerTruckload(
+  db: Db,
+  input: { readonly organizationId: string; readonly productId: string; readonly bundlesPerTruckload: number | null; readonly now: string },
+): Promise<boolean> {
+  const updated = await db
+    .update(nuTechProducts)
+    .set({ bundlesPerTruckload: input.bundlesPerTruckload, updatedAt: input.now })
+    .where(and(eq(nuTechProducts.id, input.productId), eq(nuTechProducts.organizationId, input.organizationId)))
+    .returning({ id: nuTechProducts.id })
+  return updated.length > 0
+}
+
 // ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
