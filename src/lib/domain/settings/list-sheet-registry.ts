@@ -106,6 +106,23 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     startFilter: { options: OPEN_OR_ALL, defaultValue: "open" },
   },
   {
+    id: "rfqs.job",
+    label: "RFQs",
+    where: "A job's Requests for Quote",
+    columns: [
+      { id: "number", label: "RFQ", kind: "text", required: true },
+      { id: "title", label: "Title", kind: "text" },
+      { id: "status", label: "Status", kind: "status" },
+      { id: "requestedFrom", label: "Requested from", kind: "text" },
+      { id: "trade", label: "Trade", kind: "text" },
+      { id: "dueDate", label: "Needed by", kind: "date" },
+      { id: "quote", label: "Quote", kind: "number" },
+      { id: "responded", label: "Responded", kind: "date" },
+    ],
+    defaultSort: null,
+    startFilter: { options: OPEN_OR_ALL, defaultValue: "open" },
+  },
+  {
     id: "rfis.trade-partner",
     label: "RFIs, trade partner view",
     where: "A trade partner's RFIs",

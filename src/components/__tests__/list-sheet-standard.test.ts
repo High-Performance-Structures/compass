@@ -10,6 +10,7 @@ import { customerColumns } from "@/components/financials/customers-table"
 import { billedItemColumns, receivedPaymentColumns } from "@/components/financials/received-payments-panel"
 import { vendorColumns } from "@/components/financials/vendors-table"
 import { rfiColumns } from "@/components/projects/project-rfi-record-table"
+import { rfqColumns } from "@/components/projects/project-rfq-record-table"
 import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
 import { purchaseOrderColumns } from "@/components/purchase-orders/purchase-order-record-table"
 import { CUSTOMER_SORT_IDS, VENDOR_SORT_IDS } from "@/lib/domain/contacts/directory-page"
@@ -85,6 +86,7 @@ describe("list sheet standard", () => {
       "purchase-orders.all-jobs": () => purchaseOrderColumns(true, "open", defaultRecordStatusList("purchase_order")),
       "rfis.job": () => rfiColumns("staff", { kind: "link", href: () => "/" }, defaultRecordStatusList("rfi")),
       "rfis.trade-partner": () => rfiColumns("vendor", { kind: "select", onSelect: noop }, defaultRecordStatusList("rfi")),
+      "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
       "payments.received": () => receivedPaymentColumns({ canRecord: true, canVoid: true, onApply: noop, onVoid: noop }),
