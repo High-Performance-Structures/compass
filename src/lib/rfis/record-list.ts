@@ -1,5 +1,5 @@
 import { parseDateOnly } from "@/lib/format"
-import { canonicalRfiStatus, type RfiStatus, type RfiStatusFilter } from "@/lib/rfis/status"
+import { canonicalRfiStatus, rfiMatchesStatusFilter, type RfiStatus, type RfiStatusFilter } from "@/lib/rfis/status"
 
 /** One RFI as a row of the shared record table (staff list or vendor view). */
 export type RfiListRow = {
@@ -124,4 +124,28 @@ function safeDecode(value: string): string | null {
   } catch {
     return null
   }
+}
+
+const RFI_FILTERS: readonly { readonly value: RfiStatusFilter; readonly label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "new", label: "New" },
+  { value: "in_progress", label: "In progress" },
+  { value: "info_needed", label: "Info needed" },
+  { value: "complete", label: "Complete" },
+  { value: "void", label: "Void" },
+  { value: "all", label: "All" },
+]
+
+/** The status buttons above the RFI list, each with its count; Open and All always show. */
+export function rfiStatusFilterOptions(statuses: readonly string[]): readonly {
+  readonly value: RfiStatusFilter
+  readonly label: string
+  readonly count: number
+  readonly pinned: boolean
+}[] {
+  return RFI_FILTERS.map((option) => ({
+    ...option,
+    count: statuses.filter((status) => rfiMatchesStatusFilter(status, option.value)).length,
+    pinned: option.value === "open" || option.value === "all",
+  }))
 }

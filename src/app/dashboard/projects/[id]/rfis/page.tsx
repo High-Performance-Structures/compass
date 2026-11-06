@@ -1,5 +1,4 @@
 import { decodeProjectRouteId } from "@/lib/project-route-id"
-import Link from "next/link"
 import type * as React from "react"
 import { IconMessageQuestion } from "@tabler/icons-react"
 
@@ -11,7 +10,8 @@ import {
 import type { ProjectRfiInboundEmailItem, ProjectRfiItem } from "@/lib/domain/rfis/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ProjectRfiRecordTable } from "@/components/projects/project-rfi-record-table"
-import { rfiListRow } from "@/lib/rfis/record-list"
+import { rfiListRow, rfiStatusFilterOptions } from "@/lib/rfis/record-list"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { projectRfiHref } from "@/lib/work-calendar"
 import { ProjectRfiVendorAssignment } from "@/components/projects/project-rfi-vendor-assignment"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
@@ -26,14 +26,12 @@ import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-re
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   canonicalRfiStatus,
   compareRfisForQueue,
   isClosedRfiStatus,
   parseRfiStatusFilter,
   rfiMatchesStatusFilter,
-  type RfiStatusFilter,
 } from "@/lib/rfis/status"
 import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options"
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
@@ -65,18 +63,6 @@ function rfiTaskTitle(subject: string): string {
   return `Follow up RFI: ${subject}`
 }
 
-const RFI_FILTERS: readonly {
-  readonly value: RfiStatusFilter
-  readonly label: string
-}[] = [
-  { value: "open", label: "Open" },
-  { value: "new", label: "New" },
-  { value: "in_progress", label: "In progress" },
-  { value: "info_needed", label: "Info needed" },
-  { value: "complete", label: "Complete" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "All" },
-]
 
 type RfiCardProps = {
   readonly projectId: string
@@ -399,25 +385,13 @@ export default async function ProjectRfisPage({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <nav
-            aria-label="Filter RFIs by status"
-            className="flex flex-wrap gap-1"
-          >
-            {RFI_FILTERS.map((option) => (
-              <Button
-                key={option.value}
-                asChild
-                size="sm"
-                variant={statusFilter === option.value ? "secondary" : "ghost"}
-              >
-                <Link
-                  href={`/dashboard/projects/${id}/rfis?status=${option.value}`}
-                >
-                  {option.label}
-                </Link>
-              </Button>
-            ))}
-          </nav>
+          <StatusFilterBar
+            kind="link"
+            label="Filter RFIs by status"
+            options={rfiStatusFilterOptions(rfis.map((rfi) => rfi.status))}
+            selected={statusFilter}
+            hrefFor={(value) => `/dashboard/projects/${id}/rfis?status=${value}`}
+          />
           <p className="text-xs text-muted-foreground">
             {visibleRfis.length} of {rfis.length} shown
           </p>

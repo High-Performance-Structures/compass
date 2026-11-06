@@ -7,6 +7,7 @@ import {
   rfiRecordHref,
   rfiStatusLabel,
   rfiStatusSortValue,
+  rfiStatusFilterOptions,
   selectedRfiIdFromLocation,
   type RfiListRow,
 } from "@/lib/rfis/record-list"
@@ -95,5 +96,18 @@ describe("RFI deep links", () => {
     expect(selectedRfiIdFromLocation("", "#rfq-a", ids)).toBeNull()
     expect(selectedRfiIdFromLocation("", "#rfi-%E0%A4%A", ids)).toBeNull()
     expect(selectedRfiIdFromLocation("", "", ids)).toBeNull()
+  })
+})
+
+describe("RFI status filter buttons", () => {
+  it("counts each status, Open and All, and pins Open and All", () => {
+    const options = rfiStatusFilterOptions(["open", "answered", "closed", "void", "in_progress"])
+    const byValue = Object.fromEntries(options.map((option) => [option.value, option]))
+    expect(options.map((option) => option.value)).toEqual(["open", "new", "in_progress", "info_needed", "complete", "void", "all"])
+    expect(byValue.open?.count).toBe(3)
+    expect(byValue.in_progress?.count).toBe(2)
+    expect(byValue.info_needed?.count).toBe(0)
+    expect(byValue.all?.count).toBe(5)
+    expect(options.filter((option) => option.pinned).map((option) => option.value)).toEqual(["open", "all"])
   })
 })
