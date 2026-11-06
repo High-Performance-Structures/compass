@@ -171,6 +171,9 @@ export type SaveNuTechOrderInput = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: string
   readonly requestedDeliveryDate: string | null
+  readonly confirmedDeliveryDate: string | null
+  readonly confirmedDeliveryTime: string | null
+  readonly carrier: string | null
   readonly customerPaidAt: string | null
   readonly customerPaymentMethod: string | null
   readonly trailerDimensions: string | null
@@ -486,14 +489,8 @@ export async function saveProjectNuTechOrder(
         throw new Error("Choose a purchase order from this Nu-Tech project.")
       }
     }
-    const vendorInvoiceReceivedAt = parseNuTechDate(
-      input.vendorInvoiceReceivedAt,
-      "Vendor invoice received date"
-    )
-    const requestedDeliveryDate = parseNuTechDate(
-      input.requestedDeliveryDate,
-      "Requested delivery date"
-    )
+    const vendorInvoiceReceivedAt = parseNuTechDate(input.vendorInvoiceReceivedAt, "Vendor invoice received date")
+    const requestedDeliveryDate = parseNuTechDate(input.requestedDeliveryDate, "Requested delivery date")
     const customerPaidAt = parseNuTechDate(input.customerPaidAt, "Customer paid date")
     const paymentMethod = cleanText(input.customerPaymentMethod)
     if (paymentMethod !== null && !isNuTechPaymentMethod(paymentMethod)) {
@@ -524,8 +521,7 @@ export async function saveProjectNuTechOrder(
       if (!district) throw new Error("Choose an active sales tax district.")
     }
     const parsedOrderStatus = storedNuTechOrderStatus(input.orderStatus)
-    const parsedVendorInvoiceStatus = storedNuTechVendorInvoiceStatus(input.vendorInvoiceStatus
-    )
+    const parsedVendorInvoiceStatus = storedNuTechVendorInvoiceStatus(input.vendorInvoiceStatus)
     const existing = await findNuTechOrder(access.db, projectId, input.orderId)
     if (input.orderId && !existing) throw new Error("That order is no longer on this job.")
     const releaseAuditIssues = nuTechReleaseAuditIssues({
@@ -584,6 +580,9 @@ export async function saveProjectNuTechOrder(
       bracingNotes: bracingIncluded ? cleanText(input.bracingNotes) : null,
       deliveryMethod: parsedDeliveryMethod,
       requestedDeliveryDate,
+      confirmedDeliveryDate: parseNuTechDate(input.confirmedDeliveryDate, "Confirmed pickup or delivery date"),
+      confirmedDeliveryTime: cleanText(input.confirmedDeliveryTime),
+      carrier: cleanText(input.carrier),
       customerPaidAt,
       customerPaymentMethod: paymentMethod,
       trailerDimensions: cleanText(input.trailerDimensions),

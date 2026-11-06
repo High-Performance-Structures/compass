@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, like } from "drizzle-orm"
+import { and, asc, eq, isNotNull, like } from "drizzle-orm"
 
 import { projects } from "@/db/schema"
 import { nuTechOrderWorkflows } from "@/db/schema-nutech"
@@ -42,6 +42,9 @@ export async function getNuTechOrderBoard(): Promise<NuTechOrderBoardView> {
         orderStatus: nuTechOrderWorkflows.orderStatus,
         deliveryMethod: nuTechOrderWorkflows.deliveryMethod,
         requestedDeliveryDate: nuTechOrderWorkflows.requestedDeliveryDate,
+        confirmedDeliveryDate: nuTechOrderWorkflows.confirmedDeliveryDate,
+        confirmedDeliveryTime: nuTechOrderWorkflows.confirmedDeliveryTime,
+        carrier: nuTechOrderWorkflows.carrier,
         customerPaidAt: nuTechOrderWorkflows.customerPaidAt,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
         vendorConfirmationNumber: nuTechOrderWorkflows.vendorConfirmationNumber,
@@ -75,4 +78,18 @@ export async function getNuTechOrderBoard(): Promise<NuTechOrderBoardView> {
       invoiceAfterDeliveryDays: settings.invoiceAfterDeliveryDays,
     },
   }
+}
+
+/** Carriers typed on the company's earlier Nu-Tech orders, for the order form's suggestions. */
+export async function getNuTechCarrierSuggestions(): Promise<readonly string[]> {
+  const { db, user, organizationId } = await nuTechOrgContext()
+  await requireFeaturePermission(user, "nutech-orders", "read")
+  const rows = await db
+    .selectDistinct({ carrier: nuTechOrderWorkflows.carrier })
+    .from(nuTechOrderWorkflows)
+    .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
+    .where(and(eq(projects.organizationId, organizationId), isNotNull(nuTechOrderWorkflows.carrier)))
+    .orderBy(asc(nuTechOrderWorkflows.carrier))
+    .limit(50)
+  return rows.flatMap((row) => (row.carrier ? [row.carrier] : []))
 }

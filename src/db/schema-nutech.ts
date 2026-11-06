@@ -182,6 +182,10 @@ export const nuTechOrderWorkflows = sqliteTable(
     bracingNotes: text("bracing_notes"),
     deliveryMethod: text("delivery_method").notNull().default("delivery"),
     requestedDeliveryDate: text("requested_delivery_date"),
+    /** The manufacturer's confirmed pickup or delivery (YYYY-MM-DD), time or dock window, and carrier. */
+    confirmedDeliveryDate: text("confirmed_delivery_date"),
+    confirmedDeliveryTime: text("confirmed_delivery_time"),
+    carrier: text("carrier"),
     customerPaidAt: text("customer_paid_at"),
     customerPaymentMethod: text("customer_payment_method"),
     trailerDimensions: text("trailer_dimensions"),
