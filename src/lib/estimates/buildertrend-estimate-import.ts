@@ -76,9 +76,9 @@ function cents(value: number): number {
   return Math.round(value * 100)
 }
 
-/** "... 03 11 13 - Forming Boards" → { code: "03 11 13", name: "Forming Boards" }. */
+/** "... 03 11 13 - Forming Boards" → { code: "03 11 13", name: "Forming Boards" }; dotted sub-codes like "31 23 16.13" are kept. */
 export function parseBuildertrendCostCode(value: string): { readonly code: string; readonly name: string } | null {
-  const match = /^(?:\.\.\.\s*)?(\d{2}(?:\s\d{2}){2})\s*-\s*(.+)$/.exec(value.trim())
+  const match = /^(?:\.\.\.\s*)?(\d{2}(?:\s\d{2}){2}(?:\.\d{1,4})?)\s*-\s*(.+)$/.exec(value.trim())
   if (!match) return null
   return { code: match[1] ?? "", name: (match[2] ?? "").trim() }
 }

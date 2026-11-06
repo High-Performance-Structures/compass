@@ -27,6 +27,7 @@ describe("parseBuildertrendCostCode", () => {
   it("reads plain and sub-code (\"... \") cost codes", () => {
     expect(parseBuildertrendCostCode("01 71 13 - Mobilization")).toEqual({ code: "01 71 13", name: "Mobilization" })
     expect(parseBuildertrendCostCode("... 03 11 13 - Forming Boards")).toEqual({ code: "03 11 13", name: "Forming Boards" })
+    expect(parseBuildertrendCostCode("31 23 16.13 - Excavation")).toEqual({ code: "31 23 16.13", name: "Excavation" })
     expect(parseBuildertrendCostCode("Mobilization")).toBeNull()
   })
 })
