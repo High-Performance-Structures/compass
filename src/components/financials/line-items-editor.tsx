@@ -13,6 +13,8 @@ import {
   type LineItem,
 } from "@/lib/domain/financials/rules"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { ReorderHandle, SortableRow, SortableRows } from "@/components/ui/sortable-rows"
+import { moveLine } from "@/lib/shared/line-order"
 
 interface LineItemsEditorProps {
   value: LineItem[]
@@ -21,13 +23,28 @@ interface LineItemsEditorProps {
 
 export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
   const isMobile = useIsMobile()
+  // Line items carry no id, so rows keep a local key that moves with them.
+  const nextKey = React.useRef(0)
+  const [keys, setKeys] = React.useState<readonly string[]>(() =>
+    value.map(() => `line-${nextKey.current++}`)
+  )
+  const rowKeys = keys.length === value.length
+    ? keys
+    : value.map((_, index) => keys[index] ?? `line-new-${index}`)
 
   const addLine = () => {
+    setKeys([...rowKeys, `line-${nextKey.current++}`])
     onChange([...value, { description: "", quantity: 1, rate: 0, amount: 0 }])
   }
 
   const removeLine = (index: number) => {
+    setKeys(rowKeys.filter((_, i) => i !== index))
     onChange(value.filter((_, i) => i !== index))
+  }
+
+  const moveRow = (from: number, to: number) => {
+    setKeys(moveLine(rowKeys, from, to))
+    onChange([...moveLine(value, from, to)])
   }
 
   const updateLine = (
@@ -58,11 +75,15 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
   if (isMobile) {
     return (
       <div className="space-y-3">
+        <SortableRows ids={rowKeys} onMove={moveRow}>
         {value.map((item, index) => (
-          <div
-            key={index}
-            className="rounded-md border p-3 space-y-2.5 relative"
+          <SortableRow
+            key={rowKeys[index]}
+            id={rowKeys[index] ?? String(index)}
+            index={index}
+            className="rounded-md border bg-background p-3 space-y-2.5 relative"
           >
+            <ReorderHandle label={`line ${index + 1}`} />
             <Button
               type="button"
               variant="ghost"
@@ -112,8 +133,9 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
               <span className="text-muted-foreground">Amount:</span>
               <span className="font-semibold">{formatDollars(item.amount)}</span>
             </div>
-          </div>
+          </SortableRow>
         ))}
+        </SortableRows>
 
         <Button
           type="button"
@@ -137,18 +159,23 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
   // Desktop: table layout
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[1fr_80px_100px_100px_32px] gap-2 text-xs font-medium text-muted-foreground">
+      <div className="grid grid-cols-[2.75rem_1fr_80px_100px_100px_32px] gap-2 text-xs font-medium text-muted-foreground">
+        <span />
         <span>Description</span>
         <span>Qty</span>
         <span>Rate</span>
         <span>Amount</span>
         <span />
       </div>
+      <SortableRows ids={rowKeys} onMove={moveRow}>
       {value.map((item, index) => (
-        <div
-          key={index}
-          className="grid grid-cols-[1fr_80px_100px_100px_32px] gap-2 items-center"
+        <SortableRow
+          key={rowKeys[index]}
+          id={rowKeys[index] ?? String(index)}
+          index={index}
+          className="grid grid-cols-[2.75rem_1fr_80px_100px_100px_32px] gap-2 items-center bg-background"
         >
+          <ReorderHandle label={`line ${index + 1}`} />
           <Input
             value={item.description}
             onChange={(e) => updateLine(index, "description", e.target.value)}
@@ -181,8 +208,9 @@ export function LineItemsEditor({ value, onChange }: LineItemsEditorProps) {
           >
             <IconX className="size-4" />
           </Button>
-        </div>
+        </SortableRow>
       ))}
+      </SortableRows>
       <div className="flex items-center justify-between pt-2">
         <Button type="button" variant="outline" size="sm" onClick={addLine} className="h-9">
           <IconPlus className="mr-1 size-4" />

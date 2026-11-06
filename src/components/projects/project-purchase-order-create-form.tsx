@@ -28,6 +28,8 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
+import { ReorderHandle, SortableRow, SortableRows, SortByCostCodeButton } from "@/components/ui/sortable-rows"
+import { moveLine, sortLinesByCostCode } from "@/lib/shared/line-order"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { purchaseOrderLineAmount } from "@/lib/domain/operations/rules"
@@ -811,17 +813,24 @@ function ProjectPurchaseOrderForm(
                 Line items
               </h3>
               <p className="text-xs text-muted-foreground">
-                Use one line per cost code, phase, material group, or scope item.
+                Use one line per cost code, phase, material group, or scope item. Drag the handle or use the arrows to reorder.
               </p>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={addLine}>
-              <IconPlus className="size-4" />
-              Add line
-            </Button>
+            <div className="flex flex-wrap items-center gap-1">
+              <SortByCostCodeButton
+                disabled={lines.length < 2}
+                onSort={() => setLines((current) => sortLinesByCostCode(current, (line) => line.costCode))}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <IconPlus className="size-4" />
+                Add line
+              </Button>
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[1120px]">
-              <div className="grid grid-cols-[2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+            <div className="min-w-[1170px]">
+              <div className="grid grid-cols-[2.75rem_2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+                <span />
                 <span>#</span>
                 <span>Description</span>
                 <span>Phase</span>
@@ -833,11 +842,17 @@ function ProjectPurchaseOrderForm(
                 <span>Tax</span>
                 <span />
               </div>
+              <SortableRows ids={lines.map((line) => line.id)} onMove={(from, to) => setLines((current) => moveLine(current, from, to))}>
               {lines.map((line, index) => (
-                <div
+                <SortableRow
                   key={line.id}
-                  className="grid grid-cols-[2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 last:border-b-0"
+                  id={line.id}
+                  index={index}
+                  className="grid grid-cols-[2.75rem_2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b bg-background py-2 last:border-b-0"
                 >
+                  <div className="pt-0.5">
+                    <ReorderHandle label={`line ${index + 1}`} />
+                  </div>
                   <span className="pt-2 text-xs font-medium text-muted-foreground">
                     {index + 1}
                   </span>
@@ -947,8 +962,9 @@ function ProjectPurchaseOrderForm(
                   >
                     <IconTrash className="size-4" />
                   </Button>
-                </div>
+                </SortableRow>
               ))}
+              </SortableRows>
             </div>
           </div>
         </div>

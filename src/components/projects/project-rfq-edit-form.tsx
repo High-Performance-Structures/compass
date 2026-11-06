@@ -22,12 +22,9 @@ import type {
 } from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import {
-  ProjectRfqCostCodePicker,
-  ProjectRfqDivisionPicker,
-} from "@/components/projects/project-rfq-cost-code-picker"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { RfqScopeRows } from "@/components/projects/rfq-create/rfq-scope-rows"
 import {
   Popover,
   PopoverContent,
@@ -85,8 +82,6 @@ type FormStatus =
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0 focus-visible:border-foreground"
-const LINE_INPUT_CLASS =
-  "h-8 rounded-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 focus-visible:bg-background"
 const ALL = "all"
 
 function cleanValue(value: string): string | null {
@@ -966,80 +961,18 @@ export function ProjectRfqEditForm({
             </div>
           </div>
 
-          <div className="border-y">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
-              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-                Scope rows
-              </h3>
-              <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                <IconPlus className="size-4" />
-                Add row
-              </Button>
-            </div>
-            <div className="overflow-x-auto">
-              <div className="min-w-[1050px]">
-                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
-                  <span>#</span>
-                  <span>Description</span>
-                  <span>Division</span>
-                  <span>Cost code</span>
-                  <span>Notes</span>
-                  <span />
-                </div>
-                {lines.map((line, index) => (
-                  <div
-                    key={line.id}
-                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
-                  >
-                    <span className="pt-2 text-xs font-medium text-muted-foreground">
-                      {index + 1}
-                    </span>
-                    <Input
-                      value={line.description}
-                      onChange={(event) =>
-                        updateLine(line.id, "description", event.target.value)
-                      }
-                      className={LINE_INPUT_CLASS}
-                    />
-                    <ProjectRfqDivisionPicker
-                      value={line.phaseCode}
-                      options={costCodeOptions}
-                      rowNumber={index + 1}
-                      onValueChange={(value) =>
-                        updateLineDivision(line.id, value)
-                      }
-                    />
-                    <ProjectRfqCostCodePicker
-                      value={line.costCode}
-                      options={costCodeOptions}
-                      divisionCode={line.phaseCode}
-                      rowNumber={index + 1}
-                      onValueChange={(value) =>
-                        updateLineCostCode(line.id, value)
-                      }
-                    />
-                    <Input
-                      value={line.notes}
-                      onChange={(event) =>
-                        updateLine(line.id, "notes", event.target.value)
-                      }
-                      className={LINE_INPUT_CLASS}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9"
-                      disabled={lines.length === 1}
-                      onClick={() => removeLine(line.id)}
-                    >
-                      <IconTrash className="size-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <RfqScopeRows
+            rows={{
+              lines,
+              setLines,
+              addLine,
+              removeLine,
+              updateLine,
+              updateLineDivision,
+              updateLineCostCode,
+            }}
+            costCodeOptions={costCodeOptions}
+          />
 
           {status.kind === "error" && (
             <p className="border-l-2 border-l-destructive px-3 py-2 text-sm text-destructive">

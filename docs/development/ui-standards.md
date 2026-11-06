@@ -216,11 +216,39 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
   column header, use the status filter buttons above it, search, and click a
   row to open the record. Lists never drag.
-- **Dragging is for rows inside one record.** Line items inside a single PO,
-  RFQ or estimate may be dragged into order, because that order is part of
-  the record. Follow `src/components/projects/project-estimate-line-order.tsx`:
-  a grip handle with up and down arrows for keyboard and touch, an optimistic
-  move with rollback, and a stale check on the server.
+- **Dragging is for rows inside one record.** Line items inside a single
+  record (estimate, P.O., RFQ scope rows, change-order lines, shop tickets,
+  invoices and bills) can be put in order, because that order is part of the
+  record. See "Line item order" below.
+
+### Line item order (owner-approved standard)
+
+Every line editor reorders its rows with one shared control,
+`src/components/ui/sortable-rows.tsx`. The owner approved its look on
+2026-11-06. No line editor builds its own handle, arrows or drag code.
+
+- **The handle.** The row's first cell holds `<ReorderHandle>`: a slim grip
+  to drag, with small up and down arrows stacked beside it. The arrows are
+  for phones and keyboards. The cell is a `2.75rem` grid track, or the first
+  table column, so the handle sits in the same place on every editor.
+- **Rows.** Wrap the rows in `<SortableRows ids onMove>` and render each row
+  as `<SortableRow>` (a grid `div`) or `<SortableTableRow>` (a `tr`). Move
+  with `moveLine` from `src/lib/shared/line-order.ts`.
+- **Sort by cost code.** Editors whose lines carry cost codes show
+  `<SortByCostCodeButton>` beside **Add line**. It uses `sortLinesByCostCode`,
+  which puts lines without a code last.
+- **Columns stay separate.** Reordering never merges columns. Quantity, unit
+  cost, unit and amount stay their own columns, the same as the estimate
+  line editor.
+- **When the order saves.** In a form (P.O., RFQ, change order, shop ticket,
+  invoice), the order saves with the form, so Cancel undoes it, and the saved
+  line numbers follow the on-screen order. A list that saves each move on its
+  own (estimate items) moves optimistically, rolls back on failure, and
+  checks on the server that nothing changed in between, as
+  `src/components/projects/project-estimate-line-order.tsx` does.
+- `line-order-standard.test.ts` enforces it: drag code (`@dnd-kit`) is only
+  allowed in the shared control and the few boards listed in that test, and
+  every line editor with an **Add line** button uses `SortableRows`.
 
 ### Imported-record source tag (owner-approved standard)
 

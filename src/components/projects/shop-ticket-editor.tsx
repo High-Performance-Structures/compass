@@ -18,6 +18,8 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { ReorderHandle, SortableRows, SortableTableRow, SortByCostCodeButton } from "@/components/ui/sortable-rows"
+import { moveLine, sortLinesByCostCode } from "@/lib/shared/line-order"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ShopTicketSageHours, type SageHoursClaim, type SageHoursSelection } from "@/components/projects/shop-ticket-sage-hours"
@@ -301,9 +303,10 @@ export function ShopTicketEditor({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[770px] text-sm">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
+              <th className="w-11 py-2 pr-1" />
               <th className="py-2 pr-2 font-medium">Cost code</th>
               <th className="w-56 py-2 pr-2 font-medium">Rate book rate</th>
               <th className="w-28 py-2 pr-2 text-right font-medium">Hours</th>
@@ -313,8 +316,13 @@ export function ShopTicketEditor({
             </tr>
           </thead>
           <tbody>
+            <SortableRows ids={priced.map((line) => line.key)} onMove={(from, to) => setLines((current) => moveLine(current, from, to))}>
             {priced.map((line, index) => (
-              <tr key={line.key} className={line.outside ? "border-b bg-warning/10 align-top" : "border-b align-top"}>
+              <SortableTableRow key={line.key} id={line.key} index={index}
+                className={line.outside ? "border-b bg-warning/10 align-top" : "border-b bg-background align-top"}>
+                <td className="py-2 pr-1">
+                  <ReorderHandle label={`line ${index + 1}`} />
+                </td>
                 <td className="py-2 pr-2">
                   <SearchableCombobox
                     id={`shop-ticket-code-${index}`}
@@ -413,12 +421,13 @@ export function ShopTicketEditor({
                     <IconTrash className="size-4" />
                   </Button>
                 </td>
-              </tr>
+              </SortableTableRow>
             ))}
+            </SortableRows>
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4} className="py-2 pr-2 text-right font-semibold">
+              <td colSpan={5} className="py-2 pr-2 text-right font-semibold">
                 Ticket total
               </td>
               <td className="py-2 pr-2 text-right font-semibold tabular-nums">{formatCents(totalCents)}</td>
@@ -428,11 +437,13 @@ export function ShopTicketEditor({
         </table>
       </div>
 
-      <div>
+      <div className="flex flex-wrap items-center gap-1">
         <Button type="button" variant="outline" size="sm" onClick={() => setLines((current) => [...current, blankLine()])}>
           <IconPlus className="size-4" />
           Add line
         </Button>
+        <SortByCostCodeButton disabled={lines.length < 2}
+          onSort={() => setLines((current) => sortLinesByCostCode(current, (line) => line.costCode))} />
       </div>
 
       <ShopTicketSageHours

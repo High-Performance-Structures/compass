@@ -2,14 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import {
-  closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor,
-  useSensor, useSensors, type DragEndEvent,
-} from "@dnd-kit/core"
-import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers"
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { IconArrowDown, IconArrowUp, IconColumns3, IconGripVertical } from "@tabler/icons-react"
+import { IconColumns3 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { resetCompanyListSheet, saveCompanyListSheet } from "@/app/actions/list-sheets"
@@ -17,6 +10,7 @@ import { useListSheetContext } from "@/components/list-sheets/list-sheet-provide
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { ReorderHandle, SortableRow, SortableRows } from "@/components/ui/sortable-rows"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   companyListSheets,
@@ -25,6 +19,7 @@ import {
 } from "@/lib/domain/settings/list-sheet-registry"
 import { resolveListSheetLayout, type CompanyListSheetSetting } from "@/lib/domain/settings/list-sheet-rules"
 import type { ListSheetSortDirection } from "@/lib/domain/settings/statuses"
+import { moveLine } from "@/lib/shared/line-order"
 import { cn } from "@/lib/utils"
 
 const NO_SORT = "__list-order"
@@ -53,37 +48,21 @@ function draftFor(definition: ListSheetDefinition, company: CompanyListSheetSett
   }
 }
 
-function ColumnRow({ column, index, count, disabled, move, toggle }: {
+function ColumnRow({ column, index, disabled, toggle }: {
   readonly column: DraftColumn
   readonly index: number
-  readonly count: number
   readonly disabled: boolean
-  readonly move: (from: number, to: number) => void
   readonly toggle: (visible: boolean) => void
 }): React.ReactElement {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: column.id, disabled })
   const checkboxId = React.useId()
   return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 border-b bg-background px-2 py-1.5 last:border-b-0", isDragging && "z-10 shadow-md")}
+    <SortableRow
+      id={column.id}
+      index={index}
+      role="listitem"
+      className="grid grid-cols-[2.75rem_auto_minmax(0,1fr)] items-center gap-3 border-b bg-background px-2 py-1.5 last:border-b-0"
     >
-      <div className="flex items-center">
-        <Button type="button" size="icon" variant="ghost" className="size-8 touch-none cursor-grab active:cursor-grabbing"
-          ref={setActivatorNodeRef} {...attributes} {...listeners} disabled={disabled}
-          aria-label={`Drag to reorder ${column.label}`}>
-          <IconGripVertical className="size-4" />
-        </Button>
-        <Button type="button" size="icon" variant="ghost" className="size-8" disabled={disabled || index === 0}
-          aria-label={`Move ${column.label} up`} onClick={() => move(index, index - 1)}>
-          <IconArrowUp className="size-4" />
-        </Button>
-        <Button type="button" size="icon" variant="ghost" className="size-8" disabled={disabled || index === count - 1}
-          aria-label={`Move ${column.label} down`} onClick={() => move(index, index + 1)}>
-          <IconArrowDown className="size-4" />
-        </Button>
-      </div>
+      <ReorderHandle label={column.label} />
       <Checkbox
         id={checkboxId}
         checked={column.visible}
@@ -95,7 +74,7 @@ function ColumnRow({ column, index, count, disabled, move, toggle }: {
         <span className={cn("font-medium", !column.visible && "text-muted-foreground")}>{column.label}</span>
         {column.required && <span className="text-muted-foreground"> · always shown (opens the record)</span>}
       </label>
-    </li>
+    </SortableRow>
   )
 }
 
@@ -107,24 +86,12 @@ function SheetEditor({ definition, company, canEdit }: {
   const router = useRouter()
   const [draft, setDraft] = React.useState(() => draftFor(definition, company))
   const [pending, startTransition] = React.useTransition()
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
   const disabled = !canEdit || pending
   const sortColumn = definition.columns.find((column) => column.id === draft.sortColumnId) ?? null
   const directionLabels = listSheetSortDirectionLabels(sortColumn?.kind ?? "text")
 
   function move(from: number, to: number): void {
-    if (to < 0 || to >= draft.columns.length) return
-    setDraft((current) => ({ ...current, columns: arrayMove([...current.columns], from, to) }))
-  }
-
-  function onDragEnd(event: DragEndEvent): void {
-    const from = draft.columns.findIndex((column) => column.id === event.active.id)
-    const to = draft.columns.findIndex((column) => column.id === event.over?.id)
-    if (from >= 0 && to >= 0 && from !== to) move(from, to)
+    setDraft((current) => ({ ...current, columns: moveLine(current.columns, from, to) }))
   }
 
   function toggle(columnId: string, visible: boolean): void {
@@ -178,28 +145,24 @@ function SheetEditor({ definition, company, canEdit }: {
     <div className="min-w-0 space-y-5">
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="min-w-0">
-          <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-3 border-b px-2 pb-1.5 text-xs font-medium text-muted-foreground">
-            <span className="w-24">Move</span>
+          <div className="grid grid-cols-[2.75rem_auto_minmax(0,1fr)] gap-3 border-b px-2 pb-1.5 text-xs font-medium text-muted-foreground">
+            <span>Move</span>
             <span>Show</span>
             <span>Column</span>
           </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onDragEnd}>
-            <SortableContext items={draft.columns.map((column) => column.id)} strategy={verticalListSortingStrategy}>
-              <ul aria-label={`${definition.label} columns`}>
-                {draft.columns.map((column, index) => (
-                  <ColumnRow
-                    key={column.id}
-                    column={column}
-                    index={index}
-                    count={draft.columns.length}
-                    disabled={disabled}
-                    move={move}
-                    toggle={(visible) => toggle(column.id, visible)}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+          <div role="list" aria-label={`${definition.label} columns`}>
+            <SortableRows ids={draft.columns.map((column) => column.id)} onMove={move} disabled={disabled}>
+              {draft.columns.map((column, index) => (
+                <ColumnRow
+                  key={column.id}
+                  column={column}
+                  index={index}
+                  disabled={disabled}
+                  toggle={(visible) => toggle(column.id, visible)}
+                />
+              ))}
+            </SortableRows>
+          </div>
         </div>
 
         <div className="space-y-4">
