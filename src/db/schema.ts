@@ -25,7 +25,7 @@ import { CHANGE_ORDER_KINDS, CHANGE_ORDER_STATUSES } from "../lib/domain/estimat
 import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "../lib/domain/identity/statuses"
 import { FEEDBACK_TYPES, STAFF_MESSAGE_STATUSES } from "../lib/domain/feedback/statuses"
 import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
-import { SAVED_VIEW_SCOPES, SAVED_VIEW_VISIBILITIES } from "../lib/domain/settings/statuses"
+import { LIST_SHEET_SORT_DIRECTIONS, SAVED_VIEW_SCOPES, SAVED_VIEW_VISIBILITIES } from "../lib/domain/settings/statuses"
 import { PROJECT_CONTACT_TYPES } from "../lib/domain/contacts/statuses"
 import {
   DEPENDENCY_TYPES,
@@ -1769,6 +1769,58 @@ export const savedViewDefaults = sqliteTable(
   ],
 )
 export type NewScheduleSavedView = typeof scheduleSavedViews.$inferInsert
+
+/**
+ * A company's layout for one list sheet (Settings > Lists): which columns
+ * show and in what order, the sort it opens with and the status filter it
+ * opens on. Sheet keys and column ids are code constants from the list
+ * sheet registry (src/lib/domain/settings/list-sheet-registry.ts); unknown
+ * ones are ignored on read.
+ */
+export const organizationListSheetSettings = sqliteTable(
+  "organization_list_sheet_settings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    sheetKey: text("sheet_key").notNull(),
+    // json: the sheet's column layout ([{ id, visible }] in display order), validated by listSheetColumnsSchema
+    columns: text("columns").notNull(),
+    sortColumn: text("sort_column"),
+    sortDirection: text("sort_direction", { enum: LIST_SHEET_SORT_DIRECTIONS }),
+    startFilter: text("start_filter"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("organization_list_sheet_settings_org_sheet_unique").on(table.organizationId, table.sheetKey),
+  ],
+)
+
+/**
+ * One person's own column choices on one list sheet (the Columns button):
+ * columns they hid or showed over the company layout. Columns they never
+ * touched follow the company setting, so new columns appear on their own.
+ */
+export const userListSheetColumnPreferences = sqliteTable(
+  "user_list_sheet_column_preferences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    sheetKey: text("sheet_key").notNull(),
+    // json: column ids (registry code constants) this person hid, validated by listSheetColumnIdsSchema
+    hiddenColumnIds: text("hidden_column_ids").notNull().default("[]"),
+    // json: column ids (registry code constants) this person showed though the company hides them
+    shownColumnIds: text("shown_column_ids").notNull().default("[]"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_list_sheet_column_preferences_user_org_sheet_unique").on(table.userId, table.organizationId, table.sheetKey),
+    index("user_list_sheet_column_preferences_org_sheet_idx").on(table.organizationId, table.sheetKey),
+  ],
+)
 
 export const schedulePhaseOptions = sqliteTable(
   "schedule_phase_options",

@@ -214,6 +214,7 @@ export function VendorsTable({
     reloadToken,
     initialPage,
     enableSelection: selectable,
+    sheetId: "vendors",
   })
   const { page, selectedRows, clearSelection } = list
   React.useEffect(() => {

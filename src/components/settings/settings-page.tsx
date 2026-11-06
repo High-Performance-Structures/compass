@@ -5,6 +5,7 @@ import {
   IconAdjustments,
   IconBuildingSkyscraper,
   IconBook,
+  IconColumns3,
   IconRoute,
   IconMapPin,
   IconPalette,
@@ -33,6 +34,7 @@ import { TravelChargesTab } from "@/components/settings/travel-charges-tab"
 import { RateBookTab } from "@/components/settings/rate-book-tab"
 import { WorkflowsTab } from "@/components/settings/workflows-tab"
 import { RecordStatusesTab } from "@/components/settings/record-statuses-tab"
+import { ListsTab } from "@/components/settings/lists-tab"
 import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
 import { InternalDepartmentSettingsSection } from "@/components/settings/internal-department-settings-section"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
@@ -55,6 +57,7 @@ const SETTINGS_TABS = [
   { value: "rate-book", label: "Rate book", icon: IconBook },
   { value: "workflows", label: "Workflows", icon: IconRoute },
   { value: "statuses", label: "Statuses", icon: IconTag },
+  { value: "lists", label: "Lists", icon: IconColumns3 },
   { value: "agent", label: "Agent", icon: IconRobot },
   { value: "integrations", label: "Integrations", icon: IconPlug },
 ] as const
@@ -63,7 +66,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "permissions", "agent", "rate-book", "workflows", "statuses",
+  "appearance", "permissions", "agent", "rate-book", "workflows", "statuses", "lists",
 ])
 
 function IntegrationsSection() {
@@ -142,6 +145,8 @@ export function SettingsPageClient() {
         return <WorkflowsTab />
       case "statuses":
         return <RecordStatusesTab />
+      case "lists":
+        return <ListsTab />
       case "agent":
         return developerModeEnabled ? <AgentTab /> : null
       case "integrations":

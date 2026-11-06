@@ -18,6 +18,7 @@ import type { ProjectPurchaseOrderItem, PurchaseOrderListRow } from "@/lib/domai
 import { PURCHASE_ORDER_DESCRIPTION_PREVIEW } from "@/lib/domain/operations/purchase-order-lists"
 import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
@@ -431,7 +432,8 @@ export default async function ProjectPurchaseOrdersPage({
     emailReplies,
     statuses,
   ] = loaded.data
-  const statusFilter = parsePurchaseOrderStatusFilter(query.status, statuses)
+  // Without ?status= the sheet opens on the company's filter (Settings > Lists).
+  const statusFilter = parsePurchaseOrderStatusFilter(query.status ?? (await listSheetStartFilter("purchase-orders.job")) ?? undefined, statuses)
   const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,

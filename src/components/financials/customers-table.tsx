@@ -190,6 +190,7 @@ export function CustomersTable({
     reloadToken,
     initialPage,
     enableSelection: selectable,
+    sheetId: "customers",
   })
   const { selectedRows, clearSelection } = list
   React.useEffect(() => { onSelectionChange?.(selectedRows) }, [selectedRows, onSelectionChange])

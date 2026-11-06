@@ -192,6 +192,22 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   renamed, recolored, reordered or hidden but never deleted; a company's own
   status can be deleted only while no record uses it. A new record type is
   one entry in that registry.
+- **Columns follow company and personal settings (owner, 2026-11-05).**
+  Every sheet registers a `sheetId` in
+  `src/lib/domain/settings/list-sheet-registry.ts` (its column ids and
+  labels, the required column that opens the record, and its default
+  visibility, order and sort) and passes it to `useRecordTable` or
+  `useServerRecordTable`. Nothing else is needed: the sheet's columns, order
+  and opening sort then follow the person's own choice, then the company's
+  **Settings > Lists**, then the code default, and `RecordTable` shows a
+  **Columns** button where each person hides or shows columns for themselves
+  or chooses **Reset to company default**. The required column can't be
+  hidden. Columns added to code later appear in their default place; ids
+  that no longer exist are ignored. A page that picks the status filter
+  reads the sheet's "Opens on filter" with `listSheetStartFilter` when the
+  URL names none. Keep each sheet's registered defaults equal to what it
+  showed before, so registering changes nothing on screen.
+  `list-sheet-standard.test.ts` enforces it.
 - **Rule for every growing list (owner, 2026-11-05).** Any growing list (POs,
   RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
   column header, use the status filter buttons above it, search, and click a

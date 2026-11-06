@@ -10,6 +10,7 @@ import {
   useReactTable,
   type ColumnDef,
   type Row,
+  type RowData,
   type RowSelectionState,
   type SortingState,
   type Table as TableInstance,
@@ -18,6 +19,8 @@ import {
 import { IconSearch } from "@tabler/icons-react"
 
 import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table-pagination"
+import { RecordColumnsButton } from "@/components/list-sheets/record-columns-button"
+import { openingSort, useListSheetTableOptions, type ListSheetControl } from "@/components/list-sheets/use-list-sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
@@ -35,6 +38,15 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
+declare module "@tanstack/react-table" {
+  // TData is required by TanStack's declaration merging.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface TableMeta<TData extends RowData> {
+    /** The registered sheet whose layout this table follows; RecordTable shows its Columns button. */
+    readonly listSheet?: ListSheetControl
+  }
+}
+
 /** Shared list behavior: refreshes preserve the page; view changes reset it. */
 export function useRecordTable<T>({
   data,
@@ -45,6 +57,7 @@ export function useRecordTable<T>({
   initialItemId = null,
   revealReady = true,
   initialSorting = [],
+  sheetId,
 }: {
   readonly data: readonly T[]
   readonly columns: readonly ColumnDef<T>[]
@@ -55,8 +68,16 @@ export function useRecordTable<T>({
   readonly revealReady?: boolean
   /** The sort a list opens with, such as required date; headers still change it. */
   readonly initialSorting?: SortingState
+  /**
+   * The sheet's id in the list sheet registry: its columns, order and
+   * opening sort follow the person's and the company's settings, and
+   * RecordTable shows a Columns button. The sheet's sort replaces
+   * `initialSorting`.
+   */
+  readonly sheetId?: string
 }): TableInstance<T> {
-  const [sorting, setSorting] = React.useState<SortingState>(initialSorting)
+  const { sheet, state: sheetState } = useListSheetTableOptions(sheetId, columns)
+  const [sorting, setSorting] = React.useState<SortingState>(() => openingSort(sheet, initialSorting))
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [pagination, setPagination] = React.useState({
     pageIndex: 0,
@@ -68,7 +89,8 @@ export function useRecordTable<T>({
     data: rows,
     columns: tableColumns,
     getRowId,
-    state: { sorting, rowSelection, pagination },
+    state: { sorting, rowSelection, pagination, ...sheetState },
+    meta: sheet ? { listSheet: sheet } : undefined,
     onSortingChange: (update) => {
       setSorting(update)
       setPagination((current) => ({ ...current, pageIndex: 0 }))
@@ -336,8 +358,14 @@ function RecordTableView<T>({
     </Table>
   )
 
+  const listSheet = table.options.meta?.listSheet
   return (
     <div className="min-w-0 space-y-4" aria-busy={state.kind === "loading"}>
+      {listSheet && (
+        <div className="-mb-2 flex justify-end">
+          <RecordColumnsButton sheet={listSheet} availableColumnIds={table.getAllLeafColumns().map((column) => column.id)} />
+        </div>
+      )}
       {state.kind === "error" && (
         <p role="alert" className="text-sm text-destructive">
           {state.message}

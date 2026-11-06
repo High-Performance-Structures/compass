@@ -236,7 +236,7 @@ function BilledItemsList({
       ),
     },
   ], [projectId, canRecord, canSettle, onRecord, onPrepaid])
-  const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query })
+  const table = useRecordTable({ data: visible, columns, getRowId: (item) => `${item.kind}:${item.id}`, resetKey: query, sheetId: "payments.billed" })
   return (
     <div className="space-y-3">
       <SearchBox value={query} onChange={setQuery} label="Search billed items" />
@@ -325,7 +325,7 @@ function PaymentsList({
       },
     },
   ], [canRecord, canVoid, onApply, onVoid])
-  const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query })
+  const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query, sheetId: "payments.received" })
   return (
     <div className="space-y-3">
       <SearchBox value={query} onChange={setQuery} label="Search payments" />

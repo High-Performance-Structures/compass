@@ -100,6 +100,7 @@ export function ParticipantReviewTable({
     load: getImportedParticipantReviewPage,
     reloadToken,
     initialPage,
+    sheetId: "contacts.review",
   })
 
   return (

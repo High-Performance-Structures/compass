@@ -196,6 +196,8 @@ export function ProjectRfiRecordTable(props: ProjectRfiRecordTableProps): React.
     getRowId: rowId,
     resetKey: query,
     initialItemId: selectedId,
+    // The trade partner view shows a fixed subset and is not a company sheet.
+    sheetId: audience === "staff" ? "rfis.job" : undefined,
   })
 
   return (

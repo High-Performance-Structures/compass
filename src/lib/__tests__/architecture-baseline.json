@@ -368,6 +368,9 @@
     "organizationInvites": [
       "src/app/actions/invites.ts"
     ],
+    "organizationListSheetSettings": [
+      "src/lib/domain/settings/store.ts"
+    ],
     "organizationMembers": [
       "src/lib/domain/identity/store.ts"
     ],
@@ -814,6 +817,9 @@
     ],
     "typingSessions": [
       "src/app/actions/conversations-realtime.ts"
+    ],
+    "userListSheetColumnPreferences": [
+      "src/lib/domain/settings/store.ts"
     ],
     "userPermissionOverrides": [
       "src/app/actions/permission-overrides.ts"

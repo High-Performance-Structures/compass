@@ -11,3 +11,7 @@ export type SavedViewScope = (typeof SAVED_VIEW_SCOPES)[number]
 /** Who can see a saved project or schedule view. */
 export const SAVED_VIEW_VISIBILITIES = ["personal", "shared"] as const
 export type SavedViewVisibility = (typeof SAVED_VIEW_VISIBILITIES)[number]
+
+/** The direction a list sheet's default sort runs. */
+export const LIST_SHEET_SORT_DIRECTIONS = ["asc", "desc"] as const
+export type ListSheetSortDirection = (typeof LIST_SHEET_SORT_DIRECTIONS)[number]

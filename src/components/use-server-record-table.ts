@@ -11,6 +11,7 @@ import {
   type Table as TableInstance,
 } from "@tanstack/react-table"
 
+import { openingSort, useListSheetTableOptions } from "@/components/list-sheets/use-list-sheet"
 import type { ActionResult } from "@/lib/action-result"
 import { DEFAULT_RECORD_PAGE_QUERY, type RecordPage, type RecordPageQuery } from "@/lib/record-page"
 
@@ -46,6 +47,7 @@ export function useServerRecordTable<T, P extends RecordPage<T>>({
   reloadToken = 0,
   initialPage = null,
   enableSelection = false,
+  sheetId,
 }: {
   readonly columns: readonly ColumnDef<T>[]
   readonly getRowId: (row: T) => string
@@ -57,10 +59,13 @@ export function useServerRecordTable<T, P extends RecordPage<T>>({
   /** The first page, read on the server with the default query. */
   readonly initialPage?: P | null
   readonly enableSelection?: boolean
+  /** The sheet's id in the list sheet registry, as for `useRecordTable`. */
+  readonly sheetId?: string
 }): ServerRecordTable<T, P> {
+  const { sheet, state: sheetState } = useListSheetTableOptions(sheetId, columns)
   const [search, setSearchValue] = React.useState("")
   const [debouncedSearch, setDebouncedSearch] = React.useState("")
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  const [sorting, setSorting] = React.useState<SortingState>(() => openingSort(sheet, []))
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize: DEFAULT_RECORD_PAGE_QUERY.pageSize,
@@ -102,8 +107,9 @@ export function useServerRecordTable<T, P extends RecordPage<T>>({
   }), [debouncedSearch, sort?.id, sort?.desc, pagination.pageIndex, pagination.pageSize])
 
   // The server already sent the default first page; read again only when the
-  // query, filter or reload token moves away from it.
-  const skipInitial = React.useRef(initialPage !== null)
+  // query, filter or reload token moves away from it. A sheet that opens on
+  // its own sort reads its first page again, in that order.
+  const skipInitial = React.useRef(initialPage !== null && sorting.length === 0)
   React.useEffect(() => {
     if (skipInitial.current) {
       skipInitial.current = false
@@ -132,7 +138,8 @@ export function useServerRecordTable<T, P extends RecordPage<T>>({
     columns: tableColumns,
     getRowId,
     rowCount: page?.total ?? 0,
-    state: { sorting, pagination, rowSelection },
+    state: { sorting, pagination, rowSelection, ...sheetState },
+    meta: sheet ? { listSheet: sheet } : undefined,
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,

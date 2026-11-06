@@ -23,6 +23,9 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { getProjectViewPreferences } from "@/app/actions/project-views"
 import { ProjectListProvider } from "@/components/project-list-provider"
+import { ListSheetProvider } from "@/components/list-sheets/list-sheet-provider"
+import { loadListSheetPreferences } from "@/lib/domain/settings/list-sheets"
+import { savePersonalListSheetColumns } from "@/app/actions/list-sheets"
 import { NotificationCenterProvider } from "@/components/notifications/notification-center-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { isLocalDevelopment } from "@/lib/auth-config"
@@ -68,12 +71,13 @@ export default async function DashboardLayout({
 }: {
   readonly children: React.ReactNode
 }) {
-  const [projectList, authUser, cookieStore, projectViewPreferences] =
+  const [projectList, authUser, cookieStore, projectViewPreferences, listSheetPreferences] =
     await Promise.all([
       getProjects(),
       getCurrentUser(),
       cookies(),
       getProjectViewPreferences(),
+      loadListSheetPreferences(),
     ])
   const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false"
   const user = authUser ? toSidebarUser(authUser) : null
@@ -134,6 +138,7 @@ export default async function DashboardLayout({
     <SettingsProvider>
     <NotificationCenterProvider>
     <ProjectListProvider projects={projectList} viewPreferences={projectViewPreferences}>
+    <ListSheetProvider preferences={listSheetPreferences} savePersonal={savePersonalListSheetColumns}>
     <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
     <CommandMenuProvider
@@ -200,6 +205,7 @@ export default async function DashboardLayout({
     </CommandMenuProvider>
     </PageActionsProvider>
     </QuickAddProvider>
+    </ListSheetProvider>
     </ProjectListProvider>
     </NotificationCenterProvider>
     </SettingsProvider>

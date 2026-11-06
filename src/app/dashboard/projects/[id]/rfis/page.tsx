@@ -12,6 +12,7 @@ import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ProjectRfiRecordTable } from "@/components/projects/project-rfi-record-table"
 import { rfiListRow, rfiStatusFilterOptions } from "@/lib/rfis/record-list"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
 import { projectRfiHref } from "@/lib/work-calendar"
 import { ProjectRfiVendorAssignment } from "@/components/projects/project-rfi-vendor-assignment"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
@@ -311,7 +312,8 @@ export default async function ProjectRfisPage({
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail, vendorOptions, statuses] =
     loaded.data
-  const statusFilter = parseRecordStatusFilter(statuses, query.status)
+  // Without ?status= the queue opens on the company's filter (Settings > Lists).
+  const statusFilter = parseRecordStatusFilter(statuses, query.status ?? (await listSheetStartFilter("rfis.job")) ?? undefined)
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,

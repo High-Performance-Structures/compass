@@ -4,10 +4,10 @@
   "featureId": "help-resources",
   "slug": "company-settings",
   "title": "Company Settings, Workflow Rules, and Drive Filing",
-  "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, record statuses, and the project paper trail.",
+  "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, record statuses, list columns, and the project paper trail.",
   "contextSummary": "Settings changes affect company-wide workflows and future outputs. Review permissions, save deliberately, and verify the actual document, mailbox, or Drive copy.",
   "category": "Start Here",
-  "tags": ["settings", "Company", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters"],
+  "tags": ["settings", "Company", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters", "Lists", "columns", "sheets"],
   "audiences": ["staff"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
@@ -27,6 +27,18 @@ Save before choosing **Check sending mailbox**. This asks Google whether Compass
 Admins use **Settings → Workflows** for **Staff Message Desk** thresholds, stale reminders, **Project aging**, **Nu-Tech emails**, the catalog link, and **Project paper trail**. Follow-up thresholds use business days. Project aging measures time since logged client contact and must have an overdue threshold later than its follow-up-due threshold.
 
 Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. Department profiles supply the sending mailbox and office identity. Use [Conversations and notifications](/dashboard/help/conversations-and-notifications#message-desk), [Navigating projects](/dashboard/help/navigating-projects#project-follow-up), and [Nu-Tech orders](/dashboard/help/nutech-orders) for the operational steps.
+
+## Choose List Columns {#lists}
+
+Admins open **Settings → Lists** to set how each sheet looks for the whole company: purchase orders (a job's and all jobs), RFIs, to-dos, billed items and received payments, vendors, clients, and contacts to review. Pick a sheet on the left, then:
+
+- tick **Show** for the columns the sheet shows, and drag a column by its handle (or use the up and down arrows) to change the order. The column that names the record is always shown, because it opens the record;
+- choose the **Default sort** column and direction, or **The list's own order**;
+- for sheets with status filter buttons, choose the filter it **Opens on**, such as Open or All. A link that names a filter still opens on that filter.
+
+The **Preview** shows the resulting headers. **Save** applies the layout for everyone in the company, and the change is recorded in Activity. **Use the built-in columns** goes back to the columns Compass ships with. Other staff can view this page but not change it.
+
+Every sheet also has a **Columns** button above it. Anyone can use it to hide or show columns for themselves only; **Reset to company default** drops their own choices. Their choice is saved for them and does not change what anyone else sees. A column that Compass adds later appears on its own.
 
 ## Review Travel Charges and Rates {#travel}
 
