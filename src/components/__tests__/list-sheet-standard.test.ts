@@ -14,6 +14,7 @@ import { projectTodoColumns } from "@/components/projects/project-todo-table-col
 import { purchaseOrderColumns } from "@/components/purchase-orders/purchase-order-record-table"
 import { CUSTOMER_SORT_IDS, VENDOR_SORT_IDS } from "@/lib/domain/contacts/directory-page"
 import { REVIEW_SORT_IDS } from "@/lib/domain/conversations/imported-participant-review"
+import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
 import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { LIST_SHEETS } from "@/lib/domain/settings/list-sheet-registry"
 
@@ -84,9 +85,10 @@ describe("list sheet standard", () => {
       "purchase-orders.all-jobs": () => purchaseOrderColumns(true, "open", defaultRecordStatusList("purchase_order")),
       "rfis.job": () => rfiColumns("staff", { kind: "link", href: () => "/" }, defaultRecordStatusList("rfi")),
       "rfis.trade-partner": () => rfiColumns("vendor", { kind: "select", onSelect: noop }, defaultRecordStatusList("rfi")),
-      "todos.job": () => projectTodoColumns({ projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
+      "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
       "payments.received": () => receivedPaymentColumns({ canRecord: true, canVoid: true, onApply: noop, onVoid: noop }),
+      "nutech.orders": () => nuTechOrderColumns(),
       vendors: () => vendorColumns({ onView: noop }, {}, { selectable: true, developerMode: true }),
       customers: () => customerColumns({ onEdit: noop }, { selectable: true, developerMode: true }),
       "contacts.review": () => participantReviewColumns(noop),

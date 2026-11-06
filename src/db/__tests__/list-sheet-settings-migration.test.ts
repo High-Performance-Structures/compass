@@ -12,7 +12,7 @@ import {
 import type { Db } from "@/lib/server/action-context"
 
 /*
- * Replays every migration, as CI and wrangler do, then checks the 0293 list
+ * Replays every migration, as CI and wrangler do, then checks the 0295 list
  * sheet tables: one row per (organization, sheet) and (user, organization,
  * sheet), organization-scoped upserts, cascades, and the sort direction check.
  */
@@ -56,7 +56,7 @@ function rows(sqlite: Sqlite, sql: string, ...params: readonly string[]): readon
   return sqlite.prepare(sql).all(...params)
 }
 
-describe("0293 list sheet settings", () => {
+describe("0295 list sheet settings", () => {
   let sqlite: Sqlite
   let db: Db
   let orgA: string

@@ -84,7 +84,7 @@ function DateCell({ value, empty = "—" }: { readonly value: string | null; rea
   return <span className="whitespace-nowrap tabular-nums">{formatDate(value, "medium", empty)}</span>
 }
 
-function boardColumns(): ColumnDef<NuTechBoardRow>[] {
+export function boardColumns(): ColumnDef<NuTechBoardRow>[] {
   return [
     {
       id: "order",
@@ -250,6 +250,7 @@ export function NuTechOrderBoard({ view }: { readonly view: NuTechOrderBoardView
     getRowId: rowId,
     resetKey: `${queue ?? status}|${query}`,
     initialSorting: REQUESTED_DATE_FIRST,
+    sheetId: "nutech.orders",
   })
 
   return (

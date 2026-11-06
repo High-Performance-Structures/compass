@@ -35,7 +35,7 @@ function storedSort(column: string | null, direction: string | null): CompanyLis
   return { kind: "column", columnId: column, desc: direction === "desc" }
 }
 
-/** The tables are missing until migration 0293 is applied; say so once per isolate, not per request. */
+/** The tables are missing until migration 0295 is applied; say so once per isolate, not per request. */
 let warnedUnavailable = false
 
 /** Company layouts and the reader's own columns for every registered sheet. */
