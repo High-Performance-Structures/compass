@@ -201,6 +201,10 @@ export function ProjectRfiRecordTable(props: ProjectRfiRecordTableProps): React.
         itemLabel="RFIs"
         emptyMessage={query ? "No RFIs match this search." : emptyMessage}
         rowIdPrefix="rfi-row"
+        // The selected RFI's card opens below the table; highlight its row
+        // without pulling the page back up to it.
+        focusedRowId={selectedId}
+        scrollToFocusedRow={false}
         {...(open.kind === "link" ? { getRowHref: open.href } : { onRowOpen: open.onSelect })}
       />
     </div>

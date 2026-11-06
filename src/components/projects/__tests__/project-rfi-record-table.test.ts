@@ -98,6 +98,9 @@ describe("RFI record table", () => {
     await renderStaff(rows, "rfi-28")
     expect(host.textContent).toContain("RFI-028")
     expect(host.textContent).not.toContain("RFI-001")
+    // The selected RFI's row is marked without scrolling to it.
+    expect(host.querySelector("#rfi-row-rfi-28")?.getAttribute("data-focused")).toBe("true")
+    expect(host.querySelectorAll("tbody tr[data-focused]")).toHaveLength(1)
   })
 
   it("opens the RFI record from anywhere on the row, keeping the filter", async () => {
