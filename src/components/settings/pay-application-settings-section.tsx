@@ -16,11 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import {
-  FEATURE_SETTINGS,
   payApplicationSettingsSchema,
   type PayApplicationSettings,
-} from "@/lib/feature-settings/registry"
+} from "@/lib/feature-settings/contract-settings"
 import {
   PAY_APPLICATION_OWNER_DETAILS,
   PAY_APPLICATION_OWNER_DETAIL_LABELS,

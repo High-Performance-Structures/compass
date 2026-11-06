@@ -21,7 +21,7 @@ import {
   SITE_LOCATION_STATUSES,
   WORKSPACE_KINDS,
 } from "../lib/domain/project/statuses"
-import { CHANGE_ORDER_KINDS, CHANGE_ORDER_STATUSES } from "../lib/domain/estimates/statuses"
+import { CHANGE_ORDER_ACCEPTANCE_METHODS, CHANGE_ORDER_KINDS, CHANGE_ORDER_STATUSES } from "../lib/domain/estimates/statuses"
 import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "../lib/domain/identity/statuses"
 import { FEEDBACK_TYPES, STAFF_MESSAGE_STATUSES } from "../lib/domain/feedback/statuses"
 import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
@@ -3109,6 +3109,19 @@ export const projectChangeOrders = sqliteTable(
     executedAt: text("executed_at"),
     executedDocumentUrl: text("executed_document_url"),
     executedDocumentLabel: text("executed_document_label"),
+    // Manual acceptance (0296); see src/lib/change-orders/manual-acceptance.ts.
+    acceptanceMethod: text("acceptance_method", { enum: CHANGE_ORDER_ACCEPTANCE_METHODS }),
+    acceptedByContactId: text("accepted_by_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" }
+    ),
+    // snapshot: the approver's name as recorded when the acceptance was recorded.
+    acceptedByNameSnapshot: text("accepted_by_name_snapshot"),
+    acceptedOn: text("accepted_on"),
+    acceptanceRecordedBy: text("acceptance_recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    acceptanceNote: text("acceptance_note"),
     sageStatus: text("sage_status").notNull().default("not_ready"),
     sageRecordId: text("sage_record_id"),
     lastSageSyncAt: text("last_sage_sync_at"),
@@ -3120,6 +3133,8 @@ export const projectChangeOrders = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    index("project_change_orders_accepted_by_contact_idx").on(table.acceptedByContactId),
+    index("project_change_orders_acceptance_recorded_by_idx").on(table.acceptanceRecordedBy),
     uniqueIndex("project_change_orders_project_number_uq").on(
       table.projectId,
       table.changeOrderNumber

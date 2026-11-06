@@ -39,8 +39,20 @@ export type ChangeOrderStatus = (typeof CHANGE_ORDER_STATUSES)[number]
 export const CHANGE_ORDER_KINDS = ["estimate", "description", "replacement", "contract_version"] as const
 export type ChangeOrderKind = (typeof CHANGE_ORDER_KINDS)[number]
 
+/**
+ * How an owner's acceptance of a change order was recorded outside a signed
+ * document: staff upload written approval, staff sign off a verbal approval,
+ * or the owner accepts in their own workspace.
+ */
+export const CHANGE_ORDER_ACCEPTANCE_METHODS = ["written_approval", "staff_signoff", "owner_workspace"] as const
+export type ChangeOrderAcceptanceMethod = (typeof CHANGE_ORDER_ACCEPTANCE_METHODS)[number]
+
 // Column -> list maps the store checks before every write.
-export const CHANGE_ORDER_LISTS = { status: CHANGE_ORDER_STATUSES, changeOrderKind: CHANGE_ORDER_KINDS }
+export const CHANGE_ORDER_LISTS = {
+  status: CHANGE_ORDER_STATUSES,
+  changeOrderKind: CHANGE_ORDER_KINDS,
+  acceptanceMethod: CHANGE_ORDER_ACCEPTANCE_METHODS,
+}
 export const CHANGE_ORDER_HISTORY_LISTS = { fromStatus: CHANGE_ORDER_STATUSES, toStatus: CHANGE_ORDER_STATUSES }
 
 /**

@@ -195,6 +195,7 @@ export type ChangeOrderReportItem = Pick<
   | "submittedAt"
   | "scope"
   | "reason"
+  | "acceptance"
 > & {
   readonly lines: readonly Pick<ProjectChangeOrderItem["lines"][number], "lineNumber" | "description" | "amountCents">[]
   readonly documents: readonly Pick<ProjectChangeOrderItem["documents"][number], "label" | "url" | "notes">[]
@@ -231,6 +232,7 @@ export function changeOrderReport(
             ],
             ["Schedule impact (days)", item.scheduleImpactDays],
             ["Submitted", item.submittedAt],
+            ["Acceptance", item.acceptance?.summary ?? null],
           ],
           paragraphs: [
             ...(item.sourceType === "buildertrend_import"

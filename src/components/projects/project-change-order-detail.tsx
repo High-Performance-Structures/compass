@@ -9,6 +9,10 @@ import type {
 } from "@/app/actions/project-change-orders"
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { ProjectChangeOrderCompletion } from "@/components/projects/project-change-order-completion"
+import {
+  ProjectChangeOrderAcceptanceSummary,
+  ProjectChangeOrderRecordAcceptance,
+} from "@/components/projects/project-change-order-acceptance"
 import { ProjectChangeOrderExecutedDocument } from "@/components/projects/project-change-order-executed-document"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import { ProjectChangeOrderVersionLines } from "@/components/projects/project-change-order-version-lines"
@@ -80,6 +84,13 @@ export function ProjectChangeOrderDetail({
         }
         actions={
           <>
+                {internal && item.manualAcceptance ? (
+                  <ProjectChangeOrderRecordAcceptance
+                    projectId={item.projectId}
+                    changeOrderId={item.id}
+                    options={item.manualAcceptance}
+                  />
+                ) : null}
                 <PrintPreviewButton
                   link={{ projectId: item.projectId, document: "change-order", params: { changeOrderId: item.id }, number: item.changeOrderNumber }}
                 />
@@ -100,6 +111,17 @@ export function ProjectChangeOrderDetail({
         }
       />
       {paperTrailStatus}
+
+      {item.acceptance && (
+        <ProjectChangeOrderAcceptanceSummary
+          acceptance={item.acceptance}
+          evidenceHref={
+            item.acceptance.method === "written_approval" && item.executedDocumentAvailable
+              ? `/api/projects/${encodeURIComponent(item.projectId)}/change-orders/${encodeURIComponent(item.id)}/executed-document`
+              : null
+          }
+        />
+      )}
 
       <ProjectChangeOrderVersionLines
         lines={item.lines}
@@ -276,6 +298,8 @@ export function ProjectChangeOrderDetail({
                       ? "Executed document replaced"
                     : event.eventType === "cost_codes_completed"
                       ? "Cost codes completed"
+                    : event.eventType === "acceptance_recorded"
+                      ? "Owner acceptance recorded"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}

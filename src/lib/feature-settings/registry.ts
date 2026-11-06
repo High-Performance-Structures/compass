@@ -16,7 +16,7 @@ import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio
 import { DEFAULT_MAP_STATE, MAP_STATE_CODES } from "@/lib/portfolio-map/states"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
-import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
+import * as contract from "@/lib/feature-settings/contract-settings"
 import {
   DEFAULT_BRACING_RENTAL_SETTINGS,
   DEFAULT_NUTECH_ORDER_BOARD_SETTINGS,
@@ -569,21 +569,6 @@ const contractPacketSettingsSchema = z.object({
 
 type ContractPacketSettings = z.infer<typeof contractPacketSettingsSchema>
 
-/** Contract deposits: how a received deposit reaches pay applications. */
-export const contractDepositSettingsSchema = z.object({
-  /** New pay applications apply the unapplied deposit balance automatically. */
-  autoApplyToPayApplications: z.boolean(),
-})
-
-export type ContractDepositSettings = z.infer<typeof contractDepositSettingsSchema>
-
-export const payApplicationSettingsSchema = z.object({
-  /** What the client sees on a pay application unless the draw overrides it. */
-  ownerDetail: z.enum(PAY_APPLICATION_OWNER_DETAILS),
-})
-
-export type PayApplicationSettings = z.infer<typeof payApplicationSettingsSchema>
-
 export const archiveDeliverySettingsSchema = z.object({
   deliveryRootIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)).max(10),
   excludedMasterRootIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)).max(20),
@@ -593,9 +578,10 @@ export type ArchiveDeliverySettings = z.infer<typeof archiveDeliverySettingsSche
 
 type FeatureSettingsTypes = {
   readonly "archive-delivery": ArchiveDeliverySettings
-  readonly "contract-deposits": ContractDepositSettings
+  readonly "change-order-acceptance": contract.ChangeOrderAcceptanceSettings
+  readonly "contract-deposits": contract.ContractDepositSettings
   readonly "contract-packets": ContractPacketSettings
-  readonly "pay-applications": PayApplicationSettings
+  readonly "pay-applications": contract.PayApplicationSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
@@ -753,13 +739,19 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     label: "Contract deposits",
     description: "Whether new pay applications automatically apply the contract deposit that hasn't been applied yet. Staff can change the amount on any draft pay application.",
     defaults: { autoApplyToPayApplications: true },
-    schema: contractDepositSettingsSchema,
+    schema: contract.contractDepositSettingsSchema,
   },
   "pay-applications": {
     label: "Pay applications",
     description: "How much detail the client sees on a pay application. Staff can choose a different level on any draw.",
     defaults: { ownerDetail: "division_percent" },
-    schema: payApplicationSettingsSchema,
+    schema: contract.payApplicationSettingsSchema,
+  },
+  "change-order-acceptance": {
+    label: "Change-order acceptance",
+    description: "How staff record an owner's approval that came by email, text or in person. Written approval always needs change-order approval permission.",
+    defaults: contract.DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS,
+    schema: contract.changeOrderAcceptanceSettingsSchema,
   },
   "contract-packets": {
     label: "Contract packets",

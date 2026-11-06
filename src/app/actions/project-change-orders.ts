@@ -69,6 +69,7 @@ import {
 } from "@/lib/domain/estimates/store"
 import { cleanText } from "@/lib/shared/guards"
 import { changeOrderCompletionView } from "@/lib/domain/estimates/rules"
+import { changeOrderAcceptanceView, changeOrderExecutionLinesError } from "@/lib/domain/estimates/change-order-acceptance"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 import type {
   ChangeOrderAudience,
@@ -541,6 +542,9 @@ function viewModel(
       context.internal &&
       context.canApprove &&
       isExecutedChangeOrderStatus(status),
+    // The detail view loads these; lists leave them out.
+    acceptance: null,
+    manualAcceptance: null,
     ...changeOrderCompletionView({ ...row, kind: row.changeOrderKind, lines }, context.internal && context.canApprove),
     submittedAt: row.submittedAt,
     createdAt: row.createdAt,
@@ -817,7 +821,7 @@ export async function getProjectChangeOrder(
         .limit(1)
         .get()
     : undefined
-  return viewModel(
+  const item = viewModel(
     row,
     context,
     lineRows,
@@ -825,6 +829,8 @@ export async function getProjectChangeOrder(
     visibleHistory,
     { ...rebaseline, changeOrderEstimate: changeOrderEstimateRow ? estimateOption(changeOrderEstimateRow) : null }
   )
+  const acceptanceView = await changeOrderAcceptanceView({ db: context.db, row, user: context.user, internal: context.internal, canApprove: context.canApprove })
+  return item && { ...item, ...acceptanceView }
 }
 
 export async function createProjectChangeOrder(
@@ -1180,36 +1186,8 @@ export async function updateProjectChangeOrder(
     }
     // A description-only change order has no cost lines and no budget effect.
     if (input.status === "executed" && kind !== "description") {
-      const executionLines =
-        (await context.db
-          .select({
-            costCode: projectChangeOrderLines.costCode,
-            amountCents: projectChangeOrderLines.amountCents,
-          })
-          .from(projectChangeOrderLines)
-          .where(
-            and(
-              eq(projectChangeOrderLines.changeOrderId, changeOrderId),
-              eq(projectChangeOrderLines.projectId, projectId)
-            )
-          ))
-      if (executionLines.length === 0) {
-        return {
-          success: false,
-          error: "Add at least one cost-coded line before execution.",
-        }
-      }
-      if (
-        executionLines.some(
-          (line) => !line.costCode || line.amountCents === null
-        )
-      ) {
-        return {
-          success: false,
-          error:
-            "Every executed change-order line needs a cost code and amount so it can revise the G703.",
-        }
-      }
+      const linesError = await changeOrderExecutionLinesError(context.db, projectId, changeOrderId)
+      if (linesError) return { success: false, error: linesError }
     }
     const updateStatement = updateChangeOrdersStatement(
       context.db,

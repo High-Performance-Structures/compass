@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-06"
 }
 ---
 
@@ -135,6 +135,17 @@ Send it for signature with Foxit, or mark it signed outside Compass and record t
 - The signed document is attached to the change order.
 
 The contract budget then rebuilds with the change added. The contract estimate itself is not changed. A new version of a change-order estimate stays on the same change order.
+
+## Record an Owner's Approval Without a Signed Change Order {#change-order-acceptance}
+
+Owners often approve a change by email, text or in person. Staff who can approve change orders choose **Record acceptance** at the top of the change order (any status from Draft through Signature Pending), then choose how the owner approved:
+
+- **Written approval**: choose or upload the owner's email or message (saved as a PDF or image) into the job's Drive folder, pick who approved it (the project's owner contacts, or the client's name), and the approval date. It is saved as the change order's executed document.
+- **Staff sign-off**: for a verbal or in-person approval with no document. Pick who approved and the date, write a note saying how they approved, and tick **I approve recording this change order as accepted**. By default this is only for change orders that don't change the price (description only, or $0).
+
+Recording the acceptance executes the change order the same way the Executed status does, and the contract budget rebuilds. The change order, the owner's view and Print Preview show **Accepted by** the approver, the date, and how it was recorded; a staff sign-off carries a **Manual** tag. A change order priced with an estimate is accepted on its estimate instead.
+
+Admins choose who may record a staff sign-off (change-order approvers, admins only, or nobody) and whether a change order that changes the price needs written approval in **Settings → Workflows → Change-order acceptance**.
 
 ## Accept a New Version of the Contract Estimate {#contract-estimate-versions}
 
