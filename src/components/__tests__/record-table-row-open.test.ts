@@ -99,6 +99,24 @@ describe("record table rows and status filters", () => {
     window.getSelection()?.removeAllRanges()
   })
 
+  it("toggles the checkbox, not the record, for a click in the checkbox cell's padding", async () => {
+    await act(async () => root.render(React.createElement(ClickHarness)))
+    const checkboxCell = host.querySelectorAll("tbody tr")[0]?.querySelector("td")
+    await act(async () => checkboxCell?.dispatchEvent(new MouseEvent("click", { bubbles: true })))
+    expect(onRowOpen).not.toHaveBeenCalled()
+    expect(checkboxCell?.querySelector("[role='checkbox']")?.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("opens a linked row in a new tab on a middle-click", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null)
+    await act(async () => root.render(React.createElement(HrefHarness)))
+    const cell = host.querySelector("tbody tr td")
+    await act(async () => cell?.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, button: 1 })))
+    expect(open).toHaveBeenCalledWith("/records/id-2", "_blank", "noopener")
+    expect(push).not.toHaveBeenCalled()
+    open.mockRestore()
+  })
+
   it("opens with its initial sort and navigates to the row's link", async () => {
     await act(async () => root.render(React.createElement(HrefHarness)))
     const firstRow = host.querySelector("tbody tr")

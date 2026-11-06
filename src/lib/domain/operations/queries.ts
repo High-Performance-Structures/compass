@@ -25,11 +25,12 @@ import {
   isCompletedProjectTodoStatus,
   isProjectTodoRecordType,
 } from "@/lib/project-todos"
+import { isOpenPurchaseOrder } from "@/lib/purchase-orders/status-filter"
 import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
 import type { Db } from "@/lib/server/action-context"
 
 import { toOperationItem, toPurchaseOrderItem, toRfqItem, toTodoItem } from "./records"
-import { isOpenPurchaseOrderStatus, operationSyncKind, syncQueueStatus } from "./rules"
+import { operationSyncKind, syncQueueStatus } from "./rules"
 import type { OperationRow } from "./store"
 import type {
   NextScheduleItem,
@@ -155,7 +156,8 @@ export async function loadOperationsSummary(
 
   const purchaseOrders = operations.filter((operation) => operation.sourceRecordType === "purchase_order")
   const commitments = operations.filter((operation) => isProjectTodoRecordType(operation.sourceRecordType))
-  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrderStatus(operation.status))
+  // The same Open the PO sheets' status filter shows.
+  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrder(operation.status))
   const activeCommitments = commitments.filter(
     (operation) => !isCompletedProjectTodoStatus(operation.status) && !isArchivedProjectTodoStatus(operation.status),
   )

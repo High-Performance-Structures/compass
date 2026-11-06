@@ -15,6 +15,7 @@ import {
 
 import { getProjectPurchaseOrderFormOptions, getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
 import type { ProjectPurchaseOrderItem, PurchaseOrderListRow } from "@/lib/domain/operations/types"
+import { PURCHASE_ORDER_DESCRIPTION_PREVIEW } from "@/lib/domain/operations/purchase-order-lists"
 import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
@@ -88,7 +89,8 @@ function purchaseOrderListRow(
     projectName: project?.name ?? null,
     number: order.sourceRecordNumber,
     title: order.title,
-    description: order.description,
+    // The table shows a short preview; the full text stays on the record.
+    description: order.description?.slice(0, PURCHASE_ORDER_DESCRIPTION_PREVIEW) ?? null,
     vendorName: order.companyName,
     status: order.status,
     siteContactName: order.assigneeName,

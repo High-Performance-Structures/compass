@@ -314,12 +314,6 @@ export function purchaseOrderActions(order: PurchaseOrderDraftState): PurchaseOr
   return { canEdit: canEditPurchaseOrderDraft(order) }
 }
 
-const PURCHASE_ORDER_CLOSED = new Set(["closed", "void", "complete"])
-
-export function isOpenPurchaseOrderStatus(status: string): boolean {
-  return !PURCHASE_ORDER_CLOSED.has(status)
-}
-
 // ---------------------------------------------------------------------------
 // RFQs
 // ---------------------------------------------------------------------------

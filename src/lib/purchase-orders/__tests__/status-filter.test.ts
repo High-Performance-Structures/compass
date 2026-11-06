@@ -19,7 +19,7 @@ describe("purchase order status filters", () => {
   })
 
   it("treats complete, closed, void, voided and archived as not open", () => {
-    for (const status of ["complete", "closed", "void", "voided", "archived", "Canceled"]) {
+    for (const status of ["complete", "closed", "void", "voided", "archived", "Canceled", "declined"]) {
       expect(isOpenPurchaseOrder(status)).toBe(false)
     }
     for (const status of ["draft", "approved", "sent", "ordered", "Partially-Received", "received", "open"]) {

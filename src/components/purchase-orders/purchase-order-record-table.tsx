@@ -194,6 +194,9 @@ export function PurchaseOrderRecordTable({
         itemLabel="purchase orders"
         emptyMessage={query ? "No purchase orders match this search." : emptyMessage}
         rowIdPrefix="purchase-order-row"
+        // The opened PO's row is highlighted; the page scrolls to its record below.
+        focusedRowId={selectedId}
+        scrollToFocusedRow={false}
         getRowHref={(row) => rowHref(row, statusFilter)}
       />
     </div>

@@ -8,6 +8,7 @@ import { ProjectContextWatermarkShell } from "@/components/projects/project-cont
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import { ALL_JOBS_PURCHASE_ORDER_LIMIT } from "@/lib/domain/operations/purchase-order-lists"
 import { parsePurchaseOrderStatusFilter, purchaseOrderFilterOptions } from "@/lib/purchase-orders/status-filter"
 
 /**
@@ -49,6 +50,12 @@ export default async function AllJobsPurchaseOrdersPage({
               selected={statusFilter}
               hrefFor={(value) => `/dashboard/purchase-orders?status=${value}`}
             />
+            {list.data.truncated && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Showing the first {ALL_JOBS_PURCHASE_ORDER_LIMIT} purchase orders by required date. Choose a status to
+                narrow the list; search looks only within these.
+              </p>
+            )}
             <PurchaseOrderRecordTable
               rows={list.data.rows}
               allJobs

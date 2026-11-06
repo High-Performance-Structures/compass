@@ -16,6 +16,7 @@ const FINISHED: readonly PurchaseOrderStatus[] = ["complete", "closed", "void"]
 const ALIASES: Readonly<Record<string, PurchaseOrderStatus>> = {
   completed: "complete",
   archived: "closed",
+  declined: "closed",
   voided: "void",
   cancelled: "void",
   canceled: "void",

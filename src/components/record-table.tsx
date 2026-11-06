@@ -160,8 +160,8 @@ const ROW_CLICK_IGNORE = [
 ].join(",")
 
 /** Whether a click on a row should open its record. */
-function isRowOpenClick(event: React.MouseEvent<HTMLElement>): boolean {
-  if (event.defaultPrevented || event.button !== 0) return false
+function isRowOpenClick(event: React.MouseEvent<HTMLElement>, button: 0 | 1 = 0): boolean {
+  if (event.defaultPrevented || event.button !== button) return false
   const target = event.target
   // Clicks inside a portal (a dialog or menu opened from the row) bubble
   // through React to the row but are not inside it.
@@ -185,6 +185,12 @@ type RecordTableProps<T> = {
   readonly emptyMessage: string
   readonly state?: RecordTableState
   readonly focusedRowId?: string | null
+  /**
+   * Scroll the focused row into view and focus it (the default). Off when
+   * something else on the page is the scroll target, such as the record
+   * opened below the list; the row is still highlighted.
+   */
+  readonly scrollToFocusedRow?: boolean
   readonly rowIdPrefix?: string
   /**
    * Makes the whole row open the record (except its controls). Keep a link or
@@ -215,6 +221,7 @@ function RecordTableView<T>({
   emptyMessage,
   state = { kind: "ready" },
   focusedRowId = null,
+  scrollToFocusedRow = true,
   rowIdPrefix = "record",
   onRowOpen,
   getRowHref,
@@ -227,6 +234,14 @@ function RecordTableView<T>({
   const columnCount = table.getVisibleLeafColumns().length
 
   function openRow(event: React.MouseEvent<HTMLTableRowElement>, row: Row<T>): void {
+    // A click in a checkbox cell's padding means the checkbox, never the record.
+    const target = event.target
+    const cell = target instanceof Element ? target.closest("td") : null
+    const checkbox = cell?.querySelector("[role='checkbox']")
+    if (checkbox instanceof HTMLElement && target instanceof Node && !checkbox.contains(target)) {
+      if (event.button === 0 && !event.defaultPrevented) checkbox.click()
+      return
+    }
     if (!isRowOpenClick(event)) return
     if (onRowOpen) {
       onRowOpen(row.original)
@@ -238,6 +253,13 @@ function RecordTableView<T>({
     else navigate(href)
   }
 
+  /** A middle-click on a linked row opens the record in a new tab, as a link would. */
+  function openRowInNewTab(event: React.MouseEvent<HTMLTableRowElement>, row: Row<T>): void {
+    if (!isRowOpenClick(event, 1)) return
+    const href = getRowHref?.(row.original)
+    if (href) window.open(href, "_blank", "noopener")
+  }
+
   function renderRow(row: Row<T>): React.ReactElement {
     return (
       <TableRow
@@ -247,6 +269,7 @@ function RecordTableView<T>({
         tabIndex={row.id === focusedRowId ? -1 : undefined}
         data-state={row.getIsSelected() ? "selected" : undefined}
         onClick={rowsOpen ? (event) => openRow(event, row) : undefined}
+        onAuxClick={getRowHref && !onRowOpen ? (event) => openRowInNewTab(event, row) : undefined}
         className={cn(rowsOpen && "cursor-pointer", row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring")}
       >
         {row.getVisibleCells().map((cell) => (
@@ -260,11 +283,11 @@ function RecordTableView<T>({
 
   const body = rows.map(renderRow)
   React.useEffect(() => {
-    if (!focusedRowId) return
+    if (!focusedRowId || !scrollToFocusedRow) return
     const element = document.getElementById(`${rowIdPrefix}-${focusedRowId}`)
     element?.scrollIntoView({ block: "center" })
     element?.focus({ preventScroll: true })
-  }, [focusedRowId, pageIndex, rowIdPrefix])
+  }, [focusedRowId, pageIndex, rowIdPrefix, scrollToFocusedRow])
 
   const tableElement = (
     <Table aria-label={itemLabel} className="min-w-[52rem]" containerClassName="border-y">

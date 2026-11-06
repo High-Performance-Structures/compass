@@ -166,8 +166,10 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
 - **Whole-row click.** Where a record has a detail view, give `RecordTable`
   `onRowOpen` or `getRowHref` so a click anywhere on the row opens it. Clicks
   on checkboxes, buttons, links, inputs, menus and drag handles, and text
-  selection, keep their own meaning. Keep the name or reference as a link or
-  button for keyboard and screen reader users.
+  selection, keep their own meaning; a click in a checkbox cell toggles the
+  checkbox. A middle-click or Ctrl/Cmd-click on a linked row opens a new tab.
+  Keep the name or reference as a link or button for keyboard and screen
+  reader users.
 - **Status filters.** Status filter buttons sit above the sheet, built with
   `StatusFilterBar` (`src/components/status-filter-bar.tsx`): Open first,
   then the record type's own statuses (such as Draft, Sent, Received,
