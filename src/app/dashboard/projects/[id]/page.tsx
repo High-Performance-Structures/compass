@@ -79,6 +79,9 @@ import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectClientMeetings, type ProjectClientMeetingsView } from "@/app/actions/project-client-meetings"
 import { ProjectClientMeetingsCard } from "@/components/projects/project-client-meetings-card"
 import { ProjectSiteWeatherCard } from "@/components/projects/project-site-weather-card"
+import { getProjectSageStatus } from "@/app/actions/project-sage-send"
+import { ProjectSageStatusLine } from "@/components/projects/project-sage-status"
+import type { ProjectSageStatus } from "@/lib/domain/sage-bridge/project-send-rules"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -207,6 +210,7 @@ export default async function ProjectSummaryPage({
   let linkedJobs: ProjectLinksView | null = null
   let timeline: ProjectTimeline | null = null
   let clientMeetings: ProjectClientMeetingsView | null = null
+  let sageStatus: ProjectSageStatus | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -381,6 +385,7 @@ export default async function ProjectSummaryPage({
       loadedLinkedJobs,
       loadedTimeline,
       loadedClientMeetings,
+      loadedSageStatus,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -419,6 +424,8 @@ export default async function ProjectSummaryPage({
       getProjectClientMeetings(id)
         .then((result) => (result.success ? result.data : null))
         .catch(() => null),
+      // Office staff only; null for anyone else or when Sage isn't connected.
+      loadOptionalSummary("Sage status", () => getProjectSageStatus(id)),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -435,6 +442,7 @@ export default async function ProjectSummaryPage({
     linkedJobs = loadedLinkedJobs
     timeline = loadedTimeline
     clientMeetings = loadedClientMeetings
+    sageStatus = loadedSageStatus
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -520,6 +528,12 @@ export default async function ProjectSummaryPage({
             {project?.projectManager && <> &middot; {project.projectManager}</>}
           </p>
         </div>
+
+        {sageStatus && !internalWorkspace ? (
+          <div className="mb-3">
+            <ProjectSageStatusLine projectId={id} status={sageStatus} />
+          </div>
+        ) : null}
 
         {projectTextPhoneNumber && (
           <div className="mb-4 sm:mb-5">
