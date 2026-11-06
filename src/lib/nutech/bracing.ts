@@ -1,4 +1,4 @@
-import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
+import type { BracingRentalSettings } from "@/lib/nutech/settings"
 import { formatCents } from "@/lib/format"
 import { BRACING_RENTAL_STATUSES, type BracingRentalStatus } from "@/lib/domain/nutech/statuses"
 export type { BracingRentalStatus }

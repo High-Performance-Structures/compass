@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
+import { and, asc, desc, eq, sql } from "drizzle-orm"
 import { findNuTechOrder, nextNuTechOrderNumber } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 
@@ -18,7 +18,6 @@ import {
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
 import type { AuthUser } from "@/lib/auth"
-import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
 import { updateProjects, updateProjectsStatement } from "@/lib/domain/project/store"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
@@ -59,7 +58,6 @@ import {
   nuTechPurchaseOrderReleaseReadiness,
   projectDeliveryMethodForNuTech,
   nuTechReleaseAuditIssues,
-  type NuTechQuantitySource,
 } from "@/lib/nutech/workflow"
 import {
   canFeature,
@@ -153,18 +151,6 @@ export type ProjectNuTechOrderWorkspace = {
   readonly warehouseTaxEntityId: string | null
   /** Whether the shipping charge is taxed (the price list's Freight item; non-taxable unless changed). */
   readonly shippingTaxable: boolean
-}
-
-export type NuTechOrderDashboardItem = {
-  readonly projectId: string
-  readonly projectNumber: string | null
-  readonly projectName: string
-  readonly clientName: string | null
-  readonly orderStatus: string
-  readonly quantitySource: NuTechQuantitySource | null
-  readonly requestedDeliveryDate: string | null
-  readonly estimateStatus: string | null
-  readonly openPurchaseOrderCount: number
 }
 
 export type SaveNuTechOrderInput = {
@@ -449,76 +435,6 @@ export async function getProjectNuTechOrderWorkspace(
     warehouseTaxEntityId: nuTechSettings.warehouseTaxEntityId || null,
     shippingTaxable: catalogProducts.find(isNuTechFreight)?.taxable ?? false,
   }
-}
-
-export async function getNuTechOrderDashboard(): Promise<
-  readonly NuTechOrderDashboardItem[]
-> {
-  const { db, user, organizationId } = await nuTechOrgContext()
-  await requireFeaturePermission(user, "nutech-orders", "read")
-  const projectRows = await db
-    .select({
-      id: projects.id,
-      projectNumber: projects.projectNumber,
-      name: projects.name,
-      clientName: projects.clientName,
-    })
-    .from(projects)
-    .where(
-      and(
-        eq(projects.organizationId, organizationId),
-        like(projects.projectNumber, "N-%")
-      )
-    )
-    .orderBy(desc(projects.updatedAt), desc(projects.createdAt))
-  const projectIds = projectRows.map((project) => project.id)
-  if (projectIds.length === 0) return []
-  // Chunked by job so each IN list stays under D1's parameter limit; a job's
-  // rows all land in one chunk, so their order is kept.
-  const chunks = await Promise.all(
-    chunkD1Values(projectIds).map((ids) =>
-      Promise.all([
-        db.select().from(nuTechOrderWorkflows).where(inArray(nuTechOrderWorkflows.projectId, ids)),
-        db
-          .select({ projectId: projectEstimates.projectId, status: projectEstimates.status, updatedAt: projectEstimates.updatedAt })
-          .from(projectEstimates)
-          .where(inArray(projectEstimates.projectId, ids))
-          .orderBy(desc(projectEstimates.updatedAt)),
-        db
-          .select({ projectId: projectOperations.projectId, status: projectOperations.status })
-          .from(projectOperations)
-          .where(and(inArray(projectOperations.projectId, ids), eq(projectOperations.sourceRecordType, "purchase_order"))),
-      ]),
-    ),
-  )
-  const workflowRows = chunks.flatMap((chunk) => chunk[0])
-  const estimateRows = chunks.flatMap((chunk) => chunk[1])
-  const purchaseOrderRows = chunks.flatMap((chunk) => chunk[2])
-  return projectRows.map((project) => {
-    // A job can have several orders; the dashboard follows the newest.
-    const workflow = workflowRows
-      .filter((row) => row.projectId === project.id)
-      .sort((a, b) => b.orderNumber - a.orderNumber)[0]
-    const estimate = estimateRows.find((row) => row.projectId === project.id)
-    const openPurchaseOrderCount = purchaseOrderRows.filter(
-      (row) =>
-        row.projectId === project.id &&
-        !["complete", "closed", "void"].includes(row.status)
-    ).length
-    return {
-      projectId: project.id,
-      projectNumber: project.projectNumber,
-      projectName: project.name,
-      clientName: project.clientName,
-      orderStatus: workflow?.orderStatus ?? "not_started",
-      quantitySource: workflow
-        ? storedNuTechQuantitySource(workflow.quantitySource)
-        : null,
-      requestedDeliveryDate: workflow?.requestedDeliveryDate ?? null,
-      estimateStatus: estimate?.status ?? null,
-      openPurchaseOrderCount,
-    }
-  })
 }
 
 export async function saveProjectNuTechOrder(
