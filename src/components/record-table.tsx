@@ -21,13 +21,6 @@ import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
-  PriorityDndContext,
-  PriorityOrderStatus,
-  PriorityRowControls,
-  SortableRecordRow,
-  type RecordPriorityController,
-} from "@/components/record-table-sortable"
-import {
   ariaSort,
   compareSortValues,
   TanstackSortableHeader,
@@ -51,6 +44,7 @@ export function useRecordTable<T>({
   enableSelection = false,
   initialItemId = null,
   revealReady = true,
+  initialSorting = [],
 }: {
   readonly data: readonly T[]
   readonly columns: readonly ColumnDef<T>[]
@@ -59,8 +53,10 @@ export function useRecordTable<T>({
   readonly enableSelection?: boolean
   readonly initialItemId?: string | null
   readonly revealReady?: boolean
+  /** The sort a list opens with, such as required date; headers still change it. */
+  readonly initialSorting?: SortingState
 }): TableInstance<T> {
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  const [sorting, setSorting] = React.useState<SortingState>(initialSorting)
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [pagination, setPagination] = React.useState({
     pageIndex: 0,
@@ -190,8 +186,6 @@ type RecordTableProps<T> = {
   readonly state?: RecordTableState
   readonly focusedRowId?: string | null
   readonly rowIdPrefix?: string
-  /** Priority order mode, from `usePriorityRecordTable`. */
-  readonly priority?: RecordPriorityController<T>
   /**
    * Makes the whole row open the record (except its controls). Keep a link or
    * button on the record's name for keyboard and screen reader users.
@@ -222,7 +216,6 @@ function RecordTableView<T>({
   state = { kind: "ready" },
   focusedRowId = null,
   rowIdPrefix = "record",
-  priority,
   onRowOpen,
   getRowHref,
   navigate,
@@ -231,7 +224,7 @@ function RecordTableView<T>({
   const paginationId = React.useId()
   const rows = table.getRowModel().rows
   const rowsOpen = Boolean(onRowOpen || getRowHref)
-  const columnCount = table.getVisibleLeafColumns().length + (priority ? 1 : 0)
+  const columnCount = table.getVisibleLeafColumns().length
 
   function openRow(event: React.MouseEvent<HTMLTableRowElement>, row: Row<T>): void {
     if (!isRowOpenClick(event)) return
@@ -246,39 +239,22 @@ function RecordTableView<T>({
   }
 
   function renderRow(row: Row<T>): React.ReactElement {
-    const rowProps = {
-      "data-focused": row.id === focusedRowId ? "true" : undefined,
-      tabIndex: row.id === focusedRowId ? -1 : undefined,
-      "data-state": row.getIsSelected() ? "selected" : undefined,
-      onClick: rowsOpen ? (event: React.MouseEvent<HTMLTableRowElement>) => openRow(event, row) : undefined,
-      className: cn(
-        rowsOpen && "cursor-pointer",
-        row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring",
-      ),
-    }
-    const cells = row.getVisibleCells().map((cell) => (
-      <TableCell key={cell.id} className="whitespace-normal align-top py-3">
-        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-      </TableCell>
-    ))
-    if (!priority) {
-      return (
-        <TableRow key={row.id} id={`${rowIdPrefix}-${row.id}`} {...rowProps}>
-          {cells}
-        </TableRow>
-      )
-    }
     return (
-      <SortableRecordRow
+      <TableRow
         key={row.id}
-        rowId={row.id}
-        domId={`${rowIdPrefix}-${row.id}`}
-        disabled={!priority.dragEnabled}
-        {...rowProps}
+        id={`${rowIdPrefix}-${row.id}`}
+        data-focused={row.id === focusedRowId ? "true" : undefined}
+        tabIndex={row.id === focusedRowId ? -1 : undefined}
+        data-state={row.getIsSelected() ? "selected" : undefined}
+        onClick={rowsOpen ? (event) => openRow(event, row) : undefined}
+        className={cn(rowsOpen && "cursor-pointer", row.id === focusedRowId && "bg-accent ring-2 ring-inset ring-ring")}
       >
-        <PriorityRowControls priority={priority} row={row.original} rowId={row.id} />
-        {cells}
-      </SortableRecordRow>
+        {row.getVisibleCells().map((cell) => (
+          <TableCell key={cell.id} className="whitespace-normal align-top py-3">
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        ))}
+      </TableRow>
     )
   }
 
@@ -295,12 +271,6 @@ function RecordTableView<T>({
       <TableHeader className="bg-muted/50">
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>
-            {priority && (
-              <TableHead scope="col" style={{ width: priority.canReorder ? 132 : 48 }}>
-                <span aria-hidden>#</span>
-                <span className="sr-only">{priority.label}</span>
-              </TableHead>
-            )}
             {group.headers.map((header) => (
               <TableHead
                 key={header.id}
@@ -350,14 +320,7 @@ function RecordTableView<T>({
           {state.message}
         </p>
       )}
-      {priority && <PriorityOrderStatus priority={priority} />}
-      {priority ? (
-        <PriorityDndContext priority={priority} rowIds={rows.map((row) => row.id)}>
-          {tableElement}
-        </PriorityDndContext>
-      ) : (
-        tableElement
-      )}
+      {tableElement}
       <DataTablePagination table={table} itemLabel={itemLabel} id={paginationId} />
     </div>
   )

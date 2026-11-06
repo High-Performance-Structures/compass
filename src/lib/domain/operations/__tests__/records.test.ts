@@ -41,7 +41,6 @@ function row(overrides: Partial<OperationRow> = {}): OperationRow {
     lastSyncedAt: null,
     awardedRfqId: null,
     vendorId: null,
-    priorityRank: null,
     createdAt: "2026-10-31T00:00:00.000Z",
     updatedAt: "2026-10-31T00:00:00.000Z",
     ...overrides,

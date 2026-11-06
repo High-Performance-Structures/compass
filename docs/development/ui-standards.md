@@ -160,34 +160,30 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
 - **Writes.** Bulk actions call the owning domain store, following
   docs/development/architecture-standards.md, never a table write from the
   component or action.
-- **Exceptions.** Lists whose order carries meaning keep their order on
-  purpose. Examples are estimate and document line items, ranked queues and
-  hand-arranged lists.
+- **Exceptions.** Rows inside one record whose order carries meaning, such
+  as estimate and document line items, keep their order on purpose (see
+  "Dragging is for rows inside one record" below).
 - **Whole-row click.** Where a record has a detail view, give `RecordTable`
   `onRowOpen` or `getRowHref` so a click anywhere on the row opens it. Clicks
   on checkboxes, buttons, links, inputs, menus and drag handles, and text
   selection, keep their own meaning. Keep the name or reference as a link or
   button for keyboard and screen reader users.
-- **Priority order.** Use `usePriorityRecordTable` only where a person's
-  chosen order matters, such as the purchaser's ordering queue for purchase
-  orders. Never add it to a list the data already orders (by date, status or
-  number).
-  - The default view is the priority order, with a `#` rank, a drag handle,
-    up and down arrows, and Move to top / Move to bottom so a record can
-    cross pages. Drag works within the visible page.
-  - Sorting by a column header is temporary and pauses reordering, with a
-    **Back to priority order** control. Searching also pauses it.
-  - A move shows at once and rolls back with a message if saving fails. Only
-    the span that moved is sent. The server checks the order the person saw
-    (a stale guard) and writes the whole move or none of it, and the list
-    then refreshes to the stored order.
-  - Only people allowed to edit the records may reorder; everyone else sees
-    the order read-only.
-  - Store the order as one shared rank per record (an additive, nullable
-    column), written only by the owning domain store. A filtered list, such
-    as one job's records, reorders only the rank slots its own records hold.
-    Unranked records sort after ranked ones, oldest first; the first move
-    that touches one ranks them all in that same order, so nothing jumps.
+- **Status filters.** Status filter buttons sit above the sheet, built with
+  `StatusFilterBar` (`src/components/status-filter-bar.tsx`): Open first,
+  then the record type's own statuses (such as Draft, Sent, Received,
+  Closed), then All, each with its count. Statuses with no records hide.
+  A list opens on Open unless it has a reason not to. Keep the filter in the
+  URL (`?status=`) where the page loads on the server. There are no
+  per-column filter menus.
+- **Rule for every growing list (owner, 2026-11-05).** Any growing list (POs,
+  RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
+  column header, use the status filter buttons above it, search, and click a
+  row to open the record. Lists never drag.
+- **Dragging is for rows inside one record.** Line items inside a single PO,
+  RFQ or estimate may be dragged into order, because that order is part of
+  the record. Follow `src/components/projects/project-estimate-line-order.tsx`:
+  a grip handle with up and down arrows for keyboard and touch, an optimistic
+  move with rollback, and a stale check on the server.
 
 ### Imported-record source tag (owner-approved standard)
 

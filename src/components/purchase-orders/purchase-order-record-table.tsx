@@ -2,21 +2,26 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import type { ColumnDef } from "@tanstack/react-table"
+import type { ColumnDef, SortingState } from "@tanstack/react-table"
 
-import { reorderPurchaseOrderPriority } from "@/app/actions/purchase-order-priority"
-import { RecordSearchInput, RecordTable } from "@/components/record-table"
-import { usePriorityRecordTable } from "@/components/record-table-priority"
-import type { ActionDone } from "@/lib/action-result"
-import type { PriorityOrderScope, PurchaseOrderListRow } from "@/lib/domain/operations/types"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
+import type { PurchaseOrderListRow } from "@/lib/domain/operations/types"
 import { formatDate } from "@/lib/format"
-import { statusLabel } from "@/lib/project-operations/status"
+import { PURCHASE_ORDER_STATUS_OPTIONS, statusLabel } from "@/lib/project-operations/status"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
+import { canonicalPurchaseOrderStatus } from "@/lib/purchase-orders/status-filter"
 
 const rowId = (row: PurchaseOrderListRow): string => row.id
-const rowLabel = (row: PurchaseOrderListRow): string => row.number ?? row.title
+// PO sheets open sorted by required date, soonest first (blank dates last).
+const REQUIRED_DATE_FIRST: SortingState = [{ id: "dueDate", desc: false }]
+
+/** Status sorts in workflow order (draft first, void last), not alphabetically. */
+function statusSortValue(status: string): number {
+  const canonical = canonicalPurchaseOrderStatus(status)
+  const index = PURCHASE_ORDER_STATUS_OPTIONS.findIndex((option) => option.value === canonical)
+  return index < 0 ? PURCHASE_ORDER_STATUS_OPTIONS.length : index
+}
 
 /** The PO's record on its job's purchase order page. */
 function rowHref(row: PurchaseOrderListRow, statusFilter: string): string {
@@ -99,9 +104,10 @@ function purchaseOrderColumns(showProject: boolean, statusFilter: string): Colum
     },
     {
       id: "status",
-      accessorFn: (row) => statusLabel(row.status),
+      accessorFn: (row) => statusSortValue(row.status),
       header: "Status",
       size: 110,
+      cell: ({ row }) => <span className="whitespace-nowrap">{statusLabel(row.original.status)}</span>,
     },
     {
       id: "siteContact",
@@ -138,57 +144,40 @@ function purchaseOrderColumns(showProject: boolean, statusFilter: string): Colum
 }
 
 /**
- * Purchase orders in ordering priority: a job's PO list, or the company-wide
- * ordering queue (with a Project column). Rows open the PO's record.
+ * A purchase order sheet: a job's POs, or every job's (with a Project
+ * column). It opens sorted by required date. Sort by a column header, search,
+ * and click a row to open the PO's record. The status filter buttons sit
+ * above it, on the page.
  */
-export function PurchaseOrderPriorityTable({
+export function PurchaseOrderRecordTable({
   rows,
-  scope,
-  canReorder,
+  allJobs,
   statusFilter,
   selectedId = null,
   emptyMessage,
 }: {
   readonly rows: readonly PurchaseOrderListRow[]
-  readonly scope: PriorityOrderScope
-  readonly canReorder: boolean
-  /** The job page status filter a row link keeps ("all" from the queue). */
+  /** Every job's POs: adds the Project column. */
+  readonly allJobs: boolean
+  /** The job page status filter a row link keeps. */
   readonly statusFilter: string
   /** The PO open below the list: its page is shown first. */
   readonly selectedId?: string | null
   readonly emptyMessage: string
 }): React.ReactElement {
-  const router = useRouter()
   const [query, setQuery] = React.useState("")
-  const showProject = scope.kind === "organization"
   const visibleRows = React.useMemo(
-    () => rows.filter((row) => matchesSearch(row, query, showProject)),
-    [rows, query, showProject],
+    () => rows.filter((row) => matchesSearch(row, query, allJobs)),
+    [rows, query, allJobs],
   )
-  const columns = React.useMemo(() => purchaseOrderColumns(showProject, statusFilter), [showProject, statusFilter])
-  const onReorder = React.useCallback(
-    async (previousIds: readonly string[], orderedIds: readonly string[]): Promise<ActionDone> => {
-      const result = await reorderPurchaseOrderPriority({ scope, previousIds, orderedIds })
-      // On failure too: the table rolls back, and the refresh shows the
-      // current stored order (someone else may have just changed it).
-      router.refresh()
-      return result
-    },
-    [scope, router],
-  )
-  const { table, priority } = usePriorityRecordTable({
+  const columns = React.useMemo(() => purchaseOrderColumns(allJobs, statusFilter), [allJobs, statusFilter])
+  const table = useRecordTable({
     data: visibleRows,
     columns,
     getRowId: rowId,
     resetKey: query,
     initialItemId: selectedId,
-    priorityOrder: {
-      label: "Ordering priority",
-      canReorder,
-      searching: query.trim() !== "",
-      getLabel: rowLabel,
-      onReorder,
-    },
+    initialSorting: REQUIRED_DATE_FIRST,
   })
 
   return (
@@ -197,12 +186,11 @@ export function PurchaseOrderPriorityTable({
         value={query}
         onChange={setQuery}
         label="Search purchase orders"
-        placeholder={showProject ? "Search P.O., title, project, vendor or contact…" : "Search P.O., title, vendor or contact…"}
+        placeholder={allJobs ? "Search P.O., title, project, vendor or contact…" : "Search P.O., title, vendor or contact…"}
         className="sm:max-w-md"
       />
       <RecordTable
         table={table}
-        priority={priority}
         itemLabel="purchase orders"
         emptyMessage={query ? "No purchase orders match this search." : emptyMessage}
         rowIdPrefix="purchase-order-row"

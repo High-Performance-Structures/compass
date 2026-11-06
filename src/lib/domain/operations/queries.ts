@@ -28,7 +28,6 @@ import {
 import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
 import type { Db } from "@/lib/server/action-context"
 
-import { PRIORITY_ORDER_BY } from "./priority-queries"
 import { toOperationItem, toPurchaseOrderItem, toRfqItem, toTodoItem } from "./records"
 import { isOpenPurchaseOrderStatus, operationSyncKind, syncQueueStatus } from "./rules"
 import type { OperationRow } from "./store"
@@ -400,8 +399,7 @@ export async function loadPurchaseOrders(
     .select()
     .from(projectOperations)
     .where(and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordType, "purchase_order")))
-    // The job's share of the company-wide ordering priority.
-    .orderBy(...PRIORITY_ORDER_BY)
+    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
   if (rows.length === 0) return []
 
   const [lines, candidates] = await Promise.all([

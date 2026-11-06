@@ -14,9 +14,9 @@ import {
 } from "@tabler/icons-react"
 
 import { getProjectPurchaseOrderFormOptions, getProjectPurchaseOrders } from "@/app/actions/project-purchase-orders"
-import { canReorderProjectPurchaseOrders } from "@/app/actions/purchase-order-priority"
 import type { ProjectPurchaseOrderItem, PurchaseOrderListRow } from "@/lib/domain/operations/types"
-import { PurchaseOrderPriorityTable } from "@/components/purchase-orders/purchase-order-priority-table"
+import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
@@ -42,11 +42,11 @@ import { cn } from "@/lib/utils"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
 import {
-  isClosedProjectOperationStatus,
-  parseProjectOperationStatusFilter,
-  projectOperationMatchesStatusFilter,
-  type ProjectOperationStatusFilter,
-} from "@/lib/project-operations/status"
+  isOpenPurchaseOrder,
+  parsePurchaseOrderStatusFilter,
+  purchaseOrderFilterOptions,
+  purchaseOrderMatchesFilter,
+} from "@/lib/purchase-orders/status-filter"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
@@ -75,23 +75,6 @@ function label(value: string): string {
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
 }
-
-const PURCHASE_ORDER_FILTERS: readonly {
-  readonly value: ProjectOperationStatusFilter
-  readonly label: string
-}[] = [
-  { value: "open", label: "Open" },
-  { value: "draft", label: "Draft" },
-  { value: "approved", label: "Approved" },
-  { value: "sent", label: "Sent" },
-  { value: "ordered", label: "Ordered" },
-  { value: "partially_received", label: "Partially received" },
-  { value: "received", label: "Received" },
-  { value: "complete", label: "Complete" },
-  { value: "closed", label: "Closed" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "All" },
-]
 
 function purchaseOrderListRow(
   order: ProjectPurchaseOrderItem,
@@ -405,7 +388,7 @@ export default async function ProjectPurchaseOrdersPage({
   const focusedPurchaseOrderId = Array.isArray(query.item)
     ? query.item[0] ?? null
     : query.item ?? null
-  const statusFilter = parseProjectOperationStatusFilter(query.status)
+  const statusFilter = parsePurchaseOrderStatusFilter(query.status)
   const currentUser = await getCurrentUser()
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
@@ -420,7 +403,6 @@ export default async function ProjectPurchaseOrdersPage({
     getProjectPurchaseOrderFormOptions(id),
     getProjectPaperTrail(id, "purchase_order"),
     getProjectRecordEmailReplies(id, "purchase_order"),
-    canReorderProjectPurchaseOrders(id),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -439,7 +421,6 @@ export default async function ProjectPurchaseOrdersPage({
     purchaseOrderCodingOptions,
     paperTrail,
     emailReplies,
-    canReorder,
   ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
@@ -473,10 +454,10 @@ export default async function ProjectPurchaseOrdersPage({
     contactsSummary.allContacts
   )
   const openPurchaseOrders = purchaseOrders.filter(
-    (order) => !isClosedProjectOperationStatus(order.status)
+    (order) => isOpenPurchaseOrder(order.status)
   )
   const visiblePurchaseOrders = purchaseOrders.filter((order) =>
-    projectOperationMatchesStatusFilter(order.status, statusFilter)
+    purchaseOrderMatchesFilter(order.status, statusFilter)
   )
   // The list opens one PO at a time below it (a row click, a calendar or
   // email link, or a PO just created).
@@ -521,7 +502,7 @@ export default async function ProjectPurchaseOrdersPage({
           />
           <div className="flex flex-wrap justify-end gap-2">
             <Badge variant="secondary">
-              {openPurchaseOrders.length} open / draft
+              {openPurchaseOrders.length} open
             </Badge>
             <Badge variant="outline">{formatPurchaseOrderMoney(openTotal)}</Badge>
           </div>
@@ -566,34 +547,21 @@ export default async function ProjectPurchaseOrdersPage({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <nav
-            aria-label="Filter purchase orders by status"
-            className="flex flex-wrap gap-1"
-          >
-            {PURCHASE_ORDER_FILTERS.map((option) => (
-              <Button
-                key={option.value}
-                asChild
-                size="sm"
-                variant={statusFilter === option.value ? "secondary" : "ghost"}
-              >
-                <Link
-                  href={`/dashboard/projects/${id}/purchase-orders?status=${option.value}`}
-                >
-                  {option.label}
-                </Link>
-              </Button>
-            ))}
-          </nav>
+          <StatusFilterBar
+            kind="link"
+            label="Filter purchase orders by status"
+            options={purchaseOrderFilterOptions(purchaseOrders.map((order) => ({ status: order.status, count: 1 })))}
+            selected={statusFilter}
+            hrefFor={(value) => `/dashboard/projects/${id}/purchase-orders?status=${value}`}
+          />
           <p className="text-xs text-muted-foreground">
             {visiblePurchaseOrders.length} of {purchaseOrders.length} shown
           </p>
         </div>
 
-        <PurchaseOrderPriorityTable
+        <PurchaseOrderRecordTable
           rows={listRows}
-          scope={{ kind: "project", projectId: id }}
-          canReorder={canReorder}
+          allJobs={false}
           statusFilter={statusFilter}
           selectedId={selectedPurchaseOrderId}
           emptyMessage={
