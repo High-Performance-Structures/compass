@@ -7,14 +7,27 @@
   "summary": "Move Nu-Tech jobs from sales intake through catalog quantities, approval, payment, Airlite ordering, and fulfillment.",
   "contextSummary": "The order stepper links to missing requirements. Verify quantities, acknowledgement, payment, delivery or pickup details, PO release, and manufacturer confirmation separately.",
   "category": "Project Operations",
-  "tags": ["Nu-Tech", "Fox Blocks", "Airlite", "catalog", "bundles", "sales", "delivery", "pickup", "takeoff", "EPS", "order emails"],
+  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "sales", "delivery", "pickup", "takeoff", "EPS", "order emails"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/nutech", "/dashboard/nutech/catalog", "/dashboard/projects/[id]/nutech"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-20"
+  "lastReviewed": "2026-11-06"
 }
 ---
+
+## Work the Order Board {#board}
+
+**Nu-Tech Orders** lists every order on every N job, one row per order, sorted by requested pickup or delivery date. Sort by any column, search by job, customer, confirmation or invoice number, and click a row to open that order on its job.
+
+The **Needs attention** boxes at the top count the orders someone has to chase. Choose a box to see only its orders; choose it again, or **Show all orders**, to go back.
+
+- **Ships soon**: pickup or delivery requested within the next few days. An unpaid order shows **Not paid** in the Customer paid column.
+- **Approved, not paid**: the customer approved, and no payment is recorded.
+- **PO sent, manufacturer hasn't confirmed**: the PO went out and no confirmation number has been saved.
+- **Past pickup or delivery, no invoice**: the order is confirmed, its date has passed, and no vendor invoice is recorded.
+
+The **Next step** column says what to do for each order. Admins set how many days each box waits in **Settings → Workflows → Nu-Tech order board**. Whether Nu-Tech's own bills to the manufacturer are paid is tracked in Sage, not on the board.
 
 ## Find the Sales Job {#sales}
 

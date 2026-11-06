@@ -17,6 +17,14 @@ import { DEFAULT_MAP_STATE, MAP_STATE_CODES } from "@/lib/portfolio-map/states"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
 import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
+import {
+  DEFAULT_BRACING_RENTAL_SETTINGS,
+  DEFAULT_NUTECH_ORDER_BOARD_SETTINGS,
+  bracingRentalSettingsSchema,
+  nuTechOrderBoardSettingsSchema,
+  type BracingRentalSettings,
+  type NuTechOrderBoardSettings,
+} from "@/lib/nutech/settings"
 import { DEFAULT_WEATHER_ALERT_SETTINGS, weatherAlertSettingsSchema, type WeatherAlertSettings } from "@/lib/weather/settings"
 
 /**
@@ -432,33 +440,6 @@ export const shopTicketSettingsSchema = z.object({
 export type ShopTicketSettings = z.infer<typeof shopTicketSettingsSchema>
 
 /**
- * Nu-Tech bracing rentals: the equipment and sizes on the rental form, how
- * many the company owns (for availability), the daily rate per brace, and
- * what is required before equipment goes out.
- */
-export const bracingRentalSettingsSchema = z.object({
-  dailyRateCents: z.number().int().min(0).max(100_000),
-  /** The item whose count is the number of braces billed per day. */
-  billedItemKey: z.string().min(1).max(40),
-  sizes: z.array(z.string().trim().min(1).max(20)).max(8),
-  items: z
-    .array(
-      z.object({
-        key: z.string().regex(/^[a-z0-9_]{1,40}$/),
-        label: z.string().trim().min(1, "Name the item.").max(60),
-        /** Owned, by size ("" when the item has no size). */
-        owned: z.record(z.string().max(20), z.number().int().min(0).max(100_000)),
-      }),
-    )
-    .min(1)
-    .max(30),
-  minDepositPercent: z.number().int().min(0).max(100),
-  requireIdCopy: z.boolean(),
-})
-
-export type BracingRentalSettings = z.infer<typeof bracingRentalSettingsSchema>
-
-/**
  * Duties for internal workspaces. Each is a cost code (the company's Sage
  * codes by default) so logged hours line up with how payroll is coded.
  */
@@ -637,6 +618,7 @@ type FeatureSettingsTypes = {
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
   readonly "bracing-rentals": BracingRentalSettings
+  readonly "nutech-order-board": NuTechOrderBoardSettings
   readonly "project-duplicates": ProjectDuplicateSettings
   readonly "linked-jobs": LinkedJobSettings
   readonly "square-payments": SquarePaymentSettings
@@ -991,24 +973,14 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   "bracing-rentals": {
     label: "Bracing rentals",
     description: "The rental equipment and sizes, how many you own, the daily rate per brace, and what's needed before bracing goes out.",
-    defaults: {
-      dailyRateCents: 400,
-      billedItemKey: "strongback_channel",
-      sizes: ["9 ft", "10 ft", "12 ft", "Tall"],
-      items: [
-        { key: "turnbuckle", label: "7-11 Turnbuckle", owned: {} },
-        { key: "strongback_channel", label: "Strongback Channel", owned: {} },
-        { key: "platform_bracket", label: "Platform Bracket", owned: {} },
-        { key: "guardrail_post", label: "Guardrail Post", owned: {} },
-        { key: "platform_pin", label: "9/16 x 6 Platform Pin", owned: {} },
-        { key: "safety_pin", label: "Safety Pin", owned: {} },
-        { key: "tall_wall_turnbuckle", label: "Tall Wall Turnbuckle", owned: {} },
-        { key: "strongback_coupler", label: "Strongback Coupler", owned: {} },
-      ],
-      minDepositPercent: 50,
-      requireIdCopy: true,
-    },
+    defaults: DEFAULT_BRACING_RENTAL_SETTINGS,
     schema: bracingRentalSettingsSchema,
+  },
+  "nutech-order-board": {
+    label: "Nu-Tech order board",
+    description: "When an order shows in the board's needs-attention boxes: how soon a pickup or delivery counts as shipping soon, how long to wait for the manufacturer's confirmation, and how long after pickup or delivery the vendor invoice is overdue.",
+    defaults: DEFAULT_NUTECH_ORDER_BOARD_SETTINGS,
+    schema: nuTechOrderBoardSettingsSchema,
   },
 }
 

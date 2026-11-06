@@ -34,6 +34,7 @@ import { ClientInteractionSettingsSection } from "@/components/settings/client-i
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
+import { NuTechOrderBoardSettingsSection } from "@/components/settings/nutech-order-board-settings-section"
 import { ArchiveDeliverySettingsSection } from "@/components/settings/archive-delivery-settings"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { MyCompassCalendarSettingsSection } from "@/components/settings/my-compass-calendar-settings-section"
@@ -230,6 +231,7 @@ const WORKFLOW_AREAS = [
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },
   { value: "nutech-catalog", label: "Nu-Tech product catalog", description: "Price sheets and cost code mapping." },
   { value: "nutech-emails", label: "Nu-Tech emails", description: "Order and quote email templates." },
+  { value: "nutech-order-board", label: "Nu-Tech order board", description: "When orders show as shipping soon, unconfirmed or missing an invoice." },
   { value: "bracing-rentals", label: "Bracing rentals", description: "Rental equipment, owned counts, daily rate and deposit rules." },
   { value: "archive-delivery", label: "Buildertrend Archive delivery", description: "Private archive delivery and excluded internal master folders." },
   { value: "paper-trail", label: "Project paper trail", description: "Which records are saved as PDFs in project Drive folders." },
@@ -307,6 +309,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <NuTechCatalogLink />
     case "nutech-emails":
       return <NuTechEmailSettingsSection />
+    case "nutech-order-board":
+      return <NuTechOrderBoardSettingsSection />
     case "bracing-rentals":
       return <BracingRentalSettingsSection />
     case "archive-delivery":

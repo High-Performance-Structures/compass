@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { bracingRentalSettingsSchema, FEATURE_SETTINGS, type BracingRentalSettings } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
+import { bracingRentalSettingsSchema, type BracingRentalSettings } from "@/lib/nutech/settings"
 
 const GROUP = FEATURE_SETTINGS["bracing-rentals"]
 

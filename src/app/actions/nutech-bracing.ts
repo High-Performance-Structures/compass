@@ -10,7 +10,7 @@ import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { isNuTechJob, nuTechOrgContext, readNuTechProject } from "@/lib/domain/nutech/access"
 import { deleteNuTechBracingRentalStatement, saveNuTechBracingRentalStatements } from "@/lib/domain/nutech/store"
-import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
+import type { BracingRentalSettings } from "@/lib/nutech/settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   bracingAvailability,
