@@ -1,3 +1,8 @@
+/*
+ * Code-level RFI status rules (built-in statuses only). Lists, filter
+ * buttons, labels and status selects read the company's RFI statuses from
+ * src/lib/domain/record-statuses instead.
+ */
 export type RfiStatus =
   | "new"
   | "in_progress"
@@ -5,21 +10,9 @@ export type RfiStatus =
   | "complete"
   | "void"
 
-export type RfiStatusFilter = RfiStatus | "open" | "all"
-
 export type RfiPriority = "low" | "normal" | "high"
 
 export type RfiAudience = "internal" | "sub_vendor" | "owner" | "public"
-
-const RFI_STATUS_FILTER_VALUES: readonly RfiStatusFilter[] = [
-  "open",
-  "new",
-  "in_progress",
-  "info_needed",
-  "complete",
-  "void",
-  "all",
-]
 
 const RFI_PRIORITIES: readonly RfiPriority[] = ["low", "normal", "high"]
 
@@ -70,24 +63,6 @@ export function isClosedRfiStatus(value: string): boolean {
   return status === "complete" || status === "void"
 }
 
-export function parseRfiStatusFilter(
-  value: string | readonly string[] | undefined
-): RfiStatusFilter {
-  const candidate = Array.isArray(value) ? value[0] : value
-  if (!candidate) return "open"
-
-  return RFI_STATUS_FILTER_VALUES.find((item) => item === candidate) ?? "open"
-}
-
-export function rfiMatchesStatusFilter(
-  status: string,
-  filter: RfiStatusFilter
-): boolean {
-  if (filter === "all") return true
-  if (filter === "open") return !isClosedRfiStatus(status)
-  return canonicalRfiStatus(status) === filter
-}
-
 export function compareRfisForQueue(
   left: RfiQueueItem,
   right: RfiQueueItem
@@ -108,18 +83,6 @@ export function compareRfisForQueue(
     return right.submittedAt.localeCompare(left.submittedAt)
   }
   return right.rfiNumber.localeCompare(left.rfiNumber)
-}
-
-export function validRfiStatus(value: string): RfiStatus | null {
-  const normalized = normalizedStatus(value)
-  const allowed: readonly RfiStatus[] = [
-    "new",
-    "in_progress",
-    "info_needed",
-    "complete",
-    "void",
-  ]
-  return allowed.find((item) => item === normalized) ?? null
 }
 
 export function validRfiPriority(value: string): RfiPriority | null {

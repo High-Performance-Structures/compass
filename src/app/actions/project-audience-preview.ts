@@ -35,10 +35,8 @@ import { scopedAudienceHref } from "@/lib/project-audience-request"
 import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
 import { requirePermission } from "@/lib/permissions"
-import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
@@ -997,7 +995,7 @@ export async function getProjectAudiencePreview(
     schedulePublicationAvailable: publishedSnapshot !== null,
     scheduleItems: audienceScheduleItems,
     operations: audienceOperations,
-    rfis: rfiRows,
+    rfis: rfiRows, rfiStatuses: await loadRecordStatusList(db, organizationId, "rfi"),
     rfqs: audienceRfqs,
     messageChannels: messageChannelRows,
     contacts: visibleContactRows,

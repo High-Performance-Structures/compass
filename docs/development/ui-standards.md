@@ -178,6 +178,20 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   A list opens on Open unless it has a reason not to. Keep the filter in the
   URL (`?status=`) where the page loads on the server. There are no
   per-column filter menus.
+- **Statuses come from company status settings.** No list hard-codes its
+  statuses. Each company manages them in **Settings › Statuses**: names,
+  colors, order, what each counts as (Open, Closed or Void), which show as
+  filter buttons, and which are hidden. Read the record type's list on the
+  server with `loadRecordStatusList` (or `getCompanyRecordStatuses`) and build
+  the buttons with `recordStatusFilterOptions`; "Open" is the Open group.
+  Status badges (`RecordStatusBadge`), status sort order and status selects
+  read the same list (`recordStatusLabel`, `recordStatusColor`,
+  `recordStatusSortValue`, `selectableRecordStatuses`). Without company
+  changes the code defaults in `src/lib/domain/record-statuses/registry.ts`
+  apply. Built-in statuses (the ones Compass code depends on) can be
+  renamed, recolored, reordered or hidden but never deleted; a company's own
+  status can be deleted only while no record uses it. A new record type is
+  one entry in that registry.
 - **Rule for every growing list (owner, 2026-11-05).** Any growing list (POs,
   RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
   column header, use the status filter buttons above it, search, and click a

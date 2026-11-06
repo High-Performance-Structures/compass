@@ -22,6 +22,8 @@ import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectPurchaseOrderSiteContactOptions, getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjects } from "@/app/actions/projects"
+import { getCompanyRecordStatuses } from "@/app/actions/record-statuses"
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { getProjectRecordEmailReplies, type RecordEmailReplyItem } from "@/app/actions/record-email-replies"
@@ -141,6 +143,7 @@ function PurchaseOrderCard({
   orderForm,
   supplierRecipients,
   emailReplies,
+  statuses,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -168,6 +171,8 @@ function PurchaseOrderCard({
   /** Set on the manufacturer's POs: the order desk and rep from Settings, in place of the supplier's own email. */
   readonly supplierRecipients?: { readonly to: string; readonly cc: string }
   readonly emailReplies: readonly RecordEmailReplyItem[]
+  /** The company's purchase order statuses, for the status select. */
+  readonly statuses: RecordStatusList
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -201,6 +206,7 @@ function PurchaseOrderCard({
               operationId={order.id}
               operationKind="purchase_order"
               status={order.status}
+              statuses={statuses}
             />
             {developerModeEnabled && (
               <Badge variant="outline">{label(order.syncStatus)}</Badge>
@@ -390,7 +396,6 @@ export default async function ProjectPurchaseOrdersPage({
   const focusedPurchaseOrderId = Array.isArray(query.item)
     ? query.item[0] ?? null
     : query.item ?? null
-  const statusFilter = parsePurchaseOrderStatusFilter(query.status)
   const currentUser = await getCurrentUser()
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
@@ -405,6 +410,7 @@ export default async function ProjectPurchaseOrdersPage({
     getProjectPurchaseOrderFormOptions(id),
     getProjectPaperTrail(id, "purchase_order"),
     getProjectRecordEmailReplies(id, "purchase_order"),
+    getCompanyRecordStatuses("purchase_order"),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -423,7 +429,9 @@ export default async function ProjectPurchaseOrdersPage({
     purchaseOrderCodingOptions,
     paperTrail,
     emailReplies,
+    statuses,
   ] = loaded.data
+  const statusFilter = parsePurchaseOrderStatusFilter(query.status, statuses)
   const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
@@ -456,10 +464,10 @@ export default async function ProjectPurchaseOrdersPage({
     contactsSummary.allContacts
   )
   const openPurchaseOrders = purchaseOrders.filter(
-    (order) => isOpenPurchaseOrder(order.status)
+    (order) => isOpenPurchaseOrder(order.status, statuses)
   )
   const visiblePurchaseOrders = purchaseOrders.filter((order) =>
-    purchaseOrderMatchesFilter(order.status, statusFilter)
+    purchaseOrderMatchesFilter(order.status, statusFilter, statuses)
   )
   // The list opens one PO at a time below it (a row click, a calendar or
   // email link, or a PO just created).
@@ -552,7 +560,7 @@ export default async function ProjectPurchaseOrdersPage({
           <StatusFilterBar
             kind="link"
             label="Filter purchase orders by status"
-            options={purchaseOrderFilterOptions(purchaseOrders.map((order) => ({ status: order.status, count: 1 })))}
+            options={purchaseOrderFilterOptions(purchaseOrders.map((order) => ({ status: order.status, count: 1 })), statuses)}
             selected={statusFilter}
             hrefFor={(value) => `/dashboard/projects/${id}/purchase-orders?status=${value}`}
           />
@@ -563,6 +571,7 @@ export default async function ProjectPurchaseOrdersPage({
 
         <PurchaseOrderRecordTable
           rows={listRows}
+          statuses={statuses}
           allJobs={false}
           statusFilter={statusFilter}
           selectedId={selectedPurchaseOrderId}
@@ -588,6 +597,7 @@ export default async function ProjectPurchaseOrdersPage({
               isCreated={order.id === createdPurchaseOrderId}
               isFocused={order.id === focusedPurchaseOrderId}
               emailReplies={emailReplies.filter((reply) => reply.recordId === order.id)}
+              statuses={statuses}
               taskAssigneeOptions={taskAssignees}
               siteContactOptions={siteContactOptions}
               emailRecipientOptions={emailRecipientOptions}

@@ -15,6 +15,8 @@ import type { AuthUser } from "@/lib/auth"
 import { linkedProjectContactNames, projectContactOnProject } from "@/lib/domain/contacts/directory-links"
 import { preferLinkedText } from "@/lib/domain/contacts/rules"
 import { rfiReadContext, rfiWriteContext } from "@/lib/domain/rfis/access"
+import { isSelectableRecordStatus } from "@/lib/domain/record-statuses/rules"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import {
   groupAttachmentsByRfi,
   isMissingAttachmentTableError,
@@ -47,7 +49,6 @@ import { appendRfiCommunication } from "@/lib/rfis/communication"
 import {
   validRfiAudience,
   validRfiPriority,
-  validRfiStatus,
 } from "@/lib/rfis/status"
 import {
   listRfiVendorOptions,
@@ -346,6 +347,7 @@ export async function updateProjectRfi(
       .select({
         rfiNumber: projectRfis.rfiNumber,
         subject: projectRfis.subject,
+        status: projectRfis.status,
         answer: projectRfis.answer,
         answeredAt: projectRfis.answeredAt,
         requesterName: projectRfis.requesterName,
@@ -374,7 +376,9 @@ export async function updateProjectRfi(
           occurredAt: now,
         })
       : existing.answer
-    const requestedStatus = validRfiStatus(input.status)
+    // One of the company's visible RFI statuses (Settings › Statuses), or the RFI's own.
+    const statuses = await loadRecordStatusList(db, orgId, "rfi")
+    const requestedStatus = isSelectableRecordStatus(statuses, input.status, existing.status) ? input.status : null
     const audience = validRfiAudience(input.audience)
     if (!requestedStatus) {
       return { success: false, error: "Please choose a valid RFI status." }

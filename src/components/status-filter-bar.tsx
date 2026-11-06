@@ -1,12 +1,16 @@
 import type * as React from "react"
 import Link from "next/link"
 
+import { RecordStatusDot } from "@/components/record-status-badge"
 import { Button } from "@/components/ui/button"
+import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
 
 type StatusFilterOption<V extends string> = {
   readonly value: V
   readonly label: string
   readonly count: number
+  /** The status's color from the company's statuses (Open and All have none). */
+  readonly color?: RecordStatusColor
   /** Shown even with no records (such as Open and All). Others hide at zero. */
   readonly pinned?: boolean
 }
@@ -31,8 +35,11 @@ type StatusFilterBarProps<V extends string> = {
 
 /**
  * The status filter buttons above a record list (ui-standards.md, "Record
- * lists"): one button per status the record type really has, each with its
- * count. Statuses with no records hide unless pinned or selected.
+ * lists"): Open, then each status the company shows as a button, then All,
+ * each with its count. Statuses with no records hide unless pinned or
+ * selected. Build `options` with `recordStatusFilterOptions` (or a record
+ * type's wrapper of it) from the company's statuses (Settings › Statuses),
+ * never from a hard-coded list.
  */
 export function StatusFilterBar<V extends string>(props: StatusFilterBarProps<V>): React.ReactElement {
   const { label, options, selected } = props
@@ -43,6 +50,7 @@ export function StatusFilterBar<V extends string>(props: StatusFilterBarProps<V>
         const active = option.value === selected
         const content = (
           <>
+            {option.color && <RecordStatusDot color={option.color} />}
             {option.label}
             <span className="tabular-nums text-muted-foreground">{option.count}</span>
           </>

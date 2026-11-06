@@ -9,7 +9,7 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { PurchaseOrderRecordTable } from "@/components/purchase-orders/purchase-order-record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { ALL_JOBS_PURCHASE_ORDER_LIMIT } from "@/lib/domain/operations/purchase-order-lists"
-import { parsePurchaseOrderStatusFilter, purchaseOrderFilterOptions } from "@/lib/purchase-orders/status-filter"
+import { purchaseOrderFilterOptions } from "@/lib/purchase-orders/status-filter"
 
 /**
  * Every job's purchase orders on one sheet, opening on the open POs sorted by
@@ -20,8 +20,8 @@ export default async function AllJobsPurchaseOrdersPage({
 }: {
   readonly searchParams: Promise<{ readonly status?: string | readonly string[] }>
 }) {
-  const statusFilter = parsePurchaseOrderStatusFilter((await searchParams).status)
-  const [list, projects] = await Promise.all([getAllJobsPurchaseOrders(statusFilter), getProjects()])
+  const [list, projects] = await Promise.all([getAllJobsPurchaseOrders((await searchParams).status), getProjects()])
+  const statusFilter = list.success ? list.data.statusFilter : "open"
 
   return (
     <ProjectContextWatermarkShell>
@@ -46,7 +46,7 @@ export default async function AllJobsPurchaseOrdersPage({
             <StatusFilterBar
               kind="link"
               label="Filter purchase orders by status"
-              options={purchaseOrderFilterOptions(list.data.statusCounts)}
+              options={purchaseOrderFilterOptions(list.data.statusCounts, list.data.statuses)}
               selected={statusFilter}
               hrefFor={(value) => `/dashboard/purchase-orders?status=${value}`}
             />
@@ -58,6 +58,7 @@ export default async function AllJobsPurchaseOrdersPage({
             )}
             <PurchaseOrderRecordTable
               rows={list.data.rows}
+              statuses={list.data.statuses}
               allJobs
               statusFilter="all"
               emptyMessage={

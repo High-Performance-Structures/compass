@@ -4,11 +4,8 @@ import {
   canonicalRfiStatus,
   compareRfisForQueue,
   isClosedRfiStatus,
-  parseRfiStatusFilter,
-  rfiMatchesStatusFilter,
   validRfiAudience,
   validRfiPriority,
-  validRfiStatus,
 } from "@/lib/rfis/status"
 
 describe("RFI status handling", () => {
@@ -19,17 +16,9 @@ describe("RFI status handling", () => {
     expect(canonicalRfiStatus("cancelled")).toBe("void")
   })
 
-  it("defaults invalid filters to the open queue", () => {
-    expect(parseRfiStatusFilter(undefined)).toBe("open")
-    expect(parseRfiStatusFilter("not-a-status")).toBe("open")
-    expect(parseRfiStatusFilter(["complete", "open"])).toBe("complete")
-  })
-
-  it("includes active legacy statuses in the open filter", () => {
-    expect(rfiMatchesStatusFilter("open", "open")).toBe(true)
-    expect(rfiMatchesStatusFilter("answered", "open")).toBe(true)
-    expect(rfiMatchesStatusFilter("complete", "open")).toBe(false)
+  it("reads legacy closed statuses as closed", () => {
     expect(isClosedRfiStatus("closed")).toBe(true)
+    expect(isClosedRfiStatus("answered")).toBe(false)
   })
 
   it("sorts active RFIs before completed RFIs", () => {
@@ -60,8 +49,6 @@ describe("RFI status handling", () => {
   })
 
   it("rejects unsupported mutation values", () => {
-    expect(validRfiStatus("complete")).toBe("complete")
-    expect(validRfiStatus("surprise")).toBeNull()
     expect(validRfiPriority("high")).toBe("high")
     expect(validRfiPriority("urgent")).toBeNull()
     expect(validRfiAudience("owner")).toBe("owner")

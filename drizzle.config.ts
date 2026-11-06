@@ -37,6 +37,7 @@ export default defineConfig({
     "./src/db/schema-project-archives.ts",
     "./src/db/schema-project-links.ts",
     "./src/db/schema-rate-book.ts",
+    "./src/db/schema-record-statuses.ts",
     "./src/db/schema-shop-tickets.ts",
     "./src/db/schema-warranty.ts",
     "./src/lib/sync/schema.ts",

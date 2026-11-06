@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }
 vi.mock("next/link", () => ({ default: (props: React.ComponentProps<"a">) => React.createElement("a", props) }))
 
 import { ProjectRfiRecordTable } from "@/components/projects/project-rfi-record-table"
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import type { RfiListRow } from "@/lib/rfis/record-list"
 
 function rfi(index: number, overrides: Partial<RfiListRow> = {}): RfiListRow {
@@ -61,6 +62,7 @@ describe("RFI record table", () => {
       root.render(
         React.createElement(ProjectRfiRecordTable, {
           rows,
+          statuses: defaultRecordStatusList("rfi"),
           audience: "staff",
           projectId: "project-a",
           statusFilter: "open",
@@ -118,6 +120,7 @@ describe("RFI record table", () => {
       root.render(
         React.createElement(ProjectRfiRecordTable, {
           rows: [rfi(4)],
+          statuses: defaultRecordStatusList("rfi"),
           audience: "vendor",
           onSelect,
           emptyMessage: "No RFIs are currently visible for this project.",

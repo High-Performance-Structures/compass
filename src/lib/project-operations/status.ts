@@ -1,54 +1,9 @@
-export type PurchaseOrderStatus =
-  | "draft"
-  | "approved"
-  | "sent"
-  | "ordered"
-  | "partially_received"
-  | "received"
-  | "complete"
-  | "closed"
-  | "void"
-
-export type RfqStatus =
-  | "draft"
-  | "sent"
-  | "response_received"
-  | "awarded"
-  | "declined"
-  | "complete"
-  | "closed"
-  | "void"
-
+/*
+ * Status helpers for project operations. Each record type's own status list
+ * (labels, order, what counts as open) lives in the company status settings:
+ * src/lib/domain/record-statuses (registry.ts for the code defaults).
+ */
 export type ProjectOperationStatusFilter = "open" | "closed" | "all" | string
-
-export const PURCHASE_ORDER_STATUS_OPTIONS: readonly {
-  readonly value: PurchaseOrderStatus
-  readonly label: string
-}[] = [
-  { value: "draft", label: "Draft" },
-  { value: "approved", label: "Approved" },
-  { value: "sent", label: "Sent" },
-  { value: "ordered", label: "Ordered" },
-  { value: "partially_received", label: "Partially received" },
-  { value: "received", label: "Received" },
-  { value: "complete", label: "Complete" },
-  { value: "closed", label: "Closed" },
-  { value: "void", label: "Void" },
-]
-
-export const RFQ_STATUS_OPTIONS: readonly {
-  readonly value: RfqStatus
-  readonly label: string
-}[] = [
-  { value: "draft", label: "Draft" },
-  { value: "sent", label: "Sent" },
-  { value: "response_received", label: "Response received" },
-  { value: "awarded", label: "Awarded" },
-  { value: "declined", label: "Declined" },
-  { value: "complete", label: "Complete" },
-  { value: "closed", label: "Closed" },
-  { value: "void", label: "Void" },
-]
 
 const CLOSED_STATUSES = new Set([
   "complete",
@@ -74,23 +29,6 @@ export function statusLabel(value: string): string {
 
 export function isClosedProjectOperationStatus(status: string): boolean {
   return CLOSED_STATUSES.has(normalizedStatus(status))
-}
-
-export function isPurchaseOrderStatus(
-  status: string
-): status is PurchaseOrderStatus {
-  const normalized = normalizedStatus(status)
-  return PURCHASE_ORDER_STATUS_OPTIONS.some(
-    (option) => option.value === normalized
-  ) && status === normalized
-}
-
-export function isRfqStatus(status: string): status is RfqStatus {
-  const normalized = normalizedStatus(status)
-  return (
-    RFQ_STATUS_OPTIONS.some((option) => option.value === normalized) &&
-    status === normalized
-  )
 }
 
 export function purchaseOrderStatusAfterEmail(status: string): string {

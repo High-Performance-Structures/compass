@@ -13,6 +13,8 @@ import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-assignees"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjectRfqCostCodeOptions, getProjectRfqs } from "@/app/actions/project-operations"
+import { getCompanyRecordStatuses } from "@/app/actions/record-statuses"
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import type { ProjectRfqCostCodeOption, ProjectRfqItem } from "@/lib/domain/operations/types"
 import {
   getProjectRfqBidWorkspace,
@@ -185,6 +187,7 @@ function RfqCard({
   emailContacts,
   manualResponseEvents,
   quoteLinks,
+  statuses,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
@@ -208,6 +211,8 @@ function RfqCard({
   readonly emailContacts: readonly ProjectEmailContact[]
   readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
   readonly quoteLinks: readonly RfqQuoteLinkItem[]
+  /** The company's RFQ statuses, for the status select. */
+  readonly statuses: RecordStatusList
 }): React.ReactElement {
   return (
     <article
@@ -232,6 +237,7 @@ function RfqCard({
             operationId={rfq.id}
             operationKind="rfq"
             status={rfq.status}
+            statuses={statuses}
           />
           {developerModeEnabled && (
             <Badge variant="outline">{label(rfq.syncStatus)}</Badge>
@@ -516,6 +522,7 @@ export default async function ProjectRfqsPage({
     showInternalHistory ? getProjectRecordEmailReplies(id, "rfq") : Promise.resolve([]),
     // Contacts only fill the email pickers; never block the RFQ page on them.
     getProjectContactsSummary(id, "internal").then((summary) => summary.allContacts, () => []),
+    getCompanyRecordStatuses("rfq"),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -539,6 +546,7 @@ export default async function ProjectRfqsPage({
     quoteLinks,
     emailReplies,
     emailContacts,
+    rfqStatuses,
   ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
@@ -658,6 +666,7 @@ export default async function ProjectRfqsPage({
               emailContacts={emailContacts}
               manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
               quoteLinks={quoteLinks.filter((link) => link.rfqOperationId === rfq.id)}
+              statuses={rfqStatuses}
             />
           ))
         ) : (

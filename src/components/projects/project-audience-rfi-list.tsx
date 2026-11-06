@@ -4,21 +4,24 @@ import * as React from "react"
 
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { ProjectRfiRecordTable } from "@/components/projects/project-rfi-record-table"
+import { RecordStatusBadge } from "@/components/record-status-badge"
 import { Badge } from "@/components/ui/badge"
+import { recordStatusColor, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { formatDate } from "@/lib/format"
 import { rfiReport } from "@/lib/print/audience-record-reports"
 import type { ReportProject } from "@/lib/print/portal-report"
 import type { AudienceRfi } from "@/lib/project-audience-preview-types"
-import { isClosedRfiStatus } from "@/lib/rfis/status"
 import { rfiListRow, rfiStatusLabel, selectedRfiIdFromLocation, type RfiListRow } from "@/lib/rfis/record-list"
 
 /** The selected RFI, read-only, as vendors saw it before the table. */
 function AudienceRfiCard({
   item,
   project,
+  statuses,
 }: {
   readonly item: AudienceRfi
   readonly project: ReportProject
+  readonly statuses: RecordStatusList
 }): React.ReactElement {
   return (
     <article id={`rfi-${item.id}`} className="scroll-mt-24 rounded-md border bg-background p-3">
@@ -29,9 +32,7 @@ function AudienceRfiCard({
         </div>
         <div className="flex flex-wrap gap-1">
           <ProjectPortalPrintButton project={project} report={rfiReport([item])} />
-          <Badge variant={isClosedRfiStatus(item.status) ? "outline" : "secondary"}>
-            {rfiStatusLabel(item.status)}
-          </Badge>
+          <RecordStatusBadge label={rfiStatusLabel(item.status, statuses)} color={recordStatusColor(statuses, item.status)} />
           {item.priority === "high" && <Badge>High</Badge>}
         </div>
       </div>
@@ -52,9 +53,12 @@ function AudienceRfiCard({
  */
 export function ProjectAudienceRfiList({
   rfis,
+  statuses,
   project,
 }: {
   readonly rfis: readonly AudienceRfi[]
+  /** The project company's RFI statuses (Settings › Statuses). */
+  readonly statuses: RecordStatusList
   readonly project: ReportProject
 }): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
@@ -89,13 +93,14 @@ export function ProjectAudienceRfiList({
     <div className="mt-4 space-y-4">
       <ProjectRfiRecordTable
         rows={rows}
+        statuses={statuses}
         audience="vendor"
         onSelect={onSelect}
         selectedId={selectedId}
         emptyMessage="No RFIs are currently visible for this project."
       />
       {selected ? (
-        <AudienceRfiCard item={selected} project={project} />
+        <AudienceRfiCard item={selected} project={project} statuses={statuses} />
       ) : rfis.length > 0 ? (
         <p className="text-sm text-muted-foreground">Select an RFI to see its question and response.</p>
       ) : null}

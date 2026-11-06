@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest"
 
 import {
   isClosedProjectOperationStatus,
-  isPurchaseOrderStatus,
-  isRfqStatus,
   parseProjectOperationStatusFilter,
   projectOperationMatchesStatusFilter,
   purchaseOrderStatusAfterEmail,
@@ -27,13 +25,6 @@ describe("project operation statuses", () => {
     expect(isClosedProjectOperationStatus("ordered")).toBe(false)
     expect(projectOperationMatchesStatusFilter("ordered", "open")).toBe(true)
     expect(projectOperationMatchesStatusFilter("void", "closed")).toBe(true)
-  })
-
-  it("accepts only statuses supported by the matching workflow", () => {
-    expect(isPurchaseOrderStatus("partially_received")).toBe(true)
-    expect(isPurchaseOrderStatus("response_received")).toBe(false)
-    expect(isRfqStatus("response_received")).toBe(true)
-    expect(isRfqStatus("partially_received")).toBe(false)
   })
 
   it("marks newly issued POs sent without downgrading later lifecycle states", () => {

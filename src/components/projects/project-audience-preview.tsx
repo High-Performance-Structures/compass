@@ -796,7 +796,7 @@ export function ProjectAudiencePreview({
                   />
                 </div>
               </div>
-              <ProjectAudienceRfiList rfis={data.rfis} project={data.project} />
+              <ProjectAudienceRfiList rfis={data.rfis} statuses={data.rfiStatuses} project={data.project} />
             </div>
           </section>
         )}

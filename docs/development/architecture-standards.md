@@ -69,7 +69,8 @@ phases, acceptance, change orders), `operations` (to-dos, purchase orders,
 RFQs, Sage queue), `schedule`, `contacts` (project contacts, customers,
 vendors, directories), `field` (daily logs, photos, owner updates, weather),
 `documents` (Drive, folders, sharing), `messaging` (notifications, tracked
-email, conversations).
+email, conversations), `record-statuses` (each company's statuses per record
+type, from Settings › Statuses).
 
 ## 2. One action context
 

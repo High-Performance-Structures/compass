@@ -5,23 +5,21 @@ import Link from "next/link"
 import type { ColumnDef, SortingState } from "@tanstack/react-table"
 
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
+import { RecordStatusBadge } from "@/components/record-status-badge"
 import type { PurchaseOrderListRow } from "@/lib/domain/operations/types"
+import {
+  recordStatusColor,
+  recordStatusLabel,
+  recordStatusSortValue,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
 import { formatDate } from "@/lib/format"
-import { PURCHASE_ORDER_STATUS_OPTIONS, statusLabel } from "@/lib/project-operations/status"
 import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
-import { canonicalPurchaseOrderStatus } from "@/lib/purchase-orders/status-filter"
 
 const rowId = (row: PurchaseOrderListRow): string => row.id
 // PO sheets open sorted by required date, soonest first (blank dates last).
 const REQUIRED_DATE_FIRST: SortingState = [{ id: "dueDate", desc: false }]
-
-/** Status sorts in workflow order (draft first, void last), not alphabetically. */
-function statusSortValue(status: string): number {
-  const canonical = canonicalPurchaseOrderStatus(status)
-  const index = PURCHASE_ORDER_STATUS_OPTIONS.findIndex((option) => option.value === canonical)
-  return index < 0 ? PURCHASE_ORDER_STATUS_OPTIONS.length : index
-}
 
 /** The PO's record on its job's purchase order page. */
 function rowHref(row: PurchaseOrderListRow, statusFilter: string): string {
@@ -32,7 +30,7 @@ function projectLabel(row: PurchaseOrderListRow): string {
   return [row.projectNumber, row.projectName].filter(Boolean).join(" · ") || "Project"
 }
 
-function matchesSearch(row: PurchaseOrderListRow, query: string, showProject: boolean): boolean {
+function matchesSearch(row: PurchaseOrderListRow, query: string, showProject: boolean, statuses: RecordStatusList): boolean {
   const needle = query.trim().toLowerCase()
   if (!needle) return true
   return [
@@ -41,7 +39,7 @@ function matchesSearch(row: PurchaseOrderListRow, query: string, showProject: bo
     row.description,
     row.vendorName,
     row.siteContactName,
-    statusLabel(row.status),
+    recordStatusLabel(statuses, row.status),
     showProject ? row.projectNumber : null,
     showProject ? row.projectName : null,
   ].some((value) => value?.toLowerCase().includes(needle))
@@ -51,7 +49,11 @@ function DateCell({ value }: { readonly value: string | null }): React.ReactElem
   return <span className="whitespace-nowrap tabular-nums">{formatDate(value, "medium", "—")}</span>
 }
 
-function purchaseOrderColumns(showProject: boolean, statusFilter: string): ColumnDef<PurchaseOrderListRow>[] {
+function purchaseOrderColumns(
+  showProject: boolean,
+  statusFilter: string,
+  statuses: RecordStatusList,
+): ColumnDef<PurchaseOrderListRow>[] {
   const columns: (ColumnDef<PurchaseOrderListRow> | null)[] = [
     {
       id: "number",
@@ -104,10 +106,16 @@ function purchaseOrderColumns(showProject: boolean, statusFilter: string): Colum
     },
     {
       id: "status",
-      accessorFn: (row) => statusSortValue(row.status),
+      // Status sorts in the company's workflow order (Settings › Statuses), not alphabetically.
+      accessorFn: (row) => recordStatusSortValue(statuses, row.status),
       header: "Status",
       size: 110,
-      cell: ({ row }) => <span className="whitespace-nowrap">{statusLabel(row.original.status)}</span>,
+      cell: ({ row }) => (
+        <RecordStatusBadge
+          label={recordStatusLabel(statuses, row.original.status)}
+          color={recordStatusColor(statuses, row.original.status)}
+        />
+      ),
     },
     {
       id: "siteContact",
@@ -151,12 +159,15 @@ function purchaseOrderColumns(showProject: boolean, statusFilter: string): Colum
  */
 export function PurchaseOrderRecordTable({
   rows,
+  statuses,
   allJobs,
   statusFilter,
   selectedId = null,
   emptyMessage,
 }: {
   readonly rows: readonly PurchaseOrderListRow[]
+  /** The company's purchase order statuses: labels, colors and status sort order. */
+  readonly statuses: RecordStatusList
   /** Every job's POs: adds the Project column. */
   readonly allJobs: boolean
   /** The job page status filter a row link keeps. */
@@ -167,10 +178,13 @@ export function PurchaseOrderRecordTable({
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const visibleRows = React.useMemo(
-    () => rows.filter((row) => matchesSearch(row, query, allJobs)),
-    [rows, query, allJobs],
+    () => rows.filter((row) => matchesSearch(row, query, allJobs, statuses)),
+    [rows, query, allJobs, statuses],
   )
-  const columns = React.useMemo(() => purchaseOrderColumns(allJobs, statusFilter), [allJobs, statusFilter])
+  const columns = React.useMemo(
+    () => purchaseOrderColumns(allJobs, statusFilter, statuses),
+    [allJobs, statusFilter, statuses],
+  )
   const table = useRecordTable({
     data: visibleRows,
     columns,

@@ -25,6 +25,7 @@ import {
   isCompletedProjectTodoStatus,
   isProjectTodoRecordType,
 } from "@/lib/project-todos"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { isOpenPurchaseOrder } from "@/lib/purchase-orders/status-filter"
 import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
 import type { Db } from "@/lib/server/action-context"
@@ -130,11 +131,12 @@ function operationToScheduleItem(operation: OperationRow): NextScheduleItem {
 
 export async function loadOperationsSummary(
   db: Db,
+  organizationId: string,
   projectId: string,
   canViewWorkingSchedule: boolean,
 ): Promise<ProjectOperationsSummary> {
   const today = new Date().toISOString().slice(0, 10)
-  const [operations, [nextCompassTask]] = await Promise.all([
+  const [operations, [nextCompassTask], purchaseOrderStatuses] = await Promise.all([
     db
       .select()
       .from(projectOperations)
@@ -152,12 +154,13 @@ export async function loadOperationsSummary(
       )
       .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
       .limit(1),
+    loadRecordStatusList(db, organizationId, "purchase_order"),
   ])
 
   const purchaseOrders = operations.filter((operation) => operation.sourceRecordType === "purchase_order")
   const commitments = operations.filter((operation) => isProjectTodoRecordType(operation.sourceRecordType))
-  // The same Open the PO sheets' status filter shows.
-  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrder(operation.status))
+  // The same Open the PO sheets' status filter shows: the company's Open group.
+  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrder(operation.status, purchaseOrderStatuses))
   const activeCommitments = commitments.filter(
     (operation) => !isCompletedProjectTodoStatus(operation.status) && !isArchivedProjectTodoStatus(operation.status),
   )

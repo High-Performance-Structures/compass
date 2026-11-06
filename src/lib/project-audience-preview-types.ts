@@ -1,3 +1,4 @@
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import type { GuestClientMeeting } from "@/lib/client-meetings/guest-meetings"
 import type {
@@ -203,6 +204,8 @@ export type ProjectAudiencePreview = {
   readonly scheduleItems: readonly AudienceScheduleItem[]
   readonly operations: readonly AudienceOperationItem[]
   readonly rfis: readonly AudienceRfi[]
+  /** The project company's RFI statuses (Settings › Statuses): labels, colors and order. */
+  readonly rfiStatuses: RecordStatusList
   readonly rfqs: readonly AudienceRfq[]
   readonly messageChannels: readonly AudienceMessageChannel[]
   readonly contacts: readonly AudienceContact[]

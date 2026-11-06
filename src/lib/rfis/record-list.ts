@@ -1,5 +1,12 @@
 import { parseDateOnly } from "@/lib/format"
-import { canonicalRfiStatus, rfiMatchesStatusFilter, type RfiStatus, type RfiStatusFilter } from "@/lib/rfis/status"
+import {
+  recordStatusFilterOptions,
+  recordStatusLabel,
+  recordStatusSortValue,
+  type RecordStatusFilter,
+  type RecordStatusFilterOption,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
 
 /** One RFI as a row of the shared record table (staff list or vendor view). */
 export type RfiListRow = {
@@ -51,18 +58,14 @@ export function rfiListRow(item: RfiListSource): RfiListRow {
   }
 }
 
-const STATUS_ORDER: readonly RfiStatus[] = ["new", "in_progress", "info_needed", "complete", "void"]
-
-/** Status sorts in workflow order (new first, void last), not alphabetically. */
-export function rfiStatusSortValue(status: string): number {
-  return STATUS_ORDER.indexOf(canonicalRfiStatus(status))
+/** Status sorts in the company's workflow order (Settings › Statuses), not alphabetically. */
+export function rfiStatusSortValue(status: string, statuses: RecordStatusList): number {
+  return recordStatusSortValue(statuses, status)
 }
 
-export function rfiStatusLabel(status: string): string {
-  return canonicalRfiStatus(status)
-    .split("_")
-    .map((part, index) => (index === 0 ? `${part.slice(0, 1).toUpperCase()}${part.slice(1)}` : part))
-    .join(" ")
+/** The company's name for the RFI's status. */
+export function rfiStatusLabel(status: string, statuses: RecordStatusList): string {
+  return recordStatusLabel(statuses, status)
 }
 
 /** Who answers: the assigned person, else the company or trade asked. */
@@ -82,7 +85,7 @@ export function rfiDateSortValue(value: string | null): number | undefined {
 }
 
 /** Search over the text a row shows: number, subject, question, people and status. */
-export function rfiMatchesSearch(row: RfiListRow, query: string): boolean {
+export function rfiMatchesSearch(row: RfiListRow, query: string, statuses: RecordStatusList): boolean {
   const needle = query.trim().toLowerCase()
   if (!needle) return true
   return [
@@ -92,12 +95,12 @@ export function rfiMatchesSearch(row: RfiListRow, query: string): boolean {
     row.assignedToName,
     row.companyName,
     row.requesterName,
-    rfiStatusLabel(row.status),
+    rfiStatusLabel(row.status, statuses),
   ].some((value) => value?.toLowerCase().includes(needle))
 }
 
 /** The RFI's record on its job's RFI page, keeping the list's status filter. */
-export function rfiRecordHref(projectId: string, rfiId: string, statusFilter: RfiStatusFilter): string {
+export function rfiRecordHref(projectId: string, rfiId: string, statusFilter: RecordStatusFilter): string {
   const project = encodeURIComponent(projectId)
   const item = encodeURIComponent(rfiId)
   return `/dashboard/projects/${project}/rfis?status=${encodeURIComponent(statusFilter)}&item=${item}#rfi-${item}`
@@ -126,26 +129,17 @@ function safeDecode(value: string): string | null {
   }
 }
 
-const RFI_FILTERS: readonly { readonly value: RfiStatusFilter; readonly label: string }[] = [
-  { value: "open", label: "Open" },
-  { value: "new", label: "New" },
-  { value: "in_progress", label: "In progress" },
-  { value: "info_needed", label: "Info needed" },
-  { value: "complete", label: "Complete" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "All" },
-]
-
-/** The status buttons above the RFI list, each with its count; Open and All always show. */
-export function rfiStatusFilterOptions(statuses: readonly string[]): readonly {
-  readonly value: RfiStatusFilter
-  readonly label: string
-  readonly count: number
-  readonly pinned: boolean
-}[] {
-  return RFI_FILTERS.map((option) => ({
-    ...option,
-    count: statuses.filter((status) => rfiMatchesStatusFilter(status, option.value)).length,
-    pinned: option.value === "open" || option.value === "all",
-  }))
+/**
+ * The status buttons above the RFI list, each with its count: Open, each
+ * status the company shows as a button (in its order), then All. Open and
+ * All always show.
+ */
+export function rfiStatusFilterOptions(
+  statuses: readonly string[],
+  list: RecordStatusList,
+): readonly RecordStatusFilterOption[] {
+  return recordStatusFilterOptions(
+    list,
+    statuses.map((status) => ({ status, count: 1 })),
+  )
 }

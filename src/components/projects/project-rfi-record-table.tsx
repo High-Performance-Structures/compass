@@ -5,6 +5,8 @@ import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
+import { RecordStatusBadge } from "@/components/record-status-badge"
+import { recordStatusColor, type RecordStatusFilter, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { formatDate } from "@/lib/format"
 import {
   rfiAssigneeSortValue,
@@ -15,7 +17,6 @@ import {
   rfiStatusSortValue,
   type RfiListRow,
 } from "@/lib/rfis/record-list"
-import type { RfiStatusFilter } from "@/lib/rfis/status"
 
 /**
  * Staff see every column; the vendor view shows only what vendors saw before
@@ -52,7 +53,7 @@ function NumberCell({ row, open }: { readonly row: RfiListRow; readonly open: Rf
   )
 }
 
-function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen): ColumnDef<RfiListRow>[] {
+function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen, statuses: RecordStatusList): ColumnDef<RfiListRow>[] {
   const staff = audience === "staff"
   const columns: (ColumnDef<RfiListRow> | null)[] = [
     {
@@ -81,10 +82,15 @@ function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen): ColumnDef<Rfi
     },
     {
       id: "status",
-      accessorFn: (row) => rfiStatusSortValue(row.status),
+      accessorFn: (row) => rfiStatusSortValue(row.status, statuses),
       header: "Status",
       size: 110,
-      cell: ({ row }) => <span className="whitespace-nowrap">{rfiStatusLabel(row.original.status)}</span>,
+      cell: ({ row }) => (
+        <RecordStatusBadge
+          label={rfiStatusLabel(row.original.status, statuses)}
+          color={recordStatusColor(statuses, row.original.status)}
+        />
+      ),
     },
     {
       id: "assignedTo",
@@ -143,6 +149,8 @@ function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen): ColumnDef<Rfi
 
 type ProjectRfiRecordTableProps = {
   readonly rows: readonly RfiListRow[]
+  /** The company's RFI statuses: labels, colors and status sort order. */
+  readonly statuses: RecordStatusList
   /** The RFI open below the list: its page is shown first. */
   readonly selectedId?: string | null
   readonly emptyMessage: string
@@ -151,7 +159,7 @@ type ProjectRfiRecordTableProps = {
       /** Staff rows link to the RFI's record on the job's RFI page. */
       readonly audience: "staff"
       readonly projectId: string
-      readonly statusFilter: RfiStatusFilter
+      readonly statusFilter: RecordStatusFilter
     }
   | {
       /** Vendor rows open the RFI below the table, read-only. */
@@ -162,9 +170,12 @@ type ProjectRfiRecordTableProps = {
 
 /** A job's RFIs on the shared record table: sort, search, paging and row open. */
 export function ProjectRfiRecordTable(props: ProjectRfiRecordTableProps): React.ReactElement {
-  const { rows, selectedId = null, emptyMessage, audience } = props
+  const { rows, statuses, selectedId = null, emptyMessage, audience } = props
   const [query, setQuery] = React.useState("")
-  const visibleRows = React.useMemo(() => rows.filter((row) => rfiMatchesSearch(row, query)), [rows, query])
+  const visibleRows = React.useMemo(
+    () => rows.filter((row) => rfiMatchesSearch(row, query, statuses)),
+    [rows, query, statuses],
+  )
   const projectId = props.audience === "staff" ? props.projectId : null
   const statusFilter = props.audience === "staff" ? props.statusFilter : null
   const onSelect = props.audience === "vendor" ? props.onSelect : null
@@ -178,7 +189,7 @@ export function ProjectRfiRecordTable(props: ProjectRfiRecordTableProps): React.
           },
     [onSelect, projectId, statusFilter],
   )
-  const columns = React.useMemo(() => rfiColumns(audience, open), [audience, open])
+  const columns = React.useMemo(() => rfiColumns(audience, open, statuses), [audience, open, statuses])
   const table = useRecordTable({
     data: visibleRows,
     columns,

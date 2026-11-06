@@ -12,6 +12,9 @@ import {
   type RfiListRow,
 } from "@/lib/rfis/record-list"
 import { compareSortValues } from "@/components/ui/sortable-header"
+import { defaultRecordStatusList, resolveRecordStatuses } from "@/lib/domain/record-statuses/rules"
+
+const RFI_STATUSES = defaultRecordStatusList("rfi")
 
 const row: RfiListRow = {
   id: "rfi-1",
@@ -48,11 +51,11 @@ describe("RFI record list sort values", () => {
 
   it("sorts status in workflow order, legacy names included", () => {
     const order = ["void", "complete", "info_needed", "answered", "open"]
-      .map((status) => ({ status, value: rfiStatusSortValue(status) }))
+      .map((status) => ({ status, value: rfiStatusSortValue(status, RFI_STATUSES) }))
       .sort((a, b) => a.value - b.value)
       .map((item) => item.status)
     expect(order).toEqual(["open", "answered", "info_needed", "complete", "void"])
-    expect(rfiStatusLabel("additional_information_needed")).toBe("Info needed")
+    expect(rfiStatusLabel("additional_information_needed", RFI_STATUSES)).toBe("Info needed")
   })
 
   it("sorts who answers by person, else the company asked", () => {
@@ -69,10 +72,10 @@ describe("RFI record list sort values", () => {
 describe("RFI record list search", () => {
   it("matches number, subject, question, people and status", () => {
     for (const query of ["rfi-002", "FOOTING", "frost", "acme", "sam", "info needed"]) {
-      expect(rfiMatchesSearch(row, query)).toBe(true)
+      expect(rfiMatchesSearch(row, query, RFI_STATUSES)).toBe(true)
     }
-    expect(rfiMatchesSearch(row, "  ")).toBe(true)
-    expect(rfiMatchesSearch(row, "roofing")).toBe(false)
+    expect(rfiMatchesSearch(row, "  ", RFI_STATUSES)).toBe(true)
+    expect(rfiMatchesSearch(row, "roofing", RFI_STATUSES)).toBe(false)
   })
 })
 
@@ -101,7 +104,7 @@ describe("RFI deep links", () => {
 
 describe("RFI status filter buttons", () => {
   it("counts each status, Open and All, and pins Open and All", () => {
-    const options = rfiStatusFilterOptions(["open", "answered", "closed", "void", "in_progress"])
+    const options = rfiStatusFilterOptions(["open", "answered", "closed", "void", "in_progress"], RFI_STATUSES)
     const byValue = Object.fromEntries(options.map((option) => [option.value, option]))
     expect(options.map((option) => option.value)).toEqual(["open", "new", "in_progress", "info_needed", "complete", "void", "all"])
     expect(byValue.open?.count).toBe(3)
@@ -109,5 +112,23 @@ describe("RFI status filter buttons", () => {
     expect(byValue.info_needed?.count).toBe(0)
     expect(byValue.all?.count).toBe(5)
     expect(options.filter((option) => option.pinned).map((option) => option.value)).toEqual(["open", "all"])
+  })
+})
+
+describe("RFI status filter buttons from company statuses", () => {
+  it("follow the company's order, labels and hidden statuses", () => {
+    const company = resolveRecordStatuses("rfi", [
+      { statusKey: "info_needed", label: "Waiting on owner", color: "orange", statusGroup: "open", sortOrder: 0, showAsButton: true, hidden: false, builtIn: true },
+      { statusKey: "void", label: "Void", color: "red", statusGroup: "void", sortOrder: 1, showAsButton: true, hidden: true, builtIn: true },
+      { statusKey: "with_engineer", label: "With engineer", color: "blue", statusGroup: "open", sortOrder: 2, showAsButton: true, hidden: false, builtIn: false },
+    ])
+    const options = rfiStatusFilterOptions(["info_needed", "with_engineer", "void"], company)
+    // Built-ins with no stored row follow the default status before them; Void is hidden.
+    expect(options.map((option) => option.value)).toEqual([
+      "open", "new", "in_progress", "info_needed", "complete", "with_engineer", "all",
+    ])
+    expect(options.find((option) => option.value === "info_needed")?.label).toBe("Waiting on owner")
+    expect(options[0]?.count).toBe(2)
+    expect(rfiStatusLabel("with_engineer", company)).toBe("With engineer")
   })
 })
