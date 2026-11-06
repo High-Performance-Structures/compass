@@ -898,7 +898,7 @@
     "src/app/page.tsx": 1149,
     "src/components/agent/chat-view.tsx": 1047,
     "src/components/ai/prompt-input.tsx": 1287,
-    "src/components/app-sidebar.tsx": 834,
+    "src/components/app-sidebar.tsx": 825,
     "src/components/conversations/message-composer.tsx": 1014,
     "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,

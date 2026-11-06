@@ -119,6 +119,10 @@ interface SidebarNavGroupSource {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
 }
 
+function nuTechLink(title: string, url: string, icon: SidebarNavLinkSource["icon"]): SidebarNavLinkSource {
+  return { kind: "link", title, url, icon, internalOnly: true }
+}
+
 const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
   {
     title: "Projects",
@@ -375,24 +379,11 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         url: "/dashboard/contacts",
         icon: IconAddressBook,
       },
-      {
-        // The Nu-Tech order board is where staff work every block order each
-        // day; it was otherwise only reachable through the Projects hub.
-        kind: "link",
-        title: "Nu-Tech Orders",
-        url: "/dashboard/nutech",
-        icon: IconTruckDelivery,
-        internalOnly: true,
-      },
-      {
-        // Staff open the Nu-Tech product catalog daily; it was otherwise only
-        // reachable from the Nu-Tech orders page, a job, or Settings.
-        kind: "link",
-        title: "Nu-Tech Price List",
-        url: "/dashboard/nutech/catalog",
-        icon: IconPackages,
-        internalOnly: true,
-      },
+      // Nu-Tech pages staff use every day, otherwise only reachable through
+      // the Projects hub or a job.
+      nuTechLink("Nu-Tech Orders", "/dashboard/nutech", IconTruckDelivery),
+      nuTechLink("Nu-Tech Price List", "/dashboard/nutech/catalog", IconPackages),
+      nuTechLink("Truckload Calculator", "/dashboard/nutech/truckload", IconCalculator),
       {
         kind: "link",
         title: "Equipment",
