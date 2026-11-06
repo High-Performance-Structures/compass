@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { projectRfiHref } from "@/lib/work-calendar"
 import {
   IconArrowRight,
   IconClipboardText,
@@ -73,7 +74,7 @@ function RfiQueue({ queue }: { readonly queue: OfficeAlertQueue }): React.ReactE
       {queue.rfis.map((rfi) => (
         <Link
           key={rfi.id}
-          href={`/dashboard/projects/${rfi.projectId}/rfis`}
+          href={projectRfiHref(rfi.projectId, rfi.id)}
           className="group grid gap-2 px-4 py-3 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
         >
           <div className="min-w-0">

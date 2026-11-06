@@ -83,7 +83,7 @@ import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import {
   compareOfficeCalendarPriority,
-  projectPurchaseOrderHref,
+  projectPurchaseOrderHref, projectRfiHref,
   projectTodoHref,
   scheduleItemHref,
 } from "@/lib/work-calendar"
@@ -1047,7 +1047,7 @@ function ProjectWorkspace({
           {overview.openRfis.slice(0, 5).map((rfi) => (
             <Link
               key={rfi.id}
-              href={`/dashboard/projects/${rfi.projectId}/rfis`}
+              href={projectRfiHref(rfi.projectId, rfi.id)}
               className="block px-4 py-3 transition-colors hover:bg-muted/50"
             >
               <div className="flex items-center justify-between gap-3">

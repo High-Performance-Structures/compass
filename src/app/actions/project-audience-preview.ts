@@ -78,7 +78,6 @@ export type {
   AudienceOperationItem,
   AudienceOwnerUpdate,
   AudienceProjectOption,
-  AudienceRfi,
   AudienceRfq,
   AudienceMessageChannel,
   AudienceContact,

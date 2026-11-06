@@ -131,7 +131,7 @@ describe("audience dashboard", () => {
       model.priorities.find((item) => item.id === "rfq-quote-1")?.href
     ).toBe("/preview/projects/cedar/sub-vendor/rfqs#rfq-quote-1")
     expect(model.recent[0]?.href).toBe(
-      "/preview/projects/cedar/sub-vendor/rfis#rfi-rfi-1"
+      "/preview/projects/cedar/sub-vendor/rfis?item=rfi-1#rfi-rfi-1"
     )
     expect(
       [...model.priorities, ...model.recent].some((item) =>

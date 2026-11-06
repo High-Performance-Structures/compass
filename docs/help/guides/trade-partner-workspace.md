@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/sub-vendor", "/preview/projects/[id]/sub-vendor/change-orders", "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]", "/preview/projects/[id]/sub-vendor/commitments", "/preview/projects/[id]/sub-vendor/conversations", "/preview/projects/[id]/sub-vendor/conversations/[channelId]", "/preview/projects/[id]/sub-vendor/documents", "/preview/projects/[id]/sub-vendor/photos", "/preview/projects/[id]/sub-vendor/rfis", "/preview/projects/[id]/sub-vendor/rfqs", "/preview/projects/[id]/sub-vendor/schedule", "/preview/projects/[id]/sub-vendor/selections", "/preview/projects/[id]/sub-vendor/team", "/preview/projects/[id]/sub-vendor/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-05"
 }
 ---
 
@@ -44,7 +44,7 @@ Use **Review & respond** to acknowledge receipt. After acknowledgement, use **Up
 
 **RFIs** contains questions and answers assigned to your company, along with RFIs you submitted. Other people at your company see an RFI when the project team assigns it to that company; your unassigned submissions stay with you. Search the existing list before creating one. When **New RFI** is available, enter a focused subject and the decision or clarification needed, choose the intended project-team recipient when offered, and submit it once.
 
-Return to the same RFI for its answer and status. Use a project message for ordinary coordination; use an RFI when the answer needs to remain with the formal project record. Do not include information belonging to another project or company.
+The list is a table you can search, sort by a column header, and page through. Click a row to open the RFI below the table with its question, answer, and **Print Preview**. Return to the same RFI for its answer and status. Use a project message for ordinary coordination; use an RFI when the answer needs to remain with the formal project record. Do not include information belonging to another project or company.
 
 ## Respond to RFQs {#rfqs}
 

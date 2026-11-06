@@ -20,7 +20,6 @@ import type {
   AudienceContact,
   AudienceOperationItem,
   AudienceOwnerUpdate,
-  AudienceRfi,
   AudienceRfq,
   ProjectAudience,
   ProjectAudiencePreview as ProjectAudiencePreviewData,
@@ -36,6 +35,7 @@ import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-au
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
 import { portalPurchaseOrderVendorStatusLabel } from "@/lib/purchase-orders/portal-response"
+import { ProjectAudienceRfiList } from "@/components/projects/project-audience-rfi-list"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
@@ -172,53 +172,6 @@ function OperationRow({
         </div>
       )}
     </div>
-  )
-}
-
-function RfiRow({
-  item,
-  project,
-}: {
-  readonly item: AudienceRfi
-  readonly project: ReportProject
-}): React.ReactElement {
-  const isActive = !["complete", "closed", "void", "cancelled"].includes(
-    item.status.toLowerCase()
-  )
-
-  return (
-    <article id={`rfi-${item.id}`} className="scroll-mt-24 rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">
-            {item.rfiNumber}
-          </p>
-          <h3 className="mt-1 line-clamp-2 text-sm font-medium">
-            {item.subject}
-          </h3>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <ProjectPortalPrintButton project={project} report={rfiReport([item])} />
-          <Badge variant={isActive ? "secondary" : "outline"}>
-            {statusLabel(item.status)}
-          </Badge>
-          {item.priority === "high" && <Badge>High</Badge>}
-        </div>
-      </div>
-      <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-        {item.question}
-      </p>
-      {item.answer && (
-        <p className="mt-2 rounded-md bg-muted/50 p-2 text-sm">
-          {item.answer}
-        </p>
-      )}
-      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        {item.companyName && <span>{item.companyName}</span>}
-        {item.assignedToName && <span>Assigned: {item.assignedToName}</span>}
-        {item.dueDate && <span>Due {formatDate(item.dueDate)}</span>}
-      </div>
-    </article>
   )
 }
 
@@ -843,17 +796,7 @@ export function ProjectAudiencePreview({
                   />
                 </div>
               </div>
-              {data.rfis.length > 0 ? (
-                <div className="mt-4 grid gap-3">
-                  {data.rfis.map((item) => (
-                    <RfiRow key={item.id} item={item} project={data.project} />
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-                  No RFIs are currently visible for this project.
-                </p>
-              )}
+              <ProjectAudienceRfiList rfis={data.rfis} project={data.project} />
             </div>
           </section>
         )}

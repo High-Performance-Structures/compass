@@ -228,7 +228,7 @@ export function audienceDashboardModel(
               title: item.subject,
               detail: `${item.rfiNumber} · Response from the project team`,
               label: "RFI answer",
-              href: `${href("rfis")}#rfi-${encodeURIComponent(item.id)}`,
+              href: `${href("rfis")}?item=${encodeURIComponent(item.id)}#rfi-${encodeURIComponent(item.id)}`,
               dueDate: null,
             })),
           ...data.operations
