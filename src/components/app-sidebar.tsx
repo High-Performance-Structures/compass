@@ -3,41 +3,12 @@
 import * as React from "react"
 import Link from "next/link"
 import {
-  IconBulldozer,
-  IconAddressBook,
-  IconArchive,
-  IconActivity,
-  IconCalculator,
-  IconCalendarStats,
-  IconClipboardCheck,
-  IconTimeline,
-  IconClipboardText,
-  IconFiles,
-  IconFileDollar,
-  IconFileInvoice,
-  IconFileText,
-  IconEye,
-  IconHeartHandshake,
-  IconFolder,
-  IconHome2,
-  IconMailForward,
-  IconMail,
-  IconMessageCircle,
-  IconMessageCircleQuestion,
-  IconMessageReport,
-  IconPackages,
-  IconPalette,
-  IconPhone,
-  IconPhoto,
-  IconClipboardList,
-  IconReceipt,
-  IconShieldCheck,
-  IconShoppingCart,
-  IconShoppingCartQuestion,
-  IconSettings,
-  IconTemplate,
-  IconUsers,
-  IconVideo,
+  IconBulldozer, IconAddressBook, IconArchive, IconActivity, IconCalculator, IconCalendarStats,
+  IconClipboardCheck, IconTimeline, IconClipboardText, IconFiles, IconFileDollar, IconFileInvoice,
+  IconFileText, IconEye, IconHeartHandshake, IconFolder, IconHome2, IconMailForward, IconMail,
+  IconMessageCircle, IconMessageCircleQuestion, IconMessageReport, IconPackages, IconPalette,
+  IconPhone, IconPhoto, IconClipboardList, IconReceipt, IconShieldCheck, IconShoppingCart,
+  IconShoppingCartQuestion, IconSettings, IconTemplate, IconUsers, IconVideo, IconTruckDelivery,
 } from "@tabler/icons-react"
 import { usePathname, useSearchParams } from "next/navigation"
 
@@ -403,6 +374,15 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Contacts",
         url: "/dashboard/contacts",
         icon: IconAddressBook,
+      },
+      {
+        // The Nu-Tech order board is where staff work every block order each
+        // day; it was otherwise only reachable through the Projects hub.
+        kind: "link",
+        title: "Nu-Tech Orders",
+        url: "/dashboard/nutech",
+        icon: IconTruckDelivery,
+        internalOnly: true,
       },
       {
         // Staff open the Nu-Tech product catalog daily; it was otherwise only
