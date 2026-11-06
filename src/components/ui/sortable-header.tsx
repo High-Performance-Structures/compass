@@ -10,9 +10,10 @@ export type SortDirection = "asc" | "desc"
 export type TableSort<K extends string> = { readonly key: K; readonly direction: SortDirection } | null
 
 function SortIcon({ direction }: { readonly direction: SortDirection | false }): React.ReactElement {
-  if (direction === "asc") return <IconArrowUp className="size-3.5" aria-hidden />
-  if (direction === "desc") return <IconArrowDown className="size-3.5" aria-hidden />
-  return <IconArrowsSort className="size-3.5 opacity-0 transition-opacity group-hover/sort:opacity-60 group-focus-visible/sort:opacity-60" aria-hidden />
+  if (direction === "asc") return <IconArrowUp className="size-3.5 text-primary" aria-hidden />
+  if (direction === "desc") return <IconArrowDown className="size-3.5 text-primary" aria-hidden />
+  // Always visible so people can tell the column sorts without hovering.
+  return <IconArrowsSort className="size-3.5 opacity-50 transition-opacity group-hover/sort:opacity-90 group-focus-visible/sort:opacity-90" aria-hidden />
 }
 
 function SortButton({
