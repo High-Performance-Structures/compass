@@ -13,6 +13,7 @@ import { getImportedParticipantReviewPage } from "@/app/actions/imported-partici
 import { ContactsPageClient, ContactsSkeleton } from "@/components/contacts/contacts-page"
 import type { ContactsBootstrap } from "@/components/contacts/contacts-bootstrap"
 import { DEFAULT_RECORD_PAGE_QUERY } from "@/lib/record-page"
+import { listSheetFirstPageQuery } from "@/lib/domain/settings/list-sheets"
 
 const EMPTY_SUMMARY = { customerCount: 0, vendorCount: 0, internalCount: 0, vendorCategories: [] }
 
@@ -23,16 +24,22 @@ const EMPTY_SUMMARY = { customerCount: 0, vendorCount: 0, internalCount: 0, vend
  */
 async function loadContacts(): Promise<ContactsBootstrap> {
   try {
-    const access = await getContactDirectoryAccess()
+    // Each first page is read in its sheet's opening sort (Settings > Lists).
+    const [access, vendorQuery, customerQuery, reviewQuery] = await Promise.all([
+      getContactDirectoryAccess(),
+      listSheetFirstPageQuery("vendors"),
+      listSheetFirstPageQuery("customers"),
+      listSheetFirstPageQuery("contacts.review"),
+    ])
     const [summary, associationProjects, vendors, customers, internal, unassigned, participantReview] = await Promise.all([
       getContactDirectorySummary(),
       getCompanyAssociationProjects(),
-      access.vendors.read ? getVendorDirectoryPage(DEFAULT_RECORD_PAGE_QUERY, null) : null,
-      access.customers.read ? getCustomerDirectoryPage(DEFAULT_RECORD_PAGE_QUERY) : null,
+      access.vendors.read ? getVendorDirectoryPage(vendorQuery, null) : null,
+      access.customers.read ? getCustomerDirectoryPage(customerQuery) : null,
       access.internal.read ? getInternalDirectoryContacts() : [],
       access.vendors.read ? getUnassignedPeople() : [],
       // Staff only: the action refuses everyone else, and the tab is hidden.
-      getImportedParticipantReviewPage(DEFAULT_RECORD_PAGE_QUERY),
+      getImportedParticipantReviewPage(reviewQuery),
     ])
     return {
       loadFailed: !summary.success || vendors?.success === false || customers?.success === false,
@@ -44,6 +51,7 @@ async function loadContacts(): Promise<ContactsBootstrap> {
       internal,
       unassigned,
       participantReview: participantReview.success ? participantReview.data : null,
+      firstPageQueries: { vendors: vendorQuery, customers: customerQuery, participantReview: reviewQuery },
     }
   } catch {
     return {
@@ -56,6 +64,7 @@ async function loadContacts(): Promise<ContactsBootstrap> {
       internal: [],
       unassigned: [],
       participantReview: null,
+      firstPageQueries: { vendors: DEFAULT_RECORD_PAGE_QUERY, customers: DEFAULT_RECORD_PAGE_QUERY, participantReview: DEFAULT_RECORD_PAGE_QUERY },
     }
   }
 }

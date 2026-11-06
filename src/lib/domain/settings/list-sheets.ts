@@ -12,18 +12,31 @@ import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { listSheetDefinition } from "@/lib/domain/settings/list-sheet-registry"
 import {
   EMPTY_LIST_SHEET_PREFERENCES,
+  LIST_SHEET_OWN_ORDER,
   listSheetColumnIdsSchema,
   listSheetColumnsSchema,
   parseStoredJson,
   resolveListSheetLayout,
   type CompanyListSheetSetting,
+  type CompanyListSheetSort,
   type ListSheetPreferences,
   type PersonalListSheetPreference,
 } from "@/lib/domain/settings/list-sheet-rules"
+import { DEFAULT_RECORD_PAGE_QUERY, type RecordPageQuery } from "@/lib/record-page"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Reader = { readonly organizationId: string; readonly userId: string }
+
+/** sort_column NULL follows the code default; LIST_SHEET_OWN_ORDER is the list's own order. */
+function storedSort(column: string | null, direction: string | null): CompanyListSheetSort {
+  if (column === null) return { kind: "default" }
+  if (column === LIST_SHEET_OWN_ORDER) return { kind: "none" }
+  return { kind: "column", columnId: column, desc: direction === "desc" }
+}
+
+/** The tables are missing until migration 0293 is applied; say so once per isolate, not per request. */
+let warnedUnavailable = false
 
 /** Company layouts and the reader's own columns for every registered sheet. */
 export async function readListSheetPreferences(
@@ -58,7 +71,7 @@ export async function readListSheetPreferences(
     if (!listSheetDefinition(row.sheetKey)) continue
     company[row.sheetKey] = {
       columns: parseStoredJson(row.columns, listSheetColumnsSchema) ?? [],
-      sort: row.sortColumn ? { columnId: row.sortColumn, desc: row.sortDirection === "desc" } : null,
+      sort: storedSort(row.sortColumn, row.sortDirection),
       startFilter: row.startFilter,
     }
   }
@@ -91,7 +104,10 @@ export const loadListSheetPreferences = cache(async (): Promise<ListSheetPrefere
       canEditCompany: !demo && user.isActive && isInternalStaffRole(user.role) && canEditFeatureSettings(user.role),
     }
   } catch (error) {
-    console.warn("List sheet preferences unavailable; sheets use their defaults", error)
+    if (!warnedUnavailable) {
+      warnedUnavailable = true
+      console.warn("List sheet preferences unavailable; sheets use their defaults", error)
+    }
     return EMPTY_LIST_SHEET_PREFERENCES
   }
 })
@@ -102,4 +118,17 @@ export async function listSheetStartFilter(sheetId: string): Promise<string | nu
   if (!definition?.startFilter) return null
   const preferences = await loadListSheetPreferences()
   return resolveListSheetLayout(definition, preferences.company[sheetId] ?? null, null).startFilter
+}
+
+/**
+ * The query for a server-paged sheet's first page: page one in the sheet's
+ * opening sort (personal, company, code default), so the browser shows it
+ * without reading it again.
+ */
+export async function listSheetFirstPageQuery(sheetId: string): Promise<RecordPageQuery> {
+  const definition = listSheetDefinition(sheetId)
+  if (!definition) return DEFAULT_RECORD_PAGE_QUERY
+  const preferences = await loadListSheetPreferences()
+  const { sort } = resolveListSheetLayout(definition, preferences.company[sheetId] ?? null, preferences.personal[sheetId] ?? null)
+  return sort ? { ...DEFAULT_RECORD_PAGE_QUERY, sortId: sort.columnId, sortDesc: sort.desc } : DEFAULT_RECORD_PAGE_QUERY
 }

@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  LIST_SHEETS,
+  companyListSheets,
   listSheetSortDirectionLabels,
   type ListSheetDefinition,
 } from "@/lib/domain/settings/list-sheet-registry"
@@ -128,10 +128,19 @@ function SheetEditor({ definition, company, canEdit }: {
   }
 
   function toggle(columnId: string, visible: boolean): void {
-    setDraft((current) => ({
-      ...current,
-      columns: current.columns.map((column) => (column.id === columnId && !column.required ? { ...column, visible } : column)),
-    }))
+    setDraft((current) => {
+      const columns = current.columns.map((column) => (column.id === columnId && !column.required ? { ...column, visible } : column))
+      // The sheet can't sort by a hidden column: go back to the code default, else the list's own order.
+      if (visible || current.sortColumnId !== columnId) return { ...current, columns }
+      const fallback = definition.defaultSort
+      const fallbackVisible = fallback !== null && columns.some((column) => column.id === fallback.columnId && column.visible)
+      return {
+        ...current,
+        columns,
+        sortColumnId: fallbackVisible ? fallback.columnId : null,
+        sortDirection: fallbackVisible && fallback.desc ? "desc" : "asc",
+      }
+    })
   }
 
   function save(): void {
@@ -204,7 +213,7 @@ function SheetEditor({ definition, company, canEdit }: {
               <SelectTrigger className="w-full" aria-label="Default sort column"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_SORT}>The list&apos;s own order</SelectItem>
-                {definition.columns.filter((column) => column.sortable !== false).map((column) => (
+                {draft.columns.filter((column) => column.visible && definition.columns.some((entry) => entry.id === column.id && entry.sortable !== false)).map((column) => (
                   <SelectItem key={column.id} value={column.id}>{column.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -284,8 +293,9 @@ function SheetEditor({ definition, company, canEdit }: {
  */
 export function ListsTab(): React.ReactElement {
   const context = useListSheetContext()
-  const [sheetId, setSheetId] = React.useState(LIST_SHEETS[0]?.id ?? "")
-  const definition = LIST_SHEETS.find((sheet) => sheet.id === sheetId) ?? null
+  const sheets = companyListSheets()
+  const [sheetId, setSheetId] = React.useState(sheets[0]?.id ?? "")
+  const definition = sheets.find((sheet) => sheet.id === sheetId) ?? null
   const company = definition ? context?.preferences.company[definition.id] ?? null : null
   const canEdit = context?.preferences.canEditCompany ?? false
 
@@ -303,12 +313,12 @@ export function ListsTab(): React.ReactElement {
             <Select value={sheetId} onValueChange={setSheetId}>
               <SelectTrigger className="w-full" aria-label="Sheet"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {LIST_SHEETS.map((sheet) => <SelectItem key={sheet.id} value={sheet.id}>{sheet.label}</SelectItem>)}
+                {sheets.map((sheet) => <SelectItem key={sheet.id} value={sheet.id}>{sheet.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <ul className="hidden space-y-0.5 md:block">
-            {LIST_SHEETS.map((sheet) => {
+            {sheets.map((sheet) => {
               const active = sheet.id === sheetId
               return (
                 <li key={sheet.id}>

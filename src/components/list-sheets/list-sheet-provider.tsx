@@ -35,22 +35,21 @@ export function ListSheetProvider({
   readonly savePersonal: SavePersonalColumns
   readonly children: React.ReactNode
 }): React.ReactElement {
-  const [personal, setPersonalState] = React.useState(preferences.personal)
-  // A refresh after Settings > Lists brings new server data; take it.
-  const [seen, setSeen] = React.useState(preferences)
-  if (seen !== preferences) {
-    setSeen(preferences)
-    setPersonalState(preferences.personal)
-  }
+  // Columns this person changed in this session. They are merged over every
+  // server refresh, so an unrelated refresh never snaps a change back.
+  const [local, setLocal] = React.useState<Readonly<Record<string, PersonalListSheetPreference | null>>>({})
+  const personal = React.useMemo(() => {
+    const merged: Record<string, PersonalListSheetPreference> = { ...preferences.personal }
+    for (const [sheetId, preference] of Object.entries(local)) {
+      if (preference === null) delete merged[sheetId]
+      else merged[sheetId] = preference
+    }
+    return merged
+  }, [preferences.personal, local])
 
   const canSave = preferences.canSavePersonal
   const setPersonal = React.useCallback((sheetId: string, preference: PersonalListSheetPreference | null) => {
-    setPersonalState((current) => {
-      const next = { ...current }
-      if (preference === null) delete next[sheetId]
-      else next[sheetId] = preference
-      return next
-    })
+    setLocal((current) => ({ ...current, [sheetId]: preference }))
     if (!canSave) return
     void savePersonal({
       sheetId,

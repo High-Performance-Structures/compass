@@ -6,7 +6,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 
 import { getCustomerDirectoryPage } from "@/app/actions/contact-directory"
 import type { CustomerDirectoryRow } from "@/lib/domain/contacts/directory-page"
-import type { RecordPage } from "@/lib/record-page"
+import type { RecordPage, RecordPageQuery } from "@/lib/record-page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SourceTag } from "@/components/shared/source-tag"
@@ -31,6 +31,8 @@ type CustomerRowActions = {
 
 type CustomersTableProps = CustomerRowActions & {
   readonly initialPage: RecordPage<CustomerDirectoryRow> | null
+  /** The query the server read `initialPage` with. */
+  readonly initialQuery?: RecordPageQuery
   readonly reloadToken: number
   readonly onSelectionChange?: (customers: readonly CustomerDirectoryRow[]) => void
   readonly clearSelectionToken?: number
@@ -81,7 +83,7 @@ function CustomerSource({ customer }: { readonly customer: CustomerDirectoryRow 
   )
 }
 
-function customerColumns(
+export function customerColumns(
   actions: CustomerRowActions,
   options: { readonly selectable: boolean; readonly developerMode: boolean },
 ): ColumnDef<CustomerDirectoryRow>[] {
@@ -169,6 +171,7 @@ function customerColumns(
 /** Clients and leads, searched, sorted and paged on the server. */
 export function CustomersTable({
   initialPage,
+  initialQuery,
   reloadToken,
   onSelectionChange,
   clearSelectionToken = 0,
@@ -189,6 +192,7 @@ export function CustomersTable({
     load: getCustomerDirectoryPage,
     reloadToken,
     initialPage,
+    initialQuery,
     enableSelection: selectable,
     sheetId: "customers",
   })

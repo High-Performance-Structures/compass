@@ -53,7 +53,7 @@ function NumberCell({ row, open }: { readonly row: RfiListRow; readonly open: Rf
   )
 }
 
-function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen, statuses: RecordStatusList): ColumnDef<RfiListRow>[] {
+export function rfiColumns(audience: RfiTableAudience, open: RfiRowOpen, statuses: RecordStatusList): ColumnDef<RfiListRow>[] {
   const staff = audience === "staff"
   const columns: (ColumnDef<RfiListRow> | null)[] = [
     {
@@ -196,8 +196,8 @@ export function ProjectRfiRecordTable(props: ProjectRfiRecordTableProps): React.
     getRowId: rowId,
     resetKey: query,
     initialItemId: selectedId,
-    // The trade partner view shows a fixed subset and is not a company sheet.
-    sheetId: audience === "staff" ? "rfis.job" : undefined,
+    // The trade partner view shows a subset of columns and has no company layout.
+    sheetId: audience === "staff" ? "rfis.job" : "rfis.trade-partner",
   })
 
   return (

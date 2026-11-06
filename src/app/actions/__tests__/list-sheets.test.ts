@@ -23,6 +23,7 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }))
 
 import { resetCompanyListSheet, saveCompanyListSheet, savePersonalListSheetColumns } from "@/app/actions/list-sheets"
 import { listSheetDefinition } from "@/lib/domain/settings/list-sheet-registry"
+import { LIST_SHEET_OWN_ORDER } from "@/lib/domain/settings/list-sheet-rules"
 
 const db = { name: "db" }
 
@@ -75,6 +76,14 @@ describe("company list sheet settings", () => {
       entityType: "list_sheet",
       entityId: "purchase-orders.job",
     }))
+  })
+
+  it("stores a default sort as NULL and the list's own order as its own value", async () => {
+    signedIn("admin")
+    await saveCompanyListSheet({ sheetId: "purchase-orders.job", columns: poColumns(), sort: { columnId: "dueDate", direction: "asc" }, startFilter: "open" })
+    expect(mocks.saveCompany).toHaveBeenLastCalledWith(db, expect.objectContaining({ sortColumn: null, sortDirection: null, startFilter: null }))
+    await saveCompanyListSheet({ sheetId: "purchase-orders.job", columns: poColumns(), sort: null, startFilter: null })
+    expect(mocks.saveCompany).toHaveBeenLastCalledWith(db, expect.objectContaining({ sortColumn: LIST_SHEET_OWN_ORDER, sortDirection: null }))
   })
 
   it("refuses a write aimed at another organization", async () => {

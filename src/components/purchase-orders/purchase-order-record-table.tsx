@@ -47,7 +47,7 @@ function DateCell({ value }: { readonly value: string | null }): React.ReactElem
   return <span className="whitespace-nowrap tabular-nums">{formatDate(value, "medium", "—")}</span>
 }
 
-function purchaseOrderColumns(
+export function purchaseOrderColumns(
   showProject: boolean,
   statusFilter: string,
   statuses: RecordStatusList,

@@ -10,6 +10,7 @@ import {
   checkCompanyListSheet,
   checkPersonalListSheet,
   companyListSheetInputSchema,
+  LIST_SHEET_OWN_ORDER,
   personalListSheetInputSchema,
 } from "@/lib/domain/settings/list-sheet-rules"
 import { readListSheetPreferences } from "@/lib/domain/settings/list-sheets"
@@ -66,8 +67,9 @@ export async function saveCompanyListSheet(raw: unknown): Promise<Result> {
       organizationId,
       sheetKey: definition.id,
       columns: JSON.stringify(columns),
-      sortColumn: sort?.columnId ?? null,
-      sortDirection: sort ? (sort.desc ? "desc" : "asc") : null,
+      // NULL follows the code default, so later code changes still reach the company.
+      sortColumn: sort.kind === "default" ? null : sort.kind === "none" ? LIST_SHEET_OWN_ORDER : sort.columnId,
+      sortDirection: sort.kind === "column" ? (sort.desc ? "desc" : "asc") : null,
       startFilter,
       updatedBy: user.id,
       now,
@@ -82,8 +84,8 @@ export async function saveCompanyListSheet(raw: unknown): Promise<Result> {
       entityId: definition.id,
       summary: `Updated the ${definition.label} list columns.`,
       metadata: {
-        before: before ? { columns: before.columns.map((column) => ({ ...column })), sort: before.sort ? { ...before.sort } : null, startFilter: before.startFilter } : null,
-        after: { columns: columns.map((column) => ({ ...column })), sort: sort ? { ...sort } : null, startFilter },
+        before: before ? { columns: before.columns.map((column) => ({ ...column })), sort: { ...before.sort }, startFilter: before.startFilter } : null,
+        after: { columns: columns.map((column) => ({ ...column })), sort: { ...sort }, startFilter },
       },
       createdAt: now,
     })

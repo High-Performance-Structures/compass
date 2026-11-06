@@ -35,6 +35,8 @@ type VendorRowActions = {
 type VendorsTableProps = VendorRowActions & {
   readonly categories: readonly string[]
   readonly initialPage: VendorDirectoryPage | null
+  /** The query the server read `initialPage` with. */
+  readonly initialQuery?: RecordPageQuery
   /** Bump to re-read the current page after a change. */
   readonly reloadToken: number
   readonly onSelectionChange?: (vendors: readonly VendorDirectoryRow[]) => void
@@ -81,7 +83,7 @@ function VendorMenu({ vendor, actions }: { readonly vendor: VendorDirectoryRow; 
   )
 }
 
-function vendorColumns(
+export function vendorColumns(
   actions: VendorRowActions,
   tradeDocStatuses: VendorDirectoryPage["tradeDocStatuses"],
   options: { readonly selectable: boolean; readonly developerMode: boolean },
@@ -185,6 +187,7 @@ function vendorColumns(
 export function VendorsTable({
   categories,
   initialPage,
+  initialQuery,
   reloadToken,
   onSelectionChange,
   clearSelectionToken = 0,
@@ -213,6 +216,7 @@ export function VendorsTable({
     filterKey: category,
     reloadToken,
     initialPage,
+    initialQuery,
     enableSelection: selectable,
     sheetId: "vendors",
   })

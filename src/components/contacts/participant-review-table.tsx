@@ -12,25 +12,13 @@ import { useServerRecordTable } from "@/components/use-server-record-table"
 import type { ImportedParticipantReviewRow } from "@/lib/domain/conversations/imported-participant-review"
 import { formatDate } from "@/lib/format"
 import { projectNumberAndName } from "@/lib/project-display-name"
-import type { RecordPage } from "@/lib/record-page"
+import type { RecordPage, RecordPageQuery } from "@/lib/record-page"
 
-/**
- * Contacts → Needs review: people on imported conversations the importer
- * could not resolve (a name that matches several contacts, or several names
- * run together). Staff pick the person, split the names, or leave it as is.
- * Nothing here shares a conversation or tells anyone.
- */
-export function ParticipantReviewTable({
-  initialPage,
-  onReviewed,
-}: {
-  readonly initialPage: RecordPage<ImportedParticipantReviewRow> | null
-  readonly onReviewed: () => void
-}): React.ReactElement {
-  const [reloadToken, setReloadToken] = React.useState(0)
-  const [active, setActive] = React.useState<{ readonly row: ImportedParticipantReviewRow; readonly action: ReviewAction } | null>(null)
-
-  const columns = React.useMemo<ColumnDef<ImportedParticipantReviewRow>[]>(() => [
+/** The contacts review sheet's columns (sheet "contacts.review"). */
+export function participantReviewColumns(
+  onAction: (row: ImportedParticipantReviewRow, action: ReviewAction) => void,
+): ColumnDef<ImportedParticipantReviewRow>[] {
+  return [
     {
       id: "literal",
       header: "As written",
@@ -85,14 +73,36 @@ export function ParticipantReviewTable({
         if (item.readOnlyReason) return <span className="text-xs text-muted-foreground" title={item.readOnlyReason}>Read only</span>
         return (
           <div className="flex flex-wrap justify-end gap-2">
-            {item.canPick ? <Button type="button" size="sm" variant="outline" onClick={() => setActive({ row: item, action: "pick" })}>Pick person</Button> : null}
-            {item.canSplit ? <Button type="button" size="sm" variant="outline" onClick={() => setActive({ row: item, action: "split" })}>Split into people</Button> : null}
-            {item.canLeave ? <Button type="button" size="sm" variant="ghost" onClick={() => setActive({ row: item, action: "leave" })}>Leave as is</Button> : null}
+            {item.canPick ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "pick")}>Pick person</Button> : null}
+            {item.canSplit ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "split")}>Split into people</Button> : null}
+            {item.canLeave ? <Button type="button" size="sm" variant="ghost" onClick={() => onAction(item, "leave")}>Leave as is</Button> : null}
           </div>
         )
       },
     },
-  ], [])
+  ]
+}
+
+/**
+ * Contacts → Needs review: people on imported conversations the importer
+ * could not resolve (a name that matches several contacts, or several names
+ * run together). Staff pick the person, split the names, or leave it as is.
+ * Nothing here shares a conversation or tells anyone.
+ */
+export function ParticipantReviewTable({
+  initialPage,
+  initialQuery,
+  onReviewed,
+}: {
+  readonly initialPage: RecordPage<ImportedParticipantReviewRow> | null
+  /** The query the server read `initialPage` with. */
+  readonly initialQuery?: RecordPageQuery
+  readonly onReviewed: () => void
+}): React.ReactElement {
+  const [reloadToken, setReloadToken] = React.useState(0)
+  const [active, setActive] = React.useState<{ readonly row: ImportedParticipantReviewRow; readonly action: ReviewAction } | null>(null)
+
+  const columns = React.useMemo(() => participantReviewColumns((row, action) => setActive({ row, action })), [])
 
   const list = useServerRecordTable({
     columns,
@@ -100,6 +110,7 @@ export function ParticipantReviewTable({
     load: getImportedParticipantReviewPage,
     reloadToken,
     initialPage,
+    initialQuery,
     sheetId: "contacts.review",
   })
 

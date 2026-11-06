@@ -38,10 +38,22 @@ export const personalListSheetInputSchema = z.object({
 
 export type CompanyListSheetSetting = {
   readonly columns: readonly { readonly id: string; readonly visible: boolean }[]
-  /** Null: the list's own order. */
-  readonly sort: ListSheetSort | null
+  /**
+   * "default" follows the code default, so a later code change still reaches
+   * the company; "none" is the list's own order; "column" is the company's pick.
+   */
+  readonly sort: CompanyListSheetSort
+  /** Null follows the code default. */
   readonly startFilter: string | null
 }
+
+export type CompanyListSheetSort =
+  | { readonly kind: "default" }
+  | { readonly kind: "none" }
+  | ({ readonly kind: "column" } & ListSheetSort)
+
+/** The stored sort_column meaning "the list's own order"; NULL means the code default. */
+export const LIST_SHEET_OWN_ORDER = "__list-own-order"
 
 export type PersonalListSheetPreference = {
   readonly hiddenColumnIds: readonly string[]
@@ -106,9 +118,11 @@ function validStartFilter(definition: ListSheetDefinition, value: string | null)
 /** The layout a sheet shows: personal over company over code default. */
 export function resolveListSheetLayout(
   definition: ListSheetDefinition,
-  company: CompanyListSheetSetting | null,
+  stored: CompanyListSheetSetting | null,
   personal: PersonalListSheetPreference | null,
 ): ListSheetLayout {
+  // Personal-only sheets (outside the company workspace) have no company layout.
+  const company = definition.personalOnly === true ? null : stored
   const byId = new Map(definition.columns.map((column) => [column.id, column]))
   const companyVisibility = new Map((company?.columns ?? []).map((column) => [column.id, column.visible]))
   const hidden = new Set(personal?.hiddenColumnIds ?? [])
@@ -126,7 +140,16 @@ export function resolveListSheetLayout(
     if (visible !== companyVisible) personalized = true
     return [{ ...column, visible, companyVisible }]
   })
-  const sort = company && validSort(definition, company.sort) ? company.sort : definition.defaultSort
+  const companySort = company?.sort ?? { kind: "default" }
+  let sort = definition.defaultSort
+  if (companySort.kind === "none") sort = null
+  if (companySort.kind === "column" && validSort(definition, companySort)) sort = { columnId: companySort.columnId, desc: companySort.desc }
+  // A sort on a hidden column (hidden by the person, or a stale setting)
+  // falls back to the code default, else the list's own order.
+  const isVisible = (id: string): boolean => columns.some((column) => column.id === id && column.visible)
+  if (sort && !isVisible(sort.columnId)) {
+    sort = definition.defaultSort && isVisible(definition.defaultSort.columnId) ? definition.defaultSort : null
+  }
   const startFilter = company && validStartFilter(definition, company.startFilter)
     ? company.startFilter
     : definition.startFilter?.defaultValue ?? null
@@ -157,9 +180,15 @@ export function nextPersonalPreference(
 
 type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }
 
+function sameSort(left: ListSheetSort | null, right: ListSheetSort | null): boolean {
+  return left === null || right === null ? left === right : left.columnId === right.columnId && left.desc === right.desc
+}
+
 /**
  * A company layout ready to store: every column the sheet registers, once,
- * required columns shown, a sortable sort column and a known start filter.
+ * required columns shown, a visible sortable sort column and a known start
+ * filter. A sort or filter equal to the code default is stored as "follow
+ * the default", so later code default changes still apply.
  */
 export function checkCompanyListSheet(
   definition: ListSheetDefinition,
@@ -176,13 +205,22 @@ export function checkCompanyListSheet(
     }
   }
   if (seen.size !== byId.size) return { ok: false, error: "Every column must be listed. Refresh and try again." }
-  const sort = input.sort ? { columnId: input.sort.columnId, desc: input.sort.direction === "desc" } : null
-  if (!validSort(definition, sort)) return { ok: false, error: "Choose a column this sheet can sort by." }
+  if (definition.personalOnly === true) return { ok: false, error: "This list has no company layout." }
+  const chosen = input.sort ? { columnId: input.sort.columnId, desc: input.sort.direction === "desc" } : null
+  if (!validSort(definition, chosen)) return { ok: false, error: "Choose a column this sheet can sort by." }
+  const sortColumn = chosen ? input.columns.find((column) => column.id === chosen.columnId) : undefined
+  if (chosen && sortColumn?.visible !== true && byId.get(chosen.columnId)?.required !== true) {
+    return { ok: false, error: "Show the column the sheet sorts by, or choose another sort." }
+  }
+  if (definition.startFilter === null && input.startFilter !== null) return { ok: false, error: "This sheet has no status filter." }
   if (input.startFilter !== null && !validStartFilter(definition, input.startFilter)) {
     return { ok: false, error: "Choose one of this sheet's filters." }
   }
-  if (definition.startFilter === null && input.startFilter !== null) return { ok: false, error: "This sheet has no status filter." }
-  return { ok: true, value: { columns: input.columns, sort, startFilter: input.startFilter } }
+  const sort: CompanyListSheetSort = sameSort(chosen, definition.defaultSort)
+    ? { kind: "default" }
+    : chosen ? { kind: "column", ...chosen } : { kind: "none" }
+  const startFilter = input.startFilter === definition.startFilter?.defaultValue ? null : input.startFilter
+  return { ok: true, value: { columns: input.columns, sort, startFilter } }
 }
 
 /** A person's preference ready to store: unknown and required columns dropped. */

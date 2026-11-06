@@ -205,8 +205,12 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   hidden. Columns added to code later appear in their default place; ids
   that no longer exist are ignored. A page that picks the status filter
   reads the sheet's "Opens on filter" with `listSheetStartFilter` when the
-  URL names none. Keep each sheet's registered defaults equal to what it
-  showed before, so registering changes nothing on screen.
+  URL names none, and a server-paged sheet reads its first page with
+  `listSheetFirstPageQuery` and passes it as `initialQuery`, so it opens in
+  its sort without a second read. A sheet outside the company workspace
+  (such as the trade partner view) is registered with `personalOnly`. Keep
+  each sheet's registered defaults equal to what it showed before, so
+  registering changes nothing on screen.
   `list-sheet-standard.test.ts` enforces it.
 - **Rule for every growing list (owner, 2026-11-05).** Any growing list (POs,
   RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a

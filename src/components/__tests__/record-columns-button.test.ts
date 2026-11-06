@@ -86,13 +86,26 @@ describe("the Columns button", () => {
     expect(savePersonal).toHaveBeenLastCalledWith({ sheetId: "todos.job", hiddenColumnIds: [], shownColumnIds: [] })
   })
 
+  it("keeps a person's change when an unrelated refresh brings new server data", async () => {
+    const savePersonal = vi.fn().mockResolvedValue({ success: true, data: null })
+    const render = (preferences: ListSheetPreferences) =>
+      root.render(React.createElement(ListSheetProvider, { preferences, savePersonal }, React.createElement(Sheet)))
+    await act(async () => render({ ...EMPTY_LIST_SHEET_PREFERENCES, canSavePersonal: true }))
+    await click(byText("Columns"))
+    await click(checkboxFor("Author"))
+    expect(headers(host)).toEqual(["Name", "Description", ""])
+    // A refresh (another save, a revalidation) sends a new object without this change yet.
+    await act(async () => render({ ...EMPTY_LIST_SHEET_PREFERENCES, canSavePersonal: true }))
+    expect(headers(host)).toEqual(["Name", "Description", ""])
+  })
+
   it("follows the company layout's order and hidden columns", async () => {
     const preferences: ListSheetPreferences = {
       ...EMPTY_LIST_SHEET_PREFERENCES,
       company: {
         "todos.job": {
           columns: ["author", "title", "description", "status", "assignedTo", "dueDate", "priority"].map((id) => ({ id, visible: id !== "description" })),
-          sort: null,
+          sort: { kind: "default" },
           startFilter: null,
         },
       },

@@ -39,6 +39,11 @@ export type ListSheetDefinition = {
   readonly columns: readonly ListSheetColumn[]
   /** The sort the sheet opens with; null keeps the list's own order. */
   readonly defaultSort: ListSheetSort | null
+  /**
+   * Shown outside the company workspace (such as the trade partner portal):
+   * people can still use Columns, but Settings > Lists does not list it.
+   */
+  readonly personalOnly?: boolean
   /** Status filters the sheet can open on, when its page picks one. */
   readonly startFilter: { readonly options: readonly ListSheetFilterOption[]; readonly defaultValue: string } | null
 }
@@ -99,6 +104,21 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     ],
     defaultSort: null,
     startFilter: { options: OPEN_OR_ALL, defaultValue: "open" },
+  },
+  {
+    id: "rfis.trade-partner",
+    label: "RFIs, trade partner view",
+    where: "A trade partner's RFIs",
+    personalOnly: true,
+    columns: [
+      { id: "number", label: "RFI", kind: "text", required: true },
+      { id: "subject", label: "Subject", kind: "text" },
+      { id: "status", label: "Status", kind: "status" },
+      { id: "assignedTo", label: "Assigned to", kind: "text" },
+      { id: "dueDate", label: "Needed by", kind: "date" },
+    ],
+    defaultSort: null,
+    startFilter: null,
   },
   {
     id: "todos.job",
@@ -194,6 +214,11 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     startFilter: null,
   },
 ]
+
+/** The sheets a company sets up in Settings > Lists. */
+export function companyListSheets(): readonly ListSheetDefinition[] {
+  return LIST_SHEETS.filter((sheet) => sheet.personalOnly !== true)
+}
 
 export function listSheetDefinition(sheetId: string): ListSheetDefinition | null {
   return LIST_SHEETS.find((sheet) => sheet.id === sheetId) ?? null

@@ -482,6 +482,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           <TabsContent value="customers" className="mt-3 flex-1 min-h-0 flex flex-col">
             <CustomersTable
               initialPage={bootstrap.customers}
+              initialQuery={bootstrap.firstPageQueries.customers}
               reloadToken={reloadToken}
               clearSelectionToken={clearSelectionToken}
               onViewPeople={setPeopleCustomer}
@@ -496,6 +497,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
             <VendorsTable
               categories={vendorCategories}
               initialPage={bootstrap.vendors}
+              initialQuery={bootstrap.firstPageQueries.vendors}
               reloadToken={reloadToken}
               clearSelectionToken={clearSelectionToken}
               onView={viewVendor}
@@ -538,7 +540,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           </TabsContent>
           <TabsContent value="review" className="mt-3 flex-1 min-h-0 flex flex-col">
             {/* Split names may add new unassigned people, so Unassigned is re-read. */}
-            <ParticipantReviewTable initialPage={bootstrap.participantReview} onReviewed={() => void getUnassignedPeople().then(setUnassigned)} />
+            <ParticipantReviewTable initialPage={bootstrap.participantReview} initialQuery={bootstrap.firstPageQueries.participantReview} onReviewed={() => void getUnassignedPeople().then(setUnassigned)} />
           </TabsContent>
         </Tabs>
       </div>
