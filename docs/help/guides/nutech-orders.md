@@ -7,7 +7,7 @@
   "summary": "Move Nu-Tech jobs from sales intake through catalog quantities, approval, payment, Airlite ordering, and fulfillment.",
   "contextSummary": "The order stepper links to missing requirements. Verify quantities, acknowledgement, payment, delivery or pickup details, PO release, and manufacturer confirmation separately.",
   "category": "Project Operations",
-  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "truckload", "sales", "delivery", "pickup", "takeoff", "EPS", "order emails"],
+  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "truckload", "sales", "delivery", "pickup", "confirmed date", "carrier", "dock time", "takeoff", "EPS", "order emails"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/nutech", "/dashboard/nutech/catalog", "/dashboard/projects/[id]/nutech"],
@@ -18,14 +18,17 @@
 
 ## Work the Order Board {#board}
 
-**Nu-Tech Orders** lists every order on every N job, one row per order, sorted by requested pickup or delivery date. Sort by any column, search by job, customer, confirmation or invoice number, and click a row to open that order on its job.
+**Nu-Tech Orders** lists every order on every N job, one row per order, sorted by requested pickup or delivery date. Sort by any column, search by job, customer, confirmation number, carrier or invoice number, and click a row to open that order on its job.
 
 The **Needs attention** boxes at the top count the orders someone has to chase. Choose a box to see only its orders; choose it again, or **Show all orders**, to go back.
 
-- **Ships soon**: pickup or delivery requested within the next few days. An unpaid order shows **Not paid** in the Customer paid column.
+- **Ships soon**: pickup or delivery within the next few days, by the confirmed date once there is one, otherwise the requested date. An unpaid order shows **Not paid** in the Customer paid column.
 - **Approved, not paid**: the customer approved, and no payment is recorded.
 - **PO sent, manufacturer hasn't confirmed**: the PO went out and no confirmation number has been saved.
+- **Confirmed, no pickup or delivery date**: the manufacturer confirmed the order, but its confirmed date isn't recorded and the requested date hasn't passed.
 - **Past pickup or delivery, no invoice**: the order is confirmed, its date has passed, and no vendor invoice is recorded.
+
+When the manufacturer confirms, record the confirmation number, the **Confirmed pickup / delivery** date, the **Time or dock window** (for example "dock time 2:00 PM"), and the **Carrier** in section 4 of the order. Carriers typed on earlier orders are suggested. The confirmed date shows in the board's **Confirmed date** column and in the order's next step.
 
 The **Next step** column says what to do for each order. Admins set how many days each box waits in **Settings → Workflows → Nu-Tech order board**. Whether Nu-Tech's own bills to the manufacturer are paid is tracked in Sage, not on the board.
 

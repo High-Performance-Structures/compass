@@ -24,6 +24,9 @@ function order(overrides: Partial<NuTechBoardOrderInput> = {}): NuTechBoardOrder
     orderStatus: "intake",
     deliveryMethod: "delivery",
     requestedDeliveryDate: null,
+    confirmedDeliveryDate: null,
+    confirmedDeliveryTime: null,
+    carrier: null,
     customerPaidAt: null,
     purchaseOrderReleasedAt: null,
     vendorConfirmationNumber: null,
@@ -100,7 +103,7 @@ describe("buildNuTechOrderBoard", () => {
         order({ orderId: "c", orderStatus: "complete" }),
       ],
     })
-    expect(board.queueCounts).toEqual({ ships_soon: 1, approved_unpaid: 1, unconfirmed: 1, no_invoice: 0 })
+    expect(board.queueCounts).toEqual({ no_date: 0, ships_soon: 1, approved_unpaid: 1, unconfirmed: 1, no_invoice: 0 })
     expect(board.statusCounts).toEqual({ open: 2, complete: 1, cancelled: 0, all: 3 })
     const [unconfirmed, unpaid, done] = board.rows
     expect(unconfirmed?.nextStep).toBe("Call Fox Blocks: no confirmation since Oct 14.")
@@ -127,5 +130,44 @@ describe("matchesNuTechBoardStatus", () => {
     expect(matchesNuTechBoardStatus({ orderStatus: "complete" }, "open")).toBe(false)
     expect(matchesNuTechBoardStatus({ orderStatus: "complete" }, "complete")).toBe(true)
     expect(matchesNuTechBoardStatus({ orderStatus: "cancelled" }, "all")).toBe(true)
+  })
+})
+
+describe("confirmed pickup or delivery", () => {
+  it("asks for the date once the manufacturer confirms, until it is set", () => {
+    const confirmed = order({ orderStatus: "vendor_confirmed", vendorConfirmationNumber: "258670-EPS", customerPaidAt: "2026-10-22" })
+    expect(nuTechBoardQueues(confirmed, TODAY, SETTINGS)).toEqual(["no_date"])
+    expect(nuTechBoardQueues({ ...confirmed, confirmedDeliveryDate: "2026-11-20" }, TODAY, SETTINGS)).toEqual([])
+    // Past the requested date it has shipped; no date is no longer the problem.
+    expect(nuTechBoardQueues({ ...confirmed, requestedDeliveryDate: "2026-10-01" }, TODAY, SETTINGS)).not.toContain("no_date")
+  })
+
+  it("times ships-soon and the invoice chase from the confirmed date over the requested one", () => {
+    const shipped = order({
+      orderStatus: "vendor_confirmed",
+      customerPaidAt: "2026-10-22",
+      requestedDeliveryDate: "2026-10-20",
+      confirmedDeliveryDate: "2026-11-09",
+    })
+    expect(nuTechBoardQueues(shipped, TODAY, SETTINGS)).toEqual(["ships_soon"])
+  })
+
+  it("shows the confirmed date, time and carrier as the next step", () => {
+    const board = buildNuTechOrderBoard({
+      today: TODAY,
+      settings: SETTINGS,
+      manufacturerName: "Fox Blocks",
+      orders: [
+        order({
+          orderStatus: "vendor_confirmed",
+          customerPaidAt: "2026-10-22",
+          confirmedDeliveryDate: "2026-11-20",
+          confirmedDeliveryTime: "dock time 2:00 PM",
+          carrier: "Open Wheel Logistics",
+        }),
+      ],
+    })
+    expect(board.rows[0]?.nextStep).toMatch(/^Delivery .+, dock time 2:00 PM, via Open Wheel Logistics\.$/)
+    expect(board.rows[0]?.nextStepUrgent).toBe(false)
   })
 })

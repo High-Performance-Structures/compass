@@ -14,12 +14,13 @@ import {
  * company's settings.
  */
 
-export type NuTechBoardQueue = "ships_soon" | "approved_unpaid" | "unconfirmed" | "no_invoice"
+export type NuTechBoardQueue = "ships_soon" | "approved_unpaid" | "unconfirmed" | "no_date" | "no_invoice"
 
 export const NUTECH_BOARD_QUEUES: readonly NuTechBoardQueue[] = [
   "ships_soon",
   "approved_unpaid",
   "unconfirmed",
+  "no_date",
   "no_invoice",
 ]
 
@@ -38,6 +39,10 @@ export type NuTechBoardOrderInput = {
   readonly deliveryMethod: NuTechDeliveryMethod
   /** YYYY-MM-DD. */
   readonly requestedDeliveryDate: string | null
+  /** The manufacturer's confirmed date (YYYY-MM-DD), time or dock window, and carrier. */
+  readonly confirmedDeliveryDate: string | null
+  readonly confirmedDeliveryTime: string | null
+  readonly carrier: string | null
   /** ISO timestamp or YYYY-MM-DD. */
   readonly customerPaidAt: string | null
   readonly purchaseOrderReleasedAt: string | null
@@ -97,6 +102,11 @@ export function businessDaysBetween(from: string, to: string): number {
   return count
 }
 
+/** The date the order actually ships: the confirmed date once there is one, else the requested date. */
+function scheduledDate(order: Pick<NuTechBoardOrderInput, "confirmedDeliveryDate" | "requestedDeliveryDate">): string | null {
+  return dateKey(order.confirmedDeliveryDate) ?? dateKey(order.requestedDeliveryDate)
+}
+
 export function nuTechBoardQueues(
   order: NuTechBoardOrderInput,
   today: string,
@@ -104,9 +114,9 @@ export function nuTechBoardQueues(
 ): readonly NuTechBoardQueue[] {
   if (CLOSED.has(order.orderStatus)) return []
   const queues: NuTechBoardQueue[] = []
-  const requested = dateKey(order.requestedDeliveryDate)
-  if (requested) {
-    const daysOut = daysBetween(today, requested)
+  const scheduled = scheduledDate(order)
+  if (scheduled) {
+    const daysOut = daysBetween(today, scheduled)
     if (daysOut >= 0 && daysOut <= settings.shipsWithinDays) queues.push("ships_soon")
   }
   if (!BEFORE_APPROVAL.has(order.orderStatus) && !order.customerPaidAt) queues.push("approved_unpaid")
@@ -119,11 +129,16 @@ export function nuTechBoardQueues(
   ) {
     queues.push("unconfirmed")
   }
+  // Confirmed by the manufacturer, but nobody has the pickup or delivery date yet. Once the
+  // requested date has passed the order has shipped, and the invoice chase takes over.
+  if (order.orderStatus === "vendor_confirmed" && !dateKey(order.confirmedDeliveryDate) && !(scheduled && scheduled < today)) {
+    queues.push("no_date")
+  }
   if (
     order.orderStatus === "vendor_confirmed" &&
     order.vendorInvoiceStatus === "not_received" &&
-    requested &&
-    daysBetween(requested, today) >= settings.invoiceAfterDeliveryDays
+    scheduled &&
+    daysBetween(scheduled, today) >= settings.invoiceAfterDeliveryDays
   ) {
     queues.push("no_invoice")
   }
@@ -135,7 +150,7 @@ function nextStep(
   queues: readonly NuTechBoardQueue[],
   manufacturerName: string,
 ): { readonly text: string; readonly urgent: boolean } {
-  const requested = dateKey(order.requestedDeliveryDate)
+  const requested = scheduledDate(order)
   const released = dateKey(order.purchaseOrderReleasedAt)
   if (queues.includes("unconfirmed")) {
     return { text: `Call ${manufacturerName}: no confirmation since ${released ? formatDate(released, "short") : "the PO went out"}.`, urgent: true }
@@ -147,6 +162,9 @@ function nextStep(
     }
   }
   if (queues.includes("no_invoice")) return { text: `Ask ${manufacturerName} for the invoice.`, urgent: true }
+  if (queues.includes("no_date")) {
+    return { text: `Get the confirmed ${order.deliveryMethod === "delivery" ? "delivery" : "pickup"} date from ${manufacturerName}.`, urgent: true }
+  }
   switch (order.orderStatus) {
     case "intake":
       return { text: "Get the quantities.", urgent: false }
@@ -161,7 +179,14 @@ function nextStep(
     case "po_released":
       return { text: `Waiting for ${manufacturerName} to confirm.`, urgent: false }
     case "vendor_confirmed":
-      return { text: requested ? `${order.deliveryMethod === "delivery" ? "Delivery" : "Pickup"} ${formatDate(requested, "short")}.` : "Set the pickup or delivery date.", urgent: !requested }
+      return {
+        text: [
+          `${order.deliveryMethod === "delivery" ? "Delivery" : "Pickup"} ${requested ? formatDate(requested, "short") : "date not set"}`,
+          order.confirmedDeliveryTime?.trim(),
+          order.carrier?.trim() ? `via ${order.carrier.trim()}` : null,
+        ].filter(Boolean).join(", ") + ".",
+        urgent: !requested,
+      }
     case "invoice_received":
       return { text: "Release the vendor invoice to accounting.", urgent: false }
     case "invoice_released":
@@ -203,7 +228,7 @@ export function buildNuTechOrderBoard(input: {
       unpaidBeforeShipping: queues.includes("ships_soon") && !order.customerPaidAt,
     }
   })
-  const queueCounts: Record<NuTechBoardQueue, number> = { ships_soon: 0, approved_unpaid: 0, unconfirmed: 0, no_invoice: 0 }
+  const queueCounts: Record<NuTechBoardQueue, number> = { ships_soon: 0, approved_unpaid: 0, unconfirmed: 0, no_date: 0, no_invoice: 0 }
   for (const row of rows) for (const queue of row.queues) queueCounts[queue] += 1
   const statusCounts: Record<NuTechBoardStatusFilter, number> = {
     open: rows.filter((row) => matchesNuTechBoardStatus(row, "open")).length,

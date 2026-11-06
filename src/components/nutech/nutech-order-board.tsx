@@ -51,6 +51,11 @@ function queueText(queue: NuTechBoardQueue, view: NuTechOrderBoardView): { reado
         label: `PO sent, ${view.manufacturerName || "manufacturer"} hasn't confirmed`,
         rule: `No confirmation from ${manufacturer} ${confirmationBusinessDays === 1 ? "1 business day" : `${confirmationBusinessDays} business days`} after the PO.`,
       }
+    case "no_date":
+      return {
+        label: "Confirmed, no pickup or delivery date",
+        rule: `${manufacturer} confirmed the order, and its pickup or delivery date isn't recorded yet.`,
+      }
     case "no_invoice":
       return {
         label: "Past pickup or delivery, no invoice",
@@ -69,6 +74,7 @@ function matchesSearch(row: NuTechBoardRow, query: string): boolean {
     row.orderTitle,
     row.statusLabel,
     row.vendorConfirmationNumber,
+    row.carrier,
     row.vendorInvoiceNumber,
     row.nextStep,
   ].some((value) => value?.toLowerCase().includes(needle))
@@ -152,6 +158,27 @@ function boardColumns(): ColumnDef<NuTechBoardRow>[] {
       header: "Requested date",
       size: 125,
       cell: ({ row }) => <DateCell value={row.original.requestedDeliveryDate} empty="Not set" />,
+    },
+    {
+      id: "confirmed",
+      accessorFn: (row) => row.confirmedDeliveryDate ?? undefined,
+      header: "Confirmed date",
+      size: 150,
+      cell: ({ row: { original } }) =>
+        original.confirmedDeliveryDate ? (
+          <div className="space-y-0.5">
+            <DateCell value={original.confirmedDeliveryDate} />
+            {original.confirmedDeliveryTime || original.carrier ? (
+              <p className="break-words text-xs text-muted-foreground">
+                {[original.confirmedDeliveryTime, original.carrier].filter(Boolean).join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <span className={cn("whitespace-nowrap", original.queues.includes("no_date") ? "font-medium text-warning" : "text-muted-foreground")}>
+            {original.queues.includes("no_date") ? "Not set" : "—"}
+          </span>
+        ),
     },
     {
       id: "method",
@@ -245,7 +272,7 @@ export function NuTechOrderBoard({ view }: { readonly view: NuTechOrderBoardView
             .
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {NUTECH_BOARD_QUEUES.map((id) => {
             const { label, rule } = queueText(id, view)
             const count = view.queueCounts[id]

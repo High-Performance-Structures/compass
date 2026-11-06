@@ -228,6 +228,9 @@ export type NuTechOrderRecord = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: NuTechDeliveryMethod
   readonly requestedDeliveryDate: string | null
+  readonly confirmedDeliveryDate: string | null
+  readonly confirmedDeliveryTime: string | null
+  readonly carrier: string | null
   readonly customerPaidAt: string | null
   readonly customerPaymentMethod: NuTechPaymentMethod | null
   readonly trailerDimensions: string | null
@@ -269,6 +272,9 @@ export function toNuTechOrderRecord(row: typeof nuTechOrderWorkflows.$inferSelec
     bracingNotes: row.bracingNotes,
     deliveryMethod: storedNuTechDeliveryMethod(row.deliveryMethod),
     requestedDeliveryDate: row.requestedDeliveryDate,
+    confirmedDeliveryDate: row.confirmedDeliveryDate,
+    confirmedDeliveryTime: row.confirmedDeliveryTime,
+    carrier: row.carrier,
     customerPaidAt: row.customerPaidAt,
     customerPaymentMethod: isNuTechPaymentMethod(row.customerPaymentMethod) ? row.customerPaymentMethod : null,
     trailerDimensions: row.trailerDimensions,

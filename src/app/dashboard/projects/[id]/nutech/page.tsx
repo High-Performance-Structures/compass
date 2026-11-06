@@ -7,6 +7,7 @@ import { getProjectNuTechOrderWorkspace } from "@/app/actions/nutech-orders"
 import { getProjectBracingRentals } from "@/app/actions/nutech-bracing"
 import { NuTechBracingRentals } from "@/components/nutech/nutech-bracing-rentals"
 import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
+import { getNuTechCarrierSuggestions } from "@/app/actions/nutech-order-board"
 import { PageHeader } from "@/components/page-header"
 import { NuTechOrderWorkspace } from "@/components/nutech/nutech-order-workspace"
 import { NuTechOrderSwitcher } from "@/components/nutech/nutech-order-switcher"
@@ -21,10 +22,11 @@ export default async function ProjectNuTechOrderPage({
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
-  const [workspace, bracing, manufacturerName] = await Promise.all([
+  const [workspace, bracing, manufacturerName, carrierSuggestions] = await Promise.all([
     getProjectNuTechOrderWorkspace(id, query.order ?? null),
     getProjectBracingRentals(id),
     getNuTechManufacturerName(),
+    getNuTechCarrierSuggestions(),
   ])
 
   return (
@@ -52,7 +54,7 @@ export default async function ProjectNuTechOrderPage({
         canEdit={workspace.canEdit}
       />
       {/* Keyed by order so switching orders resets the form. */}
-      <NuTechOrderWorkspace key={workspace.order?.id ?? "new"} workspace={workspace} manufacturerName={manufacturerName} />
+      <NuTechOrderWorkspace key={workspace.order?.id ?? "new"} workspace={workspace} manufacturerName={manufacturerName} carrierSuggestions={carrierSuggestions} />
       {bracing.success ? (
         <div className="mt-8">
           <NuTechBracingRentals data={bracing.data} />

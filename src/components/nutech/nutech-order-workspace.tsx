@@ -38,6 +38,7 @@ import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_
 import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { NuTechEstimateButton } from "@/components/nutech/nutech-estimate-button"
+import { NuTechConfirmedDeliveryFields } from "@/components/nutech/nutech-confirmed-delivery-fields"
 import { NuTechTruckloadSummary } from "@/components/nutech/nutech-truckload-summary"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -99,10 +100,12 @@ function takeoffStatusValue(value: string): NuTechTakeoffAcknowledgementStatus {
 export function NuTechOrderWorkspace({
   workspace,
   manufacturerName = "",
+  carrierSuggestions = [],
 }: {
   readonly workspace: ProjectNuTechOrderWorkspace
   /** From Settings → Workflows → Nu-Tech emails; labels the PO button. */
   readonly manufacturerName?: string
+  readonly carrierSuggestions?: readonly string[]
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -243,10 +246,10 @@ export function NuTechOrderWorkspace({
       ),
       bracingNotes: optionalFormText(formData, "bracingNotes"),
       deliveryMethod: formText(formData, "deliveryMethod"),
-      requestedDeliveryDate: optionalFormText(
-        formData,
-        "requestedDeliveryDate"
-      ),
+      requestedDeliveryDate: optionalFormText(formData, "requestedDeliveryDate"),
+      confirmedDeliveryDate: optionalFormText(formData, "confirmedDeliveryDate"),
+      confirmedDeliveryTime: optionalFormText(formData, "confirmedDeliveryTime"),
+      carrier: optionalFormText(formData, "carrier"),
       customerPaidAt: optionalFormText(formData, "customerPaidAt"),
       customerPaymentMethod: optionalFormText(formData, "customerPaymentMethod"),
       trailerDimensions: optionalFormText(formData, "trailerDimensions"),
@@ -256,10 +259,7 @@ export function NuTechOrderWorkspace({
         "airlitePurchaseOrderOperationId"
       ),
       orderStatus: formText(formData, "orderStatus"),
-      vendorConfirmationNumber: optionalFormText(
-        formData,
-        "vendorConfirmationNumber"
-      ),
+      vendorConfirmationNumber: optionalFormText(formData, "vendorConfirmationNumber"),
       vendorInvoiceNumber: optionalFormText(formData, "vendorInvoiceNumber"),
       vendorInvoiceStatus: formText(formData, "vendorInvoiceStatus"),
       vendorInvoiceReceivedAt: optionalFormText(
@@ -996,16 +996,7 @@ export function NuTechOrderWorkspace({
                   emptyMessage="No matching purchase orders."
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="nutech-vendor-confirmation">
-                  Airlite confirmation
-                </Label>
-                <Input className={DOCUMENT_INPUT_CLASS}
-                  id="nutech-vendor-confirmation"
-                  name="vendorConfirmationNumber"
-                  defaultValue={order?.vendorConfirmationNumber ?? ""}
-                />
-              </div>
+              <NuTechConfirmedDeliveryFields order={order} manufacturerName={manufacturerName} carrierSuggestions={carrierSuggestions} />
               <div className="space-y-2">
                 <Label>PO release recorded</Label>
                 <p className="flex h-9 items-center text-sm text-muted-foreground">
