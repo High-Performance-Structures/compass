@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { schedulePublications } from "@/db/schema"
+import { projects, schedulePublications } from "@/db/schema"
 
 type Db = ReturnType<typeof getDb>
 
@@ -17,7 +17,17 @@ export type SchedulePublicationRecord = {
 // publication only counts once it held at least one schedule item.
 const holdsScheduleItems = sql`json_array_length(${schedulePublications.snapshotData}, '$.tasks') > 0`
 
-/** The latest publication people actually made, ignoring empty placeholders. */
+// "Treat as never published" sets a reset time on the project; publications
+// made before it stop counting but stay in the table as history.
+const afterPublicationReset = sql`${schedulePublications.publishedAt} > COALESCE((
+  SELECT ${projects.schedulePublicationResetAt} FROM ${projects}
+  WHERE ${projects.id} = ${schedulePublications.projectId}
+), '')`
+
+/**
+ * The latest publication people actually made, ignoring empty placeholders
+ * and anything before the project's "Treat as never published" reset.
+ */
 export async function latestSchedulePublication(
   db: Db,
   projectId: string
@@ -31,7 +41,11 @@ export async function latestSchedulePublication(
     })
     .from(schedulePublications)
     .where(
-      and(eq(schedulePublications.projectId, projectId), holdsScheduleItems)
+      and(
+        eq(schedulePublications.projectId, projectId),
+        holdsScheduleItems,
+        afterPublicationReset
+      )
     )
     .orderBy(desc(schedulePublications.publishedAt))
     .limit(1)
@@ -41,7 +55,8 @@ export async function latestSchedulePublication(
 /**
  * Shift reasons explain changes to a schedule people have already seen.
  * A schedule that was never published needs none, even after edits move
- * its dates; one published and later moved back to draft still does.
+ * its dates; one published and later moved back to draft still does,
+ * until staff treat it as never published.
  */
 export async function isScheduleShiftReasonRequired(
   db: Db,

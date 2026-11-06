@@ -19,7 +19,7 @@ The scheduling data lives in four tables defined in the core schema (`src/db/sch
 
 **`schedule_publications`** -- immutable, versioned snapshots released to owner and subcontractor workspaces. Internal schedule mutations remain draft changes until staff publishes a new snapshot with a reason. Existing projects receive an initial snapshot during migration so the rollout does not expose later internal edits by accident. Those migration snapshots are empty, so they don't count as a publication: a schedule counts as published only once a snapshot holds at least one item (`src/lib/schedule/publication-history.ts`).
 
-**Shift reasons** -- date changes, predecessor changes, Gantt drags and workday exceptions ask for a shift reason only after the schedule has been published. A schedule that was never published asks for none. One that was published and later moved back to draft still asks, because people have already seen its dates.
+**Shift reasons** -- date changes, predecessor changes, Gantt drags and workday exceptions ask for a shift reason only after the schedule has been published. A schedule that was never published asks for none. One that was published and later moved back to draft still asks, because people have already seen its dates. Staff can clear that with **Treat as never published** on a draft: `projects.schedule_publication_reset_at` (0296) records the time, publications before it stop counting (they stay in the table as history), edits need no shift reasons, and the next publish is a first publication.
 
 **`projects.schedule_published`** -- current visibility switch. Existing projects with a publication remain published when this switch is introduced; new projects start as drafts. Moving a published schedule to draft immediately hides it from owner and subcontractor workspaces while retaining the working schedule and publication history. Publishing again creates a new snapshot and restores external visibility. A published schedule with later internal edits continues showing its last snapshot externally. The staff status compares the current working schedule with that snapshot, excluding live confirmation responses and timestamps, so “draft changes” reflects actual schedule differences.
 
@@ -167,6 +167,7 @@ history records how many schedule items moved.
 - `getSchedulePublicationStatus(projectId)` -- report the latest external release and whether internal draft changes exist
 - `publishSchedule(projectId, reason)` -- save the current schedule, dependencies, and workday calendar as the next external snapshot
 - `moveScheduleToDraft(projectId)` -- hide the schedule from external workspaces without deleting its internal rows or publication history
+- `treatScheduleAsNeverPublished(projectId)` -- on a draft, stop counting earlier publications so no shift reasons are asked and the next publish is a first publication; history is kept
 
 
 UI components

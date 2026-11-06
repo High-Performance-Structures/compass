@@ -274,6 +274,7 @@ export function ScheduleView({
           canManagePublication={canManagePublication}
           setPublishOpen={publication.setPublishOpen}
           setMoveToDraftOpen={publication.setMoveToDraftOpen}
+          setNeverPublishedOpen={publication.setNeverPublishedOpen}
         />
       )}
 

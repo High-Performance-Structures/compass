@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import {
   moveScheduleToDraft,
   publishSchedule,
+  treatScheduleAsNeverPublished,
   type SchedulePublicationStatus,
 } from "@/app/actions/schedule-publications"
 
@@ -21,9 +22,16 @@ export interface SchedulePublicationState {
   readonly isMovingToDraft: boolean
   readonly handlePublish: () => void
   readonly handleMoveToDraft: () => void
+  readonly neverPublishedOpen: boolean
+  readonly setNeverPublishedOpen: (open: boolean) => void
+  readonly isTreatingAsNeverPublished: boolean
+  readonly handleTreatAsNeverPublished: () => void
 }
 
-/** Publishing the schedule to owners and subs, or moving it back to draft. */
+/**
+ * Publishing the schedule to owners and subs, moving it back to draft, or
+ * treating a draft as never published.
+ */
 export function useSchedulePublication(
   projectId: string | null,
   initialPublicationStatus: SchedulePublicationStatus | null
@@ -36,6 +44,8 @@ export function useSchedulePublication(
   const [publishReason, setPublishReason] = useState("")
   const [isPublishing, startPublishTransition] = useTransition()
   const [isMovingToDraft, startMoveToDraftTransition] = useTransition()
+  const [neverPublishedOpen, setNeverPublishedOpen] = useState(false)
+  const [isTreatingAsNeverPublished, startNeverPublishedTransition] = useTransition()
 
   useEffect(() => {
     setPublicationStatus(initialPublicationStatus)
@@ -82,6 +92,31 @@ export function useSchedulePublication(
     })
   }
 
+  function handleTreatAsNeverPublished(): void {
+    if (!projectId) return
+    startNeverPublishedTransition(async () => {
+      const result = await treatScheduleAsNeverPublished(projectId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setPublicationStatus((current) =>
+        current
+          ? {
+              ...current,
+              publishedAt: null,
+              publishedBy: null,
+              changeReason: null,
+              shiftReasonRequired: false,
+            }
+          : current
+      )
+      setNeverPublishedOpen(false)
+      toast.success("Schedule treated as never published. Edits no longer need a reason.")
+      router.refresh()
+    })
+  }
+
   return {
     publicationStatus,
     publishOpen,
@@ -94,5 +129,9 @@ export function useSchedulePublication(
     isMovingToDraft,
     handlePublish,
     handleMoveToDraft,
+    neverPublishedOpen,
+    setNeverPublishedOpen,
+    isTreatingAsNeverPublished,
+    handleTreatAsNeverPublished,
   }
 }
