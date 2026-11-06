@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { migratedSqlite, type Sqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
 
 /*
- * Replays every migration, then checks 0292's organization_record_statuses:
+ * Replays every migration, then checks 0294's organization_record_statuses:
  * the defaults, the group CHECK (and no CHECK on the growing lists), one row per (organization, record type,
  * key), and that a company's rows go with the company.
  */
@@ -29,7 +29,7 @@ function insert(sqlite: Sqlite, id: string, organization: string, type: string, 
   `)
 }
 
-describe("migration 0292: organization_record_statuses", () => {
+describe("migration 0294: organization_record_statuses", () => {
   it("stores a row with the defaults: gray, open, shown, visible, not built in", () => {
     const sqlite = database()
     insert(sqlite, "s1", "org-a", "purchase_order", "backordered")

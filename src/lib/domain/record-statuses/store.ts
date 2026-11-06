@@ -54,7 +54,7 @@ async function storedRows(db: Db, organizationId: string, type: RecordStatusType
 /**
  * A record type's statuses for the company: its rows merged over the code
  * defaults. Lists keep working on the code defaults when the rows cannot be
- * read (for example before migration 0292 is applied).
+ * read (for example before migration 0294 is applied).
  */
 export async function loadRecordStatusList(db: Db, organizationId: string, type: RecordStatusType): Promise<RecordStatusList> {
   try {
@@ -94,7 +94,7 @@ export async function loadAllRecordStatusLists(db: Db, organizationId: string): 
     .from(organizationRecordStatuses)
     .where(eq(organizationRecordStatuses.organizationId, organizationId))
     .catch((error: unknown) => {
-      // Before migration 0292 every list keeps its code defaults.
+      // Before migration 0294 every list keeps its code defaults.
       console.error("[record-statuses] using code defaults; company statuses could not be read", error)
       return []
     })
