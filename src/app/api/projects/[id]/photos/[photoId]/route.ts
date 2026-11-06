@@ -1,5 +1,5 @@
-import { audienceReadCacheControl, assertAudienceResourceProject } from "@/lib/project-audience-request-server"
-import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+import { audienceReadCacheControl, assertAudienceResourceProject, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+import { resolveProjectAudienceViewer } from "@/lib/project-audience-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
@@ -93,20 +93,34 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const user = await conversationRequestViewer(await requireAuth())
-    if (!user) return new Response("Not found", { status: 404 })
-    const db = await assertOwnerUpdateReadAccess(user)
     const { id: rawProjectId, photoId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Photo not found", { status: 404 })
-    const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
     await assertAudienceResourceProject(projectId)
+    // Staff previewing an owner/vendor workspace may pick someone who hasn't
+    // accepted their invitation yet, so there is no account to check. Gallery
+    // photos are shared by audience visibility flags, so a preview checks those
+    // flags for the previewed audience instead of the person's membership.
+    const scope = await getProjectAudienceRequestScope()
+    const preview = scope
+      ? await resolveProjectAudienceViewer(projectId, scope.audience)
+      : null
+    const previewing = preview !== null && preview.isPreview
+    const user = previewing ? preview.actor : preview?.viewer ?? await requireAuth()
+    const db = await assertOwnerUpdateReadAccess(user)
+    const audience = previewing
+      ? preview.audience
+      : audienceValue(request.nextUrl.searchParams.get("audience"))
     const resourceType = resourceTypeValue(
       request.nextUrl.searchParams.get("resourceType")
     )
     const viewerIsInternal =
-      user.organizationType === "internal" && isInternalStaffRole(user.role)
-    let projectOrganizationId = user.organizationId
+      !previewing &&
+      user.organizationType === "internal" &&
+      isInternalStaffRole(user.role)
+    let projectOrganizationId = previewing
+      ? preview.organizationId
+      : user.organizationId
 
     if (viewerIsInternal) {
       const project = await assertProjectAccess(db, user, projectId)
@@ -119,11 +133,15 @@ export async function GET(
       // Gallery photos are shared by their Owner/Vendor visibility flags
       // (checked below). Only owner-update attachments need a publish grant.
       if (resourceType === "owner_update_document") {
+        const recipientUserId = previewing ? preview.viewer?.id ?? null : user.id
+        if (recipientUserId === null) {
+          return new Response("Photo not found", { status: 404 })
+        }
         const granted = await hasActiveExternalProjectResourceGrant({
           db,
           organizationId: projectOrganizationId,
           projectId,
-          recipientUserId: user.id,
+          recipientUserId,
           resourceId: photoId,
           resourceType,
           audience,
@@ -131,25 +149,28 @@ export async function GET(
         if (!granted) return new Response("Photo not found", { status: 404 })
       }
 
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .innerJoin(
-          projects,
-          and(
-            eq(projects.id, projectMembers.projectId),
-            eq(projects.organizationId, projectOrganizationId)
+      // A preview was already authorized as project staff above.
+      if (!previewing) {
+        const [membership] = await db
+          .select({ role: projectMembers.role })
+          .from(projectMembers)
+          .innerJoin(
+            projects,
+            and(
+              eq(projects.id, projectMembers.projectId),
+              eq(projects.organizationId, projectOrganizationId)
+            )
           )
-        )
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
+          .where(
+            and(
+              eq(projectMembers.projectId, projectId),
+              eq(projectMembers.userId, user.id)
+            )
           )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-        return new Response("Photo not found", { status: 404 })
+          .limit(1)
+        if (!canUseProjectAudience(membership?.role ?? null, audience)) {
+          return new Response("Photo not found", { status: 404 })
+        }
       }
     }
 
