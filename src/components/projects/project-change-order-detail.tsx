@@ -111,6 +111,7 @@ export function ProjectChangeOrderDetail({
           projectId={item.projectId}
           changeOrderId={item.id}
           amountCents={item.amountCents}
+          executed={isExecutedChangeOrderStatus(item.status)}
           executedOn={item.executedAt?.slice(0, 10) ?? null}
           lines={item.lines}
           costCodes={formOptions.costCodes}

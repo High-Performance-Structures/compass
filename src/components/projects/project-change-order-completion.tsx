@@ -41,6 +41,7 @@ export function ProjectChangeOrderCompletion({
   projectId,
   changeOrderId,
   amountCents,
+  executed,
   executedOn,
   lines,
   costCodes,
@@ -48,6 +49,8 @@ export function ProjectChangeOrderCompletion({
   readonly projectId: string
   readonly changeOrderId: string
   readonly amountCents: number | null
+  /** An open imported change order gets its lines coded now and is dated when executed. */
+  readonly executed: boolean
   readonly executedOn: string | null
   readonly lines: ProjectChangeOrderItem["lines"]
   readonly costCodes: readonly ProjectChangeOrderCostCodeOption[]
@@ -74,7 +77,7 @@ export function ProjectChangeOrderCompletion({
     remainingCents === 0 &&
     parsed.every((cents) => cents !== null) &&
     draft.every((line) => line.costCode && line.description.trim()) &&
-    date !== "" &&
+    (!executed || date !== "") &&
     reason.trim() !== ""
 
   function updateLine(key: string, patch: Partial<Omit<DraftLine, "key">>): void {
@@ -118,9 +121,12 @@ export function ProjectChangeOrderCompletion({
     <section className="border-y bg-background p-4">
       <h2 className="text-sm font-semibold">Complete cost codes</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        This imported change order is executed but can&apos;t revise the budget until its{" "}
-        {changeOrderMoney(amountCents)} is split across cost codes{executedOn ? "" : " and its execution date is recorded"}.
-        The signed amount doesn&apos;t change.
+        {executed
+          ? <>This imported change order is executed but can&apos;t revise the budget until its{" "}
+              {changeOrderMoney(amountCents)} is split across cost codes{executedOn ? "" : " and its execution date is recorded"}.
+              The signed amount doesn&apos;t change.</>
+          : <>This imported change order needs its {changeOrderMoney(amountCents)} split across cost codes before it
+              can be executed. The amount doesn&apos;t change.</>}
       </p>
       <form className="mt-4 space-y-4" onSubmit={submit}>
         <div className="space-y-2">
@@ -175,8 +181,8 @@ export function ProjectChangeOrderCompletion({
             </p>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
-          <div className="space-y-2">
+        <div className={executed ? "grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]" : "grid gap-4"}>
+          {executed && <div className="space-y-2">
             <Label htmlFor="change-order-completion-date">Executed on</Label>
             <Input
               id="change-order-completion-date"
@@ -186,7 +192,7 @@ export function ProjectChangeOrderCompletion({
               disabled={pending || executedOn !== null}
               required
             />
-          </div>
+          </div>}
           <div className="space-y-2">
             <Label htmlFor="change-order-completion-reason">Source of the split</Label>
             <Input

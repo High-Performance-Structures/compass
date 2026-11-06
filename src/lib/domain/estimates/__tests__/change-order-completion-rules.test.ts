@@ -4,6 +4,7 @@ import { changeOrderNeedsCompletion, planChangeOrderCompletion } from "@/lib/dom
 
 const executed = {
   status: "executed",
+  sourceType: "compass",
   budgetTreatment: "additive",
   kind: null,
   executedAt: "2026-02-04T12:00:00.000Z",
@@ -22,6 +23,15 @@ describe("changeOrderNeedsCompletion", () => {
     expect(changeOrderNeedsCompletion({ ...executed, status: "draft", executedAt: null })).toBe(false)
     expect(changeOrderNeedsCompletion({ ...executed, kind: "description", lines: [] })).toBe(false)
     expect(changeOrderNeedsCompletion({ ...executed, budgetTreatment: "baseline_replacement", lines: [] })).toBe(false)
+  })
+
+  it("flags an open imported change order with an uncoded line, but not a Compass-made or void one", () => {
+    const imported = { ...executed, status: "draft", sourceType: "buildertrend_import", executedAt: null, lines: [{ costCode: null, amountCents: 25_750 }] }
+    expect(changeOrderNeedsCompletion(imported)).toBe(true)
+    expect(changeOrderNeedsCompletion({ ...imported, lines: [{ costCode: "08 14 00", amountCents: 25_750 }] })).toBe(false)
+    expect(changeOrderNeedsCompletion({ ...imported, sourceType: "compass" })).toBe(false)
+    expect(changeOrderNeedsCompletion({ ...imported, status: "void" })).toBe(false)
+    expect(changeOrderNeedsCompletion({ ...imported, kind: "estimate" })).toBe(false)
   })
 })
 
@@ -57,5 +67,10 @@ describe("planChangeOrderCompletion", () => {
     expect(planChangeOrderCompletion({ ...base, lines: split, executedOn: "2026-12-01" }).success).toBe(false)
     expect(planChangeOrderCompletion({ ...base, lines: split, reason: "  " }).success).toBe(false)
     expect(planChangeOrderCompletion({ ...base, amountCents: null, lines: split }).success).toBe(false)
+  })
+
+  it("needs no date for a change order that isn't executed yet", () => {
+    const plan = planChangeOrderCompletion({ ...base, lines: split, executedOn: null })
+    expect(plan).toEqual({ success: true, executedOn: null, reason: "Sage progress billing app 8", lines: split })
   })
 })

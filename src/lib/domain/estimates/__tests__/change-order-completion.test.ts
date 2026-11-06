@@ -31,7 +31,7 @@ const split = [
   { costCode: "01 21 16", description: "Contingency", amountCents: -14_150 },
 ]
 
-function setUp(changeOrder: { readonly executedAt: string | null; readonly lineCostCode: string | null }) {
+function setUp(changeOrder: { readonly executedAt: string | null; readonly lineCostCode: string | null; readonly status?: string }) {
   const { sqlite, db } = sqliteDb(
     [projectChangeOrders, projectChangeOrderLines, projectChangeOrderHistory, projectContractBudgetAdjustments]
       .map(createTable)
@@ -41,10 +41,10 @@ function setUp(changeOrder: { readonly executedAt: string | null; readonly lineC
     .prepare(
       `INSERT INTO project_change_orders (id, project_id, change_order_number, title, scope, amount_cents, status, audience,
         requester_type, requester_name, source_type, budget_treatment, executed_at, foxit_status, sage_status, created_at, updated_at)
-       VALUES ('co-1', 'proj-1', 'O-1-0001', 'Overhead & Margin Adjustment', 'scope', -141000, 'executed', 'owner',
+       VALUES ('co-1', 'proj-1', 'O-1-0001', 'Overhead & Margin Adjustment', 'scope', -141000, ?, 'owner',
         'contractor', 'HPS', 'buildertrend_import', 'additive', ?, 'not_applicable', 'not_ready', '2026-01-22', '2026-01-22')`
     )
-    .run(changeOrder.executedAt)
+    .run(changeOrder.status ?? "executed", changeOrder.executedAt)
   sqlite
     .prepare(
       `INSERT INTO project_change_order_lines (id, project_id, change_order_id, line_number, description, cost_code, amount_cents, created_at, updated_at)
@@ -76,6 +76,17 @@ describe("completeExecutedChangeOrder", () => {
       { event_type: "cost_codes_completed", note: "Sage app 8" },
     ])
     expect(rebuild).toHaveBeenCalledWith({ db, projectId: "proj-1", actorUserId: "user-1" })
+  })
+
+  it("codes an open imported change order without dating it or rebuilding the budget", async () => {
+    const { sqlite, db } = setUp({ executedAt: null, lineCostCode: null, status: "draft" })
+    const result = await completeExecutedChangeOrder({
+      db, projectId: "proj-1", changeOrderId: "co-1", actor, lines: split, executedOn: "", reason: "Approved and purchased",
+    })
+    expect(result).toEqual({ success: true, budgetNote: "It will revise the contract budget when it's executed." })
+    expect(sqlite.prepare("SELECT count(*) n FROM project_change_order_lines WHERE cost_code IS NOT NULL").get()).toEqual({ n: 3 })
+    expect(sqlite.prepare("SELECT status, executed_at FROM project_change_orders").get()).toEqual({ status: "draft", executed_at: null })
+    expect(rebuild).not.toHaveBeenCalled()
   })
 
   it("keeps a recorded execution date", async () => {

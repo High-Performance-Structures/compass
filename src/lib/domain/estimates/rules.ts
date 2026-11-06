@@ -484,25 +484,35 @@ export function repricedBreakdownItem(item: RepriceSource, repriced: RepricedRow
 
 export type ChangeOrderCompletionState = {
   readonly status: string
+  readonly sourceType: string
   readonly budgetTreatment: string
   readonly kind: string | null
   readonly executedAt: string | null
   readonly lines: readonly { readonly costCode: string | null; readonly amountCents: number | null }[]
 }
 
+const EXECUTED_CHANGE_ORDER_STATUSES: readonly string[] = ["executed", "sage_pending", "synced"]
+const FINISHED_CHANGE_ORDER_STATUSES: readonly string[] = ["closed", "void", "declined"]
+
+export function isExecutedForCompletion(status: string): boolean {
+  return EXECUTED_CHANGE_ORDER_STATUSES.includes(status)
+}
+
 /**
- * An executed additive change order that can't revise the G703 yet: it has no
- * lines, a line without a cost code or amount, or no execution date. Imported
- * history (Buildertrend) arrives this way; Compass-made ones never do.
+ * A change order whose lines can't revise the G703: no lines, or a line
+ * without a cost code or amount. Imported history (Buildertrend) arrives this
+ * way; Compass-made ones never do. An executed one also needs its execution
+ * date; an imported one still open needs its lines coded before it can be
+ * executed the usual way.
  */
 export function changeOrderNeedsCompletion(changeOrder: ChangeOrderCompletionState): boolean {
-  if (!["executed", "sage_pending", "synced"].includes(changeOrder.status)) return false
   if (changeOrder.budgetTreatment !== "additive" || changeOrder.kind === "description") return false
-  return (
-    !changeOrder.executedAt ||
+  const uncodedLines =
     changeOrder.lines.length === 0 ||
     changeOrder.lines.some((line) => !line.costCode || line.amountCents === null)
-  )
+  if (isExecutedForCompletion(changeOrder.status)) return uncodedLines || !changeOrder.executedAt
+  if (FINISHED_CHANGE_ORDER_STATUSES.includes(changeOrder.status)) return false
+  return changeOrder.sourceType === "buildertrend_import" && changeOrder.kind === null && uncodedLines
 }
 
 /** The change-order view fields for completing one; `canComplete` is the viewer's approval right. */
@@ -525,7 +535,8 @@ export type ChangeOrderCompletionLineInput = {
 export type ChangeOrderCompletionPlan =
   | {
       readonly success: true
-      readonly executedOn: string
+      /** Null for a change order that isn't executed yet. */
+      readonly executedOn: string | null
       readonly reason: string
       readonly lines: readonly ChangeOrderCompletionLineInput[]
     }
@@ -542,7 +553,8 @@ export function planChangeOrderCompletion(input: {
   readonly amountCents: number | null
   readonly allowedCostCodes: ReadonlySet<string>
   readonly lines: readonly ChangeOrderCompletionLineInput[]
-  readonly executedOn: string
+  /** Null when the change order isn't executed yet, so it has no date. */
+  readonly executedOn: string | null
   readonly reason: string
   readonly today: string
 }): ChangeOrderCompletionPlan {
@@ -573,11 +585,13 @@ export function planChangeOrderCompletion(input: {
       error: `The lines total ${centsLabel(totalCents)}; they must equal the change order's ${centsLabel(input.amountCents)}.`,
     }
   }
-  const executedOn = input.executedOn.trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(executedOn) || Number.isNaN(Date.parse(`${executedOn}T00:00:00Z`))) {
-    return { success: false, error: "Enter the date the change order was executed." }
+  const executedOn = input.executedOn === null ? null : input.executedOn.trim()
+  if (executedOn !== null) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(executedOn) || Number.isNaN(Date.parse(`${executedOn}T00:00:00Z`))) {
+      return { success: false, error: "Enter the date the change order was executed." }
+    }
+    if (executedOn > input.today) return { success: false, error: "The execution date can't be in the future." }
   }
-  if (executedOn > input.today) return { success: false, error: "The execution date can't be in the future." }
   const reason = cleanText(input.reason) ?? ""
   if (!reason) return { success: false, error: "Say where the cost-code split comes from." }
   if (reason.length > 1_000) return { success: false, error: "Keep the reason to 1,000 characters." }
