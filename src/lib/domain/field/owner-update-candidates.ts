@@ -14,7 +14,9 @@ import type {
   OwnerUpdateScheduleSelection,
   OwnerUpdateTodoSelection,
 } from "@/lib/owner-updates/snapshot"
-import { PROJECT_TODO_RECORD_TYPES, isArchivedProjectTodoStatus } from "@/lib/project-todos"
+import { loadRecordStatusListForProject } from "@/lib/domain/record-statuses/store"
+import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
+import { isArchivedTodoStatus } from "@/lib/project-todo-statuses"
 import type { Db } from "@/lib/server/action-context"
 
 export async function getOwnerUpdateComposerCandidates(
@@ -27,7 +29,7 @@ export async function getOwnerUpdateComposerCandidates(
   readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
   readonly todos: readonly OwnerUpdateTodoSelection[]
 }> {
-  const [scheduleRows, todoRows] = await Promise.all([
+  const [scheduleRows, todoRows, todoStatuses] = await Promise.all([
     db
       .select({
         id: scheduleTasks.id,
@@ -63,6 +65,7 @@ export async function getOwnerUpdateComposerCandidates(
         )
       )
       .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title)),
+    loadRecordStatusListForProject(db, projectId, "todo"),
   ])
 
   const scheduleSelections = scheduleRows.map((item) => ({
@@ -78,7 +81,7 @@ export async function getOwnerUpdateComposerCandidates(
     .filter((item) => isLookAheadScheduleCandidate(item, periodEnd))
     .slice(0, 20)
   const todos = todoRows.flatMap((item) => {
-    if (isArchivedProjectTodoStatus(item.status)) return []
+    if (isArchivedTodoStatus(todoStatuses, item.status)) return []
     const timing = ownerUpdateTodoTiming(item.dueDate, periodStart, periodEnd)
     if (timing === null) return []
     return [

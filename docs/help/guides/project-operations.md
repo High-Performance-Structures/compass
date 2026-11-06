@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-11-05"
+  "lastReviewed": "2026-11-06"
 }
 ---
 
@@ -24,7 +24,7 @@ An **RFI** asks for information or a decision. An **RFQ** requests pricing or sc
 
 Enter a clear subject and complete question, responsible contacts, response date, priority, narrowest useful audience, and supporting files. Continue the same RFI as answers and follow-up questions arrive, and keep its status current.
 
-Each job's **RFIs** page lists its RFIs in a table with the number, subject, status, who is assigned to answer, who asked, and the sent, needed-by, and answered dates. Use the status buttons to narrow the list, the search box to find an RFI by number, subject, question, or person, and a column header to sort; dates sort by date. Show 25, 50, or 100 RFIs per page. Click a row to open that RFI below the table, where you respond, email, print, change its status, assign a vendor, make a to-do, or delete it. Links from notifications, emails, and the calendar open the RFI they name. RFIs keep the order of the data and are not reordered by hand.
+Each job's **RFIs** page lists its RFIs in a table with the number, subject, status, who is assigned to answer, who asked, and the sent, needed-by, and answered dates. Use the status buttons to narrow the list (your company sets their names, colors, and order in [Settings → Statuses](/dashboard/help/company-settings#statuses)), the search box to find an RFI by number, subject, question, or person, and a column header to sort; dates sort by date. Show 25, 50, or 100 RFIs per page. Click a row to open that RFI below the table, where you respond, email, print, change its status, assign a vendor, make a to-do, or delete it. Links from notifications, emails, and the calendar open the RFI they name. RFIs keep the order of the data and are not reordered by hand.
 
 For a vendor-visible RFI, choose **Vendor who can see this RFI**. Every active contact at the assigned vendor company can see it; the original submitter also keeps access to their own RFI. A company name or the vendor audience alone does not grant access. Use **Save vendor** on an existing RFI to assign, replace, or remove that company. Review older unassigned RFIs in this queue and choose the correct company deliberately; Compass does not guess from their labels.
 
@@ -32,7 +32,7 @@ Use **Email** on an RFI to send it from Compass. Choose **To** and **Cc**, check
 
 ## RFQs {#rfqs}
 
-Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Use the Sage division and cost-code pickers to code scope rows instead of typing an unrelated code. Verify each recipient and Drive link before sending; an RFQ does not grant general portal access.
+The status buttons above a job's RFQs show **Open** (every RFQ whose status counts as Open), each status your company shows as a button, and **All**; your company names and orders them in [Settings → Statuses](/dashboard/help/company-settings#statuses). Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Use the Sage division and cost-code pickers to code scope rows instead of typing an unrelated code. Verify each recipient and Drive link before sending; an RFQ does not grant general portal access.
 
 Staff can email external bidders and record a response received outside Compass using the manual-response workflow. Preserve the original quote and identify whose response it is. Compare pricing, scope, exclusions, and lead time before accepting or importing it into an estimate. Use duplication to prepare a related RFQ only after checking the new project, recipients, dates, and scope.
 
@@ -54,7 +54,7 @@ RFQs, purchase orders, and RFIs emailed from Compass carry a reply address for t
 
 Enter the vendor, scope, internal owner, ship-to details, dates, priority, and separately coded lines. Check quantities, units, costs, tax, and totals. A P.O. saved in Compass may still require approval or Sage synchronization; check status before representing it as processed.
 
-**Purchase Orders** in the sidebar opens **All jobs**: every job's purchase orders on one sheet, showing the open ones first and sorted by required date. The buttons above it filter by status (Open, Draft, Sent, Received, Closed, All and the rest), each with how many POs it holds. Open leaves out complete, closed, void and archived POs. Click a column header to sort, search by P.O., title, project, vendor or contact, and click a row to open that P.O. on its job. If you are working in a project, a button at the top opens that job's POs. A job's own P.O. list works the same way, and opens the P.O. you click below the list with its details, email, and print options.
+**Purchase Orders** in the sidebar opens **All jobs**: every job's purchase orders on one sheet, showing the open ones first and sorted by required date. The buttons above it filter by status (Open, Draft, Sent, Received, Closed, All and the rest), each with how many POs it holds. Open shows the POs whose status counts as Open; by default it leaves out complete, closed, void and archived POs. Your company can rename, reorder, hide, or add statuses in [Settings → Statuses](/dashboard/help/company-settings#statuses). Click a column header to sort, search by P.O., title, project, vendor or contact, and click a row to open that P.O. on its job. If you are working in a project, a button at the top opens that job's POs. A job's own P.O. list works the same way, and opens the P.O. you click below the list with its details, email, and print options.
 
 Use **Print Preview** on a project P.O. when you need a printed vendor copy. It opens the P.O. in a new tab with **Print / Save PDF**, which opens the PDF in a browser tab, and **Email report link**. Review every page, including repeated headings, line details, totals, and the vendor signature area. Printing is a document action; it does not approve the P.O. or confirm Sage processing. Nu-Tech orders keep **Pickup copy**, which prints on the manufacturer's own form.
 

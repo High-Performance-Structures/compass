@@ -3,6 +3,7 @@ import type {
   ProjectAudiencePreview,
 } from "@/app/actions/project-audience-preview"
 import type { AudienceDashboardFinancials } from "@/lib/project-audience-dashboard"
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 
 export function dashboardScheduleItem(
   overrides: Partial<AudienceScheduleItem> = {}
@@ -137,6 +138,7 @@ export function dashboardFixture(
         answeredAt: "2026-09-08T12:00:00Z",
       },
     ],
+    recordStatuses: [defaultRecordStatusList("rfi")],
     rfqs:
       audience === "sub_vendor"
         ? [

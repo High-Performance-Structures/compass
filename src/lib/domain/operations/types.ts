@@ -6,7 +6,6 @@
 import type { ProjectTodoHistoryItem } from "@/lib/daily-logs/log-followups-server"
 import type { DirectoryVendorPick } from "@/lib/domain/contacts/rules"
 import type { DailyLogCostCodeOption } from "@/lib/daily-logs/daily-log-form"
-import type { ProjectTodoStatus } from "@/lib/project-todos"
 import type { PortalPurchaseOrderAcknowledgement } from "@/lib/purchase-orders/portal-response"
 import type { PortalRfqVendorResponse } from "@/lib/rfqs/portal-response"
 
@@ -338,7 +337,8 @@ export type UpdateProjectTodoInput = {
   readonly title: string
   readonly description: string | null
   readonly sourceRecordType: ProjectTaskRecordType
-  readonly status: ProjectTodoStatus
+  /** One of the company's to-do status keys (Settings › Statuses). */
+  readonly status: string
   readonly priority: string
   readonly assigneeName: string | null
   readonly companyName: string | null

@@ -17,6 +17,9 @@ import { canFeature } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
+import { isOpenRecordStatus, recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
+import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 
 type OfficeAlertRfi = {
   readonly id: string
@@ -27,6 +30,9 @@ type OfficeAlertRfi = {
   readonly subject: string
   readonly priority: string
   readonly status: string
+  /** The company's name and color for the status (Settings › Statuses). */
+  readonly statusLabel: string
+  readonly statusColor: RecordStatusColor
   readonly dueDate: string | null
   readonly assignedToName: string | null
 }
@@ -69,17 +75,17 @@ type AccessibleProject = {
 
 type OfficeAlertRfiRow = Omit<
   OfficeAlertRfi,
-  "projectLabel" | "projectName"
+  "projectLabel" | "projectName" | "statusLabel" | "statusColor"
 >
 
 type OfficeAlertPhotoRow = Omit<
   OfficeAlertPhoto,
-  "projectLabel" | "projectName"
+  "projectLabel" | "projectName" | "statusLabel" | "statusColor"
 >
 
 type OfficeAlertOwnerUpdateRow = Omit<
   OfficeAlertOwnerUpdate,
-  "projectLabel" | "projectName"
+  "projectLabel" | "projectName" | "statusLabel" | "statusColor"
 >
 
 type OfficeAlertMissingDay = {
@@ -98,22 +104,6 @@ const EMPTY_QUEUE: OfficeAlertQueue = {
   photos: [],
   ownerUpdates: [],
   missingDailyLogs: [],
-}
-
-function isClosedStatus(status: string): boolean {
-  const normalized = status.toLowerCase()
-  return (
-    normalized === "complete" ||
-    normalized === "completed" ||
-    normalized === "done" ||
-    normalized === "closed" ||
-    normalized === "void" ||
-    normalized === "inactive" ||
-    normalized === "archive" ||
-    normalized === "archived" ||
-    normalized === "cancelled" ||
-    normalized === "canceled"
-  )
 }
 
 function projectLabel(project: AccessibleProject): string {
@@ -279,13 +269,17 @@ export async function getOfficeAlertQueue(): Promise<OfficeAlertQueue> {
       right.updatedAt.localeCompare(left.updatedAt)
   )
 
+  // Open RFIs are the company's Open group (Settings › Statuses).
+  const rfiStatuses = rfiRows.length > 0 ? await loadRecordStatusList(db, orgId, "rfi") : null
   const rfis: OfficeAlertRfi[] = []
   for (const rfi of rfiRows) {
-    if (isClosedStatus(rfi.status)) continue
+    if (!rfiStatuses || !isOpenRecordStatus(rfiStatuses, rfi.status)) continue
     const project = projectsById.get(rfi.projectId)
     if (!project) continue
     rfis.push({
       ...rfi,
+      statusLabel: recordStatusLabel(rfiStatuses, rfi.status),
+      statusColor: recordStatusColor(rfiStatuses, rfi.status),
       projectLabel: projectLabel(project),
       projectName: project.name,
     })

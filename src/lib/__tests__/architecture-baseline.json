@@ -368,6 +368,9 @@
     "organizationMembers": [
       "src/lib/domain/identity/store.ts"
     ],
+    "organizationRecordStatuses": [
+      "src/lib/domain/record-statuses/store.ts"
+    ],
     "organizations": [
       "src/lib/auth.ts"
     ],
@@ -887,7 +890,7 @@
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1085,
     "src/app/actions/nutech-orders.ts": 895,
-    "src/app/actions/project-audience-preview.ts": 1006,
+    "src/app/actions/project-audience-preview.ts": 1004,
     "src/app/actions/project-change-orders.ts": 1553,
     "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1432,
@@ -905,7 +908,7 @@
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
     "src/components/nutech/nutech-order-workspace.tsx": 1166,
     "src/components/projects/owner-update-draft-editor.tsx": 1125,
-    "src/components/projects/project-audience-preview.tsx": 866,
+    "src/components/projects/project-audience-preview.tsx": 861,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-purchase-order-create-form.tsx": 1043,
@@ -918,7 +921,7 @@
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/agent/render/registry.tsx": 1809,
     "src/lib/auth.ts": 807,
-    "src/lib/email/gmail-inbound.ts": 821,
+    "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1039,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 1012,

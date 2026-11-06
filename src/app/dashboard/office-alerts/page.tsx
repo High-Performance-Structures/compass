@@ -12,6 +12,7 @@ import {
   getOfficeAlertQueue,
   type OfficeAlertQueue,
 } from "@/app/actions/office-alerts"
+import { RecordStatusBadge } from "@/components/record-status-badge"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/page-header"
@@ -81,7 +82,7 @@ function RfiQueue({ queue }: { readonly queue: OfficeAlertQueue }): React.ReactE
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold">{rfi.rfiNumber}</span>
               <Badge variant="outline">{statusLabel(rfi.priority)}</Badge>
-              <Badge variant="secondary">{statusLabel(rfi.status)}</Badge>
+              <RecordStatusBadge label={rfi.statusLabel} color={rfi.statusColor} />
             </div>
             <p className="mt-1 truncate text-sm">{rfi.subject}</p>
             <p className="mt-1 truncate text-xs text-muted-foreground">

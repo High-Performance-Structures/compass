@@ -46,11 +46,14 @@ export function ProjectRfiResponseComposer({
   projectId,
   rfiId,
   status,
+  statusOptions,
   audience,
 }: {
   readonly projectId: string
   readonly rfiId: string
   readonly status: string
+  /** The company's visible RFI statuses (Settings › Statuses), plus this RFI's own. */
+  readonly statusOptions: readonly { readonly value: string; readonly label: string }[]
   readonly audience: string
 }): React.ReactElement {
   const router = useRouter()
@@ -142,11 +145,11 @@ export function ProjectRfiResponseComposer({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="new">New</SelectItem>
-            <SelectItem value="in_progress">In progress</SelectItem>
-            <SelectItem value="info_needed">Additional information needed</SelectItem>
-            <SelectItem value="complete">Complete</SelectItem>
-            <SelectItem value="void">Void</SelectItem>
+            {statusOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={selectedAudience} onValueChange={setSelectedAudience}>

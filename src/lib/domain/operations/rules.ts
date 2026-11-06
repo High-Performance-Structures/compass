@@ -4,7 +4,8 @@
  * network access (architecture standard, section 1).
  */
 import { cleanText } from "@/lib/shared/guards"
-import { isArchivedProjectTodoStatus } from "@/lib/project-todos"
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
+import { isArchivedTodoStatus } from "@/lib/project-todo-statuses"
 import { canEditPurchaseOrderDraft, type PurchaseOrderDraftState } from "@/lib/purchase-orders/draft-edit"
 
 import type {
@@ -125,8 +126,9 @@ export function assigneeTypeForTask(recordType: ProjectTaskRecordType): string {
   return "internal"
 }
 
-export function todoActions(todo: { readonly status: string }): TodoActions {
-  const archived = isArchivedProjectTodoStatus(todo.status)
+/** A to-do is editable until its status counts as Void (archived); then it can be restored. */
+export function todoActions(todo: { readonly status: string }, statuses: RecordStatusList): TodoActions {
+  const archived = isArchivedTodoStatus(statuses, todo.status)
   return { canEdit: !archived, canRestore: archived }
 }
 

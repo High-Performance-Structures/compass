@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
+
 import { parseJsonRecord, parseRfqScopeItems, parseRfqTemplateReview, toPurchaseOrderItem, toRfqItem, toTodoItem } from "../records"
 import type { OperationRow } from "../store"
 
@@ -76,7 +78,7 @@ describe("operation records", () => {
   })
 
   it("returns the server's allowed actions with to-dos and purchase orders", () => {
-    expect(toTodoItem(row({ sourceRecordType: "staff_task", status: "archived" }), new Set()).actions).toEqual({
+    expect(toTodoItem(row({ sourceRecordType: "staff_task", status: "archived" }), new Set(), defaultRecordStatusList("todo")).actions).toEqual({
       canEdit: false,
       canRestore: true,
     })

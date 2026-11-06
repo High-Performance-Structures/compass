@@ -4,15 +4,15 @@
   "featureId": "help-resources",
   "slug": "company-settings",
   "title": "Company Settings, Workflow Rules, and Drive Filing",
-  "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, and the project paper trail.",
+  "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, record statuses, and the project paper trail.",
   "contextSummary": "Settings changes affect company-wide workflows and future outputs. Review permissions, save deliberately, and verify the actual document, mailbox, or Drive copy.",
   "category": "Start Here",
-  "tags": ["settings", "Company", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges"],
+  "tags": ["settings", "Company", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters"],
   "audiences": ["staff"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-11-06"
 }
 ---
 
@@ -35,6 +35,12 @@ Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. D
 **Settings → Workflows → Portfolio map** sets the **Map state** the dashboard map shows (any of the 50 states), along with where each department's jobs appear. The map state also decides which state's weather and wildfires are gathered, which state client and trade partner maps show, and which state an address without one is looked up in. See [Navigating projects](/dashboard/help/navigating-projects#portfolio-map).
 
 **Settings → Workflows → Weather & fire alerts** sets when the dashboard map's Weather and Fire & smoke layers flag a job: heavy snow or rain in 24 hours, wind gusts, extreme cold or heat, how close an active wildfire must be, the smoke density (light, medium or heavy) and the air quality index (AQI; 151 is where "Unhealthy" starts) that flag a job. Each company sets its own limits. The same page holds the rules for scheduled work: which item titles each rule matches, what it checks (a low or high temperature, gusts, rain or snow), the limit, and how many days after the item to keep checking, plus whether at-risk items notify the assignee and the job's staff. See [Schedules and tasks](/dashboard/help/schedules-and-tasks#weather).
+
+## Manage Record Statuses {#statuses}
+
+**Settings → Statuses** holds each record type's statuses: purchase orders, RFQs, RFIs, and to-dos. Pick a record type on the left. The order of the list is the order of the status filter buttons above that record type's lists and the order a Status column sorts in; drag a row by its handle or use the up and down arrows. For each status you can change its **Name** and **Color**, choose what it **Counts as** (Open, Closed, or Void; the **Open** filter button shows every record whose status counts as Open), and choose whether it shows as a **Filter button**. The preview shows the buttons the lists will show: Open, each shown status, then All.
+
+Statuses marked **Built-in** are the ones Compass relies on, such as a P.O.'s Draft, Approved, Sent, Received, Closed, and Void. You can rename, recolor, reorder, or **Hide** them, but not delete them. A hidden status leaves the filter buttons and status choices; records that already have it keep it and still count by its group. **Add status** creates your company's own status. **Delete** removes one only while no record uses it; otherwise Compass explains how many records use it and offers **Hide** instead. Choose **Save statuses** to apply your changes; **Discard changes** returns to the saved list. Admins can change statuses, and every change is recorded in the company's activity history. Until your company changes a record type's statuses, Compass uses its standard list. The Open group also drives counts such as a job's open P.O.s and RFIs, and an RFI gets its answered date when its status counts as Closed.
 
 ## Enable the Project Paper Trail {#paper-trail}
 

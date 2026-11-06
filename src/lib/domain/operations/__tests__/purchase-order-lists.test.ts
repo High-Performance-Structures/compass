@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest"
 import { getDb } from "@/db"
 import { d1, migratedSqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
 
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
+
 import { ALL_JOBS_PURCHASE_ORDER_LIMIT, loadAllJobsPurchaseOrders } from "../purchase-order-lists"
+
+const PO_STATUSES = defaultRecordStatusList("purchase_order")
 
 const STAMP = "2026-11-01T00:00:00.000Z"
 
@@ -42,7 +46,7 @@ function seededDb(extra = ""): ReturnType<typeof getDb> {
 describe("every job's purchase orders", () => {
   it("lists the company's open POs across jobs, with counts for every status", async () => {
     const db = seededDb()
-    const open = await loadAllJobsPurchaseOrders(db, "org", "open")
+    const open = await loadAllJobsPurchaseOrders(db, "org", "open", PO_STATUSES)
     expect(open.rows.map((row) => row.id).sort()).toEqual(["a1", "b1"])
     expect(open.rows.find((row) => row.id === "b1")).toMatchObject({ projectName: "Job B", number: "B1" })
     // The removed project's PO is in neither the rows nor the counts.
@@ -56,7 +60,7 @@ describe("every job's purchase orders", () => {
       INSERT INTO project_operations (id,project_id,source_system,source_record_type,title,description,status,created_at,updated_at)
       SELECT 'bulk-' || i, 'job-a', 'compass', 'purchase_order', 'Bulk', printf('%.500c', 'x'), 'draft', '${STAMP}', '${STAMP}' FROM n;
     `)
-    const open = await loadAllJobsPurchaseOrders(db, "org", "open")
+    const open = await loadAllJobsPurchaseOrders(db, "org", "open", PO_STATUSES)
     expect(open.rows).toHaveLength(ALL_JOBS_PURCHASE_ORDER_LIMIT)
     expect(open.truncated).toBe(true)
     expect(open.rows.find((row) => row.id === "bulk-1")?.description?.length).toBe(200)
@@ -64,9 +68,9 @@ describe("every job's purchase orders", () => {
 
   it("filters by one status, whatever its stored spelling", async () => {
     const db = seededDb()
-    expect((await loadAllJobsPurchaseOrders(db, "org", "void")).rows.map((row) => row.id)).toEqual(["a2"])
-    expect((await loadAllJobsPurchaseOrders(db, "org", "closed")).rows.map((row) => row.id)).toEqual(["b2"])
-    expect((await loadAllJobsPurchaseOrders(db, "org", "received")).rows).toEqual([])
-    expect((await loadAllJobsPurchaseOrders(db, "org", "all")).rows).toHaveLength(5)
+    expect((await loadAllJobsPurchaseOrders(db, "org", "void", PO_STATUSES)).rows.map((row) => row.id)).toEqual(["a2"])
+    expect((await loadAllJobsPurchaseOrders(db, "org", "closed", PO_STATUSES)).rows.map((row) => row.id)).toEqual(["b2"])
+    expect((await loadAllJobsPurchaseOrders(db, "org", "received", PO_STATUSES)).rows).toEqual([])
+    expect((await loadAllJobsPurchaseOrders(db, "org", "all", PO_STATUSES)).rows).toHaveLength(5)
   })
 })

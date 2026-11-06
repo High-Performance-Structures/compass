@@ -3,6 +3,7 @@
  * to-dos, purchase orders, and RFQs, each with the actions the server
  * allows on it. Pure: no database access.
  */
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { isRecord } from "@/lib/shared/guards"
 import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
 import { parsePortalPurchaseOrderPayload } from "@/lib/purchase-orders/portal-response"
@@ -142,8 +143,8 @@ export function toOperationItem(
   }
 }
 
-export function toTodoItem(row: OperationRow, scheduleTaskIds: ReadonlySet<string>): ProjectTodoItem {
-  return { ...toOperationItem(row, scheduleTaskIds), actions: todoActions(row), createdAt: row.createdAt, authorName: null }
+export function toTodoItem(row: OperationRow, scheduleTaskIds: ReadonlySet<string>, statuses: RecordStatusList): ProjectTodoItem {
+  return { ...toOperationItem(row, scheduleTaskIds), actions: todoActions(row, statuses), createdAt: row.createdAt, authorName: null }
 }
 
 export function toRfqItem(row: OperationRow, recipientEmail: string | null): ProjectRfqItem {

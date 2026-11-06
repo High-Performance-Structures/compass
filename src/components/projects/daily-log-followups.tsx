@@ -34,7 +34,8 @@ import {
   type DailyLogOpenTodo,
   type DailyLogTodoType,
 } from "@/lib/daily-logs/log-followups"
-import { projectTodoStatusLabel, projectTodoTypeLabel } from "@/lib/project-todos"
+import { projectTodoTypeLabel } from "@/lib/project-todos"
+import { statusLabel } from "@/lib/project-operations/status"
 import { cn } from "@/lib/utils"
 
 type Assignee = { readonly name: string; readonly kind: DailyLogTodoType }
@@ -135,7 +136,9 @@ export function DailyLogTodoChecklist({
           const checked = worked.includes(todo.id)
           const id = `${idPrefix}-todo-${todo.id}`
           const code = rules.todoCostCodes ? costCodeLabel(todo.costCode, costCodes) : null
-          const next = checked && todo.status === "open" && rules.workedMovesToInProgress ? "Open → In progress" : projectTodoStatusLabel(todo.status)
+          // The workflow moves the built-in "open" to "in_progress"; names come from the company's statuses.
+          const label = todo.statusLabel ?? statusLabel(todo.status)
+          const next = checked && todo.status === "open" && rules.workedMovesToInProgress ? `${label} → In progress` : label
           return (
             <li key={todo.id} className={cn("flex items-start gap-3 py-2", checked && "bg-accent/40")}>
               <Checkbox id={id} checked={checked} onCheckedChange={() => onToggle(todo)} className="mt-0.5" />

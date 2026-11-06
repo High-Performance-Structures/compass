@@ -19,12 +19,9 @@ import {
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { chunkD1Values } from "@/lib/d1-query"
 import { cleanText } from "@/lib/shared/guards"
-import {
-  PROJECT_TODO_RECORD_TYPES,
-  isArchivedProjectTodoStatus,
-  isCompletedProjectTodoStatus,
-  isProjectTodoRecordType,
-} from "@/lib/project-todos"
+import { PROJECT_TODO_RECORD_TYPES, isProjectTodoRecordType } from "@/lib/project-todos"
+import { isArchivedTodoStatus, isCompletedTodoStatus } from "@/lib/project-todo-statuses"
+import { loadRecordStatusList, loadRecordStatusListForProject } from "@/lib/domain/record-statuses/store"
 import { isOpenPurchaseOrder } from "@/lib/purchase-orders/status-filter"
 import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
 import type { Db } from "@/lib/server/action-context"
@@ -130,11 +127,12 @@ function operationToScheduleItem(operation: OperationRow): NextScheduleItem {
 
 export async function loadOperationsSummary(
   db: Db,
+  organizationId: string,
   projectId: string,
   canViewWorkingSchedule: boolean,
 ): Promise<ProjectOperationsSummary> {
   const today = new Date().toISOString().slice(0, 10)
-  const [operations, [nextCompassTask]] = await Promise.all([
+  const [operations, [nextCompassTask], purchaseOrderStatuses, todoStatuses] = await Promise.all([
     db
       .select()
       .from(projectOperations)
@@ -152,14 +150,17 @@ export async function loadOperationsSummary(
       )
       .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
       .limit(1),
+    loadRecordStatusList(db, organizationId, "purchase_order"),
+    loadRecordStatusList(db, organizationId, "todo"),
   ])
 
   const purchaseOrders = operations.filter((operation) => operation.sourceRecordType === "purchase_order")
   const commitments = operations.filter((operation) => isProjectTodoRecordType(operation.sourceRecordType))
-  // The same Open the PO sheets' status filter shows.
-  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrder(operation.status))
+  // The same Open the PO sheets' status filter shows: the company's Open group.
+  const openPurchaseOrders = purchaseOrders.filter((operation) => isOpenPurchaseOrder(operation.status, purchaseOrderStatuses))
   const activeCommitments = commitments.filter(
-    (operation) => !isCompletedProjectTodoStatus(operation.status) && !isArchivedProjectTodoStatus(operation.status),
+    // Active: neither Closed (completed) nor Void (archived) for the company.
+    (operation) => !isCompletedTodoStatus(todoStatuses, operation.status) && !isArchivedTodoStatus(todoStatuses, operation.status),
   )
   const nextSageOperation = activeCommitments.find(
     (operation) =>
@@ -192,11 +193,14 @@ export async function loadOperationsSummary(
 }
 
 export async function loadProjectTodos(db: Db, projectId: string): Promise<readonly ProjectTodoItem[]> {
-  const operations = await db
-    .select()
-    .from(projectOperations)
-    .where(and(eq(projectOperations.projectId, projectId), inArray(projectOperations.sourceRecordType, TODO_RECORD_TYPES)))
-    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.createdAt), asc(projectOperations.title))
+  const [operations, statuses] = await Promise.all([
+    db
+      .select()
+      .from(projectOperations)
+      .where(and(eq(projectOperations.projectId, projectId), inArray(projectOperations.sourceRecordType, TODO_RECORD_TYPES)))
+      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.createdAt), asc(projectOperations.title)),
+    loadRecordStatusListForProject(db, projectId, "todo"),
+  ])
 
   const candidateScheduleTaskIds = [
     ...new Set(operations.flatMap((operation) => (operation.sourceRecordId ? [operation.sourceRecordId] : []))),
@@ -221,7 +225,7 @@ export async function loadProjectTodos(db: Db, projectId: string): Promise<reado
   for (const author of authors) {
     if (!authorByTodo.has(author.todoId)) authorByTodo.set(author.todoId, author.displayName?.trim() || [author.firstName, author.lastName].filter(Boolean).join(" ") || null)
   }
-  return operations.map((operation) => ({ ...toTodoItem(operation, scheduleTaskIds), authorName: authorByTodo.get(operation.id) ?? null }))
+  return operations.map((operation) => ({ ...toTodoItem(operation, scheduleTaskIds, statuses), authorName: authorByTodo.get(operation.id) ?? null }))
 }
 
 export async function loadScheduleTaskTodos(
@@ -236,19 +240,22 @@ export async function loadScheduleTaskTodos(
     .limit(1)
   if (!scheduleTask) return []
 
-  const operations = await db
-    .select()
-    .from(projectOperations)
-    .where(
-      and(
-        eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordId, scheduleTask.id),
-        inArray(projectOperations.sourceRecordType, TODO_RECORD_TYPES),
-      ),
-    )
-    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.createdAt), asc(projectOperations.title))
+  const [operations, statuses] = await Promise.all([
+    db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordId, scheduleTask.id),
+          inArray(projectOperations.sourceRecordType, TODO_RECORD_TYPES),
+        ),
+      )
+      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.createdAt), asc(projectOperations.title)),
+    loadRecordStatusListForProject(db, projectId, "todo"),
+  ])
   const scheduleTaskIds = new Set([scheduleTask.id])
-  return operations.map((operation) => toTodoItem(operation, scheduleTaskIds))
+  return operations.map((operation) => toTodoItem(operation, scheduleTaskIds, statuses))
 }
 
 export async function loadSageSyncQueue(db: Db, projectId: string): Promise<ProjectSageSyncQueue> {

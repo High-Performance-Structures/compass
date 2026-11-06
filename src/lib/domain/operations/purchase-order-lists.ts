@@ -7,6 +7,7 @@ import { and, asc, count, eq, inArray, sql } from "drizzle-orm"
 
 import { projectOperations, projects } from "@/db/schema"
 import { activeRegistryProject } from "@/lib/project-registry-visibility"
+import type { RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { purchaseOrderMatchesFilter, type PurchaseOrderStatusFilter } from "@/lib/purchase-orders/status-filter"
 import type { Db } from "@/lib/server/action-context"
 
@@ -48,7 +49,7 @@ export type AllJobsPurchaseOrders = {
  * by required date, up to ALL_JOBS_PURCHASE_ORDER_LIMIT.
  *
  * Stored statuses vary in spelling, so the few distinct values are counted
- * first and classified with the shared filter rules; the rows are then read
+ * first and classified with the company's status rules (`statuses`); the rows are then read
  * by their exact stored values. Both reads start from the organization's
  * projects and reach its POs through the project index.
  */
@@ -56,6 +57,7 @@ export async function loadAllJobsPurchaseOrders(
   db: Db,
   organizationId: string,
   filter: PurchaseOrderStatusFilter,
+  statuses: RecordStatusList,
 ): Promise<AllJobsPurchaseOrders> {
   const scope = and(
     eq(projects.organizationId, organizationId),
@@ -68,13 +70,13 @@ export async function loadAllJobsPurchaseOrders(
     .innerJoin(projectOperations, eq(projectOperations.projectId, projects.id))
     .where(scope)
     .groupBy(projectOperations.status)
-  const statuses = statusCounts.map((row) => row.status).filter((status) => purchaseOrderMatchesFilter(status, filter))
-  if (statuses.length === 0) return { rows: [], statusCounts, truncated: false }
+  const matching = statusCounts.map((row) => row.status).filter((status) => purchaseOrderMatchesFilter(status, filter, statuses))
+  if (matching.length === 0) return { rows: [], statusCounts, truncated: false }
   const rows = await db
     .select(purchaseOrderListColumns)
     .from(projects)
     .innerJoin(projectOperations, eq(projectOperations.projectId, projects.id))
-    .where(filter === "all" ? scope : and(scope, inArray(projectOperations.status, statuses)))
+    .where(filter === "all" ? scope : and(scope, inArray(projectOperations.status, matching)))
     // Blank required dates last, as the sheet sorts them.
     .orderBy(sql`${projectOperations.dueDate} IS NULL`, asc(projectOperations.dueDate), asc(projectOperations.sourceRecordNumber))
     .limit(ALL_JOBS_PURCHASE_ORDER_LIMIT + 1)

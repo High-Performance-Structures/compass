@@ -1,25 +1,13 @@
-export type RfiStatus =
-  | "new"
-  | "in_progress"
-  | "info_needed"
-  | "complete"
-  | "void"
+import { isOpenRecordStatus, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 
-export type RfiStatusFilter = RfiStatus | "open" | "all"
-
+/*
+ * RFI priority and audience lists, and the RFI queue order. Statuses (labels,
+ * order, Open group, filter buttons, choices) are the company's RFI statuses
+ * from src/lib/domain/record-statuses.
+ */
 export type RfiPriority = "low" | "normal" | "high"
 
 export type RfiAudience = "internal" | "sub_vendor" | "owner" | "public"
-
-const RFI_STATUS_FILTER_VALUES: readonly RfiStatusFilter[] = [
-  "open",
-  "new",
-  "in_progress",
-  "info_needed",
-  "complete",
-  "void",
-  "all",
-]
 
 const RFI_PRIORITIES: readonly RfiPriority[] = ["low", "normal", "high"]
 
@@ -41,59 +29,23 @@ function normalizedStatus(value: string): string {
   return value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_")
 }
 
-export function canonicalRfiStatus(value: string): RfiStatus {
-  switch (normalizedStatus(value)) {
-    case "open":
-    case "new":
-      return "new"
-    case "answered":
-    case "in_progress":
-      return "in_progress"
-    case "additional_information_needed":
-    case "info_needed":
-      return "info_needed"
-    case "closed":
-    case "complete":
-    case "completed":
-      return "complete"
-    case "cancelled":
-    case "canceled":
-    case "void":
-      return "void"
-    default:
-      return "new"
-  }
-}
-
-export function isClosedRfiStatus(value: string): boolean {
-  const status = canonicalRfiStatus(value)
-  return status === "complete" || status === "void"
-}
-
-export function parseRfiStatusFilter(
-  value: string | readonly string[] | undefined
-): RfiStatusFilter {
-  const candidate = Array.isArray(value) ? value[0] : value
-  if (!candidate) return "open"
-
-  return RFI_STATUS_FILTER_VALUES.find((item) => item === candidate) ?? "open"
-}
-
-export function rfiMatchesStatusFilter(
-  status: string,
-  filter: RfiStatusFilter
-): boolean {
-  if (filter === "all") return true
-  if (filter === "open") return !isClosedRfiStatus(status)
-  return canonicalRfiStatus(status) === filter
-}
-
+/**
+ * The RFI queue order: open RFIs first (the company's Open group), soonest
+ * due first, then newest.
+ */
 export function compareRfisForQueue(
+  statuses: RecordStatusList
+): (left: RfiQueueItem, right: RfiQueueItem) => number {
+  return (left, right) => compareQueueItems(statuses, left, right)
+}
+
+function compareQueueItems(
+  statuses: RecordStatusList,
   left: RfiQueueItem,
   right: RfiQueueItem
 ): number {
-  const leftClosed = isClosedRfiStatus(left.status)
-  const rightClosed = isClosedRfiStatus(right.status)
+  const leftClosed = !isOpenRecordStatus(statuses, left.status)
+  const rightClosed = !isOpenRecordStatus(statuses, right.status)
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1
 
   if (!leftClosed) {
@@ -108,18 +60,6 @@ export function compareRfisForQueue(
     return right.submittedAt.localeCompare(left.submittedAt)
   }
   return right.rfiNumber.localeCompare(left.rfiNumber)
-}
-
-export function validRfiStatus(value: string): RfiStatus | null {
-  const normalized = normalizedStatus(value)
-  const allowed: readonly RfiStatus[] = [
-    "new",
-    "in_progress",
-    "info_needed",
-    "complete",
-    "void",
-  ]
-  return allowed.find((item) => item === normalized) ?? null
 }
 
 export function validRfiPriority(value: string): RfiPriority | null {

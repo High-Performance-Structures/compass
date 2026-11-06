@@ -112,6 +112,7 @@ const fieldDailyLogFollowUpSetupSchema = z.object({
       companyName: z.string().nullable(),
       costCode: z.string().nullable(),
       changedOn: z.string(),
+      statusLabel: z.string().optional(),
     }),
   ),
   clientContacts: z.array(z.object({ id: z.string(), name: z.string(), role: z.string().nullable() })),

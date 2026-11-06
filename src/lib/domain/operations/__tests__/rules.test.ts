@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
+
 import {
   assigneeTypeForTask,
   cleanDate,
@@ -189,10 +191,11 @@ describe("to-dos", () => {
   })
 
   it("allows editing until archived, then restore and delete", () => {
-    expect(todoActions({ status: "open" })).toEqual({ canEdit: true, canRestore: false })
-    expect(todoActions({ status: "complete" })).toEqual({ canEdit: true, canRestore: false })
-    expect(todoActions({ status: "archived" })).toEqual({ canEdit: false, canRestore: true })
-    expect(todoActions({ status: "cancelled" })).toEqual({ canEdit: false, canRestore: true })
+    const statuses = defaultRecordStatusList("todo")
+    expect(todoActions({ status: "open" }, statuses)).toEqual({ canEdit: true, canRestore: false })
+    expect(todoActions({ status: "complete" }, statuses)).toEqual({ canEdit: true, canRestore: false })
+    expect(todoActions({ status: "archived" }, statuses)).toEqual({ canEdit: false, canRestore: true })
+    expect(todoActions({ status: "cancelled" }, statuses)).toEqual({ canEdit: false, canRestore: true })
   })
 
   it("builds the history row with a trimmed note", () => {

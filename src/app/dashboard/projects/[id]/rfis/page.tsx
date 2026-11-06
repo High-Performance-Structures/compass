@@ -26,13 +26,19 @@ import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-re
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
+import { compareRfisForQueue } from "@/lib/rfis/status"
+import { getCompanyRecordStatuses } from "@/app/actions/record-statuses"
+import { RecordStatusBadge } from "@/components/record-status-badge"
 import {
-  canonicalRfiStatus,
-  compareRfisForQueue,
-  isClosedRfiStatus,
-  parseRfiStatusFilter,
-  rfiMatchesStatusFilter,
-} from "@/lib/rfis/status"
+  isOpenRecordStatus,
+  parseRecordStatusFilter,
+  recordStatusColor,
+  recordStatusKey,
+  recordStatusLabel,
+  recordStatusMatchesFilter,
+  selectableRecordStatuses,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
 import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options"
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { viewableRfiAttachmentUrl } from "@/lib/rfis/attachment-url"
@@ -73,6 +79,8 @@ type RfiCardProps = {
   readonly paperTrail: Awaited<ReturnType<typeof getProjectPaperTrail>>
   readonly inboundEmails: readonly ProjectRfiInboundEmailItem[]
   readonly vendorOptions: Awaited<ReturnType<typeof getProjectRfiVendorOptions>>
+  /** The company's RFI statuses (Settings › Statuses). */
+  readonly statuses: RecordStatusList
 }
 
 /** The selected RFI's full record: every workflow (respond, email, print, status, delete). */
@@ -85,8 +93,9 @@ function RfiCard({
   paperTrail,
   inboundEmails,
   vendorOptions,
+  statuses,
 }: RfiCardProps): React.ReactElement {
-  const canonicalStatus = canonicalRfiStatus(rfi.status)
+  const statusKey = recordStatusKey(statuses, rfi.status) ?? rfi.status
   return (
     <article
       key={rfi.id}
@@ -107,13 +116,10 @@ function RfiCard({
             <Badge variant="secondary">Just created</Badge>
           )}
           {!isCreated && <Badge variant="secondary">Selected</Badge>}
-          <Badge
-            variant={
-              !isClosedRfiStatus(rfi.status) ? "secondary" : "outline"
-            }
-          >
-            {label(canonicalStatus)}
-          </Badge>
+          <RecordStatusBadge
+            label={recordStatusLabel(statuses, rfi.status)}
+            color={recordStatusColor(statuses, rfi.status)}
+          />
           <Badge variant="outline">{label(rfi.audience)}</Badge>
           {rfi.priority === "high" && (
             <Badge variant="destructive">High</Badge>
@@ -256,7 +262,8 @@ function RfiCard({
       <ProjectRfiResponseComposer
         projectId={id}
         rfiId={rfi.id}
-        status={canonicalStatus}
+        status={statusKey}
+        statusOptions={selectableRecordStatuses(statuses, rfi.status)}
         audience={rfi.audience}
       />
     </article>
@@ -283,7 +290,6 @@ export default async function ProjectRfisPage({
   const focusedRfiId = Array.isArray(query.item)
     ? query.item[0] ?? null
     : query.item ?? null
-  const statusFilter = parseRfiStatusFilter(query.status)
   // A permission denial sends the browser to the access page instead.
   const loaded = await Promise.all([
       getProjects(),
@@ -293,6 +299,7 @@ export default async function ProjectRfisPage({
       getProjectRfiInboundEmails(id),
       getProjectPaperTrail(id, "rfi"),
       getProjectRfiVendorOptions(id),
+      getCompanyRecordStatuses("rfi"),
     ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -302,22 +309,24 @@ export default async function ProjectRfisPage({
     },
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
-  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail, vendorOptions] = loaded.data
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail, vendorOptions, statuses] =
+    loaded.data
+  const statusFilter = parseRecordStatusFilter(statuses, query.status)
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
   ]
   const openCount = rfis.filter(
-    (rfi) => !isClosedRfiStatus(rfi.status)
+    (rfi) => isOpenRecordStatus(statuses, rfi.status)
   ).length
   // The list opens one RFI at a time below it (a row click, a calendar,
   // notification or email link, or an RFI just created), whatever the filter.
   const selectedRfiId = focusedRfiId ?? createdRfiId
   const selectedRfis = rfis.filter((rfi) => rfi.id === selectedRfiId)
   const visibleRfis = [...rfis]
-    .filter((rfi) => rfiMatchesStatusFilter(rfi.status, statusFilter))
-    .sort(compareRfisForQueue)
+    .filter((rfi) => recordStatusMatchesFilter(statuses, rfi.status, statusFilter))
+    .sort(compareRfisForQueue(statuses))
   const listRows = visibleRfis.map(rfiListRow)
   const contacts = contactsSummary.allContacts
   const inboundEmailsByRfi = new Map(
@@ -388,7 +397,7 @@ export default async function ProjectRfisPage({
           <StatusFilterBar
             kind="link"
             label="Filter RFIs by status"
-            options={rfiStatusFilterOptions(rfis.map((rfi) => rfi.status))}
+            options={rfiStatusFilterOptions(rfis.map((rfi) => rfi.status), statuses)}
             selected={statusFilter}
             hrefFor={(value) => `/dashboard/projects/${id}/rfis?status=${value}`}
           />
@@ -399,6 +408,7 @@ export default async function ProjectRfisPage({
 
         <ProjectRfiRecordTable
           rows={listRows}
+          statuses={statuses}
           audience="staff"
           projectId={id}
           statusFilter={statusFilter}
@@ -422,6 +432,7 @@ export default async function ProjectRfisPage({
               paperTrail={paperTrail}
               inboundEmails={inboundEmailsByRfi.get(rfi.id) ?? []}
               vendorOptions={vendorOptions}
+              statuses={statuses}
             />
           ))
         ) : rfis.length > 0 ? (

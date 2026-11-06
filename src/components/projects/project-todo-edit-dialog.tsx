@@ -19,7 +19,14 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
-import { archiveProjectTodo, deleteProjectTodo, getProjectTodoDetail, restoreProjectTodo, setProjectTodoStatus, updateProjectTodo } from "@/app/actions/project-todos"
+import { archiveProjectTodo, completeProjectTodo, deleteProjectTodo, getProjectTodoDetail, restoreProjectTodo, updateProjectTodo } from "@/app/actions/project-todos"
+import {
+  recordStatusGroup,
+  recordStatusKey,
+  recordStatusLabel,
+  selectableRecordStatuses,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
 import type { ProjectTodoItem, ProjectTaskRecordType, ProjectTodoDetail } from "@/lib/domain/operations/types"
 import { ProjectTodoHistory } from "@/components/projects/project-todo-history"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -51,10 +58,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   canonicalProjectTodoRecordType,
-  isSelectableProjectTodoStatus,
-  normalizeProjectTodoStatus,
-  PROJECT_TODO_SELECTABLE_STATUSES,
-  projectTodoStatusLabel,
 } from "@/lib/project-todos"
 
 type SaveState =
@@ -82,9 +85,12 @@ export function ProjectTodoEditDialog({
   canDelete,
   open,
   onOpenChange,
+  statuses,
 }: {
   readonly projectId: string
   readonly item: ProjectTodoItem
+  /** The company's to-do statuses (Settings › Statuses): the status choices and labels. */
+  readonly statuses: RecordStatusList
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly canDelete: boolean
   readonly open: boolean
@@ -97,9 +103,9 @@ export function ProjectTodoEditDialog({
   const [taskType, setTaskType] = React.useState<ProjectTaskRecordType>(
     canonicalProjectTodoRecordType(item.sourceRecordType)
   )
-  const [status, setStatus] = React.useState(
-    normalizeProjectTodoStatus(item.status)
-  )
+  const statusKey = recordStatusKey(statuses, item.status) ?? item.status
+  const [status, setStatus] = React.useState(statusKey)
+  const statusOptions = selectableRecordStatuses(statuses, item.status)
   const [priority, setPriority] = React.useState(item.priority)
   const [assigneeName, setAssigneeName] = React.useState(
     item.assigneeName ?? ""
@@ -133,7 +139,8 @@ export function ProjectTodoEditDialog({
 
   async function markFinished(): Promise<void> {
     setSaveState({ kind: "saving" })
-    const result = await setProjectTodoStatus(projectId, item.id, "complete", item.updatedAt)
+    // Done is a person's decision: the built-in "complete" status.
+    const result = await completeProjectTodo(projectId, item.id, item.updatedAt)
     if (!result.success) {
       setSaveState({ kind: "error", message: result.error })
       return
@@ -286,7 +293,7 @@ export function ProjectTodoEditDialog({
               <Select
                 value={status}
                 onValueChange={(value) => {
-                  if (isSelectableProjectTodoStatus(value)) {
+                  if (statusOptions.some((option) => option.value === value)) {
                     setStatus(value)
                   }
                 }}
@@ -296,9 +303,9 @@ export function ProjectTodoEditDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
-                    <SelectItem key={selectableStatus} value={selectableStatus}>
-                      {projectTodoStatusLabel(selectableStatus)}
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -404,7 +411,8 @@ export function ProjectTodoEditDialog({
           <ProjectTodoHistory
             projectId={projectId}
             detail={detail}
-            finished={archived || normalizeProjectTodoStatus(item.status) === "complete"}
+            statuses={statuses}
+            finished={archived || recordStatusGroup(statuses, item.status) === "closed"}
             onMarkFinished={() => void markFinished()}
             busy={saveState.kind === "saving"}
           />
@@ -500,7 +508,7 @@ export function ProjectTodoEditDialog({
 
           {archived && (
             <p className="text-xs text-muted-foreground">
-              Current status: {projectTodoStatusLabel(item.status)}
+              Current status: {recordStatusLabel(statuses, item.status)}
             </p>
           )}
         </form>

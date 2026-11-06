@@ -7,31 +7,29 @@ import { updateProjectOperationStatus } from "@/app/actions/project-operations"
 import type { ProjectOperationKind } from "@/lib/domain/operations/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import {
-  PURCHASE_ORDER_STATUS_OPTIONS,
-  RFQ_STATUS_OPTIONS,
-} from "@/lib/project-operations/status"
+import { selectableRecordStatuses, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 
 export function ProjectOperationStatusSelect({
   projectId,
   operationId,
   operationKind,
   status,
+  statuses,
 }: {
   readonly projectId: string
   readonly operationId: string
   readonly operationKind: ProjectOperationKind
   readonly status: string
+  /** The company's statuses for this record type (Settings › Statuses). */
+  readonly statuses: RecordStatusList
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [selectedStatus, setSelectedStatus] = React.useState(status)
   const [error, setError] = React.useState<string | null>(null)
   const [isPending, startTransition] = React.useTransition()
-  const options =
-    operationKind === "purchase_order"
-      ? PURCHASE_ORDER_STATUS_OPTIONS
-      : RFQ_STATUS_OPTIONS
+  // The company's visible statuses, plus this record's own if it is hidden.
+  const options = selectableRecordStatuses(statuses, status)
   const hasImportedStatus = !options.some(
     (option) => option.value === selectedStatus
   )

@@ -35,6 +35,8 @@ import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-au
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
 import { portalPurchaseOrderVendorStatusLabel } from "@/lib/purchase-orders/portal-response"
+import { statusLabel } from "@/lib/project-operations/status"
+import { operationStatusLabel, recordStatusListFor, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { ProjectAudienceRfiList } from "@/components/projects/project-audience-rfi-list"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
@@ -56,13 +58,6 @@ function formatDate(value: string | null): string {
     day: "numeric",
     year: "numeric",
   })
-}
-
-function statusLabel(value: string): string {
-  return value
-    .split("_")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ")
 }
 
 function formatMoney(value: number | null): string {
@@ -97,13 +92,13 @@ function operationReferenceLabel(item: AudienceOperationItem): string {
 }
 
 function OperationRow({
-  item,
+  item, statuses,
   project,
   projectId,
   recipients,
   viewerIsInternal,
 }: {
-  readonly item: AudienceOperationItem
+  readonly item: AudienceOperationItem; readonly statuses: readonly RecordStatusList[]
   readonly project: ReportProject
   readonly projectId: string
   readonly recipients: readonly ProjectAudienceMessageRecipient[]
@@ -135,7 +130,7 @@ function OperationRow({
               Vendor: {portalPurchaseOrderVendorStatusLabel(item.latestVendorStatus.status)}
             </Badge>
           )}
-          <Badge variant="secondary">{statusLabel(item.status)}</Badge>
+          <Badge variant="secondary">{operationStatusLabel(statuses, item.sourceRecordType, item.status)}</Badge>
         </div>
       </div>
       {item.description && (
@@ -176,12 +171,12 @@ function OperationRow({
 }
 
 function RfqRow({
-  item,
+  item, statuses,
   project,
   projectId,
   viewerIsInternal,
 }: {
-  readonly item: AudienceRfq
+  readonly item: AudienceRfq; readonly statuses: readonly RecordStatusList[]
   readonly project: ReportProject
   readonly projectId: string
   readonly viewerIsInternal: boolean
@@ -201,7 +196,7 @@ function RfqRow({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={item.status === "sent" ? "secondary" : "outline"}>
-            {statusLabel(item.status)}
+            {operationStatusLabel(statuses, "rfq", item.status)}
           </Badge>
           <ProjectPortalPrintButton project={project} report={rfqReport([item])} />
           <ProjectAudienceRfqResponseDialog
@@ -759,7 +754,7 @@ export function ProjectAudiencePreview({
               <div className="mt-4 grid gap-3">
                 {data.operations.map((item) => (
                   <OperationRow
-                    project={data.project}
+                    project={data.project} statuses={data.recordStatuses}
                     key={item.id}
                     item={item}
                     projectId={data.project.id}
@@ -796,7 +791,7 @@ export function ProjectAudiencePreview({
                   />
                 </div>
               </div>
-              <ProjectAudienceRfiList rfis={data.rfis} project={data.project} />
+              <ProjectAudienceRfiList rfis={data.rfis} statuses={recordStatusListFor(data.recordStatuses, "rfi")} project={data.project} />
             </div>
           </section>
         )}
@@ -820,7 +815,7 @@ export function ProjectAudiencePreview({
               <div className="grid gap-3">
                 {data.rfqs.map((item) => (
                   <RfqRow
-                    project={data.project}
+                    project={data.project} statuses={data.recordStatuses}
                     key={item.id}
                     item={item}
                     projectId={data.project.id}

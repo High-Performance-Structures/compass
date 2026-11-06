@@ -48,7 +48,8 @@ import type {
   UpdateRfqRequestInput,
 } from "@/lib/domain/operations/types"
 import { markPaperTrailDue } from "@/lib/paper-trail/enqueue"
-import { isPurchaseOrderStatus, isRfqStatus } from "@/lib/project-operations/status"
+import { isSelectableRecordStatus } from "@/lib/domain/record-statuses/rules"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { specificationJson } from "@/lib/selections/decisions"
@@ -65,9 +66,9 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  */
 
 export async function getProjectOperationsSummary(projectId: string): Promise<ProjectOperationsSummary> {
-  const { db, user } = await operationsContext(projectId, "project-hub", false)
+  const { db, user, organizationId } = await operationsContext(projectId, "project-hub", false)
   const canViewWorkingSchedule = isInternalStaffRole(user.role) || user.role === "developer"
-  return loadOperationsSummary(db, projectId, canViewWorkingSchedule)
+  return loadOperationsSummary(db, organizationId, projectId, canViewWorkingSchedule)
 }
 
 export async function getProjectRfqCostCodeOptions(projectId: string): Promise<readonly ProjectRfqCostCodeOption[]> {
@@ -91,23 +92,24 @@ export async function updateProjectOperationStatus(
       const approver = await orgContext({ feature: "rfqs", action: "approve" })
       if (!approver.success) throw new Error(approver.error)
     }
-    const { db } = await operationsContext(
+    const { db, organizationId } = await operationsContext(
       projectId,
       operationKind === "purchase_order" ? "purchase-orders" : "rfqs",
       true,
     )
-    const statusIsValid =
-      operationKind === "purchase_order" ? isPurchaseOrderStatus(requestedStatus) : isRfqStatus(requestedStatus)
-    if (!statusIsValid) {
-      return { success: false, error: "Please choose a valid status." }
-    }
-
-    const existing = await loadProjectOperation(db, projectId, operationId, operationKind)
+    const [existing, statuses] = await Promise.all([
+      loadProjectOperation(db, projectId, operationId, operationKind),
+      loadRecordStatusList(db, organizationId, operationKind),
+    ])
     if (!existing) {
       return {
         success: false,
         error: operationKind === "purchase_order" ? "Purchase order not found." : "RFQ not found.",
       }
+    }
+    // One of the company's visible statuses (Settings › Statuses), or the record's own.
+    if (!isSelectableRecordStatus(statuses, requestedStatus, existing.status)) {
+      return { success: false, error: "Please choose a valid status." }
     }
     if (operationKind === "rfq") {
       const approval = await db

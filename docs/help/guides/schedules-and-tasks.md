@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-06"
 }
 ---
 
@@ -80,6 +80,8 @@ To bring a saved schedule into a project, choose **Import schedule items**, pick
 ## Tasks and To-Dos {#tasks}
 
 A useful task has a clear action, project context, assignee, due date, source-record link when available, and current status. Personal calendar choices do not replace the project's operational schedule.
+
+A job's **To-dos** page lists its to-dos with status buttons above it: **Open** (every to-do whose status counts as Open), each status your company shows as a button, and **All**. A to-do whose status counts as Closed is finished, and one that counts as Void is archived. The status choices on a to-do are your company's visible statuses; your company names, colors, orders, hides, and adds them in [Settings → Statuses](/dashboard/help/company-settings#statuses). Marking a to-do finished is always a person's decision.
 
 ## Ask Jarvis to Help with the Schedule {#jarvis-schedule}
 

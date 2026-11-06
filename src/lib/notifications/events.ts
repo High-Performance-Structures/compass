@@ -45,7 +45,7 @@ type RfiUpdatedNotificationInput = {
   readonly rfiId: string
   readonly rfiNumber: string
   readonly subject: string
-  readonly status: string
+  readonly statusLabel: string // the company's name for the status (Settings › Statuses)
   readonly requesterName: string | null
   readonly assignedToName: string | null
   readonly mentionedUserIds?: readonly string[]
@@ -600,7 +600,7 @@ export async function notifyRfiUpdated(
     sourceType: "rfi",
     sourceId: input.rfiId,
     title: `${input.rfiNumber}: ${input.subject}`,
-    body: `${input.updatedBy.displayName ?? input.updatedBy.email} updated this RFI to ${input.status.replace(/_/g, " ")}.`,
+    body: `${input.updatedBy.displayName ?? input.updatedBy.email} updated this RFI to ${input.statusLabel}.`,
     href: `/dashboard/projects/${input.projectId}/rfis?item=${encodeURIComponent(input.rfiId)}#rfi-${encodeURIComponent(input.rfiId)}`,
     priority: "normal",
     audience: "participants",
