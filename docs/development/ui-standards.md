@@ -103,7 +103,8 @@ Field Mode, even when the two surfaces share components, queries, or settings.
 - Use the shared `DataTablePagination` component for new and migrated tables.
 - Columns with a header are sortable by clicking the header: ascending, then
   descending, then back to the default order, with an arrow on the sorted
-  column and `aria-sort` on the header. Use `TanstackSortableHeader` for
+  column and `aria-sort` on the header. Unsorted columns always show a faint
+  sort icon (never hidden until hover), so people can see the column sorts. Use `TanstackSortableHeader` for
   TanStack tables and `useTableSort` with `SortableTh` / `SortableTableHead`
   (`src/components/ui/sortable-header.tsx`) for hand-built tables. Blank
   values sort last in both directions. Leave out action, checkbox, and
