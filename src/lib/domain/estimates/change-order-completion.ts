@@ -5,6 +5,7 @@ import { projectContractBudgetAdjustments } from "@/db/schema-estimates"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import {
   changeOrderNeedsCompletion,
+  isExecutedForCompletion,
   planChangeOrderCompletion,
   type ChangeOrderCompletionLineInput,
 } from "@/lib/domain/estimates/rules"
@@ -69,6 +70,7 @@ export async function completeExecutedChangeOrder(input: {
   ])
   const needsCompletion = changeOrderNeedsCompletion({
     status: changeOrder.status,
+    sourceType: changeOrder.sourceType,
     budgetTreatment: changeOrder.budgetTreatment,
     kind: changeOrder.changeOrderKind,
     executedAt: changeOrder.executedAt,
@@ -79,20 +81,23 @@ export async function completeExecutedChangeOrder(input: {
     return { success: false, error: "This change order already has its cost codes and execution date." }
   }
 
+  const executed = isExecutedForCompletion(changeOrder.status)
   const now = new Date().toISOString()
   const plan = planChangeOrderCompletion({
     amountCents: changeOrder.amountCents,
     allowedCostCodes: new Set(costCodes.map((choice) => choice.code)),
     lines: input.lines,
-    executedOn: changeOrder.executedAt ? changeOrder.executedAt.slice(0, 10) : input.executedOn,
+    executedOn: !executed ? null : changeOrder.executedAt ? changeOrder.executedAt.slice(0, 10) : input.executedOn,
     reason: input.reason,
     today: now.slice(0, 10),
   })
   if (!plan.success) return plan
 
   // A recorded execution date is kept; a missing one is set to noon UTC on the
-  // chosen day so it reads as that date in every US time zone.
-  const executedAt = changeOrder.executedAt ?? `${plan.executedOn}T12:00:00.000Z`
+  // chosen day so it reads as that date in every US time zone. An open change
+  // order is dated when it's executed the usual way.
+  const executedAt =
+    changeOrder.executedAt ?? (plan.executedOn === null ? null : `${plan.executedOn}T12:00:00.000Z`)
   await db.batch([
     deleteChangeOrderLinesStatement(db, eq(projectChangeOrderLines.changeOrderId, changeOrderId)),
     insertChangeOrderLineStatement(
@@ -140,6 +145,9 @@ export async function completeExecutedChangeOrder(input: {
     }),
   ])
 
+  if (!executed) {
+    return { success: true, budgetNote: "It will revise the contract budget when it's executed." }
+  }
   // The budget rebuild refuses while any executed change order is still
   // incomplete, so the last one completed is the one that updates the G703.
   const budget = await rebuildProjectContractBudget({ db, projectId, actorUserId: input.actor.id })
