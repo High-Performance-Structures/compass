@@ -78,7 +78,7 @@ export const RECORD_STATUS_REGISTRY: Readonly<Record<RecordStatusType, RecordSta
       status("draft", "Draft", "gray", "open"),
       status("sent", "Sent", "blue", "open"),
       status("response_received", "Response received", "orange", "open"),
-      status("awarded", "Awarded", "green", "closed"),
+      status("awarded", "Awarded", "green", "open"),
       status("declined", "Declined", "gray", "closed"),
       status("complete", "Complete", "gray", "closed"),
       status("closed", "Closed", "gray", "closed"),

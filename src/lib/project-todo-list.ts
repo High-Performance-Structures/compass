@@ -1,29 +1,20 @@
 import type { ProjectTodoItem } from "@/lib/domain/operations/types"
 import {
-  isArchivedProjectTodoStatus,
-  isCompletedProjectTodoStatus,
-  projectTodoTypeLabel,
-} from "@/lib/project-todos"
+  isOpenRecordStatus,
+  recordStatusFilterValue,
+  recordStatusKey,
+  recordStatusLabel,
+  type RecordStatusFilter,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
+import { projectTodoTypeLabel } from "@/lib/project-todos"
 import { normalizeWorkCalendarSearch } from "@/lib/work-calendar"
-
-export type TodoFilter = "active" | "completed" | "archived" | "all"
-
-export function todoMatchesFilter(item: ProjectTodoItem, filter: TodoFilter): boolean {
-  if (filter === "all") return true
-  if (filter === "archived") return isArchivedProjectTodoStatus(item.status)
-  const active = !isArchivedProjectTodoStatus(item.status)
-  return (
-    active &&
-    (filter === "completed"
-      ? isCompletedProjectTodoStatus(item.status)
-      : !isCompletedProjectTodoStatus(item.status))
-  )
-}
 
 export function todoMatchesSearch(
   item: ProjectTodoItem,
   query: string,
   includeSource: boolean,
+  statuses: RecordStatusList,
 ): boolean {
   const search = normalizeWorkCalendarSearch(query)
   return (
@@ -35,7 +26,7 @@ export function todoMatchesSearch(
         item.sourceRecordNumber,
         item.assigneeName,
         item.companyName,
-        item.status,
+        recordStatusLabel(statuses, item.status),
         item.priority,
         item.authorName,
         projectTodoTypeLabel(item.sourceRecordType),
@@ -47,8 +38,12 @@ export function todoMatchesSearch(
   )
 }
 
-export function todoFilterForItem(item: ProjectTodoItem | null): TodoFilter {
-  if (!item) return "active"
-  if (isArchivedProjectTodoStatus(item.status)) return "archived"
-  return isCompletedProjectTodoStatus(item.status) ? "completed" : "active"
+/**
+ * The status button a linked to-do shows under: Open while it counts as
+ * Open, else its own status (so a link to a finished to-do still shows it).
+ */
+export function todoFilterForItem(item: ProjectTodoItem | null, statuses: RecordStatusList): RecordStatusFilter {
+  if (!item || isOpenRecordStatus(statuses, item.status)) return "open"
+  const key = recordStatusKey(statuses, item.status)
+  return key === null ? "all" : recordStatusFilterValue(key)
 }

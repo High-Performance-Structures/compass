@@ -138,7 +138,7 @@ export function dashboardFixture(
         answeredAt: "2026-09-08T12:00:00Z",
       },
     ],
-    rfiStatuses: defaultRecordStatusList("rfi"),
+    recordStatuses: [defaultRecordStatusList("rfi")],
     rfqs:
       audience === "sub_vendor"
         ? [

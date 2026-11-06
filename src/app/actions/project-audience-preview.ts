@@ -36,7 +36,7 @@ import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibil
 import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
 import { requirePermission } from "@/lib/permissions"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
-import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
+import { loadAllRecordStatusLists } from "@/lib/domain/record-statuses/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
@@ -995,7 +995,7 @@ export async function getProjectAudiencePreview(
     schedulePublicationAvailable: publishedSnapshot !== null,
     scheduleItems: audienceScheduleItems,
     operations: audienceOperations,
-    rfis: rfiRows, rfiStatuses: await loadRecordStatusList(db, organizationId, "rfi"),
+    rfis: rfiRows, recordStatuses: await loadAllRecordStatusLists(db, organizationId),
     rfqs: audienceRfqs,
     messageChannels: messageChannelRows,
     contacts: visibleContactRows,

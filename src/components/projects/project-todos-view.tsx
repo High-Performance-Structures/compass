@@ -4,13 +4,15 @@ import * as React from "react"
 import { IconSearch } from "@tabler/icons-react"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ProjectTodoItem } from "@/lib/domain/operations/types"
+import { todoFilterForItem, todoMatchesSearch } from "@/lib/project-todo-list"
 import {
-  todoFilterForItem,
-  todoMatchesFilter,
-  todoMatchesSearch,
-  type TodoFilter,
-} from "@/lib/project-todo-list"
-import { projectTodoStatusLabel } from "@/lib/project-todos"
+  recordStatusFilterOptions,
+  recordStatusLabel,
+  recordStatusMatchesFilter,
+  type RecordStatusFilter,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { formatDate } from "@/lib/format"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -18,7 +20,6 @@ import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-d
 import { ProjectTodoBulkActions } from "@/components/projects/project-todo-bulk-actions"
 import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -29,13 +30,6 @@ import {
 } from "@/components/ui/dialog"
 import { PageHeader } from "@/components/page-header"
 
-const filters: readonly { readonly value: TodoFilter; readonly label: string }[] = [
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "archived", label: "Archived" },
-  { value: "all", label: "All" },
-]
-
 export function ProjectTodosView({
   projectId,
   projectLabel,
@@ -45,7 +39,10 @@ export function ProjectTodosView({
   canManage,
   canDelete = false,
   initialCreateOpen = false,
+  statuses,
 }: {
+  /** The company's to-do statuses (Settings › Statuses): buttons, labels, Open and choices. */
+  readonly statuses: RecordStatusList
   readonly projectId: string
   readonly projectLabel: string
   readonly items: readonly ProjectTodoItem[]
@@ -58,20 +55,21 @@ export function ProjectTodosView({
   const { developerModeEnabled } = useDeveloperMode()
   const initialItem = items.find((item) => item.id === initialItemId) ?? null
   const [query, setQuery] = React.useState("")
-  const [filter, setFilter] = React.useState<TodoFilter>(() => todoFilterForItem(initialItem))
+  const [filter, setFilter] = React.useState<RecordStatusFilter>(() => todoFilterForItem(initialItem, statuses))
   const [editingItem, setEditingItem] = React.useState<ProjectTodoItem | null>(null)
   const visibleItems = React.useMemo(
     () =>
       items.filter(
         (item) =>
-          todoMatchesFilter(item, filter) && todoMatchesSearch(item, query, developerModeEnabled),
+          recordStatusMatchesFilter(statuses, item.status, filter) &&
+          todoMatchesSearch(item, query, developerModeEnabled, statuses),
       ),
-    [items, filter, query, developerModeEnabled],
+    [items, filter, query, developerModeEnabled, statuses],
   )
   const columns = React.useMemo(
     () =>
-      projectTodoColumns({ projectId, canManage, developerModeEnabled, onOpen: setEditingItem }),
-    [projectId, canManage, developerModeEnabled],
+      projectTodoColumns({ projectId, canManage, developerModeEnabled, onOpen: setEditingItem, statuses }),
+    [projectId, canManage, developerModeEnabled, statuses],
   )
   const table = useRecordTable({
     data: visibleItems,
@@ -79,14 +77,14 @@ export function ProjectTodosView({
     getRowId: (item) => item.id,
     resetKey: `${filter}:${query}`,
     initialItemId,
-    revealReady: filter === todoFilterForItem(initialItem),
+    revealReady: filter === todoFilterForItem(initialItem, statuses),
     enableSelection: canManage,
   })
 
   React.useEffect(() => {
     if (initialItemId) {
       const item = items.find((candidate) => candidate.id === initialItemId)
-      if (item) setFilter(todoFilterForItem(item))
+      if (item) setFilter(todoFilterForItem(item, statuses))
     }
     // URL navigation reveals a linked row, while refreshes keep the chosen view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,20 +131,13 @@ export function ProjectTodosView({
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="To-do view">
-          {filters.map(({ value, label }) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              aria-pressed={filter === value}
-              variant={filter === value ? "default" : "outline"}
-              onClick={() => setFilter(value)}
-            >
-              {label} ({items.filter((item) => todoMatchesFilter(item, value)).length})
-            </Button>
-          ))}
-        </div>
+        <StatusFilterBar
+          kind="button"
+          label="Filter to-dos by status"
+          options={recordStatusFilterOptions(statuses, items.map((item) => ({ status: item.status, count: 1 })))}
+          selected={filter}
+          onSelect={setFilter}
+        />
       </div>
       {initialItemId && !initialItem && (
         <p
@@ -173,6 +164,7 @@ export function ProjectTodosView({
             key={`${editingItem.id}-${editingItem.updatedAt}`}
             projectId={projectId}
             item={editingItem}
+            statuses={statuses}
             assigneeOptions={assigneeOptions}
             canDelete={canDelete}
             open
@@ -199,7 +191,7 @@ export function ProjectTodosView({
               </p>
               <dl className="grid grid-cols-2 gap-2 text-sm">
                 <dt>Status</dt>
-                <dd>{projectTodoStatusLabel(editingItem.status)}</dd>
+                <dd>{recordStatusLabel(statuses, editingItem.status)}</dd>
                 <dt>Assigned to</dt>
                 <dd>{editingItem.assigneeName ?? editingItem.companyName ?? "Unassigned"}</dd>
                 <dt>Due date</dt>

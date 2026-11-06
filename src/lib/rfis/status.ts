@@ -1,15 +1,10 @@
-/*
- * Code-level RFI status rules (built-in statuses only). Lists, filter
- * buttons, labels and status selects read the company's RFI statuses from
- * src/lib/domain/record-statuses instead.
- */
-export type RfiStatus =
-  | "new"
-  | "in_progress"
-  | "info_needed"
-  | "complete"
-  | "void"
+import { isOpenRecordStatus, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 
+/*
+ * RFI priority and audience lists, and the RFI queue order. Statuses (labels,
+ * order, Open group, filter buttons, choices) are the company's RFI statuses
+ * from src/lib/domain/record-statuses.
+ */
 export type RfiPriority = "low" | "normal" | "high"
 
 export type RfiAudience = "internal" | "sub_vendor" | "owner" | "public"
@@ -34,41 +29,23 @@ function normalizedStatus(value: string): string {
   return value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_")
 }
 
-export function canonicalRfiStatus(value: string): RfiStatus {
-  switch (normalizedStatus(value)) {
-    case "open":
-    case "new":
-      return "new"
-    case "answered":
-    case "in_progress":
-      return "in_progress"
-    case "additional_information_needed":
-    case "info_needed":
-      return "info_needed"
-    case "closed":
-    case "complete":
-    case "completed":
-      return "complete"
-    case "cancelled":
-    case "canceled":
-    case "void":
-      return "void"
-    default:
-      return "new"
-  }
-}
-
-export function isClosedRfiStatus(value: string): boolean {
-  const status = canonicalRfiStatus(value)
-  return status === "complete" || status === "void"
-}
-
+/**
+ * The RFI queue order: open RFIs first (the company's Open group), soonest
+ * due first, then newest.
+ */
 export function compareRfisForQueue(
+  statuses: RecordStatusList
+): (left: RfiQueueItem, right: RfiQueueItem) => number {
+  return (left, right) => compareQueueItems(statuses, left, right)
+}
+
+function compareQueueItems(
+  statuses: RecordStatusList,
   left: RfiQueueItem,
   right: RfiQueueItem
 ): number {
-  const leftClosed = isClosedRfiStatus(left.status)
-  const rightClosed = isClosedRfiStatus(right.status)
+  const leftClosed = !isOpenRecordStatus(statuses, left.status)
+  const rightClosed = !isOpenRecordStatus(statuses, right.status)
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1
 
   if (!leftClosed) {

@@ -15,7 +15,7 @@ import type { AuthUser } from "@/lib/auth"
 import { linkedProjectContactNames, projectContactOnProject } from "@/lib/domain/contacts/directory-links"
 import { preferLinkedText } from "@/lib/domain/contacts/rules"
 import { rfiReadContext, rfiWriteContext } from "@/lib/domain/rfis/access"
-import { isSelectableRecordStatus } from "@/lib/domain/record-statuses/rules"
+import { isSelectableRecordStatus, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import {
   groupAttachmentsByRfi,
@@ -101,15 +101,18 @@ async function assertRfiVendorAssignmentAccess(db: Db, user: AuthUser, projectId
 export async function getProjectRfiSummary(
   projectId: string
 ): Promise<ProjectRfiSummary> {
-  const db = await verifyProjectAccess(projectId)
+  const { db, organizationId } = await rfiReadContext(projectId)
 
-  const rows = await db
-    .select()
-    .from(projectRfis)
-    .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
-    .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
+  const [rows, statuses] = await Promise.all([
+    db
+      .select()
+      .from(projectRfis)
+      .where(and(eq(projectRfis.projectId, projectId), await externalRfiVisibility(db, projectId)))
+      .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber)),
+    loadRecordStatusList(db, organizationId, "rfi"),
+  ])
 
-  return summarizeRfis((await withLinkedAssignees(db, projectId, rows)).map((row) => toRfiItem(row, [])))
+  return summarizeRfis((await withLinkedAssignees(db, projectId, rows)).map((row) => toRfiItem(row, [])), statuses)
 }
 
 export async function getProjectRfis(
@@ -394,6 +397,7 @@ export async function updateProjectRfi(
       answeredAt: rfiAnsweredAtAfterUpdate({
         hasResponse: response !== null,
         status,
+        statuses,
         existingAnsweredAt: existing.answeredAt,
         now,
       }),
@@ -412,7 +416,7 @@ export async function updateProjectRfi(
         rfiId,
         rfiNumber: existing.rfiNumber,
         subject: existing.subject,
-        status,
+        statusLabel: recordStatusLabel(statuses, status),
         requesterName: existing.requesterName,
         assignedToName: existing.assignedToName,
         mentionedUserIds: input.mentionedUserIds,

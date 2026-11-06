@@ -204,8 +204,8 @@ export type ProjectAudiencePreview = {
   readonly scheduleItems: readonly AudienceScheduleItem[]
   readonly operations: readonly AudienceOperationItem[]
   readonly rfis: readonly AudienceRfi[]
-  /** The project company's RFI statuses (Settings › Statuses): labels, colors and order. */
-  readonly rfiStatuses: RecordStatusList
+  /** The project company's statuses per record type (Settings › Statuses): labels, colors and order. */
+  readonly recordStatuses: readonly RecordStatusList[]
   readonly rfqs: readonly AudienceRfq[]
   readonly messageChannels: readonly AudienceMessageChannel[]
   readonly contacts: readonly AudienceContact[]

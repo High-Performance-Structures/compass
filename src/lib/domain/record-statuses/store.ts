@@ -6,7 +6,7 @@
  * enforces the status rules themselves (built-in statuses are never deleted,
  * a status in use is never deleted) so no caller can skip them.
  */
-import { and, count, eq, inArray, sql } from "drizzle-orm"
+import { and, count, eq, inArray } from "drizzle-orm"
 
 import { projectOperations, projectRfis, projects } from "@/db/schema"
 import { organizationRecordStatuses } from "@/db/schema-record-statuses"
@@ -18,6 +18,7 @@ import {
   defaultRecordStatusList,
   planRecordStatusDelete,
   planRecordStatusSave,
+  recordStatusKey,
   resolveRecordStatuses,
   type RecordStatusEdit,
   type RecordStatusList,
@@ -64,43 +65,76 @@ export async function loadRecordStatusList(db: Db, organizationId: string, type:
   }
 }
 
+/**
+ * A record type's statuses for the company that owns a project, for readers
+ * that start from a project id. Code defaults when the rows cannot be read.
+ */
+export async function loadRecordStatusListForProject(db: Db, projectId: string, type: RecordStatusType): Promise<RecordStatusList> {
+  try {
+    const rows = await db
+      .select(storedColumns)
+      .from(organizationRecordStatuses)
+      .where(
+        and(
+          inArray(organizationRecordStatuses.organizationId, db.select({ id: projects.organizationId }).from(projects).where(eq(projects.id, projectId))),
+          eq(organizationRecordStatuses.recordType, type),
+        ),
+      )
+    return resolveRecordStatuses(type, rows)
+  } catch (error) {
+    console.error("[record-statuses] using code defaults; company statuses could not be read", error)
+    return defaultRecordStatusList(type)
+  }
+}
+
 /** Every record type's statuses for the company, in one read (Settings › Statuses). */
 export async function loadAllRecordStatusLists(db: Db, organizationId: string): Promise<readonly RecordStatusList[]> {
   const rows = await db
     .select(storedColumns)
     .from(organizationRecordStatuses)
     .where(eq(organizationRecordStatuses.organizationId, organizationId))
+    .catch((error: unknown) => {
+      // Before migration 0292 every list keeps its code defaults.
+      console.error("[record-statuses] using code defaults; company statuses could not be read", error)
+      return []
+    })
   return RECORD_STATUS_TYPES.map((type) => resolveRecordStatuses(type, rows.filter((row) => row.recordType === type)))
 }
 
-/** How many of the company's records of this type carry the status (any letter case or spacing). */
+/**
+ * How many of the company's records of this type carry the status, in any
+ * spelling the status list reads as it. The distinct stored statuses are
+ * counted in SQL (a handful of values) and matched through the list here.
+ */
 export async function countRecordsWithStatus(
   db: Db,
   organizationId: string,
   type: RecordStatusType,
   key: string,
+  statuses?: RecordStatusList,
 ): Promise<number> {
   const storage = RECORD_STATUS_REGISTRY[type].records
-  if (storage.table === "project_rfis") {
-    const [row] = await db
-      .select({ value: count() })
-      .from(projectRfis)
-      .innerJoin(projects, eq(projects.id, projectRfis.projectId))
-      .where(and(eq(projects.organizationId, organizationId), sql`lower(trim(${projectRfis.status})) = ${key}`))
-    return row?.value ?? 0
-  }
-  const [row] = await db
-    .select({ value: count() })
-    .from(projectOperations)
-    .innerJoin(projects, eq(projects.id, projectOperations.projectId))
-    .where(
-      and(
-        eq(projects.organizationId, organizationId),
-        inArray(projectOperations.sourceRecordType, [...storage.sourceRecordTypes]),
-        sql`lower(trim(${projectOperations.status})) = ${key}`,
-      ),
-    )
-  return row?.value ?? 0
+  const counts =
+    storage.table === "project_rfis"
+      ? await db
+          .select({ status: projectRfis.status, value: count() })
+          .from(projectRfis)
+          .innerJoin(projects, eq(projects.id, projectRfis.projectId))
+          .where(eq(projects.organizationId, organizationId))
+          .groupBy(projectRfis.status)
+      : await db
+          .select({ status: projectOperations.status, value: count() })
+          .from(projectOperations)
+          .innerJoin(projects, eq(projects.id, projectOperations.projectId))
+          .where(
+            and(
+              eq(projects.organizationId, organizationId),
+              inArray(projectOperations.sourceRecordType, [...storage.sourceRecordTypes]),
+            ),
+          )
+          .groupBy(projectOperations.status)
+  const list = statuses ?? (await loadRecordStatusList(db, organizationId, type))
+  return counts.reduce((total, row) => total + (recordStatusKey(list, row.status) === key ? row.value : 0), 0)
 }
 
 export type RecordStatusWrite =
@@ -168,7 +202,7 @@ export async function deleteRecordStatus(
 ): Promise<RecordStatusWrite> {
   const stored = await storedRows(db, organizationId, type)
   const exists = stored.some((row) => row.statusKey === key)
-  const inUse = exists ? await countRecordsWithStatus(db, organizationId, type, key) : 0
+  const inUse = exists ? await countRecordsWithStatus(db, organizationId, type, key, resolveRecordStatuses(type, stored)) : 0
   const plan = planRecordStatusDelete(type, stored, key, inUse)
   if (!plan.ok) return plan
   await db

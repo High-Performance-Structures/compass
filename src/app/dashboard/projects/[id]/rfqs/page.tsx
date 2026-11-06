@@ -1,7 +1,6 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
-import Link from "next/link"
 import {
   IconClock,
   IconExternalLink,
@@ -58,7 +57,6 @@ import { ProjectOperationStatusSelect } from "@/components/projects/project-oper
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
@@ -66,12 +64,13 @@ import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import {
-  isClosedProjectOperationStatus,
-  parseProjectOperationStatusFilter,
-  projectOperationMatchesStatusFilter,
-  type ProjectOperationStatusFilter,
-} from "@/lib/project-operations/status"
+  isOpenRecordStatus,
+  parseRecordStatusFilter,
+  recordStatusFilterOptions,
+  recordStatusMatchesFilter,
+} from "@/lib/domain/record-statuses/rules"
 import {
   projectBrandFor,
   type ProjectBrand,
@@ -92,26 +91,6 @@ function label(value: string): string {
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
 }
-
-function isActiveRfqStatus(status: string): boolean {
-  return !isClosedProjectOperationStatus(status)
-}
-
-const RFQ_FILTERS: readonly {
-  readonly value: ProjectOperationStatusFilter
-  readonly label: string
-}[] = [
-  { value: "open", label: "Open" },
-  { value: "draft", label: "Draft" },
-  { value: "sent", label: "Sent" },
-  { value: "response_received", label: "Response received" },
-  { value: "awarded", label: "Awarded" },
-  { value: "declined", label: "Declined" },
-  { value: "complete", label: "Complete" },
-  { value: "closed", label: "Closed" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "All" },
-]
 
 function rfqTaskTitle(rfq: ProjectRfqItem): string {
   return `Follow up RFQ: ${rfq.sourceRecordNumber ?? rfq.title}`
@@ -497,7 +476,6 @@ export default async function ProjectRfqsPage({
   const createdRfqId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
-  const statusFilter = parseProjectOperationStatusFilter(query.status)
   const historyCursor = typeof query.historyAfter === "string"
     ? query.historyAfter : query.historyAfter?.[0] ?? null
   const currentUser = await getCurrentUser()
@@ -548,14 +526,16 @@ export default async function ProjectRfqsPage({
     emailContacts,
     rfqStatuses,
   ] = loaded.data
+  // Buttons, Open and the filter follow the company's RFQ statuses (Settings › Statuses).
+  const statusFilter = parseRecordStatusFilter(rfqStatuses, query.status)
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
   ]
-  const openRfqs = rfqs.filter((rfq) => isActiveRfqStatus(rfq.status))
+  const openRfqs = rfqs.filter((rfq) => isOpenRecordStatus(rfqStatuses, rfq.status))
   const visibleRfqs = rfqs.filter((rfq) =>
-    projectOperationMatchesStatusFilter(rfq.status, statusFilter)
+    recordStatusMatchesFilter(rfqStatuses, rfq.status, statusFilter)
   )
   const overdueCount = openRfqs.filter((rfq) => {
     if (!rfq.dueDate) return false
@@ -615,25 +595,13 @@ export default async function ProjectRfqsPage({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <nav
-            aria-label="Filter RFQs by status"
-            className="flex flex-wrap gap-1"
-          >
-            {RFQ_FILTERS.map((option) => (
-              <Button
-                key={option.value}
-                asChild
-                size="sm"
-                variant={statusFilter === option.value ? "secondary" : "ghost"}
-              >
-                <Link
-                  href={`/dashboard/projects/${id}/rfqs?status=${option.value}`}
-                >
-                  {option.label}
-                </Link>
-              </Button>
-            ))}
-          </nav>
+          <StatusFilterBar
+            kind="link"
+            label="Filter RFQs by status"
+            options={recordStatusFilterOptions(rfqStatuses, rfqs.map((rfq) => ({ status: rfq.status, count: 1 })))}
+            selected={statusFilter}
+            hrefFor={(value) => `/dashboard/projects/${id}/rfqs?status=${value}`}
+          />
           <p className="text-xs text-muted-foreground">
             {visibleRfqs.length} of {rfqs.length} shown
           </p>

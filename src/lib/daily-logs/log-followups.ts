@@ -70,6 +70,8 @@ export type DailyLogOpenTodo = {
   readonly costCode: string | null
   /** Date (YYYY-MM-DD) it was last changed; for a blocked to-do, roughly when it became blocked. */
   readonly changedOn: string
+  /** The company's name for the status (Settings › Statuses); absent in forms saved offline before it existed. */
+  readonly statusLabel?: string
 }
 
 /** A client contact on the project, for the log's client contact picker. */

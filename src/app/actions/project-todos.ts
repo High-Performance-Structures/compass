@@ -37,12 +37,10 @@ import type {
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import { createProjectTaskCommand, revalidateProjectTodoPaths } from "@/lib/domain/operations/todo-commands"
-import {
-  type ProjectTodoStatus,
-  isArchivedProjectTodoStatus,
-  isProjectTodoRecordType,
-  isProjectTodoStatus,
-} from "@/lib/project-todos"
+import { isProjectTodoRecordType } from "@/lib/project-todos"
+import { isArchivedTodoStatus } from "@/lib/project-todo-statuses"
+import { isSelectableRecordStatus, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { getCurrentUser } from "@/lib/auth"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
@@ -112,16 +110,19 @@ async function findEditableProjectTodo(
   projectId: string,
   todoId: string,
   expectedUpdatedAt: string,
-): Promise<Awaited<ReturnType<typeof operationsContext>> & { readonly operation: OperationRow }> {
+): Promise<Awaited<ReturnType<typeof operationsContext>> & { readonly operation: OperationRow; readonly statuses: RecordStatusList }> {
   const context = await operationsContext(projectId, "tasks", true)
-  const operation = await loadProjectOperation(context.db, projectId, todoId)
+  const [operation, statuses] = await Promise.all([
+    loadProjectOperation(context.db, projectId, todoId),
+    loadRecordStatusList(context.db, context.organizationId, "todo"),
+  ])
   if (!operation || !isProjectTodoRecordType(operation.sourceRecordType)) {
     throw new Error("To-do not found")
   }
   if (operation.updatedAt !== expectedUpdatedAt) {
     throw new Error("This to-do changed after you opened it. Refresh and review the latest version.")
   }
-  return { ...context, operation }
+  return { ...context, operation, statuses }
 }
 
 const CHANGED_WHILE_SAVING = "This to-do changed while you were saving. Refresh and review the latest version."
@@ -136,12 +137,13 @@ export async function updateProjectTodo(
   input: UpdateProjectTodoInput,
 ): Promise<ProjectTodoActionResult> {
   try {
-    const { db, user, organizationId, operation } = await findEditableProjectTodo(
+    const { db, user, organizationId, operation, statuses } = await findEditableProjectTodo(
       projectId,
       todoId,
       input.expectedUpdatedAt,
     )
-    if (!isProjectTodoStatus(input.status)) {
+    // One of the company's visible to-do statuses (Settings › Statuses), or the to-do's own.
+    if (!isSelectableRecordStatus(statuses, input.status, operation.status)) {
       return { success: false, error: "Choose a valid to-do status." }
     }
     const sourceRecordType = normalizeTaskRecordType(input.sourceRecordType)
@@ -208,17 +210,34 @@ export async function updateProjectTodo(
   }
 }
 
-export async function setProjectTodoStatus(
+/**
+ * A person marks the to-do done (done is a manual decision): the built-in
+ * "complete" status, even when the company hides it from status choices.
+ */
+export async function completeProjectTodo(
   projectId: string,
   todoId: string,
-  status: ProjectTodoStatus,
+  expectedUpdatedAt: string,
+): Promise<ProjectTodoActionResult> {
+  return changeTodoStatus(projectId, todoId, "complete", expectedUpdatedAt)
+}
+
+/**
+ * A built-in workflow step (done, restore) that saves its built-in key,
+ * whatever the company shows as status choices. Status choices go through
+ * updateProjectTodo, which accepts only the company's visible statuses.
+ */
+async function changeTodoStatus(
+  projectId: string,
+  todoId: string,
+  status: "complete" | "open",
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
   try {
-    if (!isProjectTodoStatus(status)) {
+    const { db, user, organizationId, operation, statuses } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    if (!statuses.statuses.some((item) => item.key === status && item.builtIn)) {
       return { success: false, error: "Choose a valid to-do status." }
     }
-    const { db, user, organizationId, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
     const updatedAt = new Date().toISOString()
     const [updated] = await updateOperationsReturning(db, sameVersion(projectId, todoId, expectedUpdatedAt), {
       status,
@@ -278,7 +297,7 @@ export async function restoreProjectTodo(
   todoId: string,
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
-  return setProjectTodoStatus(projectId, todoId, "open", expectedUpdatedAt)
+  return changeTodoStatus(projectId, todoId, "open", expectedUpdatedAt)
 }
 
 export async function deleteProjectTodo(
@@ -287,9 +306,9 @@ export async function deleteProjectTodo(
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
   try {
-    const { db, user, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    const { db, user, operation, statuses } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
     if (!(await canFeature(user, "tasks", "delete"))) return { success: false, error: "You do not have permission to delete to-dos." }
-    if (!isArchivedProjectTodoStatus(operation.status)) {
+    if (!isArchivedTodoStatus(statuses, operation.status)) {
       return { success: false, error: "Archive the to-do before deleting it permanently." }
     }
     const [deleted] = await deleteOperationsReturning(db, sameVersion(projectId, todoId, expectedUpdatedAt))

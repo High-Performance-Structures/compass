@@ -14,7 +14,8 @@ import { equipmentLogEntries, equipmentMachines } from "@/db/schema-equipment"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { projectTodoStatusLabel } from "@/lib/project-todos"
+import { recordStatusLabel } from "@/lib/domain/record-statuses/rules"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
   hoursText,
@@ -54,10 +55,12 @@ export async function loadProjectTimeline(
   db: Db,
   input: { readonly organizationId: string; readonly projectId: string; readonly to?: string; readonly days?: number },
 ): Promise<ProjectTimeline> {
-  const [settings, timeZone] = await Promise.all([
+  const [settings, timeZone, todoStatuses] = await Promise.all([
     readFeatureSettings(db, input.organizationId, "project-timeline"),
     companyTimeZone(db, input.organizationId),
+    loadRecordStatusList(db, input.organizationId, "todo"),
   ])
+  const projectTodoStatusLabel = (status: string): string => recordStatusLabel(todoStatuses, status)
   const to = input.to ?? dateKeyInTimeZone(new Date(), timeZone)
   const from = shiftDateKey(to, -((input.days ?? settings.days) - 1))
   // Timestamps are filtered to the company's days after a slightly wider query.

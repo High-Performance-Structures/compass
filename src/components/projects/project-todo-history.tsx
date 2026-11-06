@@ -7,15 +7,16 @@ import { IconCircleCheck } from "@tabler/icons-react"
 import type { ProjectTodoDetail } from "@/lib/domain/operations/types"
 import { Button } from "@/components/ui/button"
 import type { ProjectTodoHistoryItem } from "@/lib/daily-logs/log-followups-server"
-import { projectTodoStatusLabel } from "@/lib/project-todos"
+import { recordStatusLabel, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 
-function eventLabel(event: ProjectTodoHistoryItem): string {
+function eventLabel(event: ProjectTodoHistoryItem, statuses: RecordStatusList): string {
+  const label = (status: string): string => recordStatusLabel(statuses, status)
   switch (event.kind) {
     case "created":
       return event.dailyLogId ? "Created from a daily log" : "Created"
     case "worked":
       return event.fromStatus && event.toStatus && event.fromStatus !== event.toStatus
-        ? `Worked on · ${projectTodoStatusLabel(event.fromStatus)} → ${projectTodoStatusLabel(event.toStatus)}`
+        ? `Worked on · ${label(event.fromStatus)} → ${label(event.toStatus)}`
         : "Worked on"
     case "still_blocked":
       return "Still blocked"
@@ -23,7 +24,7 @@ function eventLabel(event: ProjectTodoHistoryItem): string {
       return "Cleared · back to In progress"
     case "status":
       if (event.toStatus === "complete") return "Marked finished"
-      return `Status · ${projectTodoStatusLabel(event.fromStatus ?? "open")} → ${projectTodoStatusLabel(event.toStatus ?? "open")}`
+      return `Status · ${label(event.fromStatus ?? "open")} → ${label(event.toStatus ?? "open")}`
     default:
       return event.kind
   }
@@ -52,8 +53,11 @@ export function ProjectTodoHistory({
   finished,
   onMarkFinished,
   busy,
+  statuses,
 }: {
   readonly projectId: string
+  /** The company's to-do statuses, for the history's status names. */
+  readonly statuses: RecordStatusList
   readonly detail: ProjectTodoDetail | null
   readonly finished: boolean
   readonly onMarkFinished: () => void
@@ -91,7 +95,7 @@ export function ProjectTodoHistory({
               {eventDate(event)}
               {event.actorName ? ` · ${event.actorName}` : ""}
             </p>
-            <p className="text-sm font-medium">{eventLabel(event)}</p>
+            <p className="text-sm font-medium">{eventLabel(event, statuses)}</p>
             {(event.note || event.dailyLogId) && (
               <p className="text-xs text-muted-foreground break-words">
                 {event.note}

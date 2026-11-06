@@ -13,14 +13,8 @@ import {
   users,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
-import {
-  channelMembers,
-  channels,
-} from "@/db/schema-conversations"
-import {
-  COMPASS_GMAIL_READONLY_SCOPE,
-  getCompassGmailAccessToken,
-} from "@/lib/email/compass-email"
+import { channelMembers, channels } from "@/db/schema-conversations"
+import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import {
   base64UrlDecodeBytes,
   candidateFromMessage,
@@ -38,7 +32,8 @@ import { announceTrackedRecordReply } from "@/lib/email/tracked-record-replies"
 import { isTrackedRecordKind, isVendorLevelKind } from "@/lib/email/tracked-record-email"
 import { postTradeDocReply } from "@/lib/trade-docs/email-replies"
 import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
-import { canonicalRfiStatus } from "@/lib/rfis/status"
+import { rfiStatusAfterInboundReply } from "@/lib/domain/rfis/rules"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { updateReplyThread, upsertInboundEmail } from "@/lib/domain/correspondence/email-store"
 import { inboundEmailStatuses } from "@/lib/domain/correspondence/queries"
 import { incrementUnreadForOthers, insertChannel, insertChannelMembers, insertMessageOnce, insertReadStates } from "@/lib/domain/conversations/store"
@@ -545,9 +540,10 @@ async function importCandidate(input: {
       )
       .limit(1)
       .then((rows) => rows[0] ?? null)
-    if (rfi && canonicalRfiStatus(rfi.status) === "new") {
+    const nextStatus = rfi ? rfiStatusAfterInboundReply(await loadRecordStatusList(input.db, input.organizationId, "rfi"), rfi.status) : null
+    if (nextStatus) {
       await updateRfi(input.db, replyThread.projectId, replyThread.sourceId, {
-        status: "in_progress",
+        status: nextStatus,
         updatedAt: now,
       })
     }

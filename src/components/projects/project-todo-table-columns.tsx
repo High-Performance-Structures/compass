@@ -6,7 +6,14 @@ import { recordSelectionColumn } from "@/components/record-table"
 import { Button } from "@/components/ui/button"
 import type { ProjectTodoItem } from "@/lib/domain/operations/types"
 import { formatDate } from "@/lib/format"
-import { projectTodoStatusLabel, projectTodoTypeLabel } from "@/lib/project-todos"
+import { RecordStatusBadge } from "@/components/record-status-badge"
+import {
+  recordStatusColor,
+  recordStatusLabel,
+  recordStatusSortValue,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
+import { projectTodoTypeLabel } from "@/lib/project-todos"
 import { scheduleItemHref } from "@/lib/work-calendar"
 
 export function projectTodoColumns({
@@ -14,7 +21,10 @@ export function projectTodoColumns({
   canManage,
   developerModeEnabled,
   onOpen,
+  statuses,
 }: {
+  /** The company's to-do statuses: labels, colors and status sort order. */
+  readonly statuses: RecordStatusList
   readonly projectId: string
   readonly canManage: boolean
   readonly developerModeEnabled: boolean
@@ -55,9 +65,13 @@ export function projectTodoColumns({
     },
     {
       id: "status",
-      accessorFn: (item) => projectTodoStatusLabel(item.status),
+      // Status sorts in the company's workflow order (Settings › Statuses).
+      accessorFn: (item) => recordStatusSortValue(statuses, item.status),
       header: "Status",
       size: 110,
+      cell: ({ row: { original: item } }) => (
+        <RecordStatusBadge label={recordStatusLabel(statuses, item.status)} color={recordStatusColor(statuses, item.status)} />
+      ),
     },
     {
       id: "assignedTo",

@@ -1,30 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  isClosedProjectOperationStatus,
-  parseProjectOperationStatusFilter,
-  projectOperationMatchesStatusFilter,
-  purchaseOrderStatusAfterEmail,
-  statusLabel,
-} from "@/lib/project-operations/status"
+import { purchaseOrderStatusAfterEmail, statusLabel } from "@/lib/project-operations/status"
 
 describe("project operation statuses", () => {
-  it("normalizes imported labels for display and filtering", () => {
+  it("normalizes imported labels for display", () => {
     expect(statusLabel("Partially Received")).toBe("Partially Received")
-    expect(
-      projectOperationMatchesStatusFilter(
-        "Partially Received",
-        "partially_received"
-      )
-    ).toBe(true)
-  })
-
-  it("keeps open and closed queues consistent", () => {
-    expect(isClosedProjectOperationStatus("complete")).toBe(true)
-    expect(isClosedProjectOperationStatus("Cancelled")).toBe(true)
-    expect(isClosedProjectOperationStatus("ordered")).toBe(false)
-    expect(projectOperationMatchesStatusFilter("ordered", "open")).toBe(true)
-    expect(projectOperationMatchesStatusFilter("void", "closed")).toBe(true)
+    expect(statusLabel("response_received")).toBe("Response Received")
   })
 
   it("marks newly issued POs sent without downgrading later lifecycle states", () => {
@@ -32,12 +13,5 @@ describe("project operation statuses", () => {
     expect(purchaseOrderStatusAfterEmail("approved")).toBe("sent")
     expect(purchaseOrderStatusAfterEmail("ordered")).toBe("ordered")
     expect(purchaseOrderStatusAfterEmail("received")).toBe("received")
-  })
-
-  it("defaults filters to open and accepts query arrays", () => {
-    expect(parseProjectOperationStatusFilter(undefined)).toBe("open")
-    expect(parseProjectOperationStatusFilter(["Response Received"])).toBe(
-      "response_received"
-    )
   })
 })

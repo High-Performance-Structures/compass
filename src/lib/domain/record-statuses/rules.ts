@@ -13,6 +13,7 @@ import { RECORD_STATUS_REGISTRY } from "./registry"
 import {
   RECORD_STATUS_COLORS,
   RECORD_STATUS_GROUPS,
+  RECORD_STATUS_TYPES,
   type RecordStatusColor,
   type RecordStatusGroup,
   type RecordStatusType,
@@ -141,8 +142,11 @@ export function resolveRecordStatuses(type: RecordStatusType, rows: readonly Sto
 // Reading a stored status through the list
 // ---------------------------------------------------------------------------
 
-/** The status a stored value means: its key, a known spelling of it, or the type's fallback; null when unknown. */
-function recordStatusFor(list: RecordStatusList, stored: string): ResolvedRecordStatus | null {
+/**
+ * The status a stored value means: its key or a known spelling of it, then
+ * (unless `strict`) the type's fallback for unknown values; null when unknown.
+ */
+function recordStatusFor(list: RecordStatusList, stored: string, strict = false): ResolvedRecordStatus | null {
   const byKey = (key: string | undefined): ResolvedRecordStatus | undefined =>
     key === undefined ? undefined : list.statuses.find((status) => status.key === key)
   const definition = RECORD_STATUS_REGISTRY[list.type]
@@ -151,7 +155,7 @@ function recordStatusFor(list: RecordStatusList, stored: string): ResolvedRecord
     byKey(stored) ??
     byKey(normalized) ??
     byKey(definition.aliases[normalized]) ??
-    byKey(definition.unknownKey) ??
+    (strict ? undefined : byKey(definition.unknownKey)) ??
     null
   )
 }
@@ -161,8 +165,17 @@ export function recordStatusKey(list: RecordStatusList, stored: string): string 
   return recordStatusFor(list, stored)?.key ?? null
 }
 
+/**
+ * The status key a stored value really is (its key or a known spelling),
+ * without the type's unknown-value fallback. Automations that move a record
+ * from one built-in status use this, so a status they don't know is left alone.
+ */
+export function recordStatusExactKey(list: RecordStatusList, stored: string): string | null {
+  return recordStatusFor(list, stored, true)?.key ?? null
+}
+
 /** What a stored status counts as; an unknown status counts as open. */
-function recordStatusGroup(list: RecordStatusList, stored: string): RecordStatusGroup {
+export function recordStatusGroup(list: RecordStatusList, stored: string): RecordStatusGroup {
   return recordStatusFor(list, stored)?.group ?? "open"
 }
 
@@ -186,12 +199,33 @@ export function recordStatusSortValue(list: RecordStatusList, stored: string): n
   return index < 0 ? list.statuses.length : index
 }
 
+/** One record type's list from a set loaded together, or its code defaults. */
+export function recordStatusListFor(lists: readonly RecordStatusList[], type: RecordStatusType): RecordStatusList {
+  return lists.find((list) => list.type === type) ?? defaultRecordStatusList(type)
+}
+
+/** The record type a project operation row's `source_record_type` belongs to, from the registry; null for others. */
+function recordStatusTypeForSource(sourceRecordType: string): RecordStatusType | null {
+  return (
+    RECORD_STATUS_TYPES.find((type) => {
+      const storage = RECORD_STATUS_REGISTRY[type].records
+      return storage.table === "project_operations" && storage.sourceRecordTypes.includes(sourceRecordType)
+    }) ?? null
+  )
+}
+
+/** A project operation's status as its company names it; record kinds without company statuses show their own text. */
+export function operationStatusLabel(lists: readonly RecordStatusList[], sourceRecordType: string, stored: string): string {
+  const type = recordStatusTypeForSource(sourceRecordType)
+  return type ? recordStatusLabel(recordStatusListFor(lists, type), stored) : titleCase(stored) || stored
+}
+
 // ---------------------------------------------------------------------------
 // Filter buttons
 // ---------------------------------------------------------------------------
 
 /** A status's `?status=` value. A status keyed "open" or "all" gets a suffix so it never means the Open or All button. */
-function recordStatusFilterValue(key: string): RecordStatusFilter {
+export function recordStatusFilterValue(key: string): RecordStatusFilter {
   return RESERVED_FILTERS.includes(key) ? `${key}_status` : key
 }
 

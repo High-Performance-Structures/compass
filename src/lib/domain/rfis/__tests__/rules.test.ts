@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest"
 
+import { defaultRecordStatusList, resolveRecordStatuses } from "@/lib/domain/record-statuses/rules"
+
 import type { ProjectRfiItem } from "../types"
+
+const RFI_STATUSES = defaultRecordStatusList("rfi")
+// A company that added "With engineer" (Open) and "Answered by owner" (Closed), and counts Info needed as Closed.
+const COMPANY = resolveRecordStatuses("rfi", [
+  { statusKey: "with_engineer", label: "With engineer", color: "blue", statusGroup: "open", sortOrder: 5, showAsButton: true, hidden: false, builtIn: false },
+  { statusKey: "answered_by_owner", label: "Answered by owner", color: "green", statusGroup: "closed", sortOrder: 6, showAsButton: true, hidden: false, builtIn: false },
+  { statusKey: "info_needed", label: "Info needed", color: "orange", statusGroup: "closed", sortOrder: 2, showAsButton: true, hidden: false, builtIn: true },
+])
 import {
   groupAttachmentsByRfi,
-  isClosedRfiStatus,
   isMissingAttachmentTableError,
   requireText,
   rfiAnsweredAtAfterUpdate,
   rfiAttachmentRows,
   rfiNumberFor,
+  rfiStatusAfterInboundReply,
   rfiStatusAfterUpdate,
   summarizeRfis,
 } from "../rules"
@@ -55,10 +65,12 @@ describe("requireText", () => {
 })
 
 describe("RFI status rules", () => {
-  it("treats closed statuses case-insensitively", () => {
-    expect(isClosedRfiStatus("Complete")).toBe(true)
-    expect(isClosedRfiStatus("cancelled")).toBe(true)
-    expect(isClosedRfiStatus("in_progress")).toBe(false)
+  it("moves only a New RFI to in progress on an emailed reply, leaving company and unknown statuses alone", () => {
+    expect(rfiStatusAfterInboundReply(RFI_STATUSES, "new")).toBe("in_progress")
+    expect(rfiStatusAfterInboundReply(RFI_STATUSES, "Open")).toBe("in_progress")
+    expect(rfiStatusAfterInboundReply(COMPANY, "with_engineer")).toBeNull()
+    expect(rfiStatusAfterInboundReply(RFI_STATUSES, "something_else")).toBeNull()
+    expect(rfiStatusAfterInboundReply(RFI_STATUSES, "complete")).toBeNull()
   })
   it("moves a new RFI to in progress when it gets a response", () => {
     expect(rfiStatusAfterUpdate(true, "new")).toBe("in_progress")
@@ -67,10 +79,14 @@ describe("RFI status rules", () => {
   })
   it("stamps answeredAt once", () => {
     const now = "2026-10-31T12:00:00.000Z"
-    expect(rfiAnsweredAtAfterUpdate({ hasResponse: true, status: "in_progress", existingAnsweredAt: null, now })).toBe(now)
-    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "complete", existingAnsweredAt: null, now })).toBe(now)
-    expect(rfiAnsweredAtAfterUpdate({ hasResponse: true, status: "complete", existingAnsweredAt: "earlier", now })).toBe("earlier")
-    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "new", existingAnsweredAt: null, now })).toBeNull()
+    const statuses = RFI_STATUSES
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: true, status: "in_progress", statuses, existingAnsweredAt: null, now })).toBe(now)
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "complete", statuses, existingAnsweredAt: null, now })).toBe(now)
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: true, status: "complete", statuses, existingAnsweredAt: "earlier", now })).toBe("earlier")
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "new", statuses, existingAnsweredAt: null, now })).toBeNull()
+    // Any status the company counts as Closed stamps it; Void does not.
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "answered_by_owner", statuses: COMPANY, existingAnsweredAt: null, now })).toBe(now)
+    expect(rfiAnsweredAtAfterUpdate({ hasResponse: false, status: "void", statuses, existingAnsweredAt: null, now })).toBeNull()
   })
 })
 
@@ -81,13 +97,21 @@ describe("summarizeRfis", () => {
       item({ id: "b", status: "complete", priority: "high", audience: "owner" }),
       item({ id: "c", status: "in_progress", audience: "public" }),
     ]
-    const summary = summarizeRfis(items)
+    const summary = summarizeRfis(items, RFI_STATUSES)
     expect(summary).toMatchObject({ totalCount: 3, openCount: 2, highPriorityCount: 1, subVendorVisibleCount: 2, ownerVisibleCount: 2 })
     expect(summary.nextDue?.id).toBe("a")
   })
+  it("counts open by the company's groups", () => {
+    const items = [
+      item({ id: "a", status: "info_needed" }),
+      item({ id: "b", status: "with_engineer" }),
+      item({ id: "c", status: "answered_by_owner" }),
+    ]
+    expect(summarizeRfis(items, COMPANY).openCount).toBe(1)
+  })
   it("lists at most eight", () => {
     const items = Array.from({ length: 10 }, (_, index) => item({ id: String(index) }))
-    expect(summarizeRfis(items).items).toHaveLength(8)
+    expect(summarizeRfis(items, RFI_STATUSES).items).toHaveLength(8)
   })
 })
 

@@ -7,6 +7,7 @@ import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contact-ass
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getProjectTodos } from "@/app/actions/project-todos"
 import { getProjects } from "@/app/actions/projects"
+import { getCompanyRecordStatuses } from "@/app/actions/record-statuses"
 import { ProjectTodosView } from "@/components/projects/project-todos-view"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
@@ -25,10 +26,11 @@ export default async function ProjectTodosPage({
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
-  const [projects, items, user] = await Promise.all([
+  const [projects, items, user, statuses] = await Promise.all([
     getProjects(),
     getProjectTodos(id),
     requireAuth(),
+    getCompanyRecordStatuses("todo"),
   ])
   const project = projects.find((candidate) => candidate.id === id)
   if (!project) notFound()
@@ -57,6 +59,7 @@ export default async function ProjectTodosPage({
       projectId={id}
       projectLabel={projectLabel}
       items={items}
+      statuses={statuses}
       initialItemId={initialItemId}
       assigneeOptions={assigneeOptions}
       canManage={canManage}

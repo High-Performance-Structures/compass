@@ -4,7 +4,9 @@ import { projectOperations } from "@/db/schema"
 import { errorMessage, type ActionResult } from "@/lib/action-result"
 import { chunkD1Values } from "@/lib/d1-query"
 import { canFeature } from "@/lib/permission-enforcement"
-import { isArchivedProjectTodoStatus, PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
+import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
+import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
+import { isArchivedTodoStatus } from "@/lib/project-todo-statuses"
 import { operationsContext } from "./access"
 import { changeTodosReturning } from "./store"
 import { revalidateProjectTodoPaths } from "./todo-commands"
@@ -49,6 +51,8 @@ export async function changeProjectTodosCommand(
       ),
     )
     const rows = groups.flat()
+    // Archived means the company's Void group (Settings › Statuses).
+    const statuses = await loadRecordStatusList(db, organizationId, "todo")
     const versions = new Map(selection.map((item) => [item.id, item.updatedAt]))
     if (
       rows.length !== selection.length ||
@@ -62,8 +66,8 @@ export async function changeProjectTodosCommand(
     if (
       rows.some((row) =>
         mode === "archive"
-          ? isArchivedProjectTodoStatus(row.status)
-          : !isArchivedProjectTodoStatus(row.status),
+          ? isArchivedTodoStatus(statuses, row.status)
+          : !isArchivedTodoStatus(statuses, row.status),
       )
     )
       return {

@@ -116,8 +116,16 @@ describe("record status store", () => {
       INSERT INTO project_operations (id,project_id,source_system,source_record_type,title,status,created_at,updated_at)
       VALUES ('todo-1','job-a','compass','staff_task','A to-do','waiting','${STAMP}','${STAMP}');
     `)
+    const custom = (type: "rfi" | "todo", label: string): RecordStatusEdit[] => [
+      ...defaultRecordStatusList(type).statuses.map((status) => ({ key: status.key, label: status.label, color: status.color, group: status.group, showAsButton: true, hidden: false })),
+      { key: null, label, color: "blue", group: "open", showAsButton: true, hidden: false },
+    ]
+    await saveRecordStatusList(db, "org-a", "rfi", custom("rfi", "With engineer"), STAMP)
+    await saveRecordStatusList(db, "org-a", "todo", custom("todo", "Waiting"), STAMP)
     expect(await countRecordsWithStatus(db, "org-a", "rfi", "with_engineer")).toBe(1)
     expect(await countRecordsWithStatus(db, "org-a", "todo", "waiting")).toBe(1)
+    // Stored spellings count toward their status: "Open" is the RFI status New.
+    expect(await countRecordsWithStatus(db, "org-a", "rfi", "new")).toBe(0)
     expect(await countRecordsWithStatus(db, "org-a", "purchase_order", "waiting")).toBe(0)
   })
 })

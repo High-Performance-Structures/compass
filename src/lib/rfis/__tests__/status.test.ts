@@ -1,26 +1,14 @@
 import { describe, expect, it } from "vitest"
 
+import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
+
 import {
-  canonicalRfiStatus,
   compareRfisForQueue,
-  isClosedRfiStatus,
   validRfiAudience,
   validRfiPriority,
 } from "@/lib/rfis/status"
 
 describe("RFI status handling", () => {
-  it("normalizes legacy production statuses", () => {
-    expect(canonicalRfiStatus("open")).toBe("new")
-    expect(canonicalRfiStatus("answered")).toBe("in_progress")
-    expect(canonicalRfiStatus("closed")).toBe("complete")
-    expect(canonicalRfiStatus("cancelled")).toBe("void")
-  })
-
-  it("reads legacy closed statuses as closed", () => {
-    expect(isClosedRfiStatus("closed")).toBe(true)
-    expect(isClosedRfiStatus("answered")).toBe(false)
-  })
-
   it("sorts active RFIs before completed RFIs", () => {
     const items = [
       {
@@ -43,7 +31,7 @@ describe("RFI status handling", () => {
       },
     ]
 
-    expect(items.sort(compareRfisForQueue).map((item) => item.rfiNumber)).toEqual(
+    expect(items.sort(compareRfisForQueue(defaultRecordStatusList("rfi"))).map((item) => item.rfiNumber)).toEqual(
       ["RFI-002", "RFI-003", "RFI-001"]
     )
   })

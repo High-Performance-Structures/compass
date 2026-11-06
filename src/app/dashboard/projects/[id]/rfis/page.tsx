@@ -326,7 +326,7 @@ export default async function ProjectRfisPage({
   const selectedRfis = rfis.filter((rfi) => rfi.id === selectedRfiId)
   const visibleRfis = [...rfis]
     .filter((rfi) => recordStatusMatchesFilter(statuses, rfi.status, statusFilter))
-    .sort(compareRfisForQueue)
+    .sort(compareRfisForQueue(statuses))
   const listRows = visibleRfis.map(rfiListRow)
   const contacts = contactsSummary.allContacts
   const inboundEmailsByRfi = new Map(

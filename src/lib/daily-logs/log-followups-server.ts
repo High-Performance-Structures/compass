@@ -35,6 +35,8 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
+import { recordStatusLabel } from "@/lib/domain/record-statuses/rules"
+import { loadRecordStatusListForProject } from "@/lib/domain/record-statuses/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { instantForLocalDateTime } from "@/lib/work-calendar"
 
@@ -92,6 +94,7 @@ function openStatus(value: string): DailyLogOpenTodo["status"] | null {
 
 /** The project's open to-dos (not schedule items), oldest due first. */
 export async function loadOpenDailyLogTodos(db: Db, projectId: string): Promise<readonly DailyLogOpenTodo[]> {
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
   const rows = await db
     .select({
       id: projectOperations.id,
@@ -124,6 +127,7 @@ export async function loadOpenDailyLogTodos(db: Db, projectId: string): Promise<
       companyName: row.companyName,
       costCode: row.costCode?.trim() || null,
       changedOn: row.updatedAt.slice(0, 10),
+      statusLabel: recordStatusLabel(statuses, status),
     }]
   })
 }

@@ -4,6 +4,12 @@
  * section 1).
  */
 import type { projectRfiAttachments, projectRfis } from "@/db/schema"
+import {
+  isOpenRecordStatus,
+  recordStatusExactKey,
+  recordStatusGroup,
+  type RecordStatusList,
+} from "@/lib/domain/record-statuses/rules"
 import { cleanText } from "@/lib/shared/guards"
 import type { RfiVendorAssignment } from "@/lib/rfis/vendor-assignment"
 
@@ -35,10 +41,6 @@ export function rfiNumberFor(projectNumber: string | null, existingCount: number
   return `RFI-${sequence}-${collisionSuffix}`
 }
 
-export function isClosedRfiStatus(status: string): boolean {
-  return ["complete", "closed", "void", "cancelled"].includes(status.toLowerCase())
-}
-
 function isSubVendorVisible(item: ProjectRfiItem): boolean {
   return item.audience === "sub_vendor" || item.audience === "public"
 }
@@ -47,9 +49,12 @@ function isOwnerVisible(item: ProjectRfiItem): boolean {
   return item.audience === "owner" || item.audience === "public"
 }
 
-/** Counts for the project overview; `items` arrive sorted by due date. */
-export function summarizeRfis(items: readonly ProjectRfiItem[]): ProjectRfiSummary {
-  const openItems = items.filter((item) => !isClosedRfiStatus(item.status))
+/**
+ * Counts for the project overview; `items` arrive sorted by due date. Open
+ * is the company's Open group (Settings › Statuses).
+ */
+export function summarizeRfis(items: readonly ProjectRfiItem[], statuses: RecordStatusList): ProjectRfiSummary {
+  const openItems = items.filter((item) => isOpenRecordStatus(statuses, item.status))
   return {
     totalCount: items.length,
     openCount: openItems.length,
@@ -66,14 +71,26 @@ export function rfiStatusAfterUpdate(hasResponse: boolean, requestedStatus: stri
   return hasResponse && requestedStatus === "new" ? "in_progress" : requestedStatus
 }
 
-/** The first response or completion stamps answeredAt; later edits keep it. */
+/**
+ * An emailed reply moves a New RFI to In progress. Any other status, including
+ * a company's own or an unknown one, is left alone (null).
+ */
+export function rfiStatusAfterInboundReply(statuses: RecordStatusList, status: string): string | null {
+  return recordStatusExactKey(statuses, status) === "new" ? "in_progress" : null
+}
+
+/**
+ * The first response, or a status that counts as Closed for the company,
+ * stamps answeredAt; later edits keep it.
+ */
 export function rfiAnsweredAtAfterUpdate(input: {
   readonly hasResponse: boolean
   readonly status: string
+  readonly statuses: RecordStatusList
   readonly existingAnsweredAt: string | null
   readonly now: string
 }): string | null {
-  return input.hasResponse || input.status === "complete"
+  return input.hasResponse || recordStatusGroup(input.statuses, input.status) === "closed"
     ? input.existingAnsweredAt ?? input.now
     : input.existingAnsweredAt
 }
