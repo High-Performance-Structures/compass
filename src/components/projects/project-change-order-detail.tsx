@@ -8,6 +8,7 @@ import type {
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
+import { ProjectChangeOrderCompletion } from "@/components/projects/project-change-order-completion"
 import { ProjectChangeOrderExecutedDocument } from "@/components/projects/project-change-order-executed-document"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import { ProjectChangeOrderVersionLines } from "@/components/projects/project-change-order-version-lines"
@@ -104,6 +105,17 @@ export function ProjectChangeOrderDetail({
         lines={item.lines}
         affectsBudget={item.budgetTreatment !== "baseline_replacement"}
       />
+
+      {item.canCompleteCostCodes && (
+        <ProjectChangeOrderCompletion
+          projectId={item.projectId}
+          changeOrderId={item.id}
+          amountCents={item.amountCents}
+          executedOn={item.executedAt?.slice(0, 10) ?? null}
+          lines={item.lines}
+          costCodes={formOptions.costCodes}
+        />
+      )}
 
       <ProjectChangeOrderEditForm
         item={item}
@@ -261,6 +273,8 @@ export function ProjectChangeOrderDetail({
                       ? "Executed document added"
                     : event.eventType === "executed_document_replaced"
                       ? "Executed document replaced"
+                    : event.eventType === "cost_codes_completed"
+                      ? "Cost codes completed"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}
