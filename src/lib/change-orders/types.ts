@@ -96,6 +96,9 @@ export type ProjectChangeOrderItem = {
   readonly executedDocumentAvailable: boolean
   readonly executedDocumentLabel: string | null
   readonly canManageExecutedDocument: boolean
+  readonly executedAt: string | null
+  /** An imported executed change order still missing cost codes or its execution date. */
+  readonly canCompleteCostCodes: boolean
   readonly submittedAt: string | null
   readonly createdAt: string
   readonly updatedAt: string
@@ -133,3 +136,18 @@ export type ProjectChangeOrderItem = {
     readonly createdAt: string
   }[]
 }
+
+export type ChangeOrderCompletionInput = {
+  readonly lines: readonly {
+    readonly costCode: string
+    readonly description: string
+    readonly amountCents: number
+  }[]
+  /** YYYY-MM-DD; ignored when the change order already has an execution date. */
+  readonly executedOn: string
+  readonly reason: string
+}
+
+export type ChangeOrderCompletionActionResult =
+  | { readonly success: true; readonly id: string; readonly budgetNote: string | null }
+  | { readonly success: false; readonly error: string }

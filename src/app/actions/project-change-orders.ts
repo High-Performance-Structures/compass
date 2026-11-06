@@ -1,7 +1,6 @@
 "use server"
 
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
-
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
 import { and, asc, desc, eq, inArray } from "drizzle-orm"
@@ -69,6 +68,7 @@ import {
   updateChangeOrdersStatement,
 } from "@/lib/domain/estimates/store"
 import { cleanText } from "@/lib/shared/guards"
+import { changeOrderCompletionView } from "@/lib/domain/estimates/rules"
 import { changeOrderNumber } from "@/lib/change-orders/numbering"
 import type {
   ChangeOrderAudience,
@@ -353,7 +353,6 @@ function revalidateChangeOrderPaths(projectId: string): void {
   revalidatePath(`/preview/projects/${projectId}/sub-vendor/change-orders`)
 }
 
-
 function actorName(user: AuthUser): string {
   return user.displayName ?? user.email
 }
@@ -542,6 +541,7 @@ function viewModel(
       context.internal &&
       context.canApprove &&
       isExecutedChangeOrderStatus(status),
+    ...changeOrderCompletionView({ ...row, kind: row.changeOrderKind, lines }, context.internal && context.canApprove),
     submittedAt: row.submittedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

@@ -479,3 +479,113 @@ export function repricedBreakdownItem(item: RepriceSource, repriced: RepricedRow
     lineTotalCents: repriced.lineTotalCents,
   }
 }
+
+// ---- completing an imported executed change order
+
+export type ChangeOrderCompletionState = {
+  readonly status: string
+  readonly budgetTreatment: string
+  readonly kind: string | null
+  readonly executedAt: string | null
+  readonly lines: readonly { readonly costCode: string | null; readonly amountCents: number | null }[]
+}
+
+/**
+ * An executed additive change order that can't revise the G703 yet: it has no
+ * lines, a line without a cost code or amount, or no execution date. Imported
+ * history (Buildertrend) arrives this way; Compass-made ones never do.
+ */
+export function changeOrderNeedsCompletion(changeOrder: ChangeOrderCompletionState): boolean {
+  if (!["executed", "sage_pending", "synced"].includes(changeOrder.status)) return false
+  if (changeOrder.budgetTreatment !== "additive" || changeOrder.kind === "description") return false
+  return (
+    !changeOrder.executedAt ||
+    changeOrder.lines.length === 0 ||
+    changeOrder.lines.some((line) => !line.costCode || line.amountCents === null)
+  )
+}
+
+/** The change-order view fields for completing one; `canComplete` is the viewer's approval right. */
+export function changeOrderCompletionView(
+  changeOrder: ChangeOrderCompletionState,
+  canComplete: boolean
+): { readonly executedAt: string | null; readonly canCompleteCostCodes: boolean } {
+  return {
+    executedAt: changeOrder.executedAt,
+    canCompleteCostCodes: canComplete && changeOrderNeedsCompletion(changeOrder),
+  }
+}
+
+export type ChangeOrderCompletionLineInput = {
+  readonly costCode: string
+  readonly description: string
+  readonly amountCents: number
+}
+
+export type ChangeOrderCompletionPlan =
+  | {
+      readonly success: true
+      readonly executedOn: string
+      readonly reason: string
+      readonly lines: readonly ChangeOrderCompletionLineInput[]
+    }
+  | { readonly success: false; readonly error: string }
+
+const MAX_COMPLETION_LINES = 100
+
+/**
+ * Checks staff's cost-code split of an executed change order. The lines must
+ * add up to the change order's recorded amount to the cent, because that
+ * amount is what the owner signed; only how it lands on the G703 is new.
+ */
+export function planChangeOrderCompletion(input: {
+  readonly amountCents: number | null
+  readonly allowedCostCodes: ReadonlySet<string>
+  readonly lines: readonly ChangeOrderCompletionLineInput[]
+  readonly executedOn: string
+  readonly reason: string
+  readonly today: string
+}): ChangeOrderCompletionPlan {
+  if (input.amountCents === null) {
+    return { success: false, error: "Record the change order's amount before splitting it by cost code." }
+  }
+  if (input.lines.length === 0) return { success: false, error: "Add at least one cost-coded line." }
+  if (input.lines.length > MAX_COMPLETION_LINES) {
+    return { success: false, error: `Use ${MAX_COMPLETION_LINES} lines or fewer.` }
+  }
+  const lines: ChangeOrderCompletionLineInput[] = []
+  for (const [index, line] of input.lines.entries()) {
+    const label = `Line ${index + 1}`
+    const costCode = cleanText(line.costCode)
+    if (!costCode || !input.allowedCostCodes.has(costCode)) {
+      return { success: false, error: `${label}: choose a cost code from this job's list.` }
+    }
+    const description = cleanText(line.description) ?? ""
+    if (!description) return { success: false, error: `${label}: add a description.` }
+    if (description.length > 500) return { success: false, error: `${label}: keep the description to 500 characters.` }
+    if (!Number.isSafeInteger(line.amountCents)) return { success: false, error: `${label}: enter a dollar amount.` }
+    lines.push({ costCode, description, amountCents: line.amountCents })
+  }
+  const totalCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
+  if (totalCents !== input.amountCents) {
+    return {
+      success: false,
+      error: `The lines total ${centsLabel(totalCents)}; they must equal the change order's ${centsLabel(input.amountCents)}.`,
+    }
+  }
+  const executedOn = input.executedOn.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(executedOn) || Number.isNaN(Date.parse(`${executedOn}T00:00:00Z`))) {
+    return { success: false, error: "Enter the date the change order was executed." }
+  }
+  if (executedOn > input.today) return { success: false, error: "The execution date can't be in the future." }
+  const reason = cleanText(input.reason) ?? ""
+  if (!reason) return { success: false, error: "Say where the cost-code split comes from." }
+  if (reason.length > 1_000) return { success: false, error: "Keep the reason to 1,000 characters." }
+  return { success: true, executedOn, reason, lines }
+}
+
+function centsLabel(cents: number): string {
+  const sign = cents < 0 ? "-" : ""
+  const absolute = Math.abs(cents)
+  return `${sign}$${Math.floor(absolute / 100).toLocaleString("en-US")}.${String(absolute % 100).padStart(2, "0")}`
+}
