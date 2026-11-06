@@ -3109,7 +3109,7 @@ export const projectChangeOrders = sqliteTable(
     executedAt: text("executed_at"),
     executedDocumentUrl: text("executed_document_url"),
     executedDocumentLabel: text("executed_document_label"),
-    // Manual acceptance (0296); see src/lib/change-orders/manual-acceptance.ts.
+    // Manual acceptance (0297); see src/lib/change-orders/manual-acceptance.ts.
     acceptanceMethod: text("acceptance_method", { enum: CHANGE_ORDER_ACCEPTANCE_METHODS }),
     acceptedByContactId: text("accepted_by_contact_id").references(
       () => projectContacts.id,
