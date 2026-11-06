@@ -7,7 +7,7 @@
   "summary": "Move Nu-Tech jobs from sales intake through catalog quantities, approval, payment, Airlite ordering, and fulfillment.",
   "contextSummary": "The order stepper links to missing requirements. Verify quantities, acknowledgement, payment, delivery or pickup details, PO release, and manufacturer confirmation separately.",
   "category": "Project Operations",
-  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "truckload", "sales", "delivery", "pickup", "confirmed date", "carrier", "dock time", "takeoff", "EPS", "order emails"],
+  "tags": ["Nu-Tech", "order board", "needs attention", "Fox Blocks", "Airlite", "catalog", "bundles", "truckload", "sales", "delivery", "pickup", "confirmed date", "carrier", "dock time", "invoices", "credit memo", "freight invoice", "takeoff", "EPS", "order emails"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/nutech", "/dashboard/nutech/catalog", "/dashboard/nutech/truckload", "/dashboard/projects/[id]/nutech"],
@@ -64,7 +64,9 @@ Build and send the estimate, select the correct sales tax district, record requi
 
 ## Place and Confirm the Airlite Order {#airlite}
 
-Create and link the Airlite purchase order, generate the Airlite order workbook, send the reviewed order, and record its release. Save the manufacturer's EPS confirmation number when it arrives. Record the vendor invoice number and its payment-release step separately. Mark the order complete only after the pickup or delivery actually occurs.
+Create and link the Airlite purchase order, generate the Airlite order workbook, send the reviewed order, and record its release. Save the manufacturer's EPS confirmation number when it arrives. Mark the order complete only after the pickup or delivery actually occurs.
+
+Add each bill under **Invoices on this order**: choose who it's from (the manufacturer, or a vendor such as the freight carrier), **Invoice**, **Freight invoice** or **Credit memo**, the number, and optionally the amount and received date. One PO can carry several manufacturer invoices and credit memos. The first invoice marks the order's vendor invoice received; removing the last one before release puts it back to waiting. The total subtracts credit memos. Whether invoices are paid comes from Sage. **Release vendor invoice** records the payment-release step once at least one invoice is on the order.
 
 Authorized users can delete an unreleased workflow record with confirmation; the linked estimate and purchase order remain. Use the item's delete action to remove an incorrect catalog line, then recheck quantities and totals. Released orders require their applicable correction workflow.
 

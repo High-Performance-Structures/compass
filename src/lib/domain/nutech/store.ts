@@ -14,14 +14,18 @@ import {
   nuTechBracingRentals,
   nuTechCatalogPrices,
   nuTechCatalogVersions,
+  nuTechOrderInvoices,
   nuTechOrderItems,
   nuTechOrderWorkflows,
   nuTechProducts,
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
+import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import { NUTECH_ORDER_INVOICE_KINDS } from "@/lib/domain/nutech/statuses"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import { NUTECH_FREIGHT_CATEGORY, NUTECH_FREIGHT_SKU } from "@/lib/nutech/freight"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
 
 type Statement = BatchItem<"sqlite">
 
@@ -361,6 +365,80 @@ export async function releaseNuTechOrderVendorInvoice(
       updatedAt: input.now,
     })
     .where(eq(nuTechOrderWorkflows.id, input.orderId))
+}
+
+// ---------------------------------------------------------------------------
+// Order invoices
+// ---------------------------------------------------------------------------
+
+const INVOICE_LISTS = { kind: NUTECH_ORDER_INVOICE_KINDS }
+
+/**
+ * Adds an invoice or credit memo to an order. The first one marks the order's
+ * vendor invoice received (and a sent or confirmed order "Invoice received");
+ * later ones leave the order as it is.
+ */
+export async function addNuTechOrderInvoice(
+  db: Db,
+  input: { readonly row: typeof nuTechOrderInvoices.$inferInsert; readonly userId: string; readonly now: string },
+): Promise<void> {
+  assertListFields("nutech_order_invoices", input.row, INVOICE_LISTS)
+  await db.batch([
+    db.insert(nuTechOrderInvoices).values(input.row),
+    db
+      .update(nuTechOrderWorkflows)
+      .set({
+        vendorInvoiceStatus: "received",
+        vendorInvoiceReceivedAt: sql`coalesce(${nuTechOrderWorkflows.vendorInvoiceReceivedAt}, ${input.row.receivedOn ?? input.now.slice(0, 10)})`,
+        orderStatus: sql`case when ${nuTechOrderWorkflows.orderStatus} in ('po_released', 'vendor_confirmed') then 'invoice_received' else ${nuTechOrderWorkflows.orderStatus} end`,
+        updatedBy: input.userId,
+        updatedAt: input.now,
+      })
+      .where(and(eq(nuTechOrderWorkflows.id, input.row.workflowId), eq(nuTechOrderWorkflows.vendorInvoiceStatus, "not_received"))),
+  ])
+}
+
+/**
+ * Removes an invoice from its order; false when it isn't on that order. When
+ * the last one goes before the invoice was released, the order is back to
+ * waiting for its invoice.
+ */
+export async function deleteNuTechOrderInvoice(
+  db: Db,
+  input: { readonly workflowId: string; readonly invoiceId: string; readonly userId: string; readonly now: string },
+): Promise<boolean> {
+  const [deleted] = await db.batch([
+    db
+      .delete(nuTechOrderInvoices)
+      .where(and(eq(nuTechOrderInvoices.id, input.invoiceId), eq(nuTechOrderInvoices.workflowId, input.workflowId)))
+      .returning({ id: nuTechOrderInvoices.id }),
+    db
+      .update(nuTechOrderWorkflows)
+      .set({
+        vendorInvoiceStatus: "not_received",
+        vendorInvoiceReceivedAt: null,
+        orderStatus: sql`case when ${nuTechOrderWorkflows.orderStatus} = 'invoice_received' then 'vendor_confirmed' else ${nuTechOrderWorkflows.orderStatus} end`,
+        updatedBy: input.userId,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, input.workflowId),
+          eq(nuTechOrderWorkflows.vendorInvoiceStatus, "received"),
+          isNull(nuTechOrderWorkflows.vendorInvoiceReleasedAt),
+          sql`not exists (select 1 from ${nuTechOrderInvoices} where ${nuTechOrderInvoices.workflowId} = ${input.workflowId})`,
+        ),
+      ),
+  ])
+  return deleted.length > 0
+}
+
+/** Moves a merged vendor's Nu-Tech order invoices to the kept vendor. */
+export function companyMergeNuTechInvoiceStatements(database: D1Database, move: CompanyReferenceMove): D1PreparedStatement[] {
+  if (move.side !== "vendor") return []
+  const guard = companyMoveGuard(move)
+  return [database.prepare(`UPDATE nutech_order_invoices SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND ${guard.sql}`)
+    .bind(move.destinationId, move.now, move.sourceId, ...guard.binds)]
 }
 
 /** The estimate the order now fills. */

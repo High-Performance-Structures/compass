@@ -8,6 +8,7 @@ import { getProjectBracingRentals } from "@/app/actions/nutech-bracing"
 import { NuTechBracingRentals } from "@/components/nutech/nutech-bracing-rentals"
 import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
 import { getNuTechCarrierSuggestions } from "@/app/actions/nutech-order-board"
+import { getNuTechOrderInvoices } from "@/app/actions/nutech-order-invoices"
 import { PageHeader } from "@/components/page-header"
 import { NuTechOrderWorkspace } from "@/components/nutech/nutech-order-workspace"
 import { NuTechOrderSwitcher } from "@/components/nutech/nutech-order-switcher"
@@ -28,6 +29,7 @@ export default async function ProjectNuTechOrderPage({
     getNuTechManufacturerName(),
     getNuTechCarrierSuggestions(),
   ])
+  const invoices = workspace.order ? await getNuTechOrderInvoices(id, workspace.order.id) : null
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -54,7 +56,7 @@ export default async function ProjectNuTechOrderPage({
         canEdit={workspace.canEdit}
       />
       {/* Keyed by order so switching orders resets the form. */}
-      <NuTechOrderWorkspace key={workspace.order?.id ?? "new"} workspace={workspace} manufacturerName={manufacturerName} carrierSuggestions={carrierSuggestions} />
+      <NuTechOrderWorkspace key={workspace.order?.id ?? "new"} workspace={workspace} manufacturerName={manufacturerName} carrierSuggestions={carrierSuggestions} invoices={invoices} />
       {bracing.success ? (
         <div className="mt-8">
           <NuTechBracingRentals data={bracing.data} />

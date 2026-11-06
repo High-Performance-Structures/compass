@@ -39,6 +39,8 @@ import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { NuTechEstimateButton } from "@/components/nutech/nutech-estimate-button"
 import { NuTechConfirmedDeliveryFields } from "@/components/nutech/nutech-confirmed-delivery-fields"
+import { NuTechOrderInvoices } from "@/components/nutech/nutech-order-invoices"
+import type { NuTechOrderInvoicesView } from "@/app/actions/nutech-order-invoices"
 import { NuTechTruckloadSummary } from "@/components/nutech/nutech-truckload-summary"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -101,11 +103,14 @@ export function NuTechOrderWorkspace({
   workspace,
   manufacturerName = "",
   carrierSuggestions = [],
+  invoices = null,
 }: {
   readonly workspace: ProjectNuTechOrderWorkspace
   /** From Settings → Workflows → Nu-Tech emails; labels the PO button. */
   readonly manufacturerName?: string
   readonly carrierSuggestions?: readonly string[]
+  /** The order's invoices and credit memos, when an order is open. */
+  readonly invoices?: NuTechOrderInvoicesView | null
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -181,12 +186,6 @@ export function NuTechOrderWorkspace({
       ].includes(option.value)
     }
   )
-  const availableVendorInvoiceStatusOptions =
-    NUTECH_VENDOR_INVOICE_STATUS_OPTIONS.filter(
-      (option) =>
-        vendorInvoiceReleased ||
-        (option.value !== "released" && option.value !== "posted")
-    )
 
   function onQuantitySourceChange(value: string): void {
     const nextSource = quantitySourceValue(value)
@@ -260,12 +259,6 @@ export function NuTechOrderWorkspace({
       ),
       orderStatus: formText(formData, "orderStatus"),
       vendorConfirmationNumber: optionalFormText(formData, "vendorConfirmationNumber"),
-      vendorInvoiceNumber: optionalFormText(formData, "vendorInvoiceNumber"),
-      vendorInvoiceStatus: formText(formData, "vendorInvoiceStatus"),
-      vendorInvoiceReceivedAt: optionalFormText(
-        formData,
-        "vendorInvoiceReceivedAt"
-      ),
       shippingCents: isDelivery && shipping.trim() !== "" ? shippingCents : null,
       shippingNote: optionalFormText(formData, "shippingNote"),
       taxEntityId: optionalFormText(formData, "taxEntityId"),
@@ -1004,38 +997,10 @@ export function NuTechOrderWorkspace({
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nutech-invoice-number">Vendor invoice number</Label>
-                <Input className={DOCUMENT_INPUT_CLASS}
-                  id="nutech-invoice-number"
-                  name="vendorInvoiceNumber"
-                  defaultValue={order?.vendorInvoiceNumber ?? ""}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nutech-invoice-status">Invoice status</Label>
-                <Select name="vendorInvoiceStatus"
-                  defaultValue={order?.vendorInvoiceStatus ?? "not_received"}
-                >
-                  <SelectTrigger id="nutech-invoice-status" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableVendorInvoiceStatusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nutech-invoice-received">Invoice received</Label>
-                <Input className={DOCUMENT_INPUT_CLASS}
-                  id="nutech-invoice-received"
-                  name="vendorInvoiceReceivedAt"
-                  type="date"
-                  defaultValue={order?.vendorInvoiceReceivedAt ?? ""}
-                />
+                <Label>Vendor invoice</Label>
+                <p className="flex h-9 items-center text-sm text-muted-foreground">
+                  {NUTECH_VENDOR_INVOICE_STATUS_OPTIONS.find((option) => option.value === order?.vendorInvoiceStatus)?.label ?? "Not received"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Invoice release recorded</Label>
@@ -1044,6 +1009,9 @@ export function NuTechOrderWorkspace({
                 </p>
               </div>
             </div>
+            {order && invoices ? (
+              <NuTechOrderInvoices projectId={workspace.projectId} orderId={order.id} view={invoices} manufacturerName={manufacturerName} canEdit={workspace.canEdit} />
+            ) : null}
             {order && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                 <div>
