@@ -38,6 +38,7 @@ import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_
 import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { NuTechEstimateButton } from "@/components/nutech/nutech-estimate-button"
+import { NuTechTruckloadSummary } from "@/components/nutech/nutech-truckload-summary"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -686,14 +687,8 @@ export function NuTechOrderWorkspace({
                           {formatCents(item.quantity * item.unitPriceCents)}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            disabled={isPending || purchaseOrderReleased}
-                            onClick={() => removeOrderItem(item.id)}
-                          >
+                          <Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive"
+                            disabled={isPending || purchaseOrderReleased} onClick={() => removeOrderItem(item.id)}>
                             <IconTrash className="size-4" />
                             <span className="sr-only">Remove {item.manufacturerSku}</span>
                           </Button>
@@ -715,6 +710,7 @@ export function NuTechOrderWorkspace({
                 </table>
               </div>
             )}
+            <NuTechTruckloadSummary workspace={workspace} />
           </section>
 
           <section id="nutech-fulfillment" className="scroll-mt-4 space-y-5 border-b pb-8">

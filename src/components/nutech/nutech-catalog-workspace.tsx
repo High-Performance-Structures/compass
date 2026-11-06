@@ -14,6 +14,7 @@ import {
   deleteNuTechCatalogVersion,
   importNuTech2026Catalog,
   mapNuTechProductToSageCostCode,
+  setNuTechProductBundlesPerTruckload,
   setNuTechProductTaxable,
   type NuTechCatalogWorkspace,
   type NuTechProductCostCodeMapping,
@@ -27,10 +28,11 @@ import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { formatCents, formatDate } from "@/lib/format"
 
 type Product = NuTechCatalogWorkspace["products"][number]
-type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode" | "taxable"
+type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode" | "truck" | "taxable"
 
 const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string | number | null>> = {
   sku: (product) => product.manufacturerSku,
@@ -42,6 +44,7 @@ const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string
   returningCash: (product) => product.returningCashPriceCents,
   form: (product) => product.airliteTemplateRow,
   costCode: (product) => product.sageCostCodeLabel,
+  truck: (product) => product.bundlesPerTruckload,
   taxable: (product) => (product.taxable ? 1 : 0),
 }
 
@@ -200,6 +203,20 @@ export function NuTechCatalogWorkspacePanel({
     })
   }
 
+  function setBundlesPerTruckload(product: Product, text: string): void {
+    const value = text.trim() === "" ? null : Number(text)
+    if (value === product.bundlesPerTruckload) return
+    startTransition(async () => {
+      const result = await setNuTechProductBundlesPerTruckload(product.id, value)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(value === null ? `Cleared the truckload size for ${product.manufacturerSku}.` : `${product.manufacturerSku}: ${value} bundles per truckload.`)
+      router.refresh()
+    })
+  }
+
   function setTaxable(productId: string, taxable: boolean): void {
     startTransition(async () => {
       const result = await setNuTechProductTaxable(productId, taxable)
@@ -327,6 +344,7 @@ export function NuTechCatalogWorkspacePanel({
                   <SortableTh sortKey="returningCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning cash</SortableTh>
                   <SortableTh sortKey="form" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Airlite form</SortableTh>
                   <SortableTh sortKey="costCode" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Sage cost code</SortableTh>
+                  <SortableTh sortKey="truck" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Bundles / truck</SortableTh>
                   <SortableTh sortKey="taxable" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Taxable</SortableTh>
                 </tr>
               </thead>
@@ -400,6 +418,25 @@ export function NuTechCatalogWorkspacePanel({
                         <span className="text-muted-foreground">
                           {product.sageCostCodeLabel ?? "Not mapped"}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right align-top">
+                      {workspace.canImport ? (
+                        <Input
+                          key={product.bundlesPerTruckload ?? "unset"}
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          step={1}
+                          defaultValue={product.bundlesPerTruckload ?? ""}
+                          placeholder="—"
+                          disabled={isPending}
+                          aria-label={`Bundles of ${product.manufacturerSku} per truckload`}
+                          className="ml-auto h-9 w-20 text-right tabular-nums"
+                          onBlur={(event) => setBundlesPerTruckload(product, event.target.value)}
+                        />
+                      ) : (
+                        <span className="tabular-nums text-muted-foreground">{product.bundlesPerTruckload ?? "—"}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 align-top">

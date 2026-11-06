@@ -97,7 +97,9 @@ type NuTechCatalogProductOption = {
   readonly origin: string
   readonly priceUnit: string
   readonly packageLabel: string
+  readonly packageQuantity: number
   readonly minimumOrderIncrement: number
+  readonly bundlesPerTruckload: number | null
   readonly airliteMappingStatus: string
   readonly newStandardPriceCents: number
   readonly newCashPriceCents: number
@@ -371,20 +373,18 @@ export async function getProjectNuTechOrderWorkspace(
             origin: nuTechProducts.origin,
             priceUnit: nuTechProducts.priceUnit,
             packageLabel: nuTechProducts.packageLabel,
+            packageQuantity: nuTechProducts.packageQuantity,
             minimumOrderIncrement: nuTechProducts.minimumOrderIncrement,
+            bundlesPerTruckload: nuTechProducts.bundlesPerTruckload,
             airliteMappingStatus: nuTechProducts.airliteMappingStatus,
             newStandardPriceCents: nuTechCatalogPrices.newStandardPriceCents,
             newCashPriceCents: nuTechCatalogPrices.newCashPriceCents,
-            returningStandardPriceCents:
-              nuTechCatalogPrices.returningStandardPriceCents,
+            returningStandardPriceCents: nuTechCatalogPrices.returningStandardPriceCents,
             returningCashPriceCents: nuTechCatalogPrices.returningCashPriceCents,
             taxable: nuTechProducts.taxable,
           })
           .from(nuTechCatalogPrices)
-          .innerJoin(
-            nuTechProducts,
-            eq(nuTechProducts.id, nuTechCatalogPrices.productId)
-          )
+          .innerJoin(nuTechProducts, eq(nuTechProducts.id, nuTechCatalogPrices.productId))
           .where(
             and(
               eq(nuTechCatalogPrices.catalogVersionId, catalogVersion.id),
