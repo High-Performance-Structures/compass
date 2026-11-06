@@ -13,6 +13,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ReorderHandle, SortableRow, SortableRows, SortByCostCodeButton } from "@/components/ui/sortable-rows"
+import { moveLine, sortLinesByCostCode } from "@/lib/shared/line-order"
 import type {
   ProjectChangeOrderCostCodeOption,
   ProjectChangeOrderItem,
@@ -130,8 +132,12 @@ export function ProjectChangeOrderCompletion({
       </p>
       <form className="mt-4 space-y-4" onSubmit={submit}>
         <div className="space-y-2">
+          <SortableRows ids={draft.map((line) => line.key)} disabled={pending}
+            onMove={(from, to) => setDraft((current) => moveLine(current, from, to))}>
           {draft.map((line, index) => (
-            <div key={line.key} className="grid gap-2 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_8rem_auto] sm:items-center">
+            <SortableRow key={line.key} id={line.key} index={index}
+              className="grid gap-2 bg-background sm:grid-cols-[2.75rem_minmax(0,14rem)_minmax(0,1fr)_8rem_auto] sm:items-center">
+              <ReorderHandle label={`line ${index + 1}`} />
               <ProjectChangeOrderOptionPicker
                 value={line.costCode}
                 options={costCodes}
@@ -167,12 +173,17 @@ export function ProjectChangeOrderCompletion({
               >
                 <IconTrash className="size-4" />
               </Button>
-            </div>
+            </SortableRow>
           ))}
+          </SortableRows>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addLine} disabled={pending}>
-              <IconPlus className="size-4" />Add line
-            </Button>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button type="button" variant="outline" size="sm" onClick={addLine} disabled={pending}>
+                <IconPlus className="size-4" />Add line
+              </Button>
+              <SortByCostCodeButton disabled={pending || draft.length < 2}
+                onSort={() => setDraft((current) => sortLinesByCostCode(current, (line) => line.costCode))} />
+            </div>
             <p className="text-sm tabular-nums">
               Lines {changeOrderMoney(totalCents)} of {changeOrderMoney(amountCents)}
               {remainingCents !== null && remainingCents !== 0 && (

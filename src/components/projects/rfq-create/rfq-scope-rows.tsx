@@ -9,20 +9,41 @@ import {
 } from "@/components/projects/project-rfq-cost-code-picker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ReorderHandle, SortableRow, SortableRows, SortByCostCodeButton } from "@/components/ui/sortable-rows"
+import { moveLine, sortLinesByCostCode } from "@/lib/shared/line-order"
 
-import { LINE_INPUT_CLASS } from "./rfq-draft"
-import type { RfqRowsState } from "./use-rfq-create-draft"
+import { LINE_INPUT_CLASS, type RfqLineField } from "./rfq-draft"
 
-/** "Scope rows": description, Sage division and cost code, and notes. */
-export function RfqScopeRows({
+type ScopeLine = {
+  readonly id: string
+  readonly description: string
+  readonly phaseCode: string
+  readonly costCode: string
+  readonly notes: string
+}
+
+/** The scope-row state the RFQ create and edit forms each keep. */
+export type RfqScopeRowsState<L extends ScopeLine> = {
+  readonly lines: readonly L[]
+  readonly setLines: React.Dispatch<React.SetStateAction<readonly L[]>>
+  readonly addLine: () => void
+  readonly removeLine: (id: string) => void
+  readonly updateLine: (id: string, field: RfqLineField, value: string) => void
+  readonly updateLineDivision: (id: string, divisionCode: string) => void
+  readonly updateLineCostCode: (id: string, costCode: string) => void
+}
+
+/** "Scope rows": description, Sage division and cost code, and notes, in the order dragged. */
+export function RfqScopeRows<L extends ScopeLine>({
   rows,
   costCodeOptions,
 }: {
-  readonly rows: RfqRowsState
+  readonly rows: RfqScopeRowsState<L>
   readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
 }): React.ReactElement {
   const {
     lines,
+    setLines,
     addLine,
     removeLine,
     updateLine,
@@ -38,22 +59,30 @@ export function RfqScopeRows({
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Use rows for Sage divisions, cost codes, alternates, or quote
-                  sections.
+                  sections. Drag the handle or use the arrows to reorder.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLine}
-              >
-                <IconPlus className="size-4" />
-                Add row
-              </Button>
+              <div className="flex flex-wrap items-center gap-1">
+                <SortByCostCodeButton
+                  label="scope rows"
+                  disabled={lines.length < 2}
+                  onSort={() => setLines((current) => sortLinesByCostCode(current, (line) => line.costCode))}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addLine}
+                >
+                  <IconPlus className="size-4" />
+                  Add row
+                </Button>
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <div className="min-w-[1050px]">
-                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+              <div className="min-w-[1100px]">
+                <div className="grid grid-cols-[2.75rem_2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+                  <span />
                   <span>#</span>
                   <span>Description</span>
                   <span>Division</span>
@@ -61,11 +90,17 @@ export function RfqScopeRows({
                   <span>Notes</span>
                   <span />
                 </div>
+                <SortableRows ids={lines.map((line) => line.id)} onMove={(from, to) => setLines((current) => moveLine(current, from, to))}>
                 {lines.map((line, index) => (
-                  <div
+                  <SortableRow
                     key={line.id}
-                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
+                    id={line.id}
+                    index={index}
+                    className="grid grid-cols-[2.75rem_2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b bg-background py-2 last:border-b-0"
                   >
+                    <div className="pt-0.5">
+                      <ReorderHandle label={`scope row ${index + 1}`} />
+                    </div>
                     <span className="pt-2 text-xs font-medium text-muted-foreground">
                       {index + 1}
                     </span>
@@ -113,8 +148,9 @@ export function RfqScopeRows({
                     >
                       <IconTrash className="size-4" />
                     </Button>
-                  </div>
+                  </SortableRow>
                 ))}
+                </SortableRows>
               </div>
             </div>
           </div>
