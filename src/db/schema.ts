@@ -40,6 +40,7 @@ import {
   STORED_SCHEDULE_LINK_TYPES,
   WORKDAY_EXCEPTION_TYPES,
 } from "../lib/domain/schedule/statuses"
+import { PAY_APPLICATION_BILLING_SOURCES } from "../lib/domain/budget/statuses"
 import { WORK_CALENDAR_EVENT_TYPES, WORK_CALENDAR_EVENT_VISIBILITIES } from "../lib/domain/work-calendar/statuses"
 
 // Auth and user management tables
@@ -2898,6 +2899,8 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
   sageInvoiceNumber: text("sage_invoice_number"),
   /** Client detail for this draw; null uses the company default. */
   ownerDetail: text("owner_detail"),
+  /** Billed amounts entered in Compass, or synced from Sage (read only in Compass). */
+  billingSource: text("billing_source", { enum: PAY_APPLICATION_BILLING_SOURCES }).notNull().default("compass"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),

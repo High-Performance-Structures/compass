@@ -1,24 +1,17 @@
 "use server"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import {
-  sageBridgeStatus,
-  sagePayApplicationSyncRuns,
-} from "@/db/schema-sage"
+import { sagePayApplicationSyncRuns } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { insertSagePayApplicationSyncRun } from "@/lib/domain/sage-bridge/store"
+import { queueSagePayApplicationRead, sageBridgeConfigured, sageBridgeOnline } from "@/lib/sage/pay-application-read-queue"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
-
-const ACTIVE_SYNC_STATUSES = ["queued", "running", "processing"] as const
-const BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
 
 type SagePayApplicationSyncStatus =
   | "queued"
@@ -80,26 +73,6 @@ function syncItem(
   }
 }
 
-function bridgeConfigured(env: CloudflareEnv): boolean {
-  const secret: unknown = Reflect.get(env, "SAGE_BRIDGE_SECRET")
-  return typeof secret === "string" && secret.trim().length >= 32
-}
-
-async function bridgeOnline(env: CloudflareEnv): Promise<boolean> {
-  const db = getDb(env.DB)
-  const bridge = await db
-    .select({ lastSeenAt: sageBridgeStatus.lastSeenAt })
-    .from(sageBridgeStatus)
-    .where(eq(sageBridgeStatus.id, "pay-application-poller"))
-    .limit(1)
-    .get()
-  const lastSeenAt = bridge ? Date.parse(bridge.lastSeenAt) : Number.NaN
-  return (
-    Number.isFinite(lastSeenAt) &&
-    Date.now() - lastSeenAt <= BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS
-  )
-}
-
 export async function getSagePayApplicationSyncState(
   projectId: string
 ): Promise<SagePayApplicationSyncState> {
@@ -136,7 +109,7 @@ export async function getSagePayApplicationSyncState(
     .where(eq(sagePayApplicationSyncRuns.projectId, projectId))
     .orderBy(desc(sagePayApplicationSyncRuns.requestedAt))
     .limit(10)
-  const online = await bridgeOnline(env)
+  const online = await sageBridgeOnline(env)
 
   let canRequest = false
   if (
@@ -155,7 +128,7 @@ export async function getSagePayApplicationSyncState(
 
   const recent = rows.map(syncItem)
   return {
-    configured: bridgeConfigured(env),
+    configured: sageBridgeConfigured(env),
     online,
     canRequest,
     projectMapped: Boolean(project.sageJobId || project.sageJobNumber),
@@ -182,99 +155,10 @@ export async function queueSagePayApplicationSync(
     await requireFeaturePermission(user, "sage-sync", "update")
 
     const { env } = await getCloudflareContext()
-    if (!bridgeConfigured(env)) {
-      return {
-        success: false,
-        error: "The read-only Sage bridge is not configured.",
-      }
-    }
-
-    const db = getDb(env.DB)
-    if (!(await bridgeOnline(env))) {
-      return {
-        success: false,
-        error: "The private Sage poller is offline.",
-      }
-    }
-    const project = await db
-      .select({
-        id: projects.id,
-        organizationId: projects.organizationId,
-        sageJobId: projects.sageJobId,
-        sageJobNumber: projects.sageJobNumber,
-      })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, projectId),
-          eq(projects.organizationId, user.organizationId)
-        )
-      )
-      .limit(1)
-      .get()
-
-    if (!project) return { success: false, error: "Project not found." }
-    if (!project.sageJobId && !project.sageJobNumber) {
-      return {
-        success: false,
-        error: "Map this Compass project to a Sage job before syncing.",
-      }
-    }
-
-    const active = await db
-      .select({ id: sagePayApplicationSyncRuns.id })
-      .from(sagePayApplicationSyncRuns)
-      .where(
-        and(
-          eq(sagePayApplicationSyncRuns.projectId, projectId),
-          inArray(sagePayApplicationSyncRuns.status, ACTIVE_SYNC_STATUSES)
-        )
-      )
-      .orderBy(desc(sagePayApplicationSyncRuns.requestedAt))
-      .limit(1)
-      .get()
-
-    if (active) {
-      return { success: true, runId: active.id, reused: true }
-    }
-
-    const now = new Date().toISOString()
-    const runId = crypto.randomUUID()
-    try {
-      await insertSagePayApplicationSyncRun(db, {
-        id: runId,
-        projectId,
-        requestedByUserId: user.id,
-        idempotencyKey: `sage-pay-application-read:${projectId}:${runId}`,
-        sageJobId: project.sageJobId,
-        sageJobNumber: project.sageJobNumber,
-        status: "queued",
-        requestedAt: now,
-        updatedAt: now,
-      })
-    } catch (error) {
-      // The partial unique index closes the race between the active-run lookup
-      // and insert. A simultaneous request should reuse the winner.
-      const concurrent = await db
-        .select({ id: sagePayApplicationSyncRuns.id })
-        .from(sagePayApplicationSyncRuns)
-        .where(
-          and(
-            eq(sagePayApplicationSyncRuns.projectId, projectId),
-            inArray(sagePayApplicationSyncRuns.status, ACTIVE_SYNC_STATUSES)
-          )
-        )
-        .orderBy(desc(sagePayApplicationSyncRuns.requestedAt))
-        .limit(1)
-        .get()
-      if (concurrent) {
-        return { success: true, runId: concurrent.id, reused: true }
-      }
-      throw error
-    }
-
+    const result = await queueSagePayApplicationRead(env, { organizationId: user.organizationId, projectId, userId: user.id })
+    if (!result.success) return result
     revalidatePath(`/dashboard/projects/${projectId}/budget`)
-    return { success: true, runId, reused: false }
+    return result
   } catch (error) {
     return {
       success: false,

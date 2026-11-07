@@ -389,6 +389,9 @@
     "payApplicationPrepaidMarks": [
       "src/lib/domain/financials/store.ts"
     ],
+    "payApplicationSageSyncs": [
+      "src/lib/domain/budget/store.ts"
+    ],
     "payApplicationShopTicketImports": [
       "src/lib/domain/budget/store.ts"
     ],
@@ -905,7 +908,7 @@
     "src/app/actions/project-audience-preview.ts": 1004,
     "src/app/actions/project-change-orders.ts": 1528,
     "src/app/actions/project-documents.ts": 876,
-    "src/app/actions/project-financial-workflows.ts": 1412,
+    "src/app/actions/project-financial-workflows.ts": 1393,
     "src/app/actions/schedule-confirmations.ts": 1344,
     "src/app/actions/social-posts.ts": 1123,
     "src/app/actions/voice-sessions.ts": 982,

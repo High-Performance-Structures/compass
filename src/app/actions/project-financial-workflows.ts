@@ -52,6 +52,7 @@ import { projectMemberRole } from "@/lib/project-member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requirePermission } from "@/lib/permissions"
 import {
+  assertBilledAmountsEditable,
   availableDepositForApplication,
   refreshAutoDepositPayApplications,
   draftSplitIsStale,
@@ -173,6 +174,8 @@ export type ProjectOwnerPayApplicationDraft = {
   /** Set once staff approve the draw for billing. */
   readonly billedAt: string | null
   readonly sageInvoiceNumber: string | null
+  /** Billed amounts entered in Compass, or synced from Sage (read only). */
+  readonly billingSource: "compass" | "sage"
   readonly budgetRevisionId: string | null
   readonly originalContractSum: number
   readonly netChanges: number
@@ -235,6 +238,13 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
 
   if (!project) throw new Error("Project not found")
   return { db, project: { ...project, organizationId: orgId } }
+}
+
+/** Update access to a pay application whose billed amounts are entered in Compass (not synced from Sage). */
+async function billedAmountsAccess(projectId: string, applicationId: string): Promise<ReturnType<typeof getDb>> {
+  const { db } = await verifyProjectUpdateAccess(projectId)
+  await assertBilledAmountsEditable(db, applicationId)
+  return db
 }
 
 async function verifyProjectReadAccess(projectId: string): Promise<{
@@ -526,6 +536,7 @@ export async function getProjectOwnerPayApplicationDraft(
     status: application.status,
     billedAt: application.billedAt,
     sageInvoiceNumber: application.sageInvoiceNumber,
+    billingSource: application.billingSource,
     budgetRevisionId: application.budgetRevisionId,
     originalContractSum: application.originalContractSum,
     netChanges: application.netChanges,
@@ -639,7 +650,7 @@ export async function updateProjectOwnerPayApplicationLine(
   }
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
-    const { db } = await verifyProjectUpdateAccess(projectId)
+    const db = await billedAmountsAccess(projectId, applicationId)
     const applicationRows = await db
       .select({ status: projectBudgetApplications.status })
       .from(projectBudgetApplications)
@@ -696,11 +707,7 @@ export async function updateProjectOwnerPayApplicationLine(
     revalidateFinancialPaths(projectId)
     return { success: true, id: lineId }
   } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to update pay application.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to update pay application." }
   }
 }
 
@@ -720,7 +727,7 @@ export async function setProjectOwnerPayApplicationPercentComplete(
   }
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
-    const { db } = await verifyProjectUpdateAccess(projectId)
+    const db = await billedAmountsAccess(projectId, applicationId)
     const application = await db
       .select({ id: projectBudgetApplications.id })
       .from(projectBudgetApplications)
@@ -774,10 +781,7 @@ export async function setProjectOwnerPayApplicationPercentComplete(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to bill by percent complete.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to bill by percent complete." }
   }
 }
 
@@ -811,10 +815,7 @@ export async function setProjectOwnerPayApplicationOwnerDetail(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to change the client detail.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to change the client detail." }
   }
 }
 
@@ -827,7 +828,7 @@ export async function updateProjectOwnerPayApplicationBudget(
   applicationId: string
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
-    const { db } = await verifyProjectUpdateAccess(projectId)
+    const db = await billedAmountsAccess(projectId, applicationId)
     const application = await db
       .select({ budgetRevisionId: projectBudgetApplications.budgetRevisionId })
       .from(projectBudgetApplications)
@@ -850,10 +851,7 @@ export async function updateProjectOwnerPayApplicationBudget(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to update the pay application.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to update the pay application." }
   }
 }
 
@@ -894,10 +892,7 @@ export async function deleteProjectOwnerPayApplicationDraft(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to delete the pay application.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to delete the pay application." }
   }
 }
 
@@ -911,7 +906,7 @@ export async function setProjectOwnerPayApplicationDeposit(
   input: { readonly mode: "auto" | "manual"; readonly amount: number | null }
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
-    const { db } = await verifyProjectUpdateAccess(projectId)
+    const db = await billedAmountsAccess(projectId, applicationId)
     const application = await db
       .select({ id: projectBudgetApplications.id })
       .from(projectBudgetApplications)
@@ -1040,11 +1035,7 @@ export async function markProjectOwnerPayApplicationReady(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to stage Sage review.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to stage Sage review." }
   }
 }
 
@@ -1091,10 +1082,7 @@ export async function returnProjectOwnerPayApplicationToDraft(
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to return the pay application to draft.",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Unable to return the pay application to draft." }
   }
 }
 
@@ -1193,11 +1181,7 @@ export async function createProjectVendorBillDraft(
     revalidateFinancialPaths(projectId)
     return { success: true, id }
   } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to stage vendor bill",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to stage vendor bill" }
   }
 }
 
@@ -1403,9 +1387,6 @@ export async function createProjectOwnerPayApplicationDraft(
     revalidateFinancialPaths(projectId)
     return { success: true, id }
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to create owner pay application",
-    }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to create owner pay application" }
   }
 }

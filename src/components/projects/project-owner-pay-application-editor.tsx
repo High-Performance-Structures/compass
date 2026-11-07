@@ -445,11 +445,14 @@ export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
   shopTicketProvenance,
+  sageSynced = false,
 }: {
   readonly projectId: string
   readonly application: ProjectOwnerPayApplicationDraft
   /** Shop ticket amounts imported onto each line; empty when the person can't see shop tickets. */
   readonly shopTicketProvenance: readonly ShopTicketProvenance[]
+  /** Billed amounts are synced from Sage, so they are read only here. */
+  readonly sageSynced?: boolean
 }): React.ReactElement {
   const provenanceByLine = new Map(shopTicketProvenance.map((entry) => [entry.lineId, entry]))
   const { developerModeEnabled } = useDeveloperMode()
@@ -459,6 +462,7 @@ export function ProjectOwnerPayApplicationEditor({
   const hasAssemblies = application.lines.some((line) => line.assemblyKey !== null)
   const [groupBy, setGroupBy] = useState<GroupBy>(hasAssemblies ? "assembly" : "division")
   const editable = application.status === "draft"
+  const amountsEditable = editable && !sageSynced
 
   function updateBudget(): void {
     setMessage(null)
@@ -518,9 +522,15 @@ export function ProjectOwnerPayApplicationEditor({
               <h2 className="font-semibold">Pay application {application.applicationNumber}</h2>
               <ContextualHelpBeacon topicId="financials.pay-applications" />
               <Badge>{payApplicationStatusLabel(application.status)}</Badge>
+              {sageSynced && (
+                <span className="text-xs font-normal text-muted-foreground" title="Billed amounts are synced from Sage">
+                  [Sage]
+                </span>
+              )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Period to {application.periodTo ?? "not set"} · Contract budget revision locked to this draw
+              Period to {application.periodTo ?? "not set"} ·{" "}
+              {sageSynced ? "Billed amounts synced from Sage" : "Contract budget revision locked to this draw"}
             </p>
             <div className="mt-2">
               <PayApplicationClientDetail projectId={projectId} application={application} onMessage={setMessage} />
@@ -586,7 +596,7 @@ export function ProjectOwnerPayApplicationEditor({
             )}
           </div>
         </div>
-        {(application.newerBudgetRevision || application.assemblySplitStale) && (
+        {!sageSynced && (application.newerBudgetRevision || application.assemblySplitStale) && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/35 px-4 py-3 text-sm">
             <p>
               {application.newerBudgetRevision
@@ -620,7 +630,7 @@ export function ProjectOwnerPayApplicationEditor({
         <PayApplicationDeposit
           projectId={projectId}
           application={application}
-          editable={editable}
+          editable={amountsEditable}
           onMessage={setMessage}
         />
       )}
@@ -660,7 +670,7 @@ export function ProjectOwnerPayApplicationEditor({
                 projectId={projectId}
                 applicationId={application.id}
                 group={group}
-                editable={editable}
+                editable={amountsEditable}
                 onMessage={setMessage}
               />
               {group.lines.map((line) => (
@@ -669,7 +679,7 @@ export function ProjectOwnerPayApplicationEditor({
                   projectId={projectId}
                   applicationId={application.id}
                   line={line}
-                  editable={editable}
+                  editable={amountsEditable}
                   onMessage={setMessage}
                   shopTickets={provenanceByLine.get(line.id)}
                 />

@@ -20,7 +20,7 @@ import {
 } from "@/lib/domain/budget/store"
 import { updateShopTickets, updateShopTicketsStatement } from "@/lib/domain/operations/store"
 import { formatCents } from "@/lib/format"
-import { refreshOwnerPayApplication } from "@/lib/financials/owner-pay-application-refresh"
+import { assertBilledAmountsEditable, refreshOwnerPayApplication } from "@/lib/financials/owner-pay-application-refresh"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -253,6 +253,7 @@ export async function importShopTickets(
 ): Promise<ShopTicketImportResult> {
   const { projectId, applicationId, now } = input
   await requireDraft(db, projectId, applicationId)
+  await assertBilledAmountsEditable(db, applicationId)
   await linkShopTicketsByNumber(db, projectId, applicationId)
   const [tickets, existingRows, lines] = await Promise.all([
     linkedTickets(db, projectId, applicationId),

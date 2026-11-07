@@ -104,12 +104,22 @@ const sageInvoiceFormat = z
   .refine((value) => SAGE_NUMBER_TOKEN.test(value), "Include {n} (or {n:2} for two digits) for the document's number.")
 
 /**
- * The Sage export: billing cycle and invoice number formats Compass suggests
+ * Where a company builds its pay requests: in Compass (the G702/G703 editor),
+ * or in Sage 100 Contractor, with Compass syncing each progress billing from
+ * Sage's read-only data so it is entered only once.
+ */
+export const PAY_REQUEST_ORIGINS = ["compass", "sage"] as const
+
+export type PayRequestOrigin = (typeof PAY_REQUEST_ORIGINS)[number]
+
+/**
+ * The Sage export: where pay requests are created, and the billing cycle and invoice number formats Compass suggests
  * when a document goes to Sage. Tokens: {project} is the project number, {job}
  * the Sage job number, {n} the document's number and {n:2} that number padded
  * to two digits.
  */
 export const sageExportSettingsSchema = z.object({
+  payRequestsCreatedIn: z.enum(PAY_REQUEST_ORIGINS),
   billingCycle: z.string().trim().min(1).max(10),
   payRequestInvoiceFormat: sageInvoiceFormat,
   depositInvoiceFormat: sageInvoiceFormat,
@@ -121,6 +131,7 @@ export const sageExportSettingsSchema = z.object({
 export type SageExportSettings = z.infer<typeof sageExportSettingsSchema>
 
 export const DEFAULT_SAGE_EXPORT_SETTINGS: SageExportSettings = {
+  payRequestsCreatedIn: "compass",
   billingCycle: "1MO",
   payRequestInvoiceFormat: "{project}-PR{n:2}",
   depositInvoiceFormat: "{project}-DEP{n}",
@@ -132,7 +143,7 @@ export const DEFAULT_SAGE_EXPORT_SETTINGS: SageExportSettings = {
 export const SAGE_EXPORT_SETTINGS_GROUP = {
   label: "Sage export",
   description:
-    "The billing cycle and invoice number formats Compass suggests when a pay request or other billing goes to Sage. Sage allows invoice numbers up to 20 characters.",
+    "Where pay requests are created, and the billing cycle and invoice number formats Compass suggests when a pay request or other billing goes to Sage. Sage allows invoice numbers up to 20 characters.",
   defaults: DEFAULT_SAGE_EXPORT_SETTINGS,
   schema: sageExportSettingsSchema,
 }

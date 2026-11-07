@@ -3,6 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
+import { payApplicationSageSyncs } from "@/db/schema-sage"
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
@@ -16,6 +17,7 @@ import {
   UNSUBMITTED_DRAW_STATUSES,
   type DepositAppliedMode,
 } from "@/lib/financials/contract-deposits"
+import { PAY_APPLICATION_BILLING_SOURCES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "@/lib/domain/budget/statuses"
 import { PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES } from "@/lib/domain/operations/statuses"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
@@ -25,7 +27,8 @@ import { assertListFields } from "@/lib/shared/statuses"
  * project_budget_applications (owner pay applications and contract budget
  * projections) and project_budget_lines (their G703 lines), plus
  * pay_application_shop_ticket_imports (what each shop ticket added to a pay
- * application) (architecture standard, section 1).
+ * application) and pay_application_sage_syncs (what each Sage sync did to a
+ * pay application) (architecture standard, section 1).
  *
  * `*Statement` builds an unexecuted statement for `db.batch`; the plain form
  * runs it. Callers pass the same `where` conditions they used before, so the
@@ -45,7 +48,10 @@ const PROJECTION_SOURCE = "compass_contract_budget_projection"
 
 // ---- projectBudgetApplications
 
+const APPLICATION_LISTS = { billingSource: PAY_APPLICATION_BILLING_SOURCES }
+
 export function insertBudgetApplicationStatement(db: Db, values: ApplicationInsert): Statement {
+  assertListFields("project_budget_applications", [values], APPLICATION_LISTS)
   return db.insert(projectBudgetApplications).values(values)
 }
 
@@ -256,4 +262,15 @@ export function insertShopTicketImportsStatements(db: Db, rows: readonly ShopTic
 
 export function deleteShopTicketImportsStatement(db: Db, where: SQL | undefined): Statement {
   return db.delete(payApplicationShopTicketImports).where(where)
+}
+
+// ---- payApplicationSageSyncs
+
+type SageSyncInsert = typeof payApplicationSageSyncs.$inferInsert
+const SAGE_SYNC_LISTS = { eventKind: PAY_APPLICATION_SAGE_SYNC_EVENTS }
+
+/** Records what a Sage sync did to a pay application; a repeat of the same event for the same snapshot is ignored. */
+export function insertPayApplicationSageSyncStatement(db: Db, values: SageSyncInsert): Statement {
+  assertListFields("pay_application_sage_syncs", [values], SAGE_SYNC_LISTS)
+  return db.insert(payApplicationSageSyncs).values(values).onConflictDoNothing()
 }
