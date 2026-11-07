@@ -44,6 +44,12 @@ const sageBridgePaths = [
   "/api/integrations/sage/vendor-certificates/requests",
   "/api/integrations/sage/vendor-certificates/results",
   "/api/integrations/sage/vendor-certificates/directory",
+  "/api/integrations/sage/change-orders/requests",
+  "/api/integrations/sage/change-orders/results",
+  "/api/integrations/sage/prime-change-orders/requests",
+  "/api/integrations/sage/prime-change-orders/results",
+  "/api/integrations/sage/estimates/requests",
+  "/api/integrations/sage/estimates/results",
   "/api/integrations/square/auth-health",
 ]
 
