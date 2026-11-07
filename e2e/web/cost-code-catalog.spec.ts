@@ -32,7 +32,10 @@ test.describe("company cost-code catalog", () => {
     await expect(page.getByText("Daily log saved. Review it before making it owner visible.", { exact: true })).toBeVisible()
     await expect(page.getByText("Full company catalog browser regression", { exact: true }).first()).toBeVisible()
     await page.goto(`/dashboard/projects/${projectId}/daily-logs`)
-    await expect(page.getByText("Full company catalog browser regression", { exact: true }).first()).toBeVisible()
+    // The logs are a sheet; open the saved log to see its cost-code lines.
+    const row = page.getByRole("row").filter({ hasText: "Full company catalog browser regression" })
+    await expect(row).toBeVisible()
+    await row.getByRole("cell").nth(2).click()
     await expect(page.getByText(/48 14 00/).first()).toBeVisible()
   })
   test("a job budget limits browsing while search can select an outside company code", async ({ page }) => {
