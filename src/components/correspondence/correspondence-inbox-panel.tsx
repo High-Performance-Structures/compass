@@ -9,42 +9,48 @@ import {
   BookmarkMinus,
   CheckCheck,
   Flag,
-  Search,
 } from "lucide-react"
 import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type {
   CorrespondenceInbox,
   CorrespondenceInboxFilter,
+  CorrespondenceSummary,
+  ProjectDraft,
 } from "@/lib/correspondence/types"
 import { filterConversations } from "./correspondence-workspace-utils"
 import { ProjectDraftList } from "./project-draft-list"
-import type { ProjectDraft } from "@/lib/correspondence/types"
-import { ConversationTags } from "./correspondence-workspace-parts"
-import { SourceTag } from "@/components/shared/source-tag"
+import { conversationColumns, type InboxSearchHit } from "./correspondence-inbox-columns"
 
-type SearchHit = {
-  readonly conversationId: string
-  readonly messageId: string
-  readonly subject: string
-  readonly excerpt: string
-  readonly sentAt: string
-  readonly sourceSentDisplay?: string | null
-  readonly sourceSentAt?: string | null
-}
+const FILTERS: readonly { readonly value: CorrespondenceInboxFilter; readonly label: string }[] = [
+  { value: "inbox", label: "Inbox" },
+  { value: "unread", label: "Unread" },
+  { value: "follow-up", label: "Needs reply" },
+  { value: "saved", label: "Saved" },
+  { value: "sent", label: "Sent" },
+  { value: "drafts", label: "Drafts" },
+  { value: "archived", label: "Archived" },
+]
+
+const rowId = (row: CorrespondenceSummary): string => row.id
+
+type BulkAction = "read" | "archive" | "restore" | "follow-up" | "clear-follow-up" | "save" | "unsave"
+
+/**
+ * A project's Messages inbox: filter buttons, search (including message
+ * text) and the conversations on the shared sortable sheet ("messages.job").
+ */
 export function CorrespondenceInboxPanel(props: {
   readonly drafts: readonly ProjectDraft[]
   readonly onOpenDraft: (draft: ProjectDraft) => Promise<void>
   readonly projectId: string
   readonly inbox: CorrespondenceInbox
   readonly activeId: string | null
-  readonly hiddenOnMobile: boolean
   readonly filter: CorrespondenceInboxFilter
   readonly query: string
-  readonly hits: readonly SearchHit[]
+  readonly hits: readonly InboxSearchHit[]
   readonly hasMore: boolean
   readonly busy: boolean
   readonly onQuery: (query: string) => void
@@ -53,40 +59,62 @@ export function CorrespondenceInboxPanel(props: {
   readonly onNewEmail: () => Promise<void>
   readonly onOpen: (id: string, messageId?: string) => Promise<void>
   readonly onRefresh: () => Promise<CorrespondenceInbox | null>
+  readonly className?: string
 }): React.ReactElement {
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set())
   const [pending, setPending] = React.useState(false)
   const [status, setStatus] = React.useState<string | null>(null)
-  const searching = props.query.trim().length >= 2
-  const matching = new Set(props.hits.map((hit) => hit.conversationId))
-  const visible = filterConversations(
-    props.inbox.conversations,
-    props.filter,
-    searching ? "" : props.query,
-  ).filter((conversation) => !searching || matching.has(conversation.id))
-  const visibleIds = visible.map((conversation) => conversation.id)
+  const { filter, hits, inbox, onOpen, query } = props
+  const searching = query.trim().length >= 2
+  const visible = React.useMemo(() => {
+    const matching = new Set(hits.map((hit) => hit.conversationId))
+    return filterConversations(inbox.conversations, filter, searching ? "" : query)
+      .filter((conversation) => !searching || matching.has(conversation.id))
+  }, [filter, hits, inbox.conversations, query, searching])
+  const visibleIds = React.useMemo(() => visible.map((conversation) => conversation.id), [visible])
   const selectedIds = visibleIds.filter((id) => selected.has(id))
-  const allSelected =
-    visibleIds.length > 0 && selectedIds.length === visibleIds.length
   const locked = pending || props.busy
-  function toggle(id: string, checked: boolean): void {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (checked) next.add(id)
-      else next.delete(id)
-      return next
-    })
-  }
-  async function update(
-    action:
-      | "read"
-      | "archive"
-      | "restore"
-      | "follow-up"
-      | "clear-follow-up"
-      | "save"
-      | "unsave",
-  ): Promise<void> {
+  const unreadCount = inbox.conversations.filter((c) => c.unread && !c.archived).length
+
+  const hitsFor = React.useCallback(
+    (conversationId: string) => hits.filter((hit) => hit.conversationId === conversationId),
+    [hits],
+  )
+  const open = React.useCallback(
+    (conversationId: string, messageId?: string) => { void onOpen(conversationId, messageId) },
+    [onOpen],
+  )
+  const columns = React.useMemo(
+    () => conversationColumns({
+      filter,
+      searching,
+      hitsFor,
+      onOpen: open,
+      selection: {
+        selected,
+        visibleIds,
+        locked,
+        onToggle: (id, checked) => setSelected((current) => {
+          const next = new Set(current)
+          if (checked) next.add(id)
+          else next.delete(id)
+          return next
+        }),
+        onToggleAll: (checked) => setSelected(checked ? new Set(visibleIds) : new Set()),
+      },
+    }),
+    [filter, searching, hitsFor, open, selected, visibleIds, locked],
+  )
+  const table = useRecordTable({
+    data: visible,
+    columns,
+    getRowId: rowId,
+    resetKey: `${filter}\u0000${query}`,
+    initialItemId: props.activeId,
+    sheetId: "messages.job",
+  })
+
+  async function update(action: BulkAction): Promise<void> {
     if (locked || selectedIds.length === 0) return
     setPending(true)
     setStatus(null)
@@ -96,21 +124,13 @@ export function CorrespondenceInboxPanel(props: {
       // Completed chunks stay deselected after a later failure so retry targets only remaining work.
       for (let index = 0; index < selectedIds.length; index += 100) {
         const ids = selectedIds.slice(index, index + 100)
-        const result = await updateCorrespondenceInbox(
-          props.projectId,
-          ids,
-          action,
-        )
+        const result = await updateCorrespondenceInbox(props.projectId, ids, action)
         if (!result.success) {
-          setStatus(
-            `${completed ? `${completed} conversations updated. ` : ""}${result.error}`,
-          )
+          setStatus(`${completed ? `${completed} conversations updated. ` : ""}${result.error}`)
           return
         }
         completed += ids.length
-        setSelected(
-          (current) => new Set([...current].filter((id) => !ids.includes(id))),
-        )
+        setSelected((current) => new Set([...current].filter((id) => !ids.includes(id))))
       }
       const outcome = {
         read: "marked as read",
@@ -121,9 +141,7 @@ export function CorrespondenceInboxPanel(props: {
         save: "saved",
         unsave: "removed from Saved",
       }[action]
-      setStatus(
-        `${completed} ${completed === 1 ? "conversation" : "conversations"} ${outcome}.`,
-      )
+      setStatus(`${completed} ${completed === 1 ? "conversation" : "conversations"} ${outcome}.`)
     } catch {
       setStatus("The update could not be confirmed. Refresh and try again.")
     } finally {
@@ -131,301 +149,109 @@ export function CorrespondenceInboxPanel(props: {
       setPending(false)
     }
   }
+
   return (
-    <aside
-      className={cn(
-        "flex w-full shrink-0 flex-col border-r md:w-92",
-        props.hiddenOnMobile && "hidden md:flex",
-      )}
-      aria-label="Message inbox"
-    >
-      <div className="border-b p-4">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Project messages
-        </p>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <h1 className="truncate text-lg font-semibold">
-            {props.inbox.projectName}
-          </h1>
-          <div className="flex shrink-0 gap-1">
-            <Button size="sm" variant="outline" onClick={() => void props.onNewMessage()}>New message</Button>
-            {props.inbox.workspace === "staff" && <Button size="sm" onClick={() => void props.onNewEmail()}>New email</Button>}
+    <aside className={cn("flex min-w-0 flex-col", props.className)} aria-label="Message inbox">
+      <div className="space-y-3 border-b p-4">
+        <div>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Project messages</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            <h1 className="truncate text-lg font-semibold">{inbox.projectName}</h1>
+            <div className="flex shrink-0 gap-1">
+              <Button size="sm" variant="outline" onClick={() => void props.onNewMessage()}>New message</Button>
+              {inbox.workspace === "staff" && <Button size="sm" onClick={() => void props.onNewEmail()}>New email</Button>}
+            </div>
           </div>
         </div>
-        <label className="relative mt-4 block">
-          <Search
-            className="absolute top-2.5 left-3 size-4 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            className="pl-9"
-            type="search"
-            value={props.query}
-            onChange={(event) => {
-              setSelected(new Set())
-              props.onQuery(event.target.value)
-            }}
-            placeholder="Search subjects and messages"
-            aria-label="Search conversations"
-          />
-        </label>
-        <div
-          className="mt-3 flex flex-wrap gap-1"
-          role="group"
-          aria-label="Conversation filters"
-        >
-          {(["inbox", "drafts", "sent", "unread", "follow-up", "saved", "archived"] as const).map(
-            (filter) => (
-              <Button
-                key={filter}
-                type="button"
-                aria-pressed={props.filter === filter}
-                variant={props.filter === filter ? "secondary" : "ghost"}
-                size="sm"
-                disabled={pending}
-                onClick={() => {
-                  setSelected(new Set())
-                  setStatus(null)
-                  props.onFilter(filter)
-                }}
-              >
-                {filter === "follow-up"
-                  ? "Needs reply"
-                  : filter[0].toUpperCase() + filter.slice(1)}
-                {filter === "drafts" && ` (${props.drafts.length})`}
-                {filter === "unread" &&
-                  ` (${props.inbox.conversations.filter((c) => c.unread && !c.archived).length})`}
-              </Button>
-            ),
-          )}
-          {props.inbox.workspace === "staff" && (
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Conversation filters">
+          {FILTERS.map((option) => (
+            <Button
+              key={option.value}
+              type="button"
+              aria-pressed={filter === option.value}
+              variant={filter === option.value ? "secondary" : "ghost"}
+              size="sm"
+              disabled={pending}
+              onClick={() => {
+                setSelected(new Set())
+                setStatus(null)
+                props.onFilter(option.value)
+              }}
+            >
+              {option.label}
+              {option.value === "drafts" && ` (${props.drafts.length})`}
+              {option.value === "unread" && ` (${unreadCount})`}
+            </Button>
+          ))}
+          {inbox.workspace === "staff" && (
             <Button asChild variant="ghost" size="sm">
               <Link href={`/dashboard/projects/${encodeURIComponent(props.projectId)}/messages/global`}>Global</Link>
             </Button>
           )}
         </div>
+        <RecordSearchInput
+          value={query}
+          onChange={(value) => {
+            setSelected(new Set())
+            props.onQuery(value)
+          }}
+          label="Search conversations"
+          placeholder="Search subject, people or message text"
+          className="sm:max-w-md"
+        />
       </div>
-      {props.filter === "drafts" ? <ProjectDraftList drafts={props.drafts} query={props.query} busy={locked} onOpen={props.onOpenDraft} /> : <>
-      <div className="border-b px-4 py-2">
-        <label className="flex items-center gap-2 text-xs">
-          <Checkbox
-            checked={
-              allSelected ? true : selectedIds.length ? "indeterminate" : false
-            }
-            disabled={locked || visible.length === 0}
-            onCheckedChange={(checked) =>
-              setSelected(checked === true ? new Set(visibleIds) : new Set())
-            }
-            aria-label="Select all visible conversations"
-          />
-          {selectedIds.length ? `${selectedIds.length} selected` : "Select all"}
-          <span className="ml-auto text-muted-foreground">
-            {visible.length}{" "}
-            {visible.length === 1 ? "conversation" : "conversations"}
-          </span>
-        </label>
-        {selectedIds.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={locked}
-              onClick={() => void update("read")}
-            >
-              <CheckCheck />
-              Mark as read
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={locked}
-              onClick={() =>
-                void update(
-                  props.filter === "follow-up"
-                    ? "clear-follow-up"
-                    : "follow-up",
-                )
-              }
-            >
-              <Flag />
-              {props.filter === "follow-up"
-                ? "Clear needs reply"
-                : "Needs reply"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={locked}
-              onClick={() =>
-                void update(props.filter === "saved" ? "unsave" : "save")
-              }
-            >
-              {props.filter === "saved" ? <BookmarkMinus /> : <Bookmark />}
-              {props.filter === "saved" ? "Remove from Saved" : "Save"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={locked}
-              onClick={() =>
-                void update(props.filter === "archived" ? "restore" : "archive")
-              }
-            >
-              {props.filter === "archived" ? <ArchiveRestore /> : <Archive />}
-              {props.filter === "archived" ? "Restore" : "Archive"}
-            </Button>
-          </div>
-        )}
-        {status && (
-          <p className="mt-2 text-xs" role="status">
-            {status}
-          </p>
-        )}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {visible.length === 0 ? (
-          <p className="p-5 text-sm text-muted-foreground">
-            {props.filter === "unread"
-              ? "No unread conversations match this view."
-              : "No conversations match this view."}
-          </p>
-        ) : (
-          visible.map((conversation) => (
-            <div
-              key={conversation.id}
-              className={cn(
-                "flex items-start gap-2 border-b px-4 py-3",
-                conversation.id === props.activeId && "bg-accent",
-              )}
-            >
-              <Checkbox
-                className="mt-1 shrink-0"
-                checked={selected.has(conversation.id)}
+      {filter === "drafts" ? (
+        <ProjectDraftList drafts={props.drafts} query={query} busy={locked} onOpen={props.onOpenDraft} />
+      ) : (
+        <div className="space-y-3 p-4">
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/50 px-3 py-2 text-sm">
+              <span className="mr-2">{selectedIds.length} selected</span>
+              <Button size="sm" variant="outline" disabled={locked} onClick={() => void update("read")}>
+                <CheckCheck />
+                Mark as read
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
                 disabled={locked}
-                onCheckedChange={(checked) =>
-                  toggle(conversation.id, checked === true)
-                }
-                aria-label={`Select conversation: ${conversation.subject}`}
-              />
-              <div className="min-w-0 flex-1">
-                <button
-                  type="button"
-                  className="w-full text-left hover:underline"
-                  onClick={() =>
-                    void props.onOpen(
-                      conversation.id,
-                      searching
-                        ? props.hits.find(
-                            (hit) => hit.conversationId === conversation.id,
-                          )?.messageId
-                        : undefined,
-                    )
-                  }
-                >
-                  <div
-                    className={cn(
-                      "flex items-center justify-between gap-3 text-xs",
-                      conversation.unread
-                        ? "font-bold text-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    <span className="truncate">
-                      {conversation.people
-                        .map((person) => person.name)
-                        .join(", ")}
-                    </span>
-                    <span
-                      className="shrink-0"
-                      title={
-                        conversation.lastActivityDisplay
-                          ? "Source-local timestamp; timezone not proven"
-                          : undefined
-                      }
-                    >
-                      {conversation.lastActivityDisplay
-                        ? `Source time: ${conversation.lastActivityDisplay}`
-                        : formatTime(props.filter === "sent" ? conversation.lastSentAt ?? conversation.lastActivityAt : conversation.lastActivityAt)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    {conversation.unread && (
-                      <span
-                        className="size-2 shrink-0 rounded-full bg-primary"
-                        aria-label="Unread"
-                      />
-                    )}
-                    <span
-                      className={cn(
-                        "truncate",
-                        conversation.unread ? "font-bold" : "font-normal",
-                      )}
-                    >
-                      {conversation.subject}
-                    </span>
-                    {conversation.origin?.source && (
-                      <SourceTag className="shrink-0" source={conversation.origin.source} />
-                    )}
-                  </div>
-                  {!searching && (
-                    <p
-                      className={cn(
-                        "mt-1 line-clamp-2 text-sm",
-                        conversation.unread
-                          ? "font-semibold text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {props.filter === "sent" ? conversation.lastSentExcerpt ?? conversation.excerpt : conversation.excerpt}
-                    </p>
-                  )}
-                </button>
-                {searching &&
-                  props.hits
-                    .filter((hit) => hit.conversationId === conversation.id)
-                    .map((hit) => (
-                      <button
-                        key={hit.messageId}
-                        type="button"
-                        className="mt-2 block w-full text-left text-sm text-muted-foreground hover:underline"
-                        onClick={() =>
-                          void props.onOpen(conversation.id, hit.messageId)
-                        }
-                      >
-                        {hit.excerpt}
-                        <span
-                          className="mt-1 block text-xs"
-                          title={
-                            hit.sourceSentDisplay && hit.sourceSentAt === null
-                              ? "Source-local timestamp; timezone not proven"
-                              : undefined
-                          }
-                        >
-                          {hit.sourceSentDisplay && hit.sourceSentAt === null
-                            ? `Source time: ${hit.sourceSentDisplay}`
-                            : formatTime(hit.sentAt)}
-                        </span>
-                      </button>
-                    ))}
-                <ConversationTags conversation={conversation} />
-              </div>
+                onClick={() => void update(filter === "follow-up" ? "clear-follow-up" : "follow-up")}
+              >
+                <Flag />
+                {filter === "follow-up" ? "Clear needs reply" : "Needs reply"}
+              </Button>
+              <Button size="sm" variant="outline" disabled={locked} onClick={() => void update(filter === "saved" ? "unsave" : "save")}>
+                {filter === "saved" ? <BookmarkMinus /> : <Bookmark />}
+                {filter === "saved" ? "Remove from Saved" : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={locked}
+                onClick={() => void update(filter === "archived" ? "restore" : "archive")}
+              >
+                {filter === "archived" ? <ArchiveRestore /> : <Archive />}
+                {filter === "archived" ? "Restore" : "Archive"}
+              </Button>
             </div>
-          ))
-        )}
-        {searching && props.hasMore && (
-          <p className="p-4 text-xs text-muted-foreground">
-            Refine your search to narrow these results. Select all applies to
-            the conversations shown.
-          </p>
-        )}
-      </div>
-      </>}
+          )}
+          {status && <p className="text-xs" role="status">{status}</p>}
+          <RecordTable
+            table={table}
+            itemLabel="conversations"
+            emptyMessage={filter === "unread" ? "No unread conversations match this view." : "No conversations match this view."}
+            rowIdPrefix="conversation-row"
+            focusedRowId={props.activeId}
+            scrollToFocusedRow={false}
+            onRowOpen={(row) => open(row.id, searching ? hitsFor(row.id)[0]?.messageId : undefined)}
+          />
+          {searching && props.hasMore && (
+            <p className="text-xs text-muted-foreground">
+              Refine your search to narrow these results. Select all applies to the conversations shown.
+            </p>
+          )}
+        </div>
+      )}
     </aside>
   )
-}
-function formatTime(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.valueOf())
-    ? value
-    : date.toLocaleDateString([], { month: "short", day: "numeric" })
 }

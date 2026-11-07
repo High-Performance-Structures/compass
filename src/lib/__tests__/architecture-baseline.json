@@ -915,7 +915,7 @@
     "src/components/ai/prompt-input.tsx": 1287,
     "src/components/app-sidebar.tsx": 825,
     "src/components/conversations/message-composer.tsx": 1014,
-    "src/components/correspondence/project-correspondence-workspace.tsx": 1124,
+    "src/components/correspondence/project-correspondence-workspace.tsx": 1132,
     "src/components/dashboard/dashboard-launchpad.tsx": 1343,
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
     "src/components/nutech/nutech-order-workspace.tsx": 1134,

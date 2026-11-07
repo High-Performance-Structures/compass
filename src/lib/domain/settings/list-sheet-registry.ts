@@ -123,6 +123,20 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     startFilter: { options: OPEN_OR_ALL, defaultValue: "open" },
   },
   {
+    id: "messages.job",
+    label: "Messages",
+    where: "Project › Messages",
+    columns: [
+      { id: "subject", label: "Subject", kind: "text", required: true },
+      { id: "with", label: "With", kind: "text" },
+      { id: "type", label: "Type", kind: "text" },
+      { id: "lastActivity", label: "Last activity", kind: "date" },
+      { id: "status", label: "Status", kind: "status" },
+    ],
+    defaultSort: { columnId: "lastActivity", desc: true },
+    startFilter: null,
+  },
+  {
     id: "rfis.trade-partner",
     label: "RFIs, trade partner view",
     where: "A trade partner's RFIs",

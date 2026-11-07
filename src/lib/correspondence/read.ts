@@ -99,6 +99,7 @@ export async function listCorrespondence(ctx: CorrespondenceContext, conversatio
       excerpt: last.message.retractedAt ? "Message retracted" : last.message.body.slice(0, 180), lastActivityAt: last.message.sentAt,
       lastActivityDisplay: lastActivitySourceLocal ? lastSource?.sourceSentDisplay ?? null : null,
       lastActivitySourceLocal,
+      kind: privacy !== null || last.message.source === "email" ? "email" : "message",
       people,
       unread: Boolean(unread),
       saved: state?.saved ?? false, followUp: state?.followUp ?? false, archived: state?.archived ?? false, closed: conversation.closed, shareReadReceipts: state?.shareReadReceipts ?? true,

@@ -9,6 +9,7 @@ import { participantReviewColumns } from "@/components/contacts/participant-revi
 import { customerColumns } from "@/components/financials/customers-table"
 import { billedItemColumns, receivedPaymentColumns } from "@/components/financials/received-payments-panel"
 import { vendorColumns } from "@/components/financials/vendors-table"
+import { conversationColumns } from "@/components/correspondence/correspondence-inbox-columns"
 import { rfiColumns } from "@/components/projects/project-rfi-record-table"
 import { rfqColumns } from "@/components/projects/project-rfq-record-table"
 import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
@@ -86,6 +87,7 @@ describe("list sheet standard", () => {
       "purchase-orders.all-jobs": () => purchaseOrderColumns(true, "open", defaultRecordStatusList("purchase_order")),
       "rfis.job": () => rfiColumns("staff", { kind: "link", href: () => "/" }, defaultRecordStatusList("rfi")),
       "rfis.trade-partner": () => rfiColumns("vendor", { kind: "select", onSelect: noop }, defaultRecordStatusList("rfi")),
+      "messages.job": () => conversationColumns({ filter: "inbox", searching: false, hitsFor: () => [], onOpen: noop, selection: { selected: new Set(), visibleIds: [], locked: false, onToggle: noop, onToggleAll: noop } }),
       "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
