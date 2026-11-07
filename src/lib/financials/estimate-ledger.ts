@@ -1,4 +1,5 @@
 import type { EstimateLedgerLine } from "@/lib/domain/estimates/rules"
+import { canonicalFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 
 // project-rfq-bids.ts (the RFQ area) still reads these from here.
 export { calculateEstimateLine, estimateCanBeEdited, isEstimateStatus } from "@/lib/domain/estimates/rules"
@@ -43,12 +44,15 @@ export function buildContractBudget(input: {
 }): ContractBudget {
   const grouped = new Map<string, ContractBudgetLine>()
 
+  // Keyed by canonical cost code, so a builder fee coded "99 10 00" and one
+  // coded "Company Overhead" share one line (the first one's code is kept).
   for (const line of input.estimateLines) {
-    const current = grouped.get(line.costCode)
+    const key = canonicalFeeCostCode(line.costCode)
+    const current = grouped.get(key)
     if (current) {
       const originalEstimateCents =
         current.originalEstimateCents + line.lineTotalCents
-      grouped.set(line.costCode, {
+      grouped.set(key, {
         ...current,
         sourceEstimateLineId: null,
         originalEstimateCents,
@@ -60,7 +64,7 @@ export function buildContractBudget(input: {
       continue
     }
 
-    grouped.set(line.costCode, {
+    grouped.set(key, {
       sourceEstimateLineId: line.id,
       divisionCode: line.divisionCode,
       divisionName: line.divisionName,
@@ -75,11 +79,12 @@ export function buildContractBudget(input: {
   }
 
   for (const adjustment of input.adjustments) {
-    const current = grouped.get(adjustment.costCode)
+    const key = canonicalFeeCostCode(adjustment.costCode)
+    const current = grouped.get(key)
     if (current) {
       const approvedChangeCents =
         current.approvedChangeCents + adjustment.amountCents
-      grouped.set(adjustment.costCode, {
+      grouped.set(key, {
         ...current,
         approvedChangeCents,
         adjustedBudgetCents:
@@ -89,7 +94,7 @@ export function buildContractBudget(input: {
     }
 
     const divisionCode = adjustment.costCode.slice(0, 2)
-    grouped.set(adjustment.costCode, {
+    grouped.set(key, {
       sourceEstimateLineId: null,
       divisionCode,
       divisionName: defaultDivisionName(divisionCode),
