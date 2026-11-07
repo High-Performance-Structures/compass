@@ -19,6 +19,8 @@ import {
 } from "@/app/actions/project-contract-deposits"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectReceivablePayments } from "@/app/actions/received-payments"
+import { getSageChangeOrderSendState } from "@/app/actions/sage-change-orders"
+import { SageChangeOrderSendPanel } from "@/components/financials/sage-change-order-send"
 import { ReceivedPaymentsPanel } from "@/components/financials/received-payments-panel"
 import { SquareReceiptsTable } from "@/components/financials/square-receipts-table"
 import { PageHeader } from "@/components/page-header"
@@ -75,7 +77,12 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project contract deposits unavailable", error)
   }
-  const [receivables, sagePanel] = await Promise.all([getProjectReceivablePayments(id), getSagePayRequestPanel(id)])
+  // The change order panel is for office staff with finance access only; it is left out for everyone else.
+  const [receivables, sagePanel, sageChangeOrders] = await Promise.all([
+    getProjectReceivablePayments(id),
+    getSagePayRequestPanel(id),
+    getSageChangeOrderSendState(id).catch(() => null),
+  ])
   const selectedSquareReceipt = Array.isArray(query.squareReceipt)
     ? (query.squareReceipt[0] ?? null)
     : (query.squareReceipt ?? null)
@@ -111,6 +118,9 @@ export default async function ProjectFinancialsPage({
             />
           )}
           {sagePanel?.origin === "sage" && <SagePayRequestsPanel projectId={id} panel={sagePanel} />}
+          {sageChangeOrders?.success && sageChangeOrders.data.items.length > 0 && (
+            <SageChangeOrderSendPanel projectId={id} state={sageChangeOrders.data} bulk />
+          )}
           <ProjectFinancialWorkspace
             projectId={id}
             items={items}

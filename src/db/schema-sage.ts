@@ -7,9 +7,12 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
-import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES } from "../lib/domain/sage-bridge/statuses"
+import {
+  SAGE_CHANGE_ORDER_EXPORT_STATUSES,
+  SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
+} from "../lib/domain/sage-bridge/statuses"
 import { PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
-import { customers, organizations, projectBudgetApplications, projects, users, vendors } from "./schema"
+import { customers, organizations, projectBudgetApplications, projectChangeOrders, projects, users, vendors } from "./schema"
 
 export const sageWriteApprovals = sqliteTable(
   "sage_write_approvals",
@@ -594,6 +597,94 @@ export const sageSquarePaymentOperations = sqliteTable(
   ]
 )
 
+/**
+ * One row per change order or variance sent to Sage 100 Contractor as an
+ * approved prime change order (ChangeOrderAddRq). Staff queue it after
+ * confirming the number, date, description and lines; the Sage writer on the
+ * Sage computer claims it, adds the change order and reports Sage's record
+ * number. A failed send is queued again on the same row.
+ */
+export const sageChangeOrderExports = sqliteTable(
+  "sage_change_order_exports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    changeOrderId: text("change_order_id")
+      .notNull()
+      .references(() => projectChangeOrders.id, { onDelete: "cascade" }),
+    status: text("status", { enum: SAGE_CHANGE_ORDER_EXPORT_STATUSES }).notNull().default("queued"),
+    // snapshot: the Sage change order number staff confirmed when they sent it.
+    sageChangeOrderNumber: text("sage_change_order_number").notNull(),
+    // json: provider request snapshot, the change order and lines sent to the Sage writer
+    payloadJson: text("payload_json").notNull(),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    requestedAt: text("requested_at").notNull(),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    /** Sage's prime change order record number (prmchg.recnum), once added or matched. */
+    sageRecordId: text("sage_record_id"),
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_change_order_exports_change_order_idx").on(table.changeOrderId),
+    index("sage_change_order_exports_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
+    index("sage_change_order_exports_project_idx").on(table.projectId, table.status),
+    index("sage_change_order_exports_organization_id_idx").on(table.organizationId),
+    index("sage_change_order_exports_requested_by_user_id_idx").on(table.requestedByUserId),
+  ]
+)
+
+/**
+ * Read-only copy of Sage's prime change orders (prmchg, lines in pmcgln) for
+ * each linked job, sent by the read-only Sage reader. Compass compares its
+ * change orders against these rows to show "In Sage", "Not in Sage" or
+ * "Differs", and to skip one that is already there.
+ */
+export const sagePrimeChangeOrders = sqliteTable(
+  "sage_prime_change_orders",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sageRecordId: text("sage_record_id").notNull(),
+    sageJobNumber: text("sage_job_number").notNull(),
+    changeOrderNumber: text("change_order_number").notNull(),
+    changeOrderDate: text("change_order_date"),
+    description: text("description").notNull(),
+    /** Sage's PrimeChangeStatus number (1 = approved). */
+    sageStatusNumber: integer("sage_status_number"),
+    approvedAmountCents: integer("approved_amount_cents").notNull(),
+    approvedDate: text("approved_date"),
+    // json: raw provider payload, Sage's change order lines (cost code record, cost type, amount)
+    linesJson: text("lines_json").notNull(),
+    capturedAt: text("captured_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_prime_change_orders_project_record_idx").on(table.projectId, table.sageRecordId),
+  ]
+)
+
+/** When Compass last read a job's prime change orders from Sage (also when it had none). */
+export const sagePrimeChangeOrderReads = sqliteTable("sage_prime_change_order_reads", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sageJobNumber: text("sage_job_number").notNull(),
+  changeOrderCount: integer("change_order_count").notNull(),
+  capturedAt: text("captured_at").notNull(),
+})
+
 export type SagePayApplicationSyncRun =
   typeof sagePayApplicationSyncRuns.$inferSelect
 export type SagePayApplicationSnapshot =
@@ -605,3 +696,5 @@ export type SageSquareWebhookEvent =
   typeof sageSquareWebhookEvents.$inferSelect
 export type SageSquarePaymentOperation =
   typeof sageSquarePaymentOperations.$inferSelect
+export type SageChangeOrderExport = typeof sageChangeOrderExports.$inferSelect
+export type SagePrimeChangeOrder = typeof sagePrimeChangeOrders.$inferSelect

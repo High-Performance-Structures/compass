@@ -49,6 +49,29 @@ for Signet's asynchronous job and propagates the poller's real exit status to
 systemd. A successful idle run reports `requested: 0`, `processed: 0`, and the
 current `taxDistricts` count; that is a healthy state.
 
+## Sage prime change order reader
+
+A separate read-only reader keeps Compass's copy of each linked job's Sage
+prime change orders (`dbo.prmchg`, lines in `dbo.pmcgln`), so change orders
+show "In Sage", "Not in Sage" or "Differs" and Compass never sends one twice.
+It uses the same secrets and read-only SQL account as the pay-application
+poller and runs SELECT statements only. Install it next to that poller:
+
+```bash
+install -m 0755 scripts/sage_prime_change_order_reader.py \
+  "$HOME/.local/lib/compass/sage_prime_change_order_reader.py"
+install -m 0644 deploy/systemd/compass-sage-prime-change-order-reader.service \
+  "$HOME/.config/systemd/user/"
+install -m 0644 deploy/systemd/compass-sage-prime-change-order-reader.timer \
+  "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now compass-sage-prime-change-order-reader.timer
+```
+
+To redeploy after a change, repeat the first `install` line from an
+up-to-date checkout of main; the timer picks up the new script on its next
+run. A healthy run prints `{"status": "ok", "jobs": N, "changeOrders": M}`.
+
 ## Feedback Desk bug-delivery consumer
 
 From the Compass repository root, create or reuse the real Git checkout that

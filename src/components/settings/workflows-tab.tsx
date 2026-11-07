@@ -27,6 +27,7 @@ import { PayApplicationSettingsSection } from "@/components/settings/pay-applica
 import { ChangeOrderAcceptanceSettingsSection } from "@/components/settings/change-order-acceptance-settings-section"
 import { VarianceSettingsSection } from "@/components/settings/variance-settings-section"
 import { SageExportSettingsSection } from "@/components/settings/sage-export-settings-section"
+import { SageChangeOrderSettingsSection } from "@/components/settings/sage-change-order-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -224,6 +225,7 @@ const WORKFLOW_AREAS = [
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
   { value: "variances", label: "Variances", description: "The default contract type for jobs, and how project liability insurance follows variances and change orders." },
   { value: "sage-export", label: "Sage export", description: "Billing cycle and invoice number formats for pay requests, deposits, other billings, credit memos and material sales sent to Sage." },
+  { value: "sage-change-orders", label: "Sage change orders", description: "How executed change orders and variances are numbered, described and coded when staff send them to Sage." },
   { value: "change-order-acceptance", label: "Change-order acceptance", description: "Who may record an owner's verbal approval as a staff sign-off, and whether priced change orders need written approval." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
@@ -295,6 +297,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <VarianceSettingsSection />
     case "sage-export":
       return <SageExportSettingsSection />
+    case "sage-change-orders":
+      return <SageChangeOrderSettingsSection />
     case "change-order-acceptance":
       return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":

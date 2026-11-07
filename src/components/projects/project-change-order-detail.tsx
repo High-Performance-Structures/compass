@@ -59,6 +59,7 @@ export function ProjectChangeOrderDetail({
   formOptions,
   paperTrailStatus = null,
   varianceOptions = null,
+  sagePanel = null,
 }: {
   readonly item: ProjectChangeOrderItem
   readonly backHref: string
@@ -68,6 +69,8 @@ export function ProjectChangeOrderDetail({
   readonly paperTrailStatus?: React.ReactNode
   /** Staff pages pass the project's variance options; previews leave them out. */
   readonly varianceOptions?: ProjectVarianceOptions | null
+  /** Staff pages pass the Send to Sage panel for an approved change order. */
+  readonly sagePanel?: React.ReactNode
 }): React.ReactElement {
   const variance = item.recordType === "variance"
   return (
@@ -303,12 +306,14 @@ export function ProjectChangeOrderDetail({
               </div>
             </dl>
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Compass records readiness only. No document is sent to Foxit and no
-              accounting record is written to Sage from this workflow.
+              No document is sent to Foxit from this workflow. Office staff with
+              finance access send approved change orders to Sage from the Sage panel.
             </p>
           </div>
         </DeveloperOnly>
       </section>
+
+      {sagePanel}
 
       <section className="border-y bg-background p-4">
         <h2 className="text-sm font-semibold">Activity history</h2>
@@ -337,6 +342,12 @@ export function ProjectChangeOrderDetail({
                       ? "Reclassified"
                     : event.eventType === "acceptance_recorded"
                       ? "Owner acceptance recorded"
+                    : event.eventType === "sage_send_requested"
+                      ? "Sent to Sage"
+                    : event.eventType === "sage_added"
+                      ? "Added to Sage"
+                    : event.eventType === "sage_matched"
+                      ? "Linked to the change order already in Sage"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}

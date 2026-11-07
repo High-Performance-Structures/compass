@@ -4,6 +4,7 @@ import { and, asc, desc, eq } from "drizzle-orm"
 
 import { projectBudgetApplications, projectBudgetLines, projectChangeOrders, projects } from "@/db/schema"
 import { projectContractBudgetAdjustments } from "@/db/schema-estimates"
+import { sagePrimeChangeOrderReads, sagePrimeChangeOrders } from "@/db/schema-sage"
 import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
 import { COMPASS_DRAW_SOURCE, SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -87,6 +88,26 @@ async function loadSageBilling(db: Db, projectId: string) {
   }
 }
 
+/** Sage's prime change orders for the project's current Sage job, or null when Compass hasn't read them. */
+async function loadSagePrimeChangeOrders(db: Db, projectId: string, sageJobNumber: string | null) {
+  if (!sageJobNumber) return null
+  const [read, rows] = await Promise.all([
+    db.select({ sageJobNumber: sagePrimeChangeOrderReads.sageJobNumber }).from(sagePrimeChangeOrderReads).where(eq(sagePrimeChangeOrderReads.projectId, projectId)).get(),
+    db
+      .select({
+        sageRecordId: sagePrimeChangeOrders.sageRecordId,
+        changeOrderNumber: sagePrimeChangeOrders.changeOrderNumber,
+        description: sagePrimeChangeOrders.description,
+        approvedAmountCents: sagePrimeChangeOrders.approvedAmountCents,
+        sageJobNumber: sagePrimeChangeOrders.sageJobNumber,
+      })
+      .from(sagePrimeChangeOrders)
+      .where(eq(sagePrimeChangeOrders.projectId, projectId)),
+  ])
+  if (read?.sageJobNumber !== sageJobNumber) return null
+  return rows.filter((row) => row.sageJobNumber === sageJobNumber)
+}
+
 /** Executed change orders and variances in the draw's contract budget, by cost code. */
 async function loadChangeOrders(db: Db, projectId: string, budgetRevisionId: string | null): Promise<readonly SageChangeOrderSource[]> {
   if (!budgetRevisionId) return []
@@ -147,7 +168,7 @@ export async function loadSageExportPreview(
       .get(),
   ])
   if (!project || !application) return null
-  const [lineRows, catalog, settings, sageBilling, changeOrderSources] = await Promise.all([
+  const [lineRows, catalog, settings, sageBilling, changeOrderSources, sagePrimeRows] = await Promise.all([
     db
       .select()
       .from(projectBudgetLines)
@@ -157,6 +178,7 @@ export async function loadSageExportPreview(
     readFeatureSettings(db, input.organizationId, "sage-export"),
     loadSageBilling(db, input.projectId),
     loadChangeOrders(db, input.projectId, application.budgetRevisionId),
+    loadSagePrimeChangeOrders(db, input.projectId, project.sageJobNumber?.trim() || null),
   ])
   const index = indexSageCatalog(catalog)
   const withVariances = await linesWithVariances(
@@ -214,7 +236,7 @@ export async function loadSageExportPreview(
     lines: lines.map((line) => ({ ...line, newToSage: newToSage ? newToSage.has(line.key) : null })),
     reconciliation,
     sageAlreadyHasThisApplication: Number.isFinite(sageSequence) && Number(sequence) <= sageSequence,
-    changeOrders: sageChangeOrderPreviews(changeOrderSources, index),
+    changeOrders: sageChangeOrderPreviews(changeOrderSources, index, sagePrimeRows),
     unmappedCount: lines.filter((line) => line.mapping.status === "unmapped").length,
   }
 }

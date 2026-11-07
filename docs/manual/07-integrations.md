@@ -35,12 +35,15 @@ This section describes each one in the same way: its data flow, how it authentic
   - `scripts/sage_square_invoice_creator_poller.py` reports who created each invoice and whether receipts have been entered.
   - `scripts/sage_square_invoice_bridge.py` / `sage_square_invoice_poller.py` turn accounting receivable invoices into payment-provider invoices in two phases (`--create-draft`, then `--publish`), with idempotency keys derived from accounting ids.
   - `scripts/square_auth_monitor.py`.
+  - `scripts/sage_prime_change_order_reader.py` is read-only. Every 10 minutes it sends each linked job's prime change orders, so Compass can show whether a change order is already in the accounting system.
 
   Secrets are injected at process start by the host's secret broker; the unit files contain no values.
 - **Windows accounting PC** (C#, Task Scheduler). One executable is built from:
   - `scripts/Sage.100.Contractor.CompassClientProjectWriter.cs`;
   - `…CompassContactWriter.cs`;
-  - `…CompassSquareFeeWriter.cs`.
+  - `…CompassSquareFeeWriter.cs`;
+  - `…CompassVendorCertificateWriter.cs`;
+  - `…CompassChangeOrderWriter.cs` (adds approved prime change orders; never modifies or deletes one).
 
   It calls the accounting system's API library through reflection. It is installed and repaired by `install_sage_client_project_writer.ps1`, `install_sage_contact_writer_release.ps1` (which swaps the binary and restores it on failure) and `repair_sage_client_project_writer.ps1`. Logs rotate at 5 MB.
 
@@ -60,6 +63,8 @@ This section describes each one in the same way: its data flow, how it authentic
 | Contacts read, change, create | both | `contact-changes/{requests,results}`, `client-directory` | `sage_contact_*`, `sage_client_directory_*` |
 | Card-processing fees to GL | Compass → accounting | `square-payments/{requests,results}` | `sage_square_payment_operations` |
 | Invoice creator and receipt checks | accounting → Compass | `square-invoice-creators` | `sage_square_*` |
+| Prime change orders read | accounting → Compass (read) | `prime-change-orders/{requests,results}` | `sage_prime_change_orders`, `sage_prime_change_order_reads` |
+| Change orders and variances | Compass → accounting (write) | `change-orders/{requests,results}` | `sage_change_order_exports` |
 
 **Pay requests built in Sage.** Settings › Workflows › Sage export › "Pay requests are created in" chooses Compass (the default: staff build pay requests in Compass's G702/G703 editor) or Sage. For a Sage company, **Sync with Sage** on a project's Financials page or pay application page queues a pay-application read. When a snapshot reconciles, `src/lib/financials/sage-pay-request-sync.ts` turns it into the Compass pay application with the same number: it creates one (billed amounts read only, a small [Sage] tag, `billing_source = 'sage'`), refreshes one still in draft or review, or links a pay application built in Compass without changing it. Sage lines map onto Compass cost codes with the Sage export's matching (`sage-export-codes.ts`); variances are split from change orders by the project's own change orders. A linked Compass pay application shows a line-by-line comparison, and staff may choose **Use Sage amounts**, which keeps the earlier amounts in `pay_application_sage_syncs`. Issued shop tickets not yet billed are listed as a checklist; a sync marks those Sage's current-period amounts plainly cover as already included. Every sync, choice and tick is recorded in Activity. Nothing is written to Sage.
 
@@ -71,7 +76,7 @@ This section describes each one in the same way: its data flow, how it authentic
 
 **Two keys for every write.** A write needs a switch on each side:
 
-- the worker's `vars`: `SAGE_CLIENT_PROJECT_WRITES_ENABLED`, `SAGE_CONTACT_WRITES_ENABLED`, `SAGE_CONTACT_CREATES_ENABLED`, `SAGE_SQUARE_PAYMENT_WRITES_ENABLED`;
+- the worker's `vars`: `SAGE_CLIENT_PROJECT_WRITES_ENABLED`, `SAGE_CONTACT_WRITES_ENABLED`, `SAGE_CONTACT_CREATES_ENABLED`, `SAGE_SQUARE_PAYMENT_WRITES_ENABLED`, `SAGE_CHANGE_ORDER_WRITES_ENABLED`;
 - the agent's own machine variables.
 
 `SAGE_SQUARE_ORGANIZATION_ID` and `SAGE_CONTACT_ORGANIZATION_ID` pin the bridge to one tenant. The demo environment turns every switch off.
