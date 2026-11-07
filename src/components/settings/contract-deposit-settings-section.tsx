@@ -10,11 +10,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import {
-  FEATURE_SETTINGS,
   contractDepositSettingsSchema,
   type ContractDepositSettings,
-} from "@/lib/feature-settings/registry"
+} from "@/lib/feature-settings/contract-settings"
 
 const GROUP = FEATURE_SETTINGS["contract-deposits"]
 

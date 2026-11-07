@@ -55,7 +55,7 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
     rebaselineCompletedAt: null, rebaselineBlockers: [], canExecuteRebaseline: false,
     foxitStatus: "not_started", sageStatus: "not_ready",
-    executedDocumentAvailable: false, executedDocumentLabel: null,
+    executedDocumentAvailable: false, executedDocumentLabel: null, acceptance: null, manualAcceptance: null,
     canManageExecutedDocument: false, submittedAt: null,
     createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-01T12:00:00Z",
     canEdit: false, canApprove: false, allowedTransitions: [],

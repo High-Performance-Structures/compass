@@ -11,6 +11,7 @@ import {
   projects,
   vendors,
 } from "@/db/schema"
+import { recordedChangeOrderAcceptance } from "@/lib/domain/estimates/change-order-acceptance"
 import type { AudienceRfi } from "@/lib/project-audience-preview-types"
 import type { PurchaseOrderDocumentData } from "@/components/projects/purchase-order-document"
 import type { ChangeOrderReportItem } from "@/lib/print/audience-record-reports"
@@ -199,6 +200,7 @@ export async function changeOrderCopyData(
       .where(eq(projectChangeOrderDocuments.changeOrderId, recordId))
       .orderBy(asc(projectChangeOrderDocuments.createdAt)),
   ])
+  const acceptance = await recordedChangeOrderAcceptance(db, row, false)
   return {
     project: { id: project.id, name: project.name, projectNumber: project.projectNumber },
     changeOrder: {
@@ -213,6 +215,7 @@ export async function changeOrderCopyData(
       submittedAt: row.submittedAt,
       scope: row.scope,
       reason: row.reason,
+      acceptance,
       lines,
       documents,
     },

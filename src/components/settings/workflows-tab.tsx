@@ -24,6 +24,7 @@ import { EstimatePricingSettingsSection } from "@/components/settings/estimate-p
 import { TradeDocSettingsSection } from "@/components/settings/trade-doc-settings-section"
 import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { PayApplicationSettingsSection } from "@/components/settings/pay-application-settings-section"
+import { ChangeOrderAcceptanceSettingsSection } from "@/components/settings/change-order-acceptance-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -219,6 +220,7 @@ const WORKFLOW_AREAS = [
   { value: "trade-docs", label: "Trade docs", description: "What each kind of vendor must have on file, when documents expire, the certificate check, and bills while documents are missing." },
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
+  { value: "change-order-acceptance", label: "Change-order acceptance", description: "Who may record an owner's verbal approval as a staff sign-off, and whether priced change orders need written approval." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
@@ -285,6 +287,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ContractDepositSettingsSection />
     case "pay-applications":
       return <PayApplicationSettingsSection />
+    case "change-order-acceptance":
+      return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":
       return <ScheduleConflictSettingsSection />
     case "project-timeline":

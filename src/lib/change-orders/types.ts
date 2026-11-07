@@ -2,6 +2,8 @@ import type { ChangeOrderKind } from "@/lib/change-orders/kinds"
 import type { ChangeOrderStatus } from "@/lib/change-orders/status"
 import type { RecordedChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
+import type { ManualAcceptanceAvailability, ManualAcceptanceInput } from "@/lib/change-orders/manual-acceptance"
+import type { ChangeOrderAcceptanceMethod } from "@/lib/domain/estimates/statuses"
 
 /** Shapes of project change orders shared by actions, print reports, and views. */
 export type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
@@ -96,6 +98,10 @@ export type ProjectChangeOrderItem = {
   readonly executedDocumentAvailable: boolean
   readonly executedDocumentLabel: string | null
   readonly canManageExecutedDocument: boolean
+  /** Set once an owner's acceptance was recorded without a signed change order. */
+  readonly acceptance: ChangeOrderAcceptanceView | null
+  /** Set when this user may record the owner's acceptance now (detail view only). */
+  readonly manualAcceptance: ChangeOrderManualAcceptanceOptions | null
   readonly executedAt: string | null
   /** An imported executed change order still missing cost codes or its execution date. */
   readonly canCompleteCostCodes: boolean
@@ -151,3 +157,26 @@ export type ChangeOrderCompletionInput = {
 export type ChangeOrderCompletionActionResult =
   | { readonly success: true; readonly id: string; readonly budgetNote: string | null }
   | { readonly success: false; readonly error: string }
+
+/** How an owner's acceptance was recorded, shown on the change order to staff and the owner. */
+export type ChangeOrderAcceptanceView = {
+  readonly method: ChangeOrderAcceptanceMethod
+  readonly acceptedByName: string
+  /** YYYY-MM-DD */
+  readonly acceptedOn: string
+  readonly recordedByName: string | null
+  /** Staff only. */
+  readonly note: string | null
+  readonly summary: string
+}
+
+/** The Record acceptance dialog's choices, for staff who may use it. */
+export type ChangeOrderManualAcceptanceOptions = ManualAcceptanceAvailability & {
+  readonly priced: boolean
+  /** Owner contacts on the project; the first is the default approver. */
+  readonly approvers: readonly { readonly id: string; readonly name: string; readonly company: string | null }[]
+  /** The project's client name, used when the project has no owner contacts. */
+  readonly clientName: string | null
+}
+
+export type ChangeOrderManualAcceptanceInput = ManualAcceptanceInput
