@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Xml;
@@ -338,6 +339,8 @@ namespace CompassSageClientProjectWriter
                 jobType = ResolveCatalog("jobtyp", "typnme", request.payload.job.typeName);
                 if (clientRecord != null)
                     jobRecord = RunStage("find existing Sage job", delegate { return FindJob(request.payload.job, clientRecord.Number); });
+                if (jobRecord == null)
+                    RunStage("check Sage for a job with this project number", delegate { RefuseJobWithSameProjectNumber(request.payload.job); return true; });
             }
 
             if (clientRecord == null || (request.payload.job != null && jobRecord == null))
@@ -544,6 +547,28 @@ namespace CompassSageClientProjectWriter
                 "SELECT CONVERT(varchar(36), _idnum), recnum, status, jobtyp, NULL FROM dbo.actrec WHERE clnnum=@client AND LOWER(LTRIM(RTRIM(jobnme)))=LOWER(LTRIM(RTRIM(@match)))",
                 job.name,
                 clientNumber);
+        }
+
+        // Project numbers are <department>-<consecutive>-<street number>, and the
+        // street number is often filled in later, so two names for one project can
+        // differ after the consecutive number. A job someone already entered in Sage
+        // by hand under either name is the job; adding another would split its history.
+        private static void RefuseJobWithSameProjectNumber(JobPayload job)
+        {
+            Match key = Regex.Match(job.compassProjectNumber ?? "", @"^([A-Za-z]+-[0-9]+)(?:-|$)");
+            if (!key.Success) return;
+            string prefix = key.Groups[1].Value;
+            List<string> matches = new List<string>();
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT recnum, jobnme FROM dbo.actrec WHERE LTRIM(jobnme) = @key OR LTRIM(jobnme) LIKE @prefix OR LTRIM(shtnme) = @key OR LTRIM(shtnme) LIKE @prefix ORDER BY recnum", connection))
+            {
+                command.Parameters.AddWithValue("@key", prefix);
+                command.Parameters.AddWithValue("@prefix", prefix + "-%");
+                using (SqlDataReader reader = command.ExecuteReader())
+                    while (reader.Read()) matches.Add(Convert.ToString(reader[0]) + " " + (reader.IsDBNull(1) ? "" : Convert.ToString(reader[1])));
+            }
+            if (matches.Count > 0)
+                throw new InvalidOperationException("Sage already has job " + String.Join(", ", matches.ToArray()) + " for " + prefix + "; link that job in Compass instead of adding another. No write was attempted.");
         }
 
         private static SageRecord FindJobByNumber(int jobNumber)

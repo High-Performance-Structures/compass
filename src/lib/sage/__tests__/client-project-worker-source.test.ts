@@ -33,6 +33,20 @@ describe("Sage client/project worker source boundary", () => {
     expect(source).toContain("JobModRq has no client field; no write was attempted.")
   })
 
+  it("refuses to add a job when Sage already has one with the same project number", () => {
+    const guard = source.slice(
+      source.indexOf("private static void RefuseJobWithSameProjectNumber"),
+      source.indexOf("private static SageRecord FindJobByNumber")
+    )
+    expect(guard).toContain('@"^([A-Za-z]+-[0-9]+)(?:-|$)"')
+    expect(guard).toContain('prefix + "-%"')
+    expect(guard).toContain("link that job in Compass instead of adding another. No write was attempted.")
+    // The guard runs before any client or job add is submitted.
+    expect(source.indexOf("RefuseJobWithSameProjectNumber(request.payload.job)")).toBeLessThan(
+      source.indexOf('RunStage("submit Sage client add"')
+    )
+  })
+
   it("pins both API and SQL access to the HPS Sage company", () => {
     expect(source).toContain(
       'private const string TargetCompany = "High Performance Structures Inc"'
