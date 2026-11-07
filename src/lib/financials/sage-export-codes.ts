@@ -52,10 +52,34 @@ function isSageRecordNumber(value: string): boolean {
   return SAGE_RECORD_NUMBER.test(value.trim())
 }
 
+/** "35" from "35", "35.0" or " 035 ", so Sage's record numbers compare however they were stored. */
+export function normalizedSageRecordNumber(value: string): string | null {
+  const trimmed = value.trim()
+  return isSageRecordNumber(trimmed) ? String(Number(trimmed)) : null
+}
+
 export type SageCatalogIndex = {
   readonly byCode: ReadonlyMap<string, SageCatalogEntry>
   readonly byName: ReadonlyMap<string, SageCatalogEntry>
   readonly byRecordNumber: ReadonlyMap<string, SageCatalogEntry>
+  /**
+   * Sage record numbers by cost code name (normalized name, CSI code or
+   * canonical fee name), from every Sage-read catalog row. A name can belong
+   * to more than one record.
+   */
+  readonly recordNumbersByName: ReadonlyMap<string, ReadonlySet<string>>
+}
+
+/** The names a catalog row answers to, for finding its record number. */
+function catalogNames(entry: SageCatalogEntry): readonly string[] {
+  const names = new Set<string>()
+  for (const text of [entry.code, entry.description, entry.sourceCostCode]) {
+    if (!text.trim() || isSageRecordNumber(text)) continue
+    names.add(normalized(canonicalFeeCostCode(text.trim())))
+    const csi = csiCodePrefix(text)
+    if (csi) names.add(csi)
+  }
+  return [...names]
 }
 
 /** Index the Sage-backed catalog rows; Compass-only fallback rows never map. */
@@ -63,6 +87,7 @@ export function indexSageCatalog(catalog: readonly SageCatalogEntry[]): SageCata
   const byCode = new Map<string, SageCatalogEntry>()
   const byName = new Map<string, SageCatalogEntry>()
   const byRecordNumber = new Map<string, SageCatalogEntry>()
+  const recordNumbersByName = new Map<string, Set<string>>()
   for (const entry of catalog) {
     if (!entry.sageMapped) continue
     if (!byCode.has(entry.code)) byCode.set(entry.code, entry)
@@ -70,9 +95,16 @@ export function indexSageCatalog(catalog: readonly SageCatalogEntry[]): SageCata
       const key = normalized(name)
       if (key && !byName.has(key)) byName.set(key, entry)
     }
-    if (isSageRecordNumber(entry.sourceCostCode)) byRecordNumber.set(entry.sourceCostCode.trim(), entry)
+    const recordNumber = normalizedSageRecordNumber(entry.sourceCostCode) ?? normalizedSageRecordNumber(entry.code)
+    if (!recordNumber) continue
+    if (!byRecordNumber.has(recordNumber)) byRecordNumber.set(recordNumber, entry)
+    for (const name of catalogNames(entry)) {
+      const numbers = recordNumbersByName.get(name) ?? new Set<string>()
+      numbers.add(recordNumber)
+      recordNumbersByName.set(name, numbers)
+    }
   }
-  return { byCode, byName, byRecordNumber }
+  return { byCode, byName, byRecordNumber, recordNumbersByName }
 }
 
 function sageNameOf(entry: SageCatalogEntry): string {
@@ -85,7 +117,7 @@ function mapped(entry: SageCatalogEntry, by: "csi_prefix" | "fee_name" | "name")
     status: "mapped",
     by,
     sageName: sageNameOf(entry),
-    sageRecordNumber: isSageRecordNumber(entry.sourceCostCode) ? entry.sourceCostCode.trim() : null,
+    sageRecordNumber: normalizedSageRecordNumber(entry.sourceCostCode),
   }
 }
 
@@ -128,7 +160,22 @@ export function sageLineKey(line: { readonly costCode: string; readonly descript
     const csi = csiCodePrefix(text)
     if (csi) return csi
   }
-  const entry = index.byRecordNumber.get(line.costCode.trim())
-  if (entry) return compassLineKey(entry.code)
+  const recordNumber = normalizedSageRecordNumber(line.costCode)
+  const entry = recordNumber ? index.byRecordNumber.get(recordNumber) : undefined
+  if (entry) return compassLineKey(isSageRecordNumber(entry.code) ? entry.description : entry.code)
   return `name:${normalized(line.description)}`
+}
+
+/**
+ * Every Sage cost code record a Compass cost code resolves to through the
+ * catalog: the record it maps to, plus any Sage-read row with the same name,
+ * CSI code or builder fee. Empty when Compass doesn't know the record number.
+ */
+export function sageRecordNumbersFor(costCode: string, mapping: SageCostCodeMapping, index: SageCatalogIndex): ReadonlySet<string> {
+  const numbers = new Set<string>()
+  if (mapping.status === "mapped" && mapping.sageRecordNumber) numbers.add(mapping.sageRecordNumber)
+  const code = canonicalFeeCostCode(costCode.trim())
+  const names = [normalized(code), csiCodePrefix(code)].filter((name): name is string => Boolean(name))
+  for (const name of names) for (const number of index.recordNumbersByName.get(name) ?? []) numbers.add(number)
+  return numbers
 }

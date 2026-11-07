@@ -155,6 +155,34 @@ describe("reconciliation with Sage", () => {
     expect(result.mismatchCount).toBe(5)
   })
 
+  it("matches by Sage record number when Sage's description differs from the cost code name", () => {
+    // Fictional: the Sage-read catalog row is record 35 "Contingency Reserve"; Sage's billing line says "Contingency".
+    const index = indexSageCatalog([
+      ...CATALOG,
+      { code: "Contingency Reserve", sourceCostCode: "Contingency Reserve", description: "Contingency Reserve", sageMapped: true },
+      { code: "35", sourceCostCode: "35", description: "Contingency Reserve", sageMapped: true },
+    ])
+    const compassLines = sageExportLines([line("Contingency Reserve"), line("Site Plan")], index)
+    const result = reconcileWithSage({
+      lines: compassLines,
+      compassContractToDateCents: 200000,
+      index,
+      unavailableReason: "",
+      sage: {
+        header: { ...header, contractSumToDate: 2000, totalCompletedStoredToDate: 400 },
+        lines: [
+          { costCode: "35.0", description: "Contingency", adjustedEstimate: 1000, totalCompletedStored: 200 },
+          // No record number Compass knows: falls back to the name.
+          { costCode: "88", description: "Site Plan", adjustedEstimate: 1000, totalCompletedStored: 200 },
+        ],
+      },
+    })
+    if (!result.available) throw new Error("expected Sage data")
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines.every((item) => item.presence === "both" && !item.mismatch)).toBe(true)
+    expect(result.newToSage).toEqual([])
+  })
+
   it("says so when Compass holds no Sage billing", () => {
     expect(reconcileWithSage({ lines, compassContractToDateCents: 0, index: INDEX, sage: null, unavailableReason: "No Sage read yet." })).toEqual({
       available: false,
