@@ -1,4 +1,4 @@
-import { canonicalFeeCostCode, isBuilderFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
+import { canonicalFeeCostCode, canonicalFeeLabel, isBuilderFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 
 /*
  * Which Sage 100 Contractor cost code a Compass cost code goes to. Pure, so
@@ -155,7 +155,8 @@ export function compassLineKey(costCode: string): string {
  */
 export function sageLineKey(line: { readonly costCode: string; readonly description: string }, index: SageCatalogIndex): string {
   for (const text of [line.description, line.costCode]) {
-    const canonical = canonicalFeeCostCode(text.trim())
+    // Sage's own text may use a fee's short label ("Contingency").
+    const canonical = canonicalFeeLabel(text.trim())
     if (isBuilderFeeCostCode(canonical)) return canonical
     const csi = csiCodePrefix(text)
     if (csi) return csi

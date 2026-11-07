@@ -96,6 +96,21 @@ export function reconcileWithSage(input: {
       if (!compassKeyByRecordNumber.has(number)) compassKeyByRecordNumber.set(number, line.key)
     }
   }
+  // Learn record numbers the catalog lacks from Sage's read itself: a Sage line
+  // whose name resolves to a Compass line lends its record number to that
+  // line, so other Sage lines on the same record match it too. Only when the
+  // record resolves to exactly one Compass line; never over a catalog number.
+  const compassKeys = new Set(input.lines.map((line) => line.key))
+  const learned = new Map<string, string | null>()
+  for (const line of input.sage.lines) {
+    const recordNumber = normalizedSageRecordNumber(line.costCode)
+    if (!recordNumber || compassKeyByRecordNumber.has(recordNumber)) continue
+    const nameKey = sageLineKey(line, input.index)
+    if (!compassKeys.has(nameKey)) continue
+    const previous = learned.get(recordNumber)
+    learned.set(recordNumber, previous === undefined || previous === nameKey ? nameKey : null)
+  }
+  for (const [recordNumber, key] of learned) if (key) compassKeyByRecordNumber.set(recordNumber, key)
   const sageByKey = new Map<string, { label: string; contract: number; completed: number }>()
   for (const line of input.sage.lines) {
     const recordNumber = normalizedSageRecordNumber(line.costCode)
