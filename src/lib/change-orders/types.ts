@@ -83,6 +83,8 @@ export type ProjectChangeOrderItem = {
   readonly status: ChangeOrderStatus
   readonly audience: ChangeOrderAudience
   readonly requesterType: RecordedChangeOrderRequesterType
+  /** Staff only: stored values that couldn't be read as recorded. */
+  readonly recordIssues: readonly string[]
   readonly requesterUserId: string | null
   readonly requesterName: string
   readonly requesterCompany: string | null

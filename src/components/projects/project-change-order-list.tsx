@@ -100,6 +100,11 @@ export function ProjectChangeOrderList({
                   {item.budgetTreatment === "baseline_replacement" && (
                     <Badge variant="outline">Baseline replacement</Badge>
                   )}
+                  {item.recordIssues.length > 0 ? (
+                    <Badge variant="destructive" title={item.recordIssues.join(" ")}>
+                      Record needs correcting
+                    </Badge>
+                  ) : null}
                 </div>
                 <h2 className="mt-2 font-semibold">{item.title}</h2>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
