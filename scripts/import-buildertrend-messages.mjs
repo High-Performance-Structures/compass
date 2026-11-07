@@ -494,7 +494,8 @@ export function planImport(input) {
       continue
     }
     const pendingIdentity = identityReviews.length > 0 || unassignedPeople.size > 0
-    const audience = pendingIdentity ? "staff" : audienceFor(kinds)
+    // Staff-only projects (e.g. legal hold) never share a thread, even one whose people are all identified.
+    const audience = pendingIdentity || precheck.staffOnlyProjectIds.has(projectId) ? "staff" : audienceFor(kinds)
     if (pendingIdentity) {
       imported_staff_only_pending_identity += 1
       if (identityReviews.some((item) => item.reason === "participant_ambiguous")) imported_staff_only_ambiguous += 1

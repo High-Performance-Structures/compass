@@ -169,4 +169,10 @@ describe("threads with unidentified people import staff-only", () => {
     expect(await share("95", "project_manager", "clients")).toEqual({ ok: false, error: "This conversation includes both owners and vendors, so it stays internal." })
     expect(await share("91", "project_manager", "sub_vendors")).toEqual({ ok: false, error: "No vendor in this conversation has been identified yet." })
   })
+  it("keeps a fully identified vendor thread staff-only on a staff-only project", () => {
+    run([message("7", "202", { recipients: [{ ...vendor, kind: "to" }] }), thread("7", "202")])
+    const channelId = conversationId(ORG, "97")
+    expect(rows(`SELECT audience FROM channels WHERE id = '${channelId}'`)).toEqual([{ audience: "staff" }])
+    expect(rows(`SELECT user_id FROM channel_members WHERE channel_id = '${channelId}' ORDER BY user_id`)).toEqual([{ user_id: "u-pm" }])
+  })
 })
