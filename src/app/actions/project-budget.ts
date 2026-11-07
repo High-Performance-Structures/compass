@@ -13,8 +13,6 @@ import { getCloudflareContext } from "@/lib/db"
 import type { ProjectBudgetApplicationItem } from "@/lib/financials/project-budget-types"
 import { linkedVendorNames } from "@/lib/domain/contacts/directory-links"
 import { preferLinkedText } from "@/lib/domain/contacts/rules"
-import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
-import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   isPayApplicationOwnerDetail,
   type PayApplicationOwnerDetail,
@@ -23,6 +21,12 @@ import {
   UNASSIGNED_ASSEMBLY_NAME,
   loadPayApplicationShares,
 } from "@/lib/financials/pay-application-shares"
+import {
+  loadOwnerContractEstimate,
+  loadOwnerItemizedAssemblies,
+  defaultOwnerDetail,
+} from "@/lib/financials/owner-estimate-detail"
+import type { ClientEstimatePhase } from "@/lib/estimates/client-report"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
@@ -112,6 +116,8 @@ export type ProjectBudgetSummary = {
   readonly totals: ProjectBudgetTotals
   readonly divisions: readonly ProjectBudgetDivision[]
   readonly allLines: readonly ProjectBudgetLineItem[]
+  /** Owner view: assemblies the signed estimate itemized, as it printed them. */
+  readonly assemblyDetails: readonly ClientEstimatePhase[]
 }
 
 type ProjectAccess = {
@@ -221,25 +227,19 @@ const OWNER_DETAIL_MODES: Readonly<Record<PayApplicationOwnerDetail, ProjectBudg
   cost_code: "cost_code",
 }
 
-/** The draw's own client detail, else the company's pay application default. */
-async function ownerDetailMode(
+/** The draw's client detail and the contract budget revision it bills. */
+async function ownerApplicationSettings(
   access: ProjectAccess,
-  applicationId: string | null
-): Promise<ProjectBudgetDetailMode> {
-  if (applicationId) {
-    const row = await access.db
-      .select({ ownerDetail: projectBudgetApplications.ownerDetail })
-      .from(projectBudgetApplications)
-      .where(eq(projectBudgetApplications.id, applicationId))
-      .get()
-    if (isPayApplicationOwnerDetail(row?.ownerDetail)) {
-      return OWNER_DETAIL_MODES[row.ownerDetail]
-    }
-  }
-  const fallback = FEATURE_SETTINGS["pay-applications"].defaults.ownerDetail
-  if (!access.organizationId) return OWNER_DETAIL_MODES[fallback]
-  const settings = await readFeatureSettings(access.db, access.organizationId, "pay-applications")
-  return OWNER_DETAIL_MODES[settings.ownerDetail]
+  applicationId: string
+): Promise<{ readonly ownerDetail: string | null; readonly budgetRevisionId: string | null } | undefined> {
+  return access.db
+    .select({
+      ownerDetail: projectBudgetApplications.ownerDetail,
+      budgetRevisionId: projectBudgetApplications.budgetRevisionId,
+    })
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, applicationId))
+    .get()
 }
 
 /** Percent-only client view: keep names and percent complete, drop every amount. */
@@ -619,10 +619,28 @@ export async function getProjectBudgetSummary(
     applications,
     applicationId
   )
-  const detailMode: ProjectBudgetDetailMode =
+  const ownerApplication =
+    effectiveAudience === "owner" && currentApplication
+      ? await ownerApplicationSettings(access, currentApplication.id)
+      : undefined
+  const ownerEstimate =
     effectiveAudience === "owner"
-      ? await ownerDetailMode(access, currentApplication?.id ?? null)
-      : "cost_code"
+      ? await loadOwnerContractEstimate(access.db, projectId, ownerApplication?.budgetRevisionId ?? null)
+      : null
+  const drawDetail = ownerApplication?.ownerDetail ?? null
+  // The draw's own client detail, else what the signed estimate showed, else
+  // the company's pay application default.
+  const detailMode: ProjectBudgetDetailMode =
+    effectiveAudience !== "owner"
+      ? "cost_code"
+      : isPayApplicationOwnerDetail(drawDetail)
+        ? OWNER_DETAIL_MODES[drawDetail]
+        : OWNER_DETAIL_MODES[(await defaultOwnerDetail(access.db, access.organizationId, ownerEstimate)).detail]
+  // Assemblies the estimate itemized for the client show their items here too.
+  const assemblyDetails =
+    detailMode === "assembly" && ownerEstimate
+      ? await loadOwnerItemizedAssemblies(access.db, ownerEstimate)
+      : []
 
   const sourceLines: readonly ProjectBudgetLineItem[] = currentApplication
     ? effectiveAudience === "owner"
@@ -762,5 +780,6 @@ export async function getProjectBudgetSummary(
     },
     divisions,
     allLines,
+    assemblyDetails,
   }
 }

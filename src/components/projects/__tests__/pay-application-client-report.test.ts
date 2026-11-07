@@ -64,6 +64,7 @@ function report(ownerDetail: ProjectOwnerPayApplicationReport["draft"]["ownerDet
       balanceToFinish: 1_700,
       ownerDetail,
       ownerDetailOverride: null,
+      ownerDetailDefault: { detail: "cost_code", source: "company" },
       newerBudgetRevision: null,
       assemblySplitStale: false,
       lines: [

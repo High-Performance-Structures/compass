@@ -68,6 +68,7 @@ import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
 } from "@/lib/project-budget-snapshot"
+import { defaultOwnerDetail, loadOwnerContractEstimate, type DefaultOwnerDetail } from "@/lib/financials/owner-estimate-detail"
 import { requireUserContext } from "@/lib/server/action-context"
 
 export type ProjectFinancialWorkflowItem = {
@@ -185,8 +186,10 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly balanceToFinish: number
   /** What the client sees on this draw. */
   readonly ownerDetail: PayApplicationOwnerDetail
-  /** Detail chosen for this draw; null follows the company default. */
+  /** Detail chosen for this draw; null follows the default below. */
   readonly ownerDetailOverride: PayApplicationOwnerDetail | null
+  /** Where the default comes from: the signed estimate, else the company setting. */
+  readonly ownerDetailDefault: DefaultOwnerDetail
   /** A newer current contract budget revision this draft has not picked up. */
   readonly newerBudgetRevision: { readonly id: string; readonly revisionNumber: number } | null
   /** The contract budget's assembly split changed since this draft was made. */
@@ -519,6 +522,7 @@ export async function getProjectOwnerPayApplicationDraft(
       asc(projectBudgetLines.sortOrder)
     )
 
+  const ownerDetailDefault = await defaultOwnerDetail(db, organizationId, await loadOwnerContractEstimate(db, projectId, application.budgetRevisionId))
   return {
     id: application.id,
     applicationNumber: application.applicationNumber,
@@ -541,7 +545,8 @@ export async function getProjectOwnerPayApplicationDraft(
     balanceToFinish: application.balanceToFinish,
     ownerDetail: isPayApplicationOwnerDetail(application.ownerDetail)
       ? application.ownerDetail
-      : (await readFeatureSettings(db, organizationId, "pay-applications")).ownerDetail,
+      : ownerDetailDefault.detail,
+    ownerDetailDefault,
     ownerDetailOverride: isPayApplicationOwnerDetail(application.ownerDetail)
       ? application.ownerDetail
       : null,

@@ -345,7 +345,8 @@ function PayApplicationClientDetail({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="default">
-            Company default ({PAY_APPLICATION_OWNER_DETAIL_LABELS[application.ownerDetail]})
+            {application.ownerDetailDefault.source === "estimate" ? "Match signed estimate" : "Company default"}
+            {" "}({PAY_APPLICATION_OWNER_DETAIL_LABELS[application.ownerDetailDefault.detail]})
           </SelectItem>
           {PAY_APPLICATION_OWNER_DETAILS.map((detail) => (
             <SelectItem key={detail} value={detail}>

@@ -181,7 +181,7 @@ Bill a draft pay application by dollars or by percent complete. **Bill by** grou
 
 Pay application lines follow the accepted estimate's assemblies: a cost code used by several assemblies has one line per assembly, and each executed change order is its own group. Lines in a cost code that no assembly claims show as **Other work**. Sage still receives one G703 line per cost code. If the estimate's assemblies change after a draft is made, choose **Update assemblies** on the draft; work already entered carries over.
 
-**Client sees** sets how much of this pay application the client sees: **Division, % complete only** (each division's percent complete and the payment due, with no line amounts), **Division with amounts**, **Assembly, % complete only**, **Assembly with amounts**, or **Cost code with amounts**. **Company default** follows the setting admins choose in Settings under **Pay applications**.
+**Client sees** sets how much of this pay application the client sees: **Division, % complete only** (each division's percent complete and the payment due, with no line amounts), **Division with amounts**, **Assembly, % complete only**, **Assembly with amounts**, or **Cost code with amounts**. Left on the default, the client sees what the signed estimate showed: an assembly estimate shows **Assembly with amounts**, a line-item estimate **Cost code with amounts**, and a division or phase estimate **Division with amounts**. The picker then reads **Match signed estimate**. Jobs without a signed Compass estimate use the **Company default** that admins choose in Settings under **Pay applications**.
 
 A Buildertrend estimate import turns each Parent Group into an estimate assembly as well as a report phase.
 
