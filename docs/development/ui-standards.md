@@ -216,6 +216,18 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   RFQs, RFIs, messages, to-dos and the like) is a sheet: sort by clicking a
   column header, use the status filter buttons above it, search, and click a
   row to open the record. Lists never drag.
+  `hand-built-list-standard.test.ts` enforces it: a file that builds its own
+  table (`<table>`, `<Table>` or `useReactTable`) without the shared record
+  table or the line reorder control fails CI unless it is listed with its
+  reason (document, report, line items, settings grid, chart grid, import
+  preview or file browser). Older growing lists still on hand-built tables
+  are listed as "growing list" under a ceiling that only goes down.
+- **Renamable filter buttons.** A sheet whose filter buttons group fixed
+  workflow steps (change orders: Open, In progress, With owner, Executed,
+  Closed, All) registers its `startFilter` with `renamable: true`. Each
+  company can then rename the buttons in **Settings > Lists**, and the page
+  reads the names with `useListSheetFilterLabel(sheetId)`. Only the names
+  change; the steps in each group stay the same.
 - **Dragging is for rows inside one record.** Line items inside a single
   record (estimate, P.O., RFQ scope rows, change-order lines, shop tickets,
   invoices and bills) can be put in order, because that order is part of the

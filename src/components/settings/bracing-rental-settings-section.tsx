@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ReorderHandle, SortableRows, SortableTableRow } from "@/components/ui/sortable-rows"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { bracingRentalSettingsSchema, type BracingRentalSettings } from "@/lib/nutech/settings"
+import { moveLine } from "@/lib/shared/line-order"
 
 const GROUP = FEATURE_SETTINGS["bracing-rentals"]
 
@@ -178,9 +180,10 @@ export function BracingRentalSettingsSection(): React.ReactElement {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[36rem] text-sm">
-              <caption className="pb-2 text-left text-xs text-muted-foreground">Equipment and how many you own, by size. Leave a size blank or 0 when you don&apos;t stock it.</caption>
+              <caption className="pb-2 text-left text-xs text-muted-foreground">Equipment and how many you own, by size. Leave a size blank or 0 when you don&apos;t stock it. Rental forms list the items in this order.</caption>
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="w-11 py-2 font-medium"><span className="sr-only">Move</span></th>
                   <th className="py-2 pr-2 font-medium">Item</th>
                   {columns.map((size) => (
                     <th key={size} className="py-2 pr-2 font-medium">{size || "Owned"}</th>
@@ -189,48 +192,57 @@ export function BracingRentalSettingsSection(): React.ReactElement {
                 </tr>
               </thead>
               <tbody>
-                {settings.items.map((item) => (
-                  <tr key={item.key} className="border-b">
-                    <td className="min-w-52 py-1.5 pr-2">
-                      <Input
-                        aria-label={`${item.label} name`}
-                        className="h-8"
-                        value={item.label}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          setSettings((current) => ({
-                            ...current,
-                            items: current.items.map((entry) => (entry.key === item.key ? { ...entry, label: event.target.value } : entry)),
-                          }))
-                        }
-                      />
-                    </td>
-                    {columns.map((size) => (
-                      <td key={size} className="w-24 py-1.5 pr-2">
+                <SortableRows
+                  ids={settings.items.map((item) => item.key)}
+                  disabled={disabled}
+                  onMove={(from, to) => setSettings((current) => ({ ...current, items: [...moveLine(current.items, from, to)] }))}
+                >
+                  {settings.items.map((item, index) => (
+                    <SortableTableRow key={item.key} id={item.key} index={index} className="border-b bg-background">
+                      <td className="w-11 py-1.5">
+                        <ReorderHandle label={item.label || `item ${index + 1}`} />
+                      </td>
+                      <td className="min-w-52 py-1.5 pr-2">
                         <Input
-                          aria-label={`${item.label} ${size || ""} owned`}
-                          inputMode="numeric"
+                          aria-label={`${item.label} name`}
                           className="h-8"
-                          value={item.owned[size] ? String(item.owned[size]) : ""}
+                          value={item.label}
                           disabled={disabled}
-                          onChange={(event) => setOwned(item.key, size, event.target.value)}
+                          onChange={(event) =>
+                            setSettings((current) => ({
+                              ...current,
+                              items: current.items.map((entry) => (entry.key === item.key ? { ...entry, label: event.target.value } : entry)),
+                            }))
+                          }
                         />
                       </td>
-                    ))}
-                    <td className="w-10 py-1.5">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        aria-label={`Remove ${item.label}`}
-                        disabled={disabled || item.key === settings.billedItemKey || settings.items.length <= 1}
-                        onClick={() => setSettings((current) => ({ ...current, items: current.items.filter((entry) => entry.key !== item.key) }))}
-                      >
-                        <IconTrash className="size-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      {columns.map((size) => (
+                        <td key={size} className="w-24 py-1.5 pr-2">
+                          <Input
+                            aria-label={`${item.label} ${size || ""} owned`}
+                            inputMode="numeric"
+                            className="h-8"
+                            value={item.owned[size] ? String(item.owned[size]) : ""}
+                            disabled={disabled}
+                            onChange={(event) => setOwned(item.key, size, event.target.value)}
+                          />
+                        </td>
+                      ))}
+                      <td className="w-10 py-1.5">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Remove ${item.label}`}
+                          disabled={disabled || item.key === settings.billedItemKey || settings.items.length <= 1}
+                          onClick={() => setSettings((current) => ({ ...current, items: current.items.filter((entry) => entry.key !== item.key) }))}
+                        >
+                          <IconTrash className="size-4" />
+                        </Button>
+                      </td>
+                    </SortableTableRow>
+                  ))}
+                </SortableRows>
               </tbody>
             </table>
           </div>

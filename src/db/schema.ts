@@ -1783,8 +1783,8 @@ export type NewScheduleSavedView = typeof scheduleSavedViews.$inferInsert
 
 /**
  * A company's layout for one list sheet (Settings > Lists): which columns
- * show and in what order, the sort it opens with and the status filter it
- * opens on. Sheet keys and column ids are code constants from the list
+ * show and in what order, the sort it opens with, the status filter it
+ * opens on and any renamed filter buttons. Sheet keys and column ids are code constants from the list
  * sheet registry (src/lib/domain/settings/list-sheet-registry.ts); unknown
  * ones are ignored on read.
  */
@@ -1799,6 +1799,8 @@ export const organizationListSheetSettings = sqliteTable(
     sortColumn: text("sort_column"),
     sortDirection: text("sort_direction", { enum: LIST_SHEET_SORT_DIRECTIONS }),
     startFilter: text("start_filter"),
+    // json: renamed filter buttons ({ [filterValue]: name }), validated by listSheetFilterLabelsSchema
+    filterLabels: text("filter_labels"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),

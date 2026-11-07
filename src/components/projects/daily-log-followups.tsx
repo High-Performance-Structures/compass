@@ -5,7 +5,9 @@ import { ON_BUDGET_GROUP, INTERNAL_CODES_GROUP } from "@/lib/daily-logs/cost-cod
 import * as React from "react"
 import { IconBan, IconCheck, IconInfoCircle, IconPlus, IconUserCheck } from "@tabler/icons-react"
 
+import { RecordStatusBadge } from "@/components/record-status-badge"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { FieldError } from "@/components/projects/daily-log-work-lines"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -18,6 +20,8 @@ import {
   clientContactsNamedIn,
   DAILY_LOG_INTERACTION_TYPES,
   DAILY_LOG_TODO_TYPE_LABELS,
+  dailyLogTodoFilterOptions,
+  dailyLogTodoMatchesFilter,
   emptyClientContactRow,
   followUpLines,
   isLineFlagged,
@@ -32,6 +36,7 @@ import {
   type DailyLogFollowUpRules,
   type DailyLogLineTodoChoice,
   type DailyLogOpenTodo,
+  type DailyLogTodoFilter,
   type DailyLogTodoType,
 } from "@/lib/daily-logs/log-followups"
 import { projectTodoTypeLabel } from "@/lib/project-todos"
@@ -121,7 +126,9 @@ export function DailyLogTodoChecklist({
   readonly worked: readonly string[]
   readonly onToggle: (todo: DailyLogOpenTodo) => void
 }): React.ReactElement | null {
+  const [filter, setFilter] = React.useState<DailyLogTodoFilter>("all")
   if (todos.length === 0) return null
+  const shown = todos.filter((todo) => dailyLogTodoMatchesFilter(todo, filter, worked))
   return (
     <fieldset className="grid gap-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -131,8 +138,18 @@ export function DailyLogTodoChecklist({
       <p className="text-xs text-muted-foreground">
         Tick what was worked on today.{rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""}
       </p>
-      <ul className="grid divide-y border-y">
-        {todos.map((todo) => {
+      {todos.length > 1 && (
+        <StatusFilterBar
+          kind="button"
+          label="Filter to-dos by status"
+          options={dailyLogTodoFilterOptions(todos, worked)}
+          selected={filter}
+          onSelect={setFilter}
+        />
+      )}
+      {shown.length === 0 && <p className="text-sm text-muted-foreground">No to-dos match this filter.</p>}
+      <ul className="grid divide-y border-y empty:hidden">
+        {shown.map((todo) => {
           const checked = worked.includes(todo.id)
           const id = `${idPrefix}-todo-${todo.id}`
           const code = rules.todoCostCodes ? costCodeLabel(todo.costCode, costCodes) : null
@@ -142,13 +159,15 @@ export function DailyLogTodoChecklist({
           return (
             <li key={todo.id} className={cn("flex items-start gap-3 py-2", checked && "bg-accent/40")}>
               <Checkbox id={id} checked={checked} onCheckedChange={() => onToggle(todo)} className="mt-0.5" />
-              <Label htmlFor={id} className="grid min-w-0 gap-0.5 font-normal">
+              <Label htmlFor={id} className="grid min-w-0 flex-1 gap-0.5 font-normal">
                 <span className="text-sm font-medium break-words">{todo.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {whoFor(todo)} · {next}
+                  {whoFor(todo)}
+                  {next !== label ? ` · ${next}` : ""}
                   {code ? ` · ${code}` : ""}
                 </span>
               </Label>
+              <RecordStatusBadge label={label} color={todo.statusColor ?? "gray"} className="shrink-0" />
             </li>
           )
         })}

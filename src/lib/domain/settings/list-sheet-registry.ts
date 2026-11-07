@@ -44,8 +44,16 @@ export type ListSheetDefinition = {
    * people can still use Columns, but Settings > Lists does not list it.
    */
   readonly personalOnly?: boolean
-  /** Status filters the sheet can open on, when its page picks one. */
-  readonly startFilter: { readonly options: readonly ListSheetFilterOption[]; readonly defaultValue: string } | null
+  /**
+   * Status filters the sheet can open on, when its page picks one. With
+   * `renamable`, the options are the sheet's filter buttons and a company can
+   * rename them in Settings > Lists (the page reads the names back).
+   */
+  readonly startFilter: {
+    readonly options: readonly ListSheetFilterOption[]
+    readonly defaultValue: string
+    readonly renamable?: boolean
+  } | null
 }
 
 const OPEN_OR_ALL: readonly ListSheetFilterOption[] = [
@@ -194,6 +202,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "all", label: "All" },
       ],
       defaultValue: "open",
+      renamable: true,
     },
   },
   {

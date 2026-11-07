@@ -8,6 +8,7 @@ import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders
 import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { RecordStatusBadge } from "@/components/record-status-badge"
+import { useListSheetFilterLabel } from "@/components/list-sheets/use-list-sheet"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -175,6 +176,7 @@ export function ProjectChangeOrderRecordTable({
     [detailBaseHref]
   )
   const columns = React.useMemo(() => changeOrderColumns(href), [href])
+  const filterLabel = useListSheetFilterLabel("change-orders.job")
   const table = useRecordTable({
     data: visible,
     columns,
@@ -191,6 +193,7 @@ export function ProjectChangeOrderRecordTable({
           label="Filter change orders by status"
           options={CHANGE_ORDER_LIST_FILTERS.map((option) => ({
             ...option,
+            label: filterLabel(option.value, option.label),
             count: items.filter((item) => changeOrderMatchesFilter(item, option.value)).length,
             pinned: option.value === "open" || option.value === "all",
           }))}

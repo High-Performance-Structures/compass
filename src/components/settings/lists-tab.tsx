@@ -9,6 +9,7 @@ import { resetCompanyListSheet, saveCompanyListSheet } from "@/app/actions/list-
 import { useListSheetContext } from "@/components/list-sheets/list-sheet-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ReorderHandle, SortableRow, SortableRows } from "@/components/ui/sortable-rows"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -31,6 +32,8 @@ type Draft = {
   readonly sortColumnId: string | null
   readonly sortDirection: ListSheetSortDirection
   readonly startFilter: string | null
+  /** Typed names for renamable filters; blank keeps the built-in name. */
+  readonly filterLabels: Readonly<Record<string, string>>
 }
 
 function draftFor(definition: ListSheetDefinition, company: CompanyListSheetSetting | null): Draft {
@@ -45,6 +48,7 @@ function draftFor(definition: ListSheetDefinition, company: CompanyListSheetSett
     sortColumnId: layout.sort?.columnId ?? null,
     sortDirection: layout.sort?.desc ? "desc" : "asc",
     startFilter: layout.startFilter,
+    filterLabels: company?.filterLabels ?? {},
   }
 }
 
@@ -117,6 +121,7 @@ function SheetEditor({ definition, company, canEdit }: {
         columns: draft.columns.map(({ id, visible }) => ({ id, visible })),
         sort: draft.sortColumnId ? { columnId: draft.sortColumnId, direction: draft.sortDirection } : null,
         startFilter: definition.startFilter ? draft.startFilter : null,
+        filterLabels: draft.filterLabels,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -206,12 +211,37 @@ function SheetEditor({ definition, company, canEdit }: {
                 <SelectTrigger className="w-full" aria-label="Opens on filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {definition.startFilter.options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    <SelectItem key={option.value} value={option.value}>{draft.filterLabels[option.value] || option.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">A link that names a filter still opens on that filter.</p>
             </div>
+          )}
+          {definition.startFilter?.renamable && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Filter button names</legend>
+              {definition.startFilter.options.map((option) => (
+                <div key={option.value} className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2">
+                  <Label htmlFor={`${definition.id}-filter-${option.value}`} className="text-xs font-normal text-muted-foreground">
+                    {option.label}
+                  </Label>
+                  <Input
+                    id={`${definition.id}-filter-${option.value}`}
+                    className="h-8"
+                    maxLength={40}
+                    placeholder={option.label}
+                    value={draft.filterLabels[option.value] ?? ""}
+                    disabled={disabled}
+                    onChange={(event) => {
+                      const name = event.target.value
+                      setDraft((current) => ({ ...current, filterLabels: { ...current.filterLabels, [option.value]: name } }))
+                    }}
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">Leave a name blank to keep the built-in one. The steps inside each group stay the same.</p>
+            </fieldset>
           )}
           <div className="space-y-1 border-t pt-4">
             <p className="flex items-center gap-1.5 text-sm font-medium">

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   clientContactFollowUpTitle,
   clientContactsNamedIn,
+  dailyLogTodoFilterOptions,
+  dailyLogTodoMatchesFilter,
   DEFAULT_DAILY_LOG_FOLLOW_UP_RULES,
   madeTodoTitles,
   savedLogTodoRules,
@@ -136,5 +138,28 @@ describe("to-dos from saved logs", () => {
     expect(savedLogTodoRules({ ...rules, todoMode: "auto" }).todoMode).toBe("ask")
     expect(savedLogTodoRules({ ...rules, todoMode: "off" }).todoMode).toBe("off")
     expect(savedLogTodoRules({ ...rules, todoMode: "ask" })).toEqual({ ...rules, todoMode: "ask" })
+  })
+})
+
+describe("to-do checklist filters", () => {
+  const todo = (id: string, status: "open" | "in_progress" | "blocked", statusLabel?: string) => ({
+    id, title: id, status, recordType: "todo", assigneeName: null, companyName: null, costCode: null, changedOn: "2026-11-07", statusLabel,
+  })
+  const todos = [todo("a", "open", "To do"), todo("b", "in_progress"), todo("c", "in_progress")]
+
+  it("counts each status under the company's name, plus All and Worked on", () => {
+    expect(dailyLogTodoFilterOptions(todos, ["b"]).map(({ value, label, count }) => [value, label, count])).toEqual([
+      ["all", "All", 3],
+      ["open", "To do", 1],
+      ["in_progress", "In progress", 2],
+      ["blocked", "Blocked", 0],
+      ["worked", "Worked on", 1],
+    ])
+  })
+
+  it("matches by status or by what was ticked today", () => {
+    expect(todos.filter((item) => dailyLogTodoMatchesFilter(item, "in_progress", [])).map((item) => item.id)).toEqual(["b", "c"])
+    expect(todos.filter((item) => dailyLogTodoMatchesFilter(item, "worked", ["a"])).map((item) => item.id)).toEqual(["a"])
+    expect(todos.filter((item) => dailyLogTodoMatchesFilter(item, "all", [])).length).toBe(3)
   })
 })

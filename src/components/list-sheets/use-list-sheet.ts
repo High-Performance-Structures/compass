@@ -100,3 +100,16 @@ function accessorKeyOf<T>(column: ColumnDef<T>): string | null {
   return typeof key === "string" ? key : null
 }
 
+/**
+ * Names for a sheet's filter buttons: the company's (Settings > Lists), else
+ * the built-in ones. A filter the sheet does not register keeps `fallback`.
+ */
+export function useListSheetFilterLabel(sheetId: string): (value: string, fallback: string) => string {
+  const context = useListSheetContext()
+  const definition = listSheetDefinition(sheetId)
+  const company = definition ? context?.preferences.company[definition.id] ?? null : null
+  return React.useMemo(() => {
+    const labels = definition ? resolveListSheetLayout(definition, company, null).filterLabels : {}
+    return (value, fallback) => labels[value] ?? fallback
+  }, [definition, company])
+}
