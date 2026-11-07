@@ -32,7 +32,10 @@ import {
 import type { ProjectEstimateBuilderFeeInput, ProjectEstimateLineInput } from "@/lib/domain/estimates/types"
 import { findPricingSource, type PricingSource } from "@/lib/estimates/pricing-sources"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
+import {
+  LEGACY_FEE_COST_CODES,
+  isBuilderFeeCostCode,
+} from "@/lib/domain/financials/builder-fee-codes"
 import { chunkD1Values } from "@/lib/d1-query"
 import { cleanText } from "@/lib/shared/guards"
 
@@ -301,8 +304,8 @@ export async function saveEstimateLine(
 }
 
 /**
- * Applies one markup rate to every CSI line and cost item (not the legacy
- * Division 99 fee lines), then rolls breakdown lines up and refreshes totals.
+ * Applies one markup rate to every CSI line and cost item (not builder fee
+ * lines, by name or legacy Division 99 code), then rolls breakdown lines up and refreshes totals.
  */
 export async function applyEstimateLineMarkup(
   access: EstimateAccess,
@@ -319,8 +322,8 @@ export async function applyEstimateLineMarkup(
     .where(and(eq(projectEstimateLineCostItems.estimateId, estimateId), isNull(projectEstimateLineCostItems.deletedAt)))
 
   const now = new Date().toISOString()
-  const legacyAdjustmentCodes = new Set<string>(CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value))
-  const eligibleRows = rows.filter((row) => !legacyAdjustmentCodes.has(row.costCode))
+  // Builder fee lines (by name or legacy 99 x0 00 code) take no line markup.
+  const eligibleRows = rows.filter((row) => !isBuilderFeeCostCode(row.costCode))
   const eligibleLineIds = new Set(eligibleRows.map((row) => row.id))
   const eligibleItems = costItems.filter((item) => eligibleLineIds.has(item.estimateLineId))
   const breakdownLineIds = new Set(eligibleItems.map((item) => item.estimateLineId))
@@ -371,7 +374,7 @@ export async function updateEstimateBuilderFee(
     .where(
       and(
         eq(projectEstimateLines.estimateId, estimateId),
-        inArray(projectEstimateLines.costCode, CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value))
+        inArray(projectEstimateLines.costCode, [...LEGACY_FEE_COST_CODES])
       )
     )
     .limit(1)

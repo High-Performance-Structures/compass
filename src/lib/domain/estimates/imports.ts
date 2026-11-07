@@ -8,6 +8,7 @@ import {
 } from "@/db/schema-estimates"
 import { googleAuth } from "@/db/schema-google"
 import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
+import { resolveCatalogCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { decrypt } from "@/lib/crypto"
 import type { EstimateAccess } from "@/lib/domain/estimates/access"
 import {
@@ -202,7 +203,8 @@ export async function importPlanSwiftLines(
   const sourceCostCodes = [...new Set(normalizedLines.map((line) => line.costCode))]
   const costRows = await loadProjectCostCodeCatalog(access.db)
   const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
-  const unknownCostCodes = sourceCostCodes.filter((costCode) => !costCodeMap.has(costCode))
+  // An old sheet's "99 10 00" fee row imports under the canonical fee code.
+  const unknownCostCodes = sourceCostCodes.filter((costCode) => !resolveCatalogCostCode(costCodeMap, costCode))
   if (unknownCostCodes.length > 0) {
     const examples = unknownCostCodes.slice(0, 5).join(", ")
     throw new Error(`Map every row to a verified CSI/Sage catalog code before importing. Not found: ${examples}.`)
@@ -218,7 +220,7 @@ export async function importPlanSwiftLines(
   const priorSortOrder = retainedRows.reduce((highest, row) => Math.max(highest, row.sortOrder), 0)
   const now = new Date().toISOString()
   const lineValues = normalizedLines.map((line, index) => {
-    const cost = costCodeMap.get(line.costCode)
+    const cost = resolveCatalogCostCode(costCodeMap, line.costCode)
     if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
     const sourceNote = `PlanSwift source: ${sourceFileName} · ${sourceSheetName} · row ${line.rowNumber}`
     return {
@@ -317,7 +319,8 @@ export async function importBuildertrendExport(
 
   const costRows = await loadProjectCostCodeCatalog(access.db)
   const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
-  const unknown = [...new Set(input.lines.map((line) => line.costCode))].filter((code) => !costCodeMap.has(code))
+  // An old export's "99 10 00" fee row imports under the canonical fee code.
+  const unknown = [...new Set(input.lines.map((line) => line.costCode))].filter((code) => !resolveCatalogCostCode(costCodeMap, code))
   if (unknown.length > 0) {
     throw new Error(`These Buildertrend cost codes aren't in the Compass cost code catalog: ${unknown.slice(0, 5).join(", ")}.`)
   }
@@ -335,7 +338,7 @@ export async function importBuildertrendExport(
   const phaseRows = input.phases.map((phase) => {
     const divisions = input.lines
       .filter((line) => line.phaseName === phase.name)
-      .map((line) => costCodeMap.get(line.costCode)?.divisionCode ?? "99")
+      .map((line) => resolveCatalogCostCode(costCodeMap, line.costCode)?.divisionCode ?? "99")
       .sort()
     return {
       id: crypto.randomUUID(),
@@ -366,7 +369,7 @@ export async function importBuildertrendExport(
     }))
   const assemblyIdByName = new Map(assemblyRows.map((assembly) => [assembly.name, assembly.id]))
   const lineValues = input.lines.map((line, index) => {
-    const cost = costCodeMap.get(line.costCode)
+    const cost = resolveCatalogCostCode(costCodeMap, line.costCode)
     if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
     const sourceNote = `Buildertrend source: ${sourceFileName} · row ${line.rowNumber}${line.costType ? ` · ${line.costType}` : ""}`
     return {

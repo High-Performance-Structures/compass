@@ -43,6 +43,10 @@ export const CONTRACT_ADJUSTMENT_COST_CODES = [
   },
 ] as const
 
+const BUILDER_FEE_DESCRIPTIONS: ReadonlySet<string> = new Set(
+  CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
+)
+
 const DIVISION_NAMES: Readonly<Record<string, string>> = {
   "00": "Procurement Requirements",
   "01": "General Requirements",
@@ -114,6 +118,12 @@ function adjustmentForLabel(
   )
 }
 
+function adjustmentForLegacyCode(
+  code: string
+): (typeof CONTRACT_ADJUSTMENT_COST_CODES)[number] | null {
+  return CONTRACT_ADJUSTMENT_COST_CODES.find((item) => item.value === code) ?? null
+}
+
 function roundingNote(cents: number): string {
   const amount = Math.abs(cents) / 100
   const sign = cents >= 0 ? "+" : "-"
@@ -159,8 +169,14 @@ export function parseProjectTotalsRows(
     }
 
     const parsedCostCode = parseCostCodeLabel(label)
+    // An older sheet may list a fee as a "99 10 00 - Company Overhead" row.
+    // In the fee section it is the builder fee; above the subtotal it stays a
+    // line, under the fee's canonical name. Never a new Division 99 line.
+    const legacyFee = parsedCostCode
+      ? adjustmentForLegacyCode(parsedCostCode.code)
+      : null
     const adjustment = inAdjustmentSection
-      ? adjustmentForLabel(label)
+      ? adjustmentForLabel(label) ?? legacyFee
       : null
     if ((!parsedCostCode && !adjustment) || amount === null || amount === 0) {
       continue
@@ -172,8 +188,8 @@ export function parseProjectTotalsRows(
     }
 
     parsedLines.push({
-      costCode: parsedCostCode?.code ?? "",
-      costCodeName: parsedCostCode?.description ?? label,
+      costCode: legacyFee?.description ?? parsedCostCode?.code ?? "",
+      costCodeName: legacyFee?.description ?? parsedCostCode?.description ?? label,
       description: cleanText(row[1]) ?? parsedCostCode?.description ?? label,
       rawAmount: amount,
     })
@@ -236,7 +252,9 @@ export function parseProjectTotalsRows(
 
   const lines = parsedLines.map((line, index): ProjectTotalsImportLine => {
     const adjustment = index === targetIndex ? roundingAdjustmentCents : 0
-    const divisionCode = line.costCode.slice(0, 2)
+    const divisionCode = BUILDER_FEE_DESCRIPTIONS.has(line.costCode)
+      ? "00"
+      : line.costCode.slice(0, 2)
     return {
       costCode: line.costCode,
       divisionCode,

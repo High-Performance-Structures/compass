@@ -8,7 +8,11 @@ import {
   projectTemplates,
   projectTemplateVersions,
 } from "@/db/schema-templates"
-import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
+import {
+  builderFeeCatalogRow,
+  isLegacyFeeCostCode,
+  missingBuilderFeeRows,
+} from "@/lib/domain/financials/builder-fee-codes"
 import type { Db } from "@/lib/server/action-context"
 
 import type { EstimateTemplateEditor, EstimateTemplateOption } from "./types"
@@ -188,12 +192,18 @@ export async function loadEstimateTemplateEditor(
     documentTitle: defaults.documentTitle,
     contractTerms: defaults.contractTerms,
     defaultMarkupRateBasisPoints: defaults.defaultMarkupRateBasisPoints,
-    lines: lines.map((line) => ({
+    lines: lines.map((line) => {
+      // A line saved under a retired Division 99 fee code reads as its
+      // canonical fee, so editing it saves the current code.
+      const fee = isLegacyFeeCostCode(line.costCode)
+        ? builderFeeCatalogRow(costCodes, line.costCode)
+        : null
+      return {
       id: line.id,
-      divisionCode: line.divisionCode,
-      divisionName: line.divisionName,
-      costCode: line.costCode,
-      costCodeName: line.costCodeName,
+      divisionCode: fee?.divisionCode ?? line.divisionCode,
+      divisionName: fee?.divisionDescription ?? line.divisionName,
+      costCode: fee?.code ?? line.costCode,
+      costCodeName: fee?.description ?? line.costCodeName,
       description: line.description,
       specifications: line.specifications,
       quantity: line.quantity,
@@ -204,19 +214,22 @@ export async function loadEstimateTemplateEditor(
       taxCode: line.taxCode,
       ownerVisible: line.ownerVisible,
       sortOrder: line.sortOrder,
-    })),
+      }
+    }),
     costCodes: [
-      ...costCodes.map((costCode) => ({
+      ...costCodes.filter((costCode) => !isLegacyFeeCostCode(costCode.code)).map((costCode) => ({
         value: costCode.code,
         label: costCode.displayLabel,
         divisionCode: costCode.divisionCode,
         divisionName: costCode.divisionDescription,
       })),
-      ...CONTRACT_ADJUSTMENT_COST_CODES.map((costCode) => ({
-        value: costCode.value,
-        label: `${costCode.value} · ${costCode.description}`,
-        divisionCode: "99",
-        divisionName: "Contract Adjustments",
+      // Builder fees go by their canonical names; the retired 99 x0 00
+      // codes are not offered.
+      ...missingBuilderFeeRows(costCodes).map((fee) => ({
+        value: fee.code,
+        label: fee.description,
+        divisionCode: fee.divisionCode,
+        divisionName: fee.divisionDescription,
       })),
     ],
     taxCodes: taxCodes.map((taxCode) => ({
