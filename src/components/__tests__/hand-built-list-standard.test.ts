@@ -59,6 +59,8 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/schedule/schedule-print-document.tsx": "document",
 
   "src/components/financials/record-payment-dialog.tsx": "line items",
+  // A change order's own lines in the Send to Sage confirmation.
+  "src/components/financials/sage-change-order-send.tsx": "line items",
   "src/components/nutech/nutech-bracing-rentals.tsx": "line items",
   "src/components/nutech/nutech-order-invoices.tsx": "line items",
   "src/components/nutech/nutech-order-workspace.tsx": "line items",
