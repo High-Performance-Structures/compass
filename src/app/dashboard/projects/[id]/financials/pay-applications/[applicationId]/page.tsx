@@ -35,13 +35,13 @@ export default async function ProjectPayApplicationPage({
         icon={<IconFileDollar className="size-5 text-primary" />}
         title="G702 / G703 Pay Application"
       />
-      <ProjectOwnerPayApplicationEditor projectId={id} application={application} />
+      <ProjectOwnerPayApplicationEditor projectId={id} application={application} shopTicketProvenance={shopTickets?.lineProvenance ?? []} />
       {showPayments && receivables.success ? (
         <div className="mt-6">
           <ReceivedPaymentsPanel projectId={id} data={receivables.data} applicationId={applicationId} />
         </div>
       ) : null}
-      {shopTickets ? <PayApplicationShopTickets projectId={id} data={shopTickets} /> : null}
+      {shopTickets ? <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} /> : null}
     </div>
   )
 }

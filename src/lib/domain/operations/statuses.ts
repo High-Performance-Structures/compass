@@ -10,6 +10,13 @@ export type ShopTicketStatus = (typeof SHOP_TICKET_STATUSES)[number]
 export const SHOP_TICKET_RATE_KINDS = ["labor", "machine"] as const
 export type ShopTicketRateKind = (typeof SHOP_TICKET_RATE_KINDS)[number]
 
+/**
+ * How a shop ticket is billed on a pay application: "imported" amounts were
+ * added to G703 lines; "already_included" marks a ticket staff typed in by
+ * hand, recorded as billed without changing any line.
+ */
+export const PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES = ["imported", "already_included"] as const
+
 export const RATE_BOOK_FUEL_TYPES = ["none", "diesel", "regular"] as const
 
 export const RATE_BOOK_ENTRY_STATUSES = ["active", "retired"] as const

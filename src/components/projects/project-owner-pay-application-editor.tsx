@@ -16,6 +16,7 @@ import {
   type ProjectOwnerPayApplicationDraft,
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
+import type { PayApplicationShopTicketState } from "@/lib/financials/pay-application-shop-tickets"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PayApplicationBillingControls, payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 import {
@@ -41,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { formatCents } from "@/lib/format"
 import {
   PAY_APPLICATION_OWNER_DETAILS,
   PAY_APPLICATION_OWNER_DETAIL_LABELS,
@@ -64,6 +66,8 @@ function fieldNumber(formData: FormData, name: string): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+type ShopTicketProvenance = PayApplicationShopTicketState["lineProvenance"][number]
+
 const LINE_GRID =
   "lg:grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]"
 
@@ -77,12 +81,14 @@ function PayApplicationLineEditor({
   line,
   editable,
   onMessage,
+  shopTickets,
 }: {
   readonly projectId: string
   readonly applicationId: string
   readonly line: ProjectOwnerPayApplicationLine
   readonly editable: boolean
   readonly onMessage: (message: string) => void
+  readonly shopTickets: ShopTicketProvenance | undefined
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -145,6 +151,11 @@ function PayApplicationLineEditor({
         <p className="text-xs text-muted-foreground">
           {line.assemblyName ?? `${line.divisionCode} · ${line.divisionName}`}
         </p>
+        {shopTickets && (
+          <p className="text-xs text-muted-foreground">
+            includes {formatCents(shopTickets.amountCents)} from {shopTickets.ticketNumbers.join(", ")}
+          </p>
+        )}
       </div>
       <span className="text-right">{money(line.adjustedEstimate)}</span>
       <span className="text-right">{money(line.previousWorkCompleted)}</span>
@@ -433,10 +444,14 @@ function PayApplicationDeposit({
 export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
+  shopTicketProvenance,
 }: {
   readonly projectId: string
   readonly application: ProjectOwnerPayApplicationDraft
+  /** Shop ticket amounts imported onto each line; empty when the person can't see shop tickets. */
+  readonly shopTicketProvenance: readonly ShopTicketProvenance[]
 }): React.ReactElement {
+  const provenanceByLine = new Map(shopTicketProvenance.map((entry) => [entry.lineId, entry]))
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -656,6 +671,7 @@ export function ProjectOwnerPayApplicationEditor({
                   line={line}
                   editable={editable}
                   onMessage={setMessage}
+                  shopTickets={provenanceByLine.get(line.id)}
                 />
               ))}
             </Fragment>
