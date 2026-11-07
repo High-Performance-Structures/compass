@@ -21,9 +21,9 @@ const ADD_LINE_EXCEPTIONS: Readonly<Record<string, string>> = {
   // Adds one estimate item through a form; the items reorder in
   // project-estimate-line-order.tsx, which uses the shared control.
   "src/components/projects/estimate-workspace/estimate-line-editor.tsx": "single-line form",
-  // Lines save one at a time on the server; reordering needs its own save
-  // action and is a follow-up.
-  "src/components/templates/estimate-template-editor.tsx": "follow-up: saved per line",
+  // Adds one template line through a form; the lines reorder in
+  // estimate-template-line-order.tsx, which uses the shared control.
+  "src/components/templates/estimate-template-editor.tsx": "single-line form",
 }
 
 function sourceFiles(dir: string): readonly string[] {

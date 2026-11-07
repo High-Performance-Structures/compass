@@ -21,6 +21,7 @@ import {
   type EstimateTemplateEditor,
   type EstimateTemplateEditorLine,
 } from "@/app/actions/estimate-templates"
+import { EstimateTemplateLineOrder } from "@/components/templates/estimate-template-line-order"
 import { Badge } from "@/components/ui/badge"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { RateBookFillPicker } from "@/components/rate-book/rate-book-fill-picker"
@@ -369,10 +370,14 @@ export function EstimateTemplateEditorPanel({
                         {divisionCode} · {items[0]?.divisionName}
                       </h3>
                     </div>
-                    <div className="divide-y">
-                      {items.map((item) => (
+                    <EstimateTemplateLineOrder
+                      templateId={editor.id}
+                      divisionCode={divisionCode}
+                      groupName={`${divisionCode} · ${items[0]?.divisionName ?? ""}`}
+                      items={items}
+                      editable={editable}
+                      renderItem={(item) => (
                         <div
-                          key={item.id}
                           className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
                         >
                           <div>
@@ -410,8 +415,8 @@ export function EstimateTemplateEditorPanel({
                             </div>
                           )}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    />
                   </div>
                 ))}
               </div>
