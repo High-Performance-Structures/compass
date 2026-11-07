@@ -56,6 +56,10 @@ Save the log before adding files. Choose **Add files**, select photos or support
 
 Uploads should remain internal until an authorized reviewer makes a separate audience decision.
 
+## Find a Daily Log {#find-log}
+
+A job's daily logs are a sheet, newest first: click a column header (Date, Author, Work completed, Crew hours, Weather, Photos, Issues, Status, Owner) to sort, use **All**, **Needs review**, **Approved** or **Owner visible** above the sheet to filter, and search work, notes, authors and cost codes. Click a row to open the full log below the sheet; the link to that log can be shared. Crew hours is the total of the log's cost-code lines. Tick logs in the first column to draft an owner update, print or delete them. Admins choose which columns show in **Settings → Lists**.
+
 ## Edit and Review {#edit-review}
 
 Use the log's edit action to correct the record. Saving a material change may return it to review so previously approved owner-facing information cannot change silently.
