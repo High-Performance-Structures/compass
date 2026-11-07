@@ -108,6 +108,10 @@ Admins set the wording in **Settings → Workflows → Trade docs → Letters to
 
 Admins set the **Priced by** choices in **Settings → Workflows → Estimates**: each choice's name, **What Compass does** (request a quote, owner provides the number, or takeoff to-do for an estimator), Sage cost type, owner scope, and whether it is offered. Turn a choice off instead of deleting it so existing lines keep their value. **Vendor price links** sets how many days a price link works after the quote due date, and after sending when there is no due date.
 
+## Find a Change Order {#change-order-list}
+
+A job's **Change orders** page lists its change orders and variances as a sheet: click a column header (Number, Title, Type, Status, Requested by, Amount, Schedule days, Submitted, Executed) to sort, and search numbers, titles, scope and requesters. The buttons above it filter by step: **Open** (everything not closed, declined or void), **In progress** (draft through internal review), **With owner** (sent or awaiting signature), **Executed** (including Sage pending and synced), **Closed** and **All**. Click a row to open the change order's page. Admins choose the columns and the filter it opens on in **Settings → Lists**.
+
 ## Choose How a Change Order Is Built {#change-order-kinds}
 
 When you create a change order, choose how it's built:
@@ -176,6 +180,8 @@ To ask the client for a deposit, choose **Request deposit**: enter the amount (i
 A received deposit is applied to pay applications before the client pays the balance. By default Compass applies as much of the unapplied deposit as each new draft pay application can take, starting with the oldest draft. On the pay application, **Less deposit applied** shows the amount; type a different amount and choose **Apply amount**, or **Apply automatically** to go back. Admins can turn automatic application off in Settings under **Contract deposits**.
 
 ## Pay Applications {#pay-applications}
+
+Pay applications appear with the job's other financial records in the **Project Financial Queue** on its **Financials** page. The queue is a sheet that opens on **All**: use the buttons above it to show one kind of record (**Pay applications**, **Vendor bills**, **Deposits**, **Payments** and so on), click a column header to sort, and search numbers, titles, companies and statuses. Click a pay application to open its G702 / G703.
 
 Bill a draft pay application by dollars or by percent complete. **Bill by** groups the lines by **Division**, **Assembly** or **Cost code**. Each group has a percent box: type its percent complete to date and choose **Bill division**, **Bill assembly** or **Bill cost code**, and every line in it is billed to that percent of its scheduled value, less previous work and stored materials. To bill a single line, type its **% to date** or its current work in dollars and save the line. Compass refuses a percent lower than what is already billed.
 

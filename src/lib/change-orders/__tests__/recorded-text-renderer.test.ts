@@ -82,7 +82,8 @@ function expectHistoricalContext(markup: string): void {
   expect(markup).toContain("Approved")
   expect(markup).not.toContain("Not verified from Buildertrend")
   expect(markup).not.toContain("Not classified")
-  expect(markup).not.toContain("Requested by")
+  // The list sheet's "Requested by" header is fine; nothing may name a requester.
+  expect(markup).not.toMatch(/Requested by [^<]/)
   expect(markup).not.toContain("Unverified project owner")
   expect(markup).not.toContain("Approved · Buildertrend")
 }

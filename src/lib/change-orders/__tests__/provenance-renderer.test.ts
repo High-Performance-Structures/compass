@@ -16,6 +16,7 @@ vi.mock("@/components/projects/project-change-order-executed-document", () => ({
   ),
 }))
 vi.mock("@/components/developer-mode-provider", () => ({ DeveloperOnly: () => null }))
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
@@ -83,7 +84,8 @@ describe("imported change-order provenance in shared list and detail", () => {
       expect(markup).not.toContain("Purpose: Not classified")
       expect(markup).toContain("Approved")
       expect(markup).toContain("$123.45")
-      expect(markup).not.toContain("Requested by")
+      // The sheet's "Requested by" header is fine; no row may name a requester.
+      expect(markup).not.toMatch(/Requested by [^<]/)
       expect(markup).not.toContain("Legacy project owner")
       expect(markup).not.toContain("Legacy company")
     }
@@ -97,7 +99,7 @@ describe("imported change-order provenance in shared list and detail", () => {
     "does not treat legacy requester type %s as evidence", (requesterType) => {
       for (const markup of render(item({ requesterType, budgetTreatment: "baseline_replacement" }), false)) {
         expect(markup).toContain(">[BT]<")
-        expect(markup).not.toContain("Requested by")
+        expect(markup).not.toMatch(/Requested by [^<]/)
         expect(markup).toContain("Baseline replacement")
       }
     },
@@ -131,10 +133,11 @@ describe("imported change-order provenance in shared list and detail", () => {
       fromStatus: null, toStatus: "submitted", actorName: "Legacy project owner", actorRole: "owner",
       note: null, createdAt: "2026-09-01T12:00:00.000Z" }] })
     for (const markup of render(native, false)) {
-      expect(markup).toContain("Requested by Legacy project owner")
+      expect(markup).toContain("Legacy project owner")
       expect(markup).toContain("Executed")
       expect(markup).not.toContain("[BT]")
     }
+    expect(render(native, false)[1]).toContain("Requested by Legacy project owner")
     expect(render(native, false)[1]).toContain("Request created")
   })
 
