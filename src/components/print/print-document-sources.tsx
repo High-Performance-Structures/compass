@@ -134,6 +134,7 @@ export async function printDocumentSource(
     case "deposit-request":
     case "meeting-transcript":
     case "estimate-compare":
+    case "sage-export-preview":
       return null
   }
 }

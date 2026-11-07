@@ -11,6 +11,9 @@ import { getPayApplicationShopTickets } from "@/app/actions/shop-ticket-billing"
 import { PayApplicationShopTickets } from "@/components/projects/pay-application-shop-tickets"
 import { getProjectReceivablePayments } from "@/app/actions/received-payments"
 import { ReceivedPaymentsPanel } from "@/components/financials/received-payments-panel"
+import { getSageExportPreview } from "@/app/actions/sage-export-preview"
+import { SageExportPreviewDocument } from "@/components/financials/sage-export-preview"
+import { PrintPreviewButton } from "@/components/print/print-preview-button"
 
 export default async function ProjectPayApplicationPage({
   params,
@@ -21,9 +24,12 @@ export default async function ProjectPayApplicationPage({
   const id = decodeProjectRouteId(rawProjectId)
   const application = await getProjectOwnerPayApplicationDraft(id, applicationId)
   if (!application) notFound()
-  const [shopTickets, receivables] = await Promise.all([
+  // The Sage export preview is for draws not yet billed (draft or ready); office staff only.
+  const showSagePreview = application.status !== "billed"
+  const [shopTickets, receivables, sagePreview] = await Promise.all([
     getPayApplicationShopTickets(id, applicationId).catch(() => null),
     getProjectReceivablePayments(id),
+    showSagePreview ? getSageExportPreview(id, applicationId).catch(() => null) : null,
   ])
   // Payments are recorded once the draw is billed; viewers without financials access don't see the panel.
   const showPayments = receivables.success && application.status === "billed"
@@ -40,6 +46,25 @@ export default async function ProjectPayApplicationPage({
         <div className="mt-6">
           <ReceivedPaymentsPanel projectId={id} data={receivables.data} applicationId={applicationId} />
         </div>
+      ) : null}
+      {sagePreview?.success ? (
+        <details className="mt-6 rounded-lg border p-4">
+          <summary className="cursor-pointer text-base font-semibold">
+            Sage export preview
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              What would go to Sage, and where Compass and Sage disagree
+              {sagePreview.data.unmappedCount > 0 || (sagePreview.data.reconciliation.available && sagePreview.data.reconciliation.mismatchCount > 0)
+                ? " (has items to check)"
+                : ""}
+            </span>
+          </summary>
+          <div className="mt-4 space-y-4">
+            <PrintPreviewButton
+              link={{ projectId: id, document: "sage-export-preview", params: { applicationId }, number: `Sage export ${application.applicationNumber}` }}
+            />
+            <SageExportPreviewDocument preview={sagePreview.data} />
+          </div>
+        </details>
       ) : null}
       {shopTickets ? <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} /> : null}
     </div>
