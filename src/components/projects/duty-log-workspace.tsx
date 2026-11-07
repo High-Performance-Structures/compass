@@ -12,6 +12,7 @@ import {
   type DutyLogWorkspace,
   type UncategorizedLogView,
 } from "@/app/actions/internal-duties"
+import { DutyLogRecordTable } from "@/components/projects/duty-log-record-table"
 import { RecurringDutiesBoard } from "@/components/projects/recurring-duties-board"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
@@ -265,51 +266,16 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
         {workspace.entries.length === 0 ? (
           <p className="border-t py-4 text-sm text-muted-foreground">Nothing logged yet. Use Log duty, or give a duty to the daily logs below.</p>
         ) : (
-          <div className="overflow-x-auto border-t">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">Date</th>
-                  <th className="py-2 pr-3 font-medium">Who</th>
-                  <th className="py-2 pr-3 font-medium">Duty</th>
-                  <th className="py-2 pr-3 text-right font-medium">Hours</th>
-                  <th className="py-2 pr-3 font-medium">Notes</th>
-                  <th className="py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {workspace.entries.map((entry) => {
-                  const mine = entry.userId === workspace.currentUserId || workspace.canManage
-                  return (
-                    <tr key={entry.id} className="border-b align-top">
-                      <td className="whitespace-nowrap py-2 pr-3">{formatDate(entry.entryDate)}</td>
-                      <td className="py-2 pr-3">{entry.userName}</td>
-                      <td className="py-2 pr-3">
-                        <span className="font-mono">{entry.dutyCode}</span> {entry.dutyLabel}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{entry.hours !== null ? entry.hours.toFixed(2) : "–"}</td>
-                      <td className="py-2 pr-3">
-                        {entry.notes}
-                        {entry.relatedProjectLabel ? <span className="block text-muted-foreground">For {entry.relatedProjectLabel}</span> : null}
-                      </td>
-                      <td className="py-2">
-                        {workspace.canEdit && mine ? (
-                          <div className="flex justify-end gap-1">
-                            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => startEdit(entry)}>
-                              Edit
-                            </Button>
-                            <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={pending} onClick={() => remove(entry)}>
-                              Delete
-                            </Button>
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DutyLogRecordTable
+            entries={workspace.entries}
+            currentUserId={workspace.currentUserId}
+            actions={{
+              canChange: (entry) => workspace.canEdit && (entry.userId === workspace.currentUserId || workspace.canManage),
+              pending,
+              onEdit: startEdit,
+              onDelete: remove,
+            }}
+          />
         )}
       </section>
 

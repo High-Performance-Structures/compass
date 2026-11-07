@@ -11,6 +11,7 @@ import { billedItemColumns, receivedPaymentColumns } from "@/components/financia
 import { vendorColumns } from "@/components/financials/vendors-table"
 import { conversationColumns } from "@/components/correspondence/correspondence-inbox-columns"
 import { dailyLogColumns } from "@/components/projects/daily-log/daily-log-record-table"
+import { dutyLogColumns } from "@/components/projects/duty-log-record-table"
 import { rfiColumns } from "@/components/projects/project-rfi-record-table"
 import { rfqColumns } from "@/components/projects/project-rfq-record-table"
 import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
@@ -90,6 +91,7 @@ describe("list sheet standard", () => {
       "rfis.trade-partner": () => rfiColumns("vendor", { kind: "select", onSelect: noop }, defaultRecordStatusList("rfi")),
       "messages.job": () => conversationColumns({ filter: "inbox", searching: false, hitsFor: () => [], onOpen: noop, selection: { selected: new Set(), visibleIds: [], locked: false, onToggle: noop, onToggleAll: noop } }),
       "daily-logs.job": () => dailyLogColumns(new Set(), noop, noop),
+      "duty-log.workspace": () => dutyLogColumns({ canChange: () => true, pending: false, onEdit: noop, onDelete: noop }),
       "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
