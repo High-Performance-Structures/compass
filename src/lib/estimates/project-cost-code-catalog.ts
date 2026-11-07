@@ -1,3 +1,4 @@
+import { isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { CSI_PROJECT_TOTALS_FALLBACK_COST_CODES } from "@/lib/estimates/csi-project-totals-catalog"
 import {
   SAGE_ESTIMATE_COST_CODE_CATALOG,
@@ -146,7 +147,9 @@ export function projectEstimateCostCodeCatalog(
     })
   }
 
-  return [...catalog.values()].sort((left, right) => {
+  // The retired Division 99 fee codes are never offered; builder fees go by
+  // their canonical names.
+  return [...catalog.values()].filter((row) => !isLegacyFeeCostCode(row.code)).sort((left, right) => {
     const divisionOrder = left.divisionCode.localeCompare(right.divisionCode)
     return divisionOrder || left.displayLabel.localeCompare(right.displayLabel)
   })

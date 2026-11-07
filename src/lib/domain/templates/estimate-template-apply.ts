@@ -8,10 +8,12 @@ import {
   projectTemplates,
   projectTemplateVersions,
 } from "@/db/schema-templates"
+import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
 import {
   insertTemplateEstimateLineStatement,
   insertTemplateEstimateStatement,
 } from "@/lib/domain/estimates/store"
+import { builderFeeCatalogRow, isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { estimateTitleForDepartment } from "@/lib/estimates/client-report"
 import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
 import { projectDepartment } from "@/lib/project-branding"
@@ -95,7 +97,7 @@ export async function createEstimateFromTemplate(
     )
     .get()
   if (!version) throw new Error("The estimate template is not published.")
-  const [defaults, sourceLines, taxEntities] = await Promise.all([
+  const [defaults, sourceLines, taxEntities, costCodeCatalog] = await Promise.all([
     db
       .select()
       .from(estimateTemplateDefaults)
@@ -107,6 +109,7 @@ export async function createEstimateFromTemplate(
       .where(eq(estimateTemplateLines.versionId, version.id))
       .orderBy(asc(estimateTemplateLines.divisionCode), asc(estimateTemplateLines.sortOrder)),
     db.select().from(sageTaxEntities).where(eq(sageTaxEntities.active, true)),
+    loadProjectCostCodeCatalog(db),
   ])
   if (!defaults) throw new Error("The estimate template defaults are missing.")
   const defaultTax = cleanText(input.defaultTaxEntityId)
@@ -117,12 +120,18 @@ export async function createEstimateFromTemplate(
   }
   const application = buildEstimateTemplateApplication({
     lines: sourceLines.map(
-      (line): EstimateTemplateSourceLine => ({
+      (line): EstimateTemplateSourceLine => {
+        // A template line still under a retired 99 x0 00 fee code becomes an
+        // estimate line under the fee's canonical code; the template is unchanged.
+        const fee = isLegacyFeeCostCode(line.costCode)
+          ? builderFeeCatalogRow(costCodeCatalog, line.costCode)
+          : null
+        return {
         id: line.id,
-        divisionCode: line.divisionCode,
-        divisionName: line.divisionName,
-        costCode: line.costCode,
-        costCodeName: line.costCodeName,
+        divisionCode: fee?.divisionCode ?? line.divisionCode,
+        divisionName: fee?.divisionDescription ?? line.divisionName,
+        costCode: fee?.code ?? line.costCode,
+        costCodeName: fee?.description ?? line.costCodeName,
         description: line.description,
         specifications: line.specifications,
         quantity: line.quantity,
@@ -133,7 +142,8 @@ export async function createEstimateFromTemplate(
         taxCode: line.taxCode,
         ownerVisible: line.ownerVisible,
         sortOrder: line.sortOrder,
-      })
+        }
+      }
     ),
     taxEntities: taxEntities.map((tax) => ({
       id: tax.id,

@@ -41,7 +41,11 @@ import type {
   EstimateTemplateLineInput,
   EstimateTemplateOption,
 } from "@/lib/domain/templates/types"
-import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
+import {
+  BUILDER_FEE_NAMES,
+  builderFeeCatalogRow,
+  isLegacyFeeCostCode,
+} from "@/lib/domain/financials/builder-fee-codes"
 import { can, requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import { orgContext, type OrgContext } from "@/lib/server/action-context"
@@ -190,10 +194,7 @@ export async function saveEstimateTemplateLine(
     const access = await templateAccess("update")
     const { version } = await editableTemplateVersion(access.db, access.organizationId, templateId)
     const costCode = requiredText(input.costCode, "Cost code")
-    const adjustment = CONTRACT_ADJUSTMENT_COST_CODES.find(
-      (candidate) => candidate.value === costCode
-    )
-    const sageCostCode = adjustment
+    const sageCostCode = isLegacyFeeCostCode(costCode)
       ? null
       : await access.db
           .select()
@@ -205,7 +206,29 @@ export async function saveEstimateTemplateLine(
             )
           )
           .get()
-    if (!adjustment && !sageCostCode) {
+    // A builder fee, chosen by name or saved under a retired 99 x0 00 code,
+    // files under its canonical row: the Sage code named for it, else the name.
+    const fee = sageCostCode
+      ? null
+      : builderFeeCatalogRow(
+          await access.db
+            .select({
+              code: sageCostCodes.code,
+              description: sageCostCodes.description,
+              divisionCode: sageCostCodes.divisionCode,
+              divisionDescription: sageCostCodes.divisionDescription,
+            })
+            .from(sageCostCodes)
+            .where(
+              and(
+                inArray(sageCostCodes.description, [...BUILDER_FEE_NAMES]),
+                eq(sageCostCodes.active, true)
+              )
+            ),
+          costCode
+        )
+    const coding = sageCostCode ?? fee
+    if (!coding) {
       throw new Error("Choose an active Sage cost code.")
     }
     const taxCode = cleanText(input.taxCode)
@@ -252,11 +275,10 @@ export async function saveEstimateTemplateLine(
     const values = {
       versionId: version.id,
       itemKey: existing?.itemKey ?? id,
-      divisionCode: sageCostCode?.divisionCode ?? "99",
-      divisionName: sageCostCode?.divisionDescription ?? "Contract Adjustments",
-      costCode: sageCostCode?.code ?? adjustment?.value ?? costCode,
-      costCodeName:
-        sageCostCode?.description ?? adjustment?.description ?? costCode,
+      divisionCode: coding.divisionCode,
+      divisionName: coding.divisionDescription,
+      costCode: coding.code,
+      costCodeName: coding.description,
       description: requiredText(input.description, "Description"),
       specifications: cleanText(input.specifications),
       quantity,
@@ -351,14 +373,14 @@ export async function publishEstimateTemplate(
     if (lines.length === 0) {
       throw new Error("Add at least one estimate line before publishing.")
     }
-    const adjustmentCodes = new Set<string>(
-      CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value)
-    )
+    // Builder fee lines filed by name, or under a retired 99 x0 00 code (read
+    // as its fee and remapped when the template is applied), need no Sage row.
+    const feeNames = new Set(BUILDER_FEE_NAMES)
     const sageCodes = [
       ...new Set(
         lines
           .map((line) => line.costCode)
-          .filter((code) => !adjustmentCodes.has(code))
+          .filter((code) => !feeNames.has(code) && !isLegacyFeeCostCode(code))
       ),
     ]
     const activeCostCodes = sageCodes.length

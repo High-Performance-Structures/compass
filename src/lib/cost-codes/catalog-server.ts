@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectBudgetApplications, projectBudgetLines, sageCostCodes } from "@/db/schema"
+import { isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { projectEstimateCostCodeCatalog, type ProjectEstimateCostCodeCatalogItem } from "@/lib/estimates/project-cost-code-catalog"
 
 /** One company catalog for project coding; callers authorize project access first. */
@@ -71,7 +72,8 @@ export async function loadProjectCostCodeChoices(db: ReturnType<typeof getDb>, p
   // Historical job-only codes stay resolvable when editing an older record.
   for (const row of history) {
     const code = row.costCode.trim()
-    if (!code || choices.has(code)) continue
+    // A budget fee line coded "99 10 00" is offered under its canonical name.
+    if (!code || choices.has(code) || isLegacyFeeCostCode(code)) continue
     choices.set(code, { code, sourceCostCode: code, description: row.description, displayLabel: `${code} ${row.description}`, divisionCode: row.divisionCode, divisionDescription: row.divisionName, divisionDisplayLabel: `${row.divisionCode} · ${row.divisionName}`, sageMapped: false, onBudget: budgetCodes.has(code) })
   }
   return [...choices.values()]
