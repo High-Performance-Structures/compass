@@ -145,7 +145,7 @@ describe("company layout checks", () => {
 
   it("accepts a full layout and refuses unknown, repeated or missing columns", () => {
     expect(checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: all, sort: { columnId: "due", direction: "desc" }, startFilter: "all" }))
-      .toEqual({ ok: true, value: { columns: all, sort: { kind: "column", columnId: "due", desc: true }, startFilter: "all" } })
+      .toEqual({ ok: true, value: { columns: all, sort: { kind: "column", columnId: "due", desc: true }, startFilter: "all", filterLabels: {} } })
     expect(checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: [...all, { id: "extra", visible: true }], sort: null, startFilter: null }).ok).toBe(false)
     expect(checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: [...all, { id: "due", visible: true }], sort: null, startFilter: null }).ok).toBe(false)
     expect(checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: all.slice(1), sort: null, startFilter: null }).ok).toBe(false)
@@ -158,10 +158,10 @@ describe("company layout checks", () => {
 
   it("stores a sort or filter equal to the code default as following the default", () => {
     const checked = checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: all, sort: { columnId: "due", direction: "asc" }, startFilter: "open" })
-    expect(checked).toEqual({ ok: true, value: { columns: all, sort: { kind: "default" }, startFilter: null } })
+    expect(checked).toEqual({ ok: true, value: { columns: all, sort: { kind: "default" }, startFilter: null, filterLabels: {} } })
     // "The list's own order" is its own stored value, distinct from the default.
     expect(checkCompanyListSheet(sheet, { sheetId: sheet.id, columns: all, sort: null, startFilter: null }))
-      .toEqual({ ok: true, value: { columns: all, sort: { kind: "none" }, startFilter: null } })
+      .toEqual({ ok: true, value: { columns: all, sort: { kind: "none" }, startFilter: null, filterLabels: {} } })
     // A later code default change reaches a company that saved the default.
     const changed: ListSheetDefinition = { ...sheet, defaultSort: { columnId: "status", desc: true }, startFilter: sheet.startFilter && { ...sheet.startFilter, defaultValue: "all" } }
     if (!checked.ok) throw new Error("expected a valid layout")
@@ -179,6 +179,25 @@ describe("company layout checks", () => {
 
   it("refuses an input that names an organization", () => {
     expect(companyListSheetInputSchema.safeParse({ sheetId: sheet.id, columns: all, sort: null, startFilter: null, organizationId: "org-b" }).success).toBe(false)
+  })
+
+  it("stores renamed filters only on renamable sheets, dropping blanks and built-in names", () => {
+    const renamable: ListSheetDefinition = { ...sheet, startFilter: sheet.startFilter && { ...sheet.startFilter, renamable: true } }
+    const input = { sheetId: sheet.id, columns: all, sort: null, startFilter: null }
+    expect(checkCompanyListSheet(renamable, { ...input, filterLabels: { open: "Active", all: "All" } }))
+      .toMatchObject({ ok: true, value: { filterLabels: { open: "Active" } } })
+    expect(checkCompanyListSheet(renamable, { ...input, filterLabels: { open: "" } })).toMatchObject({ ok: true, value: { filterLabels: {} } })
+    expect(checkCompanyListSheet(renamable, { ...input, filterLabels: { gone: "Gone" } }).ok).toBe(false)
+    expect(checkCompanyListSheet(renamable, { ...input, filterLabels: { open: "all" } })).toEqual({ ok: false, error: "Give each filter a different name." })
+    expect(checkCompanyListSheet(sheet, { ...input, filterLabels: { open: "Active" } }).ok).toBe(false)
+  })
+
+  it("names each filter button by the company's name, else the built-in one", () => {
+    const renamable: ListSheetDefinition = { ...sheet, startFilter: sheet.startFilter && { ...sheet.startFilter, renamable: true } }
+    const company = { columns: all, sort: { kind: "default" as const }, startFilter: null, filterLabels: { open: "Active" } }
+    expect(resolveListSheetLayout(renamable, company, null).filterLabels).toEqual({ open: "Active", all: "All" })
+    // A sheet that stops being renamable falls back to the built-in names.
+    expect(resolveListSheetLayout(sheet, company, null).filterLabels).toEqual({ open: "Open", all: "All" })
   })
 })
 

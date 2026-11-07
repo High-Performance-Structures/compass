@@ -84,6 +84,7 @@ describe("0295 list sheet settings", () => {
     sortColumn,
     sortDirection: sortColumn ? ("asc" as const) : null,
     startFilter: null,
+    filterLabels: null,
     updatedBy: userA,
     now,
   })

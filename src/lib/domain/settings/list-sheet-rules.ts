@@ -18,6 +18,9 @@ const columnId = z.string().trim().min(1).max(80)
 /** json: a company's column layout, in display order. */
 export const listSheetColumnsSchema = z.array(z.object({ id: columnId, visible: z.boolean() }).strict()).max(MAX_COLUMNS)
 
+/** json: a company's names for a sheet's filter buttons, by filter value. */
+export const listSheetFilterLabelsSchema = z.record(z.string().trim().min(1).max(40), z.string().trim().max(40))
+
 /** json: column ids a person hid or showed. */
 export const listSheetColumnIdsSchema = z.array(columnId).max(MAX_COLUMNS)
 
@@ -27,6 +30,7 @@ export const companyListSheetInputSchema = z.object({
   columns: listSheetColumnsSchema,
   sort: z.object({ columnId, direction: z.enum(LIST_SHEET_SORT_DIRECTIONS) }).strict().nullable(),
   startFilter: z.string().trim().min(1).max(40).nullable(),
+  filterLabels: listSheetFilterLabelsSchema.optional(),
 }).strict()
 
 /** What a sheet's Columns button sends. Strict, like the company input. */
@@ -45,6 +49,8 @@ export type CompanyListSheetSetting = {
   readonly sort: CompanyListSheetSort
   /** Null follows the code default. */
   readonly startFilter: string | null
+  /** Renamed filter buttons, by filter value; an option left out keeps its built-in name. */
+  readonly filterLabels?: Readonly<Record<string, string>>
 }
 
 export type CompanyListSheetSort =
@@ -71,6 +77,8 @@ export type ListSheetLayout = {
   readonly columns: readonly ListSheetLayoutColumn[]
   readonly sort: ListSheetSort | null
   readonly startFilter: string | null
+  /** Each filter option's name: the company's, else the built-in one. */
+  readonly filterLabels: Readonly<Record<string, string>>
   /** Whether the person changed any column from the company layout. */
   readonly personalized: boolean
 }
@@ -153,7 +161,13 @@ export function resolveListSheetLayout(
   const startFilter = company && validStartFilter(definition, company.startFilter)
     ? company.startFilter
     : definition.startFilter?.defaultValue ?? null
-  return { columns, sort, startFilter, personalized }
+  return { columns, sort, startFilter, filterLabels: resolvedFilterLabels(definition, company), personalized }
+}
+
+function resolvedFilterLabels(definition: ListSheetDefinition, company: CompanyListSheetSetting | null): Readonly<Record<string, string>> {
+  const options = definition.startFilter?.options ?? []
+  const renamed = definition.startFilter?.renamable === true ? company?.filterLabels ?? {} : {}
+  return Object.fromEntries(options.map((option) => [option.value, renamed[option.value] || option.label]))
 }
 
 /**
@@ -193,7 +207,7 @@ function sameSort(left: ListSheetSort | null, right: ListSheetSort | null): bool
 export function checkCompanyListSheet(
   definition: ListSheetDefinition,
   input: z.infer<typeof companyListSheetInputSchema>,
-): Checked<CompanyListSheetSetting> {
+): Checked<Required<CompanyListSheetSetting>> {
   const byId = new Map(definition.columns.map((column) => [column.id, column]))
   const seen = new Set<string>()
   for (const column of input.columns) {
@@ -220,7 +234,24 @@ export function checkCompanyListSheet(
     ? { kind: "default" }
     : chosen ? { kind: "column", ...chosen } : { kind: "none" }
   const startFilter = input.startFilter === definition.startFilter?.defaultValue ? null : input.startFilter
-  return { ok: true, value: { columns: input.columns, sort, startFilter } }
+  const filterLabels = checkFilterLabels(definition, input.filterLabels ?? {})
+  if (!filterLabels.ok) return filterLabels
+  return { ok: true, value: { columns: input.columns, sort, startFilter, filterLabels: filterLabels.value } }
+}
+
+/**
+ * Filter names ready to store: only renamable sheets' own options, and a
+ * blank name or one equal to the built-in name is dropped (it follows code).
+ */
+function checkFilterLabels(definition: ListSheetDefinition, input: Readonly<Record<string, string>>): Checked<Readonly<Record<string, string>>> {
+  const options = definition.startFilter?.options ?? []
+  const entries = Object.entries(input).filter(([value, label]) => label !== "" && options.find((option) => option.value === value)?.label !== label)
+  if (entries.length === 0) return { ok: true, value: {} }
+  if (definition.startFilter?.renamable !== true) return { ok: false, error: "This sheet's filters can't be renamed." }
+  if (entries.some(([value]) => !options.some((option) => option.value === value))) return { ok: false, error: "Choose one of this sheet's filters." }
+  const names = options.map((option) => (input[option.value] || option.label).toLowerCase())
+  if (new Set(names).size !== names.length) return { ok: false, error: "Give each filter a different name." }
+  return { ok: true, value: Object.fromEntries(entries) }
 }
 
 /** A person's preference ready to store: unknown and required columns dropped. */

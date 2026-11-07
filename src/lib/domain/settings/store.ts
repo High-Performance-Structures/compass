@@ -589,13 +589,15 @@ type CompanyListSheetValues = {
   readonly sortColumn: string | null
   readonly sortDirection: ListSheetSortDirection | null
   readonly startFilter: string | null
+  /** JSON checked by listSheetFilterLabelsSchema; null when no filter is renamed. */
+  readonly filterLabels: string | null
   readonly updatedBy: string
   readonly now: string
 }
 
 /** Saves (or replaces) a company's layout for one sheet. Scoped to the caller's organization by the unique key. */
 export async function saveOrganizationListSheetSetting(db: Db, input: CompanyListSheetValues): Promise<void> {
-  const { columns, sortColumn, sortDirection, startFilter, updatedBy, now } = input
+  const { columns, sortColumn, sortDirection, startFilter, filterLabels, updatedBy, now } = input
   assertListFields("organization_list_sheet_settings", input, { sortDirection: LIST_SHEET_SORT_DIRECTIONS })
   await db
     .insert(organizationListSheetSettings)
@@ -607,13 +609,14 @@ export async function saveOrganizationListSheetSetting(db: Db, input: CompanyLis
       sortColumn,
       sortDirection,
       startFilter,
+      filterLabels,
       createdAt: now,
       updatedAt: now,
       updatedBy,
     })
     .onConflictDoUpdate({
       target: [organizationListSheetSettings.organizationId, organizationListSheetSettings.sheetKey],
-      set: { columns, sortColumn, sortDirection, startFilter, updatedAt: now, updatedBy },
+      set: { columns, sortColumn, sortDirection, startFilter, filterLabels, updatedAt: now, updatedBy },
     })
 }
 

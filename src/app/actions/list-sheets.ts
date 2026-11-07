@@ -62,7 +62,7 @@ export async function saveCompanyListSheet(raw: unknown): Promise<Result> {
     const { db, organizationId, user } = access.ctx
     const before = (await readListSheetPreferences(db, { organizationId, userId: user.id })).company[definition.id] ?? null
     const now = new Date().toISOString()
-    const { columns, sort, startFilter } = checked.value
+    const { columns, sort, startFilter, filterLabels } = checked.value
     await saveOrganizationListSheetSetting(db, {
       organizationId,
       sheetKey: definition.id,
@@ -71,6 +71,7 @@ export async function saveCompanyListSheet(raw: unknown): Promise<Result> {
       sortColumn: sort.kind === "default" ? null : sort.kind === "none" ? LIST_SHEET_OWN_ORDER : sort.columnId,
       sortDirection: sort.kind === "column" ? (sort.desc ? "desc" : "asc") : null,
       startFilter,
+      filterLabels: Object.keys(filterLabels).length > 0 ? JSON.stringify(filterLabels) : null,
       updatedBy: user.id,
       now,
     })
@@ -84,8 +85,10 @@ export async function saveCompanyListSheet(raw: unknown): Promise<Result> {
       entityId: definition.id,
       summary: `Updated the ${definition.label} list columns.`,
       metadata: {
-        before: before ? { columns: before.columns.map((column) => ({ ...column })), sort: { ...before.sort }, startFilter: before.startFilter } : null,
-        after: { columns: columns.map((column) => ({ ...column })), sort: { ...sort }, startFilter },
+        before: before
+          ? { columns: before.columns.map((column) => ({ ...column })), sort: { ...before.sort }, startFilter: before.startFilter, filterLabels: { ...before.filterLabels } }
+          : null,
+        after: { columns: columns.map((column) => ({ ...column })), sort: { ...sort }, startFilter, filterLabels: { ...filterLabels } },
       },
       createdAt: now,
     })

@@ -15,6 +15,7 @@ import {
   LIST_SHEET_OWN_ORDER,
   listSheetColumnIdsSchema,
   listSheetColumnsSchema,
+  listSheetFilterLabelsSchema,
   parseStoredJson,
   resolveListSheetLayout,
   type CompanyListSheetSetting,
@@ -51,6 +52,7 @@ export async function readListSheetPreferences(
         sortColumn: organizationListSheetSettings.sortColumn,
         sortDirection: organizationListSheetSettings.sortDirection,
         startFilter: organizationListSheetSettings.startFilter,
+        filterLabels: organizationListSheetSettings.filterLabels,
       })
       .from(organizationListSheetSettings)
       .where(eq(organizationListSheetSettings.organizationId, reader.organizationId)),
@@ -73,6 +75,7 @@ export async function readListSheetPreferences(
       columns: parseStoredJson(row.columns, listSheetColumnsSchema) ?? [],
       sort: storedSort(row.sortColumn, row.sortDirection),
       startFilter: row.startFilter,
+      filterLabels: parseStoredJson(row.filterLabels, listSheetFilterLabelsSchema) ?? {},
     }
   }
   const personal: Record<string, PersonalListSheetPreference> = {}
