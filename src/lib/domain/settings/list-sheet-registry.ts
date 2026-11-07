@@ -155,6 +155,20 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     startFilter: null,
   },
   {
+    id: "duty-log.workspace",
+    label: "Duty log",
+    where: "An internal workspace's Duty Log",
+    columns: [
+      { id: "date", label: "Date", kind: "date", required: true },
+      { id: "who", label: "Who", kind: "text" },
+      { id: "duty", label: "Duty", kind: "text" },
+      { id: "hours", label: "Hours", kind: "number" },
+      { id: "notes", label: "Notes", kind: "text" },
+    ],
+    defaultSort: { columnId: "date", desc: true },
+    startFilter: null,
+  },
+  {
     id: "rfis.trade-partner",
     label: "RFIs, trade partner view",
     where: "A trade partner's RFIs",

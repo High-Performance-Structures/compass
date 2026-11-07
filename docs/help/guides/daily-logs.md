@@ -66,6 +66,10 @@ Use the log's edit action to correct the record. Saving a material change may re
 
 Before approval, verify the date, narrative, attachments, and professionalism. Approval establishes the project record; it does not necessarily make the log or its photos owner-visible.
 
+## Duty Log in Internal Workspaces {#duty-log}
+
+An internal workspace (such as the home office) has a **Duty log** for time spent on company duties. Choose **Log duty** to record a date, duty, hours and notes. The entries are a sheet: click a column header (Date, Who, Duty, Hours, Notes) to sort, choose **Everyone** or **Mine** above it, and search duties, people, notes or jobs. Click your own entry to edit it; admins can edit anyone's. Admins choose which columns show in **Settings → Lists**.
+
 ## Delete a Daily Log {#delete-log}
 
 Open a log with **Edit** and choose **Delete**, or tick several logs and choose **Delete selected**. Compass asks you to confirm first. Photos and files attached to a deleted log stay in the project's photos, and a copy of each deleted log is kept in the activity log.
