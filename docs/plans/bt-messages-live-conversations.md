@@ -322,9 +322,12 @@ Flow:
 3. Hold a whole thread for review when its job's archive is private, when its
    project must be staff-only but the pre-check does not show the switch on
    (`staff_only_not_verified`), or when any message has an unmatched
-   or ambiguous participant, a Bcc recipient, an unreadable date, an unverified attachment,
-   or an unmapped job (`review.jsonl`). A thread with both owners and vendors is kept internal.
+   or ambiguous participant, a Bcc recipient, an unreadable date, an attachment with a
+   malformed sha256, or an unmapped job (`review.jsonl`). A thread with both owners and vendors is kept internal.
    A conversation is never shown with gaps or to the wrong audience.
+   Owner decision 2026-11-06: a message may go live before its attachments. An
+   attachment whose bytes are not captured yet (no sha256 or size) is left out,
+   listed in `attachments-unmapped.jsonl`, and added by a re-run once captured.
 4. For each importable thread write, in order: the conversation, new
    directory contacts, thread participant rows, memberships and read state
    (outsiders only when the project is not staff-only), then per message:

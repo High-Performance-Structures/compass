@@ -126,8 +126,8 @@ describe("threads with unidentified people import staff-only", () => {
       .toEqual([{ user_id: "u-pm", source_sender_label_snapshot: "Someone" }])
   })
 
-  it("still holds a thread for other reasons, such as an unverified attachment", () => {
-    const plan = run([message("3", "101", { attachments: [{ btAttachmentId: "5", fileName: "a.jpg", sizeBytes: 1 }] }), thread("3", "101")])
+  it("still holds a thread for other reasons, such as a malformed attachment hash", () => {
+    const plan = run([message("3", "101", { attachments: [{ btAttachmentId: "5", fileName: "a.jpg", sizeBytes: 1, sha256: "not-a-hash" }] }), thread("3", "101")])
     expect(plan.threads).toEqual([])
     expect(plan.imported_staff_only_pending_identity).toBe(0)
     expect(plan.reviews.map((item: { reason: string }) => item.reason).sort()).toEqual(["attachment_unverified"])

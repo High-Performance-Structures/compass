@@ -469,7 +469,13 @@ export function planImport(input) {
       const createdAt = sentAtIso(message.sentAtDisplay, message.sentAtZone ?? timeZone)
       if (!createdAt) threadReviews.push(review("sent_at_unreadable", message, { sentAtDisplay: message.sentAtDisplay }))
       for (const attachment of message.attachments) {
-        if (!attachment.sha256 || !SHA256.test(attachment.sha256) || attachment.sizeBytes === null) {
+        // Owner decision 2026-11-06: a message may go live before its
+        // attachments. An attachment whose bytes were not captured yet (no
+        // sha256 or no size) is left out now and listed in
+        // attachments-unmapped.jsonl; a re-run after the bytes are captured adds
+        // it (its id is fixed by message + attachment). Only a sha256 that is
+        // present but malformed still holds the thread: that capture is broken.
+        if (attachment.sha256 && !SHA256.test(attachment.sha256)) {
           threadReviews.push(review("attachment_unverified", message, { btAttachmentId: attachment.btAttachmentId }))
         }
       }
@@ -737,6 +743,8 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
     }, guard))
   }
   for (const attachment of message.attachments) {
+    // Bytes not captured yet: nothing to store or reuse; added on a later run.
+    if (!isVerifiedAttachment(attachment)) continue
     const mapped = driveFiles.get(attachment.sha256) ?? null
     // Reuse a stored file with the same bytes: an earlier attachment, or a
     // daily-log photo with a verified hash, before any newly uploaded file.
@@ -746,6 +754,11 @@ function messageStatements(thread, message, contactByKey, { actorUserId, now, dr
     statements.push(`INSERT INTO message_attachments (id, message_id, file_name, mime_type, file_size, r2_path, width, height, uploaded_at, content_sha256, source_attachment_id) SELECT ${sqlValue(shortId("bt-attachment", message.btMessageId, attachment.btAttachmentId))}, ${messageRow}, ${sqlValue(attachment.fileName)}, ${sqlValue(attachment.mimeType)}, ${sqlValue(attachment.sizeBytes)}, ${storage}, NULL, NULL, ${sqlValue(now)}, ${sqlValue(attachment.sha256)}, ${sqlValue(attachment.btAttachmentId)} WHERE ${guard} AND ${messageRow} IS NOT NULL AND ${storage} IS NOT NULL ON CONFLICT DO NOTHING;`)
   }
   return statements
+}
+
+/** Attachment bytes were captured: an exact sha256 and a byte size. */
+export function isVerifiedAttachment(attachment) {
+  return typeof attachment.sha256 === "string" && SHA256.test(attachment.sha256) && attachment.sizeBytes !== null
 }
 
 /** Retire owner-history copies once their source message is live (no duplicates). */
@@ -910,7 +923,7 @@ function main() {
   }
   writeFileSync(join(options.out, "review.jsonl"), plan.reviews.map((item) => JSON.stringify(item)).join("\n") + (plan.reviews.length ? "\n" : ""))
   writeFileSync(join(options.out, "pending.jsonl"), plan.pending.map((item) => JSON.stringify(item)).join("\n") + (plan.pending.length ? "\n" : ""))
-  const attachmentsWithoutFile = plan.threads.flatMap((thread) => thread.messages.flatMap((message) => message.attachments.filter((a) => !driveFiles.has(a.sha256)).map((a) => ({ btMessageId: message.btMessageId, ...a }))))
+  const attachmentsWithoutFile = plan.threads.flatMap((thread) => thread.messages.flatMap((message) => message.attachments.filter((a) => !driveFiles.has(a.sha256)).map((a) => ({ btMessageId: message.btMessageId, bytesCaptured: isVerifiedAttachment(a), ...a }))))
   const newContacts = newCatalogContacts(plan)
   writeFileSync(join(options.out, "new-contacts.jsonl"), newContacts.map((item) => JSON.stringify(item)).join("\n") + (newContacts.length ? "\n" : ""))
   writeFileSync(join(options.out, "attachments-unmapped.jsonl"), attachmentsWithoutFile.map((item) => JSON.stringify(item)).join("\n") + (attachmentsWithoutFile.length ? "\n" : ""))
@@ -939,6 +952,8 @@ function main() {
     reviewItems: plan.reviews.length,
     pendingThreads: plan.pending.length,
     attachmentsNeedingStoredFile: attachmentsWithoutFile.length,
+    // Of those, attachments whose bytes are not captured yet (message live now, attachment later).
+    attachmentsAwaitingBytes: attachmentsWithoutFile.filter((a) => !a.bytesCaptured).length,
     batches: files,
   }
   writeFileSync(join(options.out, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`)
