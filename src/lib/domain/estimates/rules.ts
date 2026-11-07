@@ -205,22 +205,20 @@ export function calculateEstimateTotals(
       builderFeeBaseCents: 0,
     }
   )
-  const overheadCents = safeInteger(
-    (lineTotals.builderFeeBaseCents *
-      safeRate(builderFeeRates.overheadRateBasisPoints)) /
-      10_000
-  )
-  const marginCents = safeInteger(
-    (lineTotals.builderFeeBaseCents *
-      safeRate(builderFeeRates.marginRateBasisPoints)) /
-      10_000
-  )
-  const contingencyCents = safeInteger(
-    (lineTotals.builderFeeBaseCents *
-      safeRate(builderFeeRates.contingencyRateBasisPoints)) /
-      10_000
-  )
-  const builderFeeCents = overheadCents + marginCents + contingencyCents
+  // The fee is rounded once on its combined rate, the way contracts state it
+  // ("20% of the estimate"). Overhead and margin round on their own, and
+  // contingency takes the remainder so the parts always add up to that fee.
+  const overheadRate = safeRate(builderFeeRates.overheadRateBasisPoints)
+  const marginRate = safeRate(builderFeeRates.marginRateBasisPoints)
+  const contingencyRate = safeRate(builderFeeRates.contingencyRateBasisPoints)
+  const feeOn = (rate: number) =>
+    safeInteger((lineTotals.builderFeeBaseCents * rate) / 10_000)
+  const builderFeeCents = feeOn(overheadRate + marginRate + contingencyRate)
+  const overheadCents = feeOn(overheadRate)
+  const marginCents =
+    contingencyRate > 0 ? feeOn(marginRate) : builderFeeCents - overheadCents
+  const contingencyCents =
+    contingencyRate > 0 ? builderFeeCents - overheadCents - marginCents : 0
 
   return {
     directCostCents: lineTotals.directCostCents,

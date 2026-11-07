@@ -142,6 +142,24 @@ describe("estimate totals parity", () => {
     expect(estimateTotalsForLines(rates, [])).toEqual(totalsBefore(rates, []))
   })
 
+  it("rounds the builder fee once and lets contingency absorb the rounding", () => {
+    const line = { ...contractLines[0], directCostCents: 5_000_003, markupCents: 0, taxCents: 0, lineTotalCents: 5_000_003, includeInBuilderFee: true }
+    const totals = estimateTotalsForLines(
+      { overheadRateBasisPoints: 900, marginRateBasisPoints: 900, contingencyRateBasisPoints: 200 },
+      [line]
+    )
+    // 20% of $50,000.03 is $10,000.01; rounding each part alone would give $10,000.00.
+    expect(totals.builderFeeCents).toBe(1_000_001)
+    expect([totals.overheadCents, totals.marginCents, totals.contingencyCents]).toEqual([450_000, 450_000, 100_001])
+    // With no contingency, margin takes the remainder.
+    const noContingency = estimateTotalsForLines(
+      { overheadRateBasisPoints: 900, marginRateBasisPoints: 1_100, contingencyRateBasisPoints: 0 },
+      [line]
+    )
+    expect(noContingency.overheadCents + noContingency.marginCents).toBe(1_000_001)
+    expect(noContingency.contingencyCents).toBe(0)
+  })
+
   it("reads only the ledger fields of a saved line", () => {
     const saved = { ...contractLines[1], unitCostCents: 99, quantity: 3 }
     expect(ledgerLine(saved)).not.toHaveProperty("unitCostCents")
