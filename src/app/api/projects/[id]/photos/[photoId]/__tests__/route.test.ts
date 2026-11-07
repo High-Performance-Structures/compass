@@ -19,10 +19,13 @@ const mocks = vi.hoisted(() => ({
   getExportExtension: vi.fn(),
   assertOwnerUpdateReadAccess: vi.fn(),
   hasActiveExternalProjectResourceGrant: vi.fn(),
+  resolveProjectAudienceViewer: vi.fn(),
 }))
 
 vi.mock("next/headers", () => ({ headers: mocks.headers }))
-vi.mock("@/lib/conversations/preview-viewer", () => ({ conversationRequestViewer: async (user: unknown) => user }))
+vi.mock("@/lib/project-audience-viewer", () => ({
+  resolveProjectAudienceViewer: mocks.resolveProjectAudienceViewer,
+}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
@@ -208,6 +211,45 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     const response = await getPhoto("owner")
     expect(response.status).toBe(404)
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("serves a staff preview of an invited owner by the owner visibility flags", async () => {
+    mocks.headers.mockResolvedValue(new Headers({ "x-compass-audience-scope": JSON.stringify({ projectId: "project-1", audience: "owner", targetUserId: "invite:inv-1" }) }))
+    mocks.resolveProjectAudienceViewer.mockResolvedValue({
+      actor: { ...baseUser, id: "staff-1", role: "admin", organizationType: "internal" },
+      viewer: { ...baseUser, id: "invite:inv-1", role: "owner" },
+      organizationId: project.organizationId,
+      projectId: project.id,
+      audience: "owner",
+      isPreview: true,
+    })
+    configureDb({ viewerRole: "admin", membershipRole: null, visiblePhoto: photo })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("jpeg-bytes")
+    expect(mocks.resolveProjectAudienceViewer).toHaveBeenCalledWith(project.id, "owner")
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.hasActiveExternalProjectResourceGrant).not.toHaveBeenCalled()
+  })
+
+  it("does not serve a staff preview a photo hidden from the previewed audience", async () => {
+    mocks.headers.mockResolvedValue(new Headers({ "x-compass-audience-scope": JSON.stringify({ projectId: "project-1", audience: "sub_vendor", targetUserId: "invite:inv-2" }) }))
+    mocks.resolveProjectAudienceViewer.mockResolvedValue({
+      actor: { ...baseUser, id: "staff-1", role: "admin", organizationType: "internal" },
+      viewer: { ...baseUser, id: "invite:inv-2", role: "supplier" },
+      organizationId: project.organizationId,
+      projectId: project.id,
+      audience: "sub_vendor",
+      isPreview: true,
+    })
+    configureDb({ viewerRole: "admin", membershipRole: null, visiblePhoto: null })
+
+    const response = await getPhoto("sub_vendor")
+
+    expect(response.status).toBe(404)
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
