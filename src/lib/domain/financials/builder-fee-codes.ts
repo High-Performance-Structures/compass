@@ -23,6 +23,22 @@ function builderFeeName(costCode: string): string | null {
   return FEE_NAME_BY_ALIAS.get(normalized(costCode)) ?? null
 }
 
+const FEE_NAME_BY_LABEL: ReadonlyMap<string, string> = new Map([
+  ...FEE_NAME_BY_ALIAS,
+  ...CONTRACT_ADJUSTMENT_COST_CODES.flatMap((fee) =>
+    fee.sourceLabels.map((label) => [normalized(label), fee.description] as const)
+  ),
+])
+
+/**
+ * Like `canonicalFeeCostCode`, but also reads the fee's other source labels
+ * ("Contingency" for "Contingency Reserve"). For matching outside text, such
+ * as a Sage billing line's description, to a fee; never for filing new work.
+ */
+export function canonicalFeeLabel(label: string): string {
+  return FEE_NAME_BY_LABEL.get(normalized(label)) ?? label
+}
+
 /**
  * One identity per builder fee: "99 10 00" and "Company Overhead" both become
  * "Company Overhead". Any other cost code comes back unchanged.

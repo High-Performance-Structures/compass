@@ -183,6 +183,64 @@ describe("reconciliation with Sage", () => {
     expect(result.newToSage).toEqual([])
   })
 
+  it("matches a fee by its short label when the catalog has no Sage record numbers", () => {
+    // Fictional: a spreadsheet-imported catalog (CSI codes and fee names, no record numbers).
+    const index = indexSageCatalog([
+      { code: "33 10 00", sourceCostCode: "33 10 00", description: "Water Utilities", sageMapped: true },
+      { code: "Contingency Reserve", sourceCostCode: "Contingency Reserve", description: "Contingency Reserve", sageMapped: true },
+    ])
+    const compassLines = sageExportLines([line("33 10 00"), line("Contingency Reserve")], index)
+    const result = reconcileWithSage({
+      lines: compassLines,
+      compassContractToDateCents: 200000,
+      index,
+      unavailableReason: "",
+      sage: {
+        header: { ...header, contractSumToDate: 2000, totalCompletedStoredToDate: 400 },
+        lines: [
+          { costCode: "33.100", description: "33 10 00 - Water Utilities", adjustedEstimate: 1000, totalCompletedStored: 200 },
+          { costCode: "35.000", description: "Contingency", adjustedEstimate: 600, totalCompletedStored: 100 },
+          // Same Sage record, other wording: matched by the record number learned above.
+          { costCode: "35", description: "Owner allowance carry", adjustedEstimate: 400, totalCompletedStored: 100 },
+        ],
+      },
+    })
+    if (!result.available) throw new Error("expected Sage data")
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines.filter((item) => item.key === "Contingency Reserve")).toEqual([
+      expect.objectContaining({ presence: "both", sageContractCents: 100000, mismatch: false }),
+    ])
+    expect(result.lines.every((item) => item.presence === "both" && !item.mismatch)).toBe(true)
+    expect(result.newToSage).toEqual([])
+  })
+
+  it("learns no record number that resolves to two Compass lines", () => {
+    const index = indexSageCatalog([
+      { code: "Company Overhead", sourceCostCode: "Company Overhead", description: "Company Overhead", sageMapped: true },
+      { code: "Company Margin", sourceCostCode: "Company Margin", description: "Company Margin", sageMapped: true },
+    ])
+    const compassLines = sageExportLines([line("Company Overhead"), line("Company Margin")], index)
+    const result = reconcileWithSage({
+      lines: compassLines,
+      compassContractToDateCents: 200000,
+      index,
+      unavailableReason: "",
+      sage: {
+        header: { ...header, contractSumToDate: 2000, totalCompletedStoredToDate: 400 },
+        lines: [
+          { costCode: "40", description: "Company Overhead", adjustedEstimate: 1000, totalCompletedStored: 200 },
+          { costCode: "40", description: "Company Margin", adjustedEstimate: 1000, totalCompletedStored: 200 },
+          { costCode: "40", description: "Miscellaneous", adjustedEstimate: 50, totalCompletedStored: 0 },
+        ],
+      },
+    })
+    if (!result.available) throw new Error("expected Sage data")
+    const byKey = new Map(result.lines.map((item) => [item.key, item]))
+    expect(byKey.get("Company Overhead")).toMatchObject({ presence: "both", mismatch: false })
+    expect(byKey.get("Company Margin")).toMatchObject({ presence: "both", mismatch: false })
+    expect(byKey.get("name:miscellaneous")).toMatchObject({ presence: "sage_only" })
+  })
+
   it("says so when Compass holds no Sage billing", () => {
     expect(reconcileWithSage({ lines, compassContractToDateCents: 0, index: INDEX, sage: null, unavailableReason: "No Sage read yet." })).toEqual({
       available: false,
