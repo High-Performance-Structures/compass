@@ -31,4 +31,11 @@ describe("contract deposits on pay applications", () => {
     // Draw 2: previous certificates are draw 1's earned less retainage.
     expect(currentPaymentDueAfterDeposit({ totalEarnedLessRetainage: 200_000, previousCertificates: 120_000, depositApplied: 0 })).toBe(80_000)
   })
+
+  it("lets a draw that credits back over-billed work come out negative and take no deposit", () => {
+    const draw = drawAmountBeforeDeposit({ totalEarnedLessRetainage: 9_000, previousCertificates: 9_900 })
+    expect(draw).toBe(0)
+    expect(depositAppliedToDraw({ mode: "auto", requested: 0, availableDeposit: 5_000, drawBeforeDeposit: draw })).toBe(0)
+    expect(currentPaymentDueAfterDeposit({ totalEarnedLessRetainage: 9_000, previousCertificates: 9_900, depositApplied: 0 })).toBe(-900)
+  })
 })

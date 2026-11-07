@@ -56,9 +56,11 @@ function money(value: number): string {
 }
 
 function fieldNumber(formData: FormData, name: string): number | null {
-  const raw = String(formData.get(name) ?? "").replaceAll(/[$,]/g, "").trim()
+  const raw = String(formData.get(name) ?? "").replaceAll(/[$,\s]/g, "")
   if (!raw) return 0
-  const value = Number(raw)
+  // Accounting-style credits such as (3,230.00) read as negative amounts.
+  const credit = /^\((.*)\)$/.exec(raw)
+  const value = credit ? -Number(credit[1]) : Number(raw)
   return Number.isFinite(value) ? value : null
 }
 
@@ -85,6 +87,9 @@ function PayApplicationLineEditor({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ownerVisible, setOwnerVisible] = useState(line.ownerVisible)
+  // A failed save keeps the typed values and shows why on this row, so the
+  // error is not lost in the page-level message far above a long G703.
+  const [error, setError] = useState<string | null>(null)
   const impliedRetainage =
     line.totalCompletedStored > 0
       ? (line.retainageHeld / line.totalCompletedStored) * 100
@@ -96,6 +101,7 @@ function PayApplicationLineEditor({
     const percent = fieldNumber(formData, "percentComplete")
     const percentChanged =
       percent !== null && Math.abs(percent - percentOf(line.totalCompletedStored, line.adjustedEstimate)) > 0.05
+    setError(null)
     startTransition(async () => {
       const result = await updateProjectOwnerPayApplicationLine(
         projectId,
@@ -108,8 +114,13 @@ function PayApplicationLineEditor({
           ownerVisible,
         }
       )
-      if (!result.success || !percentChanged) {
-        onMessage(result.success ? `${line.costCode} saved.` : result.error)
+      if (!result.success) {
+        setError(result.error)
+        onMessage(`${line.costCode} was not saved: ${result.error}`)
+        return
+      }
+      if (!percentChanged) {
+        onMessage(`${line.costCode} saved.`)
         router.refresh()
         return
       }
@@ -118,6 +129,7 @@ function PayApplicationLineEditor({
         key: line.id,
         percentComplete: percent,
       })
+      if (!billed.success) setError(billed.error)
       onMessage(billed.success ? `${line.costCode} billed to ${percent}% complete.` : billed.error)
       router.refresh()
     })
@@ -142,6 +154,8 @@ function PayApplicationLineEditor({
         inputMode="decimal"
         defaultValue={line.currentWorkCompleted || ""}
         disabled={!editable}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${line.id}-error` : undefined}
         aria-label={`Current work for ${line.costCode}`}
       />
       <Input
@@ -184,6 +198,11 @@ function PayApplicationLineEditor({
           </Button>
         )}
       </div>
+      {error && (
+        <p id={`${line.id}-error`} role="alert" className="text-sm text-destructive lg:col-span-full">
+          {error}
+        </p>
+      )}
     </form>
   )
 }

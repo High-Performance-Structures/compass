@@ -48,6 +48,17 @@ describe("payApplicationReport", () => {
     expect(report.totals.adjustedEstimate).toBe(101_700)
     expect(report.totals.balance).toBe(66_700)
   })
+
+  it("prints a line credited back this period with a negative current amount", () => {
+    const credited = [
+      { ...base, costCode: "03 31 00", description: "Structural Concrete", assemblyKey: null, assemblyName: null, assemblySort: 0, originalEstimate: 8_000, previousWorkCompleted: 6_000, currentWorkCompleted: -2_000 },
+      { ...base, costCode: "03 21 00", description: "Reinforcing Steel", assemblyKey: null, assemblyName: null, assemblySort: 0, originalEstimate: 2_000, currentWorkCompleted: 500 },
+    ]
+    const report = payApplicationReport(credited, "cost_code")
+    const concrete = report.groups.find((group) => group.key === "03 31 00")
+    expect(concrete).toMatchObject({ priorCosts: 6_000, currentCosts: -2_000, completedToDate: 4_000, percentComplete: 50, balance: 4_000 })
+    expect(report.totals).toMatchObject({ priorCosts: 6_000, currentCosts: -1_500, completedToDate: 4_500, percentComplete: 45, balance: 5_500 })
+  })
 })
 
 describe("payApplicationChangeOrderSummary", () => {
