@@ -24,6 +24,9 @@ const ADD_LINE_EXCEPTIONS: Readonly<Record<string, string>> = {
   // Adds one template line through a form; the lines reorder in
   // estimate-template-line-order.tsx, which uses the shared control.
   "src/components/templates/estimate-template-editor.tsx": "single-line form",
+  // "Add item" on an assembly opens the estimate item form above; the items
+  // reorder in project-estimate-line-order.tsx.
+  "src/components/projects/estimate-workspace/estimate-line-groups.tsx": "single-line form",
 }
 
 function sourceFiles(dir: string): readonly string[] {
@@ -48,7 +51,7 @@ describe("line order standard", () => {
 
   it("gives every line editor with an Add line button the shared reorder control", () => {
     const missing = files
-      .filter((file) => file.path.endsWith(".tsx") && />\s*Add (?:line|row|Line Item|Line)\b/.test(file.text))
+      .filter((file) => file.path.endsWith(".tsx") && />\s*Add (?:line|row|Line Item|Line|item|Item|cost code)\b/.test(file.text))
       .filter((file) => !(file.path in ADD_LINE_EXCEPTIONS))
       .filter((file) => !/\bSortableRows\b/.test(file.text))
       .map((file) => file.path)
