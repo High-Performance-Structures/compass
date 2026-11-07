@@ -12,6 +12,10 @@
  * Where a caller narrows a write with its own condition (an optimistic
  * `updatedAt` check, a status guard), it passes that condition in; the store
  * still owns the statement.
+ *
+ * It also writes shop_tickets (their statuses live in this module's
+ * statuses.ts): creating, issuing, voiding, and linking them to the owner pay
+ * application they are billed on.
  */
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
@@ -25,10 +29,13 @@ import {
   projectRfqManualResponseEvents,
   projectRfqQuoteLinks,
 } from "@/db/schema-rfqs"
+import { shopTickets } from "@/db/schema-shop-tickets"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
 
 import { todoEventRow, type TodoEventInput } from "./rules"
+import { SHOP_TICKET_STATUSES } from "./statuses"
 
 export type OperationRow = typeof projectOperations.$inferSelect
 export type OperationInsert = typeof projectOperations.$inferInsert
@@ -616,4 +623,30 @@ export function companyMergeOperationStatements(database: D1Database, move: Comp
       AND (sage_vendor_id IS NULL OR trim(sage_vendor_id) = '' OR EXISTS (SELECT 1 FROM vendors k WHERE k.id = ?
         AND (k.sage_vendor_id = project_operations.sage_vendor_id OR k.sage_vendor_number = project_operations.sage_vendor_id)))
       AND ${guard.sql}`).bind(move.destinationId, move.now, move.sourceId, move.destinationId, ...guard.binds)]
+}
+
+// ---- shopTickets
+
+type ShopTicketInsert = typeof shopTickets.$inferInsert
+type ShopTicketPatch = Partial<ShopTicketInsert>
+const SHOP_TICKET_LISTS = { status: SHOP_TICKET_STATUSES }
+
+export async function insertShopTicket(db: Db, values: ShopTicketInsert): Promise<void> {
+  assertListFields("shop_tickets", values, SHOP_TICKET_LISTS)
+  await db.insert(shopTickets).values(values)
+}
+
+/** Updates the matching tickets and returns the ids it changed. */
+export async function updateShopTickets(db: Db, where: SQL | undefined, patch: ShopTicketPatch): Promise<readonly { readonly id: string }[]> {
+  assertListFields("shop_tickets", patch, SHOP_TICKET_LISTS)
+  return db.update(shopTickets).set(patch).where(where).returning({ id: shopTickets.id })
+}
+
+export function updateShopTicketsStatement(db: Db, where: SQL | undefined, patch: ShopTicketPatch): BatchItem<"sqlite"> {
+  assertListFields("shop_tickets", patch, SHOP_TICKET_LISTS)
+  return db.update(shopTickets).set(patch).where(where)
+}
+
+export async function deleteShopTickets(db: Db, where: SQL | undefined): Promise<void> {
+  await db.delete(shopTickets).where(where)
 }

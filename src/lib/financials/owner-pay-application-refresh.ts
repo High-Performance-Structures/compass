@@ -1,4 +1,4 @@
-import { and, eq, ne, notInArray, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, ne, notInArray, sql, type SQL } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -8,13 +8,17 @@ import {
   projectOperations,
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import { canonicalFeeCostCode, mixesFeeCostCodes } from "@/lib/domain/financials/builder-fee-codes"
 import { SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
 import { updateOperations } from "@/lib/domain/operations/store"
+import { respreadShopTicketContributions } from "@/lib/domain/budget/rules"
 import {
   deleteBudgetLinesStatement,
+  deleteShopTicketImportsStatement,
   insertBudgetLinesStatement,
+  insertShopTicketImportsStatements,
   updateBudgetApplications,
   updateBudgetApplicationsStatement,
   updateBudgetLinesStatement,
@@ -306,9 +310,18 @@ export async function syncDraftPayApplication(
     .where(eq(projectContractBudgetRevisions.id, revisionId))
     .get()
   if (!revision) throw new Error("Contract budget revision not found.")
-  const [shares, existing] = await Promise.all([
+  const [shares, existing, ticketImports] = await Promise.all([
     loadPayApplicationShares(db, revisionId),
     db.select().from(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)),
+    db
+      .select()
+      .from(payApplicationShopTicketImports)
+      .where(
+        and(
+          eq(payApplicationShopTicketImports.applicationId, applicationId),
+          eq(payApplicationShopTicketImports.mode, "imported")
+        )
+      ),
   ])
   // Grouped by canonical cost code, so a builder fee row coded "99 10 00"
   // moves onto the "Company Overhead" share instead of being left behind.
@@ -325,6 +338,11 @@ export async function syncDraftPayApplication(
 
   const statements = []
   const inserts: (typeof projectBudgetLines.$inferInsert)[] = []
+  // Shop ticket amounts on removed lines: dropped with the line, or spread
+  // onto a replaced code's new lines (below) the same way as its amounts.
+  const removedLineIds: string[] = []
+  const replacedLineCodes = new Map<string, string>()
+  const newLinesByCode = new Map<string, { readonly id: string; readonly weightCents: number }[]>()
   const context = { projectId, applicationId, revisionNumber: revision.revisionNumber, now }
   for (const [costCode, codeShares] of sharesByCode) {
     const olds = oldByCode.get(costCode) ?? []
@@ -372,7 +390,9 @@ export async function syncDraftPayApplication(
         )
       }
       for (const line of olds) {
-        if (!matchedIds.has(line.id)) statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
+        if (matchedIds.has(line.id)) continue
+        removedLineIds.push(line.id)
+        statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
       }
       continue
     }
@@ -387,19 +407,48 @@ export async function syncDraftPayApplication(
       codeShares.map((share) => Math.max(0, share.approvedChangeCents))
     )
     codeShares.forEach((share, index) => {
-      inserts.push(
-        shareLineRow(share, context, {
-          previousWorkCompletedCents: previous[index] ?? 0,
-          currentWorkCompletedCents: current[index] ?? 0,
-          storedMaterialsCents: stored[index] ?? 0,
-          retainageHeldCents: retainage[index] ?? 0,
-          priorChangesCents: priorChanges[index] ?? 0,
-        })
-      )
+      const row = shareLineRow(share, context, {
+        previousWorkCompletedCents: previous[index] ?? 0,
+        currentWorkCompletedCents: current[index] ?? 0,
+        storedMaterialsCents: stored[index] ?? 0,
+        retainageHeldCents: retainage[index] ?? 0,
+        priorChangesCents: priorChanges[index] ?? 0,
+      })
+      inserts.push(row)
+      if (row.id) newLinesByCode.set(costCode, [...(newLinesByCode.get(costCode) ?? []), { id: row.id, weightCents: weights[index] ?? 0 }])
     })
-    for (const line of olds) statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
+    for (const line of olds) {
+      removedLineIds.push(line.id)
+      replacedLineCodes.set(line.id, costCode)
+      statements.push(deleteBudgetLinesStatement(db, eq(projectBudgetLines.id, line.id)))
+    }
   }
+  const movedImports = ticketImports.filter((row) => row.budgetLineId !== null && removedLineIds.includes(row.budgetLineId))
+  // Removed first, so the lines can go; re-added once the new lines exist.
+  const importDeletes = chunkD1Values(removedLineIds).map((ids) =>
+    deleteShopTicketImportsStatement(db, inArray(payApplicationShopTicketImports.budgetLineId, ids))
+  )
+  statements.unshift(...(movedImports.length > 0 ? importDeletes : []))
   for (const rows of chunkD1InsertRows(projectBudgetLines, inserts)) statements.push(insertBudgetLinesStatement(db, rows))
+  const firstImport = new Map(movedImports.map((row) => [row.ticketId, row]))
+  const respread = respreadShopTicketContributions(
+    movedImports.flatMap((row) => (row.budgetLineId ? [{ ticketId: row.ticketId, budgetLineId: row.budgetLineId, amountCents: row.amountCents }] : [])),
+    replacedLineCodes,
+    newLinesByCode
+  )
+  statements.push(
+    ...insertShopTicketImportsStatements(
+      db,
+      respread.map((row) => ({
+        id: crypto.randomUUID(),
+        applicationId,
+        ...row,
+        mode: "imported" as const,
+        createdBy: firstImport.get(row.ticketId)?.createdBy ?? null,
+        createdAt: firstImport.get(row.ticketId)?.createdAt ?? now,
+      }))
+    )
+  )
   statements.push(
     updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
       budgetRevisionId: revisionId,

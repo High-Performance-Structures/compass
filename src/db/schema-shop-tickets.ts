@@ -1,6 +1,13 @@
+import { sql } from "drizzle-orm"
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
-import { organizations, projectBudgetApplications, projects, users } from "./schema"
-import { SHOP_TICKET_RATE_KINDS, SHOP_TICKET_STATUSES, type ShopTicketStatus, type ShopTicketRateKind } from "../lib/domain/operations/statuses"
+import { organizations, projectBudgetApplications, projectBudgetLines, projects, users } from "./schema"
+import {
+  PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES,
+  SHOP_TICKET_RATE_KINDS,
+  SHOP_TICKET_STATUSES,
+  type ShopTicketStatus,
+  type ShopTicketRateKind,
+} from "../lib/domain/operations/statuses"
 import { SAGE_LABOR_REQUEST_STATUSES, type SageLaborRequestStatus } from "../lib/domain/sage-bridge/statuses"
 export type { SageLaborRequestStatus }
 export type { ShopTicketStatus, ShopTicketRateKind }
@@ -83,6 +90,40 @@ export const shopTicketLines = sqliteTable(
     ticketUpdatedIdx: index("shop_ticket_lines_ticket_updated_idx").on(table.ticketId, table.updatedAt),
     // Declared from drizzle/0281_id_reference_triggers.sql.
     rateBookEntryIdRefIdx: index("shop_ticket_lines_rate_book_entry_id_idx").on(table.rateBookEntryId),
+  }),
+)
+
+/**
+ * What a shop ticket contributed to an owner pay application. An "imported"
+ * row is the amount added to one G703 line, so a re-import adds only the
+ * difference and unlinking takes it back off. An "already_included" row has
+ * no line: the ticket counts as billed on the pay application without
+ * changing any amount.
+ */
+export const payApplicationShopTicketImports = sqliteTable(
+  "pay_application_shop_ticket_imports",
+  {
+    id: text("id").primaryKey(),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "cascade" }),
+    ticketId: text("ticket_id")
+      .notNull()
+      .references(() => shopTickets.id, { onDelete: "cascade" }),
+    budgetLineId: text("budget_line_id").references(() => projectBudgetLines.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull().default(0),
+    mode: text("mode", { enum: PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES }).notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    lineIdx: uniqueIndex("pay_application_shop_ticket_imports_line_idx").on(table.applicationId, table.ticketId, table.budgetLineId),
+    ticketMarkIdx: uniqueIndex("pay_application_shop_ticket_imports_mark_idx")
+      .on(table.applicationId, table.ticketId)
+      .where(sql`"budget_line_id" IS NULL`),
+    ticketIdx: index("pay_application_shop_ticket_imports_ticket_idx").on(table.ticketId),
+    budgetLineIdx: index("pay_application_shop_ticket_imports_budget_line_idx").on(table.budgetLineId),
+    createdByIdx: index("pay_application_shop_ticket_imports_created_by_idx").on(table.createdBy),
   }),
 )
 

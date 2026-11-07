@@ -64,6 +64,7 @@ import {
   loadPayApplicationShares,
   priorAmountsForShares,
 } from "@/lib/financials/pay-application-shares"
+import { linkShopTicketsByNumber } from "@/lib/financials/pay-application-shop-tickets"
 import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
@@ -1403,16 +1404,13 @@ export async function createProjectOwnerPayApplicationDraft(
       updatedAt: now,
     })
     await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), { status: "draft", updatedAt: now })
-
+    await linkShopTicketsByNumber(db, projectId, applicationId) // issued tickets naming this number
     revalidateFinancialPaths(projectId)
     return { success: true, id }
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to create owner pay application",
+      error: error instanceof Error ? error.message : "Failed to create owner pay application",
     }
   }
 }

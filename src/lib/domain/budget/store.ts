@@ -3,6 +3,8 @@ import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
+import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import {
   COMPASS_DRAW_SOURCE,
@@ -14,13 +16,16 @@ import {
   UNSUBMITTED_DRAW_STATUSES,
   type DepositAppliedMode,
 } from "@/lib/financials/contract-deposits"
+import { PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES } from "@/lib/domain/operations/statuses"
 import type { Db } from "@/lib/server/action-context"
+import { assertListFields } from "@/lib/shared/statuses"
 
 /*
  * The budget domain store: the only code that inserts, updates or deletes
  * project_budget_applications (owner pay applications and contract budget
- * projections) and project_budget_lines (their G703 lines) (architecture
- * standard, section 1).
+ * projections) and project_budget_lines (their G703 lines), plus
+ * pay_application_shop_ticket_imports (what each shop ticket added to a pay
+ * application) (architecture standard, section 1).
  *
  * `*Statement` builds an unexecuted statement for `db.batch`; the plain form
  * runs it. Callers pass the same `where` conditions they used before, so the
@@ -236,4 +241,19 @@ export function companyMergeBudgetLineStatements(database: D1Database, move: Com
   const guard = companyMoveGuard(move)
   return [database.prepare(`UPDATE project_budget_lines SET vendor_id = ?, updated_at = ? WHERE vendor_id = ? AND ${guard.sql}`)
     .bind(move.destinationId, move.now, move.sourceId, ...guard.binds)]
+}
+
+// ---- payApplicationShopTicketImports
+
+type ShopTicketImportInsert = typeof payApplicationShopTicketImports.$inferInsert
+const SHOP_TICKET_IMPORT_LISTS = { mode: PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES }
+
+/** Insert statements for the rows, chunked to D1's bound-parameter limit. */
+export function insertShopTicketImportsStatements(db: Db, rows: readonly ShopTicketImportInsert[]): Statement[] {
+  assertListFields("pay_application_shop_ticket_imports", rows, SHOP_TICKET_IMPORT_LISTS)
+  return chunkD1InsertRows(payApplicationShopTicketImports, rows).map((chunk) => db.insert(payApplicationShopTicketImports).values(chunk))
+}
+
+export function deleteShopTicketImportsStatement(db: Db, where: SQL | undefined): Statement {
+  return db.delete(payApplicationShopTicketImports).where(where)
 }

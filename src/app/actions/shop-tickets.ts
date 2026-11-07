@@ -13,6 +13,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { ShopTicketSettings } from "@/lib/feature-settings/registry"
+import { deleteShopTickets, insertShopTicket, updateShopTickets } from "@/lib/domain/operations/store"
 import { requireOrg } from "@/lib/org-scope"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -236,7 +237,7 @@ export async function createShopTicket(projectId: string, raw: ShopTicketInput):
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const sequenceNumber = nextSequenceNumber(await highestTicketSequence(db, orgId), settings.startNumber)
       try {
-        await db.insert(shopTickets).values({
+        await insertShopTicket(db, {
           id,
           organizationId: orgId,
           projectId,
@@ -282,20 +283,17 @@ export async function updateShopTicket(projectId: string, ticketId: string, raw:
     if (ticket.status !== "draft") throw new Error("Issued tickets can't be edited. Void it and create a new one.")
     const { input, priced } = await prepare(db, orgId, projectId, raw)
     const now = new Date().toISOString()
-    await db
-      .update(shopTickets)
-      .set({
-        ticketDate: input.ticketDate,
-        laborFrom: input.laborFrom,
-        laborTo: input.laborTo,
-        payApplicationNumber: input.payApplicationNumber,
-        payApplicationMonth: monthStart(input.payApplicationMonth),
-        budgetApplicationId: input.budgetApplicationId,
-        notes: input.notes?.trim() || null,
-        totalCents: priced.totalCents,
-        updatedAt: now,
-      })
-      .where(and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft")))
+    await updateShopTickets(db, and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft")), {
+      ticketDate: input.ticketDate,
+      laborFrom: input.laborFrom,
+      laborTo: input.laborTo,
+      payApplicationNumber: input.payApplicationNumber,
+      payApplicationMonth: monthStart(input.payApplicationMonth),
+      budgetApplicationId: input.budgetApplicationId,
+      notes: input.notes?.trim() || null,
+      totalCents: priced.totalCents,
+      updatedAt: now,
+    })
     await writeLines(db, ticketId, priced.lines, now)
     if (input.laborClaims) await writeLaborClaims(db, orgId, projectId, ticketId, input.laborClaims, priced.lines, now)
     revalidate(projectId)
@@ -331,18 +329,18 @@ export async function issueShopTicket(
       )
     }
     const now = new Date().toISOString()
-    const updated = await db
-      .update(shopTickets)
-      .set({
+    const updated = await updateShopTickets(
+      db,
+      and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft"), eq(shopTickets.organizationId, orgId)),
+      {
         status: "issued",
         issuedBy: user.id,
         issuedAt: now,
         budgetReviewedBy: outside.length > 0 ? user.id : null,
         budgetReviewedAt: outside.length > 0 ? now : null,
         updatedAt: now,
-      })
-      .where(and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft"), eq(shopTickets.organizationId, orgId)))
-      .returning({ id: shopTickets.id })
+      },
+    )
     if (updated.length === 0) throw new Error("This ticket was already issued.")
     await markPaperTrailDue(db, { projectId, recordType: "shop_ticket", recordId: ticketId })
     revalidate(projectId)
@@ -361,10 +359,13 @@ export async function voidShopTicket(projectId: string, ticketId: string, reason
     const cleanReason = reason.trim()
     if (cleanReason.length < 3) throw new Error("Say why the ticket is being voided.")
     const now = new Date().toISOString()
-    await db
-      .update(shopTickets)
-      .set({ status: "void", voidedBy: user.id, voidedAt: now, voidReason: cleanReason.slice(0, 500), updatedAt: now })
-      .where(and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "issued")))
+    await updateShopTickets(db, and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "issued")), {
+      status: "void",
+      voidedBy: user.id,
+      voidedAt: now,
+      voidReason: cleanReason.slice(0, 500),
+      updatedAt: now,
+    })
     await markPaperTrailDue(db, { projectId, recordType: "shop_ticket", recordId: ticketId })
     revalidate(projectId)
     return { success: true, ticketId }
@@ -379,7 +380,7 @@ export async function deleteShopTicketDraft(projectId: string, ticketId: string)
     const { db } = await editContext(projectId)
     const ticket = await draftTicket(db, projectId, ticketId)
     if (ticket.status !== "draft") throw new Error("Issued tickets are voided, not deleted.")
-    await db.delete(shopTickets).where(and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft")))
+    await deleteShopTickets(db, and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft")))
     await markPaperTrailRemoved(db, { recordType: "shop_ticket", recordId: ticketId })
     revalidate(projectId)
     return { success: true, ticketId }
