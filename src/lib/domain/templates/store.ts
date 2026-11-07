@@ -1,4 +1,4 @@
-import type { SQL } from "drizzle-orm"
+import { and, eq, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -83,6 +83,20 @@ export async function updateEstimateTemplateLines(
   patch: EstimateLinePatch
 ): Promise<D1Result> {
   return db.update(estimateTemplateLines).set(patch).where(where).run()
+}
+
+/** One statement per line whose position changed, for one `db.batch`. */
+export function reorderEstimateTemplateLinesStatements(
+  db: Db,
+  versionId: string,
+  positions: readonly { readonly id: string; readonly sortOrder: number }[]
+): Statement[] {
+  return positions.map((position) =>
+    db
+      .update(estimateTemplateLines)
+      .set({ sortOrder: position.sortOrder })
+      .where(and(eq(estimateTemplateLines.id, position.id), eq(estimateTemplateLines.versionId, versionId)))
+  )
 }
 
 export async function deleteEstimateTemplateLines(db: Db, where: SQL | undefined): Promise<D1Result> {

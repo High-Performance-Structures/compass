@@ -24,7 +24,13 @@ import {
 } from "@/lib/domain/templates/estimate-template-reads"
 import { nonNegative, requiredText } from "@/lib/domain/templates/rules"
 import {
+  compareEstimateLineOrder,
+  reorderedEstimateLinePositions,
+  sameEstimateLineOrder,
+} from "@/lib/estimates/line-order"
+import {
   deleteEstimateTemplateLines,
+  reorderEstimateTemplateLinesStatements,
   estimateTemplateDraftStatements,
   estimateTemplateRevisionStatements,
   insertEstimateTemplateLine,
@@ -356,6 +362,64 @@ export async function deleteEstimateTemplateLine(
         error instanceof Error
           ? error.message
           : "Unable to remove the estimate template line.",
+    }
+  }
+}
+
+/**
+ * Saves a new line order within one CSI division of a draft template.
+ * `previousIds` is the order the editor showed; a different saved order
+ * means someone else changed the template, so the move is refused.
+ */
+export async function reorderEstimateTemplateLines(
+  templateId: string,
+  input: {
+    readonly divisionCode: string
+    readonly previousIds: readonly string[]
+    readonly orderedIds: readonly string[]
+  }
+): Promise<ActionResult> {
+  try {
+    const access = await templateAccess("update")
+    const { version } = await editableTemplateVersion(access.db, access.organizationId, templateId)
+    const lines = await access.db
+      .select({
+        id: estimateTemplateLines.id,
+        divisionCode: estimateTemplateLines.divisionCode,
+        costCode: estimateTemplateLines.costCode,
+        sortOrder: estimateTemplateLines.sortOrder,
+      })
+      .from(estimateTemplateLines)
+      .where(eq(estimateTemplateLines.versionId, version.id))
+    const currentIds = lines
+      .filter((line) => line.divisionCode === input.divisionCode)
+      .sort(compareEstimateLineOrder)
+      .map((line) => line.id)
+    if (!sameEstimateLineOrder(currentIds, input.previousIds)) {
+      return { success: false, error: "The template changed. Refresh and try reordering again." }
+    }
+    const selected = new Set(input.orderedIds)
+    if (input.orderedIds.length !== currentIds.length || currentIds.some((id) => !selected.has(id))) {
+      return { success: false, error: "Reorder only the existing lines within this division." }
+    }
+    const previousOrder = new Map(lines.map((line) => [line.id, line.sortOrder]))
+    const changed = reorderedEstimateLinePositions(lines, input.orderedIds).filter(
+      (position) => previousOrder.get(position.id) !== position.sortOrder
+    )
+    const [first, ...rest] = reorderEstimateTemplateLinesStatements(access.db, version.id, changed)
+    if (first) {
+      await access.db.batch([
+        first,
+        ...rest,
+        updateTemplatesStatement(access.db, eq(projectTemplates.id, templateId), { updatedAt: new Date().toISOString() }),
+      ])
+    }
+    revalidateTemplates(templateId)
+    return { success: true, id: templateId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to reorder the template lines.",
     }
   }
 }
