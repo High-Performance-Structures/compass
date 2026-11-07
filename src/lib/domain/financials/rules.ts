@@ -417,7 +417,7 @@ export function invoiceAcceptsPayments(status: string): boolean {
 export const COMPASS_DRAW_SOURCE = "compass_contract_budget"
 
 /** Rows that share the draws table but are not draws: each contract budget revision's budget view. */
-const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
+export const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
 
 /**
  * Sage job-cost read snapshots share the draws table but are not bills: the

@@ -5,6 +5,7 @@ import { DocumentReportActions } from "@/components/projects/document-report-act
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import {
+  payApplicationChangeLines,
   payApplicationChangeSummary,
   payApplicationReport,
   type ChangeKindSummary,
@@ -52,7 +53,9 @@ function ChangeSummaryTable({
   plusLabel,
   minusLabel,
   netLabel,
+  lineLabel,
 }: {
+  readonly lineLabel: string
   readonly label: string
   readonly summary: ChangeKindSummary
   readonly plusLabel: string
@@ -83,6 +86,13 @@ function ChangeSummaryTable({
           <td className="num">{money(summary.current.additions)}</td>
           <td className="num">{money(summary.current.deductions)}</td>
         </tr>
+        {summary.reconciling !== 0 ? (
+          <tr>
+            <td>Difference to line {lineLabel} not itemized above</td>
+            <td className="num">{summary.reconciling > 0 ? money(summary.reconciling) : money(0)}</td>
+            <td className="num">{summary.reconciling < 0 ? money(-summary.reconciling) : money(0)}</td>
+          </tr>
+        ) : null}
         <tr><td>Totals</td><td className="num">{money(summary.totals.additions)}</td><td className="num">{money(summary.totals.deductions)}</td></tr>
         <tr className="due"><td>{netLabel}</td><td className="num" colSpan={2}>{money(summary.net)}</td></tr>
       </tbody>
@@ -117,11 +127,9 @@ export function PayApplicationClientReport({
 }): React.ReactElement {
   const { draft, project } = report
   const g703 = payApplicationReport(draft.lines, draft.ownerDetail)
-  const changes = payApplicationChangeSummary(draft.lines, report.changeOrders)
+  const changes = payApplicationChangeSummary(draft.lines, report.changeOrders, draft.netChanges)
   const variances = report.changeOrders.filter((item) => item.recordType === "variance")
-  // Line 2b is the variances in this contract sum; line 2a is the rest of the net change.
-  const netVariances = Math.round(variances.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
-  const netChangeOrders = Math.round((draft.netChanges - netVariances) * 100) / 100
+  const { changeOrders: netChangeOrders, variances: netVariances } = payApplicationChangeLines(draft.netChanges, report.changeOrders)
   const depositCarried = Math.max(0, Math.round((draft.depositAvailable - draft.depositApplied) * 100) / 100)
   const contractNumber = project.projectNumber ?? project.name
   const title = `Pay application ${draft.applicationNumber}`
@@ -251,6 +259,7 @@ export function PayApplicationClientReport({
                 plusLabel="Additions"
                 minusLabel="Deductions"
                 netLabel="Net change by change orders"
+                lineLabel="2a"
               />
               <ChangeSummaryTable
                 label="Variances"
@@ -258,6 +267,7 @@ export function PayApplicationClientReport({
                 plusLabel="Increases"
                 minusLabel="Decreases"
                 netLabel="Net change by variances"
+                lineLabel="2b"
               />
             </div>
             <div className="grid content-start gap-4">
@@ -373,9 +383,9 @@ export function PayApplicationClientReport({
                     <td>{item.costCodes.join(", ")}</td>
                     <td className="num">{money(item.amount)}</td>
                     <td>
-                      {item.current || !item.firstBilled
+                      {!item.firstBilled || item.firstBilled.thisPeriod
                         ? `Application ${draft.applicationNumber} (this period)`
-                        : `Application ${item.firstBilled.applicationNumber}${item.firstBilled.periodTo ? `, period to ${longDate(item.firstBilled.periodTo)}` : ""}`}
+                        : `Application ${item.firstBilled.applicationNumber}`}
                     </td>
                   </tr>
                 ))}

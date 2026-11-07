@@ -98,10 +98,10 @@ describe("payApplicationChangeSummary", () => {
     expect(payApplicationChangeSummary(withPrior, list).changeOrders.currentItems).toEqual([
       { name: "CO-001 · Plan revisions", amount: 1_700, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }] },
     ])
-    // A list that doesn't add up to the G703's changes falls back to the rows.
-    expect(payApplicationChangeSummary(sources, [{ ...list[1], amount: 99, assemblies: [] }]).changeOrders.currentItems).toEqual([
-      { name: "Change order CO-001", amount: 1_700, assemblies: [] },
-    ])
+    // A list that doesn't add up to the line keeps its records and shows the difference.
+    const short = payApplicationChangeSummary(sources, [{ ...list[1], amount: 99, assemblies: [] }])
+    expect(short.changeOrders.currentItems).toEqual([{ name: "CO-001 · Plan revisions", amount: 99, assemblies: [] }])
+    expect(short.changeOrders).toMatchObject({ reconciling: 1_601, totals: { additions: 1_700, deductions: 0 }, net: 1_700 })
   })
 
   it("splits G702 line 2 into change orders (additions/deductions) and variances (increases/decreases)", () => {
@@ -128,5 +128,54 @@ describe("payApplicationChangeSummary", () => {
     // Line 3 = 1 + 2a + 2b.
     const original = 100_000
     expect(original + summary.changeOrders.net + summary.variances.net).toBe(original + 1_500 + 650)
+  })
+})
+
+describe("payApplicationChangeSummary after imported draws", () => {
+  // Application 9 after eight spreadsheet draws: the prior draw's rows carry
+  // lumped, approximate changes, so per-row prior/current deltas are noise.
+  const lumped = [
+    { ...base, costCode: "06 10 00", description: "Rough Carpentry", divisionCode: "06", divisionName: "Wood", assemblyKey: "co:4", assemblyName: "Change order CO-004", assemblySort: 500_000, originalEstimate: 0, priorChanges: 4_043.48, currentChanges: 56.52, currentWorkCompleted: 0 },
+    { ...base, costCode: "09 90 00", description: "Painting", divisionCode: "09", divisionName: "Finishes", assemblyKey: "co:5", assemblyName: "Change order CO-005", assemblySort: 500_001, originalEstimate: 0, priorChanges: 1_100, currentChanges: -100, currentWorkCompleted: 0 },
+    { ...base, costCode: "07 10 00", description: "Waterproofing", divisionCode: "07", divisionName: "Thermal", assemblyKey: null, assemblyName: null, assemblySort: 0, originalEstimate: 20_000, priorChanges: 0, currentChanges: 1_243.48, totalVariances: 1_200, currentWorkCompleted: 0 },
+  ]
+  const list = [
+    { name: "CO-004 · Deck stairs", amount: 4_100, current: false, assemblies: [], recordType: "change_order" as const },
+    { name: "CO-005 · Paint credit", amount: 1_000, current: false, assemblies: [], recordType: "change_order" as const },
+    { name: "CO-006 · Added outlet", amount: 43.48, current: true, assemblies: [], recordType: "change_order" as const },
+    { name: "V-001 · Membrane price up", amount: 1_500, current: false, assemblies: [], recordType: "variance" as const },
+    { name: "V-002 · Membrane credit", amount: -300, current: true, assemblies: [], recordType: "variance" as const },
+  ]
+  const netChanges = 4_100 + 1_000 + 43.48 + 1_500 - 300
+
+  it("ties change orders to line 2a and variances to line 2b by execution date", () => {
+    const summary = payApplicationChangeSummary(lumped, list, netChanges)
+    expect(summary.changeOrders).toMatchObject({
+      previous: { additions: 5_100, deductions: 0 },
+      current: { additions: 43.48, deductions: 0 },
+      reconciling: 0,
+      totals: { additions: 5_143.48, deductions: 0 },
+      net: 5_143.48,
+      currentItems: [{ name: "CO-006 · Added outlet", amount: 43.48, assemblies: [] }],
+    })
+    expect(summary.variances).toMatchObject({
+      previous: { additions: 1_500, deductions: 0 },
+      current: { additions: 0, deductions: 300 },
+      reconciling: 0,
+      net: 1_200,
+      currentItems: [{ name: "V-002 · Membrane credit", amount: -300, assemblies: [] }],
+    })
+  })
+
+  it("counts a record by its own total and shows a reconciling line to keep the line tied", () => {
+    // CO-006 adds a $5 builder fee line that didn't land in this budget revision.
+    const withFee = list.map((item) => (item.name.startsWith("CO-006") ? { ...item, headerAmount: 48.48 } : item))
+    const summary = payApplicationChangeSummary(lumped, withFee, netChanges)
+    expect(summary.changeOrders).toMatchObject({
+      current: { additions: 48.48, deductions: 0 },
+      reconciling: -5,
+      totals: { additions: 5_148.48, deductions: 5 },
+      net: 5_143.48,
+    })
   })
 })
