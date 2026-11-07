@@ -124,4 +124,32 @@ describe("Sage client/project write contract", () => {
       }).success
     ).toBe(false)
   })
+
+  it("gives an existing Sage job its client without a Compass customer", () => {
+    const write = {
+      operationType: "set_job_client",
+      company: "High Performance Structures Inc",
+      client: {
+        compassCustomerId: null,
+        name: "Example Builders LLC",
+        shortName: "Example Builders LLC",
+        company: "Example Builders LLC",
+        email: null,
+        phone: null,
+        address: null,
+        billingAddress: null,
+        notes: null,
+        contactName: "Pat Example",
+        status: { expectedNumber: 3, name: "Complete" },
+      },
+      job: { compassProjectId: null, sageJobId: "job-guid", sageJobNumber: "100", name: "N-100-00-Example Builders LLC" },
+    }
+    expect(sageClientProjectWritePayloadSchema.safeParse(write).success).toBe(true)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, job: { ...write.job, sageJobId: "" } }).success
+    ).toBe(false)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, client: { ...write.client, sageClientNumber: "9999" } }).success
+    ).toBe(false)
+  })
 })

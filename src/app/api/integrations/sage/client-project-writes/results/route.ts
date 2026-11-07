@@ -106,7 +106,7 @@ export async function POST(request: Request): Promise<Response> {
       jobId: result.job?.id ?? null,
       jobNumber: result.job?.number ?? null,
       jobStatusNumber: result.job?.statusNumber ?? null,
-      jobTypeNumber: result.job?.typeNumber ?? null,
+      jobTypeNumber: result.job?.typeNumber || null,
       now,
     }),
   ]
@@ -128,7 +128,7 @@ export async function POST(request: Request): Promise<Response> {
         sageJobId: result.job.id,
         sageJobNumber: result.job.number,
         sageJobStatusNumber: result.job.statusNumber,
-        sageJobTypeNumber: result.job.typeNumber,
+        sageJobTypeNumber: result.job.typeNumber || null,
         now,
       })
     )
