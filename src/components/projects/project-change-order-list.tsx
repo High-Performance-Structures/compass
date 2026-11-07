@@ -1,5 +1,4 @@
 import type * as React from "react"
-import Link from "next/link"
 import { IconFileInvoice } from "@tabler/icons-react"
 
 import type {
@@ -7,21 +6,12 @@ import type {
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
-import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
+import { ProjectChangeOrderRecordTable } from "@/components/projects/project-change-order-record-table"
 import { NewVarianceButton, ReclassifyChangeOrdersButton } from "@/components/projects/project-variance-controls"
 import type { ProjectVarianceOptions } from "@/app/actions/project-variances"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
+import type { ChangeOrderListFilter } from "@/lib/change-orders/record-list"
 import { PageHeader } from "@/components/page-header"
-
-function money(cents: number | null): string {
-  if (cents === null) return "Amount not determined"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100)
-}
 
 export function ProjectChangeOrderList({
   projectId,
@@ -31,6 +21,7 @@ export function ProjectChangeOrderList({
   formOptions,
   canCreate = true,
   varianceOptions = null,
+  initialFilter = "open",
 }: {
   readonly projectId: string
   readonly items: readonly ProjectChangeOrderItem[]
@@ -40,6 +31,8 @@ export function ProjectChangeOrderList({
   readonly canCreate?: boolean
   /** Staff pages pass the project's variance options; owner and vendor views leave them out. */
   readonly varianceOptions?: ProjectVarianceOptions | null
+  /** The status filter the sheet opens on. */
+  readonly initialFilter?: ChangeOrderListFilter
 }): React.ReactElement {
   const openCount = items.filter(
     (item) => !["closed", "declined", "void"].includes(item.status)
@@ -77,59 +70,7 @@ export function ProjectChangeOrderList({
       />
 
       {items.length > 0 ? (
-        <div className="divide-y border-y bg-background">
-          {items.map((item) => (
-            <article
-              key={item.id}
-              className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {item.changeOrderNumber}
-                  </p>
-                  {item.recordType === "variance" ? <Badge variant="secondary">Variance</Badge> : null}
-                  <Badge variant="outline">
-                    {changeOrderDisplayStatus(item.status, item.sourceType)}
-                  </Badge>
-                  {item.sourceType === "buildertrend_import" ? (
-                    <ProjectChangeOrderProvenance />
-                  ) : (
-                    <Badge variant="secondary">{item.requesterType}</Badge>
-                  )}
-                  {item.budgetTreatment === "baseline_replacement" && (
-                    <Badge variant="outline">Baseline replacement</Badge>
-                  )}
-                  {item.recordIssues.length > 0 ? (
-                    <Badge variant="destructive" title={item.recordIssues.join(" ")}>
-                      Record needs correcting
-                    </Badge>
-                  ) : null}
-                </div>
-                <h2 className="mt-2 font-semibold">{item.title}</h2>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {item.scope}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {money(item.amountCents)}
-                  {item.sourceType !== "buildertrend_import"
-                    ? ` · Requested by ${item.requesterName}`
-                    : ""}
-                  {item.scheduleImpactDays !== null
-                    ? ` · ${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`
-                    : ""}
-                </p>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  href={`${detailBaseHref}/${encodeURIComponent(item.id)}`}
-                >
-                  Open
-                </Link>
-              </Button>
-            </article>
-          ))}
-        </div>
+        <ProjectChangeOrderRecordTable items={items} detailBaseHref={detailBaseHref} initialFilter={initialFilter} />
       ) : (
         <div className="border-y bg-background p-8 text-center">
           <IconFileInvoice className="mx-auto size-7 text-muted-foreground" />

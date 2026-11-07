@@ -11,6 +11,8 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { getProjectVarianceOptions } from "@/app/actions/project-variances"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
+import { parseChangeOrderListFilter } from "@/lib/change-orders/record-list"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Button } from "@/components/ui/button"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
@@ -40,6 +42,8 @@ export default async function ProjectChangeOrdersPage({
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [projects, items, capabilities, formOptions, varianceOptions] = loaded.data
+  // The sheet opens on the company's filter (Settings › Lists).
+  const initialFilter = parseChangeOrderListFilter(await listSheetStartFilter("change-orders.job"))
   const project = projects.find((item) => item.id === id)
   const baseHref = `/dashboard/projects/${encodeURIComponent(id)}/change-orders`
 
@@ -74,6 +78,7 @@ export default async function ProjectChangeOrdersPage({
         formOptions={formOptions}
         canCreate={capabilities.canCreate}
         varianceOptions={varianceOptions}
+        initialFilter={initialFilter}
       />
     </div>
   )

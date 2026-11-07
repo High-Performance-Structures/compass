@@ -27,13 +27,12 @@ import {
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
-import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DriveItemField } from "@/components/google/drive-item-field"
-import { payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
+import { ProjectFinancialQueueTable } from "@/components/projects/project-financial-queue-table"
 
 function textField(formData: FormData, name: string): string | null {
   const value = String(formData.get(name) ?? "").trim()
@@ -49,44 +48,6 @@ function moneyField(formData: FormData, name: string): number | null {
   if (rawValue.length === 0) return null
   const value = Number(rawValue)
   return Number.isFinite(value) ? value : null
-}
-
-function money(value: number | null): string {
-  if (value === null) return "-"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
-}
-
-function dateText(value: string | null): string {
-  if (!value) return "-"
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
-function workflowLabel(type: ProjectFinancialWorkflowItem["type"]): string {
-  if (type === "vendor_bill") return "Vendor bill"
-  if (type === "owner_pay_application") return "Owner pay app"
-  if (type === "owner_invoice") return "Owner invoice"
-  if (type === "payment") return "Payment"
-  if (type === "deposit") return "Deposit"
-  if (type === "credit_memo") return "Credit memo"
-  return "RFQ"
-}
-
-function syncLabel(item: ProjectFinancialWorkflowItem): string {
-  if (item.syncStatus === "pending_sage") return "Pending Sage"
-  if (item.syncStatus === "queued_sage") return "Queued"
-  if (item.syncStatus === "synced") return "Synced"
-  if (item.syncStatus === "compass_only") return "Compass only"
-  return item.syncStatus
 }
 
 function FormField({
@@ -392,113 +353,13 @@ export function ProjectFinancialWorkspace({
             No project financial records have been staged yet.
           </p>
         ) : (
-          <div className="m-4 overflow-hidden rounded-md border">
-            <div className="grid grid-cols-[1fr_.7fr_.7fr_.8fr] gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
-              <span>Record</span>
-              <span>Amount</span>
-              <span>Date</span>
-              <span>Status</span>
-            </div>
-            <div className="divide-y">
-              {items.map((item) => {
-                const supportingHref =
-                  item.supportingPackageUrl ??
-                  (item.type === "owner_pay_application"
-                    ? projectDriveUrl
-                    : null)
-                return (
-                  <div
-                    key={item.id}
-                    className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_.7fr_.7fr_.8fr] sm:items-center sm:gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">
-                          {workflowLabel(item.type)}
-                        </span>
-                        {item.importedFrom && (
-                          <SourceTag source={item.importedFrom} />
-                        )}
-                        {item.sourceLabel && (
-                          <Badge variant="secondary">{item.sourceLabel}</Badge>
-                        )}
-                        {item.number && (
-                          <span className="text-xs text-muted-foreground">
-                            {item.number}
-                          </span>
-                        )}
-                      </div>
-                      <p className="truncate text-muted-foreground">
-                        {item.title}
-                      </p>
-                      {item.companyName && (
-                        <p className="truncate text-xs text-muted-foreground">
-                          {item.companyName}
-                        </p>
-                      )}
-                      {supportingHref && (
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="link"
-                          className="mt-1 h-auto justify-start p-0"
-                        >
-                          <a
-                            href={supportingHref}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <IconExternalLink className="size-4" />
-                            {item.supportingPackageUrl
-                              ? "Open supporting package"
-                              : "Open project Drive"}
-                          </a>
-                        </Button>
-                      )}
-                      {item.type === "owner_pay_application" &&
-                        item.sourceRecordId &&
-                        item.paymentBreakdown !== null && (
-                          <Button
-                            asChild
-                            size="sm"
-                            variant="link"
-                            className="mt-1 h-auto justify-start p-0"
-                          >
-                            <a
-                              href={`/dashboard/projects/${projectId}/financials/pay-applications/${item.sourceRecordId}`}
-                            >
-                              Edit G702 / G703
-                            </a>
-                          </Button>
-                        )}
-                    </div>
-                    <div>
-                      <span>{money(item.amount)}</span>
-                      {item.paymentBreakdown &&
-                        item.paymentBreakdown.depositApplied > 0 && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {money(item.paymentBreakdown.currentPaymentDue)} due
-                            after {money(item.paymentBreakdown.depositApplied)}
-                            {" deposit"}
-                          </p>
-                        )}
-                    </div>
-                    <span>{dateText(item.dueDate)}</span>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">
-                        {item.type === "owner_pay_application" ? payApplicationStatusLabel(item.status) : item.status}
-                      </Badge>
-                      {item.readOnly && (
-                        <Badge variant="outline">Read only</Badge>
-                      )}
-                      {developerModeEnabled && (
-                        <Badge variant="secondary">{syncLabel(item)}</Badge>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="p-4">
+            <ProjectFinancialQueueTable
+              items={items}
+              projectId={projectId}
+              projectDriveUrl={projectDriveUrl}
+              developerModeEnabled={developerModeEnabled}
+            />
           </div>
         )}
       </section>
