@@ -63,3 +63,24 @@ export const SAGE_CHANGE_ORDER_SETTINGS_GROUP = {
   defaults: DEFAULT_SAGE_CHANGE_ORDER_SETTINGS,
   schema: sageChangeOrderSettingsSchema,
 }
+
+/*
+ * Settings > Workflows > Sage estimates: what Compass does with an accepted
+ * estimate when the company uses Sage.
+ */
+export const sageEstimateSettingsSchema = z.object({
+  /** Queue the job (if missing), proposal and optional budget as soon as an estimate is accepted. */
+  autoSync: z.boolean(),
+  /** Also send the job budget at cost (BudgetAddRq). */
+  sendBudget: z.boolean(),
+})
+
+export type SageEstimateSettings = z.infer<typeof sageEstimateSettingsSchema>
+
+export const SAGE_ESTIMATE_SETTINGS_GROUP = {
+  label: "Sage estimates",
+  description:
+    "Whether an accepted estimate goes to Sage automatically as the job's proposal, and whether the job budget at cost goes with it.",
+  defaults: { autoSync: true, sendBudget: false } satisfies SageEstimateSettings,
+  schema: sageEstimateSettingsSchema,
+}

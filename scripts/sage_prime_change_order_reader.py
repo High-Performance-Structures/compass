@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Read-only Sage 100 Contractor prime change order reader for Compass.
+"""Read-only Sage 100 Contractor prime change order and proposal reader for Compass.
 
-Asks Compass which linked Sage jobs have approved change orders, reads those
-jobs' prime change orders (dbo.prmchg) and their lines (dbo.pmcgln), and
-sends Compass a snapshot so each change order shows "In Sage", "Not in Sage"
-or "Differs". SQL credentials and the Compass HMAC secret are injected by
+Asks Compass which linked Sage jobs have approved change orders or accepted
+estimates, reads those jobs' prime change orders (dbo.prmchg, lines in
+dbo.pmcgln) and proposal lines (dbo.prplin), and sends Compass a snapshot so
+each change order shows "In Sage", "Not in Sage" or "Differs" and an
+estimate is never added as a second proposal. SQL credentials and the Compass HMAC secret are injected by
 Signet. The process runs SELECT statements only and never writes to Sage.
 
 Kept separate from the pay-application poller (which another feature owns);
@@ -170,12 +171,40 @@ def fetch_change_orders(cursor: Any, job_numbers: Sequence[int]) -> tuple[list[d
     return headers, lines
 
 
+def fetch_proposal_lines(cursor: Any, job_numbers: Sequence[int]) -> list[dict[str, Any]]:
+    """SELECT only: proposal lines for these Sage jobs (a proposal is keyed by job)."""
+    if not job_numbers:
+        return []
+    placeholders = ", ".join(["%d"] * len(job_numbers))
+    cursor.execute(
+        f"""
+        SELECT recnum, linnum, cstcde, dscrpt, ttlprp
+        FROM dbo.prplin WITH (NOLOCK)
+        WHERE recnum IN ({placeholders})
+        ORDER BY recnum, phsnum, linnum
+        """,
+        tuple(job_numbers),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
 def build_snapshot(
     jobs: Sequence[Mapping[str, str]],
     headers: Sequence[Mapping[str, Any]],
     lines: Sequence[Mapping[str, Any]],
     captured_at: str,
+    proposal_lines: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
+    proposals_by_job: dict[str, list[dict[str, Any]]] = {}
+    for line in proposal_lines:
+        proposals_by_job.setdefault(record_number(line.get("recnum")), []).append(
+            {
+                "lineNumber": int(line.get("linnum") or 0),
+                "costCode": record_number(line.get("cstcde")) or None,
+                "description": text(line.get("dscrpt"))[:200],
+                "totalCents": cents(line.get("ttlprp")),
+            }
+        )
     lines_by_order: dict[str, list[dict[str, Any]]] = {}
     for line in lines:
         lines_by_order.setdefault(record_number(line.get("recnum")), []).append(
@@ -209,6 +238,7 @@ def build_snapshot(
                 "projectId": job["projectId"],
                 "sageJobNumber": job["sageJobNumber"],
                 "changeOrders": orders_by_job.get(job["sageJobNumber"], []),
+                "proposal": {"lines": proposals_by_job.get(job["sageJobNumber"], [])},
             }
             for job in jobs
         ],
@@ -253,7 +283,8 @@ def read_once(base_url: str, secrets: Sequence[str]) -> dict[str, int]:
             chunk = jobs[start : start + JOB_CHUNK]
             numbers = sorted({int(job["sageJobNumber"]) for job in chunk})
             headers, lines = fetch_change_orders(cursor, numbers)
-            snapshot = build_snapshot(chunk, headers, lines, dt.datetime.now(dt.timezone.utc).isoformat())
+            proposal_lines = fetch_proposal_lines(cursor, numbers)
+            snapshot = build_snapshot(chunk, headers, lines, dt.datetime.now(dt.timezone.utc).isoformat(), proposal_lines)
             signed_json_request_with_fallback(base_url, secrets, "POST", RESULTS_TARGET, snapshot, timeout=45)
             total += len(headers)
     finally:

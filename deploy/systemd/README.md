@@ -52,8 +52,10 @@ current `taxDistricts` count; that is a healthy state.
 ## Sage prime change order reader
 
 A separate read-only reader keeps Compass's copy of each linked job's Sage
-prime change orders (`dbo.prmchg`, lines in `dbo.pmcgln`), so change orders
-show "In Sage", "Not in Sage" or "Differs" and Compass never sends one twice.
+prime change orders (`dbo.prmchg`, lines in `dbo.pmcgln`) and proposal lines
+(`dbo.prplin`), so change orders show "In Sage", "Not in Sage" or "Differs",
+Compass never sends one twice, and an accepted estimate is never added as a
+second proposal.
 It uses the same secrets and read-only SQL account as the pay-application
 poller and runs SELECT statements only. Install it next to that poller:
 

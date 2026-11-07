@@ -16,6 +16,8 @@ import { ProjectEstimateList } from "@/components/projects/project-estimate-list
 import { getNuTechOrdersForEstimates } from "@/app/actions/nutech-orders"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
+import { getEstimateSageSyncState } from "@/app/actions/sage-estimates"
+import { EstimateSageSyncPanel } from "@/components/projects/estimate-sage-sync-panel"
 
 export default async function ProjectEstimatePage({
   params,
@@ -35,6 +37,11 @@ export default async function ProjectEstimatePage({
   ])
   const activeEstimateId = workspace.activeEstimate?.id ?? null
   const assemblyCopies = activeEstimateId ? await getEstimateAssemblyCopies(id, activeEstimateId) : []
+  // Office staff with finance access see an accepted estimate's Sage sync; others get nothing.
+  const sageSync =
+    activeEstimateId && workspace.activeEstimate?.status === "accepted"
+      ? await getEstimateSageSyncState(id, activeEstimateId).catch(() => null)
+      : null
   // Nu-Tech jobs show which order fills each estimate.
   const nuTechOrders =
     workspace.department === "N" && workspace.estimateMode === "multiple" ? await getNuTechOrdersForEstimates(id) : undefined
@@ -68,6 +75,9 @@ export default async function ProjectEstimatePage({
           recordId={activeEstimateId}
           record={paperTrail.records[activeEstimateId] ?? null}
         />
+      ) : null}
+      {activeEstimateId && sageSync?.success ? (
+        <EstimateSageSyncPanel projectId={id} estimateId={activeEstimateId} state={sageSync.data} />
       ) : null}
       {workspace.estimateMode === "multiple" && workspace.estimates.length > 0 ? (
         <ProjectEstimateList

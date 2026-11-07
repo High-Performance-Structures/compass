@@ -10,6 +10,7 @@ from sage_prime_change_order_reader import (  # noqa: E402
     build_snapshot,
     cents,
     fetch_change_orders,
+    fetch_proposal_lines,
     parse_jobs,
     record_number,
 )
@@ -18,7 +19,7 @@ from sage_prime_change_order_reader import (  # noqa: E402
 class FakeCursor:
     def __init__(self) -> None:
         self.queries: list[str] = []
-        self.results = [[{"recnum": 1}], [{"recnum": 1, "linnum": 1}]]
+        self.results = [[{"recnum": 1}], [{"recnum": 1, "linnum": 1}], []]
 
     def execute(self, query: str, params: tuple) -> None:
         self.queries.append(query)
@@ -45,8 +46,11 @@ class SagePrimeChangeOrderReaderTests(unittest.TestCase):
             [{"recnum": 7, "chgnum": "V-001", "chgdte": "2026-01-02", "jobnum": 100, "dscrpt": "V-001 Example", "status": 1, "appamt": Decimal("10.50"), "aprdte": None}],
             [{"recnum": 7, "linnum": 1, "dscrpt": "Line", "aprprc": Decimal("10.50"), "cstcde": Decimal("1310000.0"), "csttyp": 5}],
             "2026-01-03T00:00:00+00:00",
+            [{"recnum": 100, "linnum": 1, "cstcde": Decimal("1711300.0"), "dscrpt": "Footings", "ttlprp": Decimal("2390.85")}],
         )
         first, second = snapshot["jobs"]
+        self.assertEqual(first["proposal"]["lines"][0], {"lineNumber": 1, "costCode": "1711300", "description": "Footings", "totalCents": 239085})
+        self.assertEqual(second["proposal"], {"lines": []})
         self.assertEqual(first["changeOrders"][0]["sageRecordId"], "7")
         self.assertEqual(first["changeOrders"][0]["approvedAmountCents"], 1050)
         self.assertEqual(first["changeOrders"][0]["lines"][0]["costCode"], "1310000")
@@ -55,6 +59,7 @@ class SagePrimeChangeOrderReaderTests(unittest.TestCase):
     def test_reader_only_selects(self) -> None:
         cursor = FakeCursor()
         fetch_change_orders(cursor, [100])
+        fetch_proposal_lines(cursor, [100])
         for query in cursor.queries:
             self.assertTrue(query.strip().upper().startswith("SELECT"))
             for word in ("INSERT", "UPDATE", "DELETE", "MERGE", "EXEC"):

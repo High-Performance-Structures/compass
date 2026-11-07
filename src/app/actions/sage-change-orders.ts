@@ -7,16 +7,14 @@ import { projects } from "@/db/schema"
 import { sageChangeOrderExports } from "@/db/schema-sage"
 import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import type { AuthUser } from "@/lib/auth"
 import { insertChangeOrderHistoryStatement } from "@/lib/domain/estimates/store"
 import { sageChangeOrderNumberError } from "@/lib/domain/sage-bridge/change-order-rules"
 import { queueSageChangeOrderExports } from "@/lib/domain/sage-bridge/change-order-store"
 import { loadSageChangeOrderSendView, type SageChangeOrderSendView } from "@/lib/financials/sage-change-order-send-server"
 import { formatCents, toCents } from "@/lib/format"
-import { can } from "@/lib/permissions"
 import { sageChangeOrderWritePayload, sageChangeOrderWritesEnabled } from "@/lib/sage/change-order-write"
+import { canSendToSage } from "@/lib/sage/sage-send-access"
 import { projectContext } from "@/lib/server/action-context"
-import { isInternalStaffRole } from "@/lib/user-roles"
 
 /*
  * Send to Sage for change orders and variances: any office staff with
@@ -31,10 +29,6 @@ export type SageChangeOrderSendState = SageChangeOrderSendView & {
 }
 
 const OFFICE_STAFF_ONLY = "Only office staff with finance access can send change orders to Sage."
-
-function canSendToSage(user: AuthUser): boolean {
-  return user.organizationType === "internal" && isInternalStaffRole(user.role) && can(user, "finance", "update")
-}
 
 /** The send confirmation for a project's approved change orders (or only `changeOrderIds`). */
 export async function getSageChangeOrderSendState(

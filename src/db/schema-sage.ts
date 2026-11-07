@@ -9,10 +9,12 @@ import { sql } from "drizzle-orm"
 
 import {
   SAGE_CHANGE_ORDER_EXPORT_STATUSES,
+  SAGE_ESTIMATE_EXPORT_STATUSES,
   SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
 } from "../lib/domain/sage-bridge/statuses"
 import { PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
 import { customers, organizations, projectBudgetApplications, projectChangeOrders, projects, users, vendors } from "./schema"
+import { projectEstimates } from "./schema-estimates"
 
 export const sageWriteApprovals = sqliteTable(
   "sage_write_approvals",
@@ -685,6 +687,64 @@ export const sagePrimeChangeOrderReads = sqliteTable("sage_prime_change_order_re
   capturedAt: text("captured_at").notNull(),
 })
 
+/**
+ * One row per accepted estimate sent to Sage as the job's proposal (and the
+ * job budget when the company sends it). Queued automatically on acceptance;
+ * the Sage writer claims it once Sage has the job, and the request is built
+ * from the estimate's contract budget at claim time.
+ */
+export const sageEstimateExports = sqliteTable(
+  "sage_estimate_exports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id")
+      .notNull()
+      .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    status: text("status", { enum: SAGE_ESTIMATE_EXPORT_STATUSES }).notNull().default("queued"),
+    /** Who accepted the estimate (automatic sync) or pressed Retry. */
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    automatic: integer("automatic", { mode: "boolean" }).notNull().default(true),
+    requestedAt: text("requested_at").notNull(),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    // json: provider request snapshot, the proposal (and budget) sent to the Sage writer
+    payloadJson: text("payload_json"),
+    /** Why the sync stopped (needs attention or failed); null otherwise. */
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_estimate_exports_estimate_idx").on(table.estimateId),
+    index("sage_estimate_exports_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
+    index("sage_estimate_exports_project_idx").on(table.projectId, table.status),
+    index("sage_estimate_exports_organization_id_idx").on(table.organizationId),
+    index("sage_estimate_exports_requested_by_user_id_idx").on(table.requestedByUserId),
+  ]
+)
+
+/** Read-only summary of a linked job's Sage proposal (prplin), for the guard and comparison. */
+export const sageJobProposalReads = sqliteTable("sage_job_proposal_reads", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sageJobNumber: text("sage_job_number").notNull(),
+  lineCount: integer("line_count").notNull(),
+  totalCents: integer("total_cents").notNull(),
+  // json: raw provider payload, Sage's proposal lines (cost code record, description, total)
+  linesJson: text("lines_json").notNull(),
+  capturedAt: text("captured_at").notNull(),
+})
+
 export type SagePayApplicationSyncRun =
   typeof sagePayApplicationSyncRuns.$inferSelect
 export type SagePayApplicationSnapshot =
@@ -698,3 +758,4 @@ export type SageSquarePaymentOperation =
   typeof sageSquarePaymentOperations.$inferSelect
 export type SageChangeOrderExport = typeof sageChangeOrderExports.$inferSelect
 export type SagePrimeChangeOrder = typeof sagePrimeChangeOrders.$inferSelect
+export type SageEstimateExport = typeof sageEstimateExports.$inferSelect
