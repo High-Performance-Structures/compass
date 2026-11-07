@@ -583,6 +583,7 @@ type FeatureSettingsTypes = {
   readonly "contract-packets": ContractPacketSettings
   readonly "pay-applications": contract.PayApplicationSettings
   readonly variances: contract.VarianceSettings
+  readonly "sage-export": contract.SageExportSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
@@ -737,13 +738,9 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     schema: internalDepartmentSettingsSchema,
   },
   "contract-deposits": contract.CONTRACT_DEPOSIT_SETTINGS_GROUP,
-  "pay-applications": {
-    label: "Pay applications",
-    description: "How much detail the client sees on a pay application. Staff can choose a different level on any draw.",
-    defaults: { ownerDetail: "division_percent" },
-    schema: contract.payApplicationSettingsSchema,
-  },
+  "pay-applications": contract.PAY_APPLICATION_SETTINGS_GROUP,
   variances: contract.VARIANCE_SETTINGS_GROUP,
+  "sage-export": contract.SAGE_EXPORT_SETTINGS_GROUP,
   "change-order-acceptance": {
     label: "Change-order acceptance",
     description: "How staff record an owner's approval that came by email, text or in person. Written approval always needs change-order approval permission.",

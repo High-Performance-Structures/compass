@@ -31,6 +31,13 @@ export const payApplicationSettingsSchema = z.object({
 
 export type PayApplicationSettings = z.infer<typeof payApplicationSettingsSchema>
 
+export const PAY_APPLICATION_SETTINGS_GROUP = {
+  label: "Pay applications",
+  description: "How much detail the client sees on a pay application. Staff can choose a different level on any draw.",
+  defaults: { ownerDetail: "division_percent" },
+  schema: payApplicationSettingsSchema,
+} satisfies { readonly defaults: PayApplicationSettings; readonly [key: string]: unknown }
+
 /** Who may record a verbal (no-document) owner approval as a staff sign-off. */
 export const CHANGE_ORDER_STAFF_SIGNOFF_ROLES = ["approvers", "admins", "nobody"] as const
 
@@ -81,4 +88,51 @@ export const VARIANCE_SETTINGS_GROUP = {
     "The contract type a job uses until staff set its own on the Information page, and how project liability insurance is added to variances and change orders.",
   defaults: DEFAULT_VARIANCE_SETTINGS,
   schema: varianceSettingsSchema,
+}
+
+/** Sage 100 Contractor accepts invoice numbers up to this many characters. */
+export const SAGE_INVOICE_NUMBER_MAX_LENGTH = 20
+
+/** Every invoice number format needs the document's own number: {n} or {n:2}. */
+const SAGE_NUMBER_TOKEN = /\{n(?::\d)?\}/
+
+const sageInvoiceFormat = z
+  .string()
+  .trim()
+  .min(1)
+  .max(60)
+  .refine((value) => SAGE_NUMBER_TOKEN.test(value), "Include {n} (or {n:2} for two digits) for the document's number.")
+
+/**
+ * The Sage export: billing cycle and invoice number formats Compass suggests
+ * when a document goes to Sage. Tokens: {project} is the project number, {job}
+ * the Sage job number, {n} the document's number and {n:2} that number padded
+ * to two digits.
+ */
+export const sageExportSettingsSchema = z.object({
+  billingCycle: z.string().trim().min(1).max(10),
+  payRequestInvoiceFormat: sageInvoiceFormat,
+  depositInvoiceFormat: sageInvoiceFormat,
+  otherBillingInvoiceFormat: sageInvoiceFormat,
+  creditMemoInvoiceFormat: sageInvoiceFormat,
+  materialSaleInvoiceFormat: sageInvoiceFormat,
+})
+
+export type SageExportSettings = z.infer<typeof sageExportSettingsSchema>
+
+export const DEFAULT_SAGE_EXPORT_SETTINGS: SageExportSettings = {
+  billingCycle: "1MO",
+  payRequestInvoiceFormat: "{project}-PR{n:2}",
+  depositInvoiceFormat: "{project}-DEP{n}",
+  otherBillingInvoiceFormat: "{project}-INV{n:2}",
+  creditMemoInvoiceFormat: "{project}-CM{n:2}",
+  materialSaleInvoiceFormat: "{project}-S{n:2}",
+}
+
+export const SAGE_EXPORT_SETTINGS_GROUP = {
+  label: "Sage export",
+  description:
+    "The billing cycle and invoice number formats Compass suggests when a pay request or other billing goes to Sage. Sage allows invoice numbers up to 20 characters.",
+  defaults: DEFAULT_SAGE_EXPORT_SETTINGS,
+  schema: sageExportSettingsSchema,
 }

@@ -193,6 +193,14 @@ A Buildertrend estimate import turns each Parent Group into an estimate assembly
 
 When a change order is executed, draft pay applications move to the new contract budget revision on their own, and the change shows in the **Changes** column and the contract sum. Work already entered is kept. If a draft still shows an older revision, choose **Update to revision N** on it. Submitted pay applications keep the revision they were prepared against.
 
+### Sage export preview
+
+Before a pay application is billed, office staff with finance access can open **Sage export preview** at the bottom of its G702 / G703 page. It shows what would go to Sage, without sending anything: the Sage job, application number, billing date and period, billing cycle, the description (for example "November 2026 Pay Request") and the suggested invoice number. Below that is one line per cost code with its Sage cost code (CSI codes by the Sage name's prefix, builder fees by name), scheduled value, change orders, variances, previous and current work, stored materials, and whether the line is new to Sage (**Append as new line**). Codes with no Sage cost code are flagged **Unmapped**.
+
+The preview compares each cost code with Sage's latest progress billing for the job (read with **Sync from Sage** on the Budget page) and shows every difference in contract and previous completed, plus the contract and completed totals. It also lists the executed change orders and variances Sage needs first, with their Sage names (variances start with "V-"), cost codes, amounts and periods. Use **Print Preview** to print it. Posting in Sage stays manual.
+
+Admins set the billing cycle and the invoice number formats for pay requests, deposits, other billings, credit memos and material sales in Settings under **Sage export**. Sage allows invoice numbers up to 20 characters, and the preview flags a longer one.
+
 **Delete draft** removes a draft pay application and the work entered on it, and frees any deposit it applied. Submitted pay applications can't be deleted.
 
 **Ready for review** locks the draw so it can be reviewed and entered in Sage; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits. Once it's reviewed, **Approve for billing** marks it **Billed** and publishes it to the owner, who sees it under **Pay applications** in the client portal with a **Print Preview** of its G702/G703. Enter the Sage invoice number in **Sage invoice** once the draw is invoiced in Sage; Compass doesn't create the invoice. **Undo approval** sends a billed draw back to review and hides it from the owner, until a later draw is started or a Sage invoice number is recorded.
