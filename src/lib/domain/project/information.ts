@@ -33,7 +33,7 @@ import {
   updateProjectExternalLinksStatement,
   updateProjectsStatement,
 } from "@/lib/domain/project/store"
-import { PROJECT_CLIENT_STATUSES } from "@/lib/domain/project/statuses"
+import { PROJECT_CLIENT_STATUSES, type ProjectContractType } from "@/lib/domain/project/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
@@ -89,6 +89,8 @@ export type ProjectInformation = {
     readonly status: string
     readonly portfolioMapVisibility: PortfolioMapVisibility
     readonly importedConversationsStaffOnly: boolean
+    /** Owner contract type; null follows the company default (Settings › Workflows › Variances). */
+    readonly contractType: ProjectContractType | null
     /** Internal workspace kind; null for client jobs. */
     readonly workspaceKind: WorkspaceKind | null
     readonly internalDepartment: boolean
@@ -139,6 +141,7 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       status: projects.status,
       portfolioMapVisibility: projects.portfolioMapVisibility,
       importedConversationsStaffOnly: projects.importedConversationsStaffOnly,
+      contractType: projects.contractType,
       workspaceKind: projects.workspaceKind,
       internalDepartment: projects.internalDepartment,
     })

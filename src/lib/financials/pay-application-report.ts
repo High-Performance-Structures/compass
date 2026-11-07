@@ -13,6 +13,8 @@ export type PayApplicationReportSource = {
   readonly originalEstimate: number
   readonly priorChanges: number
   readonly currentChanges: number
+  /** The part of this row's changes that came from variances; 0 when none. */
+  readonly totalVariances: number
   readonly previousWorkCompleted: number
   readonly currentWorkCompleted: number
   readonly storedMaterials: number
@@ -22,8 +24,10 @@ export type PayApplicationReportSource = {
 /** G703 columns B–J for one row, group or total. */
 export type PayApplicationReportAmounts = {
   readonly originalContractSum: number
-  readonly priorChanges: number
-  readonly currentChanges: number
+  /** Running total of change orders on the row. */
+  readonly changeOrders: number
+  /** Running total of variances on the row. */
+  readonly variances: number
   readonly adjustedEstimate: number
   readonly priorCosts: number
   readonly currentCosts: number
@@ -54,16 +58,16 @@ function amountsFor(sources: readonly PayApplicationReportSource[]): PayApplicat
   const sum = (pick: (source: PayApplicationReportSource) => number): number =>
     roundCents(sources.reduce((total, source) => total + pick(source), 0))
   const originalContractSum = sum((source) => source.originalEstimate)
-  const priorChanges = sum((source) => source.priorChanges)
-  const currentChanges = sum((source) => source.currentChanges)
-  const adjustedEstimate = roundCents(originalContractSum + priorChanges + currentChanges)
+  const variances = sum((source) => source.totalVariances)
+  const changeOrders = roundCents(sum((source) => source.priorChanges + source.currentChanges) - variances)
+  const adjustedEstimate = roundCents(originalContractSum + changeOrders + variances)
   const priorCosts = sum((source) => source.previousWorkCompleted)
   const currentCosts = sum((source) => source.currentWorkCompleted + source.storedMaterials)
   const completedToDate = roundCents(priorCosts + currentCosts)
   return {
     originalContractSum,
-    priorChanges,
-    currentChanges,
+    changeOrders,
+    variances,
     adjustedEstimate,
     priorCosts,
     currentCosts,
@@ -144,33 +148,80 @@ export function payApplicationReport(
   }
 }
 
-export type ChangeOrderSummaryItem = {
+type ChangeOrderSummaryItem = {
   readonly name: string
   readonly amount: number
   readonly assemblies: readonly { readonly name: string; readonly amount: number }[]
 }
 
-/**
- * Change orders approved before and during this period, by name where known.
- * With the change-order list, current items come from it, so changes that
- * landed inside an assembly are still named; otherwise from change-order rows.
- */
-export function payApplicationChangeOrderSummary(
-  sources: readonly PayApplicationReportSource[],
-  changeOrders: readonly (ChangeOrderSummaryItem & { readonly current: boolean })[] | null = null
-): {
-  readonly previous: number
-  readonly current: number
+type SummaryListItem = ChangeOrderSummaryItem & {
+  readonly current: boolean
+  readonly recordType: "change_order" | "variance"
+}
+
+/** Additions (or increases) and deductions (or decreases), deductions as a positive amount. */
+type ChangeTotals = { readonly additions: number; readonly deductions: number }
+
+export type ChangeKindSummary = {
+  readonly previous: ChangeTotals
+  readonly current: ChangeTotals
+  readonly totals: ChangeTotals
+  /** Additions less deductions, previous and this month. */
+  readonly net: number
   readonly currentItems: readonly ChangeOrderSummaryItem[]
-} {
-  const previous = roundCents(sources.reduce((total, source) => total + source.priorChanges, 0))
-  const current = roundCents(sources.reduce((total, source) => total + source.currentChanges, 0))
-  if (changeOrders) {
-    const items = changeOrders.filter((item) => item.current && item.amount !== 0)
-    // Use the list only when it accounts for this period's changes.
-    if (roundCents(items.reduce((total, item) => total + item.amount, 0)) === current) {
-      return { previous, current, currentItems: items.map(({ name, amount, assemblies }) => ({ name, amount, assemblies })) }
+}
+
+export type PayApplicationChangeSummary = {
+  /** G702 line 2a and the change-order summary. */
+  readonly changeOrders: ChangeKindSummary
+  /** G702 line 2b and the variance summary. */
+  readonly variances: ChangeKindSummary
+}
+
+function totalsOf(amounts: readonly number[]): ChangeTotals {
+  return {
+    additions: roundCents(amounts.filter((amount) => amount > 0).reduce((sum, amount) => sum + amount, 0)),
+    deductions: roundCents(amounts.filter((amount) => amount < 0).reduce((sum, amount) => sum - amount, 0)),
+  }
+}
+
+function kindSummary(previous: readonly number[], current: readonly number[], currentItems: readonly ChangeOrderSummaryItem[]): ChangeKindSummary {
+  const previousTotals = totalsOf(previous)
+  const currentTotals = totalsOf(current)
+  const totals = {
+    additions: roundCents(previousTotals.additions + currentTotals.additions),
+    deductions: roundCents(previousTotals.deductions + currentTotals.deductions),
+  }
+  return { previous: previousTotals, current: currentTotals, totals, net: roundCents(totals.additions - totals.deductions), currentItems }
+}
+
+/**
+ * The G702 change summaries: change orders as additions and deductions, and
+ * variances as increases and decreases, approved in previous months and this
+ * month. With the change-order list each record counts once, by its amount;
+ * otherwise (older or imported draws) the G703 changes all count as change
+ * orders, and current items come from change-order rows.
+ */
+export function payApplicationChangeSummary(
+  sources: readonly PayApplicationReportSource[],
+  items: readonly SummaryListItem[] | null = null
+): PayApplicationChangeSummary {
+  const priorTotal = roundCents(sources.reduce((total, source) => total + source.priorChanges, 0))
+  const currentTotal = roundCents(sources.reduce((total, source) => total + source.currentChanges, 0))
+  const listed = items?.filter((item) => item.amount !== 0) ?? []
+  const listedTotal = roundCents(listed.reduce((total, item) => total + item.amount, 0))
+  const listedCurrent = roundCents(listed.filter((item) => item.current).reduce((total, item) => total + item.amount, 0))
+  // Use the list only when it accounts for the G703's changes.
+  if (items && listedTotal === roundCents(priorTotal + currentTotal) && listedCurrent === currentTotal) {
+    const of = (recordType: SummaryListItem["recordType"]): ChangeKindSummary => {
+      const kind = listed.filter((item) => item.recordType === recordType)
+      return kindSummary(
+        kind.filter((item) => !item.current).map((item) => item.amount),
+        kind.filter((item) => item.current).map((item) => item.amount),
+        kind.filter((item) => item.current).map(({ name, amount, assemblies }) => ({ name, amount, assemblies }))
+      )
     }
+    return { changeOrders: of("change_order"), variances: of("variance") }
   }
   const currentByName = new Map<string, number>()
   for (const source of sources) {
@@ -178,8 +229,11 @@ export function payApplicationChangeOrderSummary(
     currentByName.set(source.assemblyName, roundCents((currentByName.get(source.assemblyName) ?? 0) + source.currentChanges))
   }
   return {
-    previous,
-    current,
-    currentItems: [...currentByName.entries()].map(([name, amount]) => ({ name, amount, assemblies: [] })),
+    changeOrders: kindSummary(
+      [priorTotal],
+      [currentTotal],
+      [...currentByName.entries()].map(([name, amount]) => ({ name, amount, assemblies: [] }))
+    ),
+    variances: kindSummary([], [], []),
   }
 }

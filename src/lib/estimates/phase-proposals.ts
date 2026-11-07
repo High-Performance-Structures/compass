@@ -9,7 +9,7 @@ import {
 } from "@/db/schema-estimates"
 import { projectFamilyPhases } from "@/db/schema-project-families"
 import { changeOrderLinesFromEstimate } from "@/lib/change-orders/estimate-execution"
-import { changeOrderNumber } from "@/lib/change-orders/numbering"
+import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import type { CompassDb } from "@/lib/domain/estimates/access"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { estimateTotalsForLines } from "@/lib/domain/estimates/rules"
@@ -225,7 +225,7 @@ export async function completePhaseProposal(input: {
         ).map((line) => ({ ...line, amountCents: -line.amountCents }))
         const amountCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
         const existing = await db
-          .select({ id: projectChangeOrders.id })
+          .select(changeOrderNumberColumns)
           .from(projectChangeOrders)
           .where(eq(projectChangeOrders.projectId, project.id))
         const changeOrderId = crypto.randomUUID()
@@ -234,7 +234,7 @@ export async function completePhaseProposal(input: {
           insertChangeOrderStatement(db, {
             id: changeOrderId,
             projectId: project.id,
-            changeOrderNumber: changeOrderNumber(project.projectNumber, existing.length),
+            changeOrderNumber: changeOrderNumber(project.projectNumber, existing),
             title: `Deduct ${proposal.assemblyName}: moved to ${proposal.phaseName}`.slice(0, 200),
             scope: `Remove the ${proposal.assemblyName} assembly from contract estimate ${contract.estimateNumber} version ${contract.versionNumber}. The client accepted it as its own phase, ${proposal.phaseName} (${phaseNumber}), in estimate ${estimate.estimateNumber}.`,
             reason: "Scope moved to a separate project phase.",

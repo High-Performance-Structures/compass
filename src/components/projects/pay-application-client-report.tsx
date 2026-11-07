@@ -5,8 +5,9 @@ import { DocumentReportActions } from "@/components/projects/document-report-act
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import {
-  payApplicationChangeOrderSummary,
+  payApplicationChangeSummary,
   payApplicationReport,
+  type ChangeKindSummary,
   type PayApplicationReportAmounts,
 } from "@/lib/financials/pay-application-report"
 import type { ProjectBrand } from "@/lib/project-branding"
@@ -25,8 +26,8 @@ function longDate(value: string | null): string {
 
 const G703_COLUMNS: readonly { readonly key: keyof PayApplicationReportAmounts; readonly label: string }[] = [
   { key: "originalContractSum", label: "Original contract sum" },
-  { key: "priorChanges", label: "Prior changes" },
-  { key: "currentChanges", label: "Current changes" },
+  { key: "changeOrders", label: "Change orders" },
+  { key: "variances", label: "Variances" },
   { key: "adjustedEstimate", label: "Adjusted estimate" },
   { key: "priorCosts", label: "Prior costs" },
   { key: "currentCosts", label: "Current costs" },
@@ -42,6 +43,51 @@ function amountCells(amounts: PayApplicationReportAmounts): React.ReactElement[]
       {column.key === "percentComplete" ? percentText(amounts.percentComplete) : money(amounts[column.key])}
     </td>
   ))
+}
+
+/** One G702 change summary box: change orders (additions/deductions) or variances (increases/decreases). */
+function ChangeSummaryTable({
+  label,
+  summary,
+  plusLabel,
+  minusLabel,
+  netLabel,
+}: {
+  readonly label: string
+  readonly summary: ChangeKindSummary
+  readonly plusLabel: string
+  readonly minusLabel: string
+  readonly netLabel: string
+}): React.ReactElement {
+  return (
+    <table className="pay-app-g702 pay-app-change-summary" aria-label={`${label} summary`}>
+      <thead>
+        <tr>
+          <th className="text-left">{label}</th>
+          <th className="num">{plusLabel}</th>
+          <th className="num">{minusLabel}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Approved in previous months</td><td className="num">{money(summary.previous.additions)}</td><td className="num">{money(summary.previous.deductions)}</td></tr>
+        <tr>
+          <td>
+            Approved this month
+            {summary.currentItems.map((item) => (
+              <small key={item.name} className="block text-muted-foreground">
+                {item.name} {money(item.amount)}
+                {item.assemblies.length > 0 ? ` (${item.assemblies.map((assembly) => `${assembly.name} ${money(assembly.amount)}`).join(" · ")})` : ""}
+              </small>
+            ))}
+          </td>
+          <td className="num">{money(summary.current.additions)}</td>
+          <td className="num">{money(summary.current.deductions)}</td>
+        </tr>
+        <tr><td>Totals</td><td className="num">{money(summary.totals.additions)}</td><td className="num">{money(summary.totals.deductions)}</td></tr>
+        <tr className="due"><td>{netLabel}</td><td className="num" colSpan={2}>{money(summary.net)}</td></tr>
+      </tbody>
+    </table>
+  )
 }
 
 function SignatureLine({ left, right }: { readonly left: string; readonly right: string }): React.ReactElement {
@@ -71,7 +117,11 @@ export function PayApplicationClientReport({
 }): React.ReactElement {
   const { draft, project } = report
   const g703 = payApplicationReport(draft.lines, draft.ownerDetail)
-  const changeOrders = payApplicationChangeOrderSummary(draft.lines, report.changeOrders)
+  const changes = payApplicationChangeSummary(draft.lines, report.changeOrders)
+  const variances = report.changeOrders.filter((item) => item.recordType === "variance")
+  // Line 2b is the variances in this contract sum; line 2a is the rest of the net change.
+  const netVariances = Math.round(variances.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
+  const netChangeOrders = Math.round((draft.netChanges - netVariances) * 100) / 100
   const depositCarried = Math.max(0, Math.round((draft.depositAvailable - draft.depositApplied) * 100) / 100)
   const contractNumber = project.projectNumber ?? project.name
   const title = `Pay application ${draft.applicationNumber}`
@@ -95,6 +145,11 @@ export function PayApplicationClientReport({
         .pay-app-page .num { text-align: right; white-space: nowrap; }
         .pay-app-g702 td { padding: 4px 6px; border-bottom: 1px solid var(--report-rule); }
         .pay-app-g702 td:first-child { width: 22px; color: var(--report-secondary); }
+        .pay-app-g702.pay-app-change-summary td:first-child { width: auto; color: inherit; }
+        .pay-app-change-summary th { padding: 4px 6px; font-size: 10.5px; font-weight: 600; border-bottom: 1px solid var(--report-rule); }
+        .pay-app-variances th, .pay-app-variances td { padding: 3px 5px; border: 1px solid var(--report-rule); vertical-align: top; font-size: 10.5px; }
+        .pay-app-variances th { text-align: left; font-weight: 600; }
+        .pay-app-variances tfoot td { font-weight: 700; border-top: 2px solid currentColor; background: var(--report-total); }
         .pay-app-g702 tr.due td { font-weight: 700; border-top: 2px solid currentColor; border-bottom: 2px solid currentColor; }
         .pay-app-g703 th, .pay-app-g703 td { padding: 3px 5px; border: 1px solid var(--report-rule); vertical-align: bottom; }
         .pay-app-g703 th { font-size: 10px; font-weight: 600; text-align: right; }
@@ -168,8 +223,9 @@ export function PayApplicationClientReport({
               <table className="pay-app-g702" aria-label="Application summary">
                 <tbody>
                   <tr><td>1</td><td>Original contract sum</td><td className="num">{money(draft.originalContractSum)}</td></tr>
-                  <tr><td>2</td><td>Net change by change orders</td><td className="num">{money(draft.netChanges)}</td></tr>
-                  <tr><td>3</td><td>Contract sum to date (line 1 ± 2)</td><td className="num">{money(draft.contractSumToDate)}</td></tr>
+                  <tr><td>2a</td><td>Net change by change orders</td><td className="num">{money(netChangeOrders)}</td></tr>
+                  <tr><td>2b</td><td>Net change by variances</td><td className="num">{money(netVariances)}</td></tr>
+                  <tr><td>3</td><td>Contract sum to date (line 1 + 2a + 2b)</td><td className="num">{money(draft.contractSumToDate)}</td></tr>
                   <tr><td>4</td><td>Total completed and stored to date (G703)</td><td className="num">{money(draft.totalCompletedStoredToDate)}</td></tr>
                   <tr><td>5</td><td>Retainage</td><td className="num">{money(draft.retainageHeld)}</td></tr>
                   <tr><td>6</td><td>Total earned less retainage (line 4 − 5)</td><td className="num">{money(draft.totalEarnedLessRetainage)}</td></tr>
@@ -188,30 +244,21 @@ export function PayApplicationClientReport({
                   <tr><td>10</td><td>Balance to finish, including retainage (line 3 − 6)</td><td className="num">{money(draft.balanceToFinish)}</td></tr>
                 </tbody>
               </table>
-              <h2 className="mb-1 mt-4 text-sm font-semibold">Change order summary</h2>
-              <table className="pay-app-g702" aria-label="Change order summary">
-                <tbody>
-                  <tr><td /><td>Approved in previous months</td><td className="num">{money(changeOrders.previous)}</td></tr>
-                  {changeOrders.currentItems.map((item) => (
-                    <tr key={item.name}>
-                      <td />
-                      <td>
-                        Approved this month · {item.name}
-                        {item.assemblies.length > 0 && (
-                          <small className="block text-muted-foreground">
-                            {item.assemblies.map((assembly) => `${assembly.name} ${money(assembly.amount)}`).join(" · ")}
-                          </small>
-                        )}
-                      </td>
-                      <td className="num">{money(item.amount)}</td>
-                    </tr>
-                  ))}
-                  {changeOrders.currentItems.length === 0 ? (
-                    <tr><td /><td>Approved this month</td><td className="num">{money(changeOrders.current)}</td></tr>
-                  ) : null}
-                  <tr className="due"><td /><td>Net change by change orders</td><td className="num">{money(changeOrders.previous + changeOrders.current)}</td></tr>
-                </tbody>
-              </table>
+              <h2 className="mb-1 mt-4 text-sm font-semibold">Change summary</h2>
+              <ChangeSummaryTable
+                label="Change orders"
+                summary={changes.changeOrders}
+                plusLabel="Additions"
+                minusLabel="Deductions"
+                netLabel="Net change by change orders"
+              />
+              <ChangeSummaryTable
+                label="Variances"
+                summary={changes.variances}
+                plusLabel="Increases"
+                minusLabel="Decreases"
+                netLabel="Net change by variances"
+              />
             </div>
             <div className="grid content-start gap-4">
               <section className="pay-app-cert">
@@ -289,6 +336,61 @@ export function PayApplicationClientReport({
           </table>
           <p className="mt-3 text-right text-xs text-report-secondary">G703 · Continuation sheet</p>
         </article>
+
+        {variances.length > 0 ? (
+          <article className="pay-app-page pay-app-variance-page bg-report-paper" aria-label="Variance schedule">
+            <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-2">
+              <p className="text-sm">
+                <span className="font-bold">Variance schedule</span>
+                <span className="text-report-secondary"> · attached to Application No. {draft.applicationNumber}</span>
+              </p>
+              <div className="text-right text-xs">
+                <p>{project.name} · {contractNumber}</p>
+                <p>Period to {longDate(draft.periodTo)}</p>
+              </div>
+            </header>
+            <p className="mt-3 text-xs text-report-secondary">
+              Variances are cost movements on the cost codes they belong to. Each one is in the Variances column of the
+              continuation sheet on its cost code.
+            </p>
+            <table className="pay-app-variances mt-2 w-full">
+              <thead>
+                <tr>
+                  <th>Number</th>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Cost codes</th>
+                  <th className="num">Amount</th>
+                  <th>Period billed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variances.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.number}</td>
+                    <td>{longDate(item.executedAt)}</td>
+                    <td>{item.title}</td>
+                    <td>{item.costCodes.join(", ")}</td>
+                    <td className="num">{money(item.amount)}</td>
+                    <td>
+                      {item.current || !item.firstBilled
+                        ? `Application ${draft.applicationNumber} (this period)`
+                        : `Application ${item.firstBilled.applicationNumber}${item.firstBilled.periodTo ? `, period to ${longDate(item.firstBilled.periodTo)}` : ""}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4}>Net change by variances</td>
+                  <td className="num">{money(netVariances)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+            <p className="mt-3 text-right text-xs text-report-secondary">Variance schedule</p>
+          </article>
+        ) : null}
       </main>
     </>
   )

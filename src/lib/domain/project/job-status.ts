@@ -24,6 +24,8 @@ import {
 import { isDeliveryMethod } from "@/lib/sales-pipeline/stages"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
+import { isListValue } from "@/lib/shared/statuses"
+import { PROJECT_CONTRACT_TYPES } from "@/lib/domain/project/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 /** A built-in status, or one of the company's active custom statuses. */
@@ -49,7 +51,7 @@ export async function validJobStatus(input: {
   return custom.length === 1
 }
 
-type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility" | "importedConversationsStaffOnly"
+type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility" | "importedConversationsStaffOnly" | "contractType"
 
 /**
  * Reads one project setting, and when the value changes writes it with an
@@ -154,6 +156,26 @@ export async function changeProjectImportedConversationsStaffOnly(input: {
     value: input.staffOnly,
     eventType: "project_imported_conversations_staff_only_updated",
     validate: () => null,
+  })
+}
+
+/**
+ * The owner contract type: fixed price (no variances), cost plus (the builder
+ * fee follows variances and change orders) or cost plus fixed fee (the fee
+ * changes only by change order). Null follows the company default.
+ */
+export async function changeProjectContractType(input: {
+  readonly projectId: string
+  readonly contractType: string | null
+}): Promise<ProjectProfileResult & { readonly changed?: boolean }> {
+  const contractType = input.contractType
+  const valid = contractType === null || isListValue(PROJECT_CONTRACT_TYPES, contractType)
+  return changeProjectSetting({
+    projectId: input.projectId,
+    column: "contractType",
+    value: contractType !== null && isListValue(PROJECT_CONTRACT_TYPES, contractType) ? contractType : null,
+    eventType: "project_contract_type_updated",
+    validate: () => (valid ? null : "Choose a contract type."),
   })
 }
 

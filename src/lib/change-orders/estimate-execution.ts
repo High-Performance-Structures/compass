@@ -3,6 +3,7 @@ import type { getDb } from "@/db"
 import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateBudgetLedgerLines } from "@/lib/financials/contract-budget-store"
+import { changeOrderInsuranceLines } from "@/lib/domain/estimates/variances"
 import type { EstimateLedgerLine } from "@/lib/domain/estimates/rules"
 import {
   deleteChangeOrderLinesStatement,
@@ -136,11 +137,26 @@ export async function changeOrderExecutionFromEstimate(input: {
       .where(eq(projectEstimateLines.estimateId, input.estimate.id)),
   ])
   const assemblyByLine = new Map(lineAssemblies.map((row) => [row.lineId, row]))
-  const lines = changeOrderLinesFromEstimate(ledger.lines, (lineId) => (lineId ? assemblyByLine.get(lineId) ?? null : null))
-  if (lines.length === 0) throw new Error("The change-order estimate has no priced lines.")
+  const pricedLines = changeOrderLinesFromEstimate(ledger.lines, (lineId) => (lineId ? assemblyByLine.get(lineId) ?? null : null))
+  if (pricedLines.length === 0) throw new Error("The change-order estimate has no priced lines.")
+  // Project liability insurance follows change orders too, unless the estimate priced it.
+  const insurance = await changeOrderInsuranceLines({ db: input.db, projectId: input.estimate.projectId, lines: pricedLines })
+  const lines: readonly (ChangeOrderLineDraft & { readonly derivedFrom?: "insurance" | "builder_fee" })[] = [
+    ...pricedLines,
+    ...insurance.map((line, index) => ({
+      lineNumber: pricedLines.length + index + 1,
+      description: line.description,
+      phaseCode: line.costCode.slice(0, 2),
+      costCode: line.costCode,
+      amountCents: line.amountCents,
+      contractAssemblyId: null,
+      assemblyName: null,
+      derivedFrom: line.derivedFrom,
+    })),
+  ]
   const totalCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
   const lineInserts: Statement[] = []
-  // Each line binds 11 columns; eight per statement stays under D1's limit.
+  // Each line binds 12 columns; eight per statement stays under D1's limit.
   for (let index = 0; index < lines.length; index += 8) {
     lineInserts.push(
       insertChangeOrderLineStatement(
@@ -156,6 +172,7 @@ export async function changeOrderExecutionFromEstimate(input: {
           amountCents: line.amountCents,
           contractAssemblyId: line.contractAssemblyId,
           assemblyName: line.assemblyName,
+          derivedFrom: line.derivedFrom ?? null,
           createdAt: input.now,
           updatedAt: input.now,
         }))

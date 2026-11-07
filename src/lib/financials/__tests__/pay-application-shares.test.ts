@@ -7,6 +7,7 @@ import {
   g703ByCostCode,
   payApplicationShares,
   priorAmountsForShares,
+  varianceAllocations,
 } from "../pay-application-shares"
 
 const mobilization = {
@@ -136,5 +137,39 @@ describe("change orders tied to an assembly", () => {
     expect(contractAssemblyFor(assemblies, { contractAssemblyId: "asm-v1-kitchen", assemblyName: " kitchen" })?.id).toBe("asm-v2-kitchen")
     expect(contractAssemblyFor(assemblies, { contractAssemblyId: null, assemblyName: "Kitchen" })).toBeNull()
     expect(contractAssemblyFor(assemblies, { contractAssemblyId: "asm-v1-deck", assemblyName: "Deck" })).toBeNull()
+  })
+})
+
+describe("variances on the G703", () => {
+  it("puts a variance on its cost code's rows (spread by scheduled value), not on a row of its own", () => {
+    const framing = { ...mobilization, id: "rev-frame", costCode: "06 10 00", divisionCode: "06", description: "Rough Carpentry", originalEstimateCents: 1_000_000, approvedChangeCents: 300_000, adjustedBudgetCents: 1_300_000 }
+    const estimateAllocations = [
+      { costCode: "06 10 00", key: "asm:walls", name: "Walls", sort: 1, cents: 600_000 },
+      { costCode: "06 10 00", key: "asm:roof", name: "Roof", sort: 2, cents: 200_000 },
+    ]
+    // A $1,000 lumber variance and a $2,000 change order on the same code.
+    const changeAllocations = [
+      ...varianceAllocations("06 10 00", 100_000, estimateAllocations, 1_000_000),
+      { costCode: "06 10 00", key: "co:co-1", name: "Change order CO-001", sort: 500_000, cents: 200_000 },
+    ]
+    const shares = payApplicationShares({ revisionLines: [framing], estimateAllocations, changeAllocations })
+    expect(shares.map((share) => [share.assemblyKey, share.approvedChangeCents, share.varianceCents])).toEqual([
+      ["asm:walls", 60_000, 60_000],
+      ["asm:roof", 20_000, 20_000],
+      ["co:co-1", 200_000, 0],
+      [null, 20_000, 20_000],
+    ])
+    expect(shares.reduce((sum, share) => sum + share.varianceCents, 0)).toBe(100_000)
+  })
+
+  it("keeps a variance on a code with no assemblies on the code's own row", () => {
+    const paint = { ...mobilization, id: "rev-paint", costCode: "09 91 00", originalEstimateCents: 500_000, approvedChangeCents: -50_000, adjustedBudgetCents: 450_000 }
+    const shares = payApplicationShares({
+      revisionLines: [paint],
+      estimateAllocations: [],
+      changeAllocations: varianceAllocations("09 91 00", -50_000, [], 500_000),
+    })
+    expect(shares).toHaveLength(1)
+    expect(shares[0]).toMatchObject({ assemblyKey: null, approvedChangeCents: -50_000, varianceCents: -50_000, adjustedBudgetCents: 450_000 })
   })
 })
