@@ -22,3 +22,25 @@ export function readChangeOrderRequesterType(
   }
   return null
 }
+
+export type ChangeOrderRequesterDisplay = {
+  readonly requesterType: RecordedChangeOrderRequesterType
+  /** Set when the stored requester value isn't one Compass recognizes. */
+  readonly issue: string | null
+}
+
+// Displaying a record never depends on its requester label: access is decided
+// separately by audience and status. A stored value Compass doesn't recognize
+// is shown as "unknown" (which grants nothing) with the problem called out,
+// instead of hiding a real change order from the list and its detail page.
+export function displayChangeOrderRequesterType(
+  sourceType: string,
+  requesterType: string,
+): ChangeOrderRequesterDisplay {
+  const recorded = readChangeOrderRequesterType(sourceType, requesterType)
+  if (recorded !== null) return { requesterType: recorded, issue: null }
+  return {
+    requesterType: "unknown",
+    issue: `Requester type "${requesterType}" isn't a recognized value (internal, owner or subcontractor); shown as unknown until the record is corrected.`,
+  }
+}

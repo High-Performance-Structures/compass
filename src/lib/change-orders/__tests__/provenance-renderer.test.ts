@@ -30,7 +30,7 @@ function item(overrides: Partial<ProjectChangeOrderItem> = {}): ProjectChangeOrd
     id: "synthetic-co", projectId: "project-test", changeOrderNumber: "CO-001", title: "Budgeted fixture adjustment",
     scope: "Fixture allowance variance", reason: "Owner request copied from a legacy note",
     amountCents: 12345, scheduleImpactDays: 2, status: "executed", audience: "owner",
-    requesterType: "owner", requesterUserId: null, requesterName: "Legacy project owner",
+    requesterType: "owner", recordIssues: [], requesterUserId: null, requesterName: "Legacy project owner",
     requesterCompany: "Legacy company", sourceType: "buildertrend_import", sourceRecordId: "source-1",
     sourceHref: null, internalNotes: null, budgetTreatment: "additive", kind: null, baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
@@ -102,6 +102,19 @@ describe("imported change-order provenance in shared list and detail", () => {
       }
     },
   )
+
+  it("shows a staff-recorded change order with an unrecognized requester and flags it for correction", () => {
+    const flagged = item({
+      id: "sheet-co", sourceType: "spreadsheet_reconciliation", requesterType: "unknown",
+      requesterName: "Example Builders", requesterCompany: "Example Builders",
+      recordIssues: ['Requester type "staff" isn\'t a recognized value.'],
+    })
+    const [list, detail] = render(flagged, true)
+    expect(list).toContain("Budgeted fixture adjustment")
+    expect(list).toContain("Record needs correcting")
+    expect(detail).toContain("Record needs correcting")
+    expect(detail).toContain("Requested by Example Builders")
+  })
 
   it("tags each imported row with [BT] and shows no long provenance text inline", () => {
     const list = renderToStaticMarkup(React.createElement(ProjectChangeOrderList, {

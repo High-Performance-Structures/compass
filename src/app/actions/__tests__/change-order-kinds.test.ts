@@ -33,6 +33,8 @@ vi.mock("@/lib/financials/contract-budget-store", () => ({ rebuildProjectContrac
 
 import {
   createProjectChangeOrder,
+  getProjectChangeOrder,
+  getProjectChangeOrders,
   updateProjectChangeOrder,
   type UpdateProjectChangeOrderInput,
 } from "@/app/actions/project-change-orders"
@@ -151,5 +153,18 @@ describe("change-order kinds", () => {
       error: "This change order already has an estimate; void the estimate before changing how it's built.",
     })
     expect(row(id)).toMatchObject({ change_order_kind: "estimate" })
+  })
+
+  it("lists and opens an executed change order whose stored requester type isn't recognized", async () => {
+    sqlite.prepare(`INSERT INTO project_change_orders (id, project_id, change_order_number, title, scope, amount_cents, status, audience, requester_type, requester_name, requester_company, source_type, budget_treatment, foxit_status, sage_status, schedule_impact_days, created_at, updated_at)
+      VALUES ('sheet-co', 'job', 'O-166-2750-0009', 'Monthly adjustments', 'Insulation increase', 25000, 'executed', 'owner', 'staff', 'Example Builders', 'Example Builders', 'spreadsheet_reconciliation', 'additive', 'not_started', 'not_ready', 0, 't', 't')`).run()
+
+    const list = await getProjectChangeOrders("job")
+    expect(list.map((item) => item.id)).toEqual(["sheet-co"])
+    expect(list[0]).toMatchObject({ requesterType: "unknown", amountCents: 25000 })
+    expect(list[0]?.recordIssues[0]).toContain('"staff"')
+
+    const detail = await getProjectChangeOrder("job", "sheet-co")
+    expect(detail).toMatchObject({ id: "sheet-co", status: "executed", requesterType: "unknown" })
   })
 })

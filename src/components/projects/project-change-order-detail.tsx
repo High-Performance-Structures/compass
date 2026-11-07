@@ -125,6 +125,11 @@ export function ProjectChangeOrderDetail({
         }
       />
       {paperTrailStatus}
+      {item.recordIssues.map((issue) => (
+        <p key={issue} role="status" className="border-l-2 border-l-destructive px-3 py-2 text-sm text-destructive">
+          Record needs correcting: {issue}
+        </p>
+      ))}
 
       {variance && (
         <p className="border-l-2 border-l-primary px-3 py-2 text-sm text-muted-foreground">

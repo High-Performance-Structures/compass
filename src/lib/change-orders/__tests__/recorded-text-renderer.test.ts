@@ -49,7 +49,7 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
     scope: "Owner-approved interior-door and railing reallocations plus remaining July transfers.",
     reason: "Owner-requested and approved budget reconciliation (recorded wording).",
     amountCents: 0, scheduleImpactDays: 0, status: "executed", audience: "owner",
-    requesterType: "owner", requesterUserId: null, requesterName: "Unverified project owner",
+    requesterType: "owner", recordIssues: [], requesterUserId: null, requesterName: "Unverified project owner",
     requesterCompany: "Unverified company", sourceType, sourceRecordId: "synthetic-source-0007",
     sourceHref: null, internalNotes: null, budgetTreatment: "additive", kind: null, baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,

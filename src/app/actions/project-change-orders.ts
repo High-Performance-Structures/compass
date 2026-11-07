@@ -41,7 +41,7 @@ import {
   changeOrderRequesterType,
   type ChangeOrderRequesterType,
 } from "@/lib/change-orders/access"
-import { readChangeOrderRequesterType } from "@/lib/change-orders/provenance"
+import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
@@ -452,13 +452,10 @@ function viewModel(
   history: ProjectChangeOrderItem["history"],
   rebaseline: RebaselineViewData
 ): ProjectChangeOrderItem | null {
-  const requesterType = readChangeOrderRequesterType(row.sourceType, row.requesterType)
-  if (
-    !isChangeOrderStatus(row.status) ||
-    !validAudience(row.audience) ||
-    !isChangeOrderBudgetTreatment(row.budgetTreatment) ||
-    requesterType === null
-  ) {
+  const { requesterType, issue: requesterIssue } = displayChangeOrderRequesterType(row.sourceType, row.requesterType)
+  if (!isChangeOrderStatus(row.status) || !validAudience(row.audience) || !isChangeOrderBudgetTreatment(row.budgetTreatment)) {
+    // These drive workflow and access, so the row can't be shown safely; log it so it's never dropped silently.
+    console.error(`Change order ${row.id} (project ${row.projectId}) not displayed: status "${row.status}", audience "${row.audience}", budget treatment "${row.budgetTreatment}"`)
     return null
   }
   const status = row.status
@@ -505,6 +502,7 @@ function viewModel(
     status,
     audience: row.audience,
     requesterType,
+    recordIssues: context.internal && requesterIssue ? [requesterIssue] : [],
     requesterUserId: row.requesterUserId,
     requesterName: row.requesterName,
     requesterCompany: row.requesterCompany,
