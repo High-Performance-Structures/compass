@@ -93,6 +93,8 @@ export const messages = sqliteTable("messages", {
     // Declared from drizzle/0274_hot_query_indexes.sql.
     index("messages_thread_created_idx").on(table.threadId, table.createdAt),
     index("messages_user_id_idx").on(table.userId),
+    // Declared from drizzle/0301_messages_channel_user_index.sql.
+    index("messages_channel_user_created_idx").on(table.channelId, table.userId, table.createdAt),
   ])
 
 // message_attachments - files, images, etc
