@@ -216,10 +216,20 @@ describe("participants matching several exact candidates import staff-only", () 
     expect(count()).toEqual(before)
   })
 
-  it("leaves attachment holds unchanged and does not count the ambiguous person as a hold", () => {
+  it("imports a message before its attachment bytes are captured, and does not count the ambiguous person as a hold", () => {
     const { result } = run([
       message("7", { recipients: [{ ...sam, kind: "to" }], attachments: [{ btAttachmentId: "5", fileName: "a.jpg", sizeBytes: 1 }] }),
       thread("7"),
+    ])
+    expect(result.threads.map((t: { audience: string }) => t.audience)).toEqual(["staff"])
+    expect(result.reviews.filter(isHoldingReview)).toEqual([])
+    expect(rows(`SELECT COUNT(*) AS n FROM message_attachments`)).toEqual([{ n: 0 }])
+  })
+
+  it("still holds a thread whose attachment has a malformed sha256", () => {
+    const { result } = run([
+      message("10", { recipients: [{ ...sam, kind: "to" }], attachments: [{ btAttachmentId: "6", fileName: "b.jpg", sizeBytes: 1, sha256: "not-a-hash" }] }),
+      thread("10"),
     ])
     expect(result.threads).toEqual([])
     expect(result.reviews.filter(isHoldingReview).map((item: { reason: string }) => item.reason)).toEqual(["attachment_unverified"])
