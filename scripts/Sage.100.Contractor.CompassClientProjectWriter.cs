@@ -48,6 +48,14 @@ namespace CompassSageClientProjectWriter
             public string company { get; set; }
             public ClientPayload client { get; set; }
             public JobPayload job { get; set; }
+            public ContactPayload contact { get; set; }
+        }
+        public sealed class ContactPayload
+        {
+            public string name { get; set; }
+            public string phone { get; set; }
+            public string email { get; set; }
+            public string mobile { get; set; }
         }
         public sealed class ClientPayload
         {
@@ -252,6 +260,7 @@ namespace CompassSageClientProjectWriter
             }, 1);
             BuildClientEmailModXml(user, 1, "diagnostic@example.invalid");
             BuildJobClientModXml(user, 1, 1);
+            BuildClientContactAddXml(user, 1, new ContactPayload { name = "Compass Diagnostic", phone = "555-0100", email = "diagnostic@example.invalid", mobile = "555-0101" });
             string jobRequestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
             BuildJobXml(jobRequestName, user, new JobPayload {
                 compassProjectNumber = "O-000-000", name = "Compass Diagnostic",
@@ -308,7 +317,8 @@ namespace CompassSageClientProjectWriter
             if (!String.Equals(request.payload.operationType, "ensure_client", StringComparison.Ordinal) &&
                 !String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) &&
                 !String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal) &&
-                !String.Equals(request.payload.operationType, "set_job_client", StringComparison.Ordinal))
+                !String.Equals(request.payload.operationType, "set_job_client", StringComparison.Ordinal) &&
+                !String.Equals(request.payload.operationType, "add_client_contact", StringComparison.Ordinal))
                 throw new InvalidOperationException("Compass requested an unsupported Sage operation.");
             if (String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) && request.payload.job == null)
                 throw new InvalidOperationException("Compass client/job operation is missing the job payload.");
@@ -321,6 +331,10 @@ namespace CompassSageClientProjectWriter
             if (String.Equals(request.payload.operationType, "set_job_client", StringComparison.Ordinal))
             {
                 return ProcessSetJobClient(request);
+            }
+            if (String.Equals(request.payload.operationType, "add_client_contact", StringComparison.Ordinal))
+            {
+                return ProcessAddClientContact(request);
             }
             ClientPayload client = request.payload.client;
             int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
@@ -429,6 +443,51 @@ namespace CompassSageClientProjectWriter
                 JobStatus = jobRecord.StatusNumber,
                 JobType = jobRecord.TypeNumber
             };
+        }
+
+        // Adds one contact line (name, phone, email, cell) under an existing Sage
+        // client. Never changes or removes a line; a client that already lists
+        // this person is left as it is.
+        private static WriteOutcome ProcessAddClientContact(WriteRequest request)
+        {
+            ClientPayload client = request.payload.client;
+            ContactPayload contact = request.payload.contact;
+            int clientNumber;
+            if (!Int32.TryParse(client.sageClientNumber, out clientNumber) || clientNumber <= 0 || String.IsNullOrWhiteSpace(client.sageClientId))
+                throw new InvalidOperationException("Compass did not provide the Sage client ID and number; no write was attempted.");
+            if (contact == null || String.IsNullOrWhiteSpace(contact.name))
+                throw new InvalidOperationException("Compass did not provide a contact name; no write was attempted.");
+
+            SageRecord clientRecord = RunStage("find Sage client for contact", delegate { return FindClientByNumber(clientNumber); });
+            if (clientRecord == null || !String.Equals(clientRecord.Id, client.sageClientId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The Sage client ID and number do not identify the same client; no write was attempted.");
+            bool listed = RunStage("check Sage client contacts", delegate { return ClientListsContact(clientRecord.Id, contact.name); });
+            if (!listed)
+            {
+                string user = Required("SAGE_API_USER");
+                string password = Required("SAGE_API_PASSWORD");
+                // Sage commits ClientModRq when the enclosing API session is disposed.
+                RunStage("submit Sage client contact add", delegate { Submit(BuildClientContactAddXml(user, clientNumber, contact), password); });
+            }
+            return new WriteOutcome {
+                Request = request,
+                Client = clientRecord,
+                Job = null,
+                ClientStatus = clientRecord.StatusNumber,
+                JobStatus = 0,
+                JobType = 0
+            };
+        }
+
+        private static bool ClientListsContact(string clientId, string name)
+        {
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo.clncnt WHERE _idref=CONVERT(uniqueidentifier, @client) AND LTRIM(RTRIM(cntnme))=@name", connection))
+            {
+                command.Parameters.AddWithValue("@client", clientId);
+                command.Parameters.AddWithValue("@name", name.Trim());
+                return Convert.ToInt32(command.ExecuteScalar()) > 0;
+            }
         }
 
         private static WriteOutcome ProcessClientEmailUpdate(WriteRequest request)
@@ -687,6 +746,20 @@ namespace CompassSageClientProjectWriter
                 { "objectref", clientNumber }
             };
             return BuildXml("ClientModRq", user, values, references);
+        }
+
+        private static string BuildClientContactAddXml(string user, int clientNumber, ContactPayload contact)
+        {
+            // ClientContactAdd is a nested line inside ClientModRq, so the flat
+            // BuildXml mapping cannot reach it; the result is still schema-validated.
+            string[,] fields = { { "ContactName", contact.name }, { "Phone", contact.phone }, { "Email", contact.email }, { "Mobile", contact.mobile } };
+            StringBuilder line = new StringBuilder();
+            for (int index = 0; index < fields.GetLength(0); index++)
+                if (!String.IsNullOrWhiteSpace(fields[index, 1]))
+                    line.Append("<").Append(fields[index, 0]).Append(">").Append(XmlEscape(fields[index, 1].Trim())).Append("</").Append(fields[index, 0]).Append(">");
+            string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" + XmlEscape(TargetCompany) + "</Company><User>" + XmlEscape(user) + "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-client-project\" onError=\"stopOnError\"><ClientModRq requestID=\"" + Guid.NewGuid().ToString() + "\"><ObjectRef><ObjectID>" + clientNumber + "</ObjectID></ObjectRef><ClientContactAdd>" + line + "</ClientContactAdd></ClientModRq></MBXMLMsgsRq></api:MBXML>";
+            ValidateXml(xml);
+            return xml;
         }
 
         private static string BuildXml(string requestName, string user, Dictionary<string, string> values, Dictionary<string, int> references)

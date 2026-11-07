@@ -83,6 +83,22 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
         name: z.string().min(1).max(75),
       }),
     }),
+    // Adds one contact line under an existing Sage client; never changes a line.
+    z.object({
+      operationType: z.literal("add_client_contact"),
+      company: z.literal("High Performance Structures Inc"),
+      client: z.object({
+        compassCustomerId: z.string().min(1).nullable(),
+        sageClientId: z.string().min(1),
+        sageClientNumber: z.string().min(1),
+      }),
+      contact: z.object({
+        name: z.string().trim().min(1).max(50),
+        phone: z.string().max(20).nullable(),
+        email: z.string().email().max(75).nullable(),
+        mobile: z.string().max(20).nullable(),
+      }),
+    }),
     z.object({
       operationType: z.literal("update_client_email"),
       company: z.literal("High Performance Structures Inc"),
