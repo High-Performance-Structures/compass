@@ -152,4 +152,20 @@ describe("Sage client/project write contract", () => {
       sageClientProjectWritePayloadSchema.safeParse({ ...write, client: { ...write.client, sageClientNumber: "9999" } }).success
     ).toBe(false)
   })
+
+  it("adds a contact line to a linked Sage client", () => {
+    const write = {
+      operationType: "add_client_contact",
+      company: "High Performance Structures Inc",
+      client: { compassCustomerId: null, sageClientId: "client-guid", sageClientNumber: "100" },
+      contact: { name: "Pat Example", phone: "555-010-0100", email: null, mobile: null },
+    }
+    expect(sageClientProjectWritePayloadSchema.safeParse(write).success).toBe(true)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, contact: { ...write.contact, name: " " } }).success
+    ).toBe(false)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, client: { ...write.client, sageClientId: "" } }).success
+    ).toBe(false)
+  })
 })

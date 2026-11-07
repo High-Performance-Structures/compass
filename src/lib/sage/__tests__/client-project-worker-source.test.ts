@@ -11,11 +11,12 @@ const source = readFileSync(
 )
 
 describe("Sage client/project worker source boundary", () => {
-  it("contains only the four approved queue operations and no destructive request", () => {
+  it("contains only the five approved queue operations and no destructive request", () => {
     expect(source).toContain('"ensure_client"')
     expect(source).toContain('"ensure_client_and_job"')
     expect(source).toContain('"update_client_email"')
     expect(source).toContain('"set_job_client"')
+    expect(source).toContain('"add_client_contact"')
     expect(source).toContain('BuildXml("ClientModRq"')
     expect(source).toContain('BuildXml("JobModRq"')
     expect(source).not.toMatch(/DeleteRq|VoidRq/)
@@ -45,6 +46,18 @@ describe("Sage client/project worker source boundary", () => {
     expect(source.indexOf("RefuseJobWithSameProjectNumber(request.payload.job)")).toBeLessThan(
       source.indexOf('RunStage("submit Sage client add"')
     )
+  })
+
+  it("only adds a contact line to the matched client, and skips a person already listed", () => {
+    const addContact = source.slice(
+      source.indexOf("private static WriteOutcome ProcessAddClientContact"),
+      source.indexOf("private static WriteOutcome ProcessClientEmailUpdate")
+    )
+    expect(addContact).toContain("The Sage client ID and number do not identify the same client")
+    expect(addContact).toContain("ClientListsContact(clientRecord.Id, contact.name)")
+    expect(addContact.indexOf("ClientListsContact(")).toBeLessThan(addContact.indexOf("submit Sage client contact add"))
+    expect(source).toContain("<ClientContactAdd>")
+    expect(source).not.toMatch(/ClientContactMod|ClientContactDelete/)
   })
 
   it("pins both API and SQL access to the HPS Sage company", () => {
