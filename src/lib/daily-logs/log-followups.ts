@@ -7,6 +7,8 @@
  * Kept free of path aliases so the native Field Mode bundle can import it.
  */
 
+import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
+
 import type { DailyLogWorkLineDraft } from "./daily-log-form"
 
 /** To-do kinds a daily log can create, in the order pickers show them. */
@@ -72,6 +74,47 @@ export type DailyLogOpenTodo = {
   readonly changedOn: string
   /** The company's name for the status (Settings › Statuses); absent in forms saved offline before it existed. */
   readonly statusLabel?: string
+  /** The status's color from the company's statuses; absent in forms saved offline before it existed. */
+  readonly statusColor?: RecordStatusColor
+}
+
+/** Filter buttons above the daily log's to-do checklist. */
+export type DailyLogTodoFilter = "all" | "worked" | DailyLogOpenTodo["status"]
+
+const TODO_STATUS_ORDER: readonly DailyLogOpenTodo["status"][] = ["open", "in_progress", "blocked"]
+const BUILT_IN_TODO_STATUS_LABELS: Readonly<Record<DailyLogOpenTodo["status"], string>> = {
+  open: "Open",
+  in_progress: "In progress",
+  blocked: "Blocked",
+}
+
+/**
+ * The checklist's filter buttons: All, each status in workflow order named
+ * and colored as the company names it, then the ones ticked today.
+ */
+export function dailyLogTodoFilterOptions(
+  todos: readonly DailyLogOpenTodo[],
+  worked: readonly string[],
+): readonly { readonly value: DailyLogTodoFilter; readonly label: string; readonly count: number; readonly color?: RecordStatusColor; readonly pinned?: boolean }[] {
+  return [
+    { value: "all", label: "All", count: todos.length, pinned: true },
+    ...TODO_STATUS_ORDER.map((status) => {
+      const sample = todos.find((todo) => todo.status === status)
+      return {
+        value: status,
+        label: sample?.statusLabel ?? BUILT_IN_TODO_STATUS_LABELS[status],
+        count: todos.filter((todo) => todo.status === status).length,
+        color: sample?.statusColor,
+      }
+    }),
+    { value: "worked", label: "Worked on", count: todos.filter((todo) => worked.includes(todo.id)).length },
+  ]
+}
+
+export function dailyLogTodoMatchesFilter(todo: DailyLogOpenTodo, filter: DailyLogTodoFilter, worked: readonly string[]): boolean {
+  if (filter === "all") return true
+  if (filter === "worked") return worked.includes(todo.id)
+  return todo.status === filter
 }
 
 /** A client contact on the project, for the log's client contact picker. */

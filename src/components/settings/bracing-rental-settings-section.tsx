@@ -195,7 +195,7 @@ export function BracingRentalSettingsSection(): React.ReactElement {
                 <SortableRows
                   ids={settings.items.map((item) => item.key)}
                   disabled={disabled}
-                  onMove={(from, to) => setSettings((current) => ({ ...current, items: moveLine(current.items, from, to) }))}
+                  onMove={(from, to) => setSettings((current) => ({ ...current, items: [...moveLine(current.items, from, to)] }))}
                 >
                   {settings.items.map((item, index) => (
                     <SortableTableRow key={item.key} id={item.key} index={index} className="border-b bg-background">
