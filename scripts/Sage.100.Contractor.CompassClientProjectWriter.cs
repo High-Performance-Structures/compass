@@ -61,6 +61,7 @@ namespace CompassSageClientProjectWriter
             public string address { get; set; }
             public string billingAddress { get; set; }
             public string notes { get; set; }
+            public string contactName { get; set; }
             public StatusPayload status { get; set; }
         }
         public sealed class StatusPayload
@@ -70,6 +71,8 @@ namespace CompassSageClientProjectWriter
         }
         public sealed class JobPayload
         {
+            public string sageJobId { get; set; }
+            public string sageJobNumber { get; set; }
             public string compassProjectNumber { get; set; }
             public string name { get; set; }
             public string shortName { get; set; }
@@ -83,6 +86,8 @@ namespace CompassSageClientProjectWriter
             public int Number;
             public int StatusNumber;
             public int TypeNumber;
+            public int ClientNumber;
+            public string Name;
             public string Email;
         }
         private sealed class WriteOutcome
@@ -245,6 +250,7 @@ namespace CompassSageClientProjectWriter
                 email = "diagnostic@example.invalid", phone = "555-0100", notes = "Schema validation only"
             }, 1);
             BuildClientEmailModXml(user, 1, "diagnostic@example.invalid");
+            BuildJobClientModXml(user, 1, 1);
             string jobRequestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
             BuildJobXml(jobRequestName, user, new JobPayload {
                 compassProjectNumber = "O-000-000", name = "Compass Diagnostic",
@@ -300,7 +306,8 @@ namespace CompassSageClientProjectWriter
                 throw new InvalidOperationException("Compass payload is incomplete.");
             if (!String.Equals(request.payload.operationType, "ensure_client", StringComparison.Ordinal) &&
                 !String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) &&
-                !String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal))
+                !String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal) &&
+                !String.Equals(request.payload.operationType, "set_job_client", StringComparison.Ordinal))
                 throw new InvalidOperationException("Compass requested an unsupported Sage operation.");
             if (String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) && request.payload.job == null)
                 throw new InvalidOperationException("Compass client/job operation is missing the job payload.");
@@ -309,6 +316,10 @@ namespace CompassSageClientProjectWriter
             if (String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal))
             {
                 return ProcessClientEmailUpdate(request);
+            }
+            if (String.Equals(request.payload.operationType, "set_job_client", StringComparison.Ordinal))
+            {
+                return ProcessSetJobClient(request);
             }
             ClientPayload client = request.payload.client;
             int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
@@ -361,6 +372,59 @@ namespace CompassSageClientProjectWriter
                 ClientStatus = clientStatus,
                 JobStatus = jobStatus,
                 JobType = jobType
+            };
+        }
+
+        // Gives an existing Sage job its client (jobs carried over from NetSuite
+        // without one). Never adds a job, and never replaces a client a job already has.
+        private static WriteOutcome ProcessSetJobClient(WriteRequest request)
+        {
+            JobPayload job = request.payload.job;
+            int jobNumber;
+            if (job == null || String.IsNullOrWhiteSpace(job.sageJobId) || !Int32.TryParse(job.sageJobNumber, out jobNumber) || jobNumber < 1)
+                throw new InvalidOperationException("Compass did not provide the Sage job ID and number; no write was attempted.");
+            ClientPayload client = request.payload.client;
+            SageRecord jobRecord = RunStage("find Sage job", delegate { return FindJobByNumber(jobNumber); });
+            if (jobRecord == null || !String.Equals(jobRecord.Id, job.sageJobId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The Sage job ID and number do not identify the same job; no write was attempted.");
+            if (!String.Equals((jobRecord.Name ?? "").Trim(), (job.name ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The Sage job name has changed since Compass matched it; no write was attempted.");
+
+            int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
+            if (clientStatus != client.status.expectedNumber)
+                throw new InvalidOperationException("Client status mismatch: Compass expected " + client.status.expectedNumber + " " + client.status.name + ", but Sage resolved " + clientStatus + ".");
+            // A linked client is resolved by its stable ID; otherwise an exact name is
+            // the client chosen for this job, and only a missing one is added.
+            SageRecord clientRecord = !String.IsNullOrWhiteSpace(client.sageClientId) || !String.IsNullOrWhiteSpace(client.sageClientNumber)
+                ? FindClient(client)
+                : FindClientByName(client.name);
+            if (jobRecord.ClientNumber > 0)
+            {
+                if (clientRecord != null && jobRecord.ClientNumber == clientRecord.Number)
+                    return new WriteOutcome { Request = request, Client = clientRecord, Job = jobRecord, ClientStatus = clientRecord.StatusNumber, JobStatus = jobRecord.StatusNumber, JobType = jobRecord.TypeNumber };
+                throw new InvalidOperationException("The Sage job already has client " + jobRecord.ClientNumber + "; no write was attempted.");
+            }
+            string user = Required("SAGE_API_USER");
+            string password = Required("SAGE_API_PASSWORD");
+            if (clientRecord == null)
+            {
+                string requestName = FindRequestName(new string[] { "ClientAddNextRq", "ClientAddRq" });
+                RunStage("submit Sage client add", delegate { Submit(BuildClientXml(requestName, user, client, clientStatus), password); });
+                clientRecord = RunStage("read Sage client after add", delegate { return FindClientByName(client.name); });
+                if (clientRecord == null) throw new InvalidOperationException("Sage returned success but the client could not be read back.");
+            }
+            int clientNumber = clientRecord.Number;
+            RunStage("submit Sage job client", delegate { Submit(BuildJobClientModXml(user, jobNumber, clientNumber), password); });
+            jobRecord = RunStage("read Sage job after client", delegate { return FindJobByNumber(jobNumber); });
+            if (jobRecord == null || jobRecord.ClientNumber != clientNumber)
+                throw new InvalidOperationException("Sage returned success but the job does not show the new client.");
+            return new WriteOutcome {
+                Request = request,
+                Client = clientRecord,
+                Job = jobRecord,
+                ClientStatus = clientRecord.StatusNumber,
+                JobStatus = jobRecord.StatusNumber,
+                JobType = jobRecord.TypeNumber
             };
         }
 
@@ -482,6 +546,27 @@ namespace CompassSageClientProjectWriter
                 clientNumber);
         }
 
+        private static SageRecord FindJobByNumber(int jobNumber)
+        {
+            List<SageRecord> rows = new List<SageRecord>();
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT CONVERT(varchar(36), _idnum), recnum, status, ISNULL(jobtyp, 0), ISNULL(clnnum, 0), jobnme FROM dbo.actrec WHERE recnum=@job", connection))
+            {
+                command.Parameters.AddWithValue("@job", jobNumber);
+                using (SqlDataReader reader = command.ExecuteReader())
+                    while (reader.Read()) rows.Add(new SageRecord {
+                        Id = Convert.ToString(reader[0]),
+                        Number = Convert.ToInt32(reader[1]),
+                        StatusNumber = Convert.ToInt32(reader[2]),
+                        TypeNumber = Convert.ToInt32(reader[3]),
+                        ClientNumber = Convert.ToInt32(reader[4]),
+                        Name = reader.IsDBNull(5) ? null : Convert.ToString(reader[5])
+                    });
+            }
+            if (rows.Count > 1) throw new InvalidOperationException("Duplicate Sage job number; no write was attempted.");
+            return rows.Count == 1 ? rows[0] : null;
+        }
+
         private static SageRecord SingleRecord(string sql, string match, int? clientNumber)
         {
             List<SageRecord> rows = new List<SageRecord>();
@@ -528,7 +613,7 @@ namespace CompassSageClientProjectWriter
             Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
                 { "name", client.name }, { "clientname", client.name }, { "shortname", client.shortName },
                 { "address1", client.address }, { "billingaddress1", client.billingAddress }, { "billaddress1", client.billingAddress },
-                { "contact1", client.name }, { "email", client.email }, { "email1", client.email }, { "primaryemail", client.email },
+                { "contact1", String.IsNullOrWhiteSpace(client.contactName) ? client.name : client.contactName }, { "email", client.email }, { "email1", client.email }, { "primaryemail", client.email },
                 { "phone", client.phone }, { "phone1", client.phone }, { "notes", client.notes }, { "memo", client.notes }
             };
             Dictionary<string, int> references = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
@@ -549,6 +634,23 @@ namespace CompassSageClientProjectWriter
                 { "jobtype", typeNumber }, { "jobtyperef", typeNumber }
             };
             return BuildXml(requestName, user, values, references);
+        }
+
+        private static string BuildJobClientModXml(string user, int jobNumber, int clientNumber)
+        {
+            // Fail closed if this Sage version's JobModRq has no client field: the
+            // generic builder would otherwise send a request that changes nothing.
+            bool hasClient = false;
+            foreach (XmlSchemaElement field in RequestFields("JobModRq"))
+            {
+                string key = Normalize(String.IsNullOrWhiteSpace(field.Name) ? field.RefName.Name : field.Name);
+                if (key == "client" || key == "clientref") hasClient = true;
+            }
+            if (!hasClient) throw new InvalidOperationException("Installed mbxml.xsd JobModRq has no client field; no write was attempted.");
+            Dictionary<string, int> references = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                { "objectref", jobNumber }, { "client", clientNumber }, { "clientref", clientNumber }
+            };
+            return BuildXml("JobModRq", user, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), references);
         }
 
         private static string BuildClientEmailModXml(string user, int clientNumber, string email)

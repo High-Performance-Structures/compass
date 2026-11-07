@@ -18,7 +18,7 @@ export type SageClientStatusId =
   (typeof SAGE_CLIENT_STATUS_OPTIONS)[number]["id"]
 export type SageJobTypeId = (typeof SAGE_JOB_TYPE_OPTIONS)[number]["id"]
 
-const sageClientPayloadSchema = z.object({
+const sageClientFieldsSchema = z.object({
   compassCustomerId: z.string().min(1),
   sageClientId: z.string().min(1).nullable().optional(),
   sageClientNumber: z.string().min(1).nullable().optional(),
@@ -34,10 +34,15 @@ const sageClientPayloadSchema = z.object({
     expectedNumber: z.number().int().min(1).max(6),
     name: z.string().min(1).max(50),
   }),
-}).refine(
-  (client) => Boolean(client.sageClientId) === Boolean(client.sageClientNumber),
-  { message: "A linked Sage client needs both its stable ID and number", path: ["sageClientId"] }
-)
+})
+
+const linkedClientRule = {
+  check: (client: { readonly sageClientId?: string | null; readonly sageClientNumber?: string | null }): boolean =>
+    Boolean(client.sageClientId) === Boolean(client.sageClientNumber),
+  message: { message: "A linked Sage client needs both its stable ID and number", path: ["sageClientId"] },
+}
+
+const sageClientPayloadSchema = sageClientFieldsSchema.refine(linkedClientRule.check, linkedClientRule.message)
 
 const sageJobPayloadSchema = z.object({
   compassProjectId: z.string().min(1),
@@ -62,6 +67,21 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
       company: z.literal("High Performance Structures Inc"),
       client: sageClientPayloadSchema,
       job: sageJobPayloadSchema,
+    }),
+    // Gives an existing Sage job its missing client; the writer never adds a job here.
+    z.object({
+      operationType: z.literal("set_job_client"),
+      company: z.literal("High Performance Structures Inc"),
+      client: sageClientFieldsSchema.extend({
+        compassCustomerId: z.string().min(1).nullable(),
+        contactName: z.string().max(50).nullable(),
+      }).refine(linkedClientRule.check, linkedClientRule.message),
+      job: z.object({
+        compassProjectId: z.string().min(1).nullable(),
+        sageJobId: z.string().min(1),
+        sageJobNumber: z.string().min(1),
+        name: z.string().min(1).max(75),
+      }),
     }),
     z.object({
       operationType: z.literal("update_client_email"),
@@ -90,7 +110,8 @@ const sageWriteSuccessSchema = z.object({
       id: z.string().min(1),
       number: z.string().min(1),
       statusNumber: z.number().int().positive(),
-      typeNumber: z.number().int().positive(),
+      // Jobs carried over from NetSuite have no job type (0).
+      typeNumber: z.number().int().nonnegative(),
     })
     .nullable(),
 })

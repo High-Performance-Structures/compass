@@ -11,12 +11,26 @@ const source = readFileSync(
 )
 
 describe("Sage client/project worker source boundary", () => {
-  it("contains only the three approved queue operations and no destructive request", () => {
+  it("contains only the four approved queue operations and no destructive request", () => {
     expect(source).toContain('"ensure_client"')
     expect(source).toContain('"ensure_client_and_job"')
     expect(source).toContain('"update_client_email"')
+    expect(source).toContain('"set_job_client"')
     expect(source).toContain('BuildXml("ClientModRq"')
+    expect(source).toContain('BuildXml("JobModRq"')
     expect(source).not.toMatch(/DeleteRq|VoidRq/)
+  })
+
+  it("only gives a client to an existing job that has none, matched by ID and name", () => {
+    const setJobClient = source.slice(
+      source.indexOf("private static WriteOutcome ProcessSetJobClient"),
+      source.indexOf("private static WriteOutcome ProcessClientEmailUpdate")
+    )
+    expect(setJobClient).toContain("The Sage job ID and number do not identify the same job")
+    expect(setJobClient).toContain("The Sage job name has changed since Compass matched it")
+    expect(setJobClient).toContain("The Sage job already has client")
+    expect(setJobClient).not.toMatch(/JobAdd/)
+    expect(source).toContain("JobModRq has no client field; no write was attempted.")
   })
 
   it("pins both API and SQL access to the HPS Sage company", () => {
