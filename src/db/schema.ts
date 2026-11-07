@@ -14,6 +14,7 @@ import {
   DELIVERY_METHODS,
   PORTFOLIO_MAP_VISIBILITIES,
   PROJECT_CLIENT_STATUSES,
+  PROJECT_CONTRACT_TYPES,
   PROJECT_DEPARTMENTS,
   PROJECT_DUPLICATE_DECISION_STATUSES,
   PROJECT_LODGING_CHOICES,
@@ -21,7 +22,13 @@ import {
   SITE_LOCATION_STATUSES,
   WORKSPACE_KINDS,
 } from "../lib/domain/project/statuses"
-import { CHANGE_ORDER_ACCEPTANCE_METHODS, CHANGE_ORDER_KINDS, CHANGE_ORDER_STATUSES } from "../lib/domain/estimates/statuses"
+import {
+  CHANGE_ORDER_ACCEPTANCE_METHODS,
+  CHANGE_ORDER_KINDS,
+  CHANGE_ORDER_LINE_DERIVATIONS,
+  CHANGE_ORDER_RECORD_TYPES,
+  CHANGE_ORDER_STATUSES,
+} from "../lib/domain/estimates/statuses"
 import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "../lib/domain/identity/statuses"
 import { FEEDBACK_TYPES, STAFF_MESSAGE_STATUSES } from "../lib/domain/feedback/statuses"
 import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
@@ -901,6 +908,8 @@ export const projects = sqliteTable("projects", {
   siteLocationNote: text("site_location_note"),
   /** Material sales: delivered to the project address, or picked up by the customer. */
   deliveryMethod: text("delivery_method", { enum: DELIVERY_METHODS }),
+  /** Owner contract type (0299); null follows the company default. Decides variances and fee. */
+  contractType: text("contract_type", { enum: PROJECT_CONTRACT_TYPES }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [
@@ -3077,6 +3086,10 @@ export const projectChangeOrders = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     changeOrderNumber: text("change_order_number").notNull(),
+    /** change_order or variance (0299); variances are numbered V-001 and need no owner acceptance. */
+    recordType: text("record_type", { enum: CHANGE_ORDER_RECORD_TYPES }).notNull().default("change_order"),
+    /** The CO number a variance had before it was reclassified, so it's never reused (0299). */
+    formerChangeOrderNumber: text("former_change_order_number"),
     title: text("title").notNull(),
     scope: text("scope").notNull(),
     reason: text("reason"),
@@ -3162,6 +3175,7 @@ export const projectChangeOrders = sqliteTable(
     ),
     // Declared from drizzle/0281_id_reference_triggers.sql.
     index("project_change_orders_baseline_estimate_id_idx").on(table.baselineEstimateId),
+    index("project_change_orders_record_type_idx").on(table.projectId, table.recordType, table.status),
   ]
 )
 
@@ -3187,6 +3201,8 @@ export const projectChangeOrderLines = sqliteTable(
     // From a change-order estimate: the contract assembly the line changes.
     contractAssemblyId: text("contract_assembly_id"),
     assemblyName: text("assembly_name"),
+    /** Set on the builder fee and insurance lines Compass adds on approval (0299); null for priced lines. */
+    derivedFrom: text("derived_from", { enum: CHANGE_ORDER_LINE_DERIVATIONS }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

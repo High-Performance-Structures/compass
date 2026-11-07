@@ -9,6 +9,7 @@ import {
   getProjectChangeOrders,
 } from "@/app/actions/project-change-orders"
 import { getProjects } from "@/app/actions/projects"
+import { getProjectVarianceOptions } from "@/app/actions/project-variances"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ export default async function ProjectChangeOrdersPage({
     getProjectChangeOrders(id),
     getProjectChangeOrderCapabilities(id),
     getProjectChangeOrderFormOptions(id),
+    getProjectVarianceOptions(id),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -37,7 +39,7 @@ export default async function ProjectChangeOrdersPage({
     },
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
-  const [projects, items, capabilities, formOptions] = loaded.data
+  const [projects, items, capabilities, formOptions, varianceOptions] = loaded.data
   const project = projects.find((item) => item.id === id)
   const baseHref = `/dashboard/projects/${encodeURIComponent(id)}/change-orders`
 
@@ -71,6 +73,7 @@ export default async function ProjectChangeOrdersPage({
         internal
         formOptions={formOptions}
         canCreate={capabilities.canCreate}
+        varianceOptions={varianceOptions}
       />
     </div>
   )

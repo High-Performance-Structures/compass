@@ -83,6 +83,8 @@ export function ProjectChangeOrderEditForm({
     internal &&
     item.canEdit &&
     item.kind !== "contract_version" &&
+    // A variance is priced with its own lines, not an estimate.
+    item.recordType !== "variance" &&
     !isExecutedChangeOrderStatus(item.status)
   const estimateStarted = Boolean(item.changeOrderEstimate)
   const [replacementEstimateId, setReplacementEstimateId] = React.useState(

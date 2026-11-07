@@ -8,6 +8,8 @@ import type {
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
 import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
+import { NewVarianceButton, ReclassifyChangeOrdersButton } from "@/components/projects/project-variance-controls"
+import type { ProjectVarianceOptions } from "@/app/actions/project-variances"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
@@ -28,6 +30,7 @@ export function ProjectChangeOrderList({
   internal,
   formOptions,
   canCreate = true,
+  varianceOptions = null,
 }: {
   readonly projectId: string
   readonly items: readonly ProjectChangeOrderItem[]
@@ -35,6 +38,8 @@ export function ProjectChangeOrderList({
   readonly internal: boolean
   readonly formOptions: ProjectChangeOrderFormOptions
   readonly canCreate?: boolean
+  /** Staff pages pass the project's variance options; owner and vendor views leave them out. */
+  readonly varianceOptions?: ProjectVarianceOptions | null
 }): React.ReactElement {
   const openCount = items.filter(
     (item) => !["closed", "declined", "void"].includes(item.status)
@@ -45,13 +50,19 @@ export function ProjectChangeOrderList({
       <PageHeader
         className="mb-0 border-b pb-3"
         icon={<IconFileInvoice className="size-5 text-muted-foreground" />}
-        title="Change orders"
+        title={items.some((item) => item.recordType === "variance") || varianceOptions?.allowsVariances ? "Change orders and variances" : "Change orders"}
         actions={
           <>
             <div className="flex items-center gap-2">
               <Badge variant={openCount > 0 ? "secondary" : "outline"}>
                 {openCount} active
               </Badge>
+              {internal && varianceOptions ? (
+                <>
+                  <NewVarianceButton projectId={projectId} detailBaseHref={detailBaseHref} options={varianceOptions} />
+                  <ReclassifyChangeOrdersButton projectId={projectId} items={items} options={varianceOptions} />
+                </>
+              ) : null}
               {canCreate && (
                 <ProjectChangeOrderCreateForm
                   projectId={projectId}
@@ -77,6 +88,7 @@ export function ProjectChangeOrderList({
                   <p className="text-xs font-medium text-muted-foreground">
                     {item.changeOrderNumber}
                   </p>
+                  {item.recordType === "variance" ? <Badge variant="secondary">Variance</Badge> : null}
                   <Badge variant="outline">
                     {changeOrderDisplayStatus(item.status, item.sourceType)}
                   </Badge>

@@ -20,6 +20,8 @@ import {
   DeveloperOnly,
 } from "@/components/developer-mode-provider"
 import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
+import { ProjectVarianceLines, ReclassifyChangeOrdersButton } from "@/components/projects/project-variance-controls"
+import type { ProjectVarianceOptions } from "@/app/actions/project-variances"
 import { Badge } from "@/components/ui/badge"
 import {
   changeOrderDisplayStatus,
@@ -56,6 +58,7 @@ export function ProjectChangeOrderDetail({
   internal,
   formOptions,
   paperTrailStatus = null,
+  varianceOptions = null,
 }: {
   readonly item: ProjectChangeOrderItem
   readonly backHref: string
@@ -63,13 +66,16 @@ export function ProjectChangeOrderDetail({
   readonly formOptions: ProjectChangeOrderFormOptions
   /** Staff pages pass the Drive copy status line; previews leave it out. */
   readonly paperTrailStatus?: React.ReactNode
+  /** Staff pages pass the project's variance options; previews leave them out. */
+  readonly varianceOptions?: ProjectVarianceOptions | null
 }): React.ReactElement {
+  const variance = item.recordType === "variance"
   return (
     <div className="space-y-5">
       <PageHeader
         className="mb-0 border-b pb-4"
         back={{ href: backHref, label: "Change orders" }}
-        eyebrow={item.changeOrderNumber}
+        eyebrow={variance ? `Variance ${item.changeOrderNumber}${item.formerChangeOrderNumber ? ` (was ${item.formerChangeOrderNumber})` : ""}` : item.changeOrderNumber}
         title={item.title}
         // Who asked for it is a record fact, so it stays with the title.
         meta={
@@ -84,6 +90,14 @@ export function ProjectChangeOrderDetail({
         }
         actions={
           <>
+                {internal && varianceOptions ? (
+                  <ReclassifyChangeOrdersButton
+                    projectId={item.projectId}
+                    items={[item]}
+                    options={varianceOptions}
+                    label={variance ? "Make change order" : "Make variance"}
+                  />
+                ) : null}
                 {internal && item.manualAcceptance ? (
                   <ProjectChangeOrderRecordAcceptance
                     projectId={item.projectId}
@@ -112,6 +126,14 @@ export function ProjectChangeOrderDetail({
       />
       {paperTrailStatus}
 
+      {variance && (
+        <p className="border-l-2 border-l-primary px-3 py-2 text-sm text-muted-foreground">
+          {internal
+            ? "A variance moves cost on the cost codes it belongs to. It needs no owner signature: approving it updates the contract budget, and the owner sees it for information."
+            : "This variance is a cost movement on your cost-plus contract, shared for your information. No approval is needed."}
+        </p>
+      )}
+
       {item.acceptance && (
         <ProjectChangeOrderAcceptanceSummary
           acceptance={item.acceptance}
@@ -127,6 +149,10 @@ export function ProjectChangeOrderDetail({
         lines={item.lines}
         affectsBudget={item.budgetTreatment !== "baseline_replacement"}
       />
+
+      {internal && variance && varianceOptions ? (
+        <ProjectVarianceLines item={item} options={varianceOptions} costCodes={formOptions.costCodes} />
+      ) : null}
 
       {item.canCompleteCostCodes && (
         <ProjectChangeOrderCompletion
@@ -146,7 +172,7 @@ export function ProjectChangeOrderDetail({
         formOptions={formOptions}
       />
 
-      {isExecutedChangeOrderStatus(item.status) && item.audience === "owner" && (
+      {!variance && isExecutedChangeOrderStatus(item.status) && item.audience === "owner" && (
         <ProjectChangeOrderExecutedDocument
           projectId={item.projectId}
           changeOrderId={item.id}
@@ -166,7 +192,7 @@ export function ProjectChangeOrderDetail({
             </p>
           </div>
         )}
-        {internal && (item.kind === "estimate" || item.kind === null) && item.budgetTreatment !== "baseline_replacement" && (
+        {internal && !variance && (item.kind === "estimate" || item.kind === null) && item.budgetTreatment !== "baseline_replacement" && (
           <ProjectChangeOrderEstimatePanel
             projectId={item.projectId}
             changeOrderId={item.id}
@@ -298,6 +324,12 @@ export function ProjectChangeOrderDetail({
                       ? "Executed document replaced"
                     : event.eventType === "cost_codes_completed"
                       ? "Cost codes completed"
+                    : event.eventType === "variance_approved"
+                      ? "Variance approved"
+                    : event.eventType === "variance_lines_saved"
+                      ? "Variance lines saved"
+                    : event.eventType === "reclassified"
+                      ? "Reclassified"
                     : event.eventType === "acceptance_recorded"
                       ? "Owner acceptance recorded"
                     : event.eventType === "created"

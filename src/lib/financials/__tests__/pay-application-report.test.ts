@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest"
 
-import { payApplicationChangeOrderSummary, payApplicationReport } from "../pay-application-report"
+import { payApplicationChangeSummary, payApplicationReport } from "../pay-application-report"
 
 const base = {
   divisionCode: "03",
   divisionName: "Concrete",
   priorChanges: 0,
   currentChanges: 0,
+  totalVariances: 0,
   previousWorkCompleted: 0,
   storedMaterials: 0,
   ownerVisible: true,
@@ -44,7 +45,8 @@ describe("payApplicationReport", () => {
     const report = payApplicationReport(sources, "cost_code")
     expect(report.groups).toHaveLength(3)
     expect(report.totals.originalContractSum).toBe(100_000)
-    expect(report.totals.currentChanges).toBe(1_700)
+    expect(report.totals.changeOrders).toBe(1_700)
+    expect(report.totals.variances).toBe(0)
     expect(report.totals.adjustedEstimate).toBe(101_700)
     expect(report.totals.balance).toBe(66_700)
   })
@@ -61,26 +63,70 @@ describe("payApplicationReport", () => {
   })
 })
 
-describe("payApplicationChangeOrderSummary", () => {
+describe("payApplicationReport G703 columns", () => {
+  it("splits changes into running change-order and variance columns, with variances on their cost code row", () => {
+    const rows = [
+      // A $2,000 change order on its own row, and a $500 lumber increase on the framing line.
+      { ...base, costCode: "06 10 00", description: "Rough Carpentry", divisionCode: "06", divisionName: "Wood", assemblyKey: null, assemblyName: null, assemblySort: 0, originalEstimate: 10_000, priorChanges: 300, currentChanges: 200, totalVariances: 500, currentWorkCompleted: 0 },
+      { ...base, costCode: "07 10 00", description: "Waterproofing", divisionCode: "07", divisionName: "Thermal", assemblyKey: "co:1", assemblyName: "Change order CO-001", assemblySort: 500_000, originalEstimate: 0, priorChanges: 2_000, currentWorkCompleted: 0 },
+    ]
+    const report = payApplicationReport(rows, "cost_code")
+    const framing = report.groups.find((group) => group.key === "06 10 00")
+    expect(framing).toMatchObject({ originalContractSum: 10_000, changeOrders: 0, variances: 500, adjustedEstimate: 10_500 })
+    expect(report.totals).toMatchObject({ originalContractSum: 10_000, changeOrders: 2_000, variances: 500, adjustedEstimate: 12_500 })
+  })
+})
+
+describe("payApplicationChangeSummary", () => {
   it("names this period's change orders", () => {
-    expect(payApplicationChangeOrderSummary(sources)).toEqual({
-      previous: 0,
-      current: 1_700,
+    const summary = payApplicationChangeSummary(sources)
+    expect(summary.changeOrders).toMatchObject({
+      previous: { additions: 0, deductions: 0 },
+      current: { additions: 1_700, deductions: 0 },
+      net: 1_700,
       currentItems: [{ name: "Change order CO-001", amount: 1_700, assemblies: [] }],
     })
+    expect(summary.variances.net).toBe(0)
   })
 
   it("names change orders that landed inside an assembly from the change-order list", () => {
     const list = [
-      { name: "CO-000 · Earlier", amount: 400, current: false, assemblies: [] },
-      { name: "CO-001 · Plan revisions", amount: 1_700, current: true, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }] },
+      { name: "CO-000 · Earlier", amount: 400, current: false, assemblies: [], recordType: "change_order" as const },
+      { name: "CO-001 · Plan revisions", amount: 1_700, current: true, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }], recordType: "change_order" as const },
     ]
-    expect(payApplicationChangeOrderSummary(sources, list).currentItems).toEqual([
+    const withPrior = sources.map((source, index) => (index === 0 ? { ...source, priorChanges: 400 } : source))
+    expect(payApplicationChangeSummary(withPrior, list).changeOrders.currentItems).toEqual([
       { name: "CO-001 · Plan revisions", amount: 1_700, assemblies: [{ name: "Kitchen", amount: 2_000 }, { name: "Framing", amount: -300 }] },
     ])
-    // A list that doesn't add up to this period's changes falls back to the rows.
-    expect(payApplicationChangeOrderSummary(sources, [{ ...list[1], amount: 99, assemblies: [] }]).currentItems).toEqual([
+    // A list that doesn't add up to the G703's changes falls back to the rows.
+    expect(payApplicationChangeSummary(sources, [{ ...list[1], amount: 99, assemblies: [] }]).changeOrders.currentItems).toEqual([
       { name: "Change order CO-001", amount: 1_700, assemblies: [] },
     ])
+  })
+
+  it("splits G702 line 2 into change orders (additions/deductions) and variances (increases/decreases)", () => {
+    const rows = [{ ...sources[0], priorChanges: 1_500, currentChanges: 650 }]
+    const list = [
+      { name: "CO-001", amount: 2_000, current: false, assemblies: [], recordType: "change_order" as const },
+      { name: "V-001 · Lumber up", amount: 800, current: false, assemblies: [], recordType: "variance" as const },
+      { name: "V-002 · Steel down", amount: -1_300, current: false, assemblies: [], recordType: "variance" as const },
+      { name: "CO-002 · Deduct", amount: -250, current: true, assemblies: [], recordType: "change_order" as const },
+      { name: "V-003 · Concrete up", amount: 900, current: true, assemblies: [], recordType: "variance" as const },
+    ]
+    const summary = payApplicationChangeSummary(rows, list)
+    expect(summary.changeOrders).toMatchObject({
+      previous: { additions: 2_000, deductions: 0 },
+      current: { additions: 0, deductions: 250 },
+      totals: { additions: 2_000, deductions: 250 },
+      net: 1_750,
+    })
+    expect(summary.variances).toMatchObject({
+      previous: { additions: 800, deductions: 1_300 },
+      current: { additions: 900, deductions: 0 },
+      net: 400,
+    })
+    // Line 3 = 1 + 2a + 2b.
+    const original = 100_000
+    expect(original + summary.changeOrders.net + summary.variances.net).toBe(original + 1_500 + 650)
   })
 })

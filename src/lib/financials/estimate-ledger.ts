@@ -137,6 +137,8 @@ export async function contractBudgetSourceHash(input: {
   readonly estimateId: string
   readonly estimateSourceHash: string | null
   readonly adjustments: readonly ContractAdjustment[]
+  /** Change orders recorded as variances; a reclassification makes a new revision. */
+  readonly varianceChangeOrderIds?: readonly string[]
 }): Promise<string> {
   const adjustments = [...input.adjustments]
     .sort((left, right) => left.id.localeCompare(right.id))
@@ -152,6 +154,8 @@ export async function contractBudgetSourceHash(input: {
       estimateId: input.estimateId,
       estimateSourceHash: input.estimateSourceHash,
       adjustments,
+      // Left out when empty, so budgets without variances keep their hash.
+      ...(input.varianceChangeOrderIds?.length ? { variances: [...input.varianceChangeOrderIds].sort() } : {}),
     })
   )
   const digest = await crypto.subtle.digest("SHA-256", bytes)

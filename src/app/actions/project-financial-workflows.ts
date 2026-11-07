@@ -21,6 +21,7 @@ import {
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
 import {
+  linesWithVariances,
   payApplicationChangeOrders,
   type PayApplicationChangeOrder,
 } from "@/lib/financials/pay-application-change-orders"
@@ -152,6 +153,8 @@ export type ProjectOwnerPayApplicationLine = {
   readonly priorChanges: number
   readonly currentChanges: number
   readonly totalChanges: number
+  /** The part of totalChanges from variances (G703 "Variances"); set on the printed report. */
+  readonly totalVariances: number
   readonly adjustedEstimate: number
   readonly previousWorkCompleted: number
   readonly currentWorkCompleted: number
@@ -512,16 +515,8 @@ export async function getProjectOwnerPayApplicationDraft(
   const lines = await db
     .select()
     .from(projectBudgetLines)
-    .where(
-      and(
-        eq(projectBudgetLines.projectId, projectId),
-        eq(projectBudgetLines.applicationId, applicationId)
-      )
-    )
-    .orderBy(
-      asc(projectBudgetLines.csiDivision),
-      asc(projectBudgetLines.sortOrder)
-    )
+    .where(and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, applicationId)))
+    .orderBy(asc(projectBudgetLines.csiDivision), asc(projectBudgetLines.sortOrder))
 
   const ownerDetailDefault = await defaultOwnerDetail(db, organizationId, await loadOwnerContractEstimate(db, projectId, application.budgetRevisionId))
   return {
@@ -570,6 +565,7 @@ export async function getProjectOwnerPayApplicationDraft(
       priorChanges: line.priorChanges,
       currentChanges: line.currentChanges,
       totalChanges: line.totalChanges,
+      totalVariances: 0,
       adjustedEstimate: line.adjustedEstimate,
       previousWorkCompleted: line.previousWorkCompleted,
       currentWorkCompleted: line.currentWorkCompleted,
@@ -617,12 +613,11 @@ export async function getProjectOwnerPayApplicationReport(
     .where(eq(projects.id, projectId))
     .get()
   if (!project) return null
-  const changeOrders = await payApplicationChangeOrders(db, {
-    projectId,
-    applicationId,
-    budgetRevisionId: draft.budgetRevisionId,
-  })
-  return { draft, project, changeOrders }
+  const [changeOrders, lines] = await Promise.all([
+    payApplicationChangeOrders(db, { projectId, applicationId, budgetRevisionId: draft.budgetRevisionId }),
+    linesWithVariances(db, draft.budgetRevisionId, draft.lines),
+  ])
+  return { draft: { ...draft, lines }, project, changeOrders }
 }
 
 function nonnegativeAmount(value: number | null, label: string): number {

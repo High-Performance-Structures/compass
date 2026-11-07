@@ -37,6 +37,16 @@ export const PROJECT_DUPLICATE_DECISION_STATUSES = ["not_duplicate", "merged"] a
 /** Outcome of reviewing a nonstandard job number. */
 export const PROJECT_NUMBER_REVIEW_STATUSES = ["approved_exception"] as const
 
+/**
+ * How the owner contract prices the work. Fixed price: changes are
+ * renegotiated by change order, so no variances. Cost plus: the builder fee
+ * follows every cost movement (variances and change orders). Cost plus fixed
+ * fee: the fee changes only with a change order. Null follows the company
+ * default in Settings › Workflows › Variances.
+ */
+export const PROJECT_CONTRACT_TYPES = ["fixed_price", "cost_plus", "cost_plus_fixed_fee"] as const
+export type ProjectContractType = (typeof PROJECT_CONTRACT_TYPES)[number]
+
 // Column -> list maps the store checks before every write.
 export const PROJECT_LISTS = {
   department: PROJECT_DEPARTMENTS,
@@ -45,4 +55,5 @@ export const PROJECT_LISTS = {
   portfolioMapVisibility: PORTFOLIO_MAP_VISIBILITIES,
   siteLocationStatus: SITE_LOCATION_STATUSES,
   deliveryMethod: DELIVERY_METHODS,
+  contractType: PROJECT_CONTRACT_TYPES,
 }

@@ -70,7 +70,8 @@ import {
 import { cleanText } from "@/lib/shared/guards"
 import { changeOrderCompletionView } from "@/lib/domain/estimates/rules"
 import { changeOrderAcceptanceView, changeOrderExecutionLinesError } from "@/lib/domain/estimates/change-order-acceptance"
-import { changeOrderNumber } from "@/lib/change-orders/numbering"
+import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
+import { varianceTransitionAllowed, varianceView } from "@/lib/domain/estimates/variance-rules"
 import type {
   ChangeOrderAudience,
   ChangeOrderDocumentInput,
@@ -546,6 +547,7 @@ function viewModel(
     acceptance: null,
     manualAcceptance: null,
     ...changeOrderCompletionView({ ...row, kind: row.changeOrderKind, lines }, context.internal && context.canApprove),
+    ...varianceView(row, context.internal && context.canApprove),
     submittedAt: row.submittedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -553,7 +555,7 @@ function viewModel(
     canApprove,
     allowedTransitions: transitions.filter(
       (status) =>
-        status !== "synced" &&
+        status !== "synced" && varianceTransitionAllowed(row.recordType, status) &&
         !(
           row.budgetTreatment === "baseline_replacement" &&
           ["executed", "sage_pending"].includes(status)
@@ -757,7 +759,7 @@ export async function getProjectChangeOrder(
         changeKind: projectChangeOrderLines.changeKind,
         previousAmountCents: projectChangeOrderLines.previousAmountCents,
         newAmountCents: projectChangeOrderLines.newAmountCents,
-        assemblyName: projectChangeOrderLines.assemblyName,
+        assemblyName: projectChangeOrderLines.assemblyName, derivedFrom: projectChangeOrderLines.derivedFrom,
       })
       .from(projectChangeOrderLines)
       .where(eq(projectChangeOrderLines.changeOrderId, changeOrderId))
@@ -847,7 +849,7 @@ export async function createProjectChangeOrder(
       }
     }
     const existing = await context.db
-      .select({ id: projectChangeOrders.id })
+      .select(changeOrderNumberColumns)
       .from(projectChangeOrders)
       .where(eq(projectChangeOrders.projectId, projectId))
     const now = new Date().toISOString()
@@ -904,10 +906,7 @@ export async function createProjectChangeOrder(
     const row: typeof projectChangeOrders.$inferInsert = {
       id,
       projectId,
-      changeOrderNumber: changeOrderNumber(
-        context.projectNumber,
-        existing.length
-      ),
+      changeOrderNumber: changeOrderNumber(context.projectNumber, existing),
       title: requireText(input.title, "Title", 200),
       scope: requireText(input.scope, "Scope", 10_000),
       reason: cleanLimitedText(input.reason, "Reason", 4_000),
@@ -1037,13 +1036,13 @@ export async function updateProjectChangeOrder(
     const statusChanged = input.status !== existing.status
     const canApprove = context.canApprove
     if (
-      statusChanged &&
+      statusChanged && (!varianceTransitionAllowed(existing.recordType, input.status) ||
       !canTransitionChangeOrder({
         from: existing.status,
         to: input.status,
         internal: context.internal,
         canApprove,
-      })
+      }))
     ) {
       return { success: false, error: "That status transition is not allowed." }
     }
@@ -1066,7 +1065,7 @@ export async function updateProjectChangeOrder(
         ? input.kind
         : null
     if (requestedKind !== null) {
-      if (!isChoosableChangeOrderKind(requestedKind) || existingKind === "contract_version") {
+      if (!isChoosableChangeOrderKind(requestedKind) || existingKind === "contract_version" || existing.recordType === "variance") {
         return { success: false, error: "Choose how the change order is built." }
       }
       // An estimate that has been started stays the way this change order is priced.

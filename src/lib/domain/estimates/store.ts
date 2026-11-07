@@ -25,7 +25,7 @@ import type { EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
-import { CHANGE_ORDER_HISTORY_LISTS, CHANGE_ORDER_LISTS, ESTIMATE_LISTS } from "./statuses"
+import { CHANGE_ORDER_HISTORY_LISTS, CHANGE_ORDER_LINE_LISTS, CHANGE_ORDER_LISTS, ESTIMATE_LISTS } from "./statuses"
 
 /*
  * The estimates domain store: the only code that inserts, updates or deletes
@@ -227,6 +227,7 @@ export function updateChangeOrdersStatement(db: Db, where: SQL | undefined, patc
 type ChangeOrderLineInsert = typeof projectChangeOrderLines.$inferInsert
 
 export function insertChangeOrderLineStatement(db: Db, values: ChangeOrderLineInsert | readonly ChangeOrderLineInsert[]): Statement {
+  assertListFields("project_change_order_lines", values, CHANGE_ORDER_LINE_LISTS)
   return isRows(values) ? db.insert(projectChangeOrderLines).values([...values]) : db.insert(projectChangeOrderLines).values(values)
 }
 

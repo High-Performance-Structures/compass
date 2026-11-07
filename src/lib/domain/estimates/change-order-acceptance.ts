@@ -65,6 +65,8 @@ async function availabilityFor(input: {
   readonly canApprove: boolean
 }): Promise<ReturnType<typeof manualAcceptanceAvailability>> {
   if (!input.internal || !input.canApprove || !isChangeOrderStatus(input.row.status)) return null
+  // A variance is approved by staff; the owner is informed, never asked to accept.
+  if (input.row.recordType === "variance") return null
   return manualAcceptanceAvailability({
     status: input.row.status,
     kind: isChangeOrderKind(input.row.changeOrderKind) ? input.row.changeOrderKind : null,

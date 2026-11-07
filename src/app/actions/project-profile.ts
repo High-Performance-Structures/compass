@@ -28,6 +28,7 @@ import {
 import { correctProjectNumber, type ProjectNumberCorrectionInput } from "@/lib/domain/project/information-numbering"
 import {
   addCustomProjectJobStatus,
+  changeProjectContractType,
   changeProjectDeliveryMethod,
   changeProjectImportedConversationsStaffOnly,
   changeProjectMapVisibility,
@@ -201,6 +202,24 @@ export async function updateProjectImportedConversationsStaffOnly(input: {
   } catch (error) {
     console.error("Unable to update the imported conversations setting", error)
     return { success: false, error: "Unable to update the imported conversations setting." }
+  }
+}
+
+/** The project's owner contract type (decides variances and how the builder fee follows them). */
+export async function updateProjectContractType(input: {
+  readonly projectId: string
+  readonly contractType: string | null
+}): Promise<ProjectProfileResult> {
+  try {
+    const result = await changeProjectContractType(input)
+    if (result.success && result.changed) {
+      revalidateProjectProfile(input.projectId)
+      revalidatePath(`/dashboard/projects/${input.projectId}/change-orders`)
+    }
+    return plainResult(result)
+  } catch (error) {
+    console.error("Unable to update the contract type", error)
+    return { success: false, error: "Unable to update the contract type." }
   }
 }
 

@@ -2,7 +2,7 @@ import { and, eq, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectChangeOrders, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
-import { changeOrderNumber } from "@/lib/change-orders/numbering"
+import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import { estimateVersionDifference, type VersionDifference } from "@/lib/change-orders/version-difference"
 import {
   insertChangeOrderHistoryStatement,
@@ -92,7 +92,7 @@ export async function versionChangeOrderStatements(
 }> {
   const [project, existing] = await Promise.all([
     db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get(),
-    db.select({ id: projectChangeOrders.id }).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId)),
+    db.select(changeOrderNumberColumns).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId)),
   ])
   const id = crypto.randomUUID()
   const replace = input.treatment === "replace_contract"
@@ -125,12 +125,12 @@ export async function versionChangeOrderStatements(
   }
   return {
     changeOrderId: id,
-    changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing.length),
+    changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing),
     statements: [
       insertChangeOrderStatement(db, {
         id,
         projectId: input.projectId,
-        changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing.length),
+        changeOrderNumber: changeOrderNumber(project?.projectNumber ?? null, existing),
         title: replace
           ? `Estimate ${input.replacement.estimateNumber} ${to} replaces ${from}`
           : `Changes in estimate ${input.replacement.estimateNumber} ${to}`,

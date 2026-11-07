@@ -28,6 +28,8 @@ export type PayApplicationShare = {
   readonly originalEstimateCents: number
   readonly approvedChangeCents: number
   readonly adjustedBudgetCents: number
+  /** The part of approvedChangeCents that came from variances (G703 "Variances"). */
+  readonly varianceCents: number
   readonly ownerVisible: boolean
   readonly sortOrder: number
 }
@@ -51,6 +53,8 @@ export type ShareAllocation = {
   readonly name: string
   readonly sort: number
   readonly cents: number
+  /** Variance cents within `cents`. A variance with key "" stays on the cost code's own row. */
+  readonly varianceCents?: number
 }
 
 /** "Other" holds work in a cost code that no assembly or change order claims. */
@@ -94,10 +98,12 @@ export function payApplicationShares(input: {
       sortOrder: line.sortOrder,
     }
     const estimate = [...(estimateByCode.get(line.costCode)?.values() ?? [])].filter((item) => item.cents !== 0)
-    const changes = [...(changeByCode.get(line.costCode)?.values() ?? [])].filter((item) => item.cents !== 0)
+    const allChanges = [...(changeByCode.get(line.costCode)?.values() ?? [])]
+    const changes = allChanges.filter((item) => item.cents !== 0 && item.key !== "")
+    const baseVariance = allChanges.filter((item) => item.key === "").reduce((sum, item) => sum + (item.varianceCents ?? 0), 0)
     const shares: PayApplicationShare[] = []
     for (const item of estimate) {
-      shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: item.cents, approvedChangeCents: 0, adjustedBudgetCents: item.cents })
+      shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: item.cents, approvedChangeCents: 0, adjustedBudgetCents: item.cents, varianceCents: 0 })
     }
     for (const item of changes) {
       // A change tied to an assembly joins that assembly's row (AIA "changes").
@@ -108,12 +114,14 @@ export function payApplicationShares(input: {
           ...existing,
           approvedChangeCents: existing.approvedChangeCents + item.cents,
           adjustedBudgetCents: existing.adjustedBudgetCents + item.cents,
+          varianceCents: existing.varianceCents + (item.varianceCents ?? 0),
         }
         continue
       }
-      shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: 0, approvedChangeCents: item.cents, adjustedBudgetCents: item.cents })
+      shares.push({ ...base, assemblyKey: item.key, assemblyName: item.name, assemblySort: item.sort, originalEstimateCents: 0, approvedChangeCents: item.cents, adjustedBudgetCents: item.cents, varianceCents: item.varianceCents ?? 0 })
     }
     const originalLeft = line.originalEstimateCents - estimate.reduce((sum, item) => sum + item.cents, 0)
+    // Variances kept on the cost code's own row (key "") are part of what's left.
     const changeLeft = line.approvedChangeCents - changes.reduce((sum, item) => sum + item.cents, 0)
     if (shares.length === 0 || originalLeft !== 0 || changeLeft !== 0) {
       shares.push({
@@ -124,6 +132,7 @@ export function payApplicationShares(input: {
         originalEstimateCents: originalLeft,
         approvedChangeCents: changeLeft,
         adjustedBudgetCents: originalLeft + changeLeft,
+        varianceCents: baseVariance,
       })
     }
     return shares
@@ -182,6 +191,38 @@ export function contractAssemblyFor<T extends { readonly id: string; readonly na
   return assemblies.find((assembly) => assembly.name.trim().toLowerCase() === name) ?? null
 }
 
+/**
+ * A variance not tied to an assembly sits on the cost code it belongs to: it
+ * is spread over the code's estimate rows by scheduled value, and whatever of
+ * the code is outside any assembly takes its share on the code's own row
+ * (key ""), not on a row of its own.
+ */
+export function varianceAllocations(
+  costCode: string,
+  cents: number,
+  estimateAllocations: readonly ShareAllocation[],
+  originalCents: number
+): ShareAllocation[] {
+  const byKey = new Map<string, ShareAllocation>()
+  for (const allocation of estimateAllocations) {
+    if (allocation.costCode !== costCode || allocation.cents === 0) continue
+    const current = byKey.get(allocation.key)
+    byKey.set(allocation.key, current ? { ...current, cents: current.cents + allocation.cents } : allocation)
+  }
+  const assembled = [...byKey.values()]
+  const unassigned = originalCents - assembled.reduce((sum, item) => sum + item.cents, 0)
+  const targets = [...assembled, ...(unassigned !== 0 || assembled.length === 0 ? [{ costCode, key: "", name: "", sort: 0, cents: Math.max(unassigned, 0) }] : [])]
+  const parts = distributeCents(cents, targets.map((target) => Math.max(0, target.cents)))
+  return targets.map((target, index) => ({
+    costCode,
+    key: target.key,
+    name: target.name,
+    sort: target.sort,
+    cents: parts[index] ?? 0,
+    varianceCents: parts[index] ?? 0,
+  }))
+}
+
 /** The pay application shares for a contract budget revision. */
 export async function loadPayApplicationShares(
   db: ReturnType<typeof getDb>,
@@ -226,6 +267,7 @@ export async function loadPayApplicationShares(
         amountCents: projectContractBudgetAdjustments.amountCents,
         changeOrderNumber: projectChangeOrders.changeOrderNumber,
         title: projectChangeOrders.title,
+        recordType: projectChangeOrders.recordType,
         contractAssemblyId: projectContractBudgetAdjustments.contractAssemblyId,
         assemblyName: projectContractBudgetAdjustments.assemblyName,
         executedAt: projectContractBudgetAdjustments.executedAt,
@@ -241,12 +283,19 @@ export async function loadPayApplicationShares(
     return [{ costCode: line.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: line.lineTotalCents }]
   })
   const changeOrderIds = [...new Set([...adjustments].sort((a, b) => a.executedAt.localeCompare(b.executedAt)).map((row) => row.changeOrderId))]
-  const changeAllocations: ShareAllocation[] = adjustments.map((row) => {
+  const originalByCode = new Map(revisionLines.map((line) => [line.costCode, line.originalEstimateCents]))
+  const changeAllocations: ShareAllocation[] = adjustments.flatMap((row): ShareAllocation[] => {
     const assembly = contractAssemblyFor(assemblies, row)
-    if (assembly) {
-      return { costCode: row.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: row.amountCents }
+    if (row.recordType === "variance") {
+      if (assembly) {
+        return [{ costCode: row.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: row.amountCents, varianceCents: row.amountCents }]
+      }
+      return varianceAllocations(row.costCode, row.amountCents, estimateAllocations, originalByCode.get(row.costCode) ?? 0)
     }
-    return {
+    if (assembly) {
+      return [{ costCode: row.costCode, key: `asm:${assembly.id}`, name: assembly.name, sort: assembly.sortOrder, cents: row.amountCents }]
+    }
+    return [{
       costCode: row.costCode,
       key: `co:${row.changeOrderId}`,
       name: row.changeOrderNumber
@@ -254,7 +303,7 @@ export async function loadPayApplicationShares(
         : "Change order",
       sort: 500_000 + changeOrderIds.indexOf(row.changeOrderId),
       cents: row.amountCents,
-    }
+    }]
   })
   return payApplicationShares({ revisionLines, estimateAllocations, changeAllocations })
 }

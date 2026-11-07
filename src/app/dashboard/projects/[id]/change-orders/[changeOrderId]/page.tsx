@@ -10,6 +10,7 @@ import { ProjectChangeOrderDetail } from "@/components/projects/project-change-o
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { getProjectVarianceOptions } from "@/app/actions/project-variances"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 export default async function ProjectChangeOrderDetailPage({
@@ -27,6 +28,7 @@ export default async function ProjectChangeOrderDetailPage({
     getProjectChangeOrder(id, changeOrderId),
     getProjectChangeOrderFormOptions(id),
     getProjectPaperTrail(id, "change_order"),
+    getProjectVarianceOptions(id),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -36,7 +38,7 @@ export default async function ProjectChangeOrderDetailPage({
     },
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
-  const [item, formOptions, paperTrail] = loaded.data
+  const [item, formOptions, paperTrail, varianceOptions] = loaded.data
   if (!item) notFound()
 
   const backHref =
@@ -48,6 +50,7 @@ export default async function ProjectChangeOrderDetailPage({
         backHref={backHref}
         internal
         formOptions={formOptions}
+        varianceOptions={varianceOptions}
         paperTrailStatus={
           paperTrail.enabled ? (
             <PaperTrailRecordStatus

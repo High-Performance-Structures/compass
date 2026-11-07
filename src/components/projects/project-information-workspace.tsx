@@ -38,6 +38,7 @@ import { type ProjectDepartment } from "@/lib/project-branding"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { ImportedConversationsSetting } from "@/components/projects/imported-conversations-setting"
+import { ProjectContractTypeSetting } from "@/components/projects/project-contract-type-setting"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { PageHeader } from "@/components/page-header"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
@@ -452,6 +453,9 @@ export function ProjectInformationWorkspace({
             projectId={information.project.id}
             staffOnly={information.project.importedConversationsStaffOnly}
           />
+          {information.project.workspaceKind === null ? (
+            <ProjectContractTypeSetting projectId={information.project.id} contractType={information.project.contractType} />
+          ) : null}
           {information.project.projectNumber && (
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="project-suffix">Address-derived project-number suffix</Label>

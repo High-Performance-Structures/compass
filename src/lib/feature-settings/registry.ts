@@ -582,6 +582,7 @@ type FeatureSettingsTypes = {
   readonly "contract-deposits": contract.ContractDepositSettings
   readonly "contract-packets": ContractPacketSettings
   readonly "pay-applications": contract.PayApplicationSettings
+  readonly variances: contract.VarianceSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
@@ -735,18 +736,14 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     defaults: { name: "Internal", description: "Office, owner's office and yard workspaces." },
     schema: internalDepartmentSettingsSchema,
   },
-  "contract-deposits": {
-    label: "Contract deposits",
-    description: "Whether new pay applications automatically apply the contract deposit that hasn't been applied yet. Staff can change the amount on any draft pay application.",
-    defaults: { autoApplyToPayApplications: true },
-    schema: contract.contractDepositSettingsSchema,
-  },
+  "contract-deposits": contract.CONTRACT_DEPOSIT_SETTINGS_GROUP,
   "pay-applications": {
     label: "Pay applications",
     description: "How much detail the client sees on a pay application. Staff can choose a different level on any draw.",
     defaults: { ownerDetail: "division_percent" },
     schema: contract.payApplicationSettingsSchema,
   },
+  variances: contract.VARIANCE_SETTINGS_GROUP,
   "change-order-acceptance": {
     label: "Change-order acceptance",
     description: "How staff record an owner's approval that came by email, text or in person. Written approval always needs change-order approval permission.",

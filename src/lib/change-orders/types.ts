@@ -3,7 +3,7 @@ import type { ChangeOrderStatus } from "@/lib/change-orders/status"
 import type { RecordedChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 import type { ManualAcceptanceAvailability, ManualAcceptanceInput } from "@/lib/change-orders/manual-acceptance"
-import type { ChangeOrderAcceptanceMethod } from "@/lib/domain/estimates/statuses"
+import type { ChangeOrderAcceptanceMethod, ChangeOrderRecordType } from "@/lib/domain/estimates/statuses"
 
 /** Shapes of project change orders shared by actions, print reports, and views. */
 export type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
@@ -65,7 +65,16 @@ export type ProjectChangeOrderFormOptions = {
 export type ProjectChangeOrderItem = {
   readonly id: string
   readonly projectId: string
+  /** CO-001 for a change order, V-001 for a variance. */
   readonly changeOrderNumber: string
+  /** A variance is a cost-plus cost movement: staff approve it, the owner is informed. */
+  readonly recordType: ChangeOrderRecordType
+  /** The change-order number a reclassified variance had. */
+  readonly formerChangeOrderNumber: string | null
+  readonly canEditVarianceLines: boolean
+  readonly canApproveVariance: boolean
+  /** Staff may reclassify it between change order and variance (when the project allows). */
+  readonly canReclassify: boolean
   readonly title: string
   readonly scope: string
   readonly reason: string | null
@@ -124,6 +133,8 @@ export type ProjectChangeOrderItem = {
     readonly newAmountCents: number | null
     /** The contract assembly the line adds to or reduces. */
     readonly assemblyName: string | null
+    /** Set on the builder fee and insurance lines Compass added on approval. */
+    readonly derivedFrom: string | null
   }[]
   readonly documents: readonly {
     readonly id: string

@@ -23,6 +23,7 @@ const line = {
   priorChanges: 0,
   currentChanges: 0,
   totalChanges: 0,
+  totalVariances: 0,
   adjustedEstimate: 44_497.69,
   previousWorkCompleted: 0,
   currentWorkCompleted: 44_497.69,
@@ -33,9 +34,12 @@ const line = {
   ownerVisible: true,
 }
 
-function report(ownerDetail: ProjectOwnerPayApplicationReport["draft"]["ownerDetail"]): string {
+function report(
+  ownerDetail: ProjectOwnerPayApplicationReport["draft"]["ownerDetail"],
+  changeOrders: ProjectOwnerPayApplicationReport["changeOrders"] = []
+): string {
   const value: ProjectOwnerPayApplicationReport = {
-    changeOrders: [],
+    changeOrders,
     project: {
       name: "Example Residence",
       projectNumber: "H-100-1000",
@@ -84,12 +88,31 @@ describe("PayApplicationClientReport", () => {
     expect(html).toContain("size: letter landscape")
     expect(html).toContain("Reviewed and approved")
     expect(html).toContain("Reviewer signature")
-    expect(html).toContain("Approved this month · Change order CO-001")
+    expect(html).toContain("Change order CO-001 $1,700.00")
+    expect(html).toContain("2a</td><td>Net change by change orders")
+    expect(html).toContain("2b</td><td>Net change by variances")
+    expect(html).toContain("Change orders<small>C</small>")
+    expect(html).toContain("Variances<small>D</small>")
+    expect(html).not.toContain("Variance schedule")
     expect(html).toContain("$36,068.20 of the deposit carries forward")
     expect(html).toContain("Footer Labor &amp; Materials")
     expect(html).toContain("$44,497.69")
     expect(html).toContain("100%")
     expect(html).not.toContain("03 31 00 · Structural Concrete")
+  })
+
+  it("prints a variance schedule and line 2b from the variances in the contract", () => {
+    const html = report("cost_code", [
+      {
+        id: "co-1", recordType: "variance", number: "V-001", title: "Waterproofing membrane price increase", executedAt: "2026-10-15T12:00:00.000Z",
+        costCodes: ["07 10 00"], firstBilled: null, name: "V-001 · Waterproofing membrane price increase", amount: 1_700, current: true, assemblies: [],
+      },
+    ])
+    expect(html).toContain("Variance schedule")
+    expect(html).toContain("Waterproofing membrane price increase")
+    expect(html).toContain("Application 1 (this period)")
+    expect(html).toMatch(/2a<\/td><td>Net change by change orders<\/td><td class="num">\$0\.00/)
+    expect(html).toMatch(/2b<\/td><td>Net change by variances<\/td><td class="num">\$1,700\.00/)
   })
 
   it("lists cost codes under each assembly when the client sees assembly detail", () => {

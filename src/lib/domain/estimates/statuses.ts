@@ -40,6 +40,19 @@ export const CHANGE_ORDER_KINDS = ["estimate", "description", "replacement", "co
 export type ChangeOrderKind = (typeof CHANGE_ORDER_KINDS)[number]
 
 /**
+ * What a change-order row records. A change order changes the contract and
+ * needs the owner's acceptance. A variance is a cost-plus cost movement on a
+ * cost code: staff approve it, the owner is informed, and it is numbered on
+ * its own (V-001). See src/lib/change-orders/variances.ts.
+ */
+export const CHANGE_ORDER_RECORD_TYPES = ["change_order", "variance"] as const
+export type ChangeOrderRecordType = (typeof CHANGE_ORDER_RECORD_TYPES)[number]
+
+/** Lines Compass adds to a variance or change order, recomputed on approval. */
+export const CHANGE_ORDER_LINE_DERIVATIONS = ["builder_fee", "insurance"] as const
+export type ChangeOrderLineDerivation = (typeof CHANGE_ORDER_LINE_DERIVATIONS)[number]
+
+/**
  * How an owner's acceptance of a change order was recorded outside a signed
  * document: staff upload written approval, staff sign off a verbal approval,
  * or the owner accepts in their own workspace.
@@ -52,7 +65,9 @@ export const CHANGE_ORDER_LISTS = {
   status: CHANGE_ORDER_STATUSES,
   changeOrderKind: CHANGE_ORDER_KINDS,
   acceptanceMethod: CHANGE_ORDER_ACCEPTANCE_METHODS,
+  recordType: CHANGE_ORDER_RECORD_TYPES,
 }
+export const CHANGE_ORDER_LINE_LISTS = { derivedFrom: CHANGE_ORDER_LINE_DERIVATIONS }
 export const CHANGE_ORDER_HISTORY_LISTS = { fromStatus: CHANGE_ORDER_STATUSES, toStatus: CHANGE_ORDER_STATUSES }
 
 /**

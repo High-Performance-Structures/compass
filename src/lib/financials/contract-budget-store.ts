@@ -262,6 +262,7 @@ export async function rebuildProjectContractBudget(input: {
       contractAssemblyId: projectChangeOrderLines.contractAssemblyId,
       assemblyName: projectChangeOrderLines.assemblyName,
       executedAt: projectChangeOrders.executedAt,
+      recordType: projectChangeOrders.recordType,
     })
     .from(projectChangeOrderLines)
     .innerJoin(
@@ -305,6 +306,7 @@ export async function rebuildProjectContractBudget(input: {
     estimateId: accepted.id,
     estimateSourceHash: accepted.sourceHash,
     adjustments,
+    varianceChangeOrderIds: [...new Set(changeRows.filter((row) => row.recordType === "variance").map((row) => row.changeOrderId))],
   })
   const matchingRows = await input.db
     .select({
