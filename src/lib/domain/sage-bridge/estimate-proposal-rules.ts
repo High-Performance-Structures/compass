@@ -5,19 +5,35 @@ import { formatCents } from "@/lib/format"
 
 /*
  * Pure rules for sending an accepted estimate to Sage 100 Contractor as the
- * job's proposal (ProposalAddRq): one proposal line per cost code (the
- * contract budget's scheduled values rolled up by cost code, in CSI division
- * order, builder fees last on their Sage fee codes), described by the Sage
- * cost code name and never by an assembly or item name, whatever view the
- * estimate uses; the whole amount in Other. When the company sends it, the
- * job budget at cost (BudgetAddRq) the same way. No database or network access.
+ * job's proposal (ProposalAddRq): one proposal line per estimate line, each on
+ * its own Sage cost code (several lines may share one), in CSI division, cost
+ * code and estimate order, builder fees last on their Sage fee codes. Each is
+ * described by the estimate line's own text (the cost code name when blank),
+ * never by an assembly name, whatever view the client sees; the whole sell
+ * amount in Other. Taxable lines carry "Taxable" in UserDefined1 and the tax
+ * in Memo, so Sage tracks them. When the company sends it, the job budget at
+ * cost (BudgetAddRq) goes one line per cost code. No database or network access.
  */
 
-export type EstimateContractLine = {
+/** An estimate line as it flows into the contract. */
+export type EstimateProposalLine = {
   readonly costCode: string
-  /** The budget line's own text; the proposal uses the Sage cost code name instead. */
+  /** The estimate's name for the cost code, used when the line has no text. */
+  readonly costCodeName: string
+  readonly divisionCode: string
   readonly description: string
-  /** The line's scheduled value (original contract amount), in cents. */
+  /** The line's sell amount in the contract (cost, markup and tax), in cents. */
+  readonly amountCents: number
+  readonly sortOrder: number
+  /** The line, or any of its cost items, is taxable. */
+  readonly taxable: boolean
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+}
+
+/** A builder fee (overhead, margin, contingency) as its own contract line. */
+export type EstimateFeeLine = {
+  readonly costCode: string
   readonly amountCents: number
 }
 
@@ -39,6 +55,11 @@ type PlannedLine = {
   readonly amountCents: number
   readonly sageCostCodeName: string | null
   readonly sageCostCodeRecord: string | null
+  readonly taxable: boolean
+  /** "Taxable" for a taxable line, else empty. */
+  readonly userDefined1: string
+  /** The tax name and rate for a taxable line, else empty. */
+  readonly memo: string
 }
 
 export type SageEstimatePlan = {
@@ -52,17 +73,50 @@ export type SageEstimatePlan = {
   readonly blockers: readonly string[]
 }
 
-function planLine(costCode: string, amountCents: number, mapCostCode: (code: string) => SageCostCodeMapping): PlannedLine {
+type MappedCode = Pick<PlannedLine, "costCode" | "sageCostCodeName" | "sageCostCodeRecord">
+
+function mapCode(costCode: string, mapCostCode: (code: string) => SageCostCodeMapping): MappedCode {
   const code = canonicalFeeCostCode(costCode.trim())
   const mapping = code ? mapCostCode(code) : null
   const mapped = mapping?.status === "mapped" ? mapping : null
+  return { costCode: code, sageCostCodeName: mapped?.sageName ?? null, sageCostCodeRecord: mapped?.sageRecordNumber ?? null }
+}
+
+/** A line described by its Sage cost code name (budget lines and builder fees). */
+function costCodeLine(costCode: string, amountCents: number, mapCostCode: (code: string) => SageCostCodeMapping): PlannedLine {
+  const mapped = mapCode(costCode, mapCostCode)
   return {
-    costCode: code,
-    // The Sage cost code's name; an assembly or item name never reaches Sage.
-    description: sageDescription(mapped?.sageName ?? code),
+    ...mapped,
+    description: sageDescription(mapped.sageCostCodeName ?? mapped.costCode),
     amountCents,
-    sageCostCodeName: mapped?.sageName ?? null,
-    sageCostCodeRecord: mapped?.sageRecordNumber ?? null,
+    taxable: false,
+    userDefined1: "",
+    memo: "",
+  }
+}
+
+const SAGE_TAXABLE = "Taxable"
+/** Sage keeps Memo as text; Compass sends a short tax note. */
+const SAGE_MEMO_MAX = 100
+
+function taxMemo(line: EstimateProposalLine): string {
+  const name = line.taxName?.trim() ?? ""
+  const rate = line.taxRateBasisPoints > 0 ? `${Number((line.taxRateBasisPoints / 100).toFixed(4))}%` : ""
+  return sageDescription([name, rate].filter(Boolean).join(" "), SAGE_MEMO_MAX)
+}
+
+/** An estimate line as its own proposal line: its own text, never an assembly name. */
+function estimateLine(line: EstimateProposalLine, mapCostCode: (code: string) => SageCostCodeMapping): PlannedLine {
+  const mapped = mapCode(line.costCode, mapCostCode)
+  const description =
+    sageDescription(line.description) || sageDescription(line.costCodeName) || sageDescription(mapped.sageCostCodeName ?? mapped.costCode)
+  return {
+    ...mapped,
+    description,
+    amountCents: line.amountCents,
+    taxable: line.taxable,
+    userDefined1: line.taxable ? SAGE_TAXABLE : "",
+    memo: line.taxable ? taxMemo(line) : "",
   }
 }
 
@@ -88,12 +142,48 @@ function rollUpByCostCode(lines: readonly { readonly costCode: string; readonly 
   return [...byCode.entries()].filter(([, cents]) => cents !== 0).sort(([left], [right]) => costCodeOrder(left, right))
 }
 
-function unmappedLabel(line: PlannedLine): string {
-  return `${line.costCode || "No cost code"} (${formatCents(line.amountCents)})`
+/** Proposal order: CSI division, cost code, then the estimate's own order; other codes after; builder fees last. */
+function proposalOrder(
+  left: { readonly line: PlannedLine; readonly divisionCode: string; readonly sortOrder: number },
+  right: { readonly line: PlannedLine; readonly divisionCode: string; readonly sortOrder: number }
+): number {
+  return (
+    costCodeOrder(left.line.costCode, right.line.costCode) ||
+    left.divisionCode.localeCompare(right.divisionCode) ||
+    left.line.costCode.localeCompare(right.line.costCode) ||
+    left.sortOrder - right.sortOrder
+  )
+}
+
+/**
+ * A rounding difference from the contract total (at most a cent a line) goes
+ * on the largest line, the first one in order on a tie; a bigger one is left
+ * for the total check to flag.
+ */
+function settleRounding(lines: readonly PlannedLine[], contractTotalCents: number): readonly PlannedLine[] {
+  const difference = contractTotalCents - lines.reduce((sum, line) => sum + line.amountCents, 0)
+  if (difference === 0 || Math.abs(difference) > lines.length) return lines
+  let largest = 0
+  lines.forEach((line, index) => {
+    if (Math.abs(line.amountCents) > Math.abs(lines[largest]?.amountCents ?? 0)) largest = index
+  })
+  return lines.map((line, index) => (index === largest ? { ...line, amountCents: line.amountCents + difference } : line))
+}
+
+/** Cost codes Sage doesn't know, each with its total, for staff. */
+function unmappedLabels(lines: readonly PlannedLine[]): readonly string[] {
+  const byCode = new Map<string, number>()
+  for (const line of lines) {
+    if (line.sageCostCodeRecord) continue
+    const code = line.costCode || "No cost code"
+    byCode.set(code, (byCode.get(code) ?? 0) + line.amountCents)
+  }
+  return [...byCode.entries()].map(([code, cents]) => `${code} (${formatCents(cents)})`)
 }
 
 export function planSageEstimate(input: {
-  readonly contractLines: readonly EstimateContractLine[]
+  readonly estimateLines: readonly EstimateProposalLine[]
+  readonly feeLines: readonly EstimateFeeLine[]
   readonly contractTotalCents: number
   readonly costLines: readonly EstimateCostLine[]
   readonly sendBudget: boolean
@@ -102,7 +192,20 @@ export function planSageEstimate(input: {
   readonly sageProposal: SageProposalSummary | null
 }): SageEstimatePlan {
   const blockers: string[] = []
-  const proposalLines = rollUpByCostCode(input.contractLines).map(([code, cents]) => planLine(code, cents, input.mapCostCode))
+  const ordered = [
+    ...input.estimateLines
+      .filter((line) => line.amountCents !== 0)
+      .map((line) => ({ line: estimateLine(line, input.mapCostCode), divisionCode: line.divisionCode.trim(), sortOrder: line.sortOrder })),
+    ...rollUpByCostCode(input.feeLines).map(([code, cents], index) => ({
+      line: costCodeLine(code, cents, input.mapCostCode),
+      divisionCode: "",
+      sortOrder: index,
+    })),
+  ].sort(proposalOrder)
+  const proposalLines = settleRounding(
+    ordered.map((entry) => entry.line),
+    input.contractTotalCents
+  )
   const proposalTotalCents = proposalLines.reduce((sum, line) => sum + line.amountCents, 0)
   if (proposalLines.length === 0) blockers.push("The accepted estimate has no contract lines with an amount.")
   if (proposalTotalCents !== input.contractTotalCents) {
@@ -113,11 +216,10 @@ export function planSageEstimate(input: {
   if (input.sendBudget) {
     budgetLines = rollUpByCostCode(
       input.costLines.filter((line) => line.costCode.trim()).map((line) => ({ costCode: line.costCode, amountCents: line.costCents }))
-    ).map(([code, cents]) => planLine(code, cents, input.mapCostCode))
+    ).map(([code, cents]) => costCodeLine(code, cents, input.mapCostCode))
   }
 
-  const unmapped = [...proposalLines, ...(budgetLines ?? [])].filter((line) => !line.sageCostCodeRecord)
-  const unmappedLines = [...new Set(unmapped.map(unmappedLabel))]
+  const unmappedLines = [...new Set([...unmappedLabels(proposalLines), ...unmappedLabels(budgetLines ?? [])])]
   if (unmappedLines.length > 0) {
     blockers.push(`${unmappedLines.length === 1 ? "A line has" : `${unmappedLines.length} lines have`} no Sage cost code: ${unmappedLines.join("; ")}.`)
   }
@@ -130,7 +232,7 @@ export function planSageEstimate(input: {
   return { proposalLines, proposalTotalCents, budgetLines, unmappedLines, blockers }
 }
 
-/** The writer's line shape: decimal amounts, the whole amount in Other. */
+/** The writer's budget line shape: decimal amounts, the whole amount in Other. */
 export function sageEstimateWriterLines(lines: readonly PlannedLine[]): readonly {
   readonly description: string
   readonly costCodeRecordNumber: string
@@ -140,5 +242,20 @@ export function sageEstimateWriterLines(lines: readonly PlannedLine[]): readonly
     description: line.description,
     costCodeRecordNumber: (line.sageCostCodeRecord ?? "").replace(/\.0+$/, ""),
     otherAmount: sageAmount(line.amountCents),
+  }))
+}
+
+/** The writer's proposal line shape: a budget line plus UserDefined1 ("Taxable") and Memo. */
+export function sageProposalWriterLines(lines: readonly PlannedLine[]): readonly {
+  readonly description: string
+  readonly costCodeRecordNumber: string
+  readonly otherAmount: string
+  readonly userDefined1: string
+  readonly memo: string
+}[] {
+  return sageEstimateWriterLines(lines).map((line, index) => ({
+    ...line,
+    userDefined1: lines[index]?.userDefined1 ?? "",
+    memo: lines[index]?.memo ?? "",
   }))
 }

@@ -13,8 +13,9 @@ import { formatCents, formatDateTime } from "@/lib/format"
 
 /*
  * The accepted estimate's Sage sync for office staff: queued, sent, failed or
- * needs attention, the proposal lines Compass sends (cost code, description,
- * amount, total), and Send to Sage / Retry.
+ * needs attention, the proposal lines Compass sends (one per estimate line:
+ * cost code, the line's description, Taxable, amount, total), and Send to
+ * Sage / Retry. Staff-only; the client keeps seeing the assembly view.
  */
 
 const SENDING_REFRESH_MS = 10_000
@@ -102,19 +103,22 @@ export function EstimateSageSyncPanel({
               <tr className="text-left text-muted-foreground">
                 <th className="border-b py-1 pr-2 font-medium">Sage cost code</th>
                 <th className="border-b py-1 pr-2 font-medium">Description</th>
+                <th className="border-b py-1 pr-2 font-medium">Tax</th>
                 <th className="border-b py-1 text-right font-medium">Amount</th>
               </tr>
             </thead>
             <tbody>
-              {state.proposal.lines.map((line) => (
-                <tr key={`${line.costCode}-${line.description}`}>
+              {state.proposal.lines.map((line, index) => (
+                // Lines may repeat a cost code and description; their order is fixed.
+                <tr key={index}>
                   <td className="border-b py-1 pr-2 align-top">{line.sageCostCodeName ?? <span className="text-destructive">{line.costCode}: no Sage cost code</span>}</td>
                   <td className="border-b py-1 pr-2 align-top">{line.description}</td>
+                  <td className="border-b py-1 pr-2 align-top">{line.taxable ? "Taxable" : ""}</td>
                   <td className="border-b py-1 text-right align-top tabular-nums">{formatCents(line.amountCents)}</td>
                 </tr>
               ))}
               <tr>
-                <td className="py-1 font-medium" colSpan={2}>Total</td>
+                <td className="py-1 font-medium" colSpan={3}>Total</td>
                 <td className="py-1 text-right font-medium tabular-nums">{formatCents(state.proposal.totalCents)}</td>
               </tr>
             </tbody>
