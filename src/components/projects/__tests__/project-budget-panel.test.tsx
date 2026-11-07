@@ -82,6 +82,7 @@ function budgetSummary(): ProjectBudgetSummary {
     },
     divisions: lines.map(budgetDivision),
     allLines: lines,
+    assemblyDetails: [],
   }
 }
 

@@ -31,6 +31,7 @@ import {
 } from "@/components/projects/project-budget-panel"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
+import { ProjectEstimateReportPhases } from "@/components/projects/project-estimate-report-phases"
 import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { Badge } from "@/components/ui/badge"
@@ -358,6 +359,19 @@ export default async function OwnerBudgetPage({
                 <ProjectBudgetG703Table
                   summary={budget}
                   showVisibility={false}
+                />
+              </section>
+            )}
+
+            {budget.assemblyDetails.length > 0 && (
+              <section className="mt-6 border bg-background p-4">
+                <h2 className="text-sm font-semibold">Assembly details</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Line items as shown on your signed estimate.
+                </p>
+                <ProjectEstimateReportPhases
+                  phases={budget.assemblyDetails}
+                  reportMode="assembly_items"
                 />
               </section>
             )}

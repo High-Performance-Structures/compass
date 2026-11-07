@@ -42,7 +42,7 @@ Use **Request pricing / alternative** when you need another option or clarificat
 
 ## Read Budget and Pay Applications {#budget}
 
-**Budget / G703** shows the approved Schedule of Values and current published payment progress. Pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date.
+**Budget / G703** shows the approved Schedule of Values and current published payment progress, at the same level of detail as your signed estimate: if the estimate listed assemblies with subtotals, the budget does too. Assemblies whose line items the estimate showed also list those items under **Assembly details**. Pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date.
 
 Use **Open PDF** to review the published application in a new view or **Save** to download a copy. If Compass says current detail is being reconciled, rely on the published application PDF and contact the project team before acting on line-level detail. This page is for review; it does not submit payment or alter accounting records.
 
