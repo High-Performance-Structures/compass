@@ -17,7 +17,7 @@ import {
   projectContractBudgetRevisions,
 } from "@/db/schema-estimates"
 import {
-  BUDGET_PROJECTION_SOURCE,
+  NON_IMPORTED_BILL_SOURCES,
   COMPASS_DRAW_SOURCE,
   IMPORTED_DRAW_UNBILLED_STATUSES,
 } from "@/lib/domain/financials/rules"
@@ -314,7 +314,7 @@ const SQL_LIST = (values: readonly string[]): string => values.map((value) => `'
 const PAYABLE_DRAW_GUARD = `(SELECT COUNT(*) FROM project_budget_applications
     WHERE id = ? AND project_id = ?
       AND ((source_system = '${COMPASS_DRAW_SOURCE}' AND status = 'billed')
-        OR (source_system NOT IN (${SQL_LIST([COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE])})
+        OR (source_system NOT IN (${SQL_LIST(NON_IMPORTED_BILL_SOURCES)})
           AND status NOT IN (${SQL_LIST(IMPORTED_DRAW_UNBILLED_STATUSES)})
           AND current_payment_due > 0
           AND NOT EXISTS (SELECT 1 FROM pay_application_prepaid_marks
@@ -549,7 +549,7 @@ export async function markDrawPaidBeforeCompass(database: D1Database, input: Pre
         ) SELECT ?, ?, ?, ?, ?, ?, ?
         WHERE (SELECT COUNT(*) FROM project_budget_applications
             WHERE id = ? AND project_id = ?
-              AND source_system NOT IN (${SQL_LIST([COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE])})
+              AND source_system NOT IN (${SQL_LIST(NON_IMPORTED_BILL_SOURCES)})
               AND status NOT IN (${SQL_LIST(IMPORTED_DRAW_UNBILLED_STATUSES)})) = 1
           AND ${NO_ACTIVE_DRAW_PAYMENTS}
           AND NOT EXISTS (SELECT 1 FROM pay_application_prepaid_marks WHERE application_id = ? AND released_at IS NULL)`)

@@ -6,7 +6,7 @@ import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 
-import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -54,6 +54,7 @@ import {
   availableDepositForApplication,
   refreshAutoDepositPayApplications,
   draftSplitIsStale,
+  priorPayApplicationCondition,
   refreshOwnerPayApplication,
   shareLineRow,
   syncDraftPayApplication,
@@ -1290,14 +1291,7 @@ export async function createProjectOwnerPayApplicationDraft(
     const priorApplications = await db
       .select()
       .from(projectBudgetApplications)
-      .where(
-        and(
-          eq(projectBudgetApplications.projectId, projectId),
-          ne(projectBudgetApplications.status, "budget_current"),
-          ne(projectBudgetApplications.status, "budget_superseded"),
-          ne(projectBudgetApplications.status, "building")
-        )
-      )
+      .where(priorPayApplicationCondition(projectId))
       .orderBy(
         desc(projectBudgetApplications.periodTo),
         desc(projectBudgetApplications.createdAt)

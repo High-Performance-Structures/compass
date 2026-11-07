@@ -9,7 +9,7 @@ import {
   payments,
 } from "@/db/schema-netsuite"
 import {
-  BUDGET_PROJECTION_SOURCE,
+  NON_IMPORTED_BILL_SOURCES,
   COMPASS_DRAW_SOURCE,
   IMPORTED_DRAW_UNBILLED_STATUSES,
   drawPaymentTarget,
@@ -121,8 +121,8 @@ async function readActivePrepaidMarks(db: Db, scope: ProjectReceivableScope): Pr
 
 /**
  * Draws that are billed items, in SQL: Compass draws approved for billing,
- * and imported (Sage or Drive) draws that are not drafts, budget views or
- * void. rules.ts `drawPaymentTarget` makes the final call on each row.
+ * and imported (Sage or Drive) draws that are not drafts, budget views, Sage
+ * job-cost snapshots or void. rules.ts `drawPaymentTarget` makes the final call on each row.
  */
 function billedDrawCondition(): SQL | undefined {
   return or(
@@ -131,7 +131,7 @@ function billedDrawCondition(): SQL | undefined {
       eq(projectBudgetApplications.status, "billed"),
     ),
     and(
-      notInArray(projectBudgetApplications.sourceSystem, [COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE]),
+      notInArray(projectBudgetApplications.sourceSystem, [...NON_IMPORTED_BILL_SOURCES]),
       notInArray(projectBudgetApplications.status, [...IMPORTED_DRAW_UNBILLED_STATUSES]),
     ),
   )
