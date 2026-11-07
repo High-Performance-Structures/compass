@@ -13,7 +13,7 @@ import {
 import { IconLoader2 } from "@tabler/icons-react"
 import type { SchedulePublicationState } from "./use-schedule-publication"
 
-/** Publish-schedule and move-to-draft confirmations. */
+/** Publish-schedule, move-to-draft and treat-as-never-published confirmations. */
 export function SchedulePublishDialogs({
   publication,
 }: {
@@ -31,6 +31,10 @@ export function SchedulePublishDialogs({
     isMovingToDraft,
     handlePublish,
     handleMoveToDraft,
+    neverPublishedOpen,
+    setNeverPublishedOpen,
+    isTreatingAsNeverPublished,
+    handleTreatAsNeverPublished,
   } = publication
   return (
     <>
@@ -103,6 +107,32 @@ export function SchedulePublishDialogs({
           <Button onClick={handleMoveToDraft} disabled={isMovingToDraft}>
             {isMovingToDraft && <IconLoader2 className="mr-1.5 size-4 animate-spin" />}
             Move to draft
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={neverPublishedOpen} onOpenChange={setNeverPublishedOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Treat schedule as never published?</DialogTitle>
+          <DialogDescription>
+            Compass will stop asking for change reasons until this schedule is
+            published again, and the next publish counts as the first one.
+            Earlier publications stay in the history.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setNeverPublishedOpen(false)}
+            disabled={isTreatingAsNeverPublished}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleTreatAsNeverPublished} disabled={isTreatingAsNeverPublished}>
+            {isTreatingAsNeverPublished && <IconLoader2 className="mr-1.5 size-4 animate-spin" />}
+            Treat as never published
           </Button>
         </div>
       </DialogContent>

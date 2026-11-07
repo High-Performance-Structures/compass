@@ -880,6 +880,8 @@ export const projects = sqliteTable("projects", {
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),
+  /** Publications before this time no longer count ("Treat as never published", 0296). */
+  schedulePublicationResetAt: text("schedule_publication_reset_at"),
   /** Imported (e.g. Buildertrend) conversations stay internal-staff only, e.g. under a legal hold (0287). */
   importedConversationsStaffOnly: integer("imported_conversations_staff_only", { mode: "boolean" })
     .notNull()

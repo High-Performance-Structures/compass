@@ -40,7 +40,7 @@ export type SchedulePublicationStatus = {
   readonly publishedAt: string | null
   readonly publishedBy: string | null
   readonly changeReason: string | null
-  /** True once people have published this schedule, even if it is now a draft. */
+  /** True once people have published this schedule, even if it is now a draft, until staff treat it as never published. */
   readonly shiftReasonRequired: boolean
 }
 
@@ -384,6 +384,63 @@ export async function moveScheduleToDraft(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to move the schedule to draft.",
+    }
+  }
+}
+
+/**
+ * Treat a draft schedule as never published. Earlier publications stay in
+ * the history but stop counting: edits need no shift reasons and the next
+ * publish is a first publication.
+ */
+export async function treatScheduleAsNeverPublished(
+  projectId: string
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  try {
+    const context = await scheduleWriteContext()
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    if (!canViewWorkingSchedule(user.role)) {
+      return { success: false, error: "Only internal project staff can change schedule publication." }
+    }
+    await requireProject(db, projectId, organizationId)
+    if (!(await latestSchedulePublication(db, projectId))) {
+      return { success: false, error: "This schedule has never been published." }
+    }
+
+    const resetAt = new Date().toISOString()
+    const changed = await updateProjectsReturningIds(
+      db,
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, organizationId),
+        eq(projects.schedulePublished, false)
+      ),
+      { schedulePublicationResetAt: resetAt },
+    )
+    if (changed.length === 0) {
+      return { success: false, error: "Move the schedule to draft first." }
+    }
+
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.publication_reset",
+      entityType: "project_schedule",
+      entityId: projectId,
+      summary: "Treated the draft schedule as never published. Earlier publications stay in history.",
+      createdAt: resetAt,
+    })
+    revalidateSchedulePublicationPaths(projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to treat schedule as never published", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to treat the schedule as never published.",
     }
   }
 }

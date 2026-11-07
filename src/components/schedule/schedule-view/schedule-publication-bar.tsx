@@ -1,20 +1,25 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { IconSend, IconEyeOff } from "@tabler/icons-react"
+import { IconSend, IconEyeOff, IconRestore } from "@tabler/icons-react"
 import type { SchedulePublicationStatus } from "@/app/actions/schedule-publications"
 
-/** Published or draft state, with Publish and Move to draft for managers. */
+/**
+ * Published or draft state, with Publish, Move to draft and (for a draft that
+ * was published before) Treat as never published for managers.
+ */
 export function SchedulePublicationBar({
   publicationStatus,
   canManagePublication,
   setPublishOpen,
   setMoveToDraftOpen,
+  setNeverPublishedOpen,
 }: {
   readonly publicationStatus: SchedulePublicationStatus
   readonly canManagePublication: boolean
   readonly setPublishOpen: (open: boolean) => void
   readonly setMoveToDraftOpen: (open: boolean) => void
+  readonly setNeverPublishedOpen: (open: boolean) => void
 }) {
   return (
     <div
@@ -51,9 +56,24 @@ export function SchedulePublicationBar({
           Move to draft
         </Button>
       )}
+      {canManagePublication && !publicationStatus.hasPublishedSchedule && publicationStatus.publishedAt && (
+        <Button
+          className="ml-auto h-7 shrink-0 px-2 text-xs"
+          size="sm"
+          variant="outline"
+          onClick={() => setNeverPublishedOpen(true)}
+        >
+          <IconRestore className="mr-1 size-3.5" />
+          Treat as never published
+        </Button>
+      )}
       {canManagePublication && (!publicationStatus.hasPublishedSchedule || publicationStatus.hasUnpublishedChanges) && (
         <Button
-          className={publicationStatus.hasPublishedSchedule ? "h-7 shrink-0 px-2 text-xs" : "ml-auto h-7 shrink-0 px-2 text-xs"}
+          className={
+            publicationStatus.hasPublishedSchedule || publicationStatus.publishedAt
+              ? "h-7 shrink-0 px-2 text-xs"
+              : "ml-auto h-7 shrink-0 px-2 text-xs"
+          }
           size="sm"
           onClick={() => setPublishOpen(true)}
         >
