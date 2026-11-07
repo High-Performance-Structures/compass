@@ -14,3 +14,11 @@ export type SageVendorCertificateSyncStatus = (typeof SAGE_VENDOR_CERTIFICATE_SY
 /** One change order or variance sent to Sage as an approved prime change order. */
 export const SAGE_CHANGE_ORDER_EXPORT_STATUSES = ["queued", "running", "succeeded", "failed"] as const
 export type SageChangeOrderExportStatus = (typeof SAGE_CHANGE_ORDER_EXPORT_STATUSES)[number]
+
+/**
+ * An accepted estimate's sync to Sage (job if missing → proposal → budget
+ * when the company sends it). "waiting_for_job" holds until Sage has the job;
+ * "needs_attention" is a guard that stopped it until staff fix and retry.
+ */
+export const SAGE_ESTIMATE_EXPORT_STATUSES = ["queued", "waiting_for_job", "running", "succeeded", "failed", "needs_attention"] as const
+export type SageEstimateExportStatus = (typeof SAGE_ESTIMATE_EXPORT_STATUSES)[number]

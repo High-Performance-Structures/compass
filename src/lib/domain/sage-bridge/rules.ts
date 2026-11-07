@@ -14,6 +14,7 @@ export const SAGE_BRIDGE_HEARTBEAT_IDS = [
   "tax-catalog-poller",
   "vendor-certificate-writer",
   "change-order-writer",
+  "estimate-writer",
   "prime-change-order-reader",
 ] as const
 

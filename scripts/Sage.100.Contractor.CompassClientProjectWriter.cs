@@ -190,6 +190,10 @@ namespace CompassSageClientProjectWriter
                 return RunChangeOrderDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--change-order-run", StringComparison.OrdinalIgnoreCase))
                 return RunChangeOrdersOnly();
+            if (args.Length > 0 && String.Equals(args[0], "--estimate-diagnose", StringComparison.OrdinalIgnoreCase))
+                return RunEstimateDiagnostics();
+            if (args.Length > 0 && String.Equals(args[0], "--estimate-run", StringComparison.OrdinalIgnoreCase))
+                return RunEstimatesOnly();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -213,6 +217,9 @@ namespace CompassSageClientProjectWriter
                 RunVendorCertificatesAfterWriterRun();
                 // Change orders last, only with SAGE_CHANGE_ORDER_WRITES_ENABLED.
                 RunChangeOrdersAfterWriterRun();
+                // Accepted estimates last, only with SAGE_ESTIMATE_WRITES_ENABLED; their
+                // job, if it was just added above, is already in Sage.
+                RunEstimatesAfterWriterRun();
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }

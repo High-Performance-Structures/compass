@@ -707,6 +707,12 @@
     "sageContactSnapshots": [
       "src/lib/domain/sage-bridge/contact-store.ts"
     ],
+    "sageEstimateExports": [
+      "src/lib/domain/sage-bridge/estimate-store.ts"
+    ],
+    "sageJobProposalReads": [
+      "src/lib/domain/sage-bridge/estimate-store.ts"
+    ],
     "sageLaborLines": [
       "src/lib/shop-tickets/sage-labor-ingest.ts"
     ],
@@ -948,7 +954,7 @@
     "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1039,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
-    "src/lib/feature-settings/registry.ts": 997,
+    "src/lib/feature-settings/registry.ts": 992,
     "src/lib/notifications/create-event.ts": 843,
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,

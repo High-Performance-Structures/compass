@@ -131,6 +131,20 @@ async function acceptProjectEstimate(input: {
     }
   }
 
+  // The accepted contract estimate goes to Sage automatically when the company
+  // syncs estimates (Settings > Workflows > Sage estimates). Never fails acceptance.
+  if (mode !== "multiple" && !input.estimate.phaseProposalId && !input.estimate.changeOrderId) {
+    const { queueEstimateSageSync } = await import("@/lib/sage/estimate-sync")
+    await queueEstimateSageSync({
+      db: input.access.db,
+      organizationId: input.access.organizationId,
+      projectId: input.estimate.projectId,
+      estimateId: input.estimate.id,
+      actor: input.access.user,
+      automatic: true,
+    })
+  }
+
   if (input.access.organizationId) {
     await recordActivityEvent({
       db: input.access.db,

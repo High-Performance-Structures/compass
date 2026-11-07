@@ -18,6 +18,7 @@ import {
   verifySageBridgeRequest,
 } from "@/lib/sage/bridge-auth"
 import { sageChangeOrderWritesEnabled } from "@/lib/sage/change-order-write"
+import { sageEstimateWritesEnabled } from "@/lib/sage/estimate-write"
 import type { Db } from "@/lib/server/action-context"
 
 type CloudflareEnv = Awaited<ReturnType<typeof getCloudflareContext>>["env"]
@@ -30,10 +31,29 @@ type BridgeKind = {
   /** The Sage writer (writes) uses the writer secret; the read-only reader uses the read-only key. */
   readonly secret: "writer" | "reader"
   readonly heartbeat: SageBridgeHeartbeatId
+  /** Compass's switch for a write queue; reads have none. */
+  readonly enabled: ((env: unknown) => boolean) | null
+  readonly disabledMessage: string
 }
 
-export const CHANGE_ORDER_WRITER: BridgeKind = { secret: "writer", heartbeat: "change-order-writer" }
-export const PRIME_CHANGE_ORDER_READER: BridgeKind = { secret: "reader", heartbeat: "prime-change-order-reader" }
+export const CHANGE_ORDER_WRITER: BridgeKind = {
+  secret: "writer",
+  heartbeat: "change-order-writer",
+  enabled: sageChangeOrderWritesEnabled,
+  disabledMessage: "Sage change order writes are disabled",
+}
+export const ESTIMATE_WRITER: BridgeKind = {
+  secret: "writer",
+  heartbeat: "estimate-writer",
+  enabled: sageEstimateWritesEnabled,
+  disabledMessage: "Sage estimate writes are disabled",
+}
+export const PRIME_CHANGE_ORDER_READER: BridgeKind = {
+  secret: "reader",
+  heartbeat: "prime-change-order-reader",
+  enabled: null,
+  disabledMessage: "",
+}
 
 function failure(status: number, error: string): SageChangeOrderBridge {
   return { success: false, response: Response.json({ error }, { status }) }
@@ -48,7 +68,7 @@ export async function authorizeSageChangeOrderBridge(request: Request, rawBody: 
   const { env } = await getCloudflareContext()
   const secret = kind.secret === "writer" ? getSageBridgeSecret(env) : getSagePayApplicationBridgeSecret(env)
   if (!secret) return failure(503, "Sage bridge is not configured")
-  if (kind.secret === "writer" && !sageChangeOrderWritesEnabled(env)) return failure(503, "Sage change order writes are disabled")
+  if (kind.enabled && !kind.enabled(env)) return failure(503, kind.disabledMessage)
   const organization: unknown = Reflect.get(env, "SAGE_CONTACT_ORGANIZATION_ID")
   if (typeof organization !== "string" || organization.trim().length === 0) return failure(503, "Bridge organization unavailable")
   const verified = await verifySageBridgeRequest(request, secret, rawBody)

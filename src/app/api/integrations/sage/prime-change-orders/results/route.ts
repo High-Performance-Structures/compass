@@ -4,6 +4,7 @@ import { z } from "zod/v4"
 import { projects } from "@/db/schema"
 import { chunkD1Values } from "@/lib/d1-query"
 import { replaceSagePrimeChangeOrdersStatements } from "@/lib/domain/sage-bridge/change-order-store"
+import { upsertSageJobProposalReadStatement } from "@/lib/domain/sage-bridge/estimate-store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, PRIME_CHANGE_ORDER_READER } from "@/lib/sage/change-order-bridge"
 
@@ -37,6 +38,21 @@ const snapshotSchema = z.strictObject({
         projectId: z.string().min(1).max(100),
         sageJobNumber: z.string().regex(/^\d{1,12}$/),
         changeOrders: z.array(changeOrderSchema).max(1000),
+        // Sage's proposal lines for the job (prplin); absent from older readers.
+        proposal: z
+          .strictObject({
+            lines: z
+              .array(
+                z.strictObject({
+                  lineNumber: z.number().int().nonnegative(),
+                  costCode: z.string().max(30).nullable(),
+                  description: z.string().max(200),
+                  totalCents: cents,
+                })
+              )
+              .max(2000),
+          })
+          .optional(),
       })
     )
     .max(300),
@@ -79,8 +95,8 @@ export async function POST(request: Request): Promise<Response> {
   ).flat()
   const jobByProject = new Map(known.map((project) => [project.id, project.sageJobNumber?.trim() ?? null]))
   const current = snapshot.jobs.filter((job) => jobByProject.get(job.projectId) === job.sageJobNumber)
-  const statements = current.flatMap((job) =>
-      replaceSagePrimeChangeOrdersStatements(db, {
+  const statements = current.flatMap((job) => [
+      ...replaceSagePrimeChangeOrdersStatements(db, {
         projectId: job.projectId,
         sageJobNumber: job.sageJobNumber,
         capturedAt: snapshot.capturedAt,
@@ -88,8 +104,20 @@ export async function POST(request: Request): Promise<Response> {
           ...changeOrder,
           linesJson: JSON.stringify(lines),
         })),
-      })
-    )
+      }),
+      ...(job.proposal
+        ? [
+            upsertSageJobProposalReadStatement(db, {
+              projectId: job.projectId,
+              sageJobNumber: job.sageJobNumber,
+              lineCount: job.proposal.lines.length,
+              totalCents: job.proposal.lines.reduce((sum, line) => sum + line.totalCents, 0),
+              linesJson: JSON.stringify(job.proposal.lines),
+              capturedAt: snapshot.capturedAt,
+            }),
+          ]
+        : []),
+    ])
   const [first, ...rest] = statements
   if (first) await db.batch([first, ...rest])
   return Response.json({ success: true, jobs: current.length })

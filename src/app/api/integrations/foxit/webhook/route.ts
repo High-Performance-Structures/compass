@@ -9,6 +9,7 @@ import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@
 import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { queueEstimateSageSync, sageExportActor } from "@/lib/sage/estimate-sync"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
 import {
   supersedeOtherExecutedPacketsStatement,
@@ -43,6 +44,19 @@ function nestedString(value: unknown, keys: readonly string[]): string | null {
     if (found) return found
   }
   return null
+}
+
+/** A Foxit-accepted contract estimate goes to Sage automatically, credited to its creator; never fails the webhook. */
+async function syncAcceptedEstimateToSage(db: ReturnType<typeof getDb>, projectId: string, estimateId: string, createdBy: string | null): Promise<void> {
+  const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).get()
+  await queueEstimateSageSync({
+    db,
+    organizationId: project?.organizationId ?? null,
+    projectId,
+    estimateId,
+    actor: await sageExportActor(db, createdBy),
+    automatic: true,
+  })
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -223,6 +237,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!budget.success) {
       return Response.json({ success: false, error: budget.error }, { status: 500 })
     }
+    if (linkedEstimate) await syncAcceptedEstimateToSage(db, packet.projectId, linkedEstimate.id, packet.createdBy)
     return Response.json({ success: true })
   }
 
@@ -377,5 +392,6 @@ export async function POST(request: Request): Promise<Response> {
   if (!budget.success) {
     return Response.json({ success: false, error: budget.error }, { status: 500 })
   }
+  if (!estimate.changeOrderId) await syncAcceptedEstimateToSage(db, estimate.projectId, estimate.id, estimate.createdBy)
   return Response.json({ success: true })
 }
