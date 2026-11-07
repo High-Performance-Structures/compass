@@ -1,18 +1,21 @@
-import { canonicalFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
+import { BUILDER_FEE_NAMES, canonicalFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { sageAmount, sageDescription } from "@/lib/domain/sage-bridge/change-order-rules"
 import type { SageCostCodeMapping } from "@/lib/financials/sage-export-codes"
 import { formatCents } from "@/lib/format"
 
 /*
  * Pure rules for sending an accepted estimate to Sage 100 Contractor as the
- * job's proposal (ProposalAddRq): one proposal line per contract budget line
- * (the scheduled values Compass bills from, builder fees on their Sage fee
- * codes), the whole amount in Other; and, when the company sends it, the job
- * budget at cost (BudgetAddRq) by cost code. No database or network access.
+ * job's proposal (ProposalAddRq): one proposal line per cost code (the
+ * contract budget's scheduled values rolled up by cost code, in CSI division
+ * order, builder fees last on their Sage fee codes), described by the Sage
+ * cost code name and never by an assembly or item name, whatever view the
+ * estimate uses; the whole amount in Other. When the company sends it, the
+ * job budget at cost (BudgetAddRq) the same way. No database or network access.
  */
 
 export type EstimateContractLine = {
   readonly costCode: string
+  /** The budget line's own text; the proposal uses the Sage cost code name instead. */
   readonly description: string
   /** The line's scheduled value (original contract amount), in cents. */
   readonly amountCents: number
@@ -49,21 +52,44 @@ export type SageEstimatePlan = {
   readonly blockers: readonly string[]
 }
 
-function planLine(costCode: string, description: string, amountCents: number, mapCostCode: (code: string) => SageCostCodeMapping): PlannedLine {
+function planLine(costCode: string, amountCents: number, mapCostCode: (code: string) => SageCostCodeMapping): PlannedLine {
   const code = canonicalFeeCostCode(costCode.trim())
   const mapping = code ? mapCostCode(code) : null
   const mapped = mapping?.status === "mapped" ? mapping : null
   return {
     costCode: code,
-    description: sageDescription(description) || sageDescription(mapped?.sageName ?? code),
+    // The Sage cost code's name; an assembly or item name never reaches Sage.
+    description: sageDescription(mapped?.sageName ?? code),
     amountCents,
     sageCostCodeName: mapped?.sageName ?? null,
     sageCostCodeRecord: mapped?.sageRecordNumber ?? null,
   }
 }
 
+const CSI_CODE = /^(\d{2}) \d{2} \d{2}/
+
+/** CSI codes in division and code order, then other named codes, then builder fees in their usual order. */
+function costCodeOrder(left: string, right: string): number {
+  const rank = (code: string) => {
+    const fee = BUILDER_FEE_NAMES.indexOf(code)
+    if (fee >= 0) return 2_000 + fee
+    return CSI_CODE.test(code) ? 0 : 1_000
+  }
+  return rank(left) - rank(right) || (CSI_CODE.test(left) && CSI_CODE.test(right) ? left.localeCompare(right) : 0)
+}
+
+/** Amounts summed by canonical cost code (a fee coded "99 10 00" joins "Company Overhead"), zero totals left out. */
+function rollUpByCostCode(lines: readonly { readonly costCode: string; readonly amountCents: number }[]): readonly [string, number][] {
+  const byCode = new Map<string, number>()
+  for (const line of lines) {
+    const code = canonicalFeeCostCode(line.costCode.trim())
+    byCode.set(code, (byCode.get(code) ?? 0) + line.amountCents)
+  }
+  return [...byCode.entries()].filter(([, cents]) => cents !== 0).sort(([left], [right]) => costCodeOrder(left, right))
+}
+
 function unmappedLabel(line: PlannedLine): string {
-  return `${line.costCode || "No cost code"}: ${line.description} (${formatCents(line.amountCents)})`
+  return `${line.costCode || "No cost code"} (${formatCents(line.amountCents)})`
 }
 
 export function planSageEstimate(input: {
@@ -76,9 +102,7 @@ export function planSageEstimate(input: {
   readonly sageProposal: SageProposalSummary | null
 }): SageEstimatePlan {
   const blockers: string[] = []
-  const proposalLines = input.contractLines
-    .filter((line) => line.amountCents !== 0)
-    .map((line) => planLine(line.costCode, line.description, line.amountCents, input.mapCostCode))
+  const proposalLines = rollUpByCostCode(input.contractLines).map(([code, cents]) => planLine(code, cents, input.mapCostCode))
   const proposalTotalCents = proposalLines.reduce((sum, line) => sum + line.amountCents, 0)
   if (proposalLines.length === 0) blockers.push("The accepted estimate has no contract lines with an amount.")
   if (proposalTotalCents !== input.contractTotalCents) {
@@ -87,15 +111,9 @@ export function planSageEstimate(input: {
 
   let budgetLines: PlannedLine[] | null = null
   if (input.sendBudget) {
-    const byCode = new Map<string, number>()
-    for (const line of input.costLines) {
-      const code = canonicalFeeCostCode(line.costCode.trim())
-      if (!code || line.costCents === 0) continue
-      byCode.set(code, (byCode.get(code) ?? 0) + line.costCents)
-    }
-    budgetLines = [...byCode.entries()]
-      .filter(([, cents]) => cents !== 0)
-      .map(([code, cents]) => planLine(code, code, cents, input.mapCostCode))
+    budgetLines = rollUpByCostCode(
+      input.costLines.filter((line) => line.costCode.trim()).map((line) => ({ costCode: line.costCode, amountCents: line.costCents }))
+    ).map(([code, cents]) => planLine(code, cents, input.mapCostCode))
   }
 
   const unmapped = [...proposalLines, ...(budgetLines ?? [])].filter((line) => !line.sageCostCodeRecord)

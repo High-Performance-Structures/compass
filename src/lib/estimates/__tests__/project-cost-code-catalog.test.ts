@@ -83,10 +83,33 @@ describe("project estimate cost-code catalog", () => {
 
     const mapped = catalog.filter((item) => item.sageMapped)
     expect(mapped).toHaveLength(1)
+    // The Sage catalog keeps its name; Sage's job data supplies the record number.
     expect(mapped[0]).toMatchObject({
       description: "Sage concrete",
-      sourceCostCode: "03 31 00",
+      sourceCostCode: "3310000",
     })
+  })
+
+  it("gives workbook codes and builder fees the record number Sage files them under", () => {
+    const row = (costCode: string, description: string) => ({ sourceSystem: "sage_read_snapshot", costCode, description, divisionName: "Concrete" })
+    const catalog = projectEstimateCostCodeCatalog([], [
+      row("3111900.000", "03 11 19 - Insulating Concrete Forming"),
+      row("35.000", "Contingency"),
+      row("34.000", "Company Overhead"),
+      // Two records for one code: ambiguous, so neither is used.
+      row("3300100.000", "03 30 01 - Concrete A"),
+      row("3300199.000", "03 30 01 - Concrete B"),
+    ], [
+      ["03 11 19 - Insulating Concrete Forming", "", "03", "Concrete"],
+      ["03 30 01 - Concrete", "", "03", "Concrete"],
+      ["Company Overhead", "", "00", "Procurement Requirements"],
+      ["Contingency Reserve", "", "00", "Procurement Requirements"],
+    ])
+
+    expect(catalog.find((item) => item.code === "03 11 19")?.sourceCostCode).toBe("3111900")
+    expect(catalog.find((item) => item.code === "Company Overhead")?.sourceCostCode).toBe("34")
+    expect(catalog.find((item) => item.code === "Contingency Reserve")?.sourceCostCode).toBe("35")
+    expect(catalog.find((item) => item.code === "03 30 01")?.sourceCostCode).toBe("03 30 01 - Concrete")
   })
 
   it("replaces a workbook name match with its active Sage item ID", () => {

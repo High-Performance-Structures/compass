@@ -1,4 +1,4 @@
-import { isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
+import { BUILDER_FEE_NAMES, canonicalFeeLabel, isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { CSI_PROJECT_TOTALS_FALLBACK_COST_CODES } from "@/lib/estimates/csi-project-totals-catalog"
 import {
   SAGE_ESTIMATE_COST_CODE_CATALOG,
@@ -63,6 +63,40 @@ function catalogItemFromWorkbook(
     divisionDisplayLabel: `${divisionCode} · ${divisionDescription}`,
     sageMapped: true,
   }
+}
+
+const SAGE_RECORD_NUMBER = /^\d+(\.\d+)?$/
+
+/**
+ * Sage record numbers read from Sage, by the code they belong to: the CSI
+ * code in the Sage name ("03 31 00 - Structural Concrete") or the builder
+ * fee's canonical name ("Contingency" is "Contingency Reserve"). A code Sage
+ * files under more than one record is left out; nothing is guessed.
+ */
+function sageRecordNumbersByCode(namedSageRows: readonly EstimateSageNamedCostCode[]): ReadonlyMap<string, string> {
+  const numbers = new Map<string, Set<string>>()
+  for (const row of namedSageRows) {
+    const recordNumber = row.costCode.trim()
+    if (!row.sourceSystem.toLowerCase().startsWith("sage") || !SAGE_RECORD_NUMBER.test(recordNumber)) continue
+    const match = CSI_CODE_FROM_NAME.exec(row.description)
+    const fee = canonicalFeeLabel(row.description.trim())
+    const code =
+      match?.[1] && match[2] && match[3]
+        ? `${match[1]} ${match[2]} ${match[3]}${match[4] ?? ""}`
+        : BUILDER_FEE_NAMES.includes(fee)
+          ? fee
+          : null
+    if (!code) continue
+    const set = numbers.get(code) ?? new Set<string>()
+    set.add(String(Number(recordNumber)))
+    numbers.set(code, set)
+  }
+  const single = new Map<string, string>()
+  for (const [code, set] of numbers) {
+    const [only] = set
+    if (set.size === 1 && only) single.set(code, only)
+  }
+  return single
 }
 
 function sageCodeFromName(
@@ -131,6 +165,14 @@ export function projectEstimateCostCodeCatalog(
     const namedCode = sageCodeFromName(row)
     if (!namedCode || catalog.has(namedCode.code)) continue
     catalog.set(namedCode.code, namedCode)
+  }
+
+  // A code the Sage catalog or workbook names, but without the record number
+  // Sage files it under, takes the number Sage's own job data shows, so the
+  // Sage handoff can address it.
+  for (const [code, recordNumber] of sageRecordNumbersByCode(namedSageRows)) {
+    const item = catalog.get(code)
+    if (item && !SAGE_RECORD_NUMBER.test(item.sourceCostCode.trim())) catalog.set(code, { ...item, sourceCostCode: recordNumber })
   }
 
   for (const row of CSI_PROJECT_TOTALS_FALLBACK_COST_CODES) {
