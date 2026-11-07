@@ -53,6 +53,8 @@ function report(
       applicationNumber: "1",
       periodTo: "2026-10-23",
       status: "draft",
+      billedAt: null,
+      sageInvoiceNumber: null,
       budgetRevisionId: "rev-2",
       originalContractSum: 44_497.69,
       netChanges: 1_700,
@@ -105,7 +107,7 @@ describe("PayApplicationClientReport", () => {
     const html = report("cost_code", [
       {
         id: "co-1", recordType: "variance", number: "V-001", title: "Waterproofing membrane price increase", executedAt: "2026-10-15T12:00:00.000Z",
-        costCodes: ["07 10 00"], firstBilled: null, name: "V-001 · Waterproofing membrane price increase", amount: 1_700, current: true, assemblies: [],
+        costCodes: ["07 10 00"], firstBilled: null, name: "V-001 · Waterproofing membrane price increase", amount: 1_700, headerAmount: 1_700, current: true, assemblies: [],
       },
     ])
     expect(html).toContain("Variance schedule")
@@ -113,6 +115,27 @@ describe("PayApplicationClientReport", () => {
     expect(html).toContain("Application 1 (this period)")
     expect(html).toMatch(/2a<\/td><td>Net change by change orders<\/td><td class="num">\$0\.00/)
     expect(html).toMatch(/2b<\/td><td>Net change by variances<\/td><td class="num">\$1,700\.00/)
+  })
+
+  it("summarizes older records as previous months and names the application that first billed them", () => {
+    const html = report("cost_code", [
+      {
+        id: "co-0", recordType: "change_order", number: "CO-001", title: "Waterproofing", executedAt: "2026-06-02T12:00:00.000Z",
+        costCodes: ["07 10 00"], firstBilled: { applicationNumber: "6", periodTo: "2026-06-30", thisPeriod: false },
+        name: "CO-001 · Waterproofing", amount: 1_200, headerAmount: 1_200, current: false, assemblies: [],
+      },
+      {
+        id: "v-1", recordType: "variance", number: "V-001", title: "Membrane price increase", executedAt: "2026-05-15T12:00:00.000Z",
+        costCodes: ["07 10 00"], firstBilled: { applicationNumber: "5", periodTo: "2026-05-31", thisPeriod: false },
+        name: "V-001 · Membrane price increase", amount: 500, headerAmount: 500, current: false, assemblies: [],
+      },
+    ])
+    expect(html).toContain("Application 5</td>")
+    expect(html).not.toContain("(this period)")
+    expect(html).not.toContain("CO-001 · Waterproofing $1,200.00")
+    expect(html).toMatch(/aria-label="Change orders summary".*?Approved in previous months<\/td><td class="num">\$1,200\.00/)
+    expect(html).toMatch(/aria-label="Variances summary".*?Approved in previous months<\/td><td class="num">\$500\.00/)
+    expect(html).not.toContain("not itemized above")
   })
 
   it("lists cost codes under each assembly when the client sees assembly detail", () => {

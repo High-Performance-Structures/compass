@@ -154,7 +154,14 @@ type ChangeOrderSummaryItem = {
   readonly assemblies: readonly { readonly name: string; readonly amount: number }[]
 }
 
-type SummaryListItem = ChangeOrderSummaryItem & {
+type SummaryListItem = {
+  readonly name: string
+  /** The part in this contract budget (what lines 2a/2b add up). */
+  readonly amount: number
+  /** The record's own total (all its lines, fee and insurance included); defaults to amount. */
+  readonly headerAmount?: number
+  readonly assemblies: readonly { readonly name: string; readonly amount: number }[]
+  /** Executed after the previous pay application's period. */
   readonly current: boolean
   readonly recordType: "change_order" | "variance"
 }
@@ -165,8 +172,13 @@ type ChangeTotals = { readonly additions: number; readonly deductions: number }
 export type ChangeKindSummary = {
   readonly previous: ChangeTotals
   readonly current: ChangeTotals
+  /**
+   * The G702 line less the listed records, so the box still ties to it when a
+   * record's own total differs from what landed in this budget; 0 when it ties.
+   */
+  readonly reconciling: number
   readonly totals: ChangeTotals
-  /** Additions less deductions, previous and this month. */
+  /** Additions less deductions: G702 line 2a (or 2b). */
   readonly net: number
   readonly currentItems: readonly ChangeOrderSummaryItem[]
 }
@@ -178,6 +190,15 @@ export type PayApplicationChangeSummary = {
   readonly variances: ChangeKindSummary
 }
 
+/** G702 lines 2a and 2b: the variances in this contract sum, and the rest of the net change. */
+export function payApplicationChangeLines(
+  netChanges: number,
+  items: readonly Pick<SummaryListItem, "amount" | "recordType">[]
+): { readonly changeOrders: number; readonly variances: number } {
+  const variances = roundCents(items.filter((item) => item.recordType === "variance").reduce((sum, item) => sum + item.amount, 0))
+  return { changeOrders: roundCents(netChanges - variances), variances }
+}
+
 function totalsOf(amounts: readonly number[]): ChangeTotals {
   return {
     additions: roundCents(amounts.filter((amount) => amount > 0).reduce((sum, amount) => sum + amount, 0)),
@@ -185,43 +206,62 @@ function totalsOf(amounts: readonly number[]): ChangeTotals {
   }
 }
 
-function kindSummary(previous: readonly number[], current: readonly number[], currentItems: readonly ChangeOrderSummaryItem[]): ChangeKindSummary {
+function kindSummary(
+  previous: readonly number[],
+  current: readonly number[],
+  currentItems: readonly ChangeOrderSummaryItem[],
+  lineTotal: number
+): ChangeKindSummary {
   const previousTotals = totalsOf(previous)
   const currentTotals = totalsOf(current)
+  const listed = roundCents([...previous, ...current].reduce((sum, amount) => sum + amount, 0))
+  const reconciling = roundCents(lineTotal - listed)
+  const reconcilingTotals = totalsOf([reconciling])
   const totals = {
-    additions: roundCents(previousTotals.additions + currentTotals.additions),
-    deductions: roundCents(previousTotals.deductions + currentTotals.deductions),
+    additions: roundCents(previousTotals.additions + currentTotals.additions + reconcilingTotals.additions),
+    deductions: roundCents(previousTotals.deductions + currentTotals.deductions + reconcilingTotals.deductions),
   }
-  return { previous: previousTotals, current: currentTotals, totals, net: roundCents(totals.additions - totals.deductions), currentItems }
+  return {
+    previous: previousTotals,
+    current: currentTotals,
+    reconciling,
+    totals,
+    net: roundCents(totals.additions - totals.deductions),
+    currentItems,
+  }
 }
 
 /**
  * The G702 change summaries: change orders as additions and deductions, and
  * variances as increases and decreases, approved in previous months and this
- * month. With the change-order list each record counts once, by its amount;
- * otherwise (older or imported draws) the G703 changes all count as change
- * orders, and current items come from change-order rows.
+ * month. With the change-order list each record counts once, by its own
+ * total, on the month its execution date falls in (never from G703 line
+ * deltas, which imported draws only carry approximately); a reconciling
+ * amount keeps each box tied to its G702 line. Without a list (older draws)
+ * the G703 changes all count as change orders.
  */
 export function payApplicationChangeSummary(
   sources: readonly PayApplicationReportSource[],
-  items: readonly SummaryListItem[] | null = null
+  items: readonly SummaryListItem[] | null = null,
+  netChanges: number | null = null
 ): PayApplicationChangeSummary {
   const priorTotal = roundCents(sources.reduce((total, source) => total + source.priorChanges, 0))
   const currentTotal = roundCents(sources.reduce((total, source) => total + source.currentChanges, 0))
-  const listed = items?.filter((item) => item.amount !== 0) ?? []
-  const listedTotal = roundCents(listed.reduce((total, item) => total + item.amount, 0))
-  const listedCurrent = roundCents(listed.filter((item) => item.current).reduce((total, item) => total + item.amount, 0))
-  // Use the list only when it accounts for the G703's changes.
-  if (items && listedTotal === roundCents(priorTotal + currentTotal) && listedCurrent === currentTotal) {
-    const of = (recordType: SummaryListItem["recordType"]): ChangeKindSummary => {
+  const lines = payApplicationChangeLines(netChanges ?? roundCents(priorTotal + currentTotal), items ?? [])
+  const listed = (items ?? []).filter((item) => (item.headerAmount ?? item.amount) !== 0 || item.amount !== 0)
+  if (listed.length > 0) {
+    const of = (recordType: SummaryListItem["recordType"], lineTotal: number): ChangeKindSummary => {
       const kind = listed.filter((item) => item.recordType === recordType)
+      const total = (item: SummaryListItem): number => item.headerAmount ?? item.amount
+      const current = kind.filter((item) => item.current)
       return kindSummary(
-        kind.filter((item) => !item.current).map((item) => item.amount),
-        kind.filter((item) => item.current).map((item) => item.amount),
-        kind.filter((item) => item.current).map(({ name, amount, assemblies }) => ({ name, amount, assemblies }))
+        kind.filter((item) => !item.current).map(total),
+        current.map(total),
+        current.map((item) => ({ name: item.name, amount: total(item), assemblies: item.assemblies })),
+        lineTotal
       )
     }
-    return { changeOrders: of("change_order"), variances: of("variance") }
+    return { changeOrders: of("change_order", lines.changeOrders), variances: of("variance", lines.variances) }
   }
   const currentByName = new Map<string, number>()
   for (const source of sources) {
@@ -232,8 +272,9 @@ export function payApplicationChangeSummary(
     changeOrders: kindSummary(
       [priorTotal],
       [currentTotal],
-      [...currentByName.entries()].map(([name, amount]) => ({ name, amount, assemblies: [] }))
+      [...currentByName.entries()].map(([name, amount]) => ({ name, amount, assemblies: [] })),
+      lines.changeOrders
     ),
-    variances: kindSummary([], [], []),
+    variances: kindSummary([], [], [], lines.variances),
   }
 }

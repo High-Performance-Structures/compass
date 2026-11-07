@@ -1,8 +1,11 @@
-import { and, asc, desc, eq, lt, ne, notInArray } from "drizzle-orm"
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectBudgetApplications, projectChangeOrders } from "@/db/schema"
+import { projectBudgetApplications, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import { projectContractBudgetAdjustments } from "@/db/schema-estimates"
+import { chunkD1Values } from "@/lib/d1-query"
+import { BUDGET_PROJECTION_SOURCE, COMPASS_DRAW_SOURCE } from "@/lib/domain/financials/rules"
+import { priorPayApplicationCondition } from "@/lib/financials/owner-pay-application-refresh"
 import { loadPayApplicationShares, shareKey } from "@/lib/financials/pay-application-shares"
 
 export type PayApplicationChangeOrder = {
@@ -13,11 +16,18 @@ export type PayApplicationChangeOrder = {
   readonly title: string
   readonly executedAt: string
   readonly costCodes: readonly string[]
-  /** The first pay application whose contract budget included it; null when none before this one. */
-  readonly firstBilled: { readonly applicationNumber: string; readonly periodTo: string | null } | null
+  /**
+   * The first owner pay application (any source, imported draws included)
+   * whose period ends on or after the execution date; `thisPeriod` when that
+   * is this application. Null when no application has a period to compare.
+   */
+  readonly firstBilled: { readonly applicationNumber: string; readonly periodTo: string | null; readonly thisPeriod: boolean } | null
   readonly name: string
+  /** The part of the record in this contract budget (what G702 lines 2a/2b add up). */
   readonly amount: number
-  /** Approved since the previous pay application. */
+  /** The record's own total: all its lines, builder fee and insurance included. */
+  readonly headerAmount: number
+  /** Executed after the previous pay application's period (this month). */
   readonly current: boolean
   /** Where the change landed: its assemblies, or none for separate work. */
   readonly assemblies: readonly { readonly name: string; readonly amount: number }[]
@@ -27,37 +37,95 @@ function roundCents(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+/** An owner pay application as change timing needs it. */
+export type OwnerPayApplicationPeriod = {
+  readonly id: string
+  readonly applicationNumber: string
+  readonly periodTo: string | null
+}
+
+const dateOf = (value: string | null): string | null => (value ? value.slice(0, 10) : null)
+
+function applicationOrder(left: OwnerPayApplicationPeriod, right: OwnerPayApplicationPeriod): number {
+  const leftDate = dateOf(left.periodTo) ?? "9999-12-31"
+  const rightDate = dateOf(right.periodTo) ?? "9999-12-31"
+  if (leftDate !== rightDate) return leftDate.localeCompare(rightDate)
+  return left.applicationNumber.localeCompare(right.applicationNumber, undefined, { numeric: true })
+}
+
 /**
- * The executed change orders in a pay application's contract budget, with
- * how each splits across assemblies. A change order is current when the
- * previous pay application's budget didn't include it yet.
+ * When each executed change order or variance was approved relative to the
+ * pay application periods, by its execution date (never by G703 line deltas,
+ * which imported draws only carry approximately).
+ *
+ * - current: executed after the previous application's period_to (with no
+ *   previous application, everything counts as this month);
+ * - firstBilled: the first application up to this one whose period_to is on
+ *   or after the execution date; this application when none earlier is.
+ */
+export function changeTiming(
+  executedAt: string,
+  applications: readonly OwnerPayApplicationPeriod[],
+  applicationId: string
+): { readonly current: boolean; readonly firstBilled: PayApplicationChangeOrder["firstBilled"] } {
+  const ordered = [...applications].sort(applicationOrder)
+  const index = ordered.findIndex((application) => application.id === applicationId)
+  const upToThis = index >= 0 ? ordered.slice(0, index + 1) : ordered
+  const self = index >= 0 ? ordered[index] : undefined
+  const previous = [...upToThis.slice(0, -1)].reverse().find((application) => dateOf(application.periodTo) !== null)
+  const executed = dateOf(executedAt) ?? ""
+  const previousTo = dateOf(previous?.periodTo ?? null)
+  const current = !previousTo || executed > previousTo
+  const billedIn = upToThis.find((application) => {
+    const periodTo = dateOf(application.periodTo)
+    return periodTo !== null && periodTo >= executed
+  }) ?? self
+  return {
+    current,
+    firstBilled: billedIn
+      ? { applicationNumber: billedIn.applicationNumber, periodTo: billedIn.periodTo, thisPeriod: billedIn.id === applicationId }
+      : null,
+  }
+}
+
+/** The project's owner pay applications: Compass draws and imported draws alike. */
+async function ownerPayApplicationPeriods(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  applicationId: string
+): Promise<readonly OwnerPayApplicationPeriod[]> {
+  const rows = await db
+    .select({
+      id: projectBudgetApplications.id,
+      applicationNumber: projectBudgetApplications.applicationNumber,
+      periodTo: projectBudgetApplications.periodTo,
+      sourceSystem: projectBudgetApplications.sourceSystem,
+      status: projectBudgetApplications.status,
+    })
+    .from(projectBudgetApplications)
+    .where(
+      or(
+        eq(projectBudgetApplications.id, applicationId),
+        and(priorPayApplicationCondition(projectId), ne(projectBudgetApplications.sourceSystem, BUDGET_PROJECTION_SOURCE))
+      )
+    )
+  // Compass drafts other than the one being printed are not billed periods.
+  return rows
+    .filter((row) => row.id === applicationId || !(row.sourceSystem === COMPASS_DRAW_SOURCE && row.status === "draft"))
+    .map(({ id, applicationNumber, periodTo }) => ({ id, applicationNumber, periodTo }))
+}
+
+/**
+ * The executed change orders and variances in a pay application's contract
+ * budget, with how each splits across assemblies, its own total, and when it
+ * was approved relative to the pay application periods.
  */
 export async function payApplicationChangeOrders(
   db: ReturnType<typeof getDb>,
   input: { readonly projectId: string; readonly applicationId: string; readonly budgetRevisionId: string | null }
 ): Promise<readonly PayApplicationChangeOrder[]> {
   if (!input.budgetRevisionId) return []
-  const application = await db
-    .select({ createdAt: projectBudgetApplications.createdAt })
-    .from(projectBudgetApplications)
-    .where(eq(projectBudgetApplications.id, input.applicationId))
-    .get()
-  const previous = application
-    ? await db
-        .select({ budgetRevisionId: projectBudgetApplications.budgetRevisionId })
-        .from(projectBudgetApplications)
-        .where(
-          and(
-            eq(projectBudgetApplications.projectId, input.projectId),
-            eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
-            ne(projectBudgetApplications.id, input.applicationId),
-            lt(projectBudgetApplications.createdAt, application.createdAt)
-          )
-        )
-        .orderBy(desc(projectBudgetApplications.createdAt))
-        .get()
-    : undefined
-  const select = (revisionId: string) =>
+  const [rows, applications] = await Promise.all([
     db
       .select({
         changeOrderId: projectContractBudgetAdjustments.changeOrderId,
@@ -65,20 +133,34 @@ export async function payApplicationChangeOrders(
         assemblyName: projectContractBudgetAdjustments.assemblyName,
         contractAssemblyId: projectContractBudgetAdjustments.contractAssemblyId,
         executedAt: projectContractBudgetAdjustments.executedAt,
+        changeOrderExecutedAt: projectChangeOrders.executedAt,
         number: projectChangeOrders.changeOrderNumber,
         title: projectChangeOrders.title,
         recordType: projectChangeOrders.recordType,
+        headerCents: projectChangeOrders.amountCents,
         costCode: projectContractBudgetAdjustments.costCode,
       })
       .from(projectContractBudgetAdjustments)
       .leftJoin(projectChangeOrders, eq(projectChangeOrders.id, projectContractBudgetAdjustments.changeOrderId))
-      .where(eq(projectContractBudgetAdjustments.revisionId, revisionId))
-  const [rows, previousRows] = await Promise.all([
-    select(input.budgetRevisionId),
-    previous?.budgetRevisionId ? select(previous.budgetRevisionId) : Promise.resolve([]),
+      .where(eq(projectContractBudgetAdjustments.revisionId, input.budgetRevisionId)),
+    ownerPayApplicationPeriods(db, input.projectId, input.applicationId),
   ])
-  const previousIds = new Set(previousRows.map((row) => row.changeOrderId))
-  const firstBilled = await firstBilledApplications(db, input.projectId, application?.createdAt ?? null, input.applicationId)
+  const changeOrderIds = [...new Set(rows.map((row) => row.changeOrderId))]
+  const lineTotals = new Map<string, number>()
+  for (const ids of chunkD1Values(changeOrderIds)) {
+    const totals = await db
+      .select({
+        changeOrderId: projectChangeOrderLines.changeOrderId,
+        cents: sql<number>`coalesce(sum(${projectChangeOrderLines.amountCents}), 0)`,
+        lines: sql<number>`count(${projectChangeOrderLines.amountCents})`,
+      })
+      .from(projectChangeOrderLines)
+      .where(inArray(projectChangeOrderLines.changeOrderId, ids))
+      .groupBy(projectChangeOrderLines.changeOrderId)
+    for (const total of totals) {
+      if (Number(total.lines) > 0) lineTotals.set(total.changeOrderId, Number(total.cents))
+    }
+  }
   const byChangeOrder = new Map<
     string,
     {
@@ -87,6 +169,7 @@ export async function payApplicationChangeOrders(
       title: string
       recordType: "change_order" | "variance"
       cents: number
+      headerCents: number | null
       executedAt: string
       costCodes: Set<string>
       assemblies: Map<string, number>
@@ -101,7 +184,8 @@ export async function payApplicationChangeOrders(
         title: row.title ?? "",
         recordType: row.recordType === "variance" ? "variance" : "change_order",
         cents: 0,
-        executedAt: row.executedAt,
+        headerCents: lineTotals.get(row.changeOrderId) ?? row.headerCents ?? null,
+        executedAt: row.changeOrderExecutedAt ?? row.executedAt,
         costCodes: new Set<string>(),
         assemblies: new Map<string, number>(),
       }
@@ -114,59 +198,23 @@ export async function payApplicationChangeOrders(
   }
   return [...byChangeOrder.entries()]
     .sort(([, left], [, right]) => left.executedAt.localeCompare(right.executedAt))
-    .map(([id, entry]) => ({
-      id,
-      recordType: entry.recordType,
-      number: entry.number,
-      title: entry.title,
-      executedAt: entry.executedAt,
-      costCodes: [...entry.costCodes].sort(),
-      firstBilled: previousIds.has(id) ? firstBilled.get(id) ?? null : null,
-      name: entry.name,
-      amount: roundCents(entry.cents / 100),
-      current: !previousIds.has(id),
-      assemblies: [...entry.assemblies.entries()].map(([name, cents]) => ({ name, amount: roundCents(cents / 100) })),
-    }))
-}
-
-/** Pay applications billed before this one never include these statuses. */
-const UNBILLED_STATUSES = ["void", "superseded", "building", "budget_current", "budget_superseded"]
-
-/**
- * For each change order in an earlier pay application's contract budget, the
- * first such application: the period the change was first billed.
- */
-async function firstBilledApplications(
-  db: ReturnType<typeof getDb>,
-  projectId: string,
-  before: string | null,
-  applicationId: string
-): Promise<ReadonlyMap<string, { readonly applicationNumber: string; readonly periodTo: string | null }>> {
-  if (!before) return new Map()
-  const rows = await db
-    .selectDistinct({
-      changeOrderId: projectContractBudgetAdjustments.changeOrderId,
-      applicationNumber: projectBudgetApplications.applicationNumber,
-      periodTo: projectBudgetApplications.periodTo,
-      createdAt: projectBudgetApplications.createdAt,
+    .map(([id, entry]) => {
+      const timing = changeTiming(entry.executedAt, applications, input.applicationId)
+      return {
+        id,
+        recordType: entry.recordType,
+        number: entry.number,
+        title: entry.title,
+        executedAt: entry.executedAt,
+        costCodes: [...entry.costCodes].sort(),
+        firstBilled: timing.firstBilled,
+        name: entry.name,
+        amount: roundCents(entry.cents / 100),
+        headerAmount: roundCents((entry.headerCents ?? entry.cents) / 100),
+        current: timing.current,
+        assemblies: [...entry.assemblies.entries()].map(([name, cents]) => ({ name, amount: roundCents(cents / 100) })),
+      }
     })
-    .from(projectBudgetApplications)
-    .innerJoin(projectContractBudgetAdjustments, eq(projectContractBudgetAdjustments.revisionId, projectBudgetApplications.budgetRevisionId))
-    .where(
-      and(
-        eq(projectBudgetApplications.projectId, projectId),
-        eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
-        ne(projectBudgetApplications.id, applicationId),
-        lt(projectBudgetApplications.createdAt, before),
-        notInArray(projectBudgetApplications.status, UNBILLED_STATUSES)
-      )
-    )
-    .orderBy(asc(projectBudgetApplications.createdAt))
-  const first = new Map<string, { readonly applicationNumber: string; readonly periodTo: string | null }>()
-  for (const row of rows) {
-    if (!first.has(row.changeOrderId)) first.set(row.changeOrderId, { applicationNumber: row.applicationNumber, periodTo: row.periodTo })
-  }
-  return first
 }
 
 /**
