@@ -74,6 +74,12 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const [searchHits, setSearchHits] = React.useState<readonly SearchHit[]>([])
   const [searchHasMore, setSearchHasMore] = React.useState(false)
   const [mobileDetail, setMobileDetail] = React.useState(initialConversationId !== undefined || initialNewMessage || initialEmail !== null)
+  const detailPaneRef = React.useRef<HTMLElement>(null)
+  // Below xl the conversation opens under the sheet; bring it into view.
+  React.useEffect(() => {
+    if (!mobileDetail || window.matchMedia("(min-width: 80rem)").matches) return
+    detailPaneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })
+  }, [mobileDetail, activeId])
   const [newDraft, setNewDraft] = React.useState<NewDraft>(initialCompositionDraft)
   const [compose, setCompose] = React.useState<ComposeMode | null>(() => initialEmail ? { kind: "email" } : initialNewMessage ? {
     kind: "new",
@@ -881,9 +887,11 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const composingNew = compose?.kind === "new"
   const composingEmail = compose?.kind === "email"
   return (
-    <section className="flex min-h-0 flex-1 overflow-hidden bg-background" aria-label="Project messages">
-      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
-      <main className={cn("min-h-0 min-w-0 flex-1", !composingEmail && !composingNew && activeSummary !== null ? "overflow-hidden" : "overflow-y-auto", !mobileDetail && "hidden md:block")}>
+    // Wide screens (xl and up): the sheet on the left, the open conversation beside it.
+    // Narrower screens: the conversation opens below the sheet and the page scrolls.
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background xl:flex-row xl:overflow-hidden" aria-label="Project messages">
+      <CorrespondenceInboxPanel className="shrink-0 xl:w-[45%] xl:max-w-[56rem] xl:overflow-y-auto xl:border-r" projectId={projectId} inbox={inbox} activeId={activeId} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
+      <main ref={detailPaneRef} className={cn("min-w-0 shrink-0 scroll-mt-2 border-t xl:min-h-0 xl:flex-1 xl:shrink xl:border-t-0", !composingEmail && !composingNew && activeSummary !== null ? "h-[85svh] min-h-[28rem] overflow-hidden xl:h-auto xl:min-h-0" : "xl:overflow-y-auto", !mobileDetail && "hidden xl:block")}>
         {composingEmail ? (
           <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} prefill={emailDraft ? null : emailPrefill} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
         ) : composingNew ? (
@@ -1076,7 +1084,7 @@ function ConversationDetail(props: {
       <header className="z-10 shrink-0 border-b bg-background px-4 py-3 md:px-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <Button className="mb-2 md:hidden" variant="ghost" size="sm" disabled={props.hasPendingSend} onClick={() => void props.onBack()}><ArrowLeft />Messages</Button>
+            <Button className="mb-2 xl:hidden" variant="ghost" size="sm" disabled={props.hasPendingSend} onClick={() => void props.onBack()}><ArrowLeft />Close conversation</Button>
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Project correspondence</p>
             <h2 className="truncate text-xl font-semibold">{activeSummary.subject}</h2>
           </div>

@@ -22,6 +22,7 @@ export default async function ProjectDailyLogsPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly quickAdd?: string | readonly string[]
+    readonly item?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
@@ -52,6 +53,7 @@ export default async function ProjectDailyLogsPage({
     <ProjectDailyLogWorkspace
       workspace={workspace}
       assigneeOptions={assigneeOptions}
+      initialItemId={(typeof query.item === "string" ? query.item : query.item?.[0]) ?? null}
       initialShowNewLog={
         (typeof query.quickAdd === "string"
           ? query.quickAdd

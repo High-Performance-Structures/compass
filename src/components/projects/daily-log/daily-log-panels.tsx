@@ -33,13 +33,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PageHeader } from "@/components/page-header"
@@ -49,7 +43,8 @@ import {
   ALL_DAILY_LOG_AUTHORS,
   UNKNOWN_DAILY_LOG_AUTHOR,
 } from "@/lib/daily-logs/print-selection"
-import { filterValue, type LogFilter } from "@/lib/daily-logs/workspace-view"
+import type { dailyLogFilterOptions } from "@/lib/daily-logs/record-list"
+import type { LogFilter } from "@/lib/daily-logs/workspace-view"
 import { formatDate } from "@/lib/format"
 
 /** Confirms deleting one log (from its edit form) or the selected logs. */
@@ -373,6 +368,7 @@ export function DailyLogPrintOptions({
 export function DailyLogOwnerUpdateBuilder({
   filter,
   setFilter,
+  filterOptions,
   onSelectShown,
   onClearSelection,
   selectedCount,
@@ -388,6 +384,7 @@ export function DailyLogOwnerUpdateBuilder({
 }: {
   readonly filter: LogFilter
   readonly setFilter: (filter: LogFilter) => void
+  readonly filterOptions: ReturnType<typeof dailyLogFilterOptions>
   readonly onSelectShown: () => void
   readonly onClearSelection: () => void
   readonly selectedCount: number
@@ -412,20 +409,13 @@ export function DailyLogOwnerUpdateBuilder({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={filter}
-            onValueChange={(value) => setFilter(filterValue(value))}
-          >
-            <SelectTrigger aria-label="Filter daily logs" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All logs</SelectItem>
-              <SelectItem value="needs_review">Needs review</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="owner_visible">Owner visible</SelectItem>
-            </SelectContent>
-          </Select>
+          <StatusFilterBar
+            kind="button"
+            label="Filter daily logs by status"
+            options={filterOptions}
+            selected={filter}
+            onSelect={setFilter}
+          />
           <Button variant="outline" size="sm" onClick={onSelectShown}>
             Select shown
           </Button>

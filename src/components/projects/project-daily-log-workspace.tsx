@@ -15,6 +15,7 @@ import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { DailyLogCard } from "@/components/projects/daily-log/daily-log-card"
+import { DailyLogRecordTable } from "@/components/projects/daily-log/daily-log-record-table"
 import {
   DailyLogEditForm,
   DailyLogNewForm,
@@ -31,6 +32,7 @@ import { DailyLogUploadPanel } from "@/components/projects/daily-log/daily-log-u
 import { useDailyLogForms } from "@/components/projects/daily-log/use-daily-log-forms"
 import { useDailyLogUpload } from "@/components/projects/daily-log/use-daily-log-upload"
 import { useDailyLogPrint } from "@/components/projects/daily-log/use-daily-log-print"
+import { dailyLogFilterOptions } from "@/lib/daily-logs/record-list"
 import {
   matchesFilter,
   selectedLogIds,
@@ -41,10 +43,13 @@ export function ProjectDailyLogWorkspace({
   workspace,
   assigneeOptions,
   initialShowNewLog = false,
+  initialItemId = null,
 }: {
   readonly workspace: ProjectDailyLogWorkspaceData
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly initialShowNewLog?: boolean
+  /** The log to open below the sheet (`?item=`), from a link. */
+  readonly initialItemId?: string | null
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -52,6 +57,7 @@ export function ProjectDailyLogWorkspace({
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
+  const [openLogId, setOpenLogId] = React.useState<string | null>(initialItemId)
   const [showNewLog, setShowNewLog] = React.useState(initialShowNewLog)
   useQuickAddEntry("daily-log", () => setShowNewLog(true))
   const [showPrintOptions, setShowPrintOptions] = React.useState(false)
@@ -130,13 +136,23 @@ export function ProjectDailyLogWorkspace({
     })
   }
 
-  function toggleLog(logId: string): void {
+  const toggleLog = React.useCallback((logId: string): void => {
     setSelectedIds((current) =>
       current.includes(logId)
         ? current.filter((id) => id !== logId)
         : [...current, logId]
     )
-  }
+  }, [])
+
+  // Opening a log keeps it in the URL (`?item=`) so the link can be shared,
+  // without reloading the workspace.
+  const openLog = React.useCallback((log: ProjectDailyLogItem): void => {
+    setOpenLogId(log.id)
+    const url = new URL(window.location.href)
+    url.searchParams.set("item", log.id)
+    window.history.replaceState(null, "", url)
+  }, [])
+  const openedLog = logs.find((log) => log.id === openLogId) ?? null
 
   function updateReview(
     log: ProjectDailyLogItem,
@@ -227,6 +243,7 @@ export function ProjectDailyLogWorkspace({
         <DailyLogOwnerUpdateBuilder
           filter={filter}
           setFilter={setFilter}
+          filterOptions={dailyLogFilterOptions(logs)}
           onSelectShown={() => setSelectedIds(filteredLogs.map((log) => log.id))}
           onClearSelection={() => setSelectedIds([])}
           selectedCount={selectedLogs.length}
@@ -241,54 +258,60 @@ export function ProjectDailyLogWorkspace({
           message={message}
         />
 
-        <div className="grid grid-cols-1 gap-3">
-          {filteredLogs.map((log) => (
+        <DailyLogRecordTable
+          logs={filteredLogs}
+          filterKey={filter}
+          selectedIds={selectedIds}
+          onToggle={toggleLog}
+          openLogId={openLogId}
+          onOpen={openLog}
+        />
+
+        {openedLog ? (
+          <div className="grid grid-cols-1 gap-3" id="daily-log-open">
             <DailyLogCard
-              key={log.id}
-              log={log}
+              log={openedLog}
               projectId={workspace.project.id}
               assigneeOptions={assigneeOptions}
               savedLogRules={forms.savedLogSetup?.rules ?? null}
               developerModeEnabled={developerModeEnabled}
-              selected={selectedIds.includes(log.id)}
-              onToggleSelected={() => toggleLog(log.id)}
+              selected={selectedIds.includes(openedLog.id)}
+              onToggleSelected={() => toggleLog(openedLog.id)}
               isPending={isPending}
               isUploading={upload.isUploading}
-              editing={forms.editingLogId === log.id}
-              uploadingFiles={upload.uploadingLogId === log.id}
-              onEdit={() => forms.startEditingLog(log)}
-              onAddFiles={() => upload.startUploadingFiles(log)}
-              onReview={(reviewStatus, isClientVisible) => updateReview(log, reviewStatus, isClientVisible)}
+              editing={forms.editingLogId === openedLog.id}
+              uploadingFiles={upload.uploadingLogId === openedLog.id}
+              onEdit={() => forms.startEditingLog(openedLog)}
+              onAddFiles={() => upload.startUploadingFiles(openedLog)}
+              onReview={(reviewStatus, isClientVisible) => updateReview(openedLog, reviewStatus, isClientVisible)}
               editForm={
-                forms.editingLogId === log.id ? (
+                forms.editingLogId === openedLog.id ? (
                   <DailyLogEditForm
-                    log={log}
+                    log={openedLog}
                     forms={forms}
                     form={workspace.form}
                     isPending={isPending}
-                    deletable={deletableIds.has(log.id)}
-                    onDelete={() => setPendingDeleteIds([log.id])}
+                    deletable={deletableIds.has(openedLog.id)}
+                    onDelete={() => setPendingDeleteIds([openedLog.id])}
                   />
                 ) : null
               }
               uploadPanel={
-                upload.uploadingLogId === log.id ? (
+                upload.uploadingLogId === openedLog.id ? (
                   <DailyLogUploadPanel
-                    log={log}
+                    log={openedLog}
                     upload={upload}
                     schedulePhases={workspace.schedulePhases}
                   />
                 ) : null
               }
             />
-          ))}
-
-          {filteredLogs.length === 0 && (
-            <section className="rounded-lg border p-6 text-sm text-muted-foreground">
-              No daily logs match this filter yet.
-            </section>
-          )}
-        </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Select a log to see its work lines, photos, issues and to-dos.
+          </p>
+        )}
 
         {workspace.unattachedPhotos.length > 0 && (
           <DailyLogUnattachedPhotos workspace={workspace} />

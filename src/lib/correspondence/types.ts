@@ -33,6 +33,8 @@ export type CorrespondenceSummary = {
   readonly lastSentAt?: string | null
   readonly closed: boolean
   readonly shareReadReceipts: boolean
+  /** "email" for a project email thread sent from Compass; portal messages are "message" (or unset). */
+  readonly kind?: "email" | "message"
   /** Set for a project conversation that lives in a channel (see channel-thread-id.ts). */
   readonly origin?: { readonly kind: "channel"; readonly source: RecordSource | null }
 }
