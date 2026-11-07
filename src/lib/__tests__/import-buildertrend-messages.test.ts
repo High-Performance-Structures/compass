@@ -272,6 +272,15 @@ describe("Buildertrend messages importer", () => {
     expect(count(db, `SELECT COUNT(*) AS n FROM message_attachments WHERE source_attachment_id IN ('61', '62')`)).toBe(0)
   })
 
+  it("never reuses a stored file from another project, whose Drive folder this project cannot serve", () => {
+    const now = "2026-01-01T00:00:00.000Z"
+    channel(db, `project-owner-${PRIVATE_PROJECT}`, PRIVATE_PROJECT, true, "clients")
+    message(db, "native-other", `project-owner-${PRIVATE_PROJECT}`, "photo")
+    db.exec(`INSERT INTO message_attachments (id, message_id, file_name, mime_type, file_size, r2_path, uploaded_at, content_sha256) VALUES ('att-other', 'native-other', 'same.jpg', 'image/jpeg', 12, 'drive-other-project', '${now}', '${SHA_B}')`)
+    run(db, [captured("1001", { attachments: [{ btAttachmentId: "71", fileName: "same.jpg", mimeType: "image/jpeg", sizeBytes: 12, sha256: SHA_B }] }), thread("9001", 1)])
+    expect(all(db, `SELECT r2_path FROM message_attachments WHERE source_attachment_id = '71'`)).toEqual([{ r2_path: "drive-new" }])
+  })
+
   it("treats a message without a thread id as its own conversation", () => {
     const line = JSON.parse(captured("1301"))
     delete line.btThreadId
