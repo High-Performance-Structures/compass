@@ -31,6 +31,7 @@ import {
   supersedeCurrentContractBudgetRevisionStatement,
 } from "@/lib/domain/financials/store"
 import { calculateEstimateTotals, type EstimateLedgerLine } from "@/lib/domain/estimates/rules"
+import { budgetFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import type { ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
 import {
   buildContractBudget,
@@ -292,7 +293,8 @@ export async function rebuildProjectContractBudget(input: {
     adjustments.push({
       id: row.id,
       changeOrderId: row.changeOrderId,
-      costCode: row.costCode,
+      // A fee adjustment coded "99 10 00" joins the budget's own fee line.
+      costCode: budgetFeeCostCode(ledgerLines.lines, row.costCode),
       description: row.description,
       amountCents: row.amountCents,
       executedAt: row.executedAt,

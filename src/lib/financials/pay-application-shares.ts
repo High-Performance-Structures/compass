@@ -9,6 +9,7 @@ import {
   projectEstimateAssemblies,
   projectEstimateLines,
 } from "@/db/schema-estimates"
+import { canonicalFeeCostCode, mixesFeeCostCodes } from "@/lib/domain/financials/builder-fee-codes"
 
 /**
  * One G703 row on a pay application: a contract budget cost code, or the part
@@ -278,18 +279,25 @@ export function priorAmountsForShares(
   const toCents = (value: number): number => Math.round(value * 100)
   const priorByKey = new Map(priorLines.map((line) => [shareKey(line.costCode, line.assemblyKey), line]))
   const result = shares.map(() => ({ previousCents: 0, retainageCents: 0, priorChangesCents: 0 }))
+  // Grouped by canonical cost code, so a prior builder fee row coded
+  // "99 10 00" carries onto the "Company Overhead" share.
   const sharesByCode = new Map<string, number[]>()
-  shares.forEach((share, index) => sharesByCode.set(share.costCode, [...(sharesByCode.get(share.costCode) ?? []), index]))
+  shares.forEach((share, index) => {
+    const key = canonicalFeeCostCode(share.costCode)
+    sharesByCode.set(key, [...(sharesByCode.get(key) ?? []), index])
+  })
   for (const [costCode, indexes] of sharesByCode) {
-    const codeLines = priorLines.filter((line) => line.costCode === costCode)
+    const codeLines = priorLines.filter((line) => canonicalFeeCostCode(line.costCode) === costCode)
     const codeShares = indexes.flatMap((index) => {
       const share = shares[index]
       return share ? [share] : []
     })
-    const allMatch = !splitNeedsSpreading(
-      codeLines.map((line) => ({ assemblyKey: line.assemblyKey, hasAmounts: line.totalCosts !== 0 || line.retainageHeld !== 0 })),
-      codeShares
-    )
+    const allMatch =
+      !mixesFeeCostCodes([...codeShares, ...codeLines].map((item) => item.costCode)) &&
+      !splitNeedsSpreading(
+        codeLines.map((line) => ({ assemblyKey: line.assemblyKey, hasAmounts: line.totalCosts !== 0 || line.retainageHeld !== 0 })),
+        codeShares
+      )
     if (allMatch) {
       for (const index of indexes) {
         const share = shares[index]
@@ -336,14 +344,18 @@ export type G703Row = {
   readonly balanceToFinish: number
 }
 
-/** G703 rows combined back to one per cost code, as Sage keeps them. */
+/**
+ * G703 rows combined back to one per cost code, as Sage keeps them. Builder
+ * fees go under their canonical (Sage catalog) name.
+ */
 export function g703ByCostCode<T extends G703Row>(rows: readonly T[]): readonly G703Row[] {
   const add = (left: number, right: number): number => Math.round((left + right) * 100) / 100
   const byCode = new Map<string, G703Row>()
   for (const row of rows) {
-    const current = byCode.get(row.costCode)
+    const costCode = canonicalFeeCostCode(row.costCode)
+    const current = byCode.get(costCode)
     byCode.set(
-      row.costCode,
+      costCode,
       current
         ? {
             ...current,
@@ -360,7 +372,7 @@ export function g703ByCostCode<T extends G703Row>(rows: readonly T[]): readonly 
         : {
             budgetRevisionLineId: row.budgetRevisionLineId,
             csiDivision: row.csiDivision,
-            costCode: row.costCode,
+            costCode,
             description: row.description,
             originalEstimate: row.originalEstimate,
             totalChanges: row.totalChanges,

@@ -9,6 +9,7 @@ import {
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { chunkD1InsertRows } from "@/lib/d1-query"
+import { canonicalFeeCostCode, mixesFeeCostCodes } from "@/lib/domain/financials/builder-fee-codes"
 import { SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
 import { updateOperations } from "@/lib/domain/operations/store"
 import {
@@ -309,10 +310,18 @@ export async function syncDraftPayApplication(
     loadPayApplicationShares(db, revisionId),
     db.select().from(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)),
   ])
+  // Grouped by canonical cost code, so a builder fee row coded "99 10 00"
+  // moves onto the "Company Overhead" share instead of being left behind.
   const oldByCode = new Map<string, (typeof existing)[number][]>()
-  for (const line of existing) oldByCode.set(line.costCode, [...(oldByCode.get(line.costCode) ?? []), line])
+  for (const line of existing) {
+    const key = canonicalFeeCostCode(line.costCode)
+    oldByCode.set(key, [...(oldByCode.get(key) ?? []), line])
+  }
   const sharesByCode = new Map<string, PayApplicationShare[]>()
-  for (const share of shares) sharesByCode.set(share.costCode, [...(sharesByCode.get(share.costCode) ?? []), share])
+  for (const share of shares) {
+    const key = canonicalFeeCostCode(share.costCode)
+    sharesByCode.set(key, [...(sharesByCode.get(key) ?? []), share])
+  }
 
   const statements = []
   const inserts: (typeof projectBudgetLines.$inferInsert)[] = []
@@ -320,14 +329,16 @@ export async function syncDraftPayApplication(
   for (const [costCode, codeShares] of sharesByCode) {
     const olds = oldByCode.get(costCode) ?? []
     const oldByKey = new Map(olds.map((line) => [shareKey(line.costCode, line.assemblyKey), line]))
-    const spreadAmounts = splitNeedsSpreading(
-      olds.map((line) => ({
-        assemblyKey: line.assemblyKey,
-        hasAmounts:
-          line.previousWorkCompleted !== 0 || line.currentWorkCompleted !== 0 || line.storedMaterials !== 0 || line.retainageHeld !== 0,
-      })),
-      codeShares
-    )
+    const spreadAmounts =
+      mixesFeeCostCodes([...codeShares, ...olds].map((item) => item.costCode)) ||
+      splitNeedsSpreading(
+        olds.map((line) => ({
+          assemblyKey: line.assemblyKey,
+          hasAmounts:
+            line.previousWorkCompleted !== 0 || line.currentWorkCompleted !== 0 || line.storedMaterials !== 0 || line.retainageHeld !== 0,
+        })),
+        codeShares
+      )
     if (!spreadAmounts) {
       // Row by row: matching shares update in place, new shares start empty,
       // and rows with no share (and no amounts) are removed.
