@@ -41,3 +41,71 @@ export function retainageAtPercent(totalCompletedStored: number, retainagePercen
 export function retainageAtRate(totalCompletedStored: number, rate: number): number {
   return Math.round(totalCompletedStored * rate * 100) / 100
 }
+
+export type PayApplicationLineEntryInput = {
+  readonly previousWorkCompleted: number
+  readonly adjustedEstimate: number
+  /** Null when the typed value is not a number. */
+  readonly currentWorkCompleted: number | null
+  readonly storedMaterials: number | null
+  readonly retainagePercent: number | null
+}
+
+export type PayApplicationLineEntry = {
+  readonly currentWorkCompleted: number
+  readonly storedMaterials: number
+  readonly retainagePercent: number
+  readonly totalCompletedStored: number
+}
+
+const toCents = (value: number): number => Math.round(value * 100)
+
+/**
+ * Checks what staff enter on a draft G703 line. Work completed this period may
+ * be negative to credit back work billed on an earlier draw, as long as the
+ * line's total completed and stored to date stays at zero or more. Stored
+ * materials and retainage percent are never negative, and the total cannot
+ * pass the line's adjusted scheduled value. Amounts are rounded to the cent.
+ */
+export function payApplicationLineEntry(
+  input: PayApplicationLineEntryInput
+):
+  | { readonly success: true; readonly entry: PayApplicationLineEntry }
+  | { readonly success: false; readonly error: string } {
+  const { currentWorkCompleted, storedMaterials, retainagePercent } = input
+  if (currentWorkCompleted === null || !Number.isFinite(currentWorkCompleted)) {
+    return { success: false, error: "Current work must be a dollar amount." }
+  }
+  if (storedMaterials === null || !Number.isFinite(storedMaterials) || storedMaterials < 0) {
+    return { success: false, error: "Stored materials must be zero or greater." }
+  }
+  if (retainagePercent === null || !Number.isFinite(retainagePercent) || retainagePercent < 0) {
+    return { success: false, error: "Retainage must be zero or greater." }
+  }
+  if (retainagePercent > 100) return { success: false, error: "Retainage cannot exceed 100%." }
+  const currentCents = toCents(currentWorkCompleted)
+  const storedCents = toCents(storedMaterials)
+  // Sum in cents so a credit that exactly reverses earlier work lands on zero.
+  const totalCents = toCents(input.previousWorkCompleted) + currentCents + storedCents
+  if (totalCents < 0) {
+    return {
+      success: false,
+      error: "Current work can credit back earlier billing, but completed and stored to date cannot go below zero.",
+    }
+  }
+  if (totalCents > toCents(input.adjustedEstimate) + 1) {
+    return {
+      success: false,
+      error: "Completed work and stored materials cannot exceed the adjusted budget line.",
+    }
+  }
+  return {
+    success: true,
+    entry: {
+      currentWorkCompleted: currentCents / 100,
+      storedMaterials: storedCents / 100,
+      retainagePercent: Math.round(retainagePercent * 100) / 100,
+      totalCompletedStored: totalCents / 100,
+    },
+  }
+}

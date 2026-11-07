@@ -26,7 +26,7 @@ import {
 } from "@/lib/financials/pay-application-change-orders"
 import { getCloudflareContext } from "@/lib/db"
 import { chunkD1InsertRows } from "@/lib/d1-query"
-import { budgetLineProgress, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
+import { budgetLineProgress, payApplicationLineEntry, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
 import { insertOperations, operationDeleteQuery, operationUpdateQuery, updateOperations } from "@/lib/domain/operations/store"
 import {
   deleteBudgetApplicationsStatement,
@@ -666,28 +666,16 @@ export async function updateProjectOwnerPayApplicationLine(
       .limit(1)
     const line = lineRows[0]
     if (!line) throw new Error("Pay application line not found.")
-    const currentWorkCompleted = nonnegativeAmount(
-      input.currentWorkCompleted,
-      "Current work"
-    )
-    const storedMaterials = nonnegativeAmount(
-      input.storedMaterials,
-      "Stored materials"
-    )
-    const retainagePercent = nonnegativeAmount(
-      input.retainagePercent,
-      "Retainage"
-    )
-    if (retainagePercent > 100) {
-      throw new Error("Retainage cannot exceed 100%.")
-    }
-    const totalCompletedStored =
-      line.previousWorkCompleted + currentWorkCompleted + storedMaterials
-    if (totalCompletedStored > line.adjustedEstimate + 0.01) {
-      throw new Error(
-        "Completed work and stored materials cannot exceed the adjusted budget line."
-      )
-    }
+    const checked = payApplicationLineEntry({
+      previousWorkCompleted: line.previousWorkCompleted,
+      adjustedEstimate: line.adjustedEstimate,
+      currentWorkCompleted: input.currentWorkCompleted,
+      storedMaterials: input.storedMaterials,
+      retainagePercent: input.retainagePercent,
+    })
+    if (!checked.success) return { success: false, error: checked.error }
+    const { currentWorkCompleted, storedMaterials, retainagePercent, totalCompletedStored } =
+      checked.entry
     const retainageHeld = retainageAtPercent(totalCompletedStored, retainagePercent)
     const now = new Date().toISOString()
     await updateBudgetLines(db, eq(projectBudgetLines.id, lineId), {

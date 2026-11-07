@@ -902,7 +902,7 @@
     "src/app/actions/project-audience-preview.ts": 1004,
     "src/app/actions/project-change-orders.ts": 1531,
     "src/app/actions/project-documents.ts": 876,
-    "src/app/actions/project-financial-workflows.ts": 1426,
+    "src/app/actions/project-financial-workflows.ts": 1414,
     "src/app/actions/schedule-confirmations.ts": 1344,
     "src/app/actions/social-posts.ts": 1123,
     "src/app/actions/voice-sessions.ts": 982,
