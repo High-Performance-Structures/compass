@@ -5,11 +5,7 @@ import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/
 import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "@/lib/daily-logs/log-followups"
 import { PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
 import { DAILY_LOG_REMINDER_AUDIENCES, TIME_PATTERN } from "@/lib/daily-logs/reminders"
-import {
-  DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
-  clientFollowUpSettingsSchema,
-  type ClientFollowUpSettings,
-} from "@/lib/client-follow-up/leaderboard"
+import { DEFAULT_CLIENT_FOLLOW_UP_SETTINGS, clientFollowUpSettingsSchema, type ClientFollowUpSettings } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { DEFAULT_TRADE_DOC_SETTINGS, tradeDocSettingsSchema, type TradeDocSettings } from "@/lib/trade-docs/settings"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
@@ -17,6 +13,7 @@ import { DEFAULT_MAP_STATE, MAP_STATE_CODES } from "@/lib/portfolio-map/states"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePricingSettings } from "@/lib/estimates/pricing-sources"
 import * as contract from "@/lib/feature-settings/contract-settings"
+import { SAGE_CHANGE_ORDER_SETTINGS_GROUP, type SageChangeOrderSettings } from "@/lib/feature-settings/sage-change-order-settings"
 import {
   DEFAULT_BRACING_RENTAL_SETTINGS,
   DEFAULT_NUTECH_ORDER_BOARD_SETTINGS,
@@ -584,6 +581,7 @@ type FeatureSettingsTypes = {
   readonly "pay-applications": contract.PayApplicationSettings
   readonly variances: contract.VarianceSettings
   readonly "sage-export": contract.SageExportSettings
+  readonly "sage-change-orders": SageChangeOrderSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
@@ -741,6 +739,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   "pay-applications": contract.PAY_APPLICATION_SETTINGS_GROUP,
   variances: contract.VARIANCE_SETTINGS_GROUP,
   "sage-export": contract.SAGE_EXPORT_SETTINGS_GROUP,
+  "sage-change-orders": SAGE_CHANGE_ORDER_SETTINGS_GROUP,
   "change-order-acceptance": {
     label: "Change-order acceptance",
     description: "How staff record an owner's approval that came by email, text or in person. Written approval always needs change-order approval permission.",

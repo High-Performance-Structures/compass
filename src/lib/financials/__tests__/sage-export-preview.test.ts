@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
+import { sageChangeOrderName } from "@/lib/domain/sage-bridge/change-order-rules"
 import { DEFAULT_SAGE_EXPORT_SETTINGS, sageExportSettingsSchema } from "@/lib/feature-settings/contract-settings"
 import { compassLineKey, indexSageCatalog, mapToSageCostCode, sageLineKey, type SageCatalogEntry } from "@/lib/financials/sage-export-codes"
 import {
   applicationSequence,
   payRequestDescription,
-  sageChangeOrderName,
   sageChangeOrderPreviews,
   sageExportLines,
   sagePeriod,

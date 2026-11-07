@@ -222,6 +222,14 @@ function Reconciliation({ preview }: { readonly preview: SageExportPreview }): R
   )
 }
 
+const IN_SAGE_LABELS: Record<SageExportPreview["changeOrders"][number]["inSage"], string> = {
+  linked: "Linked",
+  in_sage: "In Sage",
+  not_in_sage: "Not in Sage",
+  differs: "Differs",
+  unknown: "Unknown",
+}
+
 function ChangeOrders({ preview }: { readonly preview: SageExportPreview }): React.ReactElement {
   return (
     <section aria-labelledby="sage-export-change-orders" className="space-y-2">
@@ -259,7 +267,7 @@ function ChangeOrders({ preview }: { readonly preview: SageExportPreview }): Rea
                     </ul>
                   </td>
                   <td className={num}><Money cents={changeOrder.amountCents} /></td>
-                  <td className={cell}>{changeOrder.inSage === "linked" ? "Linked" : "Unknown"}</td>
+                  <td className={cell}>{IN_SAGE_LABELS[changeOrder.inSage]}{changeOrder.sageNumber ? ` (${changeOrder.sageNumber})` : ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -267,7 +275,7 @@ function ChangeOrders({ preview }: { readonly preview: SageExportPreview }): Rea
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        &quot;Unknown&quot; means Compass doesn&apos;t read Sage&apos;s change orders yet; check Sage for each before entering the pay request.
+        &quot;Unknown&quot; means Compass hasn&apos;t read this job&apos;s change orders from Sage yet; check Sage for each before entering the pay request. Office staff send approved change orders to Sage from the project&apos;s Financials page or the change order itself.
       </p>
     </section>
   )

@@ -674,6 +674,9 @@
     "sageBridgeStatus": [
       "src/lib/domain/sage-bridge/store.ts"
     ],
+    "sageChangeOrderExports": [
+      "src/lib/domain/sage-bridge/change-order-store.ts"
+    ],
     "sageClientDirectoryEntries": [
       "src/lib/domain/sage-bridge/store.ts"
     ],
@@ -715,6 +718,12 @@
     ],
     "sagePayApplicationSyncRuns": [
       "src/lib/domain/sage-bridge/store.ts"
+    ],
+    "sagePrimeChangeOrderReads": [
+      "src/lib/domain/sage-bridge/change-order-store.ts"
+    ],
+    "sagePrimeChangeOrders": [
+      "src/lib/domain/sage-bridge/change-order-store.ts"
     ],
     "sageSquarePaymentOperations": [
       "src/lib/domain/sage-bridge/square-store.ts"
@@ -939,7 +948,7 @@
     "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1039,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
-    "src/lib/feature-settings/registry.ts": 998,
+    "src/lib/feature-settings/registry.ts": 997,
     "src/lib/notifications/create-event.ts": 843,
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,

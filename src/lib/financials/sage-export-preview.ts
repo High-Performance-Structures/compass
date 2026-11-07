@@ -1,4 +1,5 @@
 import { canonicalFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
+import { sageChangeOrderName, sageChangeOrderState, type SagePrimeChangeOrderRow } from "@/lib/domain/sage-bridge/change-order-rules"
 import { parseDateOnly, toCents as dollarsToCents } from "@/lib/format"
 import { g703ByCostCode } from "@/lib/financials/pay-application-shares"
 import {
@@ -153,20 +154,41 @@ export type SageChangeOrderPreview = {
   readonly period: ReturnType<typeof sagePeriod>
   readonly amountCents: number
   readonly lines: readonly { readonly costCode: string; readonly amountCents: number; readonly mapping: SageCostCodeMapping }[]
-  /** "linked" when Compass holds the Sage change order's id; otherwise Compass can't tell. */
-  readonly inSage: "linked" | "unknown"
+  /**
+   * Compared with Sage's prime change orders when Compass has read them;
+   * otherwise "linked" when Compass holds the Sage record, or "unknown".
+   */
+  readonly inSage: "linked" | "in_sage" | "not_in_sage" | "differs" | "unknown"
+  /** Sage's change order number when Sage has it. */
+  readonly sageNumber: string | null
 }
 
-/** The change order's name in Sage: variances carry a "V-" prefix. */
-export function sageChangeOrderName(number: string, recordType: "change_order" | "variance"): string {
-  const trimmed = number.trim()
-  if (recordType !== "variance") return trimmed
-  return /^v-/i.test(trimmed) ? `V-${trimmed.slice(2)}` : `V-${trimmed}`
+function sageMatch(
+  changeOrder: SageChangeOrderSource,
+  sageName: string,
+  amountCents: number,
+  rows: readonly SagePrimeChangeOrderRow[] | null
+): Pick<SageChangeOrderPreview, "inSage" | "sageNumber"> {
+  if (rows === null) return { inSage: changeOrder.sageRecordId ? "linked" : "unknown", sageNumber: null }
+  const state = sageChangeOrderState(
+    {
+      sageRecordId: changeOrder.sageRecordId,
+      numbers: [changeOrder.number, sageName],
+      descriptions: [changeOrder.title, `${sageName} ${changeOrder.title}`],
+      amountCents,
+    },
+    rows
+  )
+  if (state.state === "in_sage" || state.state === "differs") return { inSage: state.state, sageNumber: state.sageNumber }
+  return { inSage: "not_in_sage", sageNumber: null }
 }
+
 
 export function sageChangeOrderPreviews(
   changeOrders: readonly SageChangeOrderSource[],
-  index: SageCatalogIndex
+  index: SageCatalogIndex,
+  /** Sage's prime change orders for the job, or null when Compass hasn't read them. */
+  sageRows: readonly SagePrimeChangeOrderRow[] | null = null
 ): readonly SageChangeOrderPreview[] {
   return [...changeOrders]
     .sort((left, right) => left.executedAt.localeCompare(right.executedAt) || left.number.localeCompare(right.number, undefined, { numeric: true }))
@@ -177,16 +199,18 @@ export function sageChangeOrderPreviews(
         byCode.set(code, (byCode.get(code) ?? 0) + line.amountCents)
       }
       const lines = [...byCode.entries()].map(([costCode, amountCents]) => ({ costCode, amountCents, mapping: mapToSageCostCode(costCode, index) }))
+      const amountCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
+      const sageName = sageChangeOrderName(changeOrder.number, changeOrder.recordType)
       return {
         id: changeOrder.id,
         recordType: changeOrder.recordType,
-        sageName: sageChangeOrderName(changeOrder.number, changeOrder.recordType),
+        sageName,
         title: changeOrder.title,
         executedAt: changeOrder.executedAt,
         period: sagePeriod(changeOrder.executedAt),
-        amountCents: lines.reduce((sum, line) => sum + line.amountCents, 0),
+        amountCents,
         lines,
-        inSage: changeOrder.sageRecordId ? "linked" : "unknown",
+        ...sageMatch(changeOrder, sageName, amountCents, sageRows),
       }
     })
 }

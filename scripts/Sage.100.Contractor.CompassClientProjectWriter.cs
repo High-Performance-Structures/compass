@@ -186,6 +186,10 @@ namespace CompassSageClientProjectWriter
                 return RunVendorCertificateDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--vendor-certificate-run", StringComparison.OrdinalIgnoreCase))
                 return RunVendorCertificatesOnly();
+            if (args.Length > 0 && String.Equals(args[0], "--change-order-diagnose", StringComparison.OrdinalIgnoreCase))
+                return RunChangeOrderDiagnostics();
+            if (args.Length > 0 && String.Equals(args[0], "--change-order-run", StringComparison.OrdinalIgnoreCase))
+                return RunChangeOrdersOnly();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -207,6 +211,8 @@ namespace CompassSageClientProjectWriter
                 RunSquareFeesAfterWriterRun();
                 // Vendor certificates last, only with SAGE_VENDOR_CERTIFICATE_WRITES_ENABLED.
                 RunVendorCertificatesAfterWriterRun();
+                // Change orders last, only with SAGE_CHANGE_ORDER_WRITES_ENABLED.
+                RunChangeOrdersAfterWriterRun();
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }

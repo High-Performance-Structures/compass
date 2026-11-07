@@ -12,6 +12,8 @@ import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { getProjectVarianceOptions } from "@/app/actions/project-variances"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
+import { getSageChangeOrderSendState } from "@/app/actions/sage-change-orders"
+import { SageChangeOrderSendPanel } from "@/components/financials/sage-change-order-send"
 
 export default async function ProjectChangeOrderDetailPage({
   params,
@@ -29,6 +31,8 @@ export default async function ProjectChangeOrderDetailPage({
     getProjectChangeOrderFormOptions(id),
     getProjectPaperTrail(id, "change_order"),
     getProjectVarianceOptions(id),
+    // Office staff with finance access only; everyone else gets no panel.
+    getSageChangeOrderSendState(id, [changeOrderId]).catch(() => null),
   ]).then(
     (data) => ({ data, deniedHref: null }),
     (error: unknown) => {
@@ -38,7 +42,7 @@ export default async function ProjectChangeOrderDetailPage({
     },
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
-  const [item, formOptions, paperTrail, varianceOptions] = loaded.data
+  const [item, formOptions, paperTrail, varianceOptions, sageSend] = loaded.data
   if (!item) notFound()
 
   const backHref =
@@ -51,6 +55,11 @@ export default async function ProjectChangeOrderDetailPage({
         internal
         formOptions={formOptions}
         varianceOptions={varianceOptions}
+        sagePanel={
+          sageSend?.success && sageSend.data.items.length > 0 ? (
+            <SageChangeOrderSendPanel projectId={id} state={sageSend.data} />
+          ) : null
+        }
         paperTrailStatus={
           paperTrail.enabled ? (
             <PaperTrailRecordStatus
