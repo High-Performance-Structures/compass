@@ -12,9 +12,11 @@ import {
   IconFileDollar,
   IconExternalLink,
   IconReceipt,
+  IconRefresh,
   IconSend,
 } from "@tabler/icons-react"
 
+import { refreshProjectContractBudget } from "@/app/actions/project-contract-budget"
 import {
   createProjectOwnerPayApplicationDraft,
   createProjectVendorBillDraft,
@@ -224,6 +226,21 @@ export function ProjectFinancialWorkspace({
     })
   }
 
+  function handleRebuildBudget(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await refreshProjectContractBudget(projectId)
+      setMessage(
+        !result.success
+          ? result.error
+          : result.changed
+            ? `Contract budget rebuilt as revision ${result.revisionNumber}. Draft pay applications moved onto it.`
+            : `Contract budget revision ${result.revisionNumber} is already up to date.`
+      )
+      router.refresh()
+    })
+  }
+
   return (
     <div className="space-y-5">
       {message && (
@@ -313,6 +330,22 @@ export function ProjectFinancialWorkspace({
               lines come from the locked budget revision. Enter current work
               and stored materials on the generated G703 before review.
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isPending}
+                onClick={handleRebuildBudget}
+              >
+                <IconRefresh className="size-4" />
+                Rebuild contract budget
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                From the signed estimate and executed change orders. Draft
+                pay applications keep the work entered.
+              </span>
+            </div>
             <FormField label="Notes" htmlFor="payApplicationNotes">
               <Textarea id="payApplicationNotes" name="notes" rows={7} />
             </FormField>
