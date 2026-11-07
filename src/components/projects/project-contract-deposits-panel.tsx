@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconCash, IconExternalLink, IconEye, IconPlus, IconSend } from "@tabler/icons-react"
+import { IconCash, IconExternalLink, IconEye, IconHistory, IconPlus, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -12,6 +12,7 @@ import {
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
 import { DepositRequestDialog } from "@/components/projects/deposit-request-dialog"
+import { ImportedDrawDepositDialog, type ImportedDrawDepositTarget } from "@/components/projects/imported-draw-deposit-dialog"
 import { OwnerDocumentNoticeActions } from "@/components/projects/owner-document-notice-actions"
 import { Badge } from "@/components/ui/badge"
 import { printPreviewHref } from "@/lib/print/print-documents"
@@ -233,6 +234,10 @@ export function ProjectContractDepositsPanel({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogKey, setDialogKey] = useState(0)
   const [requestOpen, setRequestOpen] = useState(false)
+  const [importedTarget, setImportedTarget] = useState<ImportedDrawDepositTarget | null>(null)
+  const importedWithDeposit = summary.importedDraws.filter((draw) => draw.depositAppliedCents > 0)
+  const canRecordOnImported =
+    summary.canEdit && summary.receivedCents > 0 && summary.importedDraws.some((draw) => draw.depositAppliedCents === 0)
 
   function openDialog(deposit: ProjectContractDepositItem | null): void {
     setEditing(deposit)
@@ -274,6 +279,12 @@ export function ProjectContractDepositsPanel({
         </div>
         {summary.canEdit && (
           <div className="flex flex-wrap gap-2">
+            {canRecordOnImported && (
+              <Button size="sm" variant="outline" onClick={() => { setDialogKey((key) => key + 1); setImportedTarget({ mode: "record" }) }}>
+                <IconHistory className="size-4" />
+                Applied on imported draw
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
               <IconSend className="size-4" />
               Request deposit
@@ -368,6 +379,44 @@ export function ProjectContractDepositsPanel({
           ))}
         </ul>
       )}
+      {importedWithDeposit.length > 0 && (
+        <div className="border-t">
+          <p className="px-4 pt-3 text-xs font-medium text-muted-foreground">Applied on imported draws</p>
+          <ul className="divide-y">
+            {importedWithDeposit.map((draw) => (
+              <li key={draw.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    <span className="tabular-nums">{money(draw.depositAppliedCents)}</span> on {draw.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {[draw.periodTo ? `Period to ${draw.periodTo}` : null, draw.sourceLabel, draw.recorded ? "Recorded in Compass" : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                {summary.canEdit && draw.recorded && (
+                  draw.undoBlocker ? (
+                    <p className="max-w-xs text-xs text-muted-foreground">{draw.undoBlocker}</p>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => setImportedTarget({ mode: "remove", draw })} disabled={pending}>
+                      Remove
+                    </Button>
+                  )
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <ImportedDrawDepositDialog
+        key={`imported-${dialogKey}`}
+        projectId={projectId}
+        target={importedTarget}
+        draws={summary.importedDraws}
+        recordableCents={summary.recordableCents}
+        onClose={() => setImportedTarget(null)}
+      />
       <DepositRequestDialog
         projectId={projectId}
         suggestedCents={summary.contractDeposit?.cents ?? null}

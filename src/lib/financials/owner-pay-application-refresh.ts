@@ -1,4 +1,4 @@
-import { and, eq, ne, notInArray, sql } from "drizzle-orm"
+import { and, eq, ne, notInArray, sql, type SQL } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { chunkD1InsertRows } from "@/lib/d1-query"
+import { SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
 import { updateOperations } from "@/lib/domain/operations/store"
 import {
   deleteBudgetLinesStatement,
@@ -33,6 +34,21 @@ import {
 
 /** Pay applications that can carry an applied deposit (not projections). */
 const DEPOSIT_EXCLUDED_APPLICATION_STATUSES = ["budget_current", "budget_superseded", "void"] as const
+
+/** Statuses never taken as the prior draw: budget views, unfinished, void or replaced draws. */
+const PRIOR_DRAW_EXCLUDED_STATUSES = ["budget_current", "budget_superseded", "building", "void", "superseded"] as const
+
+/**
+ * Pay applications a new draft can carry forward from as the prior draw.
+ * Sage job-cost snapshots share the table but are not draws.
+ */
+export function priorPayApplicationCondition(projectId: string): SQL | undefined {
+  return and(
+    eq(projectBudgetApplications.projectId, projectId),
+    ne(projectBudgetApplications.sourceSystem, SAGE_SNAPSHOT_SOURCE),
+    notInArray(projectBudgetApplications.status, [...PRIOR_DRAW_EXCLUDED_STATUSES])
+  )
+}
 
 /**
  * Deposit received on the project and not applied to any other pay

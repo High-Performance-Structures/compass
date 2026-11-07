@@ -417,7 +417,16 @@ export function invoiceAcceptsPayments(status: string): boolean {
 export const COMPASS_DRAW_SOURCE = "compass_contract_budget"
 
 /** Rows that share the draws table but are not draws: each contract budget revision's budget view. */
-export const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
+const BUDGET_PROJECTION_SOURCE = "compass_contract_budget_projection"
+
+/**
+ * Sage job-cost read snapshots share the draws table but are not bills: the
+ * same draw is usually imported as a billed Drive or Sage draw as well.
+ */
+export const SAGE_SNAPSHOT_SOURCE = "sage_read_snapshot"
+
+/** Sources whose rows are never an imported billed draw (Compass draws are billed on their own rule). */
+export const NON_IMPORTED_BILL_SOURCES = [COMPASS_DRAW_SOURCE, BUDGET_PROJECTION_SOURCE, SAGE_SNAPSHOT_SOURCE] as const
 
 /**
  * Statuses of an imported draw that mean it is not a billed item: a draw still
@@ -460,6 +469,7 @@ export function drawPaymentTarget(application: DrawRow): DrawPaymentTarget {
       ? { listed: true, billedCents, blocker: null }
       : { listed: false }
   }
+  if (application.sourceSystem === SAGE_SNAPSHOT_SOURCE) return { listed: false }
   if (IMPORTED_DRAW_UNBILLED_STATUSES.some((status) => status === application.status)) return { listed: false }
   if (typeof due !== "number" || !Number.isFinite(due)) {
     return { listed: true, billedCents: 0, blocker: "No current payment due was imported with this draw, so payments can't be applied to it." }

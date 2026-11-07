@@ -179,7 +179,7 @@ describe("invoice paid values", () => {
     expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "compass_contract_budget", status: "internal_review" })).toBe(false)
     expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "sage", status: "current" })).toBe(true)
     expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "google_drive_g702_g703", status: "paid_in_full" })).toBe(true)
-    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "sage_read_snapshot", status: "imported_draft" })).toBe(true)
+    expect(payApplicationAcceptsPayments({ ...due, sourceSystem: "sage_read_snapshot", status: "imported_draft" })).toBe(false)
     expect(payApplicationAcceptsPayments({ currentPaymentDue: 0, sourceSystem: "sage", status: "current" })).toBe(false)
   })
 })
@@ -194,6 +194,11 @@ describe("imported draws", () => {
     expect(importedDrawSourceLabel("google_drive_g702_g703")).toBe("Imported from Drive")
     expect(importedDrawSourceLabel("spreadsheet")).toBe("Imported")
     expect(importedDrawSourceLabel("compass_contract_budget")).toBeNull()
+  })
+
+  it("leaves Sage job-cost snapshots out of receivables: they are not bills", () => {
+    expect(drawPaymentTarget({ sourceSystem: "sage_read_snapshot", status: "imported_draft", currentPaymentDue: 75 })).toEqual({ listed: false })
+    expect(drawPaymentTarget({ sourceSystem: "sage_read_snapshot", status: "current", currentPaymentDue: 75 })).toEqual({ listed: false })
   })
 
   it("lists only billed Compass draws, and leaves out drafts, budget views and void imports", () => {

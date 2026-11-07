@@ -1,9 +1,19 @@
-import { and, eq, type SQL } from "drizzle-orm"
+import { and, eq, notInArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import {
+  COMPASS_DRAW_SOURCE,
+  IMPORTED_DRAW_UNBILLED_STATUSES,
+  NON_IMPORTED_BILL_SOURCES,
+} from "@/lib/domain/financials/rules"
+import {
+  DEPOSIT_UNCOUNTED_APPLICATION_STATUSES,
+  UNSUBMITTED_DRAW_STATUSES,
+  type DepositAppliedMode,
+} from "@/lib/financials/contract-deposits"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -73,6 +83,71 @@ export function activateBudgetProjectionStatement(db: Db, projectionId: string, 
     .update(projectBudgetApplications)
     .set({ status: "budget_current", ownerVisible: true, updatedAt: now })
     .where(eq(projectBudgetApplications.id, projectionId))
+}
+
+const RECORDED_MODE: DepositAppliedMode = "recorded"
+const AUTO_MODE: DepositAppliedMode = "auto"
+
+/**
+ * Records a deposit already applied on an imported draw (billed outside
+ * Compass), guarded in SQL: the draw is an imported billed draw of the
+ * project with no deposit on it yet, and the deposit received still covers
+ * the amount after everything already applied (imported, submitted and billed
+ * draws, and drafts set by hand; drafts that apply the deposit automatically
+ * are recalculated afterwards). Returns false when the guard refused it.
+ */
+export async function recordImportedDrawDeposit(db: Db, input: {
+  readonly projectId: string
+  readonly applicationId: string
+  readonly cents: number
+  readonly now: string
+}): Promise<boolean> {
+  const { projectId, applicationId, cents, now } = input
+  const result = await db
+    .update(projectBudgetApplications)
+    .set({ depositApplied: cents / 100, depositAppliedMode: RECORDED_MODE, updatedAt: now })
+    .where(and(
+      eq(projectBudgetApplications.id, applicationId),
+      eq(projectBudgetApplications.projectId, projectId),
+      notInArray(projectBudgetApplications.sourceSystem, [...NON_IMPORTED_BILL_SOURCES]),
+      notInArray(projectBudgetApplications.status, [...IMPORTED_DRAW_UNBILLED_STATUSES]),
+      eq(projectBudgetApplications.depositApplied, 0),
+      sql`(SELECT COALESCE(SUM(received_amount_cents), 0) FROM project_contract_deposits
+            WHERE project_id = ${projectId} AND status = 'received')
+        - (SELECT COALESCE(CAST(ROUND(SUM(other.deposit_applied) * 100) AS INTEGER), 0) FROM project_budget_applications AS other
+            WHERE other.project_id = ${projectId} AND other.id <> ${applicationId}
+              AND other.status NOT IN (${sql.join(DEPOSIT_UNCOUNTED_APPLICATION_STATUSES.map((status) => sql`${status}`), sql`, `)})
+              AND NOT (other.status = 'draft' AND other.deposit_applied_mode = 'auto'))
+        >= ${cents}`,
+    ))
+    .run()
+  return (result.meta.changes ?? 0) === 1
+}
+
+/**
+ * Removes a deposit recorded on an imported draw, while no Compass pay
+ * application past draft exists (one may already count on it). Returns false
+ * when the guard refused it.
+ */
+export async function undoImportedDrawDeposit(db: Db, input: {
+  readonly projectId: string
+  readonly applicationId: string
+  readonly now: string
+}): Promise<boolean> {
+  const { projectId, applicationId, now } = input
+  const result = await db
+    .update(projectBudgetApplications)
+    .set({ depositApplied: 0, depositAppliedMode: AUTO_MODE, updatedAt: now })
+    .where(and(
+      eq(projectBudgetApplications.id, applicationId),
+      eq(projectBudgetApplications.projectId, projectId),
+      eq(projectBudgetApplications.depositAppliedMode, RECORDED_MODE),
+      sql`NOT EXISTS (SELECT 1 FROM project_budget_applications AS later
+            WHERE later.project_id = ${projectId} AND later.source_system = ${COMPASS_DRAW_SOURCE}
+              AND later.status NOT IN (${sql.join(UNSUBMITTED_DRAW_STATUSES.map((status) => sql`${status}`), sql`, `)}))`,
+    ))
+    .run()
+  return (result.meta.changes ?? 0) === 1
 }
 
 // ---- projectBudgetLines

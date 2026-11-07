@@ -235,7 +235,6 @@ describe("imported draws", () => {
   it("lists imported draws with their source, and says why one can't take payments", async () => {
     const draws = (await readProjectReceivables(db, scope)).filter((item) => item.kind === "pay_application")
     expect(draws.map((item) => [item.id, item.billedCents, item.openCents, item.sourceLabel, item.paymentBlocker !== null, item.staffStatus])).toEqual([
-      ["imp-sage", 400_000, 400_000, "Imported from Sage", false, "unconfirmed"],
       ["imp-sub", 120_000, 120_000, "Imported from Drive", false, "unconfirmed"],
       ["imp-drive", 250_050, 250_050, "Imported from Drive", false, "unconfirmed"],
       ["imp-final", 0, 0, "Imported from Drive", true, "unconfirmed"],
@@ -252,7 +251,8 @@ describe("imported draws", () => {
     expect(await payDraw("pay-f", "imp-drive", 50, 250_000)).toBe("saved")
   })
 
-  it("refuses imported draws with no billed amount, void draws and budget views", async () => {
+  it("refuses imported draws with no billed amount, void draws, budget views and Sage job-cost snapshots", async () => {
+    expect(await payDraw("pay-s", "imp-sage", 100)).toBe("stale")
     expect(await payDraw("pay-g", "imp-final", 100)).toBe("stale")
     expect(await payDraw("pay-h", "imp-void", 100)).toBe("stale")
     expect(await payDraw("pay-i", "budget-view", 100)).toBe("stale")
@@ -293,7 +293,8 @@ describe("owner gating of imported draws", () => {
   })
 
   it("never shows the owner a draw that is not owner-visible", async () => {
-    expect(await mark("imp-sage")).toBe("saved")
+    sqlite.exec("UPDATE project_budget_applications SET owner_visible = 0 WHERE id = 'imp-sub'")
+    expect(await mark("imp-sub")).toBe("saved")
     expect((await readOwnerPayApplicationBalances(db, "p1")).map((entry) => entry.applicationId)).toEqual(["app-1"])
   })
 })
@@ -321,6 +322,7 @@ describe("paid before Compass", () => {
     expect(await mark("imp-drive", "mark-again")).toBe("stale")
     expect(await mark("app-1")).toBe("stale")
     expect(await mark("imp-void")).toBe("stale")
+    expect(await mark("imp-sage")).toBe("stale")
     expect(await payDraw("pay-k", "imp-sub", 1_000)).toBe("saved")
     expect(await mark("imp-sub")).toBe("stale")
   })
