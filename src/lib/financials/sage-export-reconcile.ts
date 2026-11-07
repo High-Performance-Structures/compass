@@ -1,5 +1,10 @@
 import { toCents } from "@/lib/format"
-import { sageLineKey, type SageCatalogIndex } from "@/lib/financials/sage-export-codes"
+import {
+  normalizedSageRecordNumber,
+  sageLineKey,
+  sageRecordNumbersFor,
+  type SageCatalogIndex,
+} from "@/lib/financials/sage-export-codes"
 import type { SageExportLine } from "@/lib/financials/sage-export-preview"
 
 /*
@@ -82,9 +87,19 @@ export function reconcileWithSage(input: {
   readonly unavailableReason: string
 }): SageReconciliation {
   if (!input.sage) return { available: false, reason: input.unavailableReason }
+  // Sage's line description can differ from its cost code's name ("Contingency"
+  // on the "Contingency Reserve" record), so lines match by Sage record number
+  // first; by name only when Compass doesn't know the record number.
+  const compassKeyByRecordNumber = new Map<string, string>()
+  for (const line of input.lines) {
+    for (const number of sageRecordNumbersFor(line.costCode, line.mapping, input.index)) {
+      if (!compassKeyByRecordNumber.has(number)) compassKeyByRecordNumber.set(number, line.key)
+    }
+  }
   const sageByKey = new Map<string, { label: string; contract: number; completed: number }>()
   for (const line of input.sage.lines) {
-    const key = sageLineKey(line, input.index)
+    const recordNumber = normalizedSageRecordNumber(line.costCode)
+    const key = (recordNumber ? compassKeyByRecordNumber.get(recordNumber) : undefined) ?? sageLineKey(line, input.index)
     const current = sageByKey.get(key)
     sageByKey.set(key, {
       label: current?.label ?? line.description,

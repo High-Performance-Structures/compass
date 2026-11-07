@@ -27,6 +27,8 @@ import {
   defaultOwnerDetail,
 } from "@/lib/financials/owner-estimate-detail"
 import type { ClientEstimatePhase } from "@/lib/estimates/client-report"
+import { withPayApplicationProgress, type ProgressLine } from "@/lib/financials/budget-progress-overlay"
+import { loadBudgetViewProgress } from "@/lib/financials/budget-progress-server"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
@@ -431,18 +433,20 @@ async function assemblyByLine(
 async function assemblyLines(
   access: ProjectAccess,
   applicationId: string,
-  lines: readonly ProjectBudgetLineItem[]
+  lines: readonly ProjectBudgetLineItem[],
+  progress: readonly ProgressLine[] | null
 ): Promise<readonly ProjectBudgetLineItem[]> {
   const assemblies = await assemblyByLine(access, applicationId)
   if ([...assemblies.values()].some((assembly) => assembly.key !== "")) {
-    return buildAssemblyLines(lines, assemblies)
+    const keyOf = (line: ProjectBudgetLineItem): string | null => assemblies.get(line.id)?.key || null
+    return buildAssemblyLines(progress ? withPayApplicationProgress(lines, progress, keyOf) : lines, assemblies)
   }
   const application = await access.db
     .select({ budgetRevisionId: projectBudgetApplications.budgetRevisionId })
     .from(projectBudgetApplications)
     .where(eq(projectBudgetApplications.id, applicationId))
     .get()
-  if (!application?.budgetRevisionId) return buildAssemblyLines(lines, assemblies)
+  if (!application?.budgetRevisionId) return buildAssemblyLines(progress ? withPayApplicationProgress(lines, progress) : lines, assemblies)
   const visibleCostCodes = new Set(lines.map((line) => line.costCode))
   const shares = (await loadPayApplicationShares(access.db, application.budgetRevisionId)).filter((share) =>
     visibleCostCodes.has(share.costCode)
@@ -481,7 +485,8 @@ async function assemblyLines(
       },
     ])
   )
-  return buildAssemblyLines(shareLines, shareAssemblies)
+  const shareKeyOf = (line: ProjectBudgetLineItem): string | null => shareAssemblies.get(line.id)?.key || null
+  return buildAssemblyLines(progress ? withPayApplicationProgress(shareLines, progress, shareKeyOf) : shareLines, shareAssemblies)
 }
 
 /**
@@ -713,13 +718,16 @@ export async function getProjectBudgetSummary(
           currentApplication.id
         )
     : []
+  // The budget view shows the latest pay application's completion, any revision.
+  const progress = await loadBudgetViewProgress(access.db, { projectId, applications, currentApplication, audience: effectiveAudience })
+  const progressedLines = progress ? withPayApplicationProgress(sourceLines, progress) : sourceLines
   const assemblyMode = detailMode === "assembly" || detailMode === "assembly_percent"
   const rolledUpLines =
     detailMode === "cost_code"
-      ? combineByCostCode(sourceLines)
+      ? combineByCostCode(progressedLines)
       : assemblyMode && currentApplication
-        ? await assemblyLines(access, currentApplication.id, sourceLines)
-        : buildOwnerCategoryLines(sourceLines)
+        ? await assemblyLines(access, currentApplication.id, sourceLines, progress)
+        : buildOwnerCategoryLines(progressedLines)
   const rolledUpDivisions = buildDivisions(rolledUpLines)
   const percentOnly = detailMode === "category_percent" || detailMode === "assembly_percent"
   const allLines = percentOnly ? rolledUpLines.map(withoutAmounts) : rolledUpLines
