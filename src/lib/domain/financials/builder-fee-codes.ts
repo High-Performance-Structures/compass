@@ -19,7 +19,7 @@ const FEE_NAME_BY_ALIAS: ReadonlyMap<string, string> = new Map(
 )
 
 /** The fee's canonical name when `costCode` is a builder fee code, else null. */
-export function builderFeeName(costCode: string): string | null {
+function builderFeeName(costCode: string): string | null {
   return FEE_NAME_BY_ALIAS.get(normalized(costCode)) ?? null
 }
 
