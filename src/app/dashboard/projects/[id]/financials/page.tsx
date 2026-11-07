@@ -26,6 +26,8 @@ import { ProjectContextSwitcher } from "@/components/projects/project-context-sw
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectContractDepositsPanel } from "@/components/projects/project-contract-deposits-panel"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
+import { getSagePayRequestPanel } from "@/app/actions/sage-pay-requests"
+import { SagePayRequestsPanel } from "@/components/financials/sage-pay-request-sync"
 
 export default async function ProjectFinancialsPage({
   params,
@@ -73,7 +75,7 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project contract deposits unavailable", error)
   }
-  const receivables = await getProjectReceivablePayments(id)
+  const [receivables, sagePanel] = await Promise.all([getProjectReceivablePayments(id), getSagePayRequestPanel(id)])
   const selectedSquareReceipt = Array.isArray(query.squareReceipt)
     ? (query.squareReceipt[0] ?? null)
     : (query.squareReceipt ?? null)
@@ -108,6 +110,7 @@ export default async function ProjectFinancialsPage({
               recordPayment={Array.isArray(query.recordPayment) ? (query.recordPayment[0] ?? null) : (query.recordPayment ?? null)}
             />
           )}
+          {sagePanel?.origin === "sage" && <SagePayRequestsPanel projectId={id} panel={sagePanel} />}
           <ProjectFinancialWorkspace
             projectId={id}
             items={items}

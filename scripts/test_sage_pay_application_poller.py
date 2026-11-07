@@ -136,7 +136,7 @@ class SagePayApplicationPollerTests(unittest.TestCase):
         )
 
         self.assertEqual(snapshot["header"]["sourceApplicationId"], "sage-aiafrm:13")
-        self.assertTrue(snapshot["header"]["sourceRevision"].startswith("mapping=v2;"))
+        self.assertTrue(snapshot["header"]["sourceRevision"].startswith("mapping=v3;"))
         self.assertEqual(
             snapshot["header"]["sageJobId"],
             "78021b5e-5342-f111-a841-bccd992bc5d1",
@@ -147,6 +147,13 @@ class SagePayApplicationPollerTests(unittest.TestCase):
         self.assertEqual(snapshot["lines"][0]["csiDivision"], "03")
         self.assertEqual(snapshot["lines"][0]["totalChanges"], 10.0)
         self.assertEqual(snapshot["lines"][0]["retainageHeld"], 5.0)
+        # Not invoiced in Sage yet.
+        self.assertIsNone(snapshot["header"]["invoiceNumber"])
+
+        invoiced = build_snapshot(
+            request, {**header, "invnum": " X-100-PR03 "}, lines, "2026-07-01T18:00:00+00:00"
+        )
+        self.assertEqual(invoiced["header"]["invoiceNumber"], "X-100-PR03")
 
     def test_buildertrend_style_special_cost_codes_use_description_division(self) -> None:
         request = PollRequest(

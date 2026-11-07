@@ -14,6 +14,8 @@ import { ReceivedPaymentsPanel } from "@/components/financials/received-payments
 import { getSageExportPreview } from "@/app/actions/sage-export-preview"
 import { SageExportPreviewDocument } from "@/components/financials/sage-export-preview"
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
+import { getPayRequestSageState, getSagePayRequestPanel } from "@/app/actions/sage-pay-requests"
+import { PayRequestSageSection } from "@/components/financials/pay-request-sage-section"
 
 export default async function ProjectPayApplicationPage({
   params,
@@ -26,11 +28,15 @@ export default async function ProjectPayApplicationPage({
   if (!application) notFound()
   // The Sage export preview is for draws not yet billed (draft or ready); office staff only.
   const showSagePreview = application.status !== "billed"
-  const [shopTickets, receivables, sagePreview] = await Promise.all([
+  const [shopTickets, receivables, sagePreview, sageState, sagePanel] = await Promise.all([
     getPayApplicationShopTickets(id, applicationId).catch(() => null),
     getProjectReceivablePayments(id),
     showSagePreview ? getSageExportPreview(id, applicationId).catch(() => null) : null,
+    getPayRequestSageState(id, applicationId),
+    getSagePayRequestPanel(id),
   ])
+  // Billed amounts synced from Sage are read only here; they change in Sage.
+  const sageSynced = application.billingSource === "sage"
   // Payments are recorded once the draw is billed; viewers without financials access don't see the panel.
   const showPayments = receivables.success && application.status === "billed"
 
@@ -41,13 +47,27 @@ export default async function ProjectPayApplicationPage({
         icon={<IconFileDollar className="size-5 text-primary" />}
         title="G702 / G703 Pay Application"
       />
-      <ProjectOwnerPayApplicationEditor projectId={id} application={application} shopTicketProvenance={shopTickets?.lineProvenance ?? []} />
+      <ProjectOwnerPayApplicationEditor
+        projectId={id}
+        application={application}
+        shopTicketProvenance={shopTickets?.lineProvenance ?? []}
+        sageSynced={sageSynced}
+      />
+      {sageState ? (
+        <PayRequestSageSection
+          projectId={id}
+          applicationId={applicationId}
+          applicationNumber={application.applicationNumber}
+          state={sageState}
+          panel={sagePanel}
+        />
+      ) : null}
       {showPayments && receivables.success ? (
         <div className="mt-6">
           <ReceivedPaymentsPanel projectId={id} data={receivables.data} applicationId={applicationId} />
         </div>
       ) : null}
-      {sagePreview?.success ? (
+      {sagePreview?.success && !sageSynced ? (
         <details className="mt-6 rounded-lg border p-4">
           <summary className="cursor-pointer text-base font-semibold">
             Sage export preview
@@ -66,7 +86,7 @@ export default async function ProjectPayApplicationPage({
           </div>
         </details>
       ) : null}
-      {shopTickets ? <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} /> : null}
+      {shopTickets && !sageSynced ? <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} /> : null}
     </div>
   )
 }

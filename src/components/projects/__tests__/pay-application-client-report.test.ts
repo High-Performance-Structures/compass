@@ -55,6 +55,7 @@ function report(
       status: "draft",
       billedAt: null,
       sageInvoiceNumber: null,
+      billingSource: "compass",
       budgetRevisionId: "rev-2",
       originalContractSum: 44_497.69,
       netChanges: 1_700,

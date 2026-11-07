@@ -31,6 +31,12 @@ The SQL account is read-only and the poller never sends SQL credentials to
 Compass. Each successful poll also sends a complete snapshot of Sage's
 combined tax districts so estimate selectors stay aligned with `dbo.taxdst`.
 
+Each pay-application read also sends Sage's AR invoice number for the
+application (from `dbo.acrinv`, joined on the application's ledger record)
+once it is invoiced. Redeploy the poller after it changes by repeating the
+`install` line for `sage_pay_application_poller.py`; the timer picks up the
+new copy on its next run.
+
 Useful health checks:
 
 ```bash

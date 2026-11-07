@@ -10,14 +10,15 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
-import { sageExportSettingsSchema, type SageExportSettings } from "@/lib/feature-settings/contract-settings"
+import { PAY_REQUEST_ORIGINS, sageExportSettingsSchema, type PayRequestOrigin, type SageExportSettings } from "@/lib/feature-settings/contract-settings"
 import { formatSageInvoiceNumber } from "@/lib/financials/sage-invoice-number"
 
 const KEY = "sage-export"
 const GROUP = FEATURE_SETTINGS[KEY]
 
-type FormatField = Exclude<keyof SageExportSettings, "billingCycle">
+type FormatField = Exclude<keyof SageExportSettings, "billingCycle" | "payRequestsCreatedIn">
 
 const FORMAT_FIELDS: readonly { readonly field: FormatField; readonly label: string; readonly exampleNumber: string }[] = [
   { field: "payRequestInvoiceFormat", label: "Pay request", exampleNumber: "3" },
@@ -26,6 +27,12 @@ const FORMAT_FIELDS: readonly { readonly field: FormatField; readonly label: str
   { field: "creditMemoInvoiceFormat", label: "Credit memo", exampleNumber: "1" },
   { field: "materialSaleInvoiceFormat", label: "Material sale", exampleNumber: "4" },
 ]
+
+const ORIGIN_LABELS: Readonly<Record<PayRequestOrigin, string>> = { compass: "Compass", sage: "Sage" }
+
+function isPayRequestOrigin(value: string): value is PayRequestOrigin {
+  return PAY_REQUEST_ORIGINS.some((origin) => origin === value)
+}
 
 /** Example job numbers for the format preview (not a real job). */
 const EXAMPLE = { projectNumber: "X-100-200", sageJobNumber: "1200" } as const
@@ -97,6 +104,28 @@ export function SageExportSettingsSection(): React.ReactElement {
       {!loaded && !error ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {loaded ? (
         <form onSubmit={save} className="space-y-4">
+          <div className="max-w-xl space-y-2">
+            <Label>Pay requests are created in</Label>
+            <RadioGroup
+              value={value.payRequestsCreatedIn}
+              disabled={disabled}
+              className="flex flex-wrap gap-4"
+              onValueChange={(next) => {
+                if (isPayRequestOrigin(next)) setValue({ ...value, payRequestsCreatedIn: next })
+              }}
+            >
+              {PAY_REQUEST_ORIGINS.map((origin) => (
+                <Label key={origin} htmlFor={`sage-export-origin-${origin}`} className="flex items-center gap-2 font-normal">
+                  <RadioGroupItem id={`sage-export-origin-${origin}`} value={origin} />
+                  {ORIGIN_LABELS[origin]}
+                </Label>
+              ))}
+            </RadioGroup>
+            <p className="text-xs text-muted-foreground">
+              Compass: staff build each pay request in Compass. Sage: the office builds the progress billing in Sage, and Sync with Sage
+              brings it into Compass as the pay request for review, owner approval, email and payments. Billed amounts then stay as Sage has them.
+            </p>
+          </div>
           <div className="max-w-xs space-y-2">
             <Label htmlFor="sage-export-billing-cycle">Billing cycle</Label>
             <Input

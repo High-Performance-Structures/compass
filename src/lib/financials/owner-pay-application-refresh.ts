@@ -85,6 +85,21 @@ export async function availableDepositForApplication(
   return unappliedDeposit({ receivedCents: Number(received?.cents ?? 0), appliedDollars: Number(applied?.dollars ?? 0) })
 }
 
+/**
+ * Billed amounts on a pay application synced from Sage are read only in
+ * Compass: they change in Sage and come back with the next sync.
+ */
+export async function assertBilledAmountsEditable(db: ReturnType<typeof getDb>, applicationId: string): Promise<void> {
+  const application = await db
+    .select({ billingSource: projectBudgetApplications.billingSource })
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, applicationId))
+    .get()
+  if (application?.billingSource === "sage") {
+    throw new Error("This pay request's billed amounts are synced from Sage. Change them in Sage, then Sync with Sage.")
+  }
+}
+
 export async function refreshOwnerPayApplication(
   db: ReturnType<typeof getDb>,
   projectId: string,
@@ -496,6 +511,8 @@ export async function moveDraftPayApplicationsToRevision(
         eq(projectBudgetApplications.projectId, projectId),
         eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
         eq(projectBudgetApplications.status, "draft"),
+        // A pay request synced from Sage keeps Sage's lines.
+        eq(projectBudgetApplications.billingSource, "compass"),
         ne(projectBudgetApplications.budgetRevisionId, revisionId)
       )
     )

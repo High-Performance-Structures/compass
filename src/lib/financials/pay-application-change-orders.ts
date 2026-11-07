@@ -6,7 +6,7 @@ import { projectContractBudgetAdjustments } from "@/db/schema-estimates"
 import { chunkD1Values } from "@/lib/d1-query"
 import { BUDGET_PROJECTION_SOURCE, COMPASS_DRAW_SOURCE } from "@/lib/domain/financials/rules"
 import { priorPayApplicationCondition } from "@/lib/financials/owner-pay-application-refresh"
-import { loadPayApplicationShares, shareKey } from "@/lib/financials/pay-application-shares"
+import { loadPayApplicationShares, shareKey, type PayApplicationShare } from "@/lib/financials/pay-application-shares"
 
 export type PayApplicationChangeOrder = {
   readonly id: string
@@ -228,6 +228,28 @@ export async function linesWithVariances<T extends { readonly costCode: string; 
   lines: readonly T[]
 ): Promise<readonly (T & { readonly totalVariances: number })[]> {
   const shares = budgetRevisionId ? await loadPayApplicationShares(db, budgetRevisionId) : []
+  return lines.map(varianceSplitter(shares))
+}
+
+/**
+ * Each row's variance part: its own share's, or, for a row billed per cost
+ * code without an assembly (a pay request synced from Sage), the cost code's
+ * variances across its shares, given out in row order and never more than
+ * the row's own changes.
+ */
+export function varianceSplitter<T extends { readonly costCode: string; readonly assemblyKey: string | null; readonly totalChanges: number }>(
+  shares: readonly Pick<PayApplicationShare, "costCode" | "assemblyKey" | "varianceCents">[]
+): (line: T) => T & { readonly totalVariances: number } {
   const varianceByKey = new Map(shares.map((share) => [shareKey(share.costCode, share.assemblyKey), share.varianceCents]))
-  return lines.map((line) => ({ ...line, totalVariances: roundCents((varianceByKey.get(shareKey(line.costCode, line.assemblyKey)) ?? 0) / 100) }))
+  const remainingByCode = new Map<string, number>()
+  for (const share of shares) remainingByCode.set(share.costCode, (remainingByCode.get(share.costCode) ?? 0) + share.varianceCents)
+  return (line) => {
+    const exact = varianceByKey.get(shareKey(line.costCode, line.assemblyKey))
+    if (exact !== undefined || line.assemblyKey !== null) return { ...line, totalVariances: roundCents((exact ?? 0) / 100) }
+    const remaining = remainingByCode.get(line.costCode) ?? 0
+    const changesCents = Math.round(line.totalChanges * 100)
+    const cents = remaining === 0 || Math.sign(remaining) !== Math.sign(changesCents) ? 0 : Math.sign(remaining) * Math.min(Math.abs(remaining), Math.abs(changesCents))
+    remainingByCode.set(line.costCode, remaining - cents)
+    return { ...line, totalVariances: roundCents(cents / 100) }
+  }
 }

@@ -20,6 +20,8 @@ import {
   updateSagePayApplicationSyncRuns,
 } from "@/lib/domain/sage-bridge/store"
 import { validateSageSyncClaim } from "@/lib/sage/sync-claim"
+import { projects } from "@/db/schema"
+import { sageSyncActor, syncPayRequestFromSageSnapshot } from "@/lib/financials/sage-pay-request-sync"
 import {
   sageSnapshotApplicationInsertStatement,
   sageSnapshotBudgetLineInsertStatement,
@@ -113,6 +115,32 @@ async function acquireRunForIngestion(
     now,
   }).run()
   return (result.meta.changes ?? 0) === 1
+}
+
+/**
+ * For a company whose pay requests are created in Sage, brings a reconciled
+ * snapshot into the project's pay requests. Never fails the bridge: the read
+ * itself is already stored, and the next sync tries again.
+ */
+async function syncPayRequest(
+  env: CloudflareEnv,
+  run: { readonly projectId: string; readonly requestedByUserId: string | null },
+  snapshotId: string
+): Promise<void> {
+  try {
+    const db = getDb(env.DB)
+    const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, run.projectId)).get()
+    if (!project?.organizationId) return
+    await syncPayRequestFromSageSnapshot(db, {
+      organizationId: project.organizationId,
+      projectId: run.projectId,
+      snapshotId,
+      actor: await sageSyncActor(db, run.requestedByUserId),
+      now: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.error("Unable to sync the pay request from Sage", error)
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,6 +312,7 @@ export async function ingestSagePayApplicationSnapshot(
       errorMessage: errorMessage ?? undefined,
       capturedAt: snapshot.capturedAt,
     })
+    if (replayStatus === "completed") await syncPayRequest(env, run, exact.id)
     return {
       success: true,
       status: replayStatus,
@@ -513,6 +542,7 @@ export async function ingestSagePayApplicationSnapshot(
         reconciliationJson,
         capturedAt: snapshot.capturedAt,
       })
+      await syncPayRequest(env, run, raced.id)
       return {
         success: true,
         status: "completed",
@@ -536,6 +566,7 @@ export async function ingestSagePayApplicationSnapshot(
     }
   }
 
+  await syncPayRequest(env, run, snapshotId)
   return {
     success: true,
     status: "completed",

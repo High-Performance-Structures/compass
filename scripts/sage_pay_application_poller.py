@@ -39,7 +39,7 @@ LABOR_RESULTS_TARGET = "/api/integrations/sage/labor-hours/results"
 # Sage payroll record status for a voided check; its timecard hours don't count.
 VOID_PAYROLL_STATUS = 5
 LOCK_PATH = Path("/tmp/compass-sage-pay-application-poller.lock")
-SNAPSHOT_MAPPING_VERSION = "v2"
+SNAPSHOT_MAPPING_VERSION = "v3"
 
 
 CSI_DIVISIONS = {
@@ -279,6 +279,8 @@ def build_snapshot(
             "previousCertificates": money(header.get("prvbil")),
             "currentPaymentDue": money(header.get("crtdue")),
             "balanceToFinish": money(header.get("balfin")),
+            # Sage's AR invoice for the application, once it is invoiced.
+            "invoiceNumber": text(header.get("invnum")),
         },
         "lines": normalized_lines,
     }
@@ -547,9 +549,17 @@ def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any]
           application.schttl, application.chgttl, application.conttl,
           application.cmpttl, application.ttlret, application.ttlern,
           application.prvbil, application.crtdue, application.balfin,
-          application.upddte
+          application.upddte, invoice.invnum
         FROM dbo.aiafrm application
         JOIN dbo.actrec job ON job.recnum=application.jobnum
+        -- The AR invoice posted from the application shares its ledger record.
+        OUTER APPLY (
+          SELECT TOP 1 receivable.invnum
+          FROM dbo.acrinv receivable
+          WHERE application.lgrrec<>0 AND receivable.lgrrec=application.lgrrec
+            AND receivable.jobnum=application.jobnum
+          ORDER BY receivable.recnum DESC
+        ) invoice
         WHERE application.jobnum=%s
         ORDER BY application.period DESC, application.appnum DESC,
           application.recnum DESC

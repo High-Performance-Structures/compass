@@ -8,7 +8,8 @@ import {
 import { sql } from "drizzle-orm"
 
 import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES } from "../lib/domain/sage-bridge/statuses"
-import { customers, organizations, projects, users, vendors } from "./schema"
+import { PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
+import { customers, organizations, projectBudgetApplications, projects, users, vendors } from "./schema"
 
 export const sageWriteApprovals = sqliteTable(
   "sage_write_approvals",
@@ -406,6 +407,39 @@ export const sagePayApplicationSnapshots = sqliteTable(
       table.projectId,
       table.capturedAt
     ),
+  ]
+)
+
+/**
+ * What each Sage sync did to an owner pay application (created, linked,
+ * refreshed, or Sage amounts applied) and the read snapshot it used. The
+ * latest row is the pay application's current link to Sage. A row that
+ * changed the billed amounts keeps the lines as they were before.
+ */
+export const payApplicationSageSyncs = sqliteTable(
+  "pay_application_sage_syncs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => sagePayApplicationSnapshots.id, { onDelete: "cascade" }),
+    eventKind: text("event_kind", { enum: PAY_APPLICATION_SAGE_SYNC_EVENTS }).notNull(),
+    // json: snapshot of the G703 line amounts before this sync replaced them; null when no amounts changed.
+    linesBeforeSnapshot: text("lines_before_snapshot"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("pay_application_sage_syncs_event_idx").on(table.applicationId, table.snapshotId, table.eventKind),
+    index("pay_application_sage_syncs_project_idx").on(table.projectId, table.createdAt),
+    index("pay_application_sage_syncs_snapshot_idx").on(table.snapshotId),
+    index("pay_application_sage_syncs_created_by_idx").on(table.createdBy),
   ]
 )
 

@@ -3,7 +3,7 @@ import { z } from "zod/v4"
 const money = z.number().finite().min(-1_000_000_000_000).max(1_000_000_000_000)
 const MAX_PAY_APPLICATION_LINES = 150
 
-const sagePayApplicationHeaderSchema = z.object({
+export const sagePayApplicationHeaderSchema = z.object({
   sourceApplicationId: z.string().min(1).max(256),
   sourceRevision: z.string().min(1).max(256),
   sageJobId: z.string().min(1).max(256).nullable(),
@@ -20,9 +20,11 @@ const sagePayApplicationHeaderSchema = z.object({
   previousCertificates: money,
   currentPaymentDue: money,
   balanceToFinish: money,
+  /** Sage's AR invoice number for the application, once it is invoiced; older bridges don't send it. */
+  invoiceNumber: z.string().trim().min(1).max(64).nullable().optional(),
 })
 
-const sagePayApplicationLineSchema = z.object({
+export const sagePayApplicationLineSchema = z.object({
   sourceLineId: z.string().min(1).max(256),
   costCode: z.string().min(1).max(128),
   csiDivision: z.string().min(1).max(32),
