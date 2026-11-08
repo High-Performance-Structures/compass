@@ -11,6 +11,8 @@ import {
   undoRecurringDutyDone,
   type RecurringDutyInput,
 } from "@/app/actions/recurring-duties"
+import type { ColumnDef } from "@tanstack/react-table"
+import { RecordTable, useRecordTable } from "@/components/record-table"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +26,16 @@ import type { RecurringDutyView } from "@/lib/internal-duties/recurring-data"
 import { cn } from "@/lib/utils"
 
 const CADENCE_LABEL: { readonly [K in DutyCadence]: string } = { monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" }
+
+const CADENCE_ORDER: { readonly [K in DutyCadence]: number } = { monthly: 1, quarterly: 2, yearly: 3 }
+
+const STATUS_ORDER: { readonly [K in RecurringDutyView["status"]["kind"] | "off"]: number } = {
+  behind: 1,
+  due_soon: 2,
+  current: 3,
+  not_started: 4,
+  off: 5,
+}
 
 function today(): string {
   const now = new Date()
@@ -51,6 +63,203 @@ function dutyName(duty: RecurringDutyView): string {
 type DoneForm = { readonly dutyId: string; readonly period: string; readonly completedOn: string; readonly hours: string; readonly notes: string }
 type EditForm = { readonly dutyId: string | null } & Omit<RecurringDutyInput, "dueDay"> & { readonly dueDay: string }
 
+/** The recurring duties sheet's columns ("recurring-duties.workspace"). */
+export function recurringDutyColumns({
+  canEdit,
+  canManage,
+  pending,
+  onDone,
+  onEdit,
+  onUndo,
+}: {
+  readonly canEdit: boolean
+  readonly canManage: boolean
+  readonly pending: boolean
+  readonly onDone: (duty: RecurringDutyView) => void
+  readonly onEdit: (duty: RecurringDutyView) => void
+  readonly onUndo: (duty: RecurringDutyView) => void
+}): ColumnDef<RecurringDutyView>[] {
+  return [
+    {
+      id: "duty",
+      accessorFn: dutyName,
+      header: "Duty",
+      cell: ({ row: { original: duty } }) =>
+        canManage ? (
+          <button type="button" className="text-left font-medium hover:underline" onClick={() => onEdit(duty)}>
+            {dutyName(duty)}
+          </button>
+        ) : (
+          <span className="font-medium">{dutyName(duty)}</span>
+        ),
+    },
+    {
+      id: "cadence",
+      accessorFn: (duty) => `${CADENCE_ORDER[duty.cadence]}-${String(duty.dueDay).padStart(2, "0")}`,
+      header: "How often",
+      cell: ({ row: { original: duty } }) => (
+        <span className={cn(!duty.active && "text-muted-foreground")}>
+          {CADENCE_LABEL[duty.cadence]}, by the {duty.dueDay}
+        </span>
+      ),
+    },
+    {
+      id: "lastDone",
+      accessorFn: (duty) => duty.lastDone?.completedOn ?? undefined,
+      header: "Last done",
+      cell: ({ row: { original: duty } }) =>
+        duty.lastDone ? (
+          <span className={cn(!duty.active && "text-muted-foreground")}>
+            {periodLabel(duty.lastDone.period)} <span className="text-muted-foreground">({shortDate(duty.lastDone.completedOn)})</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Not yet</span>
+        ),
+    },
+    {
+      id: "owner",
+      accessorFn: (duty) => duty.ownerName ?? undefined,
+      header: "Owner",
+      cell: ({ row: { original: duty } }) =>
+        duty.ownerName ? (
+          <span className={cn(!duty.active && "text-muted-foreground")}>{duty.ownerName}</span>
+        ) : (
+          <span className="text-muted-foreground">No owner</span>
+        ),
+    },
+    {
+      id: "status",
+      // Most urgent first: behind, due soon, current, not started, turned off.
+      accessorFn: (duty) => (duty.active ? STATUS_ORDER[duty.status.kind] : STATUS_ORDER.off),
+      header: "Status",
+      cell: ({ row: { original: duty } }) => {
+        const status = statusText(duty)
+        return (
+          <span className={cn("font-medium", duty.active ? TONE_CLASS[status.tone] : "text-muted-foreground")}>
+            {duty.active ? status.text : "Turned off"}
+          </span>
+        )
+      },
+    },
+    {
+      id: "actions",
+      cell: ({ row: { original: duty } }) => (
+        <div className="flex justify-end gap-1">
+          {canEdit && duty.active ? (
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => onDone(duty)}>
+              Mark done
+            </Button>
+          ) : null}
+          {canEdit && duty.lastDone ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => onUndo(duty)}
+            >
+              Undo last
+            </Button>
+          ) : null}
+          {canManage ? (
+            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => onEdit(duty)}>
+              Edit
+            </Button>
+          ) : null}
+        </div>
+      ),
+    },
+  ]
+}
+
+/** The Mark done form for one duty, shown above the sheet. */
+function DoneDutyForm({
+  duty,
+  done,
+  pending,
+  onChange,
+  onCancel,
+  onSubmit,
+}: {
+  readonly duty: RecurringDutyView
+  readonly done: DoneForm
+  readonly pending: boolean
+  readonly onChange: (done: DoneForm) => void
+  readonly onCancel: () => void
+  readonly onSubmit: () => void
+}): React.ReactElement {
+  const choices = periodChoices(duty)
+  return (
+    <form
+      className="grid gap-3 border-y py-3 sm:grid-cols-2 lg:grid-cols-5"
+      aria-label={`Mark ${dutyName(duty)} done`}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit()
+      }}
+    >
+      <div className="grid gap-1.5">
+        <Label htmlFor="rd-period">Period</Label>
+        {choices.length > 0 ? (
+          <Select value={done.period} onValueChange={(value) => onChange({ ...done, period: value })}>
+            <SelectTrigger id="rd-period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((period) => (
+                <SelectItem key={period} value={period}>
+                  {periodLabel(period)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            id="rd-period"
+            type="month"
+            value={done.period}
+            onChange={(event) => onChange({ ...done, period: event.target.value })}
+            aria-describedby="rd-period-help"
+          />
+        )}
+        {choices.length === 0 ? (
+          <p id="rd-period-help" className="text-sm text-muted-foreground">
+            The most recent period finished; tracking starts from there.
+          </p>
+        ) : null}
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="rd-on">Done on</Label>
+        <Input id="rd-on" type="date" value={done.completedOn} onChange={(event) => onChange({ ...done, completedOn: event.target.value })} />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="rd-hours">Hours (optional)</Label>
+        <Input
+          id="rd-hours"
+          inputMode="decimal"
+          value={done.hours}
+          onChange={(event) => onChange({ ...done, hours: event.target.value.replace(/[^0-9.]/g, "") })}
+        />
+      </div>
+      <div className="grid gap-1.5 lg:col-span-2">
+        <Label htmlFor="rd-notes">Notes</Label>
+        <Input id="rd-notes" value={done.notes} onChange={(event) => onChange({ ...done, notes: event.target.value })} />
+      </div>
+      <div className="flex flex-wrap gap-2 lg:col-span-5">
+        <Button type="submit" size="sm" disabled={pending || !done.period}>
+          Mark done
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+        {duty.dutyCode ? (
+          <p className="text-sm text-muted-foreground">Hours go on the duty log as {duty.dutyCode}.</p>
+        ) : null}
+      </div>
+    </form>
+  )
+}
+
 export function RecurringDutiesBoard({
   projectId,
   duties,
@@ -73,7 +282,7 @@ export function RecurringDutiesBoard({
   const [done, setDone] = React.useState<DoneForm | null>(null)
   const [edit, setEdit] = React.useState<EditForm | null>(null)
   const [showInactive, setShowInactive] = React.useState(false)
-  const visible = duties.filter((duty) => duty.active || showInactive)
+  const visible = React.useMemo(() => duties.filter((duty) => duty.active || showInactive), [duties, showInactive])
 
   function startDone(duty: RecurringDutyView): void {
     const choices = periodChoices(duty)
@@ -111,6 +320,34 @@ export function RecurringDutiesBoard({
       router.refresh()
     })
   }
+
+  const doneDuty = done ? duties.find((duty) => duty.id === done.dutyId) ?? null : null
+
+  const columns = React.useMemo(
+    () =>
+      recurringDutyColumns({
+        canEdit,
+        canManage,
+        pending,
+        onDone: startDone,
+        onEdit: startEdit,
+        onUndo: (duty) => {
+          const last = duty.lastDone
+          if (last) run(() => undoRecurringDutyDone(projectId, last.id), `${periodLabel(last.period)} unmarked`)
+        },
+      }),
+    // startDone, startEdit and run read only state setters and the props listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canEdit, canManage, currentUserId, pending, projectId],
+  )
+
+  const table = useRecordTable({
+    data: visible,
+    columns,
+    getRowId: (duty) => duty.id,
+    resetKey: String(showInactive),
+    sheetId: "recurring-duties.workspace",
+  })
 
   return (
     <section aria-labelledby="recurring-duties" className="grid gap-3">
@@ -222,153 +459,27 @@ export function RecurringDutiesBoard({
         </form>
       ) : null}
 
-      {visible.length === 0 ? (
-        <p className="border-t py-4 text-sm text-muted-foreground">No recurring duties yet.</p>
-      ) : (
-        <div className="overflow-x-auto border-t">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="py-2 pr-3 font-medium">Duty</th>
-                <th className="py-2 pr-3 font-medium">How often</th>
-                <th className="py-2 pr-3 font-medium">Last done</th>
-                <th className="py-2 pr-3 font-medium">Owner</th>
-                <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((duty) => {
-                const status = statusText(duty)
-                const choices = periodChoices(duty)
-                return (
-                  <React.Fragment key={duty.id}>
-                    <tr className={cn("border-b align-top", !duty.active && "text-muted-foreground")}>
-                      <td className="py-2 pr-3 font-medium">{dutyName(duty)}</td>
-                      <td className="py-2 pr-3">
-                        {CADENCE_LABEL[duty.cadence]}, by the {duty.dueDay}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {duty.lastDone ? (
-                          <>
-                            {periodLabel(duty.lastDone.period)} <span className="text-muted-foreground">({shortDate(duty.lastDone.completedOn)})</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">Not yet</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3">{duty.ownerName ?? <span className="text-muted-foreground">No owner</span>}</td>
-                      <td className={cn("py-2 pr-3 font-medium", TONE_CLASS[status.tone])}>{duty.active ? status.text : "Turned off"}</td>
-                      <td className="py-2">
-                        <div className="flex justify-end gap-1">
-                          {canEdit && duty.active ? (
-                            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => startDone(duty)}>
-                              Mark done
-                            </Button>
-                          ) : null}
-                          {canEdit && duty.lastDone ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={pending}
-                              onClick={() => {
-                                const last = duty.lastDone
-                                if (last) run(() => undoRecurringDutyDone(projectId, last.id), `${periodLabel(last.period)} unmarked`)
-                              }}
-                            >
-                              Undo last
-                            </Button>
-                          ) : null}
-                          {canManage ? (
-                            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => startEdit(duty)}>
-                              Edit
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                    {done?.dutyId === duty.id ? (
-                      <tr className="border-b">
-                        <td colSpan={6} className="py-3">
-                          <form
-                            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
-                            aria-label={`Mark ${dutyName(duty)} done`}
-                            onSubmit={(event) => {
-                              event.preventDefault()
-                              const { dutyId, ...rest } = done
-                              run(() => markRecurringDutyDone(projectId, dutyId, rest), `${periodLabel(done.period)} marked done`, () => setDone(null))
-                            }}
-                          >
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="rd-period">Period</Label>
-                              {choices.length > 0 ? (
-                                <Select value={done.period} onValueChange={(value) => setDone({ ...done, period: value })}>
-                                  <SelectTrigger id="rd-period">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {choices.map((period) => (
-                                      <SelectItem key={period} value={period}>
-                                        {periodLabel(period)}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <Input
-                                  id="rd-period"
-                                  type="month"
-                                  value={done.period}
-                                  onChange={(event) => setDone({ ...done, period: event.target.value })}
-                                  aria-describedby="rd-period-help"
-                                />
-                              )}
-                              {choices.length === 0 ? (
-                                <p id="rd-period-help" className="text-sm text-muted-foreground">
-                                  The most recent period finished; tracking starts from there.
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="rd-on">Done on</Label>
-                              <Input id="rd-on" type="date" value={done.completedOn} onChange={(event) => setDone({ ...done, completedOn: event.target.value })} />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="rd-hours">Hours (optional)</Label>
-                              <Input
-                                id="rd-hours"
-                                inputMode="decimal"
-                                value={done.hours}
-                                onChange={(event) => setDone({ ...done, hours: event.target.value.replace(/[^0-9.]/g, "") })}
-                              />
-                            </div>
-                            <div className="grid gap-1.5 lg:col-span-2">
-                              <Label htmlFor="rd-notes">Notes</Label>
-                              <Input id="rd-notes" value={done.notes} onChange={(event) => setDone({ ...done, notes: event.target.value })} />
-                            </div>
-                            <div className="flex flex-wrap gap-2 lg:col-span-5">
-                              <Button type="submit" size="sm" disabled={pending || !done.period}>
-                                Mark done
-                              </Button>
-                              <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setDone(null)}>
-                                Cancel
-                              </Button>
-                              {duty.dutyCode ? (
-                                <p className="text-sm text-muted-foreground">Hours go on the duty log as {duty.dutyCode}.</p>
-                              ) : null}
-                            </div>
-                          </form>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </React.Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {doneDuty && done ? (
+        <DoneDutyForm
+          duty={doneDuty}
+          done={done}
+          pending={pending}
+          onChange={setDone}
+          onCancel={() => setDone(null)}
+          onSubmit={() => {
+            const { dutyId, ...rest } = done
+            run(() => markRecurringDutyDone(projectId, dutyId, rest), `${periodLabel(done.period)} marked done`, () => setDone(null))
+          }}
+        />
+      ) : null}
+
+      <RecordTable
+        table={table}
+        itemLabel="recurring duties"
+        emptyMessage="No recurring duties yet."
+        rowIdPrefix="recurring-duty"
+        onRowOpen={canManage ? startEdit : undefined}
+      />
     </section>
   )
 }

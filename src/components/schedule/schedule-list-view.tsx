@@ -1,26 +1,9 @@
 "use client"
 
-import { conflictSummary, type ScheduleConflict } from "@/lib/schedule/conflicts"
+import type { ScheduleConflict } from "@/lib/schedule/conflicts"
 import { useState, useCallback, useEffect, useMemo } from "react"
-import {
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  flexRender,
-  type ColumnDef,
-} from "@tanstack/react-table"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
-  IconAlertTriangle,
   IconPencil,
   IconTrash,
   IconLink,
@@ -29,7 +12,7 @@ import {
 } from "@tabler/icons-react"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
-import { effectivePercentComplete } from "@/lib/schedule/progress"
+import { scheduleListColumns } from "./schedule-list-columns"
 import {
   assignScheduleTasks,
   completeScheduleTasks,
@@ -43,29 +26,15 @@ import type {
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
-import { projectScheduleLabel } from "@/lib/schedule/project-scope"
-import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
-import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
+import { RecordTable, useRecordTable } from "@/components/record-table"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
-import { cn } from "@/lib/utils"
-import { scheduleItemHref } from "@/lib/work-calendar"
-import {
-  getScheduleItemDisplayColor,
-  type DisplayColorPalette,
-} from "@/lib/schedule/appearance"
 import {
   SCHEDULE_LIST_COLUMNS,
   type ScheduleListColumn,
 } from "@/lib/schedule/saved-views"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
-import { ScheduleAssigneeStack } from "@/components/schedule/schedule-assignee-stack"
-import { scheduleItemAssigneeNames } from "@/lib/schedule/assignees"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,7 +45,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { formatDate } from "@/lib/format"
 
 interface ScheduleListViewProps {
   readonly projectId: string | null
@@ -94,40 +62,6 @@ interface ScheduleListViewProps {
 }
 
 const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
-
-function StatusDot({
-  task,
-  palette,
-}: {
-  task: ScheduleTaskData
-  palette: DisplayColorPalette
-}) {
-  return (
-    <span
-      className="inline-block size-2.5 rounded-full"
-      style={{ backgroundColor: getScheduleItemDisplayColor(task, palette) }}
-    />
-  )
-}
-
-function ProgressValue({ percent }: { readonly percent: number }) {
-  return (
-    <div className="w-12">
-      <span className="block text-xs font-medium tabular-nums">{percent}%</span>
-      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full bg-primary"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
-/** "Oct 30, 2026"; an unreadable value is shown as stored, as before. */
-function dateLabel(value: string): string {
-  return formatDate(value, "medium", value)
-}
 
 export function ScheduleListView({
   projectId,
@@ -147,11 +81,6 @@ export function ScheduleListView({
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(null)
   const [depDialogOpen, setDepDialogOpen] = useState(false)
   const [localTasks, setLocalTasks] = useState(tasks)
-  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
-  const [pagination, setPagination] = useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
   const [pendingDeleteTasks, setPendingDeleteTasks] = useState<
     readonly ScheduleTaskData[]
   >([])
@@ -171,211 +100,18 @@ export function ScheduleListView({
     setTaskFormOpen(true)
   }, [])
 
-  const columns: ColumnDef<ScheduleTaskData>[] = useMemo(
-    () => [
-      {
-        id: "select",
-        header: ({ table }) => (
-          <Checkbox
-            checked={table.getIsAllRowsSelected()}
-            onCheckedChange={(value) =>
-              table.toggleAllRowsSelected(!!value)
-            }
-            aria-label="Select all schedule items"
-          />
-        ),
-        cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label={`Select ${row.original.title}`}
-          />
-        ),
-        size: 32,
-      },
-      {
-        id: "idNum",
-        header: "#",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {row.index + 1}
-          </span>
-        ),
-        size: 40,
-      },
-      {
-        accessorKey: "title",
-        header: "Title",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <StatusDot
-              task={row.original}
-              palette={displayColorPalette}
-            />
-            <button
-              type="button"
-              className="max-w-[150px] truncate text-left text-sm font-medium hover:underline sm:max-w-[200px]"
-              onClick={() => handleEdit(row.original)}
-              aria-label={`Edit ${row.original.title}`}
-              title={`Edit ${row.original.title}`}
-            >
-              {row.original.title}
-            </button>
-            {conflicts.has(row.original.id) ? (
-              <span
-                className="shrink-0 text-destructive"
-                title={(conflicts.get(row.original.id) ?? [])
-                  .map((conflict) =>
-                    conflictSummary(conflict, (id) => {
-                      const other = projectById.get(id)
-                      return other ? projectScheduleLabel(other) : "another job"
-                    })
-                  )
-                  .join("\n")}
-              >
-                <IconAlertTriangle className="size-4" aria-hidden="true" />
-                <span className="sr-only">Crew double-booked</span>
-              </span>
-            ) : null}
-          </div>
-        ),
-      },
-      {
-        id: "project",
-        header: "Project",
-        cell: ({ row }) => {
-          const project = projectById.get(row.original.projectId)
-          return project ? (
-            <div
-              className="flex max-w-[180px] items-center gap-1.5 text-xs"
-              title={projectScheduleLabel(project)}
-            >
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: project.color }}
-              />
-              <span className="truncate">
-                {project.projectNumber ?? project.name}
-              </span>
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          )
-        },
-        meta: { className: multipleProjects ? "" : "hidden" },
-      },
-      {
-        id: "complete",
-        header: "Complete",
-        cell: ({ row }) => (
-          <ProgressValue
-            percent={effectivePercentComplete(
-              row.original.status,
-              row.original.percentComplete
-            )}
-          />
-        ),
-        size: 70,
-        meta: { className: "hidden sm:table-cell" },
-      },
-      {
-        accessorKey: "phase",
-        header: "Phase",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground truncate max-w-[80px] inline-block">
-            {row.original.phase}
-          </span>
-        ),
-        meta: { className: "hidden lg:table-cell" },
-      },
-      {
-        id: "duration",
-        header: "Duration",
-        cell: ({ row }) => (
-          <span className="text-xs">
-            {row.original.workdays} {row.original.workdays === 1 ? "day" : "days"}
-          </span>
-        ),
-        size: 80,
-        meta: { className: "hidden md:table-cell" },
-      },
-      {
-        accessorKey: "startDate",
-        header: "Start",
-        cell: ({ row }) => {
-          const time = scheduleItemTimeLabel(row.original)
-          return (
-            <span className="text-xs text-muted-foreground">
-              {dateLabel(row.original.startDate)}
-              {time ? <span className="block">{time}</span> : null}
-            </span>
-          )
-        },
-      },
-      {
-        accessorKey: "endDateCalculated",
-        header: "End",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {dateLabel(row.original.endDateCalculated)}
-          </span>
-        ),
-      },
-      {
-        id: "assignedTo",
-        header: "Responsible",
-        cell: ({ row }) => <ScheduleAssigneeStack names={scheduleItemAssigneeNames(row.original)} />,
-      },
-      {
-        id: "actions",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1">
-            <ProjectTaskCreateButton
-              compact
-              projectId={row.original.projectId}
-              sourceLabel="Schedule item"
-              sourceRecordId={row.original.id}
-              sourceRecordNumber={null}
-              sourceHref={scheduleItemHref(
-                row.original.projectId,
-                row.original.id
-              )}
-              defaultTitle={`Follow up: ${row.original.title}`}
-              defaultDescription={`${row.original.phase} schedule item.`}
-              defaultAssigneeName={scheduleItemAssigneeNames(row.original)[0] ?? null}
-              defaultCompanyName={null}
-              defaultDueDate={row.original.endDateCalculated}
-              defaultPriority={
-                row.original.isCriticalPath ? "high" : "normal"
-              }
-              defaultTaskType="schedule_task"
-              assigneeOptions={assigneeOptions}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => handleEdit(row.original)}
-              aria-label={`Edit ${row.original.title}`}
-              title="Edit schedule item"
-            >
-              <IconPencil className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => setPendingDeleteTasks([row.original])}
-              aria-label={`Delete ${row.original.title}`}
-              title="Delete schedule item"
-            >
-              <IconTrash className="size-3.5" />
-            </Button>
-          </div>
-        ),
-        size: 110,
-      },
-    ],
+  const columns = useMemo(
+    () =>
+      scheduleListColumns({
+        visibleColumns,
+        multipleProjects,
+        projectById,
+        conflicts,
+        palette: displayColorPalette,
+        assigneeOptions,
+        onEdit: handleEdit,
+        onDelete: (task) => setPendingDeleteTasks([task]),
+      }),
     [
       assigneeOptions,
       conflicts,
@@ -383,30 +119,20 @@ export function ScheduleListView({
       handleEdit,
       multipleProjects,
       projectById,
+      visibleColumns,
     ]
   )
 
-  const columnVisibility = useMemo(
-    () =>
-      Object.fromEntries(
-        SCHEDULE_LIST_COLUMNS.map((column) => [
-          column,
-          visibleColumns.includes(column),
-        ])
-      ),
-    [visibleColumns]
-  )
-
-  const table = useReactTable({
+  // The schedule's own filters (search, status, phase, preset) and order
+  // mode shape `tasks`; the sheet keeps that order until a header is clicked.
+  const table = useRecordTable({
     data: localTasks,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getRowId: (row) => row.id,
-    onRowSelectionChange: setRowSelection,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: { rowSelection, columnVisibility, pagination },
+    getRowId: (task) => task.id,
+    resetKey: projectId ?? "unified",
+    enableSelection: true,
+    initialItemId: focusTaskId,
+    sheetId: "schedule.list",
   })
   const selectedTasks = table
     .getSelectedRowModel()
@@ -448,7 +174,7 @@ export function ScheduleListView({
           : task
       )
     )
-    setRowSelection({})
+    table.resetRowSelection()
     toast.success(
       `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} marked complete.`
     )
@@ -504,7 +230,7 @@ export function ScheduleListView({
           : task
       )
     )
-    setRowSelection({})
+    table.resetRowSelection()
     toast.success(
       assignedName
         ? `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} assigned to ${assignedName}.`
@@ -542,26 +268,13 @@ export function ScheduleListView({
     setLocalTasks((current) =>
       current.filter((task) => !deletedIds.has(task.id))
     )
-    setRowSelection({})
+    table.resetRowSelection()
     setPendingDeleteTasks([])
     toast.success(
       `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} deleted.`
     )
     router.refresh()
   }
-
-  useEffect(() => {
-    if (!focusTaskId) return
-    const index = localTasks.findIndex((task) => task.id === focusTaskId)
-    if (index < 0) return
-
-    table.setPageIndex(Math.floor(index / table.getState().pagination.pageSize))
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById(`schedule-item-${focusTaskId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" })
-    })
-  }, [focusTaskId, localTasks, table])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -643,7 +356,7 @@ export function ScheduleListView({
               size="sm"
               variant="ghost"
               disabled={isWorking}
-              onClick={() => setRowSelection({})}
+              onClick={() => table.resetRowSelection()}
             >
               <IconX className="size-4" />
               Clear
@@ -652,71 +365,16 @@ export function ScheduleListView({
         )}
       </div>
 
-      <div className="rounded-md border flex-1 min-h-[30rem] overflow-x-auto -mx-2 sm:mx-0">
-        <div className="inline-block min-w-full align-middle">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
-                    const meta = header.column.columnDef.meta as { className?: string } | undefined
-                    return (
-                      <TableHead key={header.id} className={meta?.className}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(
-                              header.column.columnDef.header,
-                              header.getContext()
-                            )}
-                      </TableHead>
-                    )
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No schedule items yet. Click &quot;New Schedule Item&quot; to
-                    get started.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    id={`schedule-item-${row.original.id}`}
-                    key={row.id}
-                    data-state={row.getIsSelected() ? "selected" : undefined}
-                    className={cn(
-                      row.getIsSelected() && "bg-muted/60",
-                      row.original.id === focusTaskId &&
-                        "bg-primary/5 outline outline-2 outline-primary/30"
-                    )}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      const meta = cell.column.columnDef.meta as { className?: string } | undefined
-                      return (
-                        <TableCell key={cell.id} className={meta?.className}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </TableCell>
-                      )
-                    })}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+      <div className="min-h-[30rem] flex-1">
+        <RecordTable
+          table={table}
+          itemLabel="schedule items"
+          emptyMessage='No schedule items yet. Click "New Schedule Item" to get started.'
+          focusedRowId={focusTaskId}
+          rowIdPrefix="schedule-item"
+          onRowOpen={handleEdit}
+        />
       </div>
-
-      <DataTablePagination table={table} itemLabel="schedule items" id="schedule-items-per-page" />
 
       {(editingTask || projectId) && (
         <ScheduleItemFormDialog

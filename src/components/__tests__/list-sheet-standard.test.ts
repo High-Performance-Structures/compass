@@ -26,6 +26,11 @@ import { projectTodoColumns } from "@/components/projects/project-todo-table-col
 import { purchaseOrderColumns } from "@/components/purchase-orders/purchase-order-record-table"
 import { CUSTOMER_SORT_IDS, VENDOR_SORT_IDS } from "@/lib/domain/contacts/directory-page"
 import { REVIEW_SORT_IDS } from "@/lib/domain/conversations/imported-participant-review"
+import { recurringDutyColumns } from "@/components/projects/recurring-duties-board"
+import { scheduleListColumns } from "@/components/schedule/schedule-list-columns"
+import { workdayExceptionColumns } from "@/components/schedule/workday-exceptions-view"
+import { SCHEDULE_LIST_COLUMNS } from "@/lib/schedule/saved-views"
+import { DEFAULT_DISPLAY_COLOR_PALETTE } from "@/lib/schedule/appearance"
 import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
 import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { LIST_SHEETS } from "@/lib/domain/settings/list-sheet-registry"
@@ -116,6 +121,20 @@ describe("list sheet standard", () => {
       "settings.people": () => peopleColumns({ onEditUser: noop }),
       "settings.invite-links": () => inviteLinkColumns({ onCopy: noop, onRevoke: noop }),
       "settings.account-deletion-requests": () => accountDeletionRequestColumns({ busyId: null, onStart: noop, onComplete: noop }),
+      "schedule.list": () =>
+        scheduleListColumns({
+          visibleColumns: SCHEDULE_LIST_COLUMNS,
+          multipleProjects: true,
+          projectById: new Map(),
+          conflicts: new Map(),
+          palette: DEFAULT_DISPLAY_COLOR_PALETTE,
+          assigneeOptions: [],
+          onEdit: noop,
+          onDelete: noop,
+        }),
+      "schedule.workday-exceptions": () => workdayExceptionColumns({ onOpen: noop, onDelete: noop }),
+      "recurring-duties.workspace": () =>
+        recurringDutyColumns({ canEdit: true, canManage: true, pending: false, onDone: noop, onEdit: noop, onUndo: noop }),
     }
     const serverSortIds: Readonly<Record<string, readonly string[]>> = {
       vendors: VENDOR_SORT_IDS,

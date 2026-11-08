@@ -1,14 +1,8 @@
 "use client"
 
 import { useState, useCallback, useMemo } from "react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import type { ColumnDef } from "@tanstack/react-table"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
@@ -60,6 +54,133 @@ const categoryLabels: Record<string, string> = {
   extra_workday: "Extra Workday",
 }
 
+function effectLabel(exception: WorkdayExceptionData): string {
+  return exception.type === "working" ? "Working" : "Non-working"
+}
+
+function categoryLabel(exception: WorkdayExceptionData): string {
+  return categoryLabels[exception.category] ?? exception.category
+}
+
+function recurrenceLabel(exception: WorkdayExceptionData): string {
+  return exception.recurrence.replace("_", " ")
+}
+
+/** Whether an exception matches the search box (title, dates' text, effect, category, recurrence, notes). */
+function exceptionMatchesSearch(exception: WorkdayExceptionData, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [
+    exception.title,
+    dateLabel(exception.startDate),
+    dateLabel(exception.endDate),
+    effectLabel(exception),
+    categoryLabel(exception),
+    recurrenceLabel(exception),
+    exception.notes ?? "",
+  ].some((value) => value.toLowerCase().includes(needle))
+}
+
+/** The workday exceptions sheet's columns ("schedule.workday-exceptions"). */
+export function workdayExceptionColumns({
+  onOpen,
+  onDelete,
+}: {
+  readonly onOpen: (exception: WorkdayExceptionData) => void
+  readonly onDelete: (exception: WorkdayExceptionData) => void
+}): ColumnDef<WorkdayExceptionData>[] {
+  return [
+    {
+      accessorKey: "title",
+      header: "Title",
+      size: 160,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="text-left text-sm font-medium hover:underline"
+          onClick={() => onOpen(row.original)}
+        >
+          {row.original.title}
+        </button>
+      ),
+    },
+    {
+      accessorKey: "startDate",
+      header: "Start",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{dateLabel(row.original.startDate)}</span>
+      ),
+    },
+    {
+      accessorKey: "endDate",
+      header: "End",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{dateLabel(row.original.endDate)}</span>
+      ),
+    },
+    {
+      id: "duration",
+      accessorFn: (exception) => calcDuration(exception.startDate, exception.endDate),
+      header: "Duration",
+      cell: ({ row }) => (
+        <span className="text-xs">{calcDuration(row.original.startDate, row.original.endDate)} days</span>
+      ),
+    },
+    {
+      id: "effect",
+      accessorFn: effectLabel,
+      header: "Effect",
+      cell: ({ row }) => <span className="text-xs">{effectLabel(row.original)}</span>,
+    },
+    {
+      id: "category",
+      accessorFn: categoryLabel,
+      header: "Category",
+      cell: ({ row }) => <span className="text-xs">{categoryLabel(row.original)}</span>,
+    },
+    {
+      id: "recurrence",
+      accessorFn: recurrenceLabel,
+      header: "Recurrence",
+      cell: ({ row }) => <span className="text-xs capitalize">{recurrenceLabel(row.original)}</span>,
+    },
+    {
+      id: "notes",
+      accessorFn: (exception) => exception.notes || undefined,
+      header: "Notes",
+      cell: ({ row }) => (
+        <span className="block max-w-[120px] truncate text-xs text-muted-foreground">{row.original.notes || "-"}</span>
+      ),
+    },
+    {
+      id: "actions",
+      size: 80,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Edit ${row.original.title}`}
+            onClick={() => onOpen(row.original)}
+          >
+            <IconPencil className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Delete ${row.original.title}`}
+            onClick={() => onDelete(row.original)}
+          >
+            <IconTrash className="size-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+}
+
 function nextWeekendDate(): string {
   const today = new Date()
   const daysUntilSaturday = (6 - today.getDay() + 7) % 7
@@ -77,6 +198,7 @@ export function WorkdayExceptionsView({
     useState<WorkdayExceptionData | null>(null)
   const [weekendDate, setWeekendDate] = useState(nextWeekendDate)
   const [weekendSaving, setWeekendSaving] = useState(false)
+  const [query, setQuery] = useState("")
 
   const weekendOverride = useMemo(
     () =>
@@ -176,6 +298,29 @@ export function WorkdayExceptionsView({
     }
   }, [projectId, router, shiftReasonRequired, weekendDate, weekendOverride])
 
+  const openException = useCallback((exception: WorkdayExceptionData) => {
+    setEditingException(exception)
+    setFormOpen(true)
+  }, [])
+
+  const columns = useMemo(
+    () => workdayExceptionColumns({ onOpen: openException, onDelete: (exception) => void handleDelete(exception.id) }),
+    [handleDelete, openException]
+  )
+
+  const visibleExceptions = useMemo(
+    () => exceptions.filter((exception) => exceptionMatchesSearch(exception, query)),
+    [exceptions, query]
+  )
+
+  const table = useRecordTable({
+    data: visibleExceptions,
+    columns,
+    getRowId: (exception) => exception.id,
+    resetKey: query,
+    sheetId: "schedule.workday-exceptions",
+  })
+
   return (
     <div>
       <div className="mb-4 rounded-md border bg-muted/20 p-3">
@@ -228,89 +373,23 @@ export function WorkdayExceptionsView({
         </Button>
       </div>
 
-      <div className="rounded-md border overflow-x-auto -mx-2 sm:mx-0">
-        <div className="inline-block min-w-full align-middle">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-[120px]">Title</TableHead>
-                <TableHead className="hidden sm:table-cell">Start</TableHead>
-                <TableHead className="hidden sm:table-cell">End</TableHead>
-                <TableHead className="hidden md:table-cell">Duration</TableHead>
-                <TableHead className="hidden md:table-cell">Effect</TableHead>
-                <TableHead className="hidden lg:table-cell">Category</TableHead>
-                <TableHead className="hidden lg:table-cell">Recurrence</TableHead>
-                <TableHead className="hidden lg:table-cell">Notes</TableHead>
-                <TableHead className="w-[80px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {exceptions.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={9}
-                    className="text-center py-8 text-muted-foreground min-w-0"
-                  >
-                    <span className="block">No workday exceptions</span>
-                  </TableCell>
-                </TableRow>
-            ) : (
-              exceptions.map((ex) => (
-                <TableRow key={ex.id}>
-                  <TableCell className="font-medium text-sm">
-                    {ex.title}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                    {dateLabel(ex.startDate)}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                    {dateLabel(ex.endDate)}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-xs">
-                    {calcDuration(ex.startDate, ex.endDate)} days
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-xs">
-                    {ex.type === "working" ? "Working" : "Non-working"}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs">
-                    {categoryLabels[ex.category] ?? ex.category}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs capitalize">
-                    {ex.recurrence.replace("_", " ")}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground truncate max-w-[120px]">
-                    {ex.notes || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => {
-                          setEditingException(ex)
-                          setFormOpen(true)
-                        }}
-                      >
-                        <IconPencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => handleDelete(ex.id)}
-                      >
-                        <IconTrash className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        </div>
-      </div>
+      {exceptions.length > 0 ? (
+        <RecordSearchInput
+          value={query}
+          onChange={setQuery}
+          label="Search workday exceptions"
+          placeholder="Search title, category, recurrence or notes…"
+          className="mb-3 sm:max-w-sm"
+        />
+      ) : null}
+
+      <RecordTable
+        table={table}
+        itemLabel="workday exceptions"
+        emptyMessage={exceptions.length === 0 ? "No workday exceptions" : "No workday exceptions match this search."}
+        rowIdPrefix="workday-exception"
+        onRowOpen={openException}
+      />
 
       <WorkdayExceptionFormDialog
         open={formOpen}
