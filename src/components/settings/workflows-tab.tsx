@@ -33,6 +33,7 @@ import { SagePayRequestCheckSettingsSection } from "@/components/settings/sage-p
 import { SimpleInvoiceSettingsSection } from "@/components/settings/simple-invoice-settings-section"
 import { SageChangeOrderSettingsSection } from "@/components/settings/sage-change-order-settings-section"
 import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate-settings-section"
+import { SageContactReviewSettingsSection } from "@/components/settings/sage-contact-review-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -233,6 +234,7 @@ const WORKFLOW_AREAS = [
   { value: "simple-invoices", label: "Simple invoices", description: "The mailbox invoices are emailed from, which departments invoice from the job's estimate, and when Square may be used." },
   { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
   { value: "sage-estimates", label: "Sage estimates", description: "Whether accepted estimates go to Sage automatically as the job's proposal, and with the job budget." },
+  { value: "sage-contact-review", label: "Sage contact review", description: "Whether the person who makes a Sage contact change may approve it themselves, or a second person must." },
   { value: "sage-change-orders", label: "Sage change orders", description: "How executed change orders and variances are numbered, described and coded when staff send them to Sage." },
   { value: "change-order-acceptance", label: "Change-order acceptance", description: "Who may record an owner's verbal approval as a staff sign-off, and whether priced change orders need written approval." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
@@ -320,6 +322,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <SageChangeOrderSettingsSection />
     case "sage-estimates":
       return <SageEstimateSettingsSection />
+    case "sage-contact-review":
+      return <SageContactReviewSettingsSection />
     case "change-order-acceptance":
       return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":

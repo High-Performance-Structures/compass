@@ -9,7 +9,9 @@ import { sageContactChangeProposals } from "@/db/schema-sage"
 import { contactEmailChanged, directoryIdentityManagedByActiveUser, SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import { isDemoUser } from "@/lib/demo"
 import { clearOtherCustomerPrimaryPeople, updateCustomerPerson } from "@/lib/domain/contacts/store"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { sageContactReviewerAllowed, type SageContactReviewSettings } from "@/lib/feature-settings/sage-contact-review-settings"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import {
@@ -50,6 +52,12 @@ export type SagePendingChange = {
   readonly changes: readonly SageContactFieldChange[]
   /** Why the Sage write failed or did not read back, for conflict and failed. */
   readonly error: string | null
+  /**
+   * The viewer may approve this pending change now (approve permission, and
+   * the company's second-approver rule allows it), so the form can offer
+   * "Approve and send to Sage" instead of waiting for Sage review.
+   */
+  readonly canApprove: boolean
 }
 
 export type SageLinkedEditState = {
@@ -77,10 +85,18 @@ export type SageLinkedSaveResult = Result<{ readonly sage: readonly SageEditOutc
 const companyKindSchema = z.enum(["client_company", "vendor_company"])
 const textValues = z.record(z.string(), z.string().nullable())
 
+/** Who is looking: may they approve Sage contact changes, and their own? */
+type PendingViewer = {
+  readonly userId: string
+  readonly canApprove: boolean
+  readonly settings: SageContactReviewSettings
+}
+
 async function pendingFor(
   db: Db,
   organizationId: string,
-  records: readonly { readonly kind: SageContactKind; readonly id: string }[]
+  records: readonly { readonly kind: SageContactKind; readonly id: string }[],
+  viewer: PendingViewer
 ): Promise<Record<string, SagePendingChange>> {
   const ids = records.map((record) => record.id)
   if (ids.length === 0) return {}
@@ -91,6 +107,7 @@ async function pendingFor(
     status: sageContactChangeProposals.status,
     changesJson: sageContactChangeProposals.changesJson,
     errorMessage: sageContactChangeProposals.errorMessage,
+    requestedByUserId: sageContactChangeProposals.requestedByUserId,
   }).from(sageContactChangeProposals).where(and(
     eq(sageContactChangeProposals.organizationId, organizationId),
     inArray(sageContactChangeProposals.entityId, ids),
@@ -111,6 +128,8 @@ async function pendingFor(
     pending[row.entityId] = shown?.error && !stalled ? { ...shown, changes } : {
       proposalId: row.id, status: row.status, changes,
       error: stalled ? row.errorMessage ?? "The Sage write did not finish." : null,
+      canApprove: row.status === "pending" && viewer.canApprove &&
+        sageContactReviewerAllowed(viewer.settings, row.requestedByUserId, viewer.userId),
     }
   }
   return pending
@@ -157,7 +176,11 @@ export async function getSageLinkedEditState(kindInput: string, entityId: string
         bridgeConfigured: sageContactOrganizationMatches(env, organizationId),
         fresh: Boolean(snapshotRow && isRecentSageRead(snapshotRow.capturedAt)),
         unavailableFields,
-        pending: await pendingFor(db, organizationId, records),
+        pending: await pendingFor(db, organizationId, records, {
+          userId: user.id,
+          canApprove: !isDemoUser(user.id) && await canFeature(user, "sage-contact-review", "approve"),
+          settings: await readFeatureSettings(db, organizationId, "sage-contact-review"),
+        }),
         categoryFromSageType,
       },
     }

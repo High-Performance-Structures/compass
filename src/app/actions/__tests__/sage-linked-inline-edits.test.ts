@@ -187,6 +187,33 @@ describe("inline edits of a Sage-linked vendor", () => {
     expect(rows("SELECT phone FROM vendors")).toEqual([{ phone: "555-0177" }])
   })
 
+  it("lets the requester approve their own change unless the company requires a second approver", async () => {
+    snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields)
+    await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0199" } })
+    const [first] = rows("SELECT id FROM sage_contact_change_proposals WHERE status = 'pending'")
+    // Default: the form offers "Approve and send to Sage" and the approval goes through.
+    const editState = await getSageLinkedEditState("vendor_company", "vendor-sage")
+    expect(editState.success && editState.data.pending["vendor-sage"]?.canApprove).toBe(true)
+    await expect(reviewSageContactChange(String(first?.id), "approve"))
+      .resolves.toMatchObject({ success: true, status: "approved" })
+
+    // A company that requires a second approver blocks the requester, not another reviewer.
+    sqlite.prepare("UPDATE sage_contact_change_proposals SET status = 'completed'").run()
+    insert("organization_feature_settings", {
+      organization_id: ORG, feature_key: "sage-contact-review",
+      value: JSON.stringify({ requireSecondApprover: true }), updated_at: NOW, updated_by: null,
+    })
+    await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0177" } })
+    const [second] = rows("SELECT id FROM sage_contact_change_proposals WHERE status = 'pending'")
+    const lockedState = await getSageLinkedEditState("vendor_company", "vendor-sage")
+    expect(lockedState.success && lockedState.data.pending["vendor-sage"]?.canApprove).toBe(false)
+    await expect(reviewSageContactChange(String(second?.id), "approve"))
+      .resolves.toMatchObject({ success: false, error: expect.stringContaining("another staff member") })
+    state.userId = "reviewer-1"
+    await expect(reviewSageContactChange(String(second?.id), "approve"))
+      .resolves.toMatchObject({ success: true, status: "approved" })
+  })
+
   it("requests against an old Sage read and asks Sage for a fresh one for approval", async () => {
     snapshot("vendor_company", "vendor-sage", VENDOR_SAGE_ID, vendorSageFields, "2026-10-01T00:00:00.000Z")
     const result = await saveSageLinkedVendor("vendor-sage", { ...vendorForm, sage: { ...vendorForm.sage, phone: "555-0199" } })

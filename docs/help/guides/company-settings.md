@@ -32,6 +32,8 @@ Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. D
 
 Open a staff member in **Settings > Team** to see **Other email addresses**: addresses they also write from, such as an old company domain or a mailbox they own. They are never used to sign in. Compass uses them to recognize the person on imported messages (**Contacts > Needs review**) and offers them as extra send-to choices next to the person's usual address, which stays the default. Administrators add and remove them; removing one asks for confirmation. An address that is anyone's sign-in email, or another staff member's other address, is refused. Each change is recorded in Activity.
 
+**Settings > Workflows > Sage contact review** decides whether a staff member with Sage review approve access may approve the Sage contact changes and new Sage people they asked for themselves (the default), or whether **Require a second person to approve Sage contact changes** makes someone else approve them.
+
 **Settings > Workflows > Company email domains** lists your company's own domains, old ones included. Addresses on them are never matched to a vendor by domain, and imported messages from them are matched to the staff member with the same name before the @ (for example name@old-domain.com to name@current-domain.com). Shared mailboxes such as accounting@ stay for review unless a staff member lists them as an other address. Never list a free email service such as gmail.com.
 
 ## Choose List Columns {#lists}

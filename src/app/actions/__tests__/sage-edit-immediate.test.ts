@@ -245,10 +245,8 @@ describe("saving a Sage-shared field", () => {
     ])
     expect(rows("SELECT requested_by_user_id, base_revision FROM sage_contact_change_proposals WHERE status = 'pending'"))
       .toEqual([{ requested_by_user_id: "staff-1", base_revision: "rev-client" }])
-    // A different staff member still approves it.
+    // By default the person who asked may approve it themselves.
     const [open] = rows("SELECT id FROM sage_contact_change_proposals WHERE status = 'pending'")
-    await expect(reviewSageContactChange(String(open?.id), "approve")).resolves.toMatchObject({ success: false })
-    state.userId = "reviewer-1"
     await expect(reviewSageContactChange(String(open?.id), "approve")).resolves.toMatchObject({ success: true, status: "approved" })
   })
 

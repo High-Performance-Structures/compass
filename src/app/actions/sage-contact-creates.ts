@@ -15,6 +15,8 @@ import {
   reviewSageContactCreateStatements,
 } from "@/lib/domain/sage-bridge/contact-store"
 import { isDemoUser } from "@/lib/demo"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { sageContactReviewerAllowed } from "@/lib/feature-settings/sage-contact-review-settings"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
@@ -187,8 +189,12 @@ export async function reviewSageContactCreate(
       eq(sageContactCreateProposals.status, "pending")
     )).get()
     if (!proposal) return { success: false, error: "Proposal is no longer pending." }
-    if (proposal.requestedByUserId === user.id) {
-      return { success: false, error: "A proposer cannot approve their own Sage contact." }
+    // The requester may decide their own request unless the company requires
+    // a second approver (Settings > Workflows > Sage contact review).
+    if (!sageContactReviewerAllowed(
+      await readFeatureSettings(db, orgId, "sage-contact-review"), proposal.requestedByUserId, user.id
+    )) {
+      return { success: false, error: "Your company requires another staff member to review this new Sage person." }
     }
     const kind = kindSchema.safeParse(proposal.kind)
     if (!kind.success) return { success: false, error: "Stored contact kind is invalid." }

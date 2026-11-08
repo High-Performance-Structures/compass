@@ -135,15 +135,6 @@ export function SagePendingNotice({
 }): React.ReactElement | null {
   const [busy, setBusy] = React.useState(false)
   if (!pending) return null
-  if (!pending.error) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {pending.status === "queued"
-          ? "Compass shows the new values. The Sage change request follows on its own once Sage has been read or finishes its current write."
-          : `${SAGE_PENDING_LABEL}: Compass already shows the new values; Sage gets them once a different staff member approves.`}
-      </p>
-    )
-  }
   const run = async (action: () => Promise<{ readonly success: boolean; readonly error?: string }>, done: string) => {
     setBusy(true)
     try {
@@ -154,6 +145,30 @@ export function SagePendingNotice({
     } finally {
       setBusy(false)
     }
+  }
+  if (!pending.error) {
+    if (pending.status === "pending" && pending.canApprove) {
+      return (
+        <div className="space-y-2 text-xs">
+          <p className="text-muted-foreground">
+            {SAGE_PENDING_LABEL}: Compass already shows the new values. You can approve this change and send it to Sage now.
+          </p>
+          <Button type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => void run(() => reviewSageContactChange(pending.proposalId, "approve"), "Approved; Sage gets the new values shortly")}>
+            Approve and send to Sage
+          </Button>
+        </div>
+      )
+    }
+    return (
+      <p className="text-xs text-muted-foreground">
+        {pending.status === "queued"
+          ? "Compass shows the new values. The Sage change request follows on its own once Sage has been read or finishes its current write."
+          : pending.status === "pending"
+            ? `${SAGE_PENDING_LABEL}: Compass already shows the new values; Sage gets them once the change is approved in Sage review.`
+            : `${SAGE_PENDING_LABEL}: approved; Compass already shows the new values and Sage is being updated.`}
+      </p>
+    )
   }
   return (
     <div className="space-y-2 text-xs">
