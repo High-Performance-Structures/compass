@@ -307,6 +307,9 @@ namespace CompassSageClientProjectWriter
         {
             StringBuilder body = new StringBuilder();
             AppendReference(body, "ObjectRef", jobNumber.ToString(CultureInfo.InvariantCulture));
+            // Basis 1 = cost codes, like every proposal already in Sage. Left out, Sage
+            // sets up a bid-item proposal and rejects cost-code lines (code 14218).
+            AppendElement(body, "ProposalBasis", "1");
             foreach (EstimateLine line in lines)
             {
                 body.Append("<ProposalLineAdd><ObjectRef><PhaseID>0</PhaseID></ObjectRef>");
