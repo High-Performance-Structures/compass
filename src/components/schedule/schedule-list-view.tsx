@@ -30,10 +30,6 @@ import { RecordTable, useRecordTable } from "@/components/record-table"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
-import {
-  SCHEDULE_LIST_COLUMNS,
-  type ScheduleListColumn,
-} from "@/lib/schedule/saved-views"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import {
   AlertDialog,
@@ -54,7 +50,6 @@ interface ScheduleListViewProps {
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly focusTaskId?: string | null
   readonly projects?: readonly ScheduleProjectData[]
-  readonly visibleColumns?: readonly ScheduleListColumn[]
   /** Items whose crew is booked on another job over the same days. */
   readonly conflicts?: ReadonlyMap<string, readonly ScheduleConflict[]>
   /** False until the schedule is first published; drafts need no shift reason. */
@@ -71,7 +66,6 @@ export function ScheduleListView({
   assigneeOptions,
   focusTaskId = null,
   projects = [],
-  visibleColumns = SCHEDULE_LIST_COLUMNS,
   conflicts = NO_CONFLICTS,
   shiftReasonRequired = true,
 }: ScheduleListViewProps) {
@@ -103,7 +97,6 @@ export function ScheduleListView({
   const columns = useMemo(
     () =>
       scheduleListColumns({
-        visibleColumns,
         multipleProjects,
         projectById,
         conflicts,
@@ -119,7 +112,6 @@ export function ScheduleListView({
       handleEdit,
       multipleProjects,
       projectById,
-      visibleColumns,
     ]
   )
 

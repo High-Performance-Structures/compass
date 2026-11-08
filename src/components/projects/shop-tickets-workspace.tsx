@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Button } from "@/components/ui/button"
@@ -170,11 +170,12 @@ export function ShopTicketsWorkspace({
     })
   }, [tickets, filter, query])
 
+  const filterLabel = useListSheetFilterLabel("shop-tickets.job")
   const filterOptions = React.useMemo(() => [
-    { value: "open", label: "Open", count: tickets.filter((ticket) => ticket.status !== "void").length, pinned: true },
-    ...STATUS_ORDER.map((status) => ({ value: status, label: STATUS_LABEL[status], count: tickets.filter((ticket) => ticket.status === status).length })),
-    { value: "all", label: "All", count: tickets.length, pinned: true },
-  ], [tickets])
+    { value: "open", label: filterLabel("open", "Open"), count: tickets.filter((ticket) => ticket.status !== "void").length, pinned: true },
+    ...STATUS_ORDER.map((status) => ({ value: status, label: filterLabel(status, STATUS_LABEL[status]), count: tickets.filter((ticket) => ticket.status === status).length })),
+    { value: "all", label: filterLabel("all", "All"), count: tickets.length, pinned: true },
+  ], [tickets, filterLabel])
 
   const columns = React.useMemo(
     () => shopTicketColumns({ projectId, canEdit, onEdit: (ticket) => setEditor({ mode: "edit", ticket }), onVoid: setVoiding }),

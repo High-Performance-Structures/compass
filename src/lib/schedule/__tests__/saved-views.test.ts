@@ -16,13 +16,12 @@ describe("scheduleViewDefinitionSchema", () => {
       phase: ["Framing"],
       assignedTo: "Wes",
       search: "inspection",
-      columns: ["phase", "startDate", "endDateCalculated", "assignedTo"],
     })
 
     expect(result.success).toBe(true)
   })
 
-  it("rejects unsupported presets and columns", () => {
+  it("rejects unsupported presets", () => {
     const result = scheduleViewDefinitionSchema.safeParse({
       view: "list",
       orderMode: "chronological",
@@ -32,7 +31,6 @@ describe("scheduleViewDefinitionSchema", () => {
       phase: [],
       assignedTo: "",
       search: "",
-      columns: ["privateNotes"],
     })
 
     expect(result.success).toBe(false)

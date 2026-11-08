@@ -220,14 +220,16 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   table (`<table>`, `<Table>` or `useReactTable`) without the shared record
   table or the line reorder control fails CI unless it is listed with its
   reason (document, report, line items, settings grid, chart grid, import
-  preview or file browser). Older growing lists still on hand-built tables
-  are listed as "growing list" under a ceiling that only goes down.
-- **Renamable filter buttons.** A sheet whose filter buttons group fixed
-  workflow steps (change orders: Open, In progress, With owner, Executed,
-  Closed, All) registers its `startFilter` with `renamable: true`. Each
+  preview or file browser). Every growing list is now a sheet; the
+  "growing list" ceiling is 0.
+- **Renamable filter buttons.** A sheet whose filter buttons are fixed in
+  code, not read from Settings > Statuses (change orders, financial
+  records, Square receipts, the machine log, shop tickets, estimates, team
+  members, invite links, account deletion requests, client follow-up),
+  registers every button in its `startFilter` with `renamable: true`. Each
   company can then rename the buttons in **Settings > Lists**, and the page
   reads the names with `useListSheetFilterLabel(sheetId)`. Only the names
-  change; the steps in each group stay the same.
+  change; which records each button shows stays the same.
 - **Dragging is for rows inside one record.** Line items inside a single
   record (estimate, P.O., RFQ scope rows, change-order lines, shop tickets,
   invoices and bills) can be put in order, because that order is part of the

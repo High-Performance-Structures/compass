@@ -164,6 +164,7 @@ export function InvoicesTable({
         rows: invoices,
         of: invoiceStatus,
         known: STATUSES,
+        sheetId: "financials.invoices",
         selected: status,
         onSelect: setStatus,
       }}

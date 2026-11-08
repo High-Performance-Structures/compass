@@ -10,7 +10,7 @@ import { toast } from "sonner"
 
 import { createProjectEstimateDraft, type ProjectEstimateSummary } from "@/app/actions/project-estimates"
 import { createNuTechOrder, type NuTechOrderForEstimate } from "@/app/actions/nutech-orders"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
@@ -138,18 +138,21 @@ export function ProjectEstimateList({
     })
   }, [rows, filter, query])
 
+  const filterLabel = useListSheetFilterLabel("estimates.job")
   const filterOptions = React.useMemo(() => {
-    const statuses = [...new Set(rows.map((row) => row.status))].sort((a, b) => statusSortValue(a).localeCompare(statusSortValue(b)))
+    // The chosen status keeps its button even when no estimate has it (a company can open on any status).
+    const chosen = filter === "open" || filter === "all" ? [] : [filter]
+    const statuses = [...new Set([...rows.map((row) => row.status), ...chosen])].sort((a, b) => statusSortValue(a).localeCompare(statusSortValue(b)))
     return [
-      { value: "open", label: "Open", count: rows.filter((row) => OPEN_STATUSES.includes(row.status)).length, pinned: true },
+      { value: "open", label: filterLabel("open", "Open"), count: rows.filter((row) => OPEN_STATUSES.includes(row.status)).length, pinned: true },
       ...statuses.map((status) => ({
         value: status,
-        label: statusLabel(status).replace(/^./, (letter) => letter.toUpperCase()),
+        label: filterLabel(status, statusLabel(status).replace(/^./, (letter) => letter.toUpperCase())),
         count: rows.filter((row) => row.status === status).length,
       })),
-      { value: "all", label: "All", count: rows.length, pinned: true },
+      { value: "all", label: filterLabel("all", "All"), count: rows.length, pinned: true },
     ]
-  }, [rows])
+  }, [rows, filter, filterLabel])
 
   function newEstimate(): void {
     startTransition(async () => {

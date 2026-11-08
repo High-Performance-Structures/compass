@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import type { TaskFilters } from "@/lib/schedule/types"
@@ -12,7 +12,6 @@ import {
 import type {
   SavedScheduleViewData,
   ScheduleGroupMode,
-  ScheduleListColumn,
   ScheduleViewDefinition,
   ScheduleViewPreset,
 } from "@/lib/schedule/saved-views"
@@ -35,14 +34,12 @@ export interface ScheduleViewState {
   readonly setConflictsOnly: (conflictsOnly: boolean) => void
   readonly groupMode: ScheduleGroupMode
   readonly setGroupMode: (groupMode: ScheduleGroupMode) => void
-  readonly visibleColumns: readonly ScheduleListColumn[]
-  readonly setVisibleColumns: Dispatch<SetStateAction<readonly ScheduleListColumn[]>>
   readonly currentViewDefinition: () => ScheduleViewDefinition
   readonly applySavedView: (savedView: SavedScheduleViewData) => void
 }
 
 /**
- * View, ordering, filters, preset, grouping and columns. Starts from the URL,
+ * View, ordering, filters, preset and grouping. Starts from the URL,
  * keeps the URL in step, and remembers the ordering per schedule.
  */
 export function useScheduleViewState(
@@ -71,8 +68,6 @@ export function useScheduleViewState(
   const [conflictsOnly, setConflictsOnly] = useState(searchParams.get("conflicts") === "1")
   const [groupMode, setGroupMode] =
     useState<ScheduleGroupMode>(requested.group)
-  const [visibleColumns, setVisibleColumns] =
-    useState<readonly ScheduleListColumn[]>(requested.columns)
 
   useEffect(() => {
     const requestedOrder = searchParams.get("order")
@@ -97,7 +92,6 @@ export function useScheduleViewState(
       preset,
       groupMode,
       conflictsOnly,
-      visibleColumns,
     })
     if (nextQuery !== currentQuery) {
       router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
@@ -114,7 +108,6 @@ export function useScheduleViewState(
     router,
     searchParams,
     view,
-    visibleColumns,
   ])
 
   const handleOrderModeChange = (value: string): void => {
@@ -135,7 +128,6 @@ export function useScheduleViewState(
     phase: [...filters.phase],
     assignedTo: filters.assignedTo,
     search: filters.search,
-    columns: [...visibleColumns],
   })
 
   const applySavedView = (savedView: SavedScheduleViewData): void => {
@@ -150,7 +142,6 @@ export function useScheduleViewState(
       assignedTo: definition.assignedTo,
       search: definition.search,
     })
-    setVisibleColumns(definition.columns)
     toast.success(`Applied “${savedView.name}”.`)
   }
 
@@ -167,8 +158,6 @@ export function useScheduleViewState(
     setConflictsOnly,
     groupMode,
     setGroupMode,
-    visibleColumns,
-    setVisibleColumns,
     currentViewDefinition,
     applySavedView,
   }

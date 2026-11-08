@@ -6,7 +6,7 @@ import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import type { ScheduleData, ScheduleTaskData } from "@/lib/schedule/types"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
-import type { ScheduleGroupMode, ScheduleListColumn } from "@/lib/schedule/saved-views"
+import type { ScheduleGroupMode } from "@/lib/schedule/saved-views"
 import { ScheduleListView } from "../schedule-list-view"
 import { ScheduleGanttView } from "../schedule-gantt-view"
 import { ScheduleCalendarView } from "../schedule-calendar-view"
@@ -29,7 +29,6 @@ export function ScheduleViewContent({
   setConflictsOnly,
   assigneeOptions,
   focusTaskId,
-  visibleColumns,
   shiftReasonRequired,
   ganttScrollMode,
   groupMode,
@@ -50,7 +49,6 @@ export function ScheduleViewContent({
   readonly setConflictsOnly: (conflictsOnly: boolean) => void
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly focusTaskId: string | null
-  readonly visibleColumns: readonly ScheduleListColumn[]
   readonly shiftReasonRequired: boolean
   readonly ganttScrollMode: GanttScrollMode
   readonly groupMode: ScheduleGroupMode
@@ -97,7 +95,6 @@ export function ScheduleViewContent({
           assigneeOptions={assigneeOptions}
           focusTaskId={focusTaskId}
           projects={scheduleProjects}
-          visibleColumns={visibleColumns}
           conflicts={conflicts}
           shiftReasonRequired={shiftReasonRequired}
         />

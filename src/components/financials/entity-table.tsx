@@ -5,6 +5,7 @@ import type { Table as TanstackTable } from "@tanstack/react-table"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { DataTablePagination } from "@/components/data-table-pagination"
+import { useListSheetFilterLabel } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 
@@ -72,6 +73,8 @@ type EntityTableProps<T> = {
     readonly rows: readonly T[]
     readonly of: (row: T) => string
     readonly known: readonly StatusOption[]
+    /** The registered sheet whose company filter names (Settings > Lists) the buttons use. */
+    readonly sheetId: string
     readonly selected: string
     readonly onSelect: (value: string) => void
   }
@@ -98,13 +101,17 @@ export function EntityTable<T>({
   paginationId,
 }: EntityTableProps<T>): React.ReactElement {
   const isMobile = useIsMobile()
+  const filterLabel = useListSheetFilterLabel(statusFilter?.sheetId ?? "")
   const statusBar = statusFilter ? (
     <StatusFilterBar
       kind="button"
       label={statusFilter.label}
       selected={statusFilter.selected}
       onSelect={statusFilter.onSelect}
-      options={entityStatusOptions(statusFilter.rows, statusFilter.of, statusFilter.known)}
+      options={entityStatusOptions(statusFilter.rows, statusFilter.of, statusFilter.known).map((option) => ({
+        ...option,
+        label: filterLabel(option.value, option.label),
+      }))}
     />
   ) : null
 

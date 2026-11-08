@@ -131,7 +131,6 @@ export function ScheduleView({
     setConflictsOnly,
     groupMode,
     setGroupMode,
-    visibleColumns,
   } = viewState
   const [taskFormOpen, setTaskFormOpen] = useState(initialTaskFormOpen)
   useQuickAddEntry("schedule-item", () => setTaskFormOpen(true))
@@ -312,7 +311,6 @@ export function ScheduleView({
         setConflictsOnly={setConflictsOnly}
         assigneeOptions={assigneeOptions}
         focusTaskId={focusTaskId}
-        visibleColumns={visibleColumns}
         shiftReasonRequired={shiftReasonRequired}
         ganttScrollMode={ganttScrollMode}
         groupMode={groupMode}

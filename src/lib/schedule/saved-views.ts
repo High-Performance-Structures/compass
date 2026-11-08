@@ -19,19 +19,8 @@ export const SCHEDULE_GROUP_MODES = [
   "status",
 ] as const
 
-export const SCHEDULE_LIST_COLUMNS = [
-  "project",
-  "complete",
-  "phase",
-  "duration",
-  "startDate",
-  "endDateCalculated",
-  "assignedTo",
-] as const
-
 export type ScheduleViewPreset = (typeof SCHEDULE_VIEW_PRESETS)[number]
 export type ScheduleGroupMode = (typeof SCHEDULE_GROUP_MODES)[number]
-export type ScheduleListColumn = (typeof SCHEDULE_LIST_COLUMNS)[number]
 
 const taskStatusSchema = z.enum([
   "PENDING",
@@ -49,9 +38,6 @@ export const scheduleViewDefinitionSchema = z.object({
   phase: z.array(z.string().trim().min(1).max(100)).max(50),
   assignedTo: z.string().max(200),
   search: z.string().max(200),
-  columns: z.array(z.enum(SCHEDULE_LIST_COLUMNS)).max(
-    SCHEDULE_LIST_COLUMNS.length
-  ),
 })
 
 export type ScheduleViewDefinition = z.infer<
