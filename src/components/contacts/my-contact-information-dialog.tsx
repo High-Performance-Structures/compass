@@ -31,7 +31,7 @@ export function MyContactInformationDialog({
     <DialogContent>
       <DialogHeader>
         <DialogTitle>My contact information</DialogTitle>
-        <DialogDescription>Propose a change to your own verified Sage contact record. Another authorized staff member reviews it before Sage is updated.</DialogDescription>
+        <DialogDescription>Propose a change to your own verified Sage contact record. An authorized staff member approves it before Sage is updated.</DialogDescription>
       </DialogHeader>
       {myContacts.length === 0 ? (
         <p className="text-sm text-muted-foreground">No directory person is linked to your Compass account yet. Ask an account administrator to verify and link the correct contact record.</p>

@@ -125,7 +125,7 @@ export function SageContactReviewDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Sage contact review</DialogTitle>
-          <DialogDescription>Review exact Sage identities, proposed new people, and contact changes. Every Sage write requires an independent decision.</DialogDescription>
+          <DialogDescription>Review exact Sage identities, proposed new people, and contact changes. Every Sage write needs an approval by someone with Sage review access; Settings › Workflows › Sage contact review decides whether that may be the person who asked.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <h3 className="text-sm font-semibold">Sage identity links</h3>

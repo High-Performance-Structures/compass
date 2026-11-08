@@ -18,6 +18,8 @@ import {
   reviewSageContactChangeStatements,
 } from "@/lib/domain/sage-bridge/contact-store"
 import { isDemoUser } from "@/lib/demo"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { sageContactReviewerAllowed } from "@/lib/feature-settings/sage-contact-review-settings"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -351,8 +353,12 @@ export async function reviewSageContactChange(
       inArray(sageContactChangeProposals.status, [...fromStatuses])
     )).get()
     if (!proposal) return { success: false, error: "Proposal is no longer pending." }
-    if (proposal.requestedByUserId === user.id) {
-      return { success: false, error: "A proposer cannot approve their own contact change." }
+    // The requester may decide their own request unless the company requires
+    // a second approver (Settings > Workflows > Sage contact review).
+    if (!sageContactReviewerAllowed(
+      await readFeatureSettings(db, orgId, "sage-contact-review"), proposal.requestedByUserId, user.id
+    )) {
+      return { success: false, error: "Your company requires another staff member to review this contact change." }
     }
     const kind = kindSchema.safeParse(proposal.kind)
     let parsed: unknown
