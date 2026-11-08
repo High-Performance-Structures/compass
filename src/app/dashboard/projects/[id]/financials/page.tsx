@@ -29,6 +29,8 @@ import { ProjectContextWatermarkShell } from "@/components/projects/project-cont
 import { ProjectContractDepositsPanel } from "@/components/projects/project-contract-deposits-panel"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
 import { getSagePayRequestPanel } from "@/app/actions/sage-pay-requests"
+import { getProjectInvoicesPanel } from "@/app/actions/project-invoice-views"
+import { ProjectInvoicesPanel } from "@/components/financials/project-invoices-panel"
 import { SagePayRequestsPanel } from "@/components/financials/sage-pay-request-sync"
 
 export default async function ProjectFinancialsPage({
@@ -78,10 +80,12 @@ export default async function ProjectFinancialsPage({
     console.warn("Project contract deposits unavailable", error)
   }
   // The change order panel is for office staff with finance access only; it is left out for everyone else.
-  const [receivables, sagePanel, sageChangeOrders] = await Promise.all([
+  // Simple invoices are for office staff with finance access; a failure just hides the panel.
+  const [receivables, sagePanel, sageChangeOrders, invoicesPanel] = await Promise.all([
     getProjectReceivablePayments(id),
     getSagePayRequestPanel(id),
     getSageChangeOrderSendState(id).catch(() => null),
+    getProjectInvoicesPanel(id).catch(() => null),
   ])
   const selectedSquareReceipt = Array.isArray(query.squareReceipt)
     ? (query.squareReceipt[0] ?? null)
@@ -109,6 +113,7 @@ export default async function ProjectFinancialsPage({
             receipts={squareReceipts}
             selectedReceiptId={selectedSquareReceipt}
           />
+          {invoicesPanel?.success && <ProjectInvoicesPanel projectId={id} panel={invoicesPanel.data} />}
           {deposits && <ProjectContractDepositsPanel projectId={id} summary={deposits} />}
           {receivables.success && (
             <ReceivedPaymentsPanel

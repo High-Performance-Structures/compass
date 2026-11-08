@@ -132,6 +132,7 @@ export async function printDocumentSource(
     case "purchase-order":
     case "shop-ticket":
     case "deposit-request":
+    case "invoice":
     case "meeting-transcript":
     case "estimate-compare":
     case "sage-export-preview":

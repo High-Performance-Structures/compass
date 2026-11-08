@@ -111,10 +111,13 @@ export async function upsertSquareOwnerReceivable(
   const invoiceSourceId = `sage-ar-invoice:${input.sageInvoiceId}`;
   const paymentSourceId = `square-payment:${input.squarePaymentId}`;
   const existingInvoice = await env.DB.prepare(
+    // A Compass-built invoice that went to Sage carries the same identity, so
+    // its Square payment lands on it instead of a second copy.
     `SELECT id, project_id, customer_id, invoice_number, total
      FROM invoices
-     WHERE organization_id = ? AND source_system = 'sage'
+     WHERE organization_id = ? AND source_system IN ('compass', 'sage')
        AND source_external_id = ?
+     ORDER BY CASE source_system WHEN 'compass' THEN 0 ELSE 1 END
      LIMIT 1`,
   )
     .bind(input.organizationId, invoiceSourceId)

@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 import { participantReviewColumns } from "@/components/contacts/participant-review-table"
 import { customerColumns } from "@/components/financials/customers-table"
 import { billedItemColumns, receivedPaymentColumns } from "@/components/financials/received-payments-panel"
+import { invoiceColumns } from "@/components/financials/project-invoices-table"
 import { vendorColumns } from "@/components/financials/vendors-table"
 import { conversationColumns } from "@/components/correspondence/correspondence-inbox-columns"
 import { dailyLogColumns } from "@/components/projects/daily-log/daily-log-record-table"
@@ -99,6 +100,7 @@ describe("list sheet standard", () => {
       "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
+      "invoices.job": () => invoiceColumns(() => "/"),
       "payments.received": () => receivedPaymentColumns({ canRecord: true, canVoid: true, onApply: noop, onVoid: noop }),
       "nutech.orders": () => nuTechOrderColumns(),
       vendors: () => vendorColumns({ onView: noop }, {}, { selectable: true, developerMode: true }),

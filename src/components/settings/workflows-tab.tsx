@@ -30,6 +30,7 @@ import { VarianceSettingsSection } from "@/components/settings/variance-settings
 import { SageExportSettingsSection } from "@/components/settings/sage-export-settings-section"
 import { SageArInvoiceSettingsSection } from "@/components/settings/sage-ar-invoice-settings-section"
 import { SagePayRequestCheckSettingsSection } from "@/components/settings/sage-pay-request-check-settings-section"
+import { SimpleInvoiceSettingsSection } from "@/components/settings/simple-invoice-settings-section"
 import { SageChangeOrderSettingsSection } from "@/components/settings/sage-change-order-settings-section"
 import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
@@ -228,6 +229,7 @@ const WORKFLOW_AREAS = [
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
   { value: "variances", label: "Variances", description: "The default contract type for jobs, and how project liability insurance follows variances and change orders." },
+  { value: "simple-invoices", label: "Simple invoices", description: "The mailbox invoices are emailed from, which departments invoice from the job's estimate, and when Square may be used." },
   { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
   { value: "sage-estimates", label: "Sage estimates", description: "Whether accepted estimates go to Sage automatically as the job's proposal, and with the job budget." },
   { value: "sage-change-orders", label: "Sage change orders", description: "How executed change orders and variances are numbered, described and coded when staff send them to Sage." },
@@ -308,6 +310,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
           <SageArInvoiceSettingsSection />
         </div>
       )
+    case "simple-invoices":
+      return <SimpleInvoiceSettingsSection />
     case "sage-change-orders":
       return <SageChangeOrderSettingsSection />
     case "sage-estimates":

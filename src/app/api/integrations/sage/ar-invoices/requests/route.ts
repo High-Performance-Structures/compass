@@ -1,8 +1,14 @@
 import { and, asc, eq, lt, or } from "drizzle-orm"
 
-import { sageArInvoiceExports } from "@/db/schema-sage"
-import { claimSageArInvoiceExport, updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { sageArInvoiceExports, sageInvoiceArExports } from "@/db/schema-sage"
+import {
+  claimSageArInvoiceExport,
+  claimSageInvoiceArExport,
+  updateSageArInvoiceExportsStatement,
+  updateSageInvoiceArExportsStatement,
+} from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { sageBridgeBatchLimit, sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
+import { buildSimpleInvoiceWriterRequest } from "@/lib/financials/simple-invoice-sage"
 import { buildArInvoiceWriterRequest } from "@/lib/sage/ar-invoice-sync"
 import { AR_INVOICE_WRITER, authorizeSageChangeOrderBridge } from "@/lib/sage/change-order-bridge"
 
@@ -10,8 +16,8 @@ const MAX_BATCH = 5
 const CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
 
 /**
- * The Sage writer's poll for billed pay requests: claims queued AR invoices,
- * each built from the pay request right now. A guard that fails here flags
+ * The Sage writer's poll for billed pay requests and simple Compass
+ * invoices: claims queued AR invoices, each built from its record right now. A guard that fails here flags
  * the pay request as needing attention instead of sending it.
  */
 export async function GET(request: Request): Promise<Response> {
@@ -66,6 +72,51 @@ export async function GET(request: Request): Promise<Response> {
     }
     await updateSageArInvoiceExportsStatement(db, fence, { status: "running", payloadJson: JSON.stringify(built.payload), errorMessage: null, updatedAt: nowIso })
     requests.push({ id: candidate.id, claimToken, payload: built.payload })
+  }
+  // Simple invoices share the writer: the same payload, claimed from their own table.
+  if (requests.length < limit) {
+    const invoiceCandidates = await db
+      .select({
+        id: sageInvoiceArExports.id,
+        projectId: sageInvoiceArExports.projectId,
+        invoiceId: sageInvoiceArExports.invoiceId,
+        invoiceNumber: sageInvoiceArExports.invoiceNumber,
+      })
+      .from(sageInvoiceArExports)
+      .where(
+        and(
+          eq(sageInvoiceArExports.organizationId, organizationId),
+          or(
+            eq(sageInvoiceArExports.status, "queued"),
+            and(eq(sageInvoiceArExports.status, "running"), lt(sageInvoiceArExports.claimedAt, staleBefore))
+          )
+        )
+      )
+      .orderBy(asc(sageInvoiceArExports.requestedAt))
+      .limit(limit - requests.length)
+    for (const candidate of invoiceCandidates) {
+      const claimToken = crypto.randomUUID()
+      if (!(await claimSageInvoiceArExport(db, { id: candidate.id, organizationId, claimToken, now: nowIso, staleBefore }))) continue
+      const fence = and(eq(sageInvoiceArExports.id, candidate.id), eq(sageInvoiceArExports.claimToken, claimToken))
+      const built = await buildSimpleInvoiceWriterRequest(db, {
+        organizationId,
+        projectId: candidate.projectId,
+        invoiceId: candidate.invoiceId,
+        invoiceNumber: candidate.invoiceNumber,
+      })
+      if (built.kind === "needs_attention") {
+        await updateSageInvoiceArExportsStatement(db, fence, {
+          status: "needs_attention",
+          claimToken: null,
+          errorMessage: built.reason,
+          completedAt: nowIso,
+          updatedAt: nowIso,
+        })
+        continue
+      }
+      await updateSageInvoiceArExportsStatement(db, fence, { status: "running", payloadJson: JSON.stringify(built.payload), errorMessage: null, updatedAt: nowIso })
+      requests.push({ id: candidate.id, claimToken, payload: built.payload })
+    }
   }
   return Response.json({ organizationId, requests })
 }

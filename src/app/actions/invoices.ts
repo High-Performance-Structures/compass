@@ -18,6 +18,7 @@ import { deleteInvoiceRow, insertInvoice, updateInvoiceRow } from "@/lib/domain/
 
 const BILLING_SCOPE_ERROR = "Choose construction or preconstruction billing."
 const NOT_FOUND = "Invoice not found or access denied"
+const SIMPLE_INVOICE_PAGE = "Open this invoice from the project's Financials page to change, void or delete it."
 
 export async function getInvoices(projectId?: string): Promise<Invoice[]> {
   const { db, organizationId } = await financeReadContext()
@@ -30,33 +31,12 @@ export async function getInvoices(projectId?: string): Promise<Invoice[]> {
   }
 
   // join through projects to filter by org
-  return db
-    .select({
-      id: invoices.id,
-      netsuiteId: invoices.netsuiteId,
-      organizationId: invoices.organizationId,
-      customerId: invoices.customerId,
-      projectId: invoices.projectId,
-      sourceSystem: invoices.sourceSystem,
-      sourceExternalId: invoices.sourceExternalId,
-      invoiceNumber: invoices.invoiceNumber,
-      status: invoices.status,
-      issueDate: invoices.issueDate,
-      dueDate: invoices.dueDate,
-      subtotal: invoices.subtotal,
-      tax: invoices.tax,
-      total: invoices.total,
-      amountPaid: invoices.amountPaid,
-      amountDue: invoices.amountDue,
-      memo: invoices.memo,
-      lineItems: invoices.lineItems,
-      billingScope: invoices.billingScope,
-      createdAt: invoices.createdAt,
-      updatedAt: invoices.updatedAt,
-    })
+  const rows = await db
+    .select({ invoice: invoices })
     .from(invoices)
     .innerJoin(projects, eq(invoices.projectId, projects.id))
     .where(eq(projects.organizationId, organizationId))
+  return rows.map((row) => row.invoice)
 }
 
 export async function createInvoice(
@@ -115,6 +95,7 @@ export async function updateInvoice(
     const [existing] = await db
       .select({
         projectId: invoices.projectId,
+        invoiceKind: invoices.invoiceKind,
         lineItems: invoices.lineItems,
         subtotal: invoices.subtotal,
         tax: invoices.tax,
@@ -128,6 +109,7 @@ export async function updateInvoice(
     if (!existing) {
       return { success: false, error: NOT_FOUND }
     }
+    if (existing.invoiceKind) return { success: false, error: SIMPLE_INVOICE_PAGE }
 
     const safeData = omitOwnerArSourceFields(data)
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
@@ -163,7 +145,7 @@ export async function deleteInvoice(id: string): Promise<ActionDone> {
 
     // verify invoice belongs to org via project
     const [existing] = await db
-      .select({ projectId: invoices.projectId })
+      .select({ projectId: invoices.projectId, invoiceKind: invoices.invoiceKind })
       .from(invoices)
       .innerJoin(projects, eq(invoices.projectId, projects.id))
       .where(and(eq(invoices.id, id), eq(projects.organizationId, organizationId)))
@@ -172,6 +154,7 @@ export async function deleteInvoice(id: string): Promise<ActionDone> {
     if (!existing) {
       return { success: false, error: NOT_FOUND }
     }
+    if (existing.invoiceKind) return { success: false, error: SIMPLE_INVOICE_PAGE }
 
     await deleteInvoiceRow(db, id)
 

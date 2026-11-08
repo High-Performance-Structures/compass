@@ -20,3 +20,30 @@ export type ReceivableItemKind = (typeof RECEIVABLE_ITEM_KINDS)[number]
 
 /** Paid state of a billed item, derived from its billed amount and active allocations. */
 export type ReceivablePaidState = "open" | "partially_paid" | "paid"
+
+/*
+ * Simple invoices built in Compass (Nu-Tech sales and one-off work): their
+ * kind (which Sage invoice number format they use), where each line came
+ * from, and the Square invoice's state.
+ */
+
+/** "nutech_sale" uses the material sale format ({project}-S01); "other" the other billing format ({project}-INV01). */
+export const SIMPLE_INVOICE_KINDS = ["nutech_sale", "other"] as const
+export type SimpleInvoiceKind = (typeof SIMPLE_INVOICE_KINDS)[number]
+
+/** Draft (editable), open (final: numbered, can go to Sage, be emailed and take payments), paid states, void. */
+export const SIMPLE_INVOICE_STATUSES = ["draft", "open", "partially_paid", "paid", "void"] as const
+
+/** An invoice line from an estimate line (counts toward the estimate's invoiced-to-date) or added on the invoice. */
+export const INVOICE_LINE_SOURCES = ["estimate", "added"] as const
+export type InvoiceLineSource = (typeof INVOICE_LINE_SOURCES)[number]
+
+/** The price list column an invoice prices catalog items from (Square always uses the regular price). */
+export const INVOICE_PRICE_MODES = ["standard", "cash_discount"] as const
+export type InvoicePriceMode = (typeof INVOICE_PRICE_MODES)[number]
+
+export const INVOICE_CUSTOMER_TYPES = ["new", "returning"] as const
+export type InvoiceCustomerType = (typeof INVOICE_CUSTOMER_TYPES)[number]
+
+/** The Square invoice Compass creates for a simple invoice ("off" when the box isn't checked). */
+export const INVOICE_SQUARE_STATES = ["off", "pending", "published", "failed", "canceled"] as const

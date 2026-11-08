@@ -52,6 +52,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/financials/pay-request-sage-invoice.tsx": "report",
   // A pay request's Enter in Sage checklist (fixed lines of one pay request), also its Print Preview.
   "src/components/financials/sage-billing-check.tsx": "report",
+  // A final simple invoice's AR invoice lines as Compass sends them to Sage.
+  "src/components/financials/invoice-send-panel.tsx": "report",
+  // A final simple invoice's own lines, read only (the draft edits them on the shared reorder control).
+  "src/components/financials/invoice-workspace.tsx": "line items",
   "src/components/nutech/nutech-truckload-calculator.tsx": "report",
   "src/components/projects/project-budget-panel.tsx": "report",
   "src/components/projects/project-estimate-report-phases.tsx": "report",
@@ -59,6 +63,7 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/shop-ticket-sage-hours.tsx": "report",
 
   "src/components/projects/deposit-request-document.tsx": "document",
+  "src/components/financials/invoice-document.tsx": "document",
   "src/components/projects/pay-application-client-report.tsx": "document",
   "src/components/projects/purchase-order-document.tsx": "document",
   "src/components/projects/shop-ticket-document.tsx": "document",

@@ -267,6 +267,23 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     startFilter: null,
   },
   {
+    id: "invoices.job",
+    label: "Invoices",
+    where: "A job's Financials, invoices built in Compass",
+    columns: [
+      { id: "number", label: "Invoice", kind: "text", required: true },
+      { id: "title", label: "Description", kind: "text" },
+      { id: "billTo", label: "Bill to", kind: "text" },
+      { id: "date", label: "Date", kind: "date" },
+      { id: "total", label: "Total", kind: "number" },
+      { id: "paid", label: "Paid", kind: "number" },
+      { id: "status", label: "Status", kind: "status" },
+      { id: "sent", label: "Sent", kind: "text" },
+    ],
+    defaultSort: { columnId: "date", desc: true },
+    startFilter: null,
+  },
+  {
     id: "payments.received",
     label: "Received payments",
     where: "A job's Financials, received payments",
