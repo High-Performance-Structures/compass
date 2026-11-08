@@ -402,7 +402,7 @@ export function GanttChart({
       })
     }
     async function initGantt() {
-      const { default: Gantt } = await import("frappe-gantt")
+      const { default: Gantt } = await (typeof window === "undefined" ? Promise.reject(new Error("Gantt runs in the browser")) : import("frappe-gantt"))
       if (cancelled || !containerRef.current) return
 
       // clear previous gantt instance by removing child nodes

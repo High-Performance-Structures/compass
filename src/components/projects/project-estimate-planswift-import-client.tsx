@@ -234,7 +234,7 @@ export function ProjectEstimatePlanSwiftImportClient({
 
     setReading(true);
     try {
-      const XLSX = await import("xlsx");
+      const XLSX = await (typeof window === "undefined" ? Promise.reject(new Error("Workbook import runs in the browser")) : import("xlsx"));
       const bytes = await file.arrayBuffer();
       const parsed = XLSX.read(bytes, {
         type: "array",

@@ -20,8 +20,12 @@ import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
 
 // The composer (TipTap) and message list load when a conversation opens,
 // not with every dashboard page.
-const loadMessageComposer = () => import("@/components/conversations/message-composer")
-const loadMessageList = () => import("@/components/conversations/message-list")
+// typeof window is a build-time constant, so the server build drops these
+// imports and keeps them out of the Worker bundle (both render client-side).
+const loadMessageComposer = (): Promise<typeof import("@/components/conversations/message-composer")> =>
+  typeof window === "undefined" ? Promise.reject(new Error("Composer loads in the browser")) : import("@/components/conversations/message-composer")
+const loadMessageList = (): Promise<typeof import("@/components/conversations/message-list")> =>
+  typeof window === "undefined" ? Promise.reject(new Error("Message list loads in the browser")) : import("@/components/conversations/message-list")
 const MessageComposer = dynamic(
   () => loadMessageComposer().then((module) => module.MessageComposer),
   { ssr: false }

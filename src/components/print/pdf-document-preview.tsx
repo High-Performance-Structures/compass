@@ -106,7 +106,7 @@ export function PdfDocumentPreview({
     let loadingTask: PDFDocumentLoadingTask | null = null
     setDocument(null)
     setError(null)
-    void import("pdfjs-dist")
+    void (typeof window === "undefined" ? Promise.reject(new Error("PDF preview runs in the browser")) : import("pdfjs-dist"))
       .then(async (pdfjs) => {
         if (!active) return
         pdfjs.GlobalWorkerOptions.workerSrc = new URL(

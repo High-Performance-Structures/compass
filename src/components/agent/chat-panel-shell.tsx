@@ -15,7 +15,10 @@ import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
 
 // The chat view brings markdown, code highlighting, and diagram rendering.
 // Load it on first open instead of with every dashboard page.
-const loadChatView = () => import("./chat-view")
+// typeof window is a build-time constant: the server build drops this import,
+// keeping the chat view out of the Worker bundle (it only renders client-side).
+const loadChatView = (): Promise<typeof import("./chat-view")> =>
+  typeof window === "undefined" ? Promise.reject(new Error("Chat view loads in the browser")) : import("./chat-view")
 const ChatView = dynamic(
   () => loadChatView().then((module) => module.ChatView),
   { ssr: false }

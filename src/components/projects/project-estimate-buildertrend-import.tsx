@@ -64,7 +64,7 @@ export function ProjectEstimateBuildertrendImport({
     }
     setReading(true)
     try {
-      const XLSX = await import("xlsx")
+      const XLSX = await (typeof window === "undefined" ? Promise.reject(new Error("Workbook import runs in the browser")) : import("xlsx"))
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false })
       const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""]
       if (!sheet) {
