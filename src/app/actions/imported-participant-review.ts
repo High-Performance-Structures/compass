@@ -6,14 +6,18 @@ import { z } from "zod/v4"
 import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
-  resolveImportedParticipant,
+  companySuggestions,
+  resolveParticipantGroup,
+  type CompanySuggestion,
+  type GroupDecision,
+  type GroupReviewOutcome,
+} from "@/lib/domain/conversations/imported-participant-group-resolve"
+import {
   reviewPeopleSearch,
   reviewSuggestions,
-  type ReviewDecision,
-  type ReviewOutcome,
   type ReviewPerson,
-  type SplitPieceOutcome,
 } from "@/lib/domain/conversations/imported-participant-resolve"
+import { runAutoResolve, type AutoResolveSummary } from "@/lib/domain/conversations/participant-auto-resolve"
 import {
   listUnresolvedParticipants,
   REVIEW_SORT_IDS,
@@ -21,7 +25,7 @@ import {
 } from "@/lib/domain/conversations/imported-participant-review"
 import { parseRecordPageQuery, type RecordPage } from "@/lib/record-page"
 import { orgContext } from "@/lib/server/action-context"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { canManageUserAccessRole, isInternalStaffRole } from "@/lib/user-roles"
 
 /*
  * Contacts → Needs review: imported conversation participants the importer
@@ -97,27 +101,31 @@ const decisionInput = z.discriminatedUnion("type", [
     })).min(1).max(30),
   }),
   z.object({ type: z.literal("leave") }),
+  z.object({ type: z.literal("vendor"), vendorId: z.string().trim().min(1).max(200) }),
 ])
 
 const resolveInput = z.object({ rowId: rowIdInput, decision: decisionInput, apply: z.boolean() })
 
-export type ImportedParticipantResolveResult = ActionResult<ReviewOutcome & { readonly pieces: readonly SplitPieceOutcome[] }>
+export type ImportedParticipantResolveResult = ActionResult<GroupReviewOutcome>
 
-const ACTIVITY: Readonly<Record<ReviewDecision["type"], string>> = {
+const ACTIVITY: Readonly<Record<GroupDecision["type"], string>> = {
   pick: "imported_participant.picked",
   split: "imported_participant.split",
   leave: "imported_participant.left_as_is",
+  vendor: "imported_participant.added_to_vendor",
 }
 
-function activitySummary(outcome: ReviewOutcome): string {
-  const where = outcome.channelName ? ` in ${outcome.channelName}` : ""
-  if (outcome.decision === "leave") return `Left imported participant "${outcome.literal}"${where} as is (no person).`
-  return `Manually resolved imported participant "${outcome.literal}"${where} to ${outcome.people.join(", ")}. Conversation visibility unchanged.`
+function activitySummary(outcome: GroupReviewOutcome): string {
+  const where = outcome.projects === 1 ? "" : ` on ${outcome.projects} projects`
+  const rows = `${outcome.rowsReviewed} imported message ${outcome.rowsReviewed === 1 ? "entry" : "entries"}`
+  if (outcome.decision === "leave") return `Left imported participant "${outcome.literal}" as is (no person)${where}, ${rows}.`
+  return `Manually resolved imported participant "${outcome.literal}" to ${outcome.people.join(", ")}${where}, ${rows}. Conversation visibility unchanged.`
 }
 
 /**
- * Pick person / Split into people / Leave as is. `apply: false` checks a
- * split and returns what each name would become, without writing.
+ * Pick person / Split into people / Leave as is / Add to a vendor, applied to
+ * every unresolved row of the name or email (legal-hold projects excepted).
+ * `apply: false` describes the outcome without writing.
  */
 export async function resolveImportedParticipantAction(raw: z.input<typeof resolveInput>): Promise<ImportedParticipantResolveResult> {
   try {
@@ -128,11 +136,12 @@ export async function resolveImportedParticipantAction(raw: z.input<typeof resol
     if (!context.success) return context
     const { db, user, organizationId } = context.data
     if (!isInternalStaffRole(user.role)) return actionFailure(STAFF_ONLY)
-    const result = await resolveImportedParticipant({
+    const result = await resolveParticipantGroup({
       db, organizationId, rowId: input.rowId, decision: input.decision, apply: input.apply, now: new Date().toISOString(),
     })
     if (!result.success || !input.apply || !result.data.changed) return result
     const outcome = result.data
+    // One Activity record per decision, however many rows and projects it covered.
     await recordActivityEvent({
       db,
       organizationId,
@@ -140,18 +149,66 @@ export async function resolveImportedParticipantAction(raw: z.input<typeof resol
       actor: user,
       category: "conversation",
       action: ACTIVITY[outcome.decision],
-      entityType: outcome.channelId ? "channel" : "project",
-      entityId: outcome.channelId ?? outcome.projectId,
+      entityType: outcome.projectId ? "project" : "organization",
+      entityId: outcome.projectId ?? organizationId,
       summary: activitySummary(outcome),
       // A manual staff choice: who was picked (directory references) is kept with the actor.
-      metadata: { decision: outcome.decision, manual: true, refs: outcome.refs, people: outcome.people.length, rows: outcome.rowsReviewed, stillStaffOnly: outcome.stillStaffOnly },
+      metadata: { decision: outcome.decision, manual: true, refs: outcome.refs, people: outcome.people.length, rows: outcome.rowsReviewed, projects: outcome.projects, legalHoldRows: outcome.legalHoldRows, stillStaffOnly: outcome.stillStaffOnly },
     })
     revalidatePath("/dashboard/contacts")
-    revalidatePath(`/dashboard/projects/${outcome.projectId}/contacts`)
-    if (outcome.channelId) revalidatePath(`/dashboard/conversations/${outcome.channelId}`)
+    if (outcome.projectId) revalidatePath(`/dashboard/projects/${outcome.projectId}/contacts`)
     return result
   } catch (error) {
     console.error("Failed to resolve imported participant", error)
     return actionFailure("Could not save this review.")
+  }
+}
+
+/** Vendors an email's domain points to (same domain, or a name that reads like it): suggestions only. */
+export async function getImportedParticipantCompanySuggestions(rowId: string): Promise<ActionResult<readonly CompanySuggestion[]>> {
+  try {
+    const id = rowIdInput.parse(rowId)
+    const context = await orgContext()
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    if (!isInternalStaffRole(user.role)) return actionFailure(STAFF_ONLY)
+    return await companySuggestions(db, organizationId, id)
+  } catch (error) {
+    console.error("Failed to load company suggestions", error)
+    return actionFailure("Could not load company suggestions.")
+  }
+}
+
+/**
+ * The automatic pass over every clearly matched name or email (admins).
+ * `apply: false` previews what it would do; `apply: true` resolves them and
+ * records one Activity summary for the run. Nothing is shared, notified or
+ * emailed, and legal-hold projects are never changed.
+ */
+export async function runImportedParticipantAutoResolve(apply: boolean): Promise<ActionResult<AutoResolveSummary>> {
+  try {
+    const shouldApply = z.boolean().parse(apply)
+    const context = await orgContext({ feature: "project-contacts", action: "update", mutation: shouldApply })
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    if (!canManageUserAccessRole(user.role)) return actionFailure("Only admins can run automatic matching.")
+    const summary = await runAutoResolve(db, { organizationId, apply: shouldApply, now: new Date().toISOString() })
+    if (shouldApply && summary.resolved.rows > 0) {
+      await recordActivityEvent({
+        db, organizationId, actor: user, category: "conversation",
+        action: "imported_participant.auto_resolved", entityType: "organization", entityId: organizationId,
+        summary: `Automatically matched ${summary.resolved.identities} imported participants (${summary.resolved.rows} message entries on ${summary.resolved.groups} project groups). Conversation visibility unchanged.`,
+        metadata: {
+          identities: summary.resolved.identities, rows: summary.resolved.rows, groups: summary.resolved.groups,
+          leftoverIdentities: summary.leftover.identities, leftoverRows: summary.leftover.rows, legalHoldRows: summary.legalHold.rows,
+          byMatchType: Object.fromEntries(Object.entries(summary.byMatchType).map(([type, totals]) => [type, totals.rows])),
+        },
+      })
+      revalidatePath("/dashboard/contacts")
+    }
+    return { success: true, data: summary }
+  } catch (error) {
+    console.error("Failed to run automatic participant matching", error)
+    return actionFailure("Could not run automatic matching.")
   }
 }

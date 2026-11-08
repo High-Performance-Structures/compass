@@ -80,13 +80,13 @@ export type ReviewPerson = {
   readonly phone: string | null
 }
 
-export type SplitPieceOutcome = {
+type SplitPieceOutcome = {
   readonly piece: string
   readonly name: string
   readonly outcome: "linked" | "new_contact"
 }
 
-export type ReviewOutcome = {
+type ReviewOutcome = {
   /** False when the same decision was already recorded (a repeat is a no-op). */
   readonly changed: boolean
   readonly decision: ReviewDecision["type"]
@@ -173,7 +173,7 @@ export async function reviewPeopleSearch(db: Db, organizationId: string, rowId: 
 
 type Entry = Readonly<Record<string, unknown>> & { readonly kind: string }
 
-type Resolved = {
+export type Resolved = {
   /** The participant key for thread rows and split per-message rows. */
   readonly key: string
   readonly name: string
@@ -184,14 +184,21 @@ type Resolved = {
   readonly contactStatement: Statement | null
 }
 
-const LINK_COLUMN: Readonly<Record<"internal" | "vendor_contact" | "customer_contact", AnyColumn>> = {
+export type ContactLinkType = "internal" | "vendor_contact" | "customer_contact"
+
+/** Known project contacts by `<projectId>|<link type>|<directory id>`, preloaded for a bulk decision. */
+export type KnownProjectContacts = ReadonlyMap<string, string>
+
+export const knownContactKey = (projectId: string, type: ContactLinkType, id: string): string => `${projectId}|${type}|${id}`
+
+const LINK_COLUMN: Readonly<Record<ContactLinkType, AnyColumn>> = {
   internal: projectContacts.internalContactId,
   vendor_contact: projectContacts.vendorContactId,
   customer_contact: projectContacts.customerContactId,
 }
 
 /** The project's own contact row for a directory person, when it already has one. */
-async function existingProjectContact(db: Db, projectId: string, type: keyof typeof LINK_COLUMN, id: string): Promise<string | null> {
+async function existingProjectContact(db: Db, projectId: string, type: ContactLinkType, id: string): Promise<string | null> {
   const row = await db
     .select({ id: projectContacts.id })
     .from(projectContacts)
@@ -229,11 +236,15 @@ function newContact(db: Db, key: string, entry: Entry, projectId: string, now: s
   }
 }
 
-/** The chosen directory person as a participant of this project (adds them to the project when needed, uninvited). */
-async function resolvePerson(db: Db, key: string, person: DirectoryPerson, projectId: string, now: string): Promise<Resolved> {
+/**
+ * The chosen directory person as a participant of this project (adds them to
+ * the project when needed, uninvited). `known`, when given, answers which
+ * project contact already stands for the person (a bulk decision preloads it).
+ */
+export async function resolvePerson(db: Db, key: string, person: DirectoryPerson, projectId: string, now: string, known?: KnownProjectContacts): Promise<Resolved> {
   const common = { key, name: person.name, ref: person.ref }
-  const withContact = async (kind: string, type: keyof typeof LINK_COLUMN, entry: Entry): Promise<Resolved> => {
-    const existing = await existingProjectContact(db, projectId, type, person.id)
+  const withContact = async (kind: string, type: ContactLinkType, entry: Entry): Promise<Resolved> => {
+    const existing = known ? known.get(knownContactKey(projectId, type, person.id)) ?? null : await existingProjectContact(db, projectId, type, person.id)
     if (existing) return { ...common, kind, userId: person.userId, contactId: existing, contactStatement: null }
     const created = newContact(db, key, entry, projectId, now)
     return { ...common, kind, userId: person.userId, contactId: created.id, contactStatement: created.statement }
@@ -288,7 +299,7 @@ function reviewRowsStatement(db: Db, group: ReviewGroup, rows: readonly ReviewGr
   ), set)
 }
 
-const audienceOf = (kind: string): string => (kind === "staff" || kind === "former_staff" ? "internal" : "external")
+export const audienceOf = (kind: string): string => (kind === "staff" || kind === "former_staff" ? "internal" : "external")
 
 /** The thread row the Share action reads; active only while the thread is staff-only. */
 function threadRowStatement(db: Db, group: ReviewGroup, person: Resolved, now: string): Statement | null {

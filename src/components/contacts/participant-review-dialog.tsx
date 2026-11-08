@@ -5,6 +5,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 
 import {
+  getImportedParticipantCompanySuggestions,
   getImportedParticipantSuggestions,
   resolveImportedParticipantAction,
   searchImportedParticipantPeople,
@@ -23,7 +24,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { ActionResult } from "@/lib/action-result"
 import type { CompanyMergeCandidate } from "@/lib/domain/contacts/directory-page"
-import type { ReviewOutcome, ReviewPerson, SplitChoice } from "@/lib/domain/conversations/imported-participant-resolve"
+import type { CompanySuggestion, GroupReviewOutcome } from "@/lib/domain/conversations/imported-participant-group-resolve"
+import type { ReviewPerson, SplitChoice } from "@/lib/domain/conversations/imported-participant-resolve"
 import type { ImportedParticipantReviewRow } from "@/lib/domain/conversations/imported-participant-review"
 import { cn } from "@/lib/utils"
 
@@ -90,6 +92,37 @@ function SuggestedPeople({ suggestions, selectedRef, onSelect }: {
   )
 }
 
+/** Vendors the email's domain points to: add the person as a new, uninvited contact there. */
+function CompanySuggestions({ list, selectedId, onSelect }: {
+  readonly list: readonly CompanySuggestion[]
+  readonly selectedId: string | null
+  readonly onSelect: (company: CompanySuggestion) => void
+}): React.ReactElement | null {
+  if (list.length === 0) return null
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">Company from the email domain</p>
+      <div role="listbox" aria-label="Suggested companies" className="border-y">
+        {list.map((company) => (
+          <button
+            key={company.vendorId}
+            type="button"
+            role="option"
+            aria-selected={company.vendorId === selectedId}
+            onClick={() => onSelect(company)}
+            className={cn("block w-full px-2 py-2 text-left text-sm hover:bg-accent", company.vendorId === selectedId && "bg-accent")}
+          >
+            <span className="block font-medium">New contact of {company.vendorName}</span>
+            <span className="block text-xs text-muted-foreground">
+              {company.reason === "domain" ? "Their people use the same email domain" : "The company name reads like the email domain"} · not invited
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Anyone in the company directory, through the server-side people search. */
 function PeopleSearch({ rowId, selectedRef, onSelect }: {
   readonly rowId: string
@@ -137,16 +170,20 @@ export function ParticipantReviewDialog({
 }): React.ReactElement {
   const [suggestions, setSuggestions] = React.useState<Suggestions>({ kind: "loading" })
   const [picked, setPicked] = React.useState<Chosen | null>(null)
+  const [companies, setCompanies] = React.useState<readonly CompanySuggestion[]>([])
+  const [company, setCompany] = React.useState<CompanySuggestion | null>(null)
   const [pieces, setPieces] = React.useState("")
   const [lines, setLines] = React.useState<readonly Line[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
-  const [done, setDone] = React.useState<ReviewOutcome | null>(null)
+  const [done, setDone] = React.useState<GroupReviewOutcome | null>(null)
 
   const rowId = row?.id ?? null
   const literal = row?.literal ?? ""
   React.useEffect(() => {
     setPicked(null)
+    setCompany(null)
+    setCompanies([])
     setLines(null)
     setError(null)
     setDone(null)
@@ -158,8 +195,16 @@ export function ParticipantReviewDialog({
       if (!current) return
       setSuggestions(result.success ? { kind: "ready", list: result.data } : { kind: "error", message: result.error })
     })
+    void getImportedParticipantCompanySuggestions(rowId).then((result) => {
+      if (current && result.success) setCompanies(result.data)
+    })
     return () => { current = false }
   }, [rowId, action, literal])
+
+  function choosePerson(person: Chosen): void {
+    setPicked(person)
+    setCompany(null)
+  }
 
   const splitPieces = pieces.split("\n").map((piece) => piece.trim()).filter(Boolean)
 
@@ -190,7 +235,7 @@ export function ParticipantReviewDialog({
   async function save(): Promise<void> {
     if (!row) return
     const decision = action === "pick"
-      ? { type: "pick" as const, ref: picked?.ref ?? "" }
+      ? company ? { type: "vendor" as const, vendorId: company.vendorId } : { type: "pick" as const, ref: picked?.ref ?? "" }
       : action === "split"
         ? { type: "split" as const, pieces: (lines ?? []).map((line) => ({ text: line.text, choice: line.person ? { type: "person" as const, ref: line.person.ref } satisfies SplitChoice : { type: "new" as const } })) }
         : { type: "leave" as const }
@@ -207,7 +252,7 @@ export function ParticipantReviewDialog({
     onReviewed()
   }
 
-  const canSave = !saving && (action === "leave" || (action === "pick" && picked !== null) || (action === "split" && lines !== null && lines.length > 0))
+  const canSave = !saving && (action === "leave" || (action === "pick" && (picked !== null || company !== null)) || (action === "split" && lines !== null && lines.length > 0))
 
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
@@ -216,24 +261,33 @@ export function ParticipantReviewDialog({
           <DialogTitle>{TITLES[action]}</DialogTitle>
           <DialogDescription className="break-words">
             As written: <span className="font-medium text-foreground">{row?.literal}</span>
+            {row ? <span className="block">{row.messageCount} {row.messageCount === 1 ? "message" : "messages"} on {row.projectCount} {row.projectCount === 1 ? "project" : "projects"}. Your choice applies to all of them{row.someLegalHold ? ", except legal-hold projects, which stay unchanged" : ""}.</span> : null}
           </DialogDescription>
         </DialogHeader>
 
         {done ? (
           <div className="space-y-2 text-sm">
-            <p>{done.decision === "leave" ? "Marked as reviewed with no person." : `Resolved to ${done.people.join(", ")}.`}</p>
+            <p>
+              {done.decision === "leave" ? "Marked as reviewed with no person" : `Resolved to ${done.people.join(", ")}`}
+              {` on ${done.projects} ${done.projects === 1 ? "project" : "projects"} (${done.rowsReviewed} message ${done.rowsReviewed === 1 ? "entry" : "entries"}).`}
+            </p>
+            {done.legalHoldRows > 0 ? (
+              <p className="text-muted-foreground">{done.legalHoldRows} on legal-hold projects were left unchanged.</p>
+            ) : null}
             {done.stillStaffOnly ? (
               <p className="text-muted-foreground">
-                This conversation is still staff-only. To let the owner or vendor see it, open the conversation and use Share with owner/vendor… when you are ready.
-                {done.channelId ? <> <Link className="underline" href={`/dashboard/conversations/${encodeURIComponent(done.channelId)}`}>Open conversation</Link></> : null}
+                The conversations are still staff-only. To let an owner or vendor see one, open it and use Share with owner/vendor… when you are ready.
+                {row?.channelId ? <> <Link className="underline" href={`/dashboard/conversations/${encodeURIComponent(row.channelId)}`}>Open conversation</Link></> : null}
               </p>
             ) : null}
           </div>
         ) : action === "pick" && rowId ? (
           <div className="space-y-3">
-            <SuggestedPeople suggestions={suggestions} selectedRef={picked?.ref ?? null} onSelect={setPicked} />
-            <PeopleSearch rowId={rowId} selectedRef={picked?.ref ?? null} onSelect={setPicked} />
+            <SuggestedPeople suggestions={suggestions} selectedRef={picked?.ref ?? null} onSelect={choosePerson} />
+            <CompanySuggestions list={companies} selectedId={company?.vendorId ?? null} onSelect={(choice) => { setCompany(choice); setPicked(null) }} />
+            <PeopleSearch rowId={rowId} selectedRef={picked?.ref ?? null} onSelect={choosePerson} />
             {picked ? <p className="text-sm">Selected: <span className="font-medium">{picked.name}</span></p> : null}
+            {company ? <p className="text-sm">Selected: <span className="font-medium">new contact of {company.vendorName}</span></p> : null}
           </div>
         ) : action === "split" && rowId ? (
           lines === null ? (
@@ -268,7 +322,7 @@ export function ParticipantReviewDialog({
             </ol>
           )
         ) : (
-          <p className="text-sm text-muted-foreground">Mark this as reviewed with no person. The text stays exactly as written.</p>
+          <p className="text-sm text-muted-foreground">Mark every row of this name as reviewed with no person. The text stays exactly as written.</p>
         )}
 
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

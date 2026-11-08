@@ -132,7 +132,7 @@ describe("listing", () => {
     const page = await listUnresolvedParticipants(db, ORG, DEFAULT_RECORD_PAGE_QUERY)
     expect(page.total).toBe(4)
     const byLiteral = new Map(page.rows.map((row) => [row.literal, row]))
-    expect(byLiteral.get("Daniel Vogel")).toMatchObject({ reason: "Name matches more than one contact", canPick: true, canSplit: false, messageCount: 1, channelId: "channel-t-1" })
+    expect(byLiteral.get("Daniel Vogel")).toMatchObject({ reason: "Not matched to one person", canPick: true, canSplit: false, messageCount: 1, channelId: "channel-t-1" })
     expect(byLiteral.get(LITERAL)).toMatchObject({ reason: "Several names run together", canPick: false, canSplit: true, role: "to" })
     // An undivided sender appears once, as its run-together row.
     expect(page.rows.filter((row) => row.literal === "Jane Doe; Someone")).toHaveLength(1)

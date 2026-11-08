@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-04"
+  "lastReviewed": "2026-11-08"
 }
 ---
 
@@ -68,6 +68,20 @@ Project-phase contacts remain project assignments, separate from the underlying 
 ## Merge Duplicate Companies or People {#merge-contacts}
 
 Authorized directory managers can select duplicate company records or use **Merge 2 people** within a company. Choose the record to keep and review linked identities, project relationships, and any conflicts before confirming. Imported directory identities can be eligible for merging, but a conflicting Sage identity must be resolved through the proper review. A merge reconciles directory records; it does not authorize an unrelated Sage write or an invitation. Use the permission-appropriate delete action only for an unnecessary record and review the displayed dependencies first.
+
+## Review Imported Names {#needs-review}
+
+**Contacts > Needs review** lists people on imported conversations that Compass could not match to one person. Each row is one name or email across every project and conversation, with how many projects and messages it appears on; the count on the tab is the true number of names. A row such as **Name <email>** stands for every message that named that address.
+
+Administrators can choose **Match automatically…** first. Compass shows a preview before it changes anything: how many names it can match, how each was matched, and the largest matches, so you can check them. It matches only clear cases:
+
+- **Staff** by their sign-in email, their other email addresses (**Settings > Team**, open the person), and your **Company email domains** (**Settings > Workflows**), where the part before the @ matches a staff member. Staff always win over a vendor or client record that carries the same address. Add old addresses and domains before you run it.
+- **One person with many rows**: the same email, or the same name on rows that share an email or a directory person, is one person.
+- **A vendor's email domain**: an address on a business domain that exactly one vendor's people use becomes a new, uninvited contact of that vendor. Free email services (Gmail, Yahoo, Outlook and the like) and your own domains are never matched this way.
+
+For the names that are left, choose **Pick person**, **Split into people** (for several names run together), or **Leave as is**. One choice applies to every row of that name on every project. When an email's domain points to a vendor (the same domain, or a company name that reads like it, such as flatironsteel.com for Flatiron Steel Inc), **Pick person** offers **New contact of** that vendor as a suggestion; it is never applied without your choice.
+
+Projects that keep imported conversations staff-only (for example a legal hold) are never changed: their rows stay listed and read only, and a choice on a name skips them. Resolving never shares a conversation, invites anyone, or sends a notification or email; conversations stay staff-only until you use **Share with owner/vendor…**. Each choice, and each automatic run, is recorded once in Activity.
 
 ## Resend a Pending Invitation {#resend-invitation}
 

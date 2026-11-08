@@ -5,6 +5,7 @@ import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { getImportedParticipantReviewPage } from "@/app/actions/imported-participant-review"
+import { ParticipantAutoMatchDialog } from "@/components/contacts/participant-auto-match-dialog"
 import { ParticipantReviewDialog, type ReviewAction } from "@/components/contacts/participant-review-dialog"
 import { RecordSearchInput, RecordTable } from "@/components/record-table"
 import { Button } from "@/components/ui/button"
@@ -32,24 +33,28 @@ export function participantReviewColumns(
     },
     { id: "reason", header: "Reason", enableSorting: false, accessorFn: (row) => row.reason },
     {
-      id: "project",
-      header: "Project",
-      accessorFn: (row) => row.projectName,
-      cell: ({ row }) => (
+      id: "projects",
+      header: "Projects",
+      accessorFn: (row) => row.projectCount,
+      cell: ({ row }) => row.original.projectCount === 1 ? (
         <Link href={`/dashboard/projects/${encodeURIComponent(row.original.projectId)}`} className="hover:underline">
           {projectNumberAndName({ projectNumber: row.original.projectNumber, name: row.original.projectName }, " - ")}
         </Link>
+      ) : (
+        <span className="tabular-nums">{row.original.projectCount} projects</span>
       ),
     },
     {
       id: "conversation",
-      header: "Conversation",
+      header: "Conversations",
       enableSorting: false,
-      accessorFn: (row) => row.channelName ?? "",
+      accessorFn: (row) => row.conversationCount,
       cell: ({ row }) => row.original.channelId ? (
         <Link href={`/dashboard/conversations/${encodeURIComponent(row.original.channelId)}`} className="hover:underline">
           {row.original.channelName ?? "Open conversation"}
         </Link>
+      ) : row.original.conversationCount > 1 ? (
+        <span className="tabular-nums">{row.original.conversationCount}</span>
       ) : <span className="text-muted-foreground">Not found</span>,
     },
     {
@@ -60,7 +65,7 @@ export function participantReviewColumns(
     },
     {
       id: "date",
-      header: "Date",
+      header: "Last message",
       accessorFn: (row) => row.lastAt ?? "",
       cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{row.original.lastAt ? formatDate(row.original.lastAt) : ""}</span>,
     },
@@ -85,21 +90,26 @@ export function participantReviewColumns(
 
 /**
  * Contacts → Needs review: people on imported conversations the importer
- * could not resolve (a name that matches several contacts, or several names
- * run together). Staff pick the person, split the names, or leave it as is.
- * Nothing here shares a conversation or tells anyone.
+ * could not resolve, one row per name or email across every project. Admins
+ * can match the clear ones automatically; staff pick the person, split names
+ * run together, or leave it as is, and one choice covers every row of the
+ * name. Nothing here shares a conversation or tells anyone.
  */
 export function ParticipantReviewTable({
   initialPage,
   initialQuery,
   onReviewed,
+  canAutoMatch = false,
 }: {
   readonly initialPage: RecordPage<ImportedParticipantReviewRow> | null
+  /** Admins may run automatic matching. */
+  readonly canAutoMatch?: boolean
   /** The query the server read `initialPage` with. */
   readonly initialQuery?: RecordPageQuery
   readonly onReviewed: () => void
 }): React.ReactElement {
   const [reloadToken, setReloadToken] = React.useState(0)
+  const [autoOpen, setAutoOpen] = React.useState(false)
   const [active, setActive] = React.useState<{ readonly row: ImportedParticipantReviewRow; readonly action: ReviewAction } | null>(null)
 
   const columns = React.useMemo(() => participantReviewColumns((row, action) => setActive({ row, action })), [])
@@ -117,22 +127,37 @@ export function ParticipantReviewTable({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        People on imported conversations who could not be matched exactly. Their conversations stay staff-only; resolving someone here does not share anything.
+        People on imported conversations who could not be matched exactly, one row per name or email across every project. Your choice applies to every message that names them. Their conversations stay staff-only; resolving someone here does not share anything.
       </p>
-      <RecordSearchInput
-        value={list.search}
-        onChange={list.setSearch}
-        label="Search participants that need review"
-        placeholder="Search name or project…"
-        className="sm:max-w-md"
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <RecordSearchInput
+          value={list.search}
+          onChange={list.setSearch}
+          label="Search participants that need review"
+          placeholder="Search name, email or project…"
+          className="sm:max-w-md"
+        />
+        {canAutoMatch ? (
+          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setAutoOpen(true)}>Match automatically…</Button>
+        ) : null}
+      </div>
       <RecordTable
         table={list.table}
-        itemLabel="participants"
+        itemLabel="names"
         emptyMessage={list.search ? "No participants match this search." : "Every imported participant has been reviewed."}
         state={list.state}
         rowIdPrefix="participant-review"
       />
+      {canAutoMatch ? (
+        <ParticipantAutoMatchDialog
+          open={autoOpen}
+          onOpenChange={setAutoOpen}
+          onDone={() => {
+            setReloadToken((value) => value + 1)
+            onReviewed()
+          }}
+        />
+      ) : null}
       <ParticipantReviewDialog
         row={active?.row ?? null}
         action={active?.action ?? "leave"}

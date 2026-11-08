@@ -396,6 +396,41 @@ export function updateSourceRecordParticipantsStatement(db: Db, where: SQL | und
   return db.update(projectSourceRecordParticipants).set(set).where(where)
 }
 
+/**
+ * The thread-level participant row for one person on every imported
+ * conversation where `messageRows` (participant rows aliased `p`) appear:
+ * what "Share with owner/vendor…" reads. Active only while the conversation
+ * is still staff-only; an existing row for the same person is kept.
+ */
+export function insertThreadParticipantsForMessagesStatement(
+  db: Db,
+  messageRows: SQL,
+  person: {
+    readonly organizationId: string
+    readonly projectId: string
+    readonly participantKey: string
+    readonly name: string
+    readonly role: string
+    readonly audience: string
+    readonly projectContactId: string | null
+    readonly userId: string | null
+    readonly now: string
+  },
+): Statement {
+  // Every column, in the table's order (an INSERT … SELECT names them all).
+  return db.insert(projectSourceRecordParticipants).select(sql`
+    SELECT 'review-thread-' || lower(hex(randomblob(16))), ${person.organizationId}, ${person.projectId}, c.source_system || '_message_thread', c.source_thread_id,
+      ${person.participantKey}, NULL, ${person.name}, NULL, NULL, ${person.role}, '[]', ${person.audience}, ${person.projectContactId}, ${person.userId},
+      'matched', CASE WHEN c.audience = 'staff' THEN 'active' ELSE 'pending' END, 'reviewed', CASE WHEN c.audience = 'staff' THEN 1 ELSE 0 END,
+      ${person.now}, ${person.now}
+    FROM channels c
+    WHERE c.project_id = ${person.projectId} AND c.source_system IS NOT NULL AND c.source_thread_id IS NOT NULL
+      AND c.id IN (SELECT m.channel_id FROM project_source_record_participants p
+        JOIN messages m ON m.source_message_id = p.source_record_id
+          AND m.source_system = substr(p.source_record_type, 1, length(p.source_record_type) - 8)
+        WHERE ${messageRows})`).onConflictDoNothing()
+}
+
 export function deleteSourceRecordParticipantsStatement(db: Db, where: SQL | undefined): Statement {
   return db.delete(projectSourceRecordParticipants).where(where)
 }
