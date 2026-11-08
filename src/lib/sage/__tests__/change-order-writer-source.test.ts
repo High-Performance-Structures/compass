@@ -55,6 +55,12 @@ describe("Sage estimate writer source boundary", () => {
     expect(estimate).not.toMatch(/ProposalModRq|ProposalDelRq|BudgetModRq|BudgetDelRq|INSERT |UPDATE |DELETE /)
   })
 
+  it("sets the proposal up by cost code, not bid item", () => {
+    const build = estimate.slice(estimate.indexOf("private static string BuildProposalAddXml"))
+    expect(build.indexOf('AppendElement(body, "ProposalBasis", "1")')).toBeGreaterThan(-1)
+    expect(build.indexOf('AppendElement(body, "ProposalBasis", "1")')).toBeLessThan(build.indexOf("<ProposalLineAdd>"))
+  })
+
   it("puts the whole proposal amount in Other", () => {
     expect(estimate).toContain('AppendElement(body, "OtherAmount", line.otherAmount)')
     expect(estimate).not.toMatch(/ProposedMaterialAmount|SubcontractAmount/)
