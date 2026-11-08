@@ -5,7 +5,7 @@
  * Writes are fenced by status and claim token in the WHERE clause. No auth
  * here: callers resolve access or verify the bridge signature first.
  */
-import { and, eq, lt, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm"
 
 import { sageEstimateExports, sageJobProposalReads } from "@/db/schema-sage"
 import { SAGE_ESTIMATE_EXPORT_STATUSES, type SageEstimateExportStatus } from "@/lib/domain/sage-bridge/statuses"
@@ -120,6 +120,23 @@ export function updateSageEstimateExportsStatement(
   patch: SageEstimateExportPatch
 ): ReturnType<typeof exportUpdate> {
   return exportUpdate(db, where, patch)
+}
+
+/** The project's exports stopped only because Sage didn't have the job yet (`reasons` is that text). */
+export function exportsStoppedForJobWhere(input: {
+  readonly organizationId: string; readonly projectId: string; readonly reasons: readonly string[]
+}): SQL | undefined {
+  return and(
+    eq(sageEstimateExports.organizationId, input.organizationId),
+    eq(sageEstimateExports.projectId, input.projectId),
+    eq(sageEstimateExports.status, "needs_attention"),
+    inArray(sageEstimateExports.errorMessage, [...input.reasons])
+  )
+}
+
+/** Their estimate ids, as a subquery for the caller's estimate update in the same batch. */
+export function exportsStoppedForJobEstimateIds(db: Db, where: SQL | undefined) {
+  return db.select({ estimateId: sageEstimateExports.estimateId }).from(sageEstimateExports).where(where)
 }
 
 type SageJobProposalRead = {
