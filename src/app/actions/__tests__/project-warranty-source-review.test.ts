@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.context }))
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.access }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: mocks.permission }))
 
-import { getProjectWarrantySourceReview } from "../project-warranty-source-review"
+import { getProjectWarrantySourceReview, loadProjectWarrantySourceReviewPage } from "../project-warranty-source-review"
 import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
 
 let database: CorrespondenceTestDatabase | null = null
@@ -50,18 +50,34 @@ describe("historical warranty project access", () => {
     const before = database.sqlite.prepare("SELECT * FROM buildertrend_warranty_claim_staging ORDER BY id").all()
     const first = await getProjectWarrantySourceReview("project-a")
     expect(first.total).toBe(30)
-    expect(first.records).toHaveLength(25)
-    expect(first.records.every((row) => row.sourceCreatedAt === "2026-01-02")).toBe(true)
-    expect(first.records.every((row) => row.existingClaim === null)).toBe(true)
-    const last = await getProjectWarrantySourceReview("project-a", "999999", "25")
-    expect(last.pageIndex).toBe(1)
-    expect(last.records).toHaveLength(5)
-    expect(new Set([...first.records, ...last.records].map((row) => row.id)).size).toBe(30)
-    const all = await getProjectWarrantySourceReview("project-a", "bad", "50")
-    expect(all.pageIndex).toBe(0)
-    expect(all.records).toHaveLength(30)
+    expect(first.rows).toHaveLength(25)
+    expect(first.rows.every((row) => row.sourceCreatedAt === "2026-01-02")).toBe(true)
+    expect(first.rows.every((row) => row.existingClaim === null)).toBe(true)
+    // A page past the end shows the last page.
+    const last = await getProjectWarrantySourceReview("project-a", { pageIndex: 999999, pageSize: 25 })
+    expect(last.rows).toHaveLength(5)
+    expect(new Set([...first.rows, ...last.rows].map((row) => row.id)).size).toBe(30)
+    const all = await getProjectWarrantySourceReview("project-a", { pageIndex: "bad", pageSize: 50 })
+    expect(all.rows).toHaveLength(30)
     expect(JSON.stringify(all)).not.toContain("Other org")
     expect(JSON.stringify(all)).not.toContain("Other project")
     expect(database.sqlite.prepare("SELECT * FROM buildertrend_warranty_claim_staging ORDER BY id").all()).toEqual(before)
+  })
+
+  it("searches and sorts on the server", async () => {
+    database = open()
+    const found = await getProjectWarrantySourceReview("project-a", { search: "Source 2" })
+    expect(found.total).toBe(11)
+    expect(found.rows.every((row) => row.title.startsWith("Source 2"))).toBe(true)
+    const sorted = await getProjectWarrantySourceReview("project-a", { sortId: "title", sortDesc: true, pageSize: 25 })
+    expect(sorted.rows[0]?.title).toBe("Source 9")
+    const ignored = await getProjectWarrantySourceReview("project-a", { sortId: "raw_payload_json; DROP" })
+    expect(ignored.total).toBe(30)
+  })
+
+  it("returns an action failure to the browser instead of throwing", async () => {
+    mocks.auth.mockResolvedValue({ id: "external", role: "client", organizationId: "org-a" })
+    const result = await loadProjectWarrantySourceReviewPage("project-a", {})
+    expect(result.success).toBe(false)
   })
 })

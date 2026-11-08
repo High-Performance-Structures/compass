@@ -1,15 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from "@tanstack/react-table"
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import { setInternalDirectoryPersonArchived, updateInternalDirectoryPerson } from "@/app/actions/internal-people"
 import type { InternalDirectoryContact } from "@/app/actions/vendors"
@@ -26,10 +18,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
 
@@ -49,6 +38,175 @@ function editFields(contact: InternalDirectoryContact): readonly PersonEditField
     { key: "cellPhone", label: "Mobile", type: "tel", lockedReason: sageLock },
   ]
 }
+
+function accessLabel(status: InternalDirectoryContact["accessStatus"]): string {
+  if (status === "active") return "Active"
+  if (status === "invited") return "Invitation pending"
+  return "No account"
+}
+
+type InternalContactActions = {
+  readonly canEdit: boolean
+  readonly canArchive: boolean
+  readonly busy: boolean
+  readonly onEdit: (contact: InternalDirectoryContact) => void
+  readonly onArchive: (contact: InternalDirectoryContact) => void
+  readonly onRestore: (contact: InternalDirectoryContact) => void
+  readonly onSageEdit?: (contact: InternalDirectoryContact) => void
+  readonly onSageLink?: (contact: InternalDirectoryContact) => void
+}
+
+function InternalContactButtons({
+  contact,
+  actions,
+}: {
+  readonly contact: InternalDirectoryContact
+  readonly actions: InternalContactActions
+}): React.ReactElement {
+  const { canEdit, canArchive, busy, onEdit, onArchive, onRestore, onSageEdit, onSageLink } = actions
+  return (
+    <div className="flex flex-wrap gap-2">
+      {canEdit ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => onEdit(contact)}>
+          Edit
+        </Button>
+      ) : null}
+      {contact.sageEmployeeId && onSageEdit ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>
+          Propose Sage edit
+        </Button>
+      ) : null}
+      {!contact.sageEmployeeId && onSageLink ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>
+          Verify Sage link
+        </Button>
+      ) : null}
+      {canArchive && contact.active && !contact.linkedToUser && !contact.sageEmployeeId && !contact.sageEmployeeNumber ? (
+        <Button type="button" size="sm" variant="ghost" onClick={() => onArchive(contact)}>
+          Archive
+        </Button>
+      ) : null}
+      {canArchive && !contact.active ? (
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => onRestore(contact)}>
+          Restore
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
+/** The staff directory sheet's columns ("contacts.internal" in the list sheet registry). */
+export function internalContactColumns(
+  actions: InternalContactActions,
+  options: { readonly developerMode: boolean; readonly hasActions: boolean },
+): ColumnDef<InternalDirectoryContact>[] {
+  const columns: (ColumnDef<InternalDirectoryContact> | null)[] = [
+    {
+      id: "name",
+      header: "Name",
+      accessorFn: (contact) => contact.name,
+      cell: ({ row }) =>
+        actions.canEdit ? (
+          <button type="button" className="text-left font-medium hover:underline" onClick={() => actions.onEdit(row.original)}>
+            {row.original.name}
+          </button>
+        ) : (
+          <span className="font-medium">{row.original.name}</span>
+        ),
+    },
+    {
+      id: "company",
+      header: "Company",
+      accessorFn: (contact) => contact.company ?? "Internal",
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.company ?? "Internal"}</span>,
+    },
+    {
+      id: "role",
+      header: "Role",
+      accessorFn: (contact) => contact.role ?? "Internal",
+      cell: ({ row }) => <Badge variant="secondary">{row.original.role ?? "Internal"}</Badge>,
+    },
+    {
+      id: "email",
+      header: "Email",
+      accessorFn: (contact) => contact.email ?? "",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.email ? (
+            <a href={`mailto:${row.original.email}`} className="hover:underline">
+              {row.original.email}
+            </a>
+          ) : (
+            "No email"
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "phone",
+      header: "Phone",
+      accessorFn: (contact) => contact.phone ?? contact.cellPhone ?? "",
+      cell: ({ row }) => {
+        const contact = row.original
+        return (
+          <div className="flex flex-col gap-0.5 whitespace-nowrap text-muted-foreground">
+            {contact.phone ? (
+              <a href={`tel:${contact.phone}`} className="hover:underline">
+                {contact.phone}
+              </a>
+            ) : null}
+            {contact.cellPhone ? (
+              <a href={`tel:${contact.cellPhone}`} className="hover:underline">
+                Mobile: {contact.cellPhone}
+              </a>
+            ) : null}
+            {!contact.phone && !contact.cellPhone ? <span>—</span> : null}
+          </div>
+        )
+      },
+    },
+    {
+      id: "access",
+      header: "Compass access",
+      accessorFn: (contact) => accessLabel(contact.accessStatus),
+      cell: ({ row }) => <Badge variant="outline">{accessLabel(row.original.accessStatus)}</Badge>,
+    },
+    options.developerMode
+      ? {
+          id: "source",
+          header: "Source",
+          accessorFn: (contact) => contact.sourceLabel,
+          cell: ({ row }) => <Badge variant="outline">{row.original.sourceLabel}</Badge>,
+        }
+      : null,
+    options.hasActions
+      ? {
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          cell: ({ row }) => <InternalContactButtons contact={row.original} actions={actions} />,
+        }
+      : null,
+  ]
+  return columns.filter((column): column is ColumnDef<InternalDirectoryContact> => column !== null)
+}
+
+function matchesSearch(contact: InternalDirectoryContact, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [
+    contact.name,
+    contact.company ?? "Internal",
+    contact.role ?? "Internal",
+    contact.jobTitle,
+    contact.email,
+    contact.phone,
+    contact.cellPhone,
+    accessLabel(contact.accessStatus),
+  ].some((value) => (value ?? "").toLowerCase().includes(needle))
+}
+
+const contactRowId = (contact: InternalDirectoryContact): string => contact.id
 
 /**
  * Staff directory. Staff with edit access edit people's contact information
@@ -79,9 +237,10 @@ export function InternalContactsTable({
   const [editing, setEditing] = React.useState<InternalDirectoryContact | null>(null)
   const [archiving, setArchiving] = React.useState<InternalDirectoryContact | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [search, setSearch] = React.useState("")
   const hasActions = Boolean(onSageEdit || onSageLink || canEdit || canArchive)
 
-  const setArchived = async (contact: InternalDirectoryContact, archived: boolean) => {
+  const setArchived = React.useCallback(async (contact: InternalDirectoryContact, archived: boolean): Promise<void> => {
     setBusy(true)
     try {
       const result = await setInternalDirectoryPersonArchived(contact.id, archived)
@@ -94,38 +253,32 @@ export function InternalContactsTable({
     } finally {
       setBusy(false)
     }
-  }
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  }, [onChanged])
 
-  const columns = React.useMemo<ColumnDef<InternalDirectoryContact>[]>(
-    () => [
-      { id: "name", header: "Name", accessorFn: (contact) => contact.name },
-      { id: "company", header: "Company", accessorFn: (contact) => contact.company ?? "Internal" },
-      { id: "role", header: "Role", accessorFn: (contact) => contact.role ?? "Internal" },
-      { id: "email", header: "Email", accessorFn: (contact) => contact.email ?? "", sortUndefined: "last" },
-      { id: "phone", header: "Phone", accessorFn: (contact) => contact.phone ?? contact.cellPhone ?? "" },
-      { id: "access", header: "Compass access", accessorFn: (contact) => contact.accessStatus },
-      ...(developerModeEnabled ? [{ id: "source", header: "Source", accessorFn: (contact: InternalDirectoryContact) => contact.sourceLabel }] : []),
-      ...(hasActions ? [{ id: "actions", header: "Actions", enableSorting: false }] : []),
-    ],
-    [developerModeEnabled, hasActions]
+  const columns = React.useMemo(
+    () =>
+      internalContactColumns(
+        {
+          canEdit,
+          canArchive,
+          busy,
+          onEdit: setEditing,
+          onArchive: setArchiving,
+          onRestore: (contact) => void setArchived(contact, false),
+          onSageEdit,
+          onSageLink,
+        },
+        { developerMode: developerModeEnabled, hasActions },
+      ),
+    [canEdit, canArchive, busy, setArchived, onSageEdit, onSageLink, developerModeEnabled, hasActions],
   )
-
-  const table = useReactTable({
-    data: [...contacts],
+  const visible = React.useMemo(() => contacts.filter((contact) => matchesSearch(contact, search)), [contacts, search])
+  const table = useRecordTable({
+    data: visible,
     columns,
-    getRowId: (contact) => contact.id,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    onSortingChange: setSorting,
-    state: { pagination, sorting },
+    getRowId: contactRowId,
+    resetKey: `${showArchived ? "archived" : "active"}|${search}`,
+    sheetId: "contacts.internal",
   })
 
   const archivedToggle = onShowArchivedChange ? (
@@ -151,112 +304,23 @@ export function InternalContactsTable({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      {archivedToggle}
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-            <tr className="border-b">
-              {table.getHeaderGroups()[0]?.headers.map((header) => (
-                <th key={header.id} className="px-3 py-2 text-left font-medium" aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : undefined}>
-                  <TanstackSortableHeader header={header} />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const contact = row.original
-              return (
-                <tr key={contact.id} className="border-b last:border-b-0">
-                  <td className="px-3 py-2 font-medium">{contact.name}</td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {contact.company ?? "Internal"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    <div className="flex flex-col gap-0.5">
-                      {contact.email ? (
-                        <a href={`mailto:${contact.email}`} className="hover:underline">
-                          {contact.email}
-                        </a>
-                      ) : (
-                        <span>No email</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    <div className="flex flex-col gap-0.5 whitespace-nowrap">
-                      {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="hover:underline">
-                          {contact.phone}
-                        </a>
-                      ) : null}
-                      {contact.cellPhone ? (
-                        <a href={`tel:${contact.cellPhone}`} className="hover:underline">
-                          Mobile: {contact.cellPhone}
-                        </a>
-                      ) : null}
-                      {!contact.phone && !contact.cellPhone ? <span>—</span> : null}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant="outline">
-                      {contact.accessStatus === "active"
-                        ? "Active"
-                        : contact.accessStatus === "invited"
-                          ? "Invitation pending"
-                          : "No account"}
-                    </Badge>
-                  </td>
-                  {developerModeEnabled && (
-                    <td className="px-3 py-2">
-                      <Badge variant="outline">{contact.sourceLabel}</Badge>
-                    </td>
-                  )}
-                  {hasActions ? (
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                      {canEdit ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => setEditing(contact)}>
-                          Edit
-                        </Button>
-                      ) : null}
-                      {contact.sageEmployeeId && onSageEdit ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>
-                          Propose Sage edit
-                        </Button>
-                      ) : null}
-                      {!contact.sageEmployeeId && onSageLink ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>
-                          Verify Sage link
-                        </Button>
-                      ) : null}
-                      {canArchive && contact.active && !contact.linkedToUser && !contact.sageEmployeeId && !contact.sageEmployeeNumber ? (
-                        <Button type="button" size="sm" variant="ghost" onClick={() => setArchiving(contact)}>
-                          Archive
-                        </Button>
-                      ) : null}
-                      {canArchive && !contact.active ? (
-                        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void setArchived(contact, false)}>
-                          Restore
-                        </Button>
-                      ) : null}
-                      </div>
-                    </td>
-                  ) : null}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <RecordSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search internal contacts"
+          placeholder="Search name, company, role, email or phone…"
+          className="sm:max-w-sm"
+        />
+        {archivedToggle}
       </div>
-      <DataTablePagination
+      <RecordTable
         table={table}
         itemLabel="internal contacts"
-        id="internal-contacts-items-per-page"
+        emptyMessage="No internal contacts match this search."
+        rowIdPrefix="internal-contact"
+        onRowOpen={canEdit ? setEditing : undefined}
       />
       {editing ? (
         <PersonEditDialog

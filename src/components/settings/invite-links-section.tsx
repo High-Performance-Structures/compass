@@ -2,18 +2,14 @@
 
 import * as React from "react"
 import { IconCopy, IconTrash, IconPlus } from "@tabler/icons-react"
+import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 
 import { getOrgInvites, revokeInvite } from "@/app/actions/invites"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordTable, useRecordTable } from "@/components/record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { userRoleLabel } from "@/lib/user-roles"
@@ -31,6 +27,19 @@ type InviteRow = {
   readonly createdByName: string | null
 }
 
+type InviteStatus = "open" | "expired" | "used_up" | "revoked"
+type InviteFilter = InviteStatus | "all"
+
+const SHEET_ID = "settings.invite-links"
+
+const INVITE_FILTERS: readonly { readonly value: InviteFilter; readonly label: string; readonly pinned?: boolean }[] = [
+  { value: "open", label: "Open", pinned: true },
+  { value: "expired", label: "Expired" },
+  { value: "used_up", label: "Used up" },
+  { value: "revoked", label: "Revoked" },
+  { value: "all", label: "All", pinned: true },
+]
+
 function isExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return false
   return new Date(expiresAt) < new Date()
@@ -38,6 +47,22 @@ function isExpired(expiresAt: string | null): boolean {
 
 function isExhausted(invite: InviteRow): boolean {
   return invite.maxUses !== null && invite.useCount >= invite.maxUses
+}
+
+/** A link is open while it is active, unexpired and has uses left. */
+function inviteStatus(invite: InviteRow): InviteStatus {
+  if (!invite.isActive) return "revoked"
+  if (isExpired(invite.expiresAt)) return "expired"
+  if (isExhausted(invite)) return "used_up"
+  return "open"
+}
+
+function matchesFilter(invite: InviteRow, filter: InviteFilter): boolean {
+  return filter === "all" || inviteStatus(invite) === filter
+}
+
+function isInviteFilter(value: string): value is InviteFilter {
+  return INVITE_FILTERS.some((option) => option.value === value)
 }
 
 function formatExpiry(expiresAt: string | null): string {
@@ -52,16 +77,115 @@ function formatExpiry(expiresAt: string | null): string {
   })
 }
 
-export function InviteLinksSection() {
-  const [invites, setInvites] = React.useState<InviteRow[]>([])
+type InviteActions = {
+  readonly onCopy: (code: string) => void
+  readonly onRevoke: (inviteId: string) => void
+}
+
+/** The invite links sheet's columns ("settings.invite-links" in the list sheet registry). */
+export function inviteLinkColumns(actions: InviteActions): ColumnDef<InviteRow>[] {
+  // Closed links stay listed but dimmed, as before.
+  const dim = (invite: InviteRow): string | undefined => cn(inviteStatus(invite) !== "open" && "opacity-50")
+  return [
+    {
+      id: "code",
+      header: "Code",
+      accessorFn: (invite) => invite.code,
+      cell: ({ row }) => <span className={cn("font-mono text-sm", dim(row.original))}>{row.original.code}</span>,
+    },
+    {
+      id: "role",
+      header: "Role",
+      accessorFn: (invite) => userRoleLabel(invite.role),
+      cell: ({ row }) => (
+        <Badge variant="secondary" className={dim(row.original)}>
+          {userRoleLabel(row.original.role)}
+        </Badge>
+      ),
+    },
+    {
+      id: "uses",
+      header: "Uses",
+      accessorFn: (invite) => invite.useCount,
+      cell: ({ row }) => (
+        <span className={cn("tabular-nums", dim(row.original))}>
+          {row.original.useCount} / {row.original.maxUses ?? "∞"}
+        </span>
+      ),
+    },
+    {
+      id: "expires",
+      header: "Expires",
+      accessorFn: (invite) => invite.expiresAt ?? "",
+      cell: ({ row }) => (
+        <span className={cn("text-sm", dim(row.original))}>
+          {isExpired(row.original.expiresAt) ? (
+            <span className="text-destructive">Expired</span>
+          ) : (
+            formatExpiry(row.original.expiresAt)
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "createdBy",
+      header: "Created by",
+      accessorFn: (invite) => invite.createdByName ?? "Unknown",
+      cell: ({ row }) => (
+        <span className={cn("text-sm text-muted-foreground", dim(row.original))}>
+          {row.original.createdByName ?? "Unknown"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      size: 100,
+      cell: ({ row }) => {
+        const invite = row.original
+        const open = inviteStatus(invite) === "open"
+        return open ? (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label={`Copy invite link ${invite.code}`}
+              onClick={() => actions.onCopy(invite.code)}
+            >
+              <IconCopy className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-destructive"
+              aria-label={`Revoke invite link ${invite.code}`}
+              onClick={() => actions.onRevoke(invite.id)}
+            >
+              <IconTrash className="size-4" />
+            </Button>
+          </div>
+        ) : null
+      },
+    },
+  ]
+}
+
+const inviteRowId = (invite: InviteRow): string => invite.id
+
+export function InviteLinksSection(): React.ReactElement {
+  const [invites, setInvites] = React.useState<readonly InviteRow[]>([])
   const [loading, setLoading] = React.useState(true)
   const [createOpen, setCreateOpen] = React.useState(false)
+  const startFilter = useListSheetStartFilter(SHEET_ID, "open")
+  const [filter, setFilter] = React.useState<InviteFilter>(isInviteFilter(startFilter) ? startFilter : "open")
 
-  const loadInvites = React.useCallback(async () => {
+  const loadInvites = React.useCallback(async (): Promise<void> => {
     try {
       const result = await getOrgInvites()
       if (result.success && result.data) {
-        setInvites(result.data as InviteRow[])
+        setInvites(result.data)
       }
     } catch (error) {
       console.error("Failed to load invites:", error)
@@ -71,16 +195,16 @@ export function InviteLinksSection() {
   }, [])
 
   React.useEffect(() => {
-    loadInvites()
+    void loadInvites()
   }, [loadInvites])
 
-  const handleCopyLink = (code: string) => {
+  const handleCopyLink = React.useCallback((code: string): void => {
     const url = `${window.location.origin}/join/${code}`
-    navigator.clipboard.writeText(url)
+    void navigator.clipboard.writeText(url)
     toast.success("Invite link copied")
-  }
+  }, [])
 
-  const handleRevoke = async (inviteId: string) => {
+  const handleRevoke = React.useCallback(async (inviteId: string): Promise<void> => {
     const result = await revokeInvite(inviteId)
     if (result.success) {
       toast.success("Invite revoked")
@@ -88,11 +212,20 @@ export function InviteLinksSection() {
     } else {
       toast.error(result.error ?? "Failed to revoke invite")
     }
-  }
+  }, [loadInvites])
 
-  const handleCreated = () => {
-    loadInvites()
-  }
+  const columns = React.useMemo(
+    () => inviteLinkColumns({ onCopy: handleCopyLink, onRevoke: (id) => void handleRevoke(id) }),
+    [handleCopyLink, handleRevoke],
+  )
+  const visible = React.useMemo(() => invites.filter((invite) => matchesFilter(invite, filter)), [invites, filter])
+  const table = useRecordTable({
+    data: visible,
+    columns,
+    getRowId: inviteRowId,
+    resetKey: filter,
+    sheetId: "settings.invite-links",
+  })
 
   if (loading) {
     return (
@@ -122,86 +255,30 @@ export function InviteLinksSection() {
           No invite links yet
         </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Uses</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Created by</TableHead>
-                <TableHead className="w-[100px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invites.map((invite) => {
-                const expired = isExpired(invite.expiresAt)
-                const exhausted = isExhausted(invite)
-                const dimmed = !invite.isActive || expired || exhausted
-
-                return (
-                  <TableRow
-                    key={invite.id}
-                    className={cn(dimmed && "opacity-50")}
-                  >
-                    <TableCell className="font-mono text-sm">
-                      {invite.code}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {userRoleLabel(invite.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {invite.useCount} / {invite.maxUses ?? "∞"}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {expired ? (
-                        <span className="text-destructive">Expired</span>
-                      ) : (
-                        formatExpiry(invite.expiresAt)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {invite.createdByName ?? "Unknown"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {!dimmed && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => handleCopyLink(invite.code)}
-                          >
-                            <IconCopy className="size-4" />
-                          </Button>
-                        )}
-                        {invite.isActive && !expired && !exhausted && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive"
-                            onClick={() => handleRevoke(invite.id)}
-                          >
-                            <IconTrash className="size-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+        <div className="flex min-w-0 flex-col gap-3">
+          <StatusFilterBar
+            kind="button"
+            label="Filter invite links by status"
+            selected={filter}
+            onSelect={setFilter}
+            options={INVITE_FILTERS.map((option) => ({
+              ...option,
+              count: invites.filter((invite) => matchesFilter(invite, option.value)).length,
+            }))}
+          />
+          <RecordTable
+            table={table}
+            itemLabel="invite links"
+            emptyMessage="No invite links with this status."
+            rowIdPrefix="invite-link"
+          />
         </div>
       )}
 
       <CreateInviteDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={handleCreated}
+        onCreated={() => void loadInvites()}
       />
     </div>
   )

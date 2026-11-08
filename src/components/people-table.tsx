@@ -1,38 +1,16 @@
 "use client"
 
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-
 import * as React from "react"
-import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  IconDotsVertical,
-  IconMail,
-  IconUserCircle,
-} from "@tabler/icons-react"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type SortingState,
-  type VisibilityState,
-  type RowSelectionState,
-} from "@tanstack/react-table"
+import { IconDotsVertical, IconMail, IconUserCircle } from "@tabler/icons-react"
+import type { ColumnDef } from "@tanstack/react-table"
 
 import type { UserWithRelations } from "@/app/actions/users"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordSearchInput, RecordTable, recordSelectionColumn, useRecordTable } from "@/components/record-table"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,106 +18,108 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { MobileListCard } from "@/components/mobile-list-card"
+import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
 
-interface PeopleTableProps {
-  users: UserWithRelations[]
-  onEditUser?: (user: UserWithRelations) => void
-  onDeactivateUser?: (userId: string) => void
-  onReinviteUser?: (user: UserWithRelations) => void
-  onSelectionChange?: (userIds: readonly string[]) => void
-  /** Hides select, teams, groups, and projects columns */
-  compact?: boolean
+type PeopleTableProps = {
+  readonly users: readonly UserWithRelations[]
+  readonly onEditUser?: (user: UserWithRelations) => void
+  readonly onDeactivateUser?: (userId: string) => void
+  readonly onReinviteUser?: (user: UserWithRelations) => void
+  readonly onSelectionChange?: (userIds: readonly string[]) => void
 }
 
-export function PeopleTable({
-  users,
-  onEditUser,
-  onDeactivateUser,
-  onReinviteUser,
-  onSelectionChange,
-  compact = false,
-}: PeopleTableProps) {
-  const isMobile = useIsMobile()
-  const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
+type PeopleRowActions = Pick<PeopleTableProps, "onEditUser" | "onDeactivateUser" | "onReinviteUser">
+
+type AccessFilter = "all" | "active" | "invited"
+
+const ACCESS_FILTERS: readonly { readonly value: AccessFilter; readonly label: string; readonly pinned?: boolean }[] = [
+  { value: "all", label: "All", pinned: true },
+  { value: "active", label: "Active" },
+  { value: "invited", label: "Invitation pending" },
+]
+
+const SHEET_ID = "settings.people"
+
+function displayName(user: UserWithRelations): string {
+  return user.displayName || user.email.split("@")[0] || user.email
+}
+
+function NamedBadges({ items }: { readonly items: readonly { readonly name: string }[] }): React.ReactElement {
+  const [first] = items
+  if (!first) return <span className="text-muted-foreground">-</span>
+  return (
+    <div className="flex items-center gap-1">
+      <Badge variant="outline">{first.name}</Badge>
+      {items.length > 1 && <Badge variant="secondary">+{items.length - 1}</Badge>}
+    </div>
   )
-  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
+}
 
-  React.useEffect(() => {
-    onSelectionChange?.(Object.keys(rowSelection).filter((id) => rowSelection[id]))
-  }, [rowSelection, onSelectionChange])
+function PersonMenu({ user, actions }: { readonly user: UserWithRelations; readonly actions: PeopleRowActions }): React.ReactElement {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="size-8 p-0">
+          <span className="sr-only">open menu</span>
+          <IconDotsVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {user.accessStatus === "invited" ? (
+          <DropdownMenuItem onClick={() => actions.onReinviteUser?.(user)}>
+            Send invitation again
+          </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onClick={() => actions.onEditUser?.(user)}>
+              Edit User
+            </DropdownMenuItem>
+            <DropdownMenuItem>Assign to Project</DropdownMenuItem>
+            <DropdownMenuItem>Assign to Team</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => actions.onDeactivateUser?.(user.id)}
+            >
+              Deactivate
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
-  const columns: ColumnDef<UserWithRelations>[] = [
+/** The team members sheet's columns ("settings.people" in the list sheet registry). */
+export function peopleColumns(actions: PeopleRowActions): ColumnDef<UserWithRelations>[] {
+  return [
+    recordSelectionColumn((user: UserWithRelations) => displayName(user)),
     {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
-    {
-      accessorKey: "displayName",
+      id: "name",
       header: "Name",
-      filterFn: (row, _columnId, value) => {
-        const query = String(value).trim().toLowerCase()
-        if (!query) return true
-
-        const user = row.original
-        return (
-          (user.displayName ?? "").toLowerCase().includes(query) ||
-          user.email.toLowerCase().includes(query)
-        )
-      },
+      accessorFn: (user) => displayName(user),
       cell: ({ row }) => {
         const user = row.original
+        const canOpen = Boolean(actions.onEditUser) && user.accessStatus !== "invited"
         return (
           <div className="flex items-center gap-3">
             {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.displayName || "user"}
-                className="size-8 rounded-full"
-              />
+              <img src={user.avatarUrl} alt={user.displayName || "user"} className="size-8 rounded-full" />
             ) : (
               <IconUserCircle className="size-8 text-muted-foreground" />
             )}
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <span className="font-medium">
-                  {user.displayName || user.email.split("@")[0]}
-                </span>
-                {user.accessStatus === "invited" && (
-                  <Badge variant="secondary">Invitation pending</Badge>
+                {canOpen ? (
+                  <button type="button" className="text-left font-medium hover:underline" onClick={() => actions.onEditUser?.(user)}>
+                    {displayName(user)}
+                  </button>
+                ) : (
+                  <span className="font-medium">{displayName(user)}</span>
                 )}
+                {user.accessStatus === "invited" && <Badge variant="secondary">Invitation pending</Badge>}
               </div>
-              <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <span className="flex items-center gap-1 text-sm text-muted-foreground">
                 <IconMail className="size-3" />
                 {user.email}
               </span>
@@ -149,20 +129,13 @@ export function PeopleTable({
       },
     },
     {
-      accessorKey: "role",
+      id: "role",
       header: "Role",
+      accessorFn: (user) => userRoleLabel(user.role),
       cell: ({ row }) => {
-        const role = row.getValue("role") as string
+        const role = row.original.role
         return (
-          <Badge
-            variant={
-              role === "admin"
-                ? "default"
-                : role === "office"
-                  ? "secondary"
-                  : "outline"
-            }
-          >
+          <Badge variant={role === "admin" ? "default" : role === "office" ? "secondary" : "outline"}>
             {userRoleLabel(role)}
           </Badge>
         )
@@ -171,150 +144,122 @@ export function PeopleTable({
     {
       id: "teams",
       header: "Teams",
-      cell: ({ row }) => {
-        const teams = row.original.teams
-        if (teams.length === 0) return <span className="text-muted-foreground">-</span>
-        if (teams.length === 1)
-          return <Badge variant="outline">{teams[0].name}</Badge>
-        return (
-          <div className="flex items-center gap-1">
-            <Badge variant="outline">{teams[0].name}</Badge>
-            {teams.length > 1 && (
-              <Badge variant="secondary">+{teams.length - 1}</Badge>
-            )}
-          </div>
-        )
-      },
+      accessorFn: (user) => user.teams[0]?.name ?? "",
+      cell: ({ row }) => <NamedBadges items={row.original.teams} />,
     },
     {
       id: "groups",
       header: "Groups",
-      cell: ({ row }) => {
-        const groups = row.original.groups
-        if (groups.length === 0) return <span className="text-muted-foreground">-</span>
-        if (groups.length === 1)
-          return <Badge variant="outline">{groups[0].name}</Badge>
-        return (
-          <div className="flex items-center gap-1">
-            <Badge variant="outline">{groups[0].name}</Badge>
-            {groups.length > 1 && (
-              <Badge variant="secondary">+{groups.length - 1}</Badge>
-            )}
-          </div>
-        )
-      },
+      accessorFn: (user) => user.groups[0]?.name ?? "",
+      cell: ({ row }) => <NamedBadges items={row.original.groups} />,
     },
     {
       id: "projects",
       header: "Projects",
-      cell: ({ row }) => {
-        const count = row.original.projectCount
-        if (count === 0) return <span className="text-muted-foreground">-</span>
-        return <span className="text-sm">{count}</span>
-      },
+      accessorFn: (user) => user.projectCount,
+      cell: ({ row }) =>
+        row.original.projectCount === 0 ? (
+          <span className="text-muted-foreground">-</span>
+        ) : (
+          <span className="text-sm">{row.original.projectCount}</span>
+        ),
     },
     {
       id: "actions",
-      cell: ({ row }) => {
-        const user = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="size-8 p-0">
-                <span className="sr-only">open menu</span>
-                <IconDotsVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {user.accessStatus === "invited" ? (
-                <DropdownMenuItem onClick={() => onReinviteUser?.(user)}>
-                  Send invitation again
-                </DropdownMenuItem>
-              ) : (
-                <>
-                  <DropdownMenuItem onClick={() => onEditUser?.(user)}>
-                    Edit User
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>Assign to Project</DropdownMenuItem>
-                  <DropdownMenuItem>Assign to Team</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => onDeactivateUser?.(user.id)}
-                  >
-                    Deactivate
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      size: 48,
+      cell: ({ row }) => <PersonMenu user={row.original} actions={actions} />,
     },
   ]
+}
 
-  const columnVisibility: VisibilityState = compact
-    ? { select: false, teams: false, groups: false, projects: false }
-    : {}
+function matchesSearch(user: UserWithRelations, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return (user.displayName ?? "").toLowerCase().includes(needle) || user.email.toLowerCase().includes(needle)
+}
 
-  const table = useReactTable({
-    data: users,
-    getRowId: (user) => user.id,
+function matchesAccess(user: UserWithRelations, filter: AccessFilter): boolean {
+  return filter === "all" || user.accessStatus === filter
+}
+
+function isAccessFilter(value: string): value is AccessFilter {
+  return ACCESS_FILTERS.some((option) => option.value === value)
+}
+
+const userRowId = (user: UserWithRelations): string => user.id
+
+/** Team members (Settings › Team): searched, filtered by role and access, sorted by any column. */
+export function PeopleTable({
+  users,
+  onEditUser,
+  onDeactivateUser,
+  onReinviteUser,
+  onSelectionChange,
+}: PeopleTableProps): React.ReactElement {
+  const startFilter = useListSheetStartFilter(SHEET_ID, "all")
+  const [access, setAccess] = React.useState<AccessFilter>(isAccessFilter(startFilter) ? startFilter : "all")
+  const [search, setSearch] = React.useState("")
+  const [role, setRole] = React.useState("")
+
+  const columns = React.useMemo(
+    () => peopleColumns({ onEditUser, onDeactivateUser, onReinviteUser }),
+    [onEditUser, onDeactivateUser, onReinviteUser],
+  )
+  const searched = React.useMemo(
+    () => users.filter((user) => matchesSearch(user, search) && (role === "" || user.role === role)),
+    [users, search, role],
+  )
+  const visible = React.useMemo(() => searched.filter((user) => matchesAccess(user, access)), [searched, access])
+  const table = useRecordTable({
+    data: visible,
     columns,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: {
-      sorting,
-      columnFilters,
-      rowSelection,
-      columnVisibility,
-      pagination,
-    },
+    getRowId: userRowId,
+    resetKey: `${access}|${role}|${search}`,
+    enableSelection: true,
+    sheetId: "settings.people",
   })
 
+  const rowSelection = table.getState().rowSelection
+  React.useEffect(() => {
+    onSelectionChange?.(Object.keys(rowSelection).filter((id) => rowSelection[id]))
+  }, [rowSelection, onSelectionChange])
+
+  const openUser = onEditUser
+    ? (user: UserWithRelations): void => {
+        if (user.accessStatus !== "invited") onEditUser(user)
+      }
+    : undefined
+
   return (
-    <div className={compact ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
-      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          placeholder="Search by name or email..."
-          value={
-            (table.getColumn("displayName")?.getFilterValue() as string) ?? ""
-          }
-          onChange={(event) =>
-            table.getColumn("displayName")?.setFilterValue(event.target.value)
-          }
-          className="w-full sm:max-w-sm"
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <StatusFilterBar
+          kind="button"
+          label="Filter users by Compass access"
+          selected={access}
+          onSelect={setAccess}
+          options={ACCESS_FILTERS.map((option) => ({
+            ...option,
+            count: searched.filter((user) => matchesAccess(user, option.value)).length,
+          }))}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <RecordSearchInput
+            value={search}
+            onChange={setSearch}
+            label="Search users"
+            placeholder="Search by name or email..."
+            className="sm:w-72"
+          />
           <SearchableCombobox
             className="h-9 w-full sm:w-[180px]"
-            value={
-              // The column holds "" when unfiltered; the picker shows that as "all".
-              (table.getColumn("role")?.getFilterValue() as string) || "all"
-            }
-            onValueChange={(value) =>
-              table
-                .getColumn("role")
-                ?.setFilterValue(value === "all" || value === "" ? "" : value)
-            }
+            value={role || "all"}
+            onValueChange={(value) => setRole(value === "all" ? "" : value)}
             options={[
               { value: "all", label: "All Roles" },
-              ...USER_ROLE_OPTIONS.filter((option) =>
-                users.some((user) => user.role === option.value)
-              ),
+              ...USER_ROLE_OPTIONS.filter((option) => users.some((user) => user.role === option.value)),
             ]}
             ariaLabel="Filter by role"
             placeholder="Filter by role"
@@ -323,123 +268,13 @@ export function PeopleTable({
           />
         </div>
       </div>
-
-      {isMobile ? (
-        <>
-        <div className="rounded-md border overflow-hidden divide-y">
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => {
-              const user = row.original
-              const roleLabel = userRoleLabel(user.role)
-              const teamNames = user.teams.map((t) => t.name).join(", ")
-              return (
-                <MobileListCard
-                  key={row.id}
-                  avatar={
-                    user.avatarUrl ? (
-                      <img
-                        src={user.avatarUrl}
-                        alt={user.displayName || "user"}
-                        className="size-10 rounded-full"
-                      />
-                    ) : (
-                      <IconUserCircle className="size-10 text-muted-foreground" />
-                    )
-                  }
-                  title={user.displayName || user.email.split("@")[0]}
-                  subtitle={user.email}
-                  metadata={[
-                    ...(user.accessStatus === "invited"
-                      ? ["Invitation pending"]
-                      : []),
-                    roleLabel,
-                    ...(teamNames ? [teamNames] : []),
-                    ...(user.projectCount > 0 ? [`${user.projectCount} projects`] : []),
-                  ]}
-                  actions={
-                    user.accessStatus === "invited"
-                      ? [
-                          {
-                            label: "Send invitation again",
-                            onClick: () => onReinviteUser?.(user),
-                          },
-                        ]
-                      : [
-                          {
-                            label: "Edit User",
-                            onClick: () => onEditUser?.(user),
-                          },
-                          { label: "Assign to Project", onClick: () => {} },
-                          { label: "Assign to Team", onClick: () => {} },
-                          {
-                            label: "Deactivate",
-                            onClick: () => onDeactivateUser?.(user.id),
-                            destructive: true,
-                          },
-                        ]
-                  }
-                />
-              )
-            })
-          ) : (
-            <div className="p-8 text-center text-muted-foreground">
-              No users found
-            </div>
-          )}
-        </div>
-        <DataTablePagination table={table} itemLabel="users" id="people-mobile-items-per-page" />
-        </>
-      ) : (
-        <>
-          <div className={compact ? "min-h-0 flex-1 rounded-md border overflow-y-auto" : "rounded-md border overflow-hidden"}>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id} className="whitespace-nowrap">
-                          <TanstackSortableHeader header={header} />
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        data-state={row.getIsSelected() && "selected"}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="whitespace-nowrap">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={columns.length}
-                        className="h-24 text-center"
-                      >
-                        No users found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-
-          <DataTablePagination table={table} itemLabel="users" id="people-items-per-page" />
-        </>
-      )}
+      <RecordTable
+        table={table}
+        itemLabel="users"
+        emptyMessage="No users found"
+        rowIdPrefix="person"
+        onRowOpen={openUser}
+      />
     </div>
   )
 }

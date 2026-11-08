@@ -2,15 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 
 import { archiveUnassignedPersonAction, editUnassignedPerson } from "@/app/actions/unassigned-people"
 import { ConnectUnassignedDialog } from "@/components/contacts/connect-unassigned-dialog"
@@ -25,10 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { DataTablePagination, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table-pagination"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import type { ConnectCompanyKind } from "@/lib/domain/contacts/connect-unassigned-person"
 import type { UnassignedPerson } from "@/lib/domain/contacts/unassigned-people"
 import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
@@ -45,6 +35,105 @@ function editFields(person: UnassignedPerson): readonly PersonEditField<EditKey>
     { key: "companyName", label: "Imported company" },
   ]
 }
+
+type UnassignedPersonActions = {
+  readonly canEdit: boolean
+  readonly canConnect: boolean
+  readonly onEdit: (person: UnassignedPerson) => void
+  readonly onConnect: (person: UnassignedPerson) => void
+  readonly onArchive: (person: UnassignedPerson) => void
+}
+
+function projectLabel(project: UnassignedPerson["projects"][number]): string {
+  return projectNumberAndName({ projectNumber: project.projectNumber, name: project.projectName }, " - ")
+}
+
+/** The unassigned people sheet's columns ("contacts.unassigned" in the list sheet registry). */
+export function unassignedPeopleColumns(actions: UnassignedPersonActions): ColumnDef<UnassignedPerson>[] {
+  const { canEdit, canConnect, onEdit, onConnect, onArchive } = actions
+  const open = canEdit ? onEdit : canConnect ? onConnect : null
+  const columns: (ColumnDef<UnassignedPerson> | null)[] = [
+    {
+      id: "name",
+      header: "Name",
+      accessorFn: (person) => person.name,
+      cell: ({ row }) =>
+        open ? (
+          <button type="button" className="text-left font-medium hover:underline" onClick={() => open(row.original)}>
+            {row.original.name}
+          </button>
+        ) : (
+          <span className="font-medium">{row.original.name}</span>
+        ),
+    },
+    {
+      id: "email",
+      header: "Email",
+      accessorFn: (person) => person.email ?? "",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.email ? <a href={`mailto:${row.original.email}`} className="hover:underline">{row.original.email}</a> : "No email"}
+        </span>
+      ),
+    },
+    {
+      id: "company",
+      header: "Imported company",
+      accessorFn: (person) => person.companyName ?? "",
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.companyName ?? ""}</span>,
+    },
+    {
+      id: "projects",
+      header: "Projects",
+      accessorFn: (person) => person.projects.map((project) => project.projectName).join(", "),
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-0.5">
+          {row.original.projects.map((project) => (
+            <Link key={project.contactId} href={`/dashboard/projects/${encodeURIComponent(project.projectId)}/contacts`} className="hover:underline">
+              {projectLabel(project)}
+            </Link>
+          ))}
+        </div>
+      ),
+    },
+    canEdit || canConnect
+      ? {
+          id: "actions",
+          header: () => <span className="sr-only">Actions</span>,
+          enableSorting: false,
+          cell: ({ row }) => (
+            <div className="flex flex-wrap justify-end gap-2">
+              {canEdit ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => onEdit(row.original)}>
+                  Edit
+                </Button>
+              ) : null}
+              {canConnect ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => onConnect(row.original)}>
+                  Connect to company…
+                </Button>
+              ) : null}
+              {canEdit && !row.original.hasAccount ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => onArchive(row.original)}>
+                  Archive
+                </Button>
+              ) : null}
+            </div>
+          ),
+        }
+      : null,
+  ]
+  return columns.filter((column): column is ColumnDef<UnassignedPerson> => column !== null)
+}
+
+function matchesSearch(person: UnassignedPerson, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [person.name, person.email, person.phone, person.companyName, ...person.projects.map(projectLabel)]
+    .some((value) => (value ?? "").toLowerCase().includes(needle))
+}
+
+const personRowId = (person: UnassignedPerson): string => person.identity
 
 /**
  * People added from imported messages who are not connected to a vendor or
@@ -73,9 +162,8 @@ export function UnassignedPeopleTable({
   const [editing, setEditing] = React.useState<UnassignedPerson | null>(null)
   const [archiving, setArchiving] = React.useState<UnassignedPerson | null>(null)
   const [archiveBusy, setArchiveBusy] = React.useState(false)
-  const showActions = connectKinds.length > 0 || canEdit
 
-  const archive = async () => {
+  const archive = async (): Promise<void> => {
     if (!archiving) return
     setArchiveBusy(true)
     try {
@@ -90,34 +178,19 @@ export function UnassignedPeopleTable({
       setArchiveBusy(false)
     }
   }
-  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: DEFAULT_TABLE_PAGE_SIZE })
-  const [sorting, setSorting] = React.useState<SortingState>([])
   const [search, setSearch] = React.useState("")
-
-  const columns = React.useMemo<ColumnDef<UnassignedPerson>[]>(
-    () => [
-      { id: "name", header: "Name", accessorFn: (person) => person.name },
-      { id: "email", header: "Email", accessorFn: (person) => person.email ?? "", sortUndefined: "last" },
-      { id: "company", header: "Imported company", accessorFn: (person) => person.companyName ?? "", sortUndefined: "last" },
-      { id: "projects", header: "Projects", accessorFn: (person) => person.projects.map((project) => project.projectName).join(", ") },
-    ],
-    []
+  const canConnect = connectKinds.length > 0
+  const columns = React.useMemo(
+    () => unassignedPeopleColumns({ canEdit, canConnect, onEdit: setEditing, onConnect: setConnecting, onArchive: setArchiving }),
+    [canEdit, canConnect],
   )
-
-  const table = useReactTable({
-    data: [...people],
+  const visible = React.useMemo(() => people.filter((person) => matchesSearch(person, search)), [people, search])
+  const table = useRecordTable({
+    data: visible,
     columns,
-    getRowId: (person) => person.identity,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    globalFilterFn: "includesString",
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setSearch,
-    state: { pagination, sorting, globalFilter: search },
+    getRowId: personRowId,
+    resetKey: search,
+    sheetId: "contacts.unassigned",
   })
 
   if (people.length === 0) {
@@ -132,76 +205,21 @@ export function UnassignedPeopleTable({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <Input
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <RecordSearchInput
         value={search}
-        onChange={(event) => {
-          setSearch(event.target.value)
-          setPagination((current) => ({ ...current, pageIndex: 0 }))
-        }}
+        onChange={setSearch}
+        label="Search unassigned people"
         placeholder="Search unassigned people"
-        aria-label="Search unassigned people"
-        className="h-9 max-w-sm"
+        className="sm:max-w-sm"
       />
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-            <tr className="border-b">
-              {table.getHeaderGroups()[0]?.headers.map((header) => (
-                <th key={header.id} className="px-3 py-2 text-left font-medium" aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : undefined}>
-                  <TanstackSortableHeader header={header} />
-                </th>
-              ))}
-              {showActions ? <th className="px-3 py-2 text-right font-medium"><span className="sr-only">Actions</span></th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const person = row.original
-              return (
-                <tr key={person.identity} className="border-b last:border-b-0">
-                  <td className="px-3 py-2 font-medium">{person.name}</td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {person.email ? <a href={`mailto:${person.email}`} className="hover:underline">{person.email}</a> : "No email"}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{person.companyName ?? ""}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-col gap-0.5">
-                      {person.projects.map((project) => (
-                        <Link key={project.contactId} href={`/dashboard/projects/${encodeURIComponent(project.projectId)}/contacts`} className="hover:underline">
-                          {projectNumberAndName({ projectNumber: project.projectNumber, name: project.projectName }, " - ")}
-                        </Link>
-                      ))}
-                    </div>
-                  </td>
-                  {showActions ? (
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {canEdit ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(person)}>
-                            Edit
-                          </Button>
-                        ) : null}
-                        {connectKinds.length > 0 ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => setConnecting(person)}>
-                            Connect to company…
-                          </Button>
-                        ) : null}
-                        {canEdit && !person.hasAccount ? (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => setArchiving(person)}>
-                            Archive
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  ) : null}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      <DataTablePagination table={table} itemLabel="unassigned people" id="unassigned-people-items-per-page" />
+      <RecordTable
+        table={table}
+        itemLabel="unassigned people"
+        emptyMessage="No unassigned people match this search."
+        rowIdPrefix="unassigned-person"
+        onRowOpen={canEdit ? setEditing : canConnect ? setConnecting : undefined}
+      />
       {editing ? (
         <PersonEditDialog
           key={editing.identity}

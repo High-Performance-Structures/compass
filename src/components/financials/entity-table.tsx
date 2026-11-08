@@ -1,119 +1,96 @@
 "use client"
 
 import * as React from "react"
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type RowSelectionState,
-  type SortingState,
-  type Table as TanstackTable,
-  type VisibilityState,
-} from "@tanstack/react-table"
+import type { Table as TanstackTable } from "@tanstack/react-table"
 
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-  DataTablePagination,
-  DEFAULT_TABLE_PAGE_SIZE,
-} from "@/components/data-table-pagination"
-import { Input } from "@/components/ui/input"
-import { TanstackSortableHeader } from "@/components/ui/sortable-header"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { cn } from "@/lib/utils"
+import { DataTablePagination } from "@/components/data-table-pagination"
+import { RecordSearchInput, RecordTable } from "@/components/record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 
 /**
- * One typed TanStack table for the financial and directory lists (invoices,
- * vendor bills, credit memos, payments, customers, vendors). Each list
- * passes its columns, toolbars, mobile row and empty states; the table owns
- * sorting, filtering, pagination and selection so they behave the same
- * everywhere.
+ * The shared frame for the company Financials lists (invoices, vendor bills,
+ * credit memos, payments). Each list builds its sheet with `useRecordTable`
+ * and a registered sheetId; this frame adds the search box, the status
+ * buttons, the phone list and the empty states so the lists behave the same.
  */
 
-type EntityTableControls<T> = {
-  readonly table: TanstackTable<T>
-  readonly sorting: SortingState
-  /** Sets the sort and returns to the first page. */
-  readonly sortBy: (next: SortingState) => void
+type StatusOption = { readonly value: string; readonly label: string }
+
+type StatusFilterOption = StatusOption & { readonly count: number; readonly pinned?: boolean }
+
+/** "All" status filter value: the lists open on every record, as they always have. */
+export const ALL_STATUSES = "all"
+
+/**
+ * Status buttons for a list: each known status in order, then any other
+ * status the rows carry, then All. Statuses with no rows hide.
+ */
+function entityStatusOptions<T>(
+  rows: readonly T[],
+  statusOf: (row: T) => string,
+  known: readonly StatusOption[],
+): readonly StatusFilterOption[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) counts.set(statusOf(row), (counts.get(statusOf(row)) ?? 0) + 1)
+  const others = [...counts.keys()]
+    .filter((value) => !known.some((option) => option.value === value))
+    .map((value) => ({ value, label: value.replaceAll("_", " ") }))
+  return [
+    ...[...known, ...others].map((option) => ({ ...option, count: counts.get(option.value) ?? 0 })),
+    { value: ALL_STATUSES, label: "All", count: rows.length, pinned: true },
+  ]
 }
 
-/** A column's text filter value, or `fallback` when none is set. */
-function columnFilterText<T>(table: TanstackTable<T>, columnId: string, fallback = ""): string {
-  const value = table.getColumn(columnId)?.getFilterValue()
-  return typeof value === "string" ? value : fallback
-}
-
-/** The search box every list shows above its rows. */
-export function EntitySearchInput<T>({
-  table,
-  columnId,
-  placeholder,
-  className,
-}: {
-  readonly table: TanstackTable<T>
-  readonly columnId: string
-  readonly placeholder: string
-  readonly className: string
-}): React.ReactElement {
-  return (
-    <Input
-      placeholder={placeholder}
-      value={columnFilterText(table, columnId)}
-      onChange={(e) => table.getColumn(columnId)?.setFilterValue(e.target.value)}
-      className={className}
-    />
+/** Rows matching the search text (in `searchText`) and the chosen status. */
+export function filterEntityRows<T>(
+  rows: readonly T[],
+  search: string,
+  searchText: (row: T) => string,
+  status?: { readonly selected: string; readonly of: (row: T) => string },
+): readonly T[] {
+  const query = search.trim().toLowerCase()
+  return rows.filter(
+    (row) =>
+      (!status || status.selected === ALL_STATUSES || status.of(row) === status.selected) &&
+      (!query || searchText(row).toLowerCase().includes(query)),
   )
 }
 
-type Selection = {
-  readonly selectedIds: readonly string[]
-  readonly onSelectionChange?: (ids: readonly string[]) => void
-}
-
 type EntityTableProps<T> = {
-  readonly data: readonly T[]
-  readonly columns: ColumnDef<T>[]
-  readonly getRowId?: (row: T) => string
-  readonly initialSorting?: SortingState
-  readonly columnVisibility?: VisibilityState
-  /** Selection kept by the caller by row id; otherwise the table keeps it. */
-  readonly selection?: Selection
-  /** "fill" stretches to the page height with a sticky header. */
-  readonly layout?: "page" | "fill"
-  readonly mobileToolbar: (controls: EntityTableControls<T>) => React.ReactNode
-  readonly desktopToolbar: (controls: EntityTableControls<T>) => React.ReactNode
+  readonly table: TanstackTable<T>
+  readonly search: {
+    readonly value: string
+    readonly onChange: (value: string) => void
+    readonly label: string
+    readonly placeholder: string
+  }
+  /** Status buttons, when the record has a status. */
+  readonly statusFilter?: {
+    readonly label: string
+    /** Every row before filtering, for the counts. */
+    readonly rows: readonly T[]
+    readonly of: (row: T) => string
+    readonly known: readonly StatusOption[]
+    readonly selected: string
+    readonly onSelect: (value: string) => void
+  }
+  /** Opens the record (its edit window) from a click anywhere on the row. */
+  readonly onRowOpen?: (row: T) => void
   /** The content of one mobile row. */
   readonly mobileRow: (row: T) => React.ReactNode
   readonly mobileEmpty: React.ReactNode
   readonly desktopEmpty: string
   readonly itemLabel: string
-  /** Prefix of the page-size picker ids, such as "invoices". */
+  /** Prefix of the phone page-size picker id, such as "invoices". */
   readonly paginationId: string
 }
 
-const NO_SELECTION: RowSelectionState = {}
-
 export function EntityTable<T>({
-  data,
-  columns,
-  getRowId,
-  initialSorting,
-  columnVisibility,
-  selection,
-  layout = "page",
-  mobileToolbar,
-  desktopToolbar,
+  table,
+  search,
+  statusFilter,
+  onRowOpen,
   mobileRow,
   mobileEmpty,
   desktopEmpty,
@@ -121,76 +98,26 @@ export function EntityTable<T>({
   paginationId,
 }: EntityTableProps<T>): React.ReactElement {
   const isMobile = useIsMobile()
-  const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? [])
-  const [columnFilters, setColumnFilters] =
-    React.useState<ColumnFiltersState>([])
-  const [ownSelection, setOwnSelection] = React.useState<RowSelectionState>(NO_SELECTION)
-  const selectedIds = selection?.selectedIds
-  const callerSelection = React.useMemo<RowSelectionState | null>(
-    () => (selectedIds ? Object.fromEntries(selectedIds.map((id) => [id, true])) : null),
-    [selectedIds]
-  )
-  const rowSelection = callerSelection ?? ownSelection
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: DEFAULT_TABLE_PAGE_SIZE,
-  })
-  // TanStack Table must receive stable data/column references across local state updates.
-  const tableData = React.useMemo(() => [...data], [data])
-  const onSelectionChange = selection?.onSelectionChange
-
-  const table = useReactTable({
-    data: tableData,
-    columns,
-    getRowId,
-    onSortingChange: (updater) => {
-      setSorting(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    onColumnFiltersChange: (updater) => {
-      setColumnFilters(updater)
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: !selection
-      ? setOwnSelection
-      : onSelectionChange
-        ? (updater) => {
-            const next = typeof updater === "function" ? updater(rowSelection) : updater
-            onSelectionChange(Object.keys(next).filter((id) => next[id]))
-          }
-        : undefined,
-    autoResetPageIndex: false,
-    onPaginationChange: setPagination,
-    state: columnVisibility
-      ? { sorting, columnFilters, columnVisibility, rowSelection, pagination }
-      : { sorting, columnFilters, rowSelection, pagination },
-  })
-
-  const controls: EntityTableControls<T> = {
-    table,
-    sorting,
-    sortBy: (next) => {
-      setPagination((current) => ({ ...current, pageIndex: 0 }))
-      setSorting(next)
-    },
-  }
+  const statusBar = statusFilter ? (
+    <StatusFilterBar
+      kind="button"
+      label={statusFilter.label}
+      selected={statusFilter.selected}
+      onSelect={statusFilter.onSelect}
+      options={entityStatusOptions(statusFilter.rows, statusFilter.of, statusFilter.known)}
+    />
+  ) : null
 
   if (isMobile) {
     const rows = table.getRowModel().rows
     return (
       <div className="space-y-3">
-        {mobileToolbar(controls)}
+        <RecordSearchInput {...search} className="w-full" />
+        {statusBar}
         {rows.length ? (
           <div className="rounded-md border divide-y">
             {rows.map((row) => (
-              <div
-                key={row.id}
-                className="flex items-center gap-3 px-3 py-2.5"
-              >
+              <div key={row.id} className="flex items-center gap-3 px-3 py-2.5">
                 {mobileRow(row.original)}
               </div>
             ))}
@@ -198,69 +125,18 @@ export function EntityTable<T>({
         ) : (
           mobileEmpty
         )}
-        <DataTablePagination
-          table={table}
-          itemLabel={itemLabel}
-          id={`${paginationId}-mobile-items-per-page`}
-        />
+        <DataTablePagination table={table} itemLabel={itemLabel} id={`${paginationId}-mobile-items-per-page`} />
       </div>
     )
   }
 
-  const fill = layout === "fill"
   return (
-    <div className={fill ? "flex flex-1 flex-col min-h-0 gap-3" : "space-y-4"}>
-      {desktopToolbar(controls)}
-      <div className={fill ? "rounded-md border flex-1 min-h-0 overflow-hidden" : "rounded-md border overflow-hidden"}>
-        <div className={fill ? "overflow-auto h-full" : "overflow-x-auto"}>
-          <Table>
-            <TableHeader className={cn(fill && "sticky top-0 z-10 bg-background")}>
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap">
-                      <TanstackSortableHeader header={header} />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
-                    {desktopEmpty}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <RecordSearchInput {...search} className="sm:max-w-sm" />
+        {statusBar}
       </div>
-      <DataTablePagination
-        table={table}
-        itemLabel={itemLabel}
-        id={`${paginationId}-items-per-page`}
-      />
+      <RecordTable table={table} itemLabel={itemLabel} emptyMessage={desktopEmpty} rowIdPrefix={paginationId} onRowOpen={onRowOpen} />
     </div>
   )
 }

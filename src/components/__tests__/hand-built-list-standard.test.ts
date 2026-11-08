@@ -79,6 +79,9 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/estimate-version-acceptance-fields.tsx": "line items",
   "src/components/projects/pay-application-shop-tickets.tsx": "line items",
   "src/components/projects/project-change-order-version-lines.tsx": "line items",
+  // Captured line items inside one historical RFQ response (read-only evidence); the responses
+  // themselves are a cursor-paged list of expandable evidence, not a table.
+  "src/components/projects/project-historical-rfq-list.tsx": "line items",
   // Logs from before the duty log, each waiting for a duty; the entries themselves are the sheet above it.
   "src/components/projects/duty-log-workspace.tsx": "line items",
 
@@ -105,30 +108,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
 
   "src/components/files/file-list.tsx": "file browser",
   "src/components/files/project-file-groups.tsx": "file browser",
-
-  "src/components/client-follow-up/client-follow-up-board.tsx": "growing list",
-  "src/components/contacts/internal-contacts-table.tsx": "growing list",
-  "src/components/contacts/unassigned-people-table.tsx": "growing list",
-  "src/components/equipment/equipment-workspace.tsx": "growing list",
-  "src/components/financials/entity-table.tsx": "growing list",
-  "src/components/financials/square-receipts-table.tsx": "growing list",
-  "src/components/nutech/nutech-catalog-workspace.tsx": "growing list",
-  "src/components/people-table.tsx": "growing list",
-  "src/components/projects/project-estimate-list.tsx": "growing list",
-  "src/components/projects/project-historical-rfq-list.tsx": "growing list",
-  "src/components/projects/project-warranty-source-review.tsx": "growing list",
-  "src/components/projects/recurring-duties-board.tsx": "growing list",
-  "src/components/projects/shop-tickets-workspace.tsx": "growing list",
-  "src/components/projects/trade-letters-section.tsx": "growing list",
-  "src/components/projects/use-archive-pagination.ts": "growing list",
-  "src/components/schedule/schedule-list-view.tsx": "growing list",
-  "src/components/schedule/workday-exceptions-view.tsx": "growing list",
-  "src/components/settings/account-deletion-requests-card.tsx": "growing list",
-  "src/components/settings/invite-links-section.tsx": "growing list",
 }
 
 /** Older growing lists still on hand-built tables. Lower it when one moves to the shared sheet; never raise it. */
-const GROWING_LIST_CEILING = 19
+const GROWING_LIST_CEILING = 0
 
 const HAND_BUILT = /<table\b|<Table\b|\buseReactTable\(/
 

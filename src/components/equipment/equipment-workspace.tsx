@@ -3,6 +3,7 @@
 import * as React from "react"
 import { IconPencil, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
+import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 
 import {
@@ -12,6 +13,9 @@ import {
   type MachineLogEntryView,
   type MachineView,
 } from "@/app/actions/equipment"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import { MachineLogEntryDialog } from "@/components/equipment/machine-log-entry-dialog"
 import { MachineSetupDialog } from "@/components/equipment/machine-setup-dialog"
 import {
@@ -75,6 +79,183 @@ function soonestService(machine: MachineView): MachineView["services"][number] |
   )[0]
 }
 
+const ENTRY_STATUS_LABEL: Readonly<Record<MachineLogEntryView["status"], string>> = {
+  pending: "Waiting",
+  approved: "Approved",
+  rejected: "Rejected",
+}
+
+type EntryStatusFilter = MachineLogEntryView["status"] | "all"
+
+const ENTRY_STATUS_FILTERS: readonly { readonly value: EntryStatusFilter; readonly label: string; readonly pinned?: boolean }[] = [
+  { value: "pending", label: "Waiting" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "all", label: "All", pinned: true },
+]
+
+const recordId = (record: { readonly id: string }): string => record.id
+
+function entrySearchText(entry: MachineLogEntryView): string {
+  return [entry.machineName, MACHINE_LOG_KIND_LABELS[entry.kind], entrySummary(entry), entry.loggedBy, entry.notes].filter(Boolean).join(" ").toLowerCase()
+}
+
+/** The machines sheet's columns (sheet "equipment.machines"). */
+export function machineColumns({ canManage, onSetUp }: {
+  readonly canManage: boolean
+  readonly onSetUp: (machine: MachineView) => void
+}): ColumnDef<MachineView>[] {
+  const columns: ColumnDef<MachineView>[] = [
+    {
+      id: "machine",
+      accessorFn: (machine) => machine.name,
+      header: "Machine",
+      cell: ({ row: { original: machine } }) => (
+        <span className={cn("font-medium", !machine.active && "text-muted-foreground")}>
+          {canManage ? (
+            <button type="button" className="text-left hover:underline" onClick={() => onSetUp(machine)}>{machine.name}</button>
+          ) : machine.name}
+          {!machine.active ? <Badge variant="outline" className="ml-2">Retired</Badge> : null}
+        </span>
+      ),
+    },
+    {
+      id: "sageNumber",
+      accessorFn: (machine) => machine.sageEquipmentNumber,
+      header: "Sage #",
+      cell: ({ row: { original: machine } }) => <span className="font-mono text-xs">{machine.sageEquipmentNumber ?? "—"}</span>,
+    },
+    {
+      id: "rateBook",
+      accessorFn: (machine) => machine.rateBookName,
+      header: "Rate book",
+      cell: ({ row: { original: machine } }) =>
+        machine.rateBookName ? `${machine.rateBookName} · ${formatCents(machine.runningRateCents ?? 0)}/hr` : <span className="text-muted-foreground">Not linked</span>,
+    },
+    {
+      id: "hourMeter",
+      accessorFn: (machine) => machine.hourMeter,
+      header: "Hour meter",
+      cell: ({ row: { original: machine } }) => (
+        <span className="tabular-nums">
+          {machine.hourMeter !== null ? `${formatNumber(machine.hourMeter)} h` : "—"}
+          {machine.hourMeterOn ? <span className="text-xs text-muted-foreground"> · {shortDate(machine.hourMeterOn)}</span> : null}
+        </span>
+      ),
+    },
+    {
+      id: "lastJob",
+      accessorFn: (machine) => machine.locationLabel,
+      header: "Last job",
+      cell: ({ row: { original: machine } }) => machine.locationLabel ?? "—",
+    },
+    {
+      id: "nextService",
+      // Due first, then soon, then fewest hours left; machines with no schedule last.
+      accessorFn: (machine) => {
+        const next = soonestService(machine)
+        if (!next) return null
+        const rank = { due: 0, soon: 1, ok: 2 } as const
+        return rank[next.due.state] * 1_000_000 + Math.min(next.due.hoursLeft ?? 999_999, 999_999)
+      },
+      header: "Next service",
+      cell: ({ row: { original: machine } }) => {
+        const next = soonestService(machine)
+        return (
+          <span className={cn(next?.due.state === "due" && "font-medium text-destructive", next?.due.state === "soon" && "font-medium")}>
+            {next ? serviceDueLabel(next.name, next.due) : <span className="text-muted-foreground">No schedule</span>}
+          </span>
+        )
+      },
+    },
+  ]
+  if (!canManage) return columns
+  return [
+    ...columns,
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Set up</span>,
+      enableSorting: false,
+      size: 40,
+      cell: ({ row: { original: machine } }) => (
+        <Button type="button" variant="ghost" size="icon" aria-label={`Set up ${machine.name}`} onClick={() => onSetUp(machine)}>
+          <IconSettings className="size-4" />
+        </Button>
+      ),
+    },
+  ]
+}
+
+function EntryActions({ entry, pending, onChange, onRemove }: {
+  readonly entry: MachineLogEntryView
+  readonly pending: boolean
+  readonly onChange: (entry: MachineLogEntryView) => void
+  readonly onRemove: (entry: MachineLogEntryView) => void
+}): React.ReactElement | null {
+  if (!entry.canChange) return null
+  return (
+    <div className="flex">
+      <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => onChange(entry)}>
+        <IconPencil className="size-4" />
+      </Button>
+      <Button type="button" variant="ghost" size="icon" aria-label="Remove entry" disabled={pending} onClick={() => onRemove(entry)}>
+        <IconTrash className="size-4" />
+      </Button>
+    </div>
+  )
+}
+
+/** The machine log entries sheet's columns (sheet "equipment.log-entries"). */
+export function machineLogEntryColumns({ pending, onChange, onRemove }: {
+  readonly pending: boolean
+  readonly onChange: (entry: MachineLogEntryView) => void
+  readonly onRemove: (entry: MachineLogEntryView) => void
+}): ColumnDef<MachineLogEntryView>[] {
+  return [
+    {
+      id: "date",
+      accessorFn: (entry) => entry.entryDate,
+      header: "Date",
+      cell: ({ row: { original: entry } }) => <span className="whitespace-nowrap">{shortDate(entry.entryDate)}</span>,
+    },
+    {
+      id: "machine",
+      accessorFn: (entry) => entry.machineName,
+      header: "Machine",
+      cell: ({ row: { original: entry } }) => entry.machineName,
+    },
+    {
+      id: "entry",
+      accessorFn: (entry) => `${MACHINE_LOG_KIND_LABELS[entry.kind]} · ${entrySummary(entry)}`,
+      header: "Entry",
+      cell: ({ row: { original: entry } }) => `${MACHINE_LOG_KIND_LABELS[entry.kind]} · ${entrySummary(entry)}`,
+    },
+    {
+      id: "by",
+      accessorFn: (entry) => entry.loggedBy,
+      header: "By",
+      cell: ({ row: { original: entry } }) => entry.loggedBy,
+    },
+    {
+      id: "status",
+      accessorFn: (entry) => ENTRY_STATUS_FILTERS.findIndex((option) => option.value === entry.status),
+      header: "Status",
+      cell: ({ row: { original: entry } }) => (
+        <Badge variant={entry.status === "approved" ? "secondary" : "outline"} className={cn(entry.status === "rejected" && "text-destructive")}>
+          {ENTRY_STATUS_LABEL[entry.status]}
+        </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      size: 80,
+      cell: ({ row: { original: entry } }) => <EntryActions entry={entry} pending={pending} onChange={onChange} onRemove={onRemove} />,
+    },
+  ]
+}
+
 /** Office view of the machine log: machines, approvals, hours by job, recent entries. */
 export function EquipmentWorkspaceView({ workspace }: { readonly workspace: EquipmentWorkspace }): React.ReactElement {
   const router = useRouter()
@@ -84,6 +265,48 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set())
   const [removing, setRemoving] = React.useState<MachineLogEntryView | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const startFilter = useListSheetStartFilter("equipment.log-entries", "all")
+  const [entryStatus, setEntryStatus] = React.useState<EntryStatusFilter>(
+    () => ENTRY_STATUS_FILTERS.find((option) => option.value === startFilter)?.value ?? "all",
+  )
+  const [entrySearch, setEntrySearch] = React.useState("")
+  const machineCols = React.useMemo(
+    () => machineColumns({ canManage: workspace.canManage, onSetUp: (machine) => setMachineDialog({ machine }) }),
+    [workspace.canManage],
+  )
+  const machinesTable = useRecordTable({
+    data: workspace.machines,
+    columns: machineCols,
+    getRowId: recordId,
+    resetKey: "",
+    sheetId: "equipment.machines",
+  })
+  const entryCounts = React.useMemo(() => {
+    const counts: Record<EntryStatusFilter, number> = { pending: 0, approved: 0, rejected: 0, all: workspace.entries.length }
+    for (const entry of workspace.entries) counts[entry.status] += 1
+    return counts
+  }, [workspace.entries])
+  const visibleEntries = React.useMemo(() => {
+    const query = entrySearch.trim().toLowerCase()
+    return workspace.entries.filter(
+      (entry) => (entryStatus === "all" || entry.status === entryStatus) && (!query || entrySearchText(entry).includes(query)),
+    )
+  }, [workspace.entries, entryStatus, entrySearch])
+  const entryCols = React.useMemo(
+    () => machineLogEntryColumns({
+      pending,
+      onChange: (entry) => setEntryDialog({ key: Date.now(), kind: entry.kind, entry }),
+      onRemove: setRemoving,
+    }),
+    [pending],
+  )
+  const entriesTable = useRecordTable({
+    data: visibleEntries,
+    columns: entryCols,
+    getRowId: recordId,
+    resetKey: `${entryStatus}|${entrySearch}`,
+    sheetId: "equipment.log-entries",
+  })
   const editingMachine = machineDialog?.machine ? (workspace.machines.find((item) => item.id === machineDialog.machine?.id) ?? null) : null
 
   function review(ids: readonly string[], decision: "approved" | "rejected"): void {
@@ -151,53 +374,13 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
             No machines yet.{workspace.canManage ? " Add each machine and link it to its rate book entry." : " Ask the office to add them."}
           </p>
         ) : (
-          <div className="overflow-x-auto border-y">
-            <table className="w-full min-w-[880px] text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr className="border-b">
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Machine</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Sage #</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Rate book</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Hour meter</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Last job</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Next service</th>
-                  {workspace.canManage ? <th className="w-10 py-2"><span className="sr-only">Set up</span></th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {workspace.machines.map((machine) => {
-                  const next = soonestService(machine)
-                  return (
-                    <tr key={machine.id} className={cn("border-b last:border-b-0", !machine.active && "text-muted-foreground")}>
-                      <td className="py-2.5 pr-3 font-medium">
-                        {machine.name}
-                        {!machine.active ? <Badge variant="outline" className="ml-2">Retired</Badge> : null}
-                      </td>
-                      <td className="py-2.5 pr-3 font-mono text-xs">{machine.sageEquipmentNumber ?? "—"}</td>
-                      <td className="py-2.5 pr-3">
-                        {machine.rateBookName ? `${machine.rateBookName} · ${formatCents(machine.runningRateCents ?? 0)}/hr` : <span className="text-muted-foreground">Not linked</span>}
-                      </td>
-                      <td className="py-2.5 pr-3 tabular-nums">
-                        {machine.hourMeter !== null ? `${formatNumber(machine.hourMeter)} h` : "—"}
-                        {machine.hourMeterOn ? <span className="text-xs text-muted-foreground"> · {shortDate(machine.hourMeterOn)}</span> : null}
-                      </td>
-                      <td className="py-2.5 pr-3">{machine.locationLabel ?? "—"}</td>
-                      <td className={cn("py-2.5 pr-3", next?.due.state === "due" && "font-medium text-destructive", next?.due.state === "soon" && "font-medium")}>
-                        {next ? serviceDueLabel(next.name, next.due) : <span className="text-muted-foreground">No schedule</span>}
-                      </td>
-                      {workspace.canManage ? (
-                        <td className="py-2.5">
-                          <Button type="button" variant="ghost" size="icon" aria-label={`Set up ${machine.name}`} onClick={() => setMachineDialog({ machine })}>
-                            <IconSettings className="size-4" />
-                          </Button>
-                        </td>
-                      ) : null}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <RecordTable
+            table={machinesTable}
+            itemLabel="machines"
+            emptyMessage="No machines yet."
+            rowIdPrefix="machine"
+            onRowOpen={workspace.canManage ? (machine) => setMachineDialog({ machine }) : undefined}
+          />
         )}
       </section>
 
@@ -296,48 +479,32 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
         {workspace.entries.length === 0 ? (
           <p className="border-y py-4 text-sm text-muted-foreground">No entries yet.</p>
         ) : (
-          <div className="overflow-x-auto border-y">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr className="border-b">
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Date</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Machine</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Entry</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">By</th>
-                  <th className="py-2 pr-3 font-medium whitespace-nowrap">Status</th>
-                  <th className="w-20 py-2"><span className="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {workspace.entries.map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-b-0">
-                    <td className="py-2 pr-3 whitespace-nowrap">{shortDate(entry.entryDate)}</td>
-                    <td className="py-2 pr-3">{entry.machineName}</td>
-                    <td className="py-2 pr-3">
-                      {MACHINE_LOG_KIND_LABELS[entry.kind]} · {entrySummary(entry)}
-                    </td>
-                    <td className="py-2 pr-3">{entry.loggedBy}</td>
-                    <td className="py-2 pr-3">
-                      <Badge variant={entry.status === "approved" ? "secondary" : "outline"} className={cn(entry.status === "rejected" && "text-destructive")}>
-                        {entry.status === "pending" ? "Waiting" : entry.status === "approved" ? "Approved" : "Rejected"}
-                      </Badge>
-                    </td>
-                    <td className="py-2">
-                      {entry.canChange ? (
-                        <div className="flex">
-                          <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => openEntryDialog(entry.kind, entry)}>
-                            <IconPencil className="size-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" aria-label="Remove entry" disabled={pending} onClick={() => setRemoving(entry)}>
-                            <IconTrash className="size-4" />
-                          </Button>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <StatusFilterBar
+                kind="button"
+                label="Filter machine log entries by status"
+                selected={entryStatus}
+                onSelect={setEntryStatus}
+                options={ENTRY_STATUS_FILTERS.map((option) => ({ ...option, count: entryCounts[option.value] }))}
+              />
+              <RecordSearchInput
+                value={entrySearch}
+                onChange={setEntrySearch}
+                label="Search machine log entries"
+                placeholder="Search machine, entry, job or person…"
+                className="sm:max-w-sm"
+              />
+            </div>
+            <RecordTable
+              table={entriesTable}
+              itemLabel="entries"
+              emptyMessage="No entries match this view."
+              rowIdPrefix="machine-entry"
+              onRowOpen={(entry) => {
+                if (entry.canChange) openEntryDialog(entry.kind, entry)
+              }}
+            />
           </div>
         )}
       </section>
