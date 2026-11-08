@@ -95,7 +95,7 @@ export function EstimateSageSyncPanel({
       {state.proposal ? (
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground">
-            Proposal: {state.proposal.lines.length} lines, {formatCents(state.proposal.totalCents)}
+            Proposal: {state.proposal.lines.length} lines, {formatCents(state.proposal.totalCents)} before sales tax
             {state.proposal.budgetLineCount === null ? "" : `; budget at cost: ${state.proposal.budgetLineCount} lines`}
           </summary>
           <table className="mt-2 w-full border-collapse text-xs">
