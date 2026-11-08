@@ -4,6 +4,7 @@ import {
   buildProjectEmailRecipientOptions,
   isValidRecipientEmail,
   normalizeRecipientEmail,
+  withStaffAlternateEmails,
 } from "@/lib/email/recipient-options"
 
 describe("project email recipient options", () => {
@@ -89,5 +90,21 @@ describe("project email recipient options", () => {
     )
     expect(isValidRecipientEmail("new.person@example.com")).toBe(true)
     expect(isValidRecipientEmail("not-an-email")).toBe(false)
+  })
+})
+
+describe("staff other email addresses", () => {
+  it("offers them right after the person's usual address, which stays first", () => {
+    const options = buildProjectEmailRecipientOptions([
+      { id: "staff-1", contactType: "internal", displayName: "Sam Super", companyName: null, email: "sam@new.example" },
+      { id: "client-1", contactType: "owner", displayName: "Casey", companyName: null, email: "casey@example.com" },
+    ])
+    const withOther = withStaffAlternateEmails(options, [
+      { contactId: "staff-1", displayName: "Sam Super", email: "SAM@old.example" },
+      { contactId: "staff-1", displayName: "Sam Super", email: "sam@new.example" },
+      { contactId: "staff-1", displayName: "Sam Super", email: "not an email" },
+    ])
+    expect(withOther.map((option) => option.email)).toEqual(["casey@example.com", "sam@new.example", "sam@old.example"])
+    expect(withOther[2]).toMatchObject({ category: "internal", displayName: "Sam Super (other address)", recommended: false })
   })
 })

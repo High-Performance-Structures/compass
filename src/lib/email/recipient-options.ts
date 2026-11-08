@@ -109,3 +109,45 @@ export function buildProjectEmailRecipientOptions(
     return first.displayName.localeCompare(second.displayName)
   })
 }
+
+/** A staff member's other address (not for sign-in), offered next to their usual one. */
+export type StaffAlternateEmail = {
+  readonly contactId: string
+  readonly displayName: string
+  readonly email: string
+}
+
+/**
+ * Adds staff members' other addresses as extra choices. The person's usual
+ * address stays where it was (the default); an address already offered is not
+ * repeated.
+ */
+export function withStaffAlternateEmails(
+  options: readonly EmailRecipientOption[],
+  alternates: readonly StaffAlternateEmail[]
+): readonly EmailRecipientOption[] {
+  const seen = new Set(options.map((option) => option.email))
+  const extraByContact = new Map<string, EmailRecipientOption[]>()
+  for (const alternate of alternates) {
+    const email = normalizeRecipientEmail(alternate.email)
+    if (!isValidRecipientEmail(email) || seen.has(email)) continue
+    seen.add(email)
+    const option: EmailRecipientOption = {
+      id: `${alternate.contactId}:other:${email}`,
+      email,
+      displayName: `${alternate.displayName} (other address)`,
+      companyName: null,
+      category: "internal",
+      recommended: false,
+    }
+    extraByContact.set(alternate.contactId, [...(extraByContact.get(alternate.contactId) ?? []), option])
+  }
+  if (extraByContact.size === 0) return options
+  // Right after the person's usual address when it is listed, else at the end.
+  const result = options.flatMap((option) => {
+    const extra = extraByContact.get(option.id) ?? []
+    extraByContact.delete(option.id)
+    return [option, ...extra]
+  })
+  return [...result, ...[...extraByContact.values()].flat()]
+}

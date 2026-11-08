@@ -61,7 +61,7 @@ function open(email = "staff-a@example.test"): CorrespondenceTestDatabase {
       VALUES ('c-owner','project-a','owner','Owner A','client@home.test',NULL);
   `)
   sqlite.exec("CREATE TABLE daily_logs (id TEXT PRIMARY KEY)")
-  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql", "0249_client_meeting_daily_logs.sql", "0251_client_meeting_transcript_text.sql"]) {
+  for (const file of ["0246_project_client_meetings.sql", "0247_client_meeting_transcripts.sql", "0249_client_meeting_daily_logs.sql", "0251_client_meeting_transcript_text.sql", "0308_user_alternate_emails.sql"]) {
     sqlite.exec(
       readFileSync(resolve(process.cwd(), "drizzle", file), "utf8").replaceAll("--> statement-breakpoint", "")
     )
