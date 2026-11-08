@@ -7,12 +7,12 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["invoices", "simple invoices", "Square invoice", "estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-11-06"
+  "lastReviewed": "2026-11-07"
 }
 ---
 
@@ -178,6 +178,17 @@ Record deposits on a project's **Financials** page under **Contract deposits**. 
 To ask the client for a deposit, choose **Request deposit**: enter the amount (it starts from the contract's deposit percentage when there is one), a due date and an optional note to the client. Compass creates a numbered **Deposit request** (for example H-430-1900-DEP-1) with a Print Preview to print, save as a PDF or email, and shows it to the owner under **Deposit requests** in the client portal. To let the owner know, use **Create email** or **Send notification** on the open request (see **Telling the owner** below). When the money arrives, choose **Record payment** on it; the request then shows as paid. **Void** withdraws a request.
 
 A received deposit is applied to pay applications before the client pays the balance. By default Compass applies as much of the unapplied deposit as each new draft pay application can take, starting with the oldest draft. On the pay application, **Less deposit applied** shows the amount; type a different amount and choose **Apply amount**, or **Apply automatically** to go back. Admins can turn automatic application off in Settings under **Contract deposits**.
+
+## Simple Invoices {#simple-invoices}
+Use **Invoices** on Project Financials for material sales and one-off work, such as helping a customer on a pour. Progress billing stays with pay requests. Shop tickets are never invoiced; they back up pay requests.
+
+- **New invoice** starts a blank invoice. **Invoice from estimate** (Nu-Tech and other departments without a contract budget, set in Settings › Workflows › Simple invoices) starts from a sent or accepted estimate with everything not yet invoiced, or empty so you pick lines. Each estimate line shows what earlier invoices billed; going over the estimate asks you to confirm.
+- One line editor for every invoice: lines from the estimate, items from the Nu-Tech price list, or typed lines (description, cost code, quantity, unit price). Lines not on the estimate are marked **Added (not on estimate)** and don't count against it. The **Taxable** box is editable on every line; tax uses the invoice's sales tax district.
+- **Finalize** gives the invoice its number from the Sage export formats (material sales `{project}-S01`, other billing `{project}-INV01`). A final invoice can be reopened until it goes out.
+- **Send to Sage** (office staff with finance access) adds it to Sage as an AR invoice. Sage posts an AR invoice as soon as it saves it, so check the lines and the taxable column in the preview first.
+- **Email invoice** sends the PDF from the invoice mailbox in Settings, with replies coming back to the invoice.
+- **Create Square invoice** (off by default): once the invoice is in Sage, emailing creates and publishes the Square invoice (Square sends nothing) and Compass emails the PDF with the payment link. Material sales on Square use the regular price; the cash/check price applies only off Square. Deposits on H and O jobs can't use Square (a setting). Square payments post their fee to Sage automatically; receipts are still entered in Sage by staff.
+- Drafts can be deleted. An invoice that went to Sage, Square or the customer can only be voided; void it in Sage too.
 
 ## Pay Applications {#pay-applications}
 

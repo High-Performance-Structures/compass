@@ -7,6 +7,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { sageArInvoiceWriteResultSchema, sageAmountCents } from "@/lib/sage/ar-invoice-write"
@@ -27,8 +28,8 @@ function expectedTotalCents(payloadJson: string | null): number | null {
 }
 
 /**
- * The Sage writer reports a pay request's AR invoice: added (or already in
- * Sage), or why not. On success the pay request records the Sage invoice
+ * The Sage writer reports a pay request's (or simple invoice's) AR invoice:
+ * added (or already in Sage), or why not. On success the pay request records the Sage invoice
  * number, as when staff entered it by hand.
  */
 export async function POST(request: Request): Promise<Response> {
@@ -67,7 +68,12 @@ export async function POST(request: Request): Promise<Response> {
     .from(sageArInvoiceExports)
     .where(fence)
     .get()
-  if (!row) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+  if (!row) {
+    // Not a pay request's export: a simple Compass invoice's, or a stale claim.
+    const invoiceResult = await applySimpleInvoiceSageResult(db, organizationId, result)
+    if (!invoiceResult) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+    return Response.json({ success: true, status: invoiceResult.status }, { status: invoiceResult.httpStatus })
+  }
   const now = new Date().toISOString()
 
   if (result.outcome === "failed") {

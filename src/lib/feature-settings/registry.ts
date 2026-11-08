@@ -15,7 +15,7 @@ import { DEFAULT_PRICING_SOURCES, estimatePricingSettingsSchema, type EstimatePr
 import * as contract from "@/lib/feature-settings/contract-settings"
 import { messageDeskSettingsSchema, type MessageDeskSettings } from "@/lib/feature-settings/message-desk-settings"
 import { SAGE_AR_INVOICE_SETTINGS_GROUP, type SageArInvoiceSettings } from "@/lib/feature-settings/sage-ar-invoice-settings"
-import { SAGE_PAY_REQUEST_CHECK_SETTINGS_GROUP, type SagePayRequestCheckSettings } from "@/lib/feature-settings/sage-pay-request-check-settings"
+import { SAGE_PAY_REQUEST_CHECK_SETTINGS_GROUP, type SagePayRequestCheckSettings } from "@/lib/feature-settings/sage-pay-request-check-settings"; import { SIMPLE_INVOICE_SETTINGS_GROUP, type SimpleInvoiceSettings } from "@/lib/feature-settings/simple-invoice-settings"
 import { SAGE_CHANGE_ORDER_SETTINGS_GROUP, SAGE_ESTIMATE_SETTINGS_GROUP, type SageChangeOrderSettings, type SageEstimateSettings } from "@/lib/feature-settings/sage-change-order-settings"
 import { DEFAULT_BRACING_RENTAL_SETTINGS, DEFAULT_NUTECH_ORDER_BOARD_SETTINGS, bracingRentalSettingsSchema, nuTechOrderBoardSettingsSchema, type BracingRentalSettings, type NuTechOrderBoardSettings } from "@/lib/nutech/settings"
 import { DEFAULT_WEATHER_ALERT_SETTINGS, weatherAlertSettingsSchema, type WeatherAlertSettings } from "@/lib/weather/settings"
@@ -567,7 +567,7 @@ type FeatureSettingsTypes = {
   readonly "sage-change-orders": SageChangeOrderSettings
   readonly "sage-estimates": SageEstimateSettings
   readonly "sage-ar-invoices": SageArInvoiceSettings
-  readonly "sage-pay-request-check": SagePayRequestCheckSettings
+  readonly "sage-pay-request-check": SagePayRequestCheckSettings; readonly "simple-invoices": SimpleInvoiceSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "field-cost-codes": FieldCostCodeSettings
   readonly "daily-logs": DailyLogSettings
@@ -728,7 +728,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   "sage-change-orders": SAGE_CHANGE_ORDER_SETTINGS_GROUP,
   "sage-estimates": SAGE_ESTIMATE_SETTINGS_GROUP,
   "sage-ar-invoices": SAGE_AR_INVOICE_SETTINGS_GROUP,
-  "sage-pay-request-check": SAGE_PAY_REQUEST_CHECK_SETTINGS_GROUP,
+  "sage-pay-request-check": SAGE_PAY_REQUEST_CHECK_SETTINGS_GROUP, "simple-invoices": SIMPLE_INVOICE_SETTINGS_GROUP,
   "change-order-acceptance": contract.CHANGE_ORDER_ACCEPTANCE_SETTINGS_GROUP,
   "contract-packets": {
     label: "Contract packets",

@@ -223,7 +223,7 @@ async function projectAssignmentRecipients(
   return Array.from(recipients.values())
 }
 
-async function projectInternalRecipients(
+export async function projectInternalRecipients(
   db: ReturnType<typeof getDb>,
   organizationId: string,
   projectId: string,

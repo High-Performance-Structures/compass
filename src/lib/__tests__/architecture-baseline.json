@@ -249,6 +249,9 @@
     "internalDutyEntries": [
       "src/lib/domain/duties/store.ts"
     ],
+    "invoiceLines": [
+      "src/lib/domain/financials/store.ts"
+    ],
     "invoicePaymentAllocations": [
       "src/lib/domain/financials/store.ts"
     ],
@@ -715,6 +718,9 @@
     ],
     "sageEstimateExports": [
       "src/lib/domain/sage-bridge/estimate-store.ts"
+    ],
+    "sageInvoiceArExports": [
+      "src/lib/domain/sage-bridge/ar-invoice-store.ts"
     ],
     "sageJobProposalReads": [
       "src/lib/domain/sage-bridge/estimate-store.ts"

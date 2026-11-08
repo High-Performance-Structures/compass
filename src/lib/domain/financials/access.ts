@@ -6,6 +6,7 @@ import { projects } from "@/db/schema"
 import { actionFailure, type ActionFailure } from "@/lib/action-result"
 import { isDemoUser } from "@/lib/demo"
 import { can, type Action } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { orgContext, type Db, type OrgContext } from "@/lib/server/action-context"
 
 /**
@@ -47,4 +48,19 @@ export async function isOrganizationProject(db: Db, organizationId: string, proj
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
     .limit(1)
   return Boolean(project)
+}
+
+/**
+ * Simple invoices are made by office staff with finance access, on a job of
+ * their own company. Returns the shared context for the project.
+ */
+export async function simpleInvoiceContext(projectId: string, action: Action): Promise<FinanceContextResult> {
+  const context = await financeContext(action)
+  if (!context.success) return context
+  const { db, user, organizationId } = context.data
+  if (user.organizationType !== "internal" || !isInternalStaffRole(user.role)) {
+    return actionFailure("Invoices are made by office staff.")
+  }
+  if (!(await isOrganizationProject(db, organizationId, projectId))) return actionFailure(PROJECT_NOT_FOUND)
+  return context
 }

@@ -10,6 +10,15 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 import { projects, customers, vendors, organizations, projectBudgetApplications, users } from "./schema"
+import { projectEstimateLines, projectEstimates, sageTaxEntities } from "./schema-estimates"
+import { nuTechProducts } from "./schema-nutech"
+import {
+  INVOICE_CUSTOMER_TYPES,
+  INVOICE_LINE_SOURCES,
+  INVOICE_PRICE_MODES,
+  INVOICE_SQUARE_STATES,
+  SIMPLE_INVOICE_KINDS,
+} from "../lib/domain/financials/statuses"
 
 // oauth token storage (encrypted at rest)
 export const netsuiteAuth = sqliteTable("netsuite_auth", {
@@ -84,10 +93,56 @@ export const invoices = sqliteTable("invoices", {
   // "preconstruction" billing (design, plans, engineering) sits beside the
   // construction contract and never blocks replacing its estimate.
   billingScope: text("billing_scope").notNull().default("construction"),
+  /*
+   * Simple invoices built in Compass (drizzle/0306): Nu-Tech sales and
+   * one-off work. Null kind = an invoice from before (legacy, Sage or
+   * Buildertrend), which keeps its JSON line_items; simple invoices keep
+   * their lines in invoice_lines.
+   */
+  invoiceKind: text("invoice_kind", { enum: SIMPLE_INVOICE_KINDS }),
+  /** The n in the kind's Sage invoice number format, per project and kind. */
+  sequenceNumber: integer("sequence_number"),
+  /** The estimate it bills (in part or in full), when it was started from one. */
+  estimateId: text("estimate_id").references(() => projectEstimates.id, { onDelete: "set null" }),
+  /** Sales tax district for its taxable lines (Sage adds the tax at this rate). */
+  taxEntityId: text("tax_entity_id").references(() => sageTaxEntities.id, { onDelete: "set null" }),
+  /** Short description for Sage's invoice header (50 characters). */
+  title: text("title"),
+  /** A deposit invoice; Square can be blocked for deposits by department (Settings). */
+  isDeposit: integer("is_deposit", { mode: "boolean" }).notNull().default(false),
+  /** Price list column for catalog items when Square is off; Square always uses the regular price. */
+  priceMode: text("price_mode", { enum: INVOICE_PRICE_MODES }).notNull().default("standard"),
+  priceCustomerType: text("price_customer_type", { enum: INVOICE_CUSTOMER_TYPES }).notNull().default("returning"),
+  /** "Create Square invoice": Compass creates and publishes it in Square, then emails the link. */
+  squareRequested: integer("square_requested", { mode: "boolean" }).notNull().default(false),
+  squareState: text("square_state", { enum: INVOICE_SQUARE_STATES }).notNull().default("off"),
+  squareInvoiceId: text("square_invoice_id"),
+  squareOrderId: text("square_order_id"),
+  squareCustomerId: text("square_customer_id"),
+  /** Square's hosted payment page for the published invoice. */
+  squarePublicUrl: text("square_public_url"),
+  squareError: text("square_error"),
+  finalizedAt: text("finalized_at"),
+  finalizedByUserId: text("finalized_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  emailedAt: text("emailed_at"),
+  emailedByUserId: text("emailed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  voidedAt: text("voided_at"),
+  voidedByUserId: text("voided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  voidReason: text("void_reason"),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
   uniqueIndex("invoices_scope_record_unique").on(table.organizationId, table.projectId, table.id),
+  uniqueIndex("invoices_project_kind_sequence_unique")
+    .on(table.projectId, table.invoiceKind, table.sequenceNumber)
+    .where(sql`${table.invoiceKind} IS NOT NULL AND ${table.sequenceNumber} IS NOT NULL`),
+  index("invoices_estimate_id_idx").on(table.estimateId),
+  index("invoices_tax_entity_id_idx").on(table.taxEntityId),
+  index("invoices_finalized_by_user_id_idx").on(table.finalizedByUserId),
+  index("invoices_emailed_by_user_id_idx").on(table.emailedByUserId),
+  index("invoices_voided_by_user_id_idx").on(table.voidedByUserId),
+  index("invoices_created_by_user_id_idx").on(table.createdByUserId),
   uniqueIndex("invoices_source_identity_unique")
     .on(table.organizationId, table.sourceSystem, table.sourceExternalId)
     .where(sql`${table.organizationId} IS NOT NULL AND ${table.sourceExternalId} IS NOT NULL AND trim(${table.sourceExternalId}) <> ''`),
@@ -95,6 +150,31 @@ export const invoices = sqliteTable("invoices", {
   check("invoices_source_scope_check", sql`${table.sourceExternalId} IS NULL OR (trim(${table.sourceExternalId}) <> '' AND ${table.organizationId} IS NOT NULL AND ${table.projectId} IS NOT NULL)`),
     index("invoices_project_id_idx").on(table.projectId),
     index("invoices_customer_id_idx").on(table.customerId),
+])
+
+/** A simple invoice's lines (drizzle/0306); a draft's lines are replaced as a whole when it is saved. */
+export const invoiceLines = sqliteTable("invoice_lines", {
+  id: text("id").primaryKey(),
+  invoiceId: text("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull(),
+  source: text("source", { enum: INVOICE_LINE_SOURCES }).notNull(),
+  /** The estimate line it bills; counts toward that line's invoiced-to-date. */
+  estimateLineId: text("estimate_line_id").references(() => projectEstimateLines.id, { onDelete: "set null" }),
+  /** The price list product it was picked from (or matched to), for regular-price repricing. */
+  nutechProductId: text("nutech_product_id").references(() => nuTechProducts.id, { onDelete: "set null" }),
+  costCode: text("cost_code").notNull(),
+  description: text("description").notNull(),
+  quantity: real("quantity").notNull(),
+  unit: text("unit").notNull().default("EA"),
+  unitPriceCents: integer("unit_price_cents").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  taxable: integer("taxable", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("invoice_lines_invoice_idx").on(table.invoiceId, table.sortOrder),
+  index("invoice_lines_estimate_line_id_idx").on(table.estimateLineId),
+  index("invoice_lines_nutech_product_id_idx").on(table.nutechProductId),
 ])
 
 export const vendorBills = sqliteTable("vendor_bills", {

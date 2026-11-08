@@ -3,7 +3,7 @@
  * reply address, so the reply comes back onto its record (or job) instead of
  * landing in one person's inbox. See docs/development/email-workflows.md.
  */
-const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs"] as const
+const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs", "invoice"] as const
 
 export type TrackedRecordKind = (typeof TRACKED_RECORD_KINDS)[number]
 
@@ -17,6 +17,7 @@ export function trackedRecordLabel(kind: TrackedRecordKind): string {
   if (kind === "job_email") return "Job email"
   if (kind === "nutech_email") return "Nu-Tech email"
   if (kind === "trade_docs") return "Trade docs request"
+  if (kind === "invoice") return "Invoice"
   return "Purchase order"
 }
 
@@ -37,6 +38,7 @@ export function trackedRecordReplyEventType(kind: TrackedRecordKind): string {
   if (kind === "job_email") return "job_email.reply"
   if (kind === "nutech_email") return "nutech_email.reply"
   if (kind === "trade_docs") return "trade_docs.email_reply"
+  if (kind === "invoice") return "invoice.email_reply"
   return "po.email_reply"
 }
 
@@ -57,6 +59,7 @@ export function trackedRecordHref(input: {
   if (input.kind === "rfq") return `${project}/rfqs#rfq-${record}`
   if (input.kind === "job_email") return `${project}/information`
   if (input.kind === "nutech_email") return `${project}/nutech`
+  if (input.kind === "invoice") return `${project}/financials/invoices/${record}`
   return `${project}/purchase-orders?item=${record}#purchase-order-${record}`
 }
 

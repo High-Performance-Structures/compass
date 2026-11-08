@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNotNull, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
   creditMemos,
+  invoiceLines,
   invoices,
   payments,
   vendorBills,
@@ -22,6 +23,16 @@ import {
   IMPORTED_DRAW_UNBILLED_STATUSES,
 } from "@/lib/domain/financials/rules"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import {
+  INVOICE_CUSTOMER_TYPES,
+  INVOICE_LINE_SOURCES,
+  INVOICE_PRICE_MODES,
+  INVOICE_SQUARE_STATES,
+  SIMPLE_INVOICE_KINDS,
+  SIMPLE_INVOICE_STATUSES,
+} from "@/lib/domain/financials/statuses"
+import { assertListFields } from "@/lib/shared/statuses"
+import { chunkD1Rows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 /**
@@ -41,6 +52,57 @@ export async function updateInvoiceRow(db: Db, id: string, values: Partial<NewIn
 
 export async function deleteInvoiceRow(db: Db, id: string): Promise<void> {
   await db.delete(invoices).where(eq(invoices.id, id))
+}
+
+// ---------------------------------------------------------------------------
+// Simple invoices (Compass-built material sales and one-off work) and their
+// lines. Statements stay unexecuted so callers keep one atomic `db.batch`.
+// ---------------------------------------------------------------------------
+
+const SIMPLE_INVOICE_LISTS = {
+  invoiceKind: SIMPLE_INVOICE_KINDS,
+  status: SIMPLE_INVOICE_STATUSES,
+  priceMode: INVOICE_PRICE_MODES,
+  priceCustomerType: INVOICE_CUSTOMER_TYPES,
+  squareState: INVOICE_SQUARE_STATES,
+}
+const INVOICE_LINE_LISTS = { source: INVOICE_LINE_SOURCES }
+
+type NewInvoiceLine = typeof invoiceLines.$inferInsert
+
+export function simpleInvoiceInsertStatement(db: Db, values: NewInvoice) {
+  assertListFields("invoices", values, SIMPLE_INVOICE_LISTS)
+  return db.insert(invoices).values(values)
+}
+
+/** Fenced by the caller's `where` (id, organization and the status it expects). */
+export function simpleInvoiceUpdateStatement(db: Db, where: SQL | undefined, patch: Partial<NewInvoice>) {
+  assertListFields("invoices", patch, SIMPLE_INVOICE_LISTS)
+  return db.update(invoices).set(patch).where(where)
+}
+
+/** A draft's lines are replaced as a whole on save. */
+export function replaceInvoiceLinesStatements(db: Db, invoiceId: string, rows: readonly NewInvoiceLine[]): readonly BatchItem<"sqlite">[] {
+  assertListFields("invoice_lines", rows, INVOICE_LINE_LISTS)
+  const statements: BatchItem<"sqlite">[] = [db.delete(invoiceLines).where(eq(invoiceLines.invoiceId, invoiceId))]
+  for (const chunk of chunkD1Rows(rows)) statements.push(db.insert(invoiceLines).values(chunk))
+  return statements
+}
+
+/** Deletes a draft simple invoice (its lines cascade); returns the deleted ids. */
+export function deleteDraftSimpleInvoiceStatement(db: Db, input: { readonly invoiceId: string; readonly organizationId: string; readonly projectId: string }) {
+  return db
+    .delete(invoices)
+    .where(
+      and(
+        eq(invoices.id, input.invoiceId),
+        eq(invoices.organizationId, input.organizationId),
+        eq(invoices.projectId, input.projectId),
+        eq(invoices.status, "draft"),
+        isNotNull(invoices.invoiceKind)
+      )
+    )
+    .returning({ id: invoices.id })
 }
 
 export async function insertVendorBill(db: Db, values: NewVendorBill): Promise<void> {
