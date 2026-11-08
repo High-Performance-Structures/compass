@@ -92,8 +92,7 @@ namespace CompassSageClientProjectWriter
         private static void RunChangeOrdersAfterWriterRun()
         {
             if (!ChangeOrderSwitch("SAGE_CHANGE_ORDER_WRITES_ENABLED")) return;
-            try { RunChangeOrders(); }
-            catch (Exception error) { WriteLog("ERROR", "Sage change order run failed: " + error.Message); }
+            RunStageInChildProcess("--change-order-run", "Sage change order");
         }
 
         private static int RunChangeOrdersOnly()
@@ -108,7 +107,7 @@ namespace CompassSageClientProjectWriter
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", "Sage change order run failed: " + error.Message);
+                WriteLog("FATAL", "Sage change order run failed: " + error.ToString());
                 return 1;
             }
         }
