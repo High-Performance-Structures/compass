@@ -24,7 +24,7 @@ const now = "2026-10-31T08:00:00.000Z"
 const uuid = /^[0-9a-f-]{36}$/
 
 describe("contacts store: Sage bridge writes", () => {
-  it("writes the Sage client identity returned for a customer", () => {
+  it("writes the Sage client identity returned for a customer unless another client holds it", () => {
     const statement = sageClientWriteResultCustomerStatement(d1, {
       customerId: "c1", sageClientId: "sid", sageClientNumber: "101", sageClientStatusId: 2, now,
     })
@@ -32,8 +32,11 @@ describe("contacts store: Sage bridge writes", () => {
       `UPDATE customers
          SET sage_client_id = ?, sage_client_number = ?,
              sage_client_status_id = ?, updated_at = ?
-         WHERE id = ?`,
-      ["sid", "101", 2, now, "c1"],
+         WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM customers other WHERE other.id <> customers.id
+           AND other.organization_id IS customers.organization_id
+           AND (upper(other.sage_client_id) = upper(?) OR other.sage_client_number = ?))`,
+      ["sid", "101", 2, now, "c1", "sid", "101"],
     ))
   })
 

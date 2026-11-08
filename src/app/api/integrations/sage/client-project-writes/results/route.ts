@@ -1,7 +1,9 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
+import { customers } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
 import { sageClientWriteResultCustomerStatement } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
@@ -18,6 +20,7 @@ import {
   sageClientProjectWriteResultSchema,
   sageClientProjectWritesEnabled,
 } from "@/lib/sage/client-project-write"
+import { sageExportActor } from "@/lib/sage/estimate-sync"
 import { recordSageJobTaxDistrictResult } from "@/lib/sage/job-tax-district"
 
 function unauthorized(error: string): Response {
@@ -112,6 +115,7 @@ export async function POST(request: Request): Promise<Response> {
       now,
     }),
   ]
+  const customerStatementIndex = operation.customerId ? statements.length : null
   if (operation.customerId) {
     statements.push(
       sageClientWriteResultCustomerStatement(env.DB, {
@@ -135,9 +139,51 @@ export async function POST(request: Request): Promise<Response> {
       })
     )
   }
-  await env.DB.batch(statements)
+  const results = await env.DB.batch(statements)
+  if (customerStatementIndex !== null && results[customerStatementIndex]?.meta.changes === 0) {
+    await recordClientOnDuplicateCustomer(db, operation, result.client, now)
+  }
   await recordTaxDistrictResult(db, operation, null, now)
   return Response.json({ success: true, status: "succeeded" })
+}
+
+/**
+ * The job was linked, but its Compass client wasn't: another Compass client
+ * already holds this Sage client, so the two are duplicates. Says so in the
+ * job's Activity (never fails the result).
+ */
+async function recordClientOnDuplicateCustomer(
+  db: ReturnType<typeof getDb>,
+  operation: typeof sageClientProjectWriteOperations.$inferSelect,
+  client: { readonly id: string; readonly number: string },
+  now: string
+): Promise<void> {
+  if (!operation.customerId || !operation.projectId) return
+  try {
+    const holders = await db.select({ id: customers.id, name: customers.name }).from(customers).where(and(
+      eq(customers.organizationId, operation.organizationId),
+      or(eq(customers.sageClientNumber, client.number), sql`upper(${customers.sageClientId}) = upper(${client.id})`),
+    ))
+    const holder = holders.find((row) => row.id !== operation.customerId)
+    const actor = await sageExportActor(db, operation.requestedByUserId)
+    if (!holder || !actor) return
+    const own = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, operation.customerId)).get()
+    await recordActivityEvent({
+      db,
+      organizationId: operation.organizationId,
+      projectId: operation.projectId,
+      actor,
+      category: "financial",
+      action: "sage_client_on_duplicate_customer",
+      entityType: "sage_client_project_write",
+      entityId: operation.id,
+      summary: `Linked to Sage, but Sage client #${client.number} already belongs to ${holder.name} in Compass, so ${own?.name ?? "this job's client"} wasn't linked to it. Merge the two Compass clients.`,
+      metadata: { sageClientNumber: client.number, customerId: operation.customerId, holderCustomerId: holder.id },
+      createdAt: now,
+    })
+  } catch (failure) {
+    console.error("Sage duplicate-client activity could not be recorded", failure)
+  }
 }
 
 async function recordTaxDistrictResult(

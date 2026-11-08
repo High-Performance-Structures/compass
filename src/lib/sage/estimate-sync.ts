@@ -25,6 +25,7 @@ import { indexSageCatalog, mapToSageCostCode } from "@/lib/financials/sage-expor
 import { formatCents } from "@/lib/format"
 import { sageClientProjectWritesEnabled } from "@/lib/sage/client-project-write"
 import { sageEstimateWritePayload, sageEstimateWritesEnabled, type SageEstimateWritePayload } from "@/lib/sage/estimate-write"
+import { failedJobWriteClient } from "@/lib/sage/job-write-client"
 import type { Db } from "@/lib/server/action-context"
 
 /*
@@ -187,7 +188,12 @@ async function ensureSageJob(
   const { organizationId, projectId, sageJobNumber } = input
   if (sageJobNumber) return { kind: "linked" }
   const write = await db
-    .select({ id: sageClientProjectWriteOperations.id, status: sageClientProjectWriteOperations.status, payloadJson: sageClientProjectWriteOperations.payloadJson })
+    .select({
+      id: sageClientProjectWriteOperations.id,
+      customerId: sageClientProjectWriteOperations.customerId,
+      status: sageClientProjectWriteOperations.status,
+      payloadJson: sageClientProjectWriteOperations.payloadJson,
+    })
     .from(sageClientProjectWriteOperations)
     .where(
       and(
@@ -199,15 +205,20 @@ async function ensureSageJob(
     .get()
   if (write && (write.status === "queued" || write.status === "running")) return { kind: "waiting" }
   if (write?.status === "failed" && input.jobWritesEnabled) {
-    // The job write Compass already prepared goes round again (the Overview's Send to Sage).
-    const now = new Date().toISOString()
-    const result = await requeueFailedSageClientProjectWriteStatement(input.database, {
-      operationId: write.id,
-      organizationId,
-      payloadJson: write.payloadJson,
-      now,
-    }).run()
-    if (result.meta.changes === 1) return { kind: "waiting" }
+    // The job write Compass already prepared goes round again (the Overview's Send to Sage),
+    // for the kept client when its own client was merged away.
+    const resolved = await failedJobWriteClient(db, { organizationId, customerId: write.customerId, payloadJson: write.payloadJson })
+    if (resolved.ok) {
+      const now = new Date().toISOString()
+      const result = await requeueFailedSageClientProjectWriteStatement(input.database, {
+        operationId: write.id,
+        organizationId,
+        customerId: resolved.customer?.id ?? write.customerId,
+        payloadJson: resolved.payloadJson,
+        now,
+      }).run()
+      if (result.meta.changes === 1) return { kind: "waiting" }
+    }
   }
   return { kind: "missing", reason: SAGE_JOB_MISSING_ESTIMATE_REASON }
 }

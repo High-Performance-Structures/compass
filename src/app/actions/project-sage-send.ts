@@ -40,6 +40,7 @@ import {
   type SageJobTypeId,
 } from "@/lib/sage/client-project-write"
 import { estimateExportsFollowJobStatements } from "@/lib/sage/estimate-sync"
+import { failedJobWriteClient } from "@/lib/sage/job-write-client"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 import { projectContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -158,11 +159,10 @@ export async function getProjectSageStatus(projectId: string): Promise<ProjectSa
   const create = !project.sageJobNumber?.trim() && !write
     ? await sageJobCreatePlan(db, organizationId, project)
     : null
-  const customer = write?.customerId
-    ? await db.select({ name: customers.name }).from(customers)
-      .where(and(eq(customers.id, write.customerId), eq(customers.organizationId, organizationId))).get()
+  const resolved = write
+    ? await failedJobWriteClient(db, { organizationId, customerId: write.customerId, payloadJson: write.payloadJson })
     : null
-  const clientName = customer?.name ?? null
+  const clientName = resolved?.ok ? resolved.customer?.name ?? null : null
   const clientChoices = write && clientName && isSageClientNameMatchError(write.errorMessage)
     ? await sageClientChoices(db, organizationId, clientName)
     : []
@@ -320,12 +320,10 @@ export async function sendProjectToSage(
   if (write.status === "queued" || write.status === "running") return { success: true }
   if (write.status !== "failed") return actionFailure("This job has nothing waiting to send to Sage.")
 
-  const customer = write.customerId
-    ? await db.select({
-      id: customers.id, name: customers.name,
-      sageClientId: customers.sageClientId, sageClientNumber: customers.sageClientNumber,
-    }).from(customers).where(and(eq(customers.id, write.customerId), eq(customers.organizationId, organizationId))).get()
-    : null
+  // A write left on a client that was merged away is resent for the kept client.
+  const resolved = await failedJobWriteClient(db, { organizationId, customerId: write.customerId, payloadJson: write.payloadJson })
+  if (!resolved.ok) return actionFailure(resolved.error)
+  const { customer, movedFromCustomerId } = resolved
 
   let link: { readonly sageClientId: string; readonly sageClientNumber: string } | null = null
   let linkCustomer = false
@@ -348,12 +346,14 @@ export async function sendProjectToSage(
     link = { sageClientId: customer.sageClientId, sageClientNumber: customer.sageClientNumber }
   }
 
-  const payloadJson = payloadWithSageClient(write.payloadJson, link)
+  const payloadJson = payloadWithSageClient(resolved.payloadJson, link)
   if (!payloadJson) return actionFailure("This job's saved Sage details can't be read. Ask a developer to check it.")
 
   const now = new Date().toISOString()
   const statements = [
-    requeueFailedSageClientProjectWriteStatement(env.DB, { operationId: write.id, organizationId, payloadJson, now }),
+    requeueFailedSageClientProjectWriteStatement(env.DB, {
+      operationId: write.id, organizationId, customerId: customer?.id ?? write.customerId, payloadJson, now,
+    }),
   ]
   if (linkCustomer && customer && link) {
     // Links only while this send's requeue above took effect, in the same batch.
@@ -377,7 +377,10 @@ export async function sendProjectToSage(
     entityType: "sage_client_project_write",
     entityId: write.id,
     beforeJson: JSON.stringify({ status: write.status, errorMessage: write.errorMessage }),
-    afterJson: JSON.stringify({ status: "queued", sageClientNumber: link?.sageClientNumber ?? null, linkedClient: linkCustomer }),
+    afterJson: JSON.stringify({
+      status: "queued", sageClientNumber: link?.sageClientNumber ?? null, linkedClient: linkCustomer,
+      ...(movedFromCustomerId ? { movedFromCustomerId, customerId: customer?.id ?? null } : {}),
+    }),
     createdAt: now,
   })
   revalidatePath(`/dashboard/projects/${projectId}`)

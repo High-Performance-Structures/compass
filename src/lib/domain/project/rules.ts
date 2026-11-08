@@ -193,7 +193,7 @@ export function customerNeedsSageStatus(customer: {
   return customer.sageClientStatusId === null && !customer.sageClientId && !customer.sageClientNumber
 }
 
-type SageHandoffClient = {
+export type SageHandoffClient = {
   readonly compassCustomerId: string
   readonly sageClientId: string | null
   readonly sageClientNumber: string | null
@@ -246,6 +246,27 @@ export type SageClientJobPayload = {
   }
 }
 
+/** The `client` part of a client/job write payload. */
+export function sageClientPayloadFields(client: SageHandoffClient): SageClientJobPayload["client"] {
+  return {
+    compassCustomerId: client.compassCustomerId,
+    sageClientId: client.sageClientId,
+    sageClientNumber: client.sageClientNumber,
+    name: client.name,
+    shortName: sageShortName(client.shortNameSource),
+    company: client.company,
+    email: client.email,
+    phone: client.phone,
+    address: client.address,
+    billingAddress: client.billingAddress,
+    notes: client.notes,
+    status: {
+      expectedNumber: client.statusId,
+      name: sageClientStatusName(client.statusId),
+    },
+  }
+}
+
 /**
  * The queued `ensure_client_and_job` payload for the Sage client/job writer.
  * Key order is part of the stored JSON, so it matches the payload built
@@ -259,23 +280,7 @@ export function sageClientJobPayload(
   return {
     operationType: "ensure_client_and_job" as const,
     company: "High Performance Structures Inc" as const,
-    client: {
-      compassCustomerId: client.compassCustomerId,
-      sageClientId: client.sageClientId,
-      sageClientNumber: client.sageClientNumber,
-      name: client.name,
-      shortName: sageShortName(client.shortNameSource),
-      company: client.company,
-      email: client.email,
-      phone: client.phone,
-      address: client.address,
-      billingAddress: client.billingAddress,
-      notes: client.notes,
-      status: {
-        expectedNumber: client.statusId,
-        name: sageClientStatusName(client.statusId),
-      },
-    },
+    client: sageClientPayloadFields(client),
     job: {
       compassProjectId: job.compassProjectId,
       compassProjectNumber: job.compassProjectNumber,

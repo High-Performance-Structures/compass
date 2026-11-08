@@ -105,18 +105,19 @@ export function updateSageClientProjectWriteOperations(
 
 /**
  * Puts a failed client/job write back in the queue with `payloadJson`, so the
- * Windows writer tries again. Fenced on the row still being failed.
+ * Windows writer tries again, under `customerId` (the client it now belongs to).
+ * Fenced on the row still being failed.
  */
 export function requeueFailedSageClientProjectWriteStatement(database: D1Database, input: {
   readonly operationId: string; readonly organizationId: string
-  readonly payloadJson: string; readonly now: string
+  readonly customerId: string | null; readonly payloadJson: string; readonly now: string
 }): D1PreparedStatement {
   return database.prepare(
     `UPDATE sage_client_project_write_operations
-       SET status = 'queued', payload_json = ?, claim_token = NULL, claimed_at = NULL,
+       SET status = 'queued', customer_id = ?, payload_json = ?, claim_token = NULL, claimed_at = NULL,
            error_message = NULL, completed_at = NULL, updated_at = ?
        WHERE id = ? AND organization_id = ? AND status = 'failed'`
-  ).bind(input.payloadJson, input.now, input.operationId, input.organizationId)
+  ).bind(input.customerId, input.payloadJson, input.now, input.operationId, input.organizationId)
 }
 
 /** The Sage client (and job) the Windows writer created or matched. */

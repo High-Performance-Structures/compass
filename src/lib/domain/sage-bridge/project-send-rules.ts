@@ -1,3 +1,4 @@
+import type { SageClientJobPayload } from "@/lib/domain/project/rules"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 import { isRecord } from "@/lib/shared/guards"
 
@@ -242,4 +243,15 @@ export function payloadWithSageClient(
     ...payload,
     client: { ...client, sageClientId: link.sageClientId, sageClientNumber: link.sageClientNumber },
   })
+}
+
+/**
+ * The saved write payload with its `client` replaced, for a write moved to the
+ * client its old client was merged into. The job part stays as queued.
+ */
+export function payloadWithClient(payloadJson: string, client: SageClientJobPayload["client"]): string | null {
+  let payload: unknown
+  try { payload = JSON.parse(payloadJson) } catch { return null }
+  if (!isRecord(payload) || payload.operationType !== "ensure_client_and_job" || !isRecord(payload.job)) return null
+  return JSON.stringify({ ...payload, client })
 }
