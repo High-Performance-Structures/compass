@@ -86,8 +86,7 @@ namespace CompassSageClientProjectWriter
         private static void RunEstimatesAfterWriterRun()
         {
             if (!EstimateSwitch("SAGE_ESTIMATE_WRITES_ENABLED")) return;
-            try { RunEstimates(); }
-            catch (Exception error) { WriteLog("ERROR", "Sage estimate run failed: " + error.ToString()); }
+            RunStageInChildProcess("--estimate-run", "Sage estimate");
         }
 
         private static int RunEstimatesOnly()

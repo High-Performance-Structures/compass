@@ -154,6 +154,33 @@ namespace CompassSageClientProjectWriter
             public void Dispose() { ResetApi(false); }
         }
 
+        // A second Sage API session in the same process fails inside
+        // IMBXML.EnableRequests (NullReferenceException), and PollOnce has always
+        // opened one already. Every later stage that opens its own session runs
+        // as a child process of this exe, like Square fees and vendor certificates.
+        private static void RunStageInChildProcess(string flag, string label)
+        {
+            try
+            {
+                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(Assembly.GetExecutingAssembly().Location, flag)
+                {
+                    UseShellExecute = false, // inherits this process's environment, including the write switches
+                    CreateNoWindow = true,
+                };
+                using (System.Diagnostics.Process child = System.Diagnostics.Process.Start(start))
+                {
+                    if (child == null) throw new InvalidOperationException("Could not start the " + label + " run.");
+                    if (!child.WaitForExit(5 * 60 * 1000))
+                    {
+                        WriteLog("ERROR", label + " run is still going after 5 minutes; leaving it to finish.");
+                        return;
+                    }
+                    if (child.ExitCode != 0) WriteLog("ERROR", label + " run exited with code " + child.ExitCode + ".");
+                }
+            }
+            catch (Exception error) { WriteLog("ERROR", label + " run failed to start: " + error.ToString()); }
+        }
+
         private static void ResetApi(bool suppressErrors)
         {
             try { if (ApiInitialized && ApiInstance != null) Invoke("DeIntializeAPI", new object[0]); }

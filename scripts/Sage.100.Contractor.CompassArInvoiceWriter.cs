@@ -100,8 +100,7 @@ namespace CompassSageClientProjectWriter
         private static void RunArInvoicesAfterWriterRun()
         {
             if (!ArInvoiceSwitch("SAGE_AR_INVOICE_WRITES_ENABLED")) return;
-            try { RunArInvoices(); }
-            catch (Exception error) { WriteLog("ERROR", "Sage AR invoice run failed: " + error.Message); }
+            RunStageInChildProcess("--ar-invoice-run", "Sage AR invoice");
         }
 
         private static int RunArInvoicesOnly()
@@ -116,7 +115,7 @@ namespace CompassSageClientProjectWriter
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", "Sage AR invoice run failed: " + error.Message);
+                WriteLog("FATAL", "Sage AR invoice run failed: " + error.ToString());
                 return 1;
             }
         }

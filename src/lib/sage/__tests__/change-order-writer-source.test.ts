@@ -85,6 +85,19 @@ describe("Sage estimate writer source boundary", () => {
     expect(estimate).toContain('"Sage estimate run failed: " + error.ToString()')
   })
 
+  it("runs change orders, estimates and AR invoices in their own process (one Sage API session per process)", () => {
+    expect(writer).toContain("private static void RunStageInChildProcess(string flag, string label)")
+    for (const [source, flag, direct] of [
+      [script("Sage.100.Contractor.CompassChangeOrderWriter.cs"), "--change-order-run", "RunChangeOrders();"],
+      [estimate, "--estimate-run", "RunEstimates();"],
+      [script("Sage.100.Contractor.CompassArInvoiceWriter.cs"), "--ar-invoice-run", "RunArInvoices();"],
+    ] as const) {
+      const after = source.slice(source.indexOf("AfterWriterRun()"), source.indexOf("Only()"))
+      expect(after).toContain(`RunStageInChildProcess("${flag}"`)
+      expect(after).not.toContain(direct)
+    }
+  })
+
   it("runs from the installed writer after change orders", () => {
     expect(writer.indexOf("RunChangeOrdersAfterWriterRun();")).toBeLessThan(writer.indexOf("RunEstimatesAfterWriterRun();"))
     expect(writer).toContain('"--estimate-diagnose"')
