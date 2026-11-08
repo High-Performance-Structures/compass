@@ -61,7 +61,8 @@ export const sageArInvoiceSettingsSchema = z.object({
 export type SageArInvoiceSettings = z.infer<typeof sageArInvoiceSettingsSchema>
 
 const DEFAULT_SAGE_AR_INVOICE_SETTINGS: SageArInvoiceSettings = {
-  sendBilledPayRequests: true,
+  // Off by default: AR invoices are for simple invoices; progress billing stays in Sage or Compass.
+  sendBilledPayRequests: false,
   invoiceType: 1,
   invoiceStatus: 1,
   invoiceDate: "period_end",

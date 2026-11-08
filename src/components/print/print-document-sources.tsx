@@ -135,6 +135,7 @@ export async function printDocumentSource(
     case "meeting-transcript":
     case "estimate-compare":
     case "sage-export-preview":
+    case "sage-billing-checklist":
       return null
   }
 }

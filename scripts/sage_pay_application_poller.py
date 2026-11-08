@@ -39,7 +39,10 @@ LABOR_RESULTS_TARGET = "/api/integrations/sage/labor-hours/results"
 # Sage payroll record status for a voided check; its timecard hours don't count.
 VOID_PAYROLL_STATUS = 5
 LOCK_PATH = Path("/tmp/compass-sage-pay-application-poller.lock")
-SNAPSHOT_MAPPING_VERSION = "v3"
+SNAPSHOT_MAPPING_VERSION = "v4"
+# aiafrm.status (sent as header.status): 1 Open, 2 Submitted, 3 Posted (Sage
+# created the AR invoice); 4 is a posted application whose invoice moved on.
+MAX_INVOICE_LINES = 150
 
 
 CSI_DIVISIONS = {
@@ -173,6 +176,60 @@ def normalized_cost_code(value: Any) -> str:
     return text(value) or "Unassigned"
 
 
+def taxable_flag(value: Any) -> bool:
+    """Sage stores taxable flags as "Y"/"N" (blank when never set)."""
+    return (text(value) or "").upper() == "Y"
+
+
+def tax_district(code: Any, name: Any, rate: Any) -> dict[str, Any] | None:
+    source_record_id = text(code)
+    if source_record_id is None or source_record_id == "0":
+        return None
+    return {
+        "code": source_record_id,
+        "name": text(name),
+        "ratePercent": None if rate is None else float(Decimal(str(rate))),
+    }
+
+
+def build_invoice(
+    header: Mapping[str, Any], invoice_lines: Sequence[Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """Sage's AR invoice posted from the application (acrinv + arivln)."""
+    record = text(header.get("invoice_recnum"))
+    if record is None:
+        return None
+    return {
+        "sourceInvoiceId": f"sage-acrinv:{record}",
+        "invoiceNumber": text(header.get("invnum")),
+        "invoiceDate": iso_date(header.get("invoice_invdte")),
+        "status": text(header.get("invoice_status")),
+        "taxDistrict": tax_district(
+            header.get("invoice_taxdst"),
+            header.get("invoice_dstnme"),
+            header.get("invoice_sumrte"),
+        ),
+        "taxableAmount": money(header.get("invoice_taxabl")),
+        "nonTaxableAmount": money(header.get("invoice_nontax")),
+        "salesTax": money(header.get("invoice_slstax")),
+        "retention": money(header.get("invoice_retain")),
+        "total": money(header.get("invoice_invttl")),
+        "lines": [
+            {
+                "lineNumber": int(line["linnum"]),
+                "description": text(line.get("dscrpt")),
+                "costCode": None
+                if line.get("cstcde") is None
+                else normalized_cost_code(line.get("cstcde")),
+                "amount": money(line.get("extprc")),
+                "retention": money(line.get("hldamt")),
+                "taxable": taxable_flag(line.get("taxabl")),
+            }
+            for line in invoice_lines[:MAX_INVOICE_LINES]
+        ],
+    }
+
+
 def build_tax_catalog_snapshot(
     rows: Sequence[Mapping[str, Any]], captured_at: str
 ) -> dict[str, Any]:
@@ -207,16 +264,24 @@ def build_snapshot(
     header: Mapping[str, Any],
     lines: Sequence[Mapping[str, Any]],
     captured_at: str,
+    invoice_lines: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     if not lines:
         raise PollerError("The Sage pay application has no G703 lines")
 
     header_updated = iso_timestamp(header.get("upddte"))
     line_updated = max(iso_timestamp(line.get("upddte")) for line in lines)
+    invoice = build_invoice(header, invoice_lines)
+    invoice_updated = (
+        iso_timestamp(header.get("invoice_upddte")) if invoice else "none"
+    )
     source_application_id = f"sage-aiafrm:{header['recnum']}"
+    # Posting changes the status and creates the invoice; both are part of the
+    # revision so a changed snapshot never reuses an earlier revision.
     source_revision = (
         f"mapping={SNAPSHOT_MAPPING_VERSION};header={header_updated};"
-        f"lines={line_updated};count={len(lines)}"
+        f"lines={line_updated};count={len(lines)};"
+        f"status={text(header.get('status')) or 'unknown'};invoice={invoice_updated}"
     )
 
     normalized_lines: list[dict[str, Any]] = []
@@ -243,6 +308,7 @@ def build_snapshot(
                 "retainageHeld": money(line.get("retamt")),
                 "balanceToFinish": money(line.get("balfin")),
                 "sortOrder": index,
+                "taxable": taxable_flag(line.get("taxabl")),
             }
         )
 
@@ -281,6 +347,13 @@ def build_snapshot(
             "balanceToFinish": money(header.get("balfin")),
             # Sage's AR invoice for the application, once it is invoiced.
             "invoiceNumber": text(header.get("invnum")),
+            "taxDistrict": tax_district(
+                header.get("taxdst"), header.get("dstnme"), header.get("sumrte")
+            ),
+            "salesTax": money(header.get("slstax")),
+            "invoiceTotal": money(header.get("invttl")),
+            # The posted AR invoice; null until the application is posted.
+            "invoice": invoice,
         },
         "lines": normalized_lines,
     }
@@ -540,7 +613,9 @@ def resolve_sage_job(request: PollRequest) -> int:
     )
 
 
-def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def fetch_latest_application(
+    cursor: Any, sage_job: int
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     cursor.execute(
         """
         SELECT TOP 1
@@ -549,17 +624,32 @@ def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any]
           application.schttl, application.chgttl, application.conttl,
           application.cmpttl, application.ttlret, application.ttlern,
           application.prvbil, application.crtdue, application.balfin,
-          application.upddte, invoice.invnum
+          application.upddte, application.taxdst, district.dstnme,
+          district.sumrte, application.slstax, application.invttl,
+          invoice.recnum AS invoice_recnum, invoice.invnum,
+          invoice.invdte AS invoice_invdte, invoice.status AS invoice_status,
+          invoice.taxdst AS invoice_taxdst,
+          invoice_district.dstnme AS invoice_dstnme,
+          invoice_district.sumrte AS invoice_sumrte,
+          invoice.taxabl AS invoice_taxabl, invoice.nontax AS invoice_nontax,
+          invoice.slstax AS invoice_slstax, invoice.retain AS invoice_retain,
+          invoice.invttl AS invoice_invttl, invoice.upddte AS invoice_upddte
         FROM dbo.aiafrm application
         JOIN dbo.actrec job ON job.recnum=application.jobnum
+        LEFT JOIN dbo.taxdst district ON district.recnum=application.taxdst
         -- The AR invoice posted from the application shares its ledger record.
         OUTER APPLY (
-          SELECT TOP 1 receivable.invnum
+          SELECT TOP 1 receivable.recnum, receivable.invnum, receivable.invdte,
+            receivable.status, receivable.taxdst, receivable.taxabl,
+            receivable.nontax, receivable.slstax, receivable.retain,
+            receivable.invttl, receivable.upddte
           FROM dbo.acrinv receivable
           WHERE application.lgrrec<>0 AND receivable.lgrrec=application.lgrrec
             AND receivable.jobnum=application.jobnum
           ORDER BY receivable.recnum DESC
         ) invoice
+        LEFT JOIN dbo.taxdst invoice_district
+          ON invoice_district.recnum=invoice.taxdst
         WHERE application.jobnum=%s
         ORDER BY application.period DESC, application.appnum DESC,
           application.recnum DESC
@@ -576,7 +666,7 @@ def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any]
           cost_code.cdenme, cost_code.divnum AS master_divnum, line.dscrpt,
           line.schamt, line.chgamt,
           line.newcon, line.prvbll, line.curbll, line.strmat, line.ttlcmp,
-          line.retamt, line.balfin, line.upddte
+          line.retamt, line.balfin, line.upddte, line.taxabl
         FROM dbo.aialin line
         LEFT JOIN dbo.cstcde cost_code ON cost_code.recnum=line.cstcde
         WHERE line.recnum=%s
@@ -584,7 +674,21 @@ def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any]
         """,
         (header["recnum"],),
     )
-    return dict(header), [dict(line) for line in cursor.fetchall()]
+    lines = [dict(line) for line in cursor.fetchall()]
+    invoice_lines: list[dict[str, Any]] = []
+    if header.get("invoice_recnum") is not None:
+        cursor.execute(
+            """
+            SELECT TOP 150 line.linnum, line.dscrpt, line.cstcde, line.extprc,
+              line.hldamt, line.taxabl
+            FROM dbo.arivln line
+            WHERE line.recnum=%s
+            ORDER BY line.linnum
+            """,
+            (header["invoice_recnum"],),
+        )
+        invoice_lines = [dict(line) for line in cursor.fetchall()]
+    return dict(header), lines, invoice_lines
 
 
 def fetch_tax_catalog(cursor: Any) -> list[dict[str, Any]]:
@@ -657,9 +761,13 @@ def process_requests(
         cursor = connection.cursor(as_dict=True)
         for request in requests:
             sage_job = resolve_sage_job(request)
-            header, lines = fetch_latest_application(cursor, sage_job)
+            header, lines, invoice_lines = fetch_latest_application(
+                cursor, sage_job
+            )
             captured_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            snapshot = build_snapshot(request, header, lines, captured_at)
+            snapshot = build_snapshot(
+                request, header, lines, captured_at, invoice_lines
+            )
             signed_json_request_with_fallback(
                 base_url, secrets, "POST", RESULTS_TARGET, snapshot, timeout=45
             )

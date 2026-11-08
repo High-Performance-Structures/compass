@@ -3,7 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
-import { payApplicationSageSyncs } from "@/db/schema-sage"
+import { payApplicationSageChecks, payApplicationSageSyncs } from "@/db/schema-sage"
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
@@ -17,7 +17,7 @@ import {
   UNSUBMITTED_DRAW_STATUSES,
   type DepositAppliedMode,
 } from "@/lib/financials/contract-deposits"
-import { PAY_APPLICATION_BILLING_SOURCES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "@/lib/domain/budget/statuses"
+import { PAY_APPLICATION_BILLING_SOURCES, PAY_APPLICATION_SAGE_CHECK_STATUSES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "@/lib/domain/budget/statuses"
 import { PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES } from "@/lib/domain/operations/statuses"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
@@ -27,8 +27,9 @@ import { assertListFields } from "@/lib/shared/statuses"
  * project_budget_applications (owner pay applications and contract budget
  * projections) and project_budget_lines (their G703 lines), plus
  * pay_application_shop_ticket_imports (what each shop ticket added to a pay
- * application) and pay_application_sage_syncs (what each Sage sync did to a
- * pay application) (architecture standard, section 1).
+ * application), pay_application_sage_syncs (what each Sage sync did to a
+ * pay application) and pay_application_sage_checks (each change in the Sage
+ * check of a pay request built in Sage) (architecture standard, section 1).
  *
  * `*Statement` builds an unexecuted statement for `db.batch`; the plain form
  * runs it. Callers pass the same `where` conditions they used before, so the
@@ -273,4 +274,12 @@ const SAGE_SYNC_LISTS = { eventKind: PAY_APPLICATION_SAGE_SYNC_EVENTS }
 export function insertPayApplicationSageSyncStatement(db: Db, values: SageSyncInsert): Statement {
   assertListFields("pay_application_sage_syncs", [values], SAGE_SYNC_LISTS)
   return db.insert(payApplicationSageSyncs).values(values).onConflictDoNothing()
+}
+
+const SAGE_CHECK_LISTS = { status: PAY_APPLICATION_SAGE_CHECK_STATUSES }
+
+/** Records a changed Sage check result on a pay application. */
+export async function insertPayApplicationSageCheck(db: Db, values: typeof payApplicationSageChecks.$inferInsert): Promise<void> {
+  assertListFields("pay_application_sage_checks", [values], SAGE_CHECK_LISTS)
+  await db.insert(payApplicationSageChecks).values(values)
 }

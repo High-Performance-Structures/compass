@@ -22,3 +22,12 @@ export type PayApplicationBillingSource = (typeof PAY_APPLICATION_BILLING_SOURCE
 export const PAY_APPLICATION_SAGE_SYNC_EVENTS = ["created", "linked", "refreshed", "sage_amounts_applied"] as const
 
 export type PayApplicationSageSyncEvent = (typeof PAY_APPLICATION_SAGE_SYNC_EVENTS)[number]
+
+/**
+ * The Sage check on a pay request built in Sage: its posted AR invoice
+ * matches, needs attention, the billing isn't posted yet, or the Sage bridge
+ * is too old to read the posted invoice.
+ */
+export const PAY_APPLICATION_SAGE_CHECK_STATUSES = ["matches", "needs_attention", "not_posted", "unavailable"] as const
+
+export type PayApplicationSageCheckStatus = (typeof PAY_APPLICATION_SAGE_CHECK_STATUSES)[number]
