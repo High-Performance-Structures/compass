@@ -14,7 +14,7 @@ import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weath
 import { weatherAreasInUse } from "@/lib/weather/areas-server"
 import { parseFires } from "@/lib/weather/fires"
 import { outerRings, simplifyRing, type FlatRing } from "@/lib/weather/geometry"
-import { parseGridSeries } from "@/lib/weather/series"
+import { parseGridSeries, readCellSeries, withHistory } from "@/lib/weather/series"
 
 type Db = ReturnType<typeof getDb>
 
@@ -299,7 +299,7 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
   const idleBefore = new Date(nowMs - IDLE_AFTER_MS).toISOString()
   const staleBefore = new Date(nowMs - CELL_EVERY_MS).toISOString()
   const due = await db
-    .select({ cellKey: weatherCells.cellKey, failureCount: weatherCells.failureCount })
+    .select({ cellKey: weatherCells.cellKey, failureCount: weatherCells.failureCount, series: weatherCells.series })
     .from(weatherCells)
     .where(
       and(
@@ -320,8 +320,9 @@ async function refreshCells(db: Db, deadline: number, nowMs: number, limit: numb
     try {
       const grid = await getJson(`https://api.weather.gov/gridpoints/${office}/${xy}`)
       const properties = nested(grid, "properties")
-      const series = parseGridSeries(properties, Date.now())
-      if (!series) throw new Error("grid shape")
+      const parsed = parseGridSeries(properties, Date.now())
+      if (!parsed) throw new Error("grid shape")
+      const series = withHistory(parsed, readCellSeries(cell.series))
       const elevation = nested(properties, "elevation", "value")
       await saveWeatherCellForecast(db, {
         cellKey: cell.cellKey,
