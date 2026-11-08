@@ -17,6 +17,7 @@ import {
   SAGE_BRIDGE_REQUEST_ID_HEADER,
   verifySageBridgeRequest,
 } from "@/lib/sage/bridge-auth"
+import { sageArInvoiceWritesEnabled } from "@/lib/sage/ar-invoice-write"
 import { sageChangeOrderWritesEnabled } from "@/lib/sage/change-order-write"
 import { sageEstimateWritesEnabled } from "@/lib/sage/estimate-write"
 import type { Db } from "@/lib/server/action-context"
@@ -47,6 +48,12 @@ export const ESTIMATE_WRITER: BridgeKind = {
   heartbeat: "estimate-writer",
   enabled: sageEstimateWritesEnabled,
   disabledMessage: "Sage estimate writes are disabled",
+}
+export const AR_INVOICE_WRITER: BridgeKind = {
+  secret: "writer",
+  heartbeat: "ar-invoice-writer",
+  enabled: sageArInvoiceWritesEnabled,
+  disabledMessage: "Sage AR invoice writes are disabled",
 }
 export const PRIME_CHANGE_ORDER_READER: BridgeKind = {
   secret: "reader",

@@ -144,6 +144,7 @@
 		"SAGE_VENDOR_CERTIFICATE_WRITES_ENABLED": "true",
 		"SAGE_CHANGE_ORDER_WRITES_ENABLED": "true",
 		"SAGE_ESTIMATE_WRITES_ENABLED": "true",
+		"SAGE_AR_INVOICE_WRITES_ENABLED": "true",
 		"YOUTUBE_API_AUDIT_APPROVED": "true"
 	},
 	// Demo copy for companies trying Compass (`--env demo`). Its own database and
@@ -221,6 +222,7 @@
 				"SAGE_VENDOR_CERTIFICATE_WRITES_ENABLED": "false",
 				"SAGE_CHANGE_ORDER_WRITES_ENABLED": "false",
 				"SAGE_ESTIMATE_WRITES_ENABLED": "false",
+				"SAGE_AR_INVOICE_WRITES_ENABLED": "false",
 				"YOUTUBE_API_AUDIT_APPROVED": "false"
 			}
 		}

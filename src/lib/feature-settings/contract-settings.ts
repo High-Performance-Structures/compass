@@ -55,6 +55,13 @@ export const DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS: ChangeOrderAcceptanceSett
   pricedRequiresEvidence: true,
 }
 
+export const CHANGE_ORDER_ACCEPTANCE_SETTINGS_GROUP = {
+  label: "Change-order acceptance",
+  description: "How staff record an owner's approval that came by email, text or in person. Written approval always needs change-order approval permission.",
+  defaults: DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS,
+  schema: changeOrderAcceptanceSettingsSchema,
+}
+
 /** Where a variance's or change order's liability insurance rate comes from. */
 export const INSURANCE_RATE_SOURCES = ["contract", "fixed", "off"] as const
 

@@ -194,6 +194,10 @@ namespace CompassSageClientProjectWriter
                 return RunEstimateDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--estimate-run", StringComparison.OrdinalIgnoreCase))
                 return RunEstimatesOnly();
+            if (args.Length > 0 && String.Equals(args[0], "--ar-invoice-diagnose", StringComparison.OrdinalIgnoreCase))
+                return RunArInvoiceDiagnostics();
+            if (args.Length > 0 && String.Equals(args[0], "--ar-invoice-run", StringComparison.OrdinalIgnoreCase))
+                return RunArInvoicesOnly();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -220,6 +224,9 @@ namespace CompassSageClientProjectWriter
                 // Accepted estimates last, only with SAGE_ESTIMATE_WRITES_ENABLED; their
                 // job, if it was just added above, is already in Sage.
                 RunEstimatesAfterWriterRun();
+                // Billed pay requests last, only with SAGE_AR_INVOICE_WRITES_ENABLED, as
+                // Sage AR invoices; their job is already in Sage.
+                RunArInvoicesAfterWriterRun();
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }

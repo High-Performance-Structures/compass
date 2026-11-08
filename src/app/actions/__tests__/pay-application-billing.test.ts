@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { projectBudgetApplications, projectContractDeposits, projectOperations, projects } from "@/db/schema"
 import { payApplicationPaymentAllocations } from "@/db/schema-netsuite"
+import { sageArInvoiceExports } from "@/db/schema-sage"
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
@@ -50,7 +51,7 @@ function application(id: string, status: string, createdAt: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   sqlite = new Database(":memory:")
-  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits, payApplicationPaymentAllocations]) createTable(table)
+  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits, payApplicationPaymentAllocations, sageArInvoiceExports]) createTable(table)
   const db = drizzle(sqlite)
   db.insert(projects).values({ id: "bishop", name: "Ezell Residence - Bishop Built", projectNumber: "H-430-1900", organizationId: "org", createdAt: "t", updatedAt: "t" }).run()
   db.insert(projectBudgetApplications).values(application("app-1", "internal_review", "2026-10-16")).run()

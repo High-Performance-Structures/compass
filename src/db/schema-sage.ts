@@ -8,6 +8,7 @@ import {
 import { sql } from "drizzle-orm"
 
 import {
+  SAGE_AR_INVOICE_EXPORT_STATUSES,
   SAGE_CHANGE_ORDER_EXPORT_STATUSES,
   SAGE_ESTIMATE_EXPORT_STATUSES,
   SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
@@ -759,3 +760,56 @@ export type SageSquarePaymentOperation =
 export type SageChangeOrderExport = typeof sageChangeOrderExports.$inferSelect
 export type SagePrimeChangeOrder = typeof sagePrimeChangeOrders.$inferSelect
 export type SageEstimateExport = typeof sageEstimateExports.$inferSelect
+
+/**
+ * One row per billed Compass pay request sent to Sage 100 Contractor as an AR
+ * invoice (ARInvoiceAddRq): this period's billing by cost code, with the
+ * period's retention. Queued when staff approve the pay request for billing
+ * (or press Send / Retry); the Sage writer claims it, checks Sage doesn't
+ * already have the invoice number, adds it and reports Sage's record number
+ * and totals. Posting in Sage stays with the office.
+ */
+export const sageArInvoiceExports = sqliteTable(
+  "sage_ar_invoice_exports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "cascade" }),
+    status: text("status", { enum: SAGE_AR_INVOICE_EXPORT_STATUSES }).notNull().default("queued"),
+    // snapshot: the Sage invoice number assigned when the pay request was queued.
+    invoiceNumber: text("invoice_number").notNull(),
+    /** Who approved the pay request for billing (automatic) or pressed Send / Retry. */
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    automatic: integer("automatic", { mode: "boolean" }).notNull().default(true),
+    requestedAt: text("requested_at").notNull(),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    // json: provider request snapshot, the AR invoice header and lines sent to the Sage writer
+    payloadJson: text("payload_json"),
+    /** Sage's AR invoice record number (acrinv.recnum), once added or found. */
+    sageRecordId: text("sage_record_id"),
+    /** Sage's invoice total as it read back (lines plus Sage's sales tax), cents. */
+    sageTotalCents: integer("sage_total_cents"),
+    /** Why the export stopped (needs attention or failed); null otherwise. */
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_ar_invoice_exports_application_idx").on(table.applicationId),
+    index("sage_ar_invoice_exports_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
+    index("sage_ar_invoice_exports_project_idx").on(table.projectId, table.status),
+    index("sage_ar_invoice_exports_organization_id_idx").on(table.organizationId),
+    index("sage_ar_invoice_exports_requested_by_user_id_idx").on(table.requestedByUserId),
+  ]
+)

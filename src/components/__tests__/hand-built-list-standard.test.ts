@@ -48,6 +48,8 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/nutech/bracing-inventory.tsx": "report",
   // The accepted estimate's proposal lines as Compass sends them to Sage.
   "src/components/projects/estimate-sage-sync-panel.tsx": "report",
+  // The billed pay request's AR invoice lines as Compass sends them to Sage.
+  "src/components/financials/pay-request-sage-invoice.tsx": "report",
   "src/components/nutech/nutech-truckload-calculator.tsx": "report",
   "src/components/projects/project-budget-panel.tsx": "report",
   "src/components/projects/project-estimate-report-phases.tsx": "report",

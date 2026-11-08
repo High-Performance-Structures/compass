@@ -27,6 +27,7 @@ import { PayApplicationSettingsSection } from "@/components/settings/pay-applica
 import { ChangeOrderAcceptanceSettingsSection } from "@/components/settings/change-order-acceptance-settings-section"
 import { VarianceSettingsSection } from "@/components/settings/variance-settings-section"
 import { SageExportSettingsSection } from "@/components/settings/sage-export-settings-section"
+import { SageArInvoiceSettingsSection } from "@/components/settings/sage-ar-invoice-settings-section"
 import { SageChangeOrderSettingsSection } from "@/components/settings/sage-change-order-settings-section"
 import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
@@ -225,7 +226,7 @@ const WORKFLOW_AREAS = [
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
   { value: "variances", label: "Variances", description: "The default contract type for jobs, and how project liability insurance follows variances and change orders." },
-  { value: "sage-export", label: "Sage export", description: "Billing cycle and invoice number formats for pay requests, deposits, other billings, credit memos and material sales sent to Sage." },
+  { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
   { value: "sage-estimates", label: "Sage estimates", description: "Whether accepted estimates go to Sage automatically as the job's proposal, and with the job budget." },
   { value: "sage-change-orders", label: "Sage change orders", description: "How executed change orders and variances are numbered, described and coded when staff send them to Sage." },
   { value: "change-order-acceptance", label: "Change-order acceptance", description: "Who may record an owner's verbal approval as a staff sign-off, and whether priced change orders need written approval." },
@@ -298,7 +299,12 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
     case "variances":
       return <VarianceSettingsSection />
     case "sage-export":
-      return <SageExportSettingsSection />
+      return (
+        <div className="space-y-6">
+          <SageExportSettingsSection />
+          <SageArInvoiceSettingsSection />
+        </div>
+      )
     case "sage-change-orders":
       return <SageChangeOrderSettingsSection />
     case "sage-estimates":
