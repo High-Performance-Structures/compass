@@ -117,18 +117,15 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/project-estimate-list.tsx": "growing list",
   "src/components/projects/project-historical-rfq-list.tsx": "growing list",
   "src/components/projects/project-warranty-source-review.tsx": "growing list",
-  "src/components/projects/recurring-duties-board.tsx": "growing list",
   "src/components/projects/shop-tickets-workspace.tsx": "growing list",
   "src/components/projects/trade-letters-section.tsx": "growing list",
   "src/components/projects/use-archive-pagination.ts": "growing list",
-  "src/components/schedule/schedule-list-view.tsx": "growing list",
-  "src/components/schedule/workday-exceptions-view.tsx": "growing list",
   "src/components/settings/account-deletion-requests-card.tsx": "growing list",
   "src/components/settings/invite-links-section.tsx": "growing list",
 }
 
 /** Older growing lists still on hand-built tables. Lower it when one moves to the shared sheet; never raise it. */
-const GROWING_LIST_CEILING = 19
+const GROWING_LIST_CEILING = 16
 
 const HAND_BUILT = /<table\b|<Table\b|\buseReactTable\(/
 
