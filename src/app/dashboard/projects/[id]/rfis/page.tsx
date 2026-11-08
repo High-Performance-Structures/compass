@@ -25,7 +25,7 @@ import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-f
 import { ProjectRfiCommunicationActions } from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
 import { ProjectRfiEmailSyncButton } from "@/components/projects/project-rfi-email-sync-button"
-import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-response-composer-loader"
+import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-response-composer"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
