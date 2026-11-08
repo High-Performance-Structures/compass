@@ -178,6 +178,7 @@
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@types/three": "^0.186.0",
+		"acorn": "^8.16.0",
 		"drizzle-kit": "^0.31.10",
 		"electron": "37.6.0",
 		"electron-builder": "^26.8.1",
