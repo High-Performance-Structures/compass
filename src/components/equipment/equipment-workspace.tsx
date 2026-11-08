@@ -13,7 +13,7 @@ import {
   type MachineLogEntryView,
   type MachineView,
 } from "@/app/actions/equipment"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { MachineLogEntryDialog } from "@/components/equipment/machine-log-entry-dialog"
@@ -300,6 +300,7 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
     }),
     [pending],
   )
+  const filterLabel = useListSheetFilterLabel("equipment.log-entries")
   const entriesTable = useRecordTable({
     data: visibleEntries,
     columns: entryCols,
@@ -486,7 +487,7 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
                 label="Filter machine log entries by status"
                 selected={entryStatus}
                 onSelect={setEntryStatus}
-                options={ENTRY_STATUS_FILTERS.map((option) => ({ ...option, count: entryCounts[option.value] }))}
+                options={ENTRY_STATUS_FILTERS.map((option) => ({ ...option, label: filterLabel(option.value, option.label), count: entryCounts[option.value] }))}
               />
               <RecordSearchInput
                 value={entrySearch}

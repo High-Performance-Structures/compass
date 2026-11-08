@@ -16,7 +16,6 @@ import { conflictSummary, type ScheduleConflict } from "@/lib/schedule/conflicts
 import { scheduleItemTimeLabel } from "@/lib/schedule/item-time"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import { projectScheduleLabel, type ScheduleProjectData } from "@/lib/schedule/project-scope"
-import type { ScheduleListColumn } from "@/lib/schedule/saved-views"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
 import { scheduleItemHref } from "@/lib/work-calendar"
 
@@ -38,11 +37,12 @@ function ProgressValue({ percent }: { readonly percent: number }): React.ReactEl
 
 /**
  * The schedule list sheet's columns ("schedule.list" in the list sheet
- * registry). Columns the schedule's own view hides (saved view, URL) are left
- * out; the project column only shows when several jobs are on the schedule.
+ * registry); people choose which show with the sheet's Columns button. The
+ * project column only shows when several jobs are on the schedule.
  */
+type ScheduleListColumn = "project" | "complete" | "phase" | "duration" | "startDate" | "endDateCalculated" | "assignedTo"
+
 export function scheduleListColumns({
-  visibleColumns,
   multipleProjects,
   projectById,
   conflicts,
@@ -51,7 +51,6 @@ export function scheduleListColumns({
   onEdit,
   onDelete,
 }: {
-  readonly visibleColumns: readonly ScheduleListColumn[]
   readonly multipleProjects: boolean
   readonly projectById: ReadonlyMap<string, ScheduleProjectData>
   readonly conflicts: ReadonlyMap<string, readonly ScheduleConflict[]>
@@ -61,7 +60,7 @@ export function scheduleListColumns({
   readonly onDelete: (task: ScheduleTaskData) => void
 }): ColumnDef<ScheduleTaskData>[] {
   const shows = (column: ScheduleListColumn): boolean =>
-    visibleColumns.includes(column) && (column !== "project" || multipleProjects)
+    column !== "project" || multipleProjects
 
   const optional: readonly (readonly [ScheduleListColumn, ColumnDef<ScheduleTaskData>])[] = [
     [

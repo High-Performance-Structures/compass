@@ -6,7 +6,7 @@ import * as React from "react"
 import type { SquareReceiptListItem } from "@/app/actions/sage-square-receipts"
 import type { ColumnDef } from "@tanstack/react-table"
 
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { formatCents } from "@/lib/format"
@@ -177,6 +177,7 @@ export function SquareReceiptsTable({
     )
   }, [receipts, status, search])
   const columns = React.useMemo(squareReceiptColumns, [])
+  const filterLabel = useListSheetFilterLabel("financials.square-receipts")
   const table = useRecordTable({
     data: rows,
     columns,
@@ -208,7 +209,7 @@ export function SquareReceiptsTable({
               label="Filter Square receipts by status"
               selected={status}
               onSelect={setStatus}
-              options={STATUS_FILTERS.map((option) => ({ ...option, count: counts[option.value] }))}
+              options={STATUS_FILTERS.map((option) => ({ ...option, label: filterLabel(option.value, option.label), count: counts[option.value] }))}
             />
             <RecordSearchInput
               value={search}

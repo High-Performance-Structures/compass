@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
 import { EMPTY_FILTERS } from "@/lib/schedule/types"
 import { NO_CONFLICT_SETTINGS } from "@/lib/schedule/conflicts"
-import { SCHEDULE_LIST_COLUMNS } from "@/lib/schedule/saved-views"
 import {
   parseScheduleCsv,
   requestedScheduleSettings,
-  scheduleColumnLabel,
   scheduleCsv,
   schedulePhaseOptions,
   schedulePrintItems,
@@ -59,15 +57,13 @@ describe("schedule view rules", () => {
     expect(requestedScheduleSettings(params(""))).toEqual({
       preset: "all",
       group: "none",
-      columns: [...SCHEDULE_LIST_COLUMNS],
       statuses: [],
     })
     const requested = requestedScheduleSettings(
-      params("preset=past-due&group=crew&columns=phase,bogus&status=COMPLETE,NOPE")
+      params("preset=past-due&group=crew&status=COMPLETE,NOPE")
     )
     expect(requested.preset).toBe("past-due")
     expect(requested.group).toBe("crew")
-    expect(requested.columns).toEqual(["phase"])
     expect(requested.statuses).toEqual(["COMPLETE"])
     expect(requestedScheduleSettings(params("preset=bad&group=bad")).preset).toBe("all")
   })
@@ -80,22 +76,20 @@ describe("schedule view rules", () => {
       preset: "all" as const,
       groupMode: "none" as const,
       conflictsOnly: false,
-      visibleColumns: [...SCHEDULE_LIST_COLUMNS],
     }
     expect(scheduleQueryString("mode=projects&q=old", state)).toBe(
       "mode=projects&view=gantt&order=chronological"
     )
     expect(
-      scheduleQueryString("", {
+      scheduleQueryString("columns=phase", {
         ...state,
         filters: { status: ["PENDING"], phase: ["a", "b"], assignedTo: "Bo", search: "x" },
         preset: "next-7",
         groupMode: "phase",
         conflictsOnly: true,
-        visibleColumns: ["phase"],
       })
     ).toBe(
-      "view=gantt&order=chronological&status=PENDING&phase=a%2Cb&assignee=Bo&q=x&preset=next-7&group=phase&conflicts=1&columns=phase"
+      "view=gantt&order=chronological&status=PENDING&phase=a%2Cb&assignee=Bo&q=x&preset=next-7&group=phase&conflicts=1"
     )
   })
 
@@ -202,14 +196,12 @@ describe("schedule view rules", () => {
     ])
   })
 
-  it("maps print items, toggles values and labels columns", () => {
+  it("maps print items, and toggles values", () => {
     expect(schedulePrintItems([task({ id: "x", endDateCalculated: "2026-11-05" })])[0]).toMatchObject({
       id: "x",
       endDate: "2026-11-05",
     })
     expect(toggleListValue(["a"], "a")).toEqual([])
     expect(toggleListValue(["a"], "b")).toEqual(["a", "b"])
-    expect(scheduleColumnLabel("endDateCalculated")).toBe("End date")
-    expect(scheduleColumnLabel("assignedTo")).toBe("Responsible")
   })
 })

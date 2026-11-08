@@ -30,7 +30,6 @@ import { REVIEW_SORT_IDS } from "@/lib/domain/conversations/imported-participant
 import { recurringDutyColumns } from "@/components/projects/recurring-duties-board"
 import { scheduleListColumns } from "@/components/schedule/schedule-list-columns"
 import { workdayExceptionColumns } from "@/components/schedule/workday-exceptions-view"
-import { SCHEDULE_LIST_COLUMNS } from "@/lib/schedule/saved-views"
 import { DEFAULT_DISPLAY_COLOR_PALETTE } from "@/lib/schedule/appearance"
 import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
 import { followUpJobColumns } from "@/components/client-follow-up/client-follow-up-board"
@@ -139,7 +138,6 @@ describe("list sheet standard", () => {
       "settings.account-deletion-requests": () => accountDeletionRequestColumns({ busyId: null, onStart: noop, onComplete: noop }),
       "schedule.list": () =>
         scheduleListColumns({
-          visibleColumns: SCHEDULE_LIST_COLUMNS,
           multipleProjects: true,
           projectById: new Map(),
           conflicts: new Map(),

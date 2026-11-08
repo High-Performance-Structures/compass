@@ -14,7 +14,7 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import {
@@ -253,6 +253,7 @@ export function ClientFollowUpBoard({
     () => followUpJobColumns((job) => setJobId((current) => (job.id === current ? null : job.id))),
     [],
   )
+  const filterLabel = useListSheetFilterLabel("client-follow-up.jobs")
   const jobsTable = useRecordTable({
     data: listedJobs,
     columns: jobColumns,
@@ -386,8 +387,8 @@ export function ClientFollowUpBoard({
                   selected={levelFilter}
                   onSelect={setLevelFilter}
                   options={[
-                    { value: "attention", label: "Needs follow-up", count: attentionCount, pinned: true },
-                    { value: "all", label: "All followed jobs", count: workspace.jobs.length, pinned: true },
+                    { value: "attention", label: filterLabel("attention", "Needs follow-up"), count: attentionCount, pinned: true },
+                    { value: "all", label: filterLabel("all", "All followed jobs"), count: workspace.jobs.length, pinned: true },
                   ]}
                 />
               </div>

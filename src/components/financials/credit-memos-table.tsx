@@ -120,6 +120,7 @@ export function CreditMemosTable({
         rows: creditMemos,
         of: creditMemoStatus,
         known: STATUSES,
+        sheetId: "financials.credit-memos",
         selected: status,
         onSelect: setStatus,
       }}

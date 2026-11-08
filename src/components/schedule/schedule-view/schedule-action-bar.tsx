@@ -2,14 +2,7 @@
 
 import type { ComponentProps } from "react"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -21,10 +14,8 @@ import { IconSearch, IconX } from "@tabler/icons-react"
 import { STATUS_OPTIONS, type TaskStatus } from "@/lib/schedule/types"
 import {
   SCHEDULE_GROUP_MODES,
-  SCHEDULE_LIST_COLUMNS,
   SCHEDULE_VIEW_PRESETS,
 } from "@/lib/schedule/saved-views"
-import { scheduleColumnLabel, toggleListValue } from "./schedule-view-rules"
 import type { ScheduleViewState } from "./use-schedule-view-state"
 import type { SavedScheduleViewsState } from "./use-saved-schedule-views"
 import { ScheduleFilterPopover } from "./schedule-filter-popover"
@@ -46,7 +37,6 @@ export function ScheduleActionBar({
   readonly overflowMenu: ComponentProps<typeof ScheduleOverflowMenu>
 }) {
   const {
-    view,
     orderMode,
     handleOrderModeChange,
     filters,
@@ -55,8 +45,6 @@ export function ScheduleActionBar({
     setPreset,
     groupMode,
     setGroupMode,
-    visibleColumns,
-    setVisibleColumns,
     applySavedView,
   } = viewState
 
@@ -155,38 +143,6 @@ export function ScheduleActionBar({
         </SelectContent>
       </Select>
 
-      {view === "list" ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 text-xs">
-              Columns
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-52 p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Visible columns
-            </p>
-            <div className="space-y-1.5">
-              {SCHEDULE_LIST_COLUMNS.map((column) => (
-                <label
-                  key={column}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                >
-                  <Checkbox
-                    checked={visibleColumns.includes(column)}
-                    onCheckedChange={() =>
-                      setVisibleColumns((current) => toggleListValue(current, column))
-                    }
-                  />
-                  <span className="capitalize">
-                    {scheduleColumnLabel(column)}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-      ) : null}
 
       <ScheduleSavedViewsPopover
         savedViewsState={savedViewsState}

@@ -5,7 +5,7 @@ import { IconDotsVertical, IconMail, IconUserCircle } from "@tabler/icons-react"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { UserWithRelations } from "@/app/actions/users"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, recordSelectionColumn, useRecordTable } from "@/components/record-table"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { StatusFilterBar } from "@/components/status-filter-bar"
@@ -212,6 +212,7 @@ export function PeopleTable({
     [users, search, role],
   )
   const visible = React.useMemo(() => searched.filter((user) => matchesAccess(user, access)), [searched, access])
+  const filterLabel = useListSheetFilterLabel("settings.people")
   const table = useRecordTable({
     data: visible,
     columns,
@@ -242,6 +243,7 @@ export function PeopleTable({
           onSelect={setAccess}
           options={ACCESS_FILTERS.map((option) => ({
             ...option,
+            label: filterLabel(option.value, option.label),
             count: searched.filter((user) => matchesAccess(user, option.value)).length,
           }))}
         />

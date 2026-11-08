@@ -9,8 +9,11 @@
  * managed: they always show, in place. Keep each sheet's code defaults equal
  * to what the list showed before it was registered.
  *
- * Pure: no imports, no database or network access, safe in the browser.
+ * Pure: no database or network access, safe in the browser. The company
+ * Financials sheets live in ./list-sheet-financial-sheets.ts.
  */
+
+import { FINANCIAL_LIST_SHEETS } from "./list-sheet-financial-sheets"
 
 /** How a column sorts, which names the default sort's direction in Settings. */
 export type ListSheetColumnKind = "text" | "date" | "number" | "status"
@@ -462,6 +465,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "invited", label: "Invitation pending" },
       ],
       defaultValue: "all",
+      renamable: true,
     },
   },
   {
@@ -485,6 +489,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "all", label: "All" },
       ],
       defaultValue: "open",
+      renamable: true,
     },
   },
   {
@@ -507,129 +512,10 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "all", label: "All" },
       ],
       defaultValue: "open",
+      renamable: true,
     },
   },
-  {
-    id: "financials.invoices",
-    label: "Invoices, all jobs",
-    where: "Financials in the sidebar, invoices",
-    columns: [
-      { id: "invoiceNumber", label: "Invoice #", kind: "text", required: true },
-      { id: "customer", label: "Customer", kind: "text" },
-      { id: "project", label: "Project", kind: "text" },
-      { id: "status", label: "Status", kind: "status" },
-      { id: "issueDate", label: "Issue date", kind: "date" },
-      { id: "dueDate", label: "Due date", kind: "date" },
-      { id: "total", label: "Total", kind: "number" },
-      { id: "amountPaid", label: "Paid", kind: "number" },
-      { id: "amountDue", label: "Amount due", kind: "number" },
-      { id: "recordPayment", label: "Record payment", kind: "text", sortable: false },
-    ],
-    defaultSort: null,
-    startFilter: {
-      options: [
-        { value: "draft", label: "Draft" },
-        { value: "sent", label: "Sent" },
-        { value: "partially_paid", label: "Partially paid" },
-        { value: "overdue", label: "Overdue" },
-        { value: "paid", label: "Paid" },
-        { value: "void", label: "Void" },
-        { value: "all", label: "All" },
-      ],
-      defaultValue: "all",
-    },
-  },
-  {
-    id: "financials.vendor-bills",
-    label: "Vendor bills",
-    where: "Financials in the sidebar, bills",
-    columns: [
-      { id: "billNumber", label: "Bill #", kind: "text", required: true },
-      { id: "vendor", label: "Vendor", kind: "text" },
-      { id: "project", label: "Project", kind: "text" },
-      { id: "status", label: "Status", kind: "status" },
-      { id: "billDate", label: "Bill date", kind: "date" },
-      { id: "dueDate", label: "Due date", kind: "date" },
-      { id: "total", label: "Total", kind: "number" },
-      { id: "amountDue", label: "Amount due", kind: "number" },
-    ],
-    defaultSort: null,
-    startFilter: {
-      options: [
-        { value: "pending", label: "Pending" },
-        { value: "approved", label: "Approved" },
-        { value: "partially_paid", label: "Partially paid" },
-        { value: "paid", label: "Paid" },
-        { value: "void", label: "Void" },
-        { value: "all", label: "All" },
-      ],
-      defaultValue: "all",
-    },
-  },
-  {
-    id: "financials.payments",
-    label: "Payments, all jobs",
-    where: "Financials in the sidebar, payments",
-    columns: [
-      { id: "referenceNumber", label: "Reference #", kind: "text", required: true },
-      { id: "paymentType", label: "Type", kind: "text" },
-      { id: "counterparty", label: "Customer/Vendor", kind: "text" },
-      { id: "project", label: "Project", kind: "text" },
-      { id: "amount", label: "Amount", kind: "number" },
-      { id: "paymentDate", label: "Date", kind: "date" },
-      { id: "paymentMethod", label: "Method", kind: "text" },
-    ],
-    defaultSort: null,
-    startFilter: null,
-  },
-  {
-    id: "financials.credit-memos",
-    label: "Credit memos",
-    where: "Financials in the sidebar, credit memos",
-    columns: [
-      { id: "memoNumber", label: "Memo #", kind: "text", required: true },
-      { id: "customer", label: "Customer", kind: "text" },
-      { id: "status", label: "Status", kind: "status" },
-      { id: "issueDate", label: "Issue date", kind: "date" },
-      { id: "total", label: "Total", kind: "number" },
-      { id: "amountApplied", label: "Applied", kind: "number" },
-      { id: "amountRemaining", label: "Remaining", kind: "number" },
-    ],
-    defaultSort: null,
-    startFilter: {
-      options: [
-        { value: "draft", label: "Draft" },
-        { value: "applied", label: "Applied" },
-        { value: "void", label: "Void" },
-        { value: "all", label: "All" },
-      ],
-      defaultValue: "all",
-    },
-  },
-  {
-    id: "financials.square-receipts",
-    label: "Square receipts",
-    where: "Financials payments and a job's Financials, Square receipts",
-    columns: [
-      { id: "project", label: "Project / client", kind: "text", required: true },
-      { id: "invoice", label: "Sage invoice", kind: "text" },
-      { id: "payment", label: "Square payment", kind: "date" },
-      { id: "received", label: "Received", kind: "number" },
-      { id: "fee", label: "Square fee", kind: "number" },
-      { id: "status", label: "Status", kind: "status" },
-    ],
-    defaultSort: null,
-    startFilter: {
-      options: [
-        { value: "review", label: "Needs review" },
-        { value: "awaiting", label: "Awaiting Sage receipt" },
-        { value: "in_progress", label: "Queued or processing" },
-        { value: "posted", label: "Posted in Sage" },
-        { value: "all", label: "All" },
-      ],
-      defaultValue: "all",
-    },
-  },
+  ...FINANCIAL_LIST_SHEETS,
   {
     id: "nutech.catalog",
     label: "Nu-Tech product catalog",
@@ -685,6 +571,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "all", label: "All" },
       ],
       defaultValue: "all",
+      renamable: true,
     },
   },
   {
@@ -705,6 +592,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
         { value: "all", label: "All followed jobs" },
       ],
       defaultValue: "attention",
+      renamable: true,
     },
   },
   {
@@ -719,7 +607,20 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
       { id: "nextStep", label: "Next step", kind: "text", sortable: false },
     ],
     defaultSort: null,
-    startFilter: { options: OPEN_OR_ALL, defaultValue: "open" },
+    startFilter: {
+      options: [
+        { value: "open", label: "Open" },
+        { value: "draft", label: "Draft" },
+        { value: "internal_review", label: "Internal review" },
+        { value: "signature_pending", label: "Signature pending" },
+        { value: "accepted", label: "Accepted" },
+        { value: "superseded", label: "Superseded" },
+        { value: "void", label: "Void" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "open",
+      renamable: true,
+    },
   },
   {
     id: "shop-tickets.job",
@@ -733,7 +634,17 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
       { id: "status", label: "Status", kind: "status" },
     ],
     defaultSort: null,
-    startFilter: { options: OPEN_OR_ALL, defaultValue: "all" },
+    startFilter: {
+      options: [
+        { value: "open", label: "Open" },
+        { value: "draft", label: "Draft" },
+        { value: "issued", label: "Issued" },
+        { value: "void", label: "Void" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "all",
+      renamable: true,
+    },
   },
   {
     id: "trade-letters.estimate",

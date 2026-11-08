@@ -6,7 +6,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 
 import { getOrgInvites, revokeInvite } from "@/app/actions/invites"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Button } from "@/components/ui/button"
@@ -219,6 +219,7 @@ export function InviteLinksSection(): React.ReactElement {
     [handleCopyLink, handleRevoke],
   )
   const visible = React.useMemo(() => invites.filter((invite) => matchesFilter(invite, filter)), [invites, filter])
+  const filterLabel = useListSheetFilterLabel("settings.invite-links")
   const table = useRecordTable({
     data: visible,
     columns,
@@ -263,6 +264,7 @@ export function InviteLinksSection(): React.ReactElement {
             onSelect={setFilter}
             options={INVITE_FILTERS.map((option) => ({
               ...option,
+              label: filterLabel(option.value, option.label),
               count: invites.filter((invite) => matchesFilter(invite, option.value)).length,
             }))}
           />

@@ -23,7 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 
@@ -196,6 +196,7 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
     () => (requests ?? []).filter((request) => matchesFilter(request, filter)),
     [requests, filter],
   )
+  const filterLabel = useListSheetFilterLabel("settings.account-deletion-requests")
   const table = useRecordTable({
     data: visible,
     columns,
@@ -243,6 +244,7 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
             onSelect={setFilter}
             options={REQUEST_FILTERS.map((option) => ({
               ...option,
+              label: filterLabel(option.value, option.label),
               count: requests.filter((request) => matchesFilter(request, option.value)).length,
             }))}
           />

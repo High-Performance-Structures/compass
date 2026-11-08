@@ -5,10 +5,8 @@ import { orderScheduleTasks, type ScheduleOrderMode } from "@/lib/schedule/task-
 import { STATUS_OPTIONS, type ScheduleTaskData, type TaskFilters, type TaskStatus } from "@/lib/schedule/types"
 import {
   SCHEDULE_GROUP_MODES,
-  SCHEDULE_LIST_COLUMNS,
   SCHEDULE_VIEW_PRESETS,
   type ScheduleGroupMode,
-  type ScheduleListColumn,
   type ScheduleViewPreset,
 } from "@/lib/schedule/saved-views"
 import type { SchedulePrintItem } from "../schedule-print-document"
@@ -22,24 +20,17 @@ const DEFAULT_SCHEDULE_GROUP: ScheduleGroupMode = "none"
 
 type SearchParamReader = { readonly get: (key: string) => string | null }
 
-/** Preset, grouping, columns and status filter requested in the URL. */
+/** Preset, grouping and status filter requested in the URL. */
 export function requestedScheduleSettings(searchParams: SearchParamReader): {
   readonly preset: ScheduleViewPreset
   readonly group: ScheduleGroupMode
-  readonly columns: readonly ScheduleListColumn[]
   readonly statuses: readonly TaskStatus[]
 } {
   const requestedPreset = searchParams.get("preset")
   const requestedGroup = searchParams.get("group")
-  const requestedColumns = (searchParams.get("columns") ?? "")
-    .split(",")
-    .filter((value): value is ScheduleListColumn =>
-      SCHEDULE_LIST_COLUMNS.some((column) => column === value)
-    )
   return {
     preset: SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all",
     group: SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? DEFAULT_SCHEDULE_GROUP,
-    columns: requestedColumns.length > 0 ? requestedColumns : [...SCHEDULE_LIST_COLUMNS],
     statuses: (searchParams.get("status") ?? "")
       .split(",")
       .flatMap((value) => {
@@ -59,7 +50,6 @@ export function scheduleQueryString(
     readonly preset: ScheduleViewPreset
     readonly groupMode: ScheduleGroupMode
     readonly conflictsOnly: boolean
-    readonly visibleColumns: readonly ScheduleListColumn[]
   }
 ): string {
   const params = new URLSearchParams(current)
@@ -77,12 +67,8 @@ export function scheduleQueryString(
   setOrDelete("preset", state.preset === "all" ? "" : state.preset)
   setOrDelete("group", state.groupMode === DEFAULT_SCHEDULE_GROUP ? "" : state.groupMode)
   setOrDelete("conflicts", state.conflictsOnly ? "1" : "")
-  setOrDelete(
-    "columns",
-    state.visibleColumns.length === SCHEDULE_LIST_COLUMNS.length
-      ? ""
-      : state.visibleColumns.join(",")
-  )
+  // List columns are the sheet's Columns button now; drop the old parameter from older links.
+  params.delete("columns")
   return params.toString()
 }
 
@@ -223,14 +209,6 @@ export function toggleListValue<T>(current: readonly T[], value: T): T[] {
   return current.includes(value)
     ? current.filter((candidate) => candidate !== value)
     : [...current, value]
-}
-
-/** Column key shown as a readable label. */
-export function scheduleColumnLabel(column: ScheduleListColumn): string {
-  return column
-    .replace("endDateCalculated", "End date")
-    .replace("startDate", "Start date")
-    .replace("assignedTo", "Responsible")
 }
 
 /** CSV export of the visible items; a Project column leads when several jobs show. */

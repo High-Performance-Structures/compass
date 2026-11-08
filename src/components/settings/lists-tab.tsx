@@ -240,7 +240,7 @@ function SheetEditor({ definition, company, canEdit }: {
                   />
                 </div>
               ))}
-              <p className="text-xs text-muted-foreground">Leave a name blank to keep the built-in one. The steps inside each group stay the same.</p>
+              <p className="text-xs text-muted-foreground">Leave a name blank to keep the built-in one. Which records each button shows stays the same.</p>
             </fieldset>
           )}
           <div className="space-y-1 border-t pt-4">

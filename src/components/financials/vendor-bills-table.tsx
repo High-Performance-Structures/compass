@@ -141,6 +141,7 @@ export function VendorBillsTable({
         rows: bills,
         of: vendorBillStatus,
         known: STATUSES,
+        sheetId: "financials.vendor-bills",
         selected: status,
         onSelect: setStatus,
       }}
