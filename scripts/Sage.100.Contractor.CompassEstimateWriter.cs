@@ -87,7 +87,7 @@ namespace CompassSageClientProjectWriter
         {
             if (!EstimateSwitch("SAGE_ESTIMATE_WRITES_ENABLED")) return;
             try { RunEstimates(); }
-            catch (Exception error) { WriteLog("ERROR", "Sage estimate run failed: " + error.Message); }
+            catch (Exception error) { WriteLog("ERROR", "Sage estimate run failed: " + error.ToString()); }
         }
 
         private static int RunEstimatesOnly()
@@ -102,7 +102,7 @@ namespace CompassSageClientProjectWriter
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", "Sage estimate run failed: " + error.Message);
+                WriteLog("FATAL", "Sage estimate run failed: " + error.ToString());
                 return 1;
             }
         }
@@ -139,16 +139,37 @@ namespace CompassSageClientProjectWriter
             EstimateRequest[] requests = envelope == null || envelope.requests == null ? new EstimateRequest[0] : envelope.requests;
             if (requests.Length == 0) return;
             List<EstimateOutcome> outcomes = new List<EstimateOutcome>();
-            using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
+            // Opening or closing the Sage session can fail outside any one request.
+            // Every claimed export still gets a result, so none is left running for
+            // Compass to re-claim every few minutes without anyone seeing why.
+            Exception sessionError = null;
+            try
             {
-                foreach (EstimateRequest request in requests)
+                using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
                 {
-                    EstimateOutcome outcome = new EstimateOutcome { Request = request };
-                    try { ProcessEstimate(request, dryRun, outcome); }
-                    catch (EstimateAttentionException error) { outcome.Error = error; outcome.NeedsAttention = true; }
-                    catch (Exception error) { outcome.Error = error; }
-                    outcomes.Add(outcome);
+                    foreach (EstimateRequest request in requests)
+                    {
+                        EstimateOutcome outcome = new EstimateOutcome { Request = request };
+                        try { ProcessEstimate(request, dryRun, outcome); }
+                        catch (EstimateAttentionException error) { outcome.Error = error; outcome.NeedsAttention = true; }
+                        catch (Exception error) { outcome.Error = error; WriteLog("ERROR", request.id + " ESTIMATE DETAIL " + error.ToString()); }
+                        outcomes.Add(outcome);
+                    }
                 }
+            }
+            catch (Exception error)
+            {
+                sessionError = error;
+                WriteLog("ERROR", "Sage estimate session failed: " + error.ToString());
+            }
+            foreach (EstimateRequest request in requests)
+            {
+                if (outcomes.Exists(delegate (EstimateOutcome done) { return done.Request == request; })) continue;
+                // The session never opened for this request, so nothing was sent.
+                outcomes.Add(new EstimateOutcome {
+                    Request = request,
+                    Error = new InvalidOperationException("The Sage API session could not be opened; nothing was sent. " + (sessionError == null ? "" : sessionError.Message))
+                });
             }
 
             // Sage commits accepted requests when the API session is disposed, so the
@@ -164,7 +185,7 @@ namespace CompassSageClientProjectWriter
                         ReadProposal(outcome.JobNumber, out lineCount, out total);
                         decimal expected = ParseAmount(outcome.Request.payload.proposal.totalAmount, "proposal total");
                         if (lineCount != outcome.Request.payload.proposal.lines.Length || total != expected)
-                            throw new EstimateAttentionException("Sage accepted the proposal but it reads back as " + lineCount + " lines, " + total.ToString("0.00", CultureInfo.InvariantCulture) + "; check Sage job " + outcome.JobNumber + ".");
+                            throw new EstimateAttentionException("Sage accepted the proposal but it reads back as " + lineCount + " lines, " + total.ToString("0.00", CultureInfo.InvariantCulture) + "; check Sage job " + outcome.JobNumber + "." + (sessionError == null ? "" : " Closing the Sage API session failed: " + sessionError.Message));
                     }
                     catch (EstimateAttentionException error) { outcome.Error = error; outcome.NeedsAttention = true; }
                     catch (Exception error) { outcome.Error = error; outcome.NeedsAttention = true; }

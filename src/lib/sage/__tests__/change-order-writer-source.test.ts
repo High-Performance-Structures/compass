@@ -77,6 +77,14 @@ describe("Sage estimate writer source boundary", () => {
     expect(process.indexOf("if (dryRun)")).toBeLessThan(process.indexOf("submit Sage proposal add"))
   })
 
+  it("reports every claimed export even when the Sage session fails to open or close", () => {
+    const run = estimate.slice(estimate.indexOf("private static void RunEstimates()"))
+    expect(run).toContain("Exception sessionError = null;")
+    expect(run.indexOf("catch (Exception error)\n            {\n                sessionError = error;")).toBeGreaterThan(-1)
+    expect(run.indexOf("The Sage API session could not be opened; nothing was sent.")).toBeLessThan(run.indexOf("Send(\"POST\", EstimateResultsTarget"))
+    expect(estimate).toContain('"Sage estimate run failed: " + error.ToString()')
+  })
+
   it("runs from the installed writer after change orders", () => {
     expect(writer.indexOf("RunChangeOrdersAfterWriterRun();")).toBeLessThan(writer.indexOf("RunEstimatesAfterWriterRun();"))
     expect(writer).toContain('"--estimate-diagnose"')
