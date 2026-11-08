@@ -31,6 +31,7 @@ function line(costCode: string, description: string, amountCents: number, extra:
     divisionCode: costCode.slice(0, 2),
     description,
     amountCents,
+    taxCents: 0,
     sortOrder: order,
     taxable: false,
     taxName: null,
@@ -145,11 +146,26 @@ describe("an accepted estimate as a Sage proposal", () => {
     expect(payload?.proposal.lines).toHaveLength(12)
   })
 
+  it("sends taxable lines before sales tax, with the district in Memo, so Sage adds the tax at billing", () => {
+    const estimateLines = [
+      line("03 30 02", "Wall pour labor", 450_000),
+      line("03 11 19", "ICF blocks", 108_150, { taxable: true, taxCents: 8_150, taxName: "64-0001 Example Combined", taxRateBasisPoints: 815 }),
+    ]
+    const contractTotalCents = 558_150
+    const plan = planSageEstimate({ ...BASE, estimateLines, feeLines: [], contractTotalCents })
+    expect(plan.blockers).toEqual([])
+    expect(plan.proposalLines.map((planned) => [planned.description, planned.amountCents, planned.userDefined1, planned.memo])).toEqual([
+      ["ICF blocks", 100_000, "Taxable", "64-0001 Example Combined 8.15%"],
+      ["Wall pour labor", 450_000, "", ""],
+    ])
+    expect(plan.proposalTotalCents).toBe(550_000)
+  })
+
   it("puts a rounding remainder on the largest line, and blocks a real difference", () => {
     const rounded = planSageEstimate({ ...BASE, contractTotalCents: 1_635_002 })
     expect(rounded.blockers).toEqual([])
     expect(rounded.proposalLines.map((planned) => planned.amountCents)).toEqual([1_000_002, 500_000, 75_000, 60_000])
-    expect(planSageEstimate({ ...BASE, contractTotalCents: 1 }).blockers[0]).toContain("contract total")
+    expect(planSageEstimate({ ...BASE, contractTotalCents: 1 }).blockers[0]).toContain("contract before sales tax")
   })
 
   it("never adds a second proposal, and says what Sage has", () => {

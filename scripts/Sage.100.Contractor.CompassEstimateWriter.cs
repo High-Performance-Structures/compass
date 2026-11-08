@@ -339,6 +339,103 @@ namespace CompassSageClientProjectWriter
             return EstimateRequestXml("BudgetAddRq", user, body.ToString());
         }
 
+        // A hand-run correction of one proposal's line amounts, for a proposal Sage
+        // staff can't edit on screen: --proposal-line-amount-fix <file.json>. The
+        // file (kept outside this repo) names the job, the line count and total
+        // before and after, and each line's ID, description, current and new
+        // amount. Every line must still read as expected, or nothing is changed.
+        // Only OtherAmount changes; each line keeps its description, tag and memo.
+        public sealed class ProposalAmountFix
+        {
+            public long jobNumber { get; set; }
+            public int lineCount { get; set; }
+            public string totalBefore { get; set; }
+            public string totalAfter { get; set; }
+            public ProposalAmountFixLine[] lines { get; set; }
+        }
+        public sealed class ProposalAmountFixLine
+        {
+            public int lineId { get; set; }
+            public string description { get; set; }
+            public string from { get; set; }
+            public string to { get; set; }
+        }
+
+        private static int RunProposalLineAmountFix(string path)
+        {
+            try
+            {
+                RequireConfiguration(false);
+                ProposalAmountFix fix = Json.Deserialize<ProposalAmountFix>(System.IO.File.ReadAllText(path));
+                if (fix == null || fix.jobNumber < 1 || fix.lineCount < 1 || fix.lines == null || fix.lines.Length == 0)
+                    throw new InvalidOperationException("The fix file is incomplete; nothing was changed.");
+                decimal before = ParseAmount(fix.totalBefore, "total before");
+                decimal after = ParseAmount(fix.totalAfter, "total after");
+                decimal change = 0m;
+                foreach (ProposalAmountFixLine line in fix.lines)
+                    change += ParseAmount(line.to, "new line amount") - ParseAmount(line.from, "current line amount");
+                if (before + change != after)
+                    throw new InvalidOperationException("The fix file's line changes don't add up to its new total; nothing was changed.");
+                string job = fix.jobNumber.ToString(CultureInfo.InvariantCulture);
+                int lines;
+                decimal total;
+                ReadProposal(fix.jobNumber, out lines, out total);
+                if (lines == fix.lineCount && total == after && ProposalLinesRead(fix, true))
+                {
+                    WriteLog("INFO", "PROPOSAL_AMOUNT_FIX_ALREADY_DONE job=" + job + " lines=" + lines + " total=" + total.ToString("0.00", CultureInfo.InvariantCulture));
+                    return 0;
+                }
+                if (lines != fix.lineCount || total != before || !ProposalLinesRead(fix, false))
+                    throw new InvalidOperationException("Job " + job + "'s proposal doesn't read as the fix file expects (" + lines + " lines, " + total.ToString("0.00", CultureInfo.InvariantCulture) + "); nothing was changed.");
+                string user = Required("SAGE_API_USER");
+                StringBuilder body = new StringBuilder();
+                AppendReference(body, "ObjectRef", job);
+                foreach (ProposalAmountFixLine line in fix.lines)
+                {
+                    body.Append("<ProposalLineMod><ObjectRef><PhaseID>0</PhaseID><LineID>").Append(line.lineId.ToString(CultureInfo.InvariantCulture)).Append("</LineID></ObjectRef>");
+                    AppendElement(body, "OtherAmount", ParseAmount(line.to, "new line amount").ToString("0.00", CultureInfo.InvariantCulture));
+                    body.Append("</ProposalLineMod>");
+                }
+                string xml = EstimateRequestXml("ProposalModRq", user, body.ToString());
+                string password = Required("SAGE_API_PASSWORD");
+                using (new ApiSession(user, password))
+                    RunStage("submit proposal line amounts", delegate { Submit(xml, password); });
+                // Sage commits when the session closes, so read back after it.
+                ReadProposal(fix.jobNumber, out lines, out total);
+                if (lines != fix.lineCount || total != after || !ProposalLinesRead(fix, true))
+                    throw new InvalidOperationException("Sage accepted the change but job " + job + " reads back as " + lines + " lines, " + total.ToString("0.00", CultureInfo.InvariantCulture) + "; check it in Sage.");
+                WriteLog("INFO", "PROPOSAL_AMOUNT_FIX_OK job=" + job + " lines=" + lines + " total=" + total.ToString("0.00", CultureInfo.InvariantCulture));
+                return 0;
+            }
+            catch (Exception error)
+            {
+                WriteLog("FATAL", "PROPOSAL_AMOUNT_FIX_FAILED " + error.ToString());
+                return 1;
+            }
+        }
+
+        /** True when every named line reads as expected: its new amount when fixed, else its current one. */
+        private static bool ProposalLinesRead(ProposalAmountFix fix, bool fixedAmounts)
+        {
+            using (SqlConnection connection = OpenSql())
+                foreach (ProposalAmountFixLine line in fix.lines)
+                    using (SqlCommand command = new SqlCommand("SELECT ISNULL(dscrpt, ''), ISNULL(othprp, 0), ISNULL(ttlprp, 0), ISNULL(phsnum, 0) FROM dbo.prplin WHERE recnum=@job AND linnum=@line", connection))
+                    {
+                        command.Parameters.AddWithValue("@job", fix.jobNumber);
+                        command.Parameters.AddWithValue("@line", line.lineId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (!reader.Read()) return false;
+                            decimal expected = ParseAmount(fixedAmounts ? line.to : line.from, "line amount");
+                            if (!String.Equals(Convert.ToString(reader[0]).Trim(), (line.description ?? "").Trim(), StringComparison.Ordinal)) return false;
+                            if (Convert.ToDecimal(reader[1]) != expected || Convert.ToDecimal(reader[2]) != expected) return false;
+                            if (Convert.ToInt32(reader[3]) != 0) return false;
+                            if (reader.Read()) return false;
+                        }
+                    }
+            return true;
+        }
+
         private static string EstimateRequestXml(string requestName, string user, string body)
         {
             string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" + XmlEscape(TargetCompany) + "</Company><User>" + XmlEscape(user) + "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-estimate\" onError=\"stopOnError\"><" + requestName + " requestID=\"" + Guid.NewGuid().ToString() + "\">" + body + "</" + requestName + "></MBXMLMsgsRq></api:MBXML>";

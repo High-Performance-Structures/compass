@@ -9,9 +9,11 @@ import { formatCents } from "@/lib/format"
  * its own Sage cost code (several lines may share one), in CSI division, cost
  * code and estimate order, builder fees last on their Sage fee codes. Each is
  * described by the estimate line's own text (the cost code name when blank),
- * never by an assembly name, whatever view the client sees; the whole sell
- * amount in Other. Taxable lines carry "Taxable" in UserDefined1 and the tax
- * in Memo, so Sage tracks them. When the company sends it, the job budget at
+ * never by an assembly name, whatever view the client sees; the sell amount
+ * before sales tax in Other. Sage adds the tax when a pay request marks a line
+ * taxable, so the tax is never in the proposal twice. Taxable lines carry
+ * "Taxable" in UserDefined1 and the tax district and rate in Memo, so staff
+ * know which lines to mark. When the company sends it, the job budget at
  * cost (BudgetAddRq) goes one line per cost code. No database or network access.
  */
 
@@ -24,6 +26,8 @@ export type EstimateProposalLine = {
   readonly description: string
   /** The line's sell amount in the contract (cost, markup and tax), in cents. */
   readonly amountCents: number
+  /** The sales tax inside amountCents, in cents; Sage adds it back at billing. */
+  readonly taxCents: number
   readonly sortOrder: number
   /** The line, or any of its cost items, is taxable. */
   readonly taxable: boolean
@@ -113,7 +117,7 @@ function estimateLine(line: EstimateProposalLine, mapCostCode: (code: string) =>
   return {
     ...mapped,
     description,
-    amountCents: line.amountCents,
+    amountCents: line.amountCents - line.taxCents,
     taxable: line.taxable,
     userDefined1: line.taxable ? SAGE_TAXABLE : "",
     memo: line.taxable ? taxMemo(line) : "",
@@ -184,6 +188,7 @@ function unmappedLabels(lines: readonly PlannedLine[]): readonly string[] {
 export function planSageEstimate(input: {
   readonly estimateLines: readonly EstimateProposalLine[]
   readonly feeLines: readonly EstimateFeeLine[]
+  /** The contract total including sales tax; the proposal is this less the lines' tax. */
   readonly contractTotalCents: number
   readonly costLines: readonly EstimateCostLine[]
   readonly sendBudget: boolean
@@ -192,6 +197,7 @@ export function planSageEstimate(input: {
   readonly sageProposal: SageProposalSummary | null
 }): SageEstimatePlan {
   const blockers: string[] = []
+  const contractBeforeTaxCents = input.contractTotalCents - input.estimateLines.reduce((sum, line) => sum + line.taxCents, 0)
   const ordered = [
     ...input.estimateLines
       .filter((line) => line.amountCents !== 0)
@@ -204,12 +210,12 @@ export function planSageEstimate(input: {
   ].sort(proposalOrder)
   const proposalLines = settleRounding(
     ordered.map((entry) => entry.line),
-    input.contractTotalCents
+    contractBeforeTaxCents
   )
   const proposalTotalCents = proposalLines.reduce((sum, line) => sum + line.amountCents, 0)
   if (proposalLines.length === 0) blockers.push("The accepted estimate has no contract lines with an amount.")
-  if (proposalTotalCents !== input.contractTotalCents) {
-    blockers.push(`The proposal lines add up to ${formatCents(proposalTotalCents)}, but the contract total is ${formatCents(input.contractTotalCents)}.`)
+  if (proposalTotalCents !== contractBeforeTaxCents) {
+    blockers.push(`The proposal lines add up to ${formatCents(proposalTotalCents)}, but the contract before sales tax is ${formatCents(contractBeforeTaxCents)}.`)
   }
 
   let budgetLines: PlannedLine[] | null = null

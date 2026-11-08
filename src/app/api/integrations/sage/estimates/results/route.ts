@@ -9,6 +9,7 @@ import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
 import { sageEstimateWriteResultSchema } from "@/lib/sage/estimate-write"
+import { queueSageJobTaxDistrict } from "@/lib/sage/job-tax-district"
 
 /** The Sage writer reports an accepted estimate: proposal (and budget) added, or why not. */
 export async function POST(request: Request): Promise<Response> {
@@ -65,6 +66,16 @@ export async function POST(request: Request): Promise<Response> {
   if (updated.length !== 1) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
 
   if (result.outcome === "succeeded") {
+    // The job now carries the accepted estimate, so give it the estimate's tax
+    // district for Progress Billing. Best effort: the proposal result stands.
+    try {
+      await queueSageJobTaxDistrict(db, {
+        organizationId, projectId: row.projectId, estimateId: row.estimateId,
+        requestedByUserId: row.requestedByUserId, now,
+      })
+    } catch (error) {
+      console.error("Sage job tax district could not be queued", error)
+    }
     const [actor, estimate] = await Promise.all([
       sageExportActor(db, row.requestedByUserId),
       db.select({ estimateNumber: projectEstimates.estimateNumber }).from(projectEstimates).where(estimateWhere).get(),

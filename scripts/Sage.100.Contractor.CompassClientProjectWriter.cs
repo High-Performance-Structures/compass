@@ -49,6 +49,12 @@ namespace CompassSageClientProjectWriter
             public ClientPayload client { get; set; }
             public JobPayload job { get; set; }
             public ContactPayload contact { get; set; }
+            public TaxDistrictPayload taxDistrict { get; set; }
+        }
+        public sealed class TaxDistrictPayload
+        {
+            public int number { get; set; }
+            public string name { get; set; }
         }
         public sealed class ContactPayload
         {
@@ -217,6 +223,8 @@ namespace CompassSageClientProjectWriter
                 return RunChangeOrderDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--change-order-run", StringComparison.OrdinalIgnoreCase))
                 return RunChangeOrdersOnly();
+            if (args.Length > 1 && String.Equals(args[0], "--proposal-line-amount-fix", StringComparison.OrdinalIgnoreCase))
+                return RunProposalLineAmountFix(args[1]);
             if (args.Length > 0 && String.Equals(args[0], "--estimate-diagnose", StringComparison.OrdinalIgnoreCase))
                 return RunEstimateDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--estimate-run", StringComparison.OrdinalIgnoreCase))
@@ -314,7 +322,10 @@ namespace CompassSageClientProjectWriter
                 shortName = "Compass Diagnostic", address = "1 Diagnostic Way"
             }, 1, 1, 1);
             using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
-            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " clientModifyRequest=ClientModRq jobRequest=" + jobRequestName);
+            // Reported, not required: without the field only the tax district write is refused.
+            string taxDistrictField = JobTaxDistrictField();
+            if (taxDistrictField != null) BuildJobTaxDistrictModXml(user, 1, 1);
+            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " clientModifyRequest=ClientModRq jobRequest=" + jobRequestName + " jobTaxDistrictField=" + (taxDistrictField ?? "none"));
         }
 
         private static int CatalogCount(string table)
@@ -359,7 +370,14 @@ namespace CompassSageClientProjectWriter
 
         private static WriteOutcome Process(WriteRequest request)
         {
-            if (request == null || request.payload == null || request.payload.client == null)
+            if (request == null || request.payload == null)
+                throw new InvalidOperationException("Compass payload is incomplete.");
+            if (!String.Equals(request.payload.company, TargetCompany, StringComparison.Ordinal))
+                throw new InvalidOperationException("Compass payload targets the wrong Sage company.");
+            // The only operation without a client: the job's own client is read from Sage.
+            if (String.Equals(request.payload.operationType, "set_job_tax_district", StringComparison.Ordinal))
+                return ProcessSetJobTaxDistrict(request);
+            if (request.payload.client == null)
                 throw new InvalidOperationException("Compass payload is incomplete.");
             if (!String.Equals(request.payload.operationType, "ensure_client", StringComparison.Ordinal) &&
                 !String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) &&
@@ -490,6 +508,92 @@ namespace CompassSageClientProjectWriter
                 JobStatus = jobRecord.StatusNumber,
                 JobType = jobRecord.TypeNumber
             };
+        }
+
+        // Fills an existing job's blank sales tax district (actrec.slstax) from the
+        // accepted estimate so Progress Billing taxes it. A district someone already
+        // set on the job is never replaced: a different one stops with no write.
+        private static WriteOutcome ProcessSetJobTaxDistrict(WriteRequest request)
+        {
+            JobPayload job = request.payload.job;
+            TaxDistrictPayload district = request.payload.taxDistrict;
+            int jobNumber;
+            if (job == null || String.IsNullOrWhiteSpace(job.sageJobId) || !Int32.TryParse(job.sageJobNumber, out jobNumber) || jobNumber < 1)
+                throw new InvalidOperationException("Compass did not provide the Sage job ID and number; no write was attempted.");
+            if (district == null || district.number < 1)
+                throw new InvalidOperationException("Compass did not provide a Sage tax district; no write was attempted.");
+            SageRecord jobRecord = RunStage("find Sage job", delegate { return FindJobByNumber(jobNumber); });
+            if (jobRecord == null || !String.Equals(jobRecord.Id, job.sageJobId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The Sage job ID and number do not identify the same job; no write was attempted.");
+            if (!RunStage("check Sage tax district", delegate { return TaxDistrictExists(district.number); }))
+                throw new InvalidOperationException("Sage has no tax district " + district.number + " (" + district.name + "); no write was attempted.");
+            SageRecord clientRecord = jobRecord.ClientNumber > 0
+                ? RunStage("find Sage job client", delegate { return FindClientByNumber(jobRecord.ClientNumber); })
+                : null;
+            if (clientRecord == null)
+                throw new InvalidOperationException("Sage job " + jobNumber + " has no client; no write was attempted.");
+            int current = RunStage("read Sage job tax district", delegate { return JobTaxDistrict(jobNumber); });
+            if (current != district.number)
+            {
+                if (current > 0)
+                    throw new InvalidOperationException("Sage job " + jobNumber + " already has tax district " + current + "; Compass did not change it to " + district.number + " (" + district.name + ").");
+                string user = Required("SAGE_API_USER");
+                string password = Required("SAGE_API_PASSWORD");
+                RunStage("submit Sage job tax district", delegate { Submit(BuildJobTaxDistrictModXml(user, jobNumber, district.number), password); });
+            }
+            return new WriteOutcome {
+                Request = request,
+                Client = clientRecord,
+                Job = jobRecord,
+                ClientStatus = clientRecord.StatusNumber,
+                JobStatus = jobRecord.StatusNumber,
+                JobType = jobRecord.TypeNumber
+            };
+        }
+
+        private static bool TaxDistrictExists(int number)
+        {
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo.taxdst WHERE recnum=@district", connection))
+            {
+                command.Parameters.AddWithValue("@district", number);
+                return Convert.ToInt32(command.ExecuteScalar()) == 1;
+            }
+        }
+
+        private static int JobTaxDistrict(int jobNumber)
+        {
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT ISNULL(slstax, 0) FROM dbo.actrec WHERE recnum=@job", connection))
+            {
+                command.Parameters.AddWithValue("@job", jobNumber);
+                object value = command.ExecuteScalar();
+                return value == null || value is DBNull ? 0 : Convert.ToInt32(value);
+            }
+        }
+
+        // The JobModRq field named for the sales tax district, or null if this
+        // Sage version's schema has none.
+        private static string JobTaxDistrictField()
+        {
+            foreach (XmlSchemaElement field in RequestFields("JobModRq"))
+            {
+                string key = Normalize(String.IsNullOrWhiteSpace(field.Name) ? field.RefName.Name : field.Name);
+                if (key.StartsWith("salestaxdistrict", StringComparison.Ordinal) || key == "salestax" || key == "salestaxref") return key;
+            }
+            return null;
+        }
+
+        private static string BuildJobTaxDistrictModXml(string user, int jobNumber, int districtNumber)
+        {
+            // Fail closed: without a tax district field the generic builder would
+            // send a JobModRq that changes nothing.
+            string key = JobTaxDistrictField();
+            if (key == null) throw new InvalidOperationException("Installed mbxml.xsd JobModRq has no sales tax district field; no write was attempted.");
+            Dictionary<string, int> references = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                { "objectref", jobNumber }, { key, districtNumber }
+            };
+            return BuildXml("JobModRq", user, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), references);
         }
 
         // Adds one contact line (name, phone, email, cell) under an existing Sage
