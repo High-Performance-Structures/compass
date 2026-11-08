@@ -38,25 +38,25 @@ function rows(overrides: Partial<DirectoryRows> = {}): DirectoryRows {
     internal: [{ id: "ic-dan", userId: "u-dan", name: "Dan Vogel", email: "dan@new.example", active: true, phone: null }],
     vendors: [
       { id: "v-hps-sub", name: "Our Own Subcontractor", email: null, primaryEmail: null },
-      { id: "v-flat", name: "Flatiron Steel, Inc.", email: null, primaryEmail: null },
+      { id: "v-acme", name: "Acme Steel, Inc.", email: null, primaryEmail: null },
       { id: "v-bldr", name: "Builders Supply LLC", email: "orders@bldr.example", primaryEmail: null },
       { id: "v-gmail", name: "Gmail Framing", email: "framer@gmail.com", primaryEmail: null },
     ],
     vendorPeople: [
       // The company's own old address also sits on a vendor contact.
       { id: "vc-dan-old", vendorId: "v-hps-sub", vendorName: "Our Own Subcontractor", name: "Dan Vogel", email: "dan@old.example", userId: null, active: true, phone: null },
-      { id: "vc-aaron", vendorId: "v-bldr", vendorName: "Builders Supply LLC", name: "Aaron Southard", email: "aaron@bldr.example", userId: null, active: true, phone: null },
+      { id: "vc-aaron", vendorId: "v-bldr", vendorName: "Builders Supply LLC", name: "Alex South", email: "aaron@bldr.example", userId: null, active: true, phone: null },
     ],
-    clientPeople: [{ id: "cc-louise", customerId: "cust-1", customerName: "Mountain Mutual", name: "Louise Noble", email: "gm@mutual.example", userId: null, active: true, phone: null }],
+    clientPeople: [{ id: "cc-louise", customerId: "cust-1", customerName: "Valley Mutual", name: "Lou North", email: "gm@mutual.example", userId: null, active: true, phone: null }],
     projectContacts: [
       // One person, one row per project.
-      contact("pc-louise-a", "p-a", "Louise Noble", "gm@mutual.example", { customerContactId: "cc-louise", customerId: "cust-1", contactType: "owner" }),
-      contact("pc-louise-b", "p-b", "Louise Noble", "GM@Mutual.example", { customerContactId: "cc-louise", customerId: "cust-1", contactType: "owner" }),
-      contact("pc-aaron-a", "p-a", "Aaron Southard", "aaron@bldr.example", { vendorContactId: "vc-aaron", vendorId: "v-bldr" }),
-      contact("pc-aaron-b", "p-b", "Aaron Southard", "aaron@bldr.example"),
+      contact("pc-louise-a", "p-a", "Lou North", "gm@mutual.example", { customerContactId: "cc-louise", customerId: "cust-1", contactType: "owner" }),
+      contact("pc-louise-b", "p-b", "Lou North", "GM@Mutual.example", { customerContactId: "cc-louise", customerId: "cust-1", contactType: "owner" }),
+      contact("pc-aaron-a", "p-a", "Alex South", "aaron@bldr.example", { vendorContactId: "vc-aaron", vendorId: "v-bldr" }),
+      contact("pc-aaron-b", "p-b", "Alex South", "aaron@bldr.example"),
       // Two rows with the same name and email on one project, not linked to the directory.
-      contact("pc-travis-1", "p-a", "Travis Loomis", "travis@gmail.com", { contactType: "owner" }),
-      contact("pc-travis-2", "p-a", "Travis  Loomis", "travis@gmail.com", { contactType: "owner" }),
+      contact("pc-terry-1", "p-a", "Terry Lamb", "terry@gmail.com", { contactType: "owner" }),
+      contact("pc-terry-2", "p-a", "Terry  Lamb", "terry@gmail.com", { contactType: "owner" }),
       // Two different people with the same name.
       contact("pc-pat-1", "p-a", "Pat Lee", "pat@one.example"),
       contact("pc-pat-2", "p-a", "Pat Lee", "pat@two.example"),
@@ -75,11 +75,11 @@ function match(text: string, input: DirectoryRows = rows(), projectId = "p-a"): 
 
 describe("reading the text", () => {
   it("parses Name <email>, a bare address, and a name", () => {
-    expect(parseParticipantText("Louise Noble <GM@Mutual.example>")).toEqual({ name: "Louise Noble", email: "gm@mutual.example" })
+    expect(parseParticipantText("Lou North <GM@Mutual.example>")).toEqual({ name: "Lou North", email: "gm@mutual.example" })
     expect(parseParticipantText(" dan@old.example ")).toEqual({ name: null, email: "dan@old.example" })
-    expect(parseParticipantText("Keith and  Jennifer Hinson")).toEqual({ name: "Keith and Jennifer Hinson", email: null })
-    expect(identityOfText("Louise Noble <gm@mutual.example>")).toMatchObject({ kind: "email", key: "email:gm@mutual.example", local: "gm", domain: "mutual.example" })
-    expect(identityOfText("LaCasse,  Steven")).toEqual({ kind: "name", key: "name:lacasse, steven", name: "lacasse, steven" })
+    expect(parseParticipantText("Kim and  Jo Harper")).toEqual({ name: "Kim and Jo Harper", email: null })
+    expect(identityOfText("Lou North <gm@mutual.example>")).toMatchObject({ kind: "email", key: "email:gm@mutual.example", local: "gm", domain: "mutual.example" })
+    expect(identityOfText("Lake,  Sam")).toEqual({ kind: "name", key: "name:lake, sam", name: "lake, sam" })
     expect(identityFromKey("literal:a; b")).toBeNull()
   })
 
@@ -88,13 +88,13 @@ describe("reading the text", () => {
     sqlite.exec("CREATE TABLE project_source_record_participants (source_participant_id TEXT, source_contact_name TEXT, identity_status TEXT)")
     const cases: readonly [string, string | null, string, string][] = [
       ["unknown:email:dan@old.example", "dan@old.example", "unmatched", "email:dan@old.example"],
-      ["internal:9421466", "Louise Noble <GM@mutual.example>", "unmatched", "email:gm@mutual.example"],
+      ["internal:9421466", "Lou North <GM@mutual.example>", "unmatched", "email:gm@mutual.example"],
       ["internal:9421466", "Aaron@bldr.example", "unmatched", "email:aaron@bldr.example"],
-      ["owner:35400646", "Travis  Loomis", "unmatched", "name:travis loomis"],
+      ["owner:35400646", "Terry  Lamb", "unmatched", "name:terry lamb"],
       ["unknown:name:pat lee", null, "unmatched", "name:pat lee"],
       ["to:owner:literal:abc", "Jane; Bob", "boundary_unproven:none", "literal:Jane; Bob"],
       // Nested or listed addresses are not one address: the whole text is the name.
-      ["owner:2", "Lorenz, Kai <Kai Lorenz <kai@gmail.com>>", "unmatched", "name:lorenz, kai <kai lorenz <kai@gmail.com>>"],
+      ["owner:2", "Long, Kit <Kit Long <kit@gmail.com>>", "unmatched", "name:long, kit <kit long <kit@gmail.com>>"],
     ]
     for (const [key, name, status, expected] of cases) {
       sqlite.prepare("DELETE FROM project_source_record_participants").run()
@@ -109,14 +109,14 @@ describe("reading the text", () => {
 describe("matching", () => {
   it("collapses one person's many project rows by the same email", () => {
     expect(match("gm@mutual.example", rows(), "p-c")).toMatchObject({ kind: "person", matchType: "same_email", ref: "customer_contact:cc-louise" })
-    expect(match("Aaron Southard <aaron@bldr.example>", rows(), "p-b")).toMatchObject({ kind: "person", matchType: "same_email", ref: "vendor_contact:vc-aaron" })
+    expect(match("Alex South <aaron@bldr.example>", rows(), "p-b")).toMatchObject({ kind: "person", matchType: "same_email", ref: "vendor_contact:vc-aaron" })
     // No directory person: the project's own row, collapsed by address.
-    expect(match("travis@gmail.com")).toMatchObject({ kind: "person", matchType: "same_email", ref: "project_contact:pc-travis-1" })
+    expect(match("terry@gmail.com")).toMatchObject({ kind: "person", matchType: "same_email", ref: "project_contact:pc-terry-1" })
   })
 
   it("collapses a name only when the rows share an email or a directory person", () => {
-    expect(match("Travis Loomis")).toMatchObject({ kind: "person", matchType: "same_name", ref: "project_contact:pc-travis-1" })
-    expect(match("Louise Noble", rows(), "p-b")).toMatchObject({ kind: "person", matchType: "same_name", ref: "customer_contact:cc-louise" })
+    expect(match("Terry Lamb")).toMatchObject({ kind: "person", matchType: "same_name", ref: "project_contact:pc-terry-1" })
+    expect(match("Lou North", rows(), "p-b")).toMatchObject({ kind: "person", matchType: "same_name", ref: "customer_contact:cc-louise" })
     expect(match("Pat Lee")).toEqual({ kind: "none", reason: "several_people", suggestion: null })
   })
 
@@ -138,19 +138,19 @@ describe("matching", () => {
   })
 
   it("matches a business domain to its one vendor, never free mail or a staff domain", () => {
-    expect(match("Dawn Wheeler <dawn@bldr.example>")).toEqual({ kind: "vendor", matchType: "vendor_domain", vendorId: "v-bldr", vendorName: "Builders Supply LLC" })
+    expect(match("Dana West <dana@bldr.example>")).toEqual({ kind: "vendor", matchType: "vendor_domain", vendorId: "v-bldr", vendorName: "Builders Supply LLC" })
     expect(match("someone@gmail.com")).toEqual({ kind: "none", reason: "no_match", suggestion: null })
     // A domain only staff use is the company's own even before Settings lists it.
     expect(match("nancy@new.example")).toMatchObject({ kind: "none", reason: "company_mailbox" })
     const twoVendors = rows({ vendors: [...rows().vendors, { id: "v-bldr-2", name: "Builders Supply North", email: "north@bldr.example", primaryEmail: null }] })
-    expect(match("dawn@bldr.example", twoVendors)).toMatchObject({ kind: "none", reason: "several_vendors" })
+    expect(match("dana@bldr.example", twoVendors)).toMatchObject({ kind: "none", reason: "several_vendors" })
   })
 
   it("only suggests a vendor whose name reads like the domain", () => {
-    expect(match("ordercs@flatironsteel.com")).toEqual({ kind: "none", reason: "no_match", suggestion: { vendorId: "v-flat", vendorName: "Flatiron Steel, Inc." } })
-    expect(compactCompanyName("Flatiron Steel, Inc.")).toBe("flatironsteel")
+    expect(match("ordercs@acmesteel.com")).toEqual({ kind: "none", reason: "no_match", suggestion: { vendorId: "v-acme", vendorName: "Acme Steel, Inc." } })
+    expect(compactCompanyName("Acme Steel, Inc.")).toBe("acmesteel")
     expect(suggestVendorForDomain("gmail.com", [{ id: "g", name: "Gmail", emails: [] }])).toBeNull()
-    expect(suggestVendorForDomain("orders.flatironsteel.com", [{ id: "v", name: "Flatiron Steel Co", emails: [] }])).toEqual({ vendorId: "v", vendorName: "Flatiron Steel Co" })
+    expect(suggestVendorForDomain("orders.acmesteel.com", [{ id: "v", name: "Acme Steel Co", emails: [] }])).toEqual({ vendorId: "v", vendorName: "Acme Steel Co" })
   })
 
   it("finds nobody for an unknown name", () => {

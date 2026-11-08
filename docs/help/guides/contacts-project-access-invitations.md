@@ -79,7 +79,7 @@ Administrators can choose **Match automatically…** first. Compass shows a prev
 - **One person with many rows**: the same email, or the same name on rows that share an email or a directory person, is one person.
 - **A vendor's email domain**: an address on a business domain that exactly one vendor's people use becomes a new, uninvited contact of that vendor. Free email services (Gmail, Yahoo, Outlook and the like) and your own domains are never matched this way.
 
-For the names that are left, choose **Pick person**, **Split into people** (for several names run together), or **Leave as is**. One choice applies to every row of that name on every project. When an email's domain points to a vendor (the same domain, or a company name that reads like it, such as flatironsteel.com for Flatiron Steel Inc), **Pick person** offers **New contact of** that vendor as a suggestion; it is never applied without your choice.
+For the names that are left, choose **Pick person**, **Split into people** (for several names run together), or **Leave as is**. One choice applies to every row of that name on every project. When an email's domain points to a vendor (the same domain, or a company name that reads like it, such as acmesteel.com for Acme Steel Inc), **Pick person** offers **New contact of** that vendor as a suggestion; it is never applied without your choice.
 
 Projects that keep imported conversations staff-only (for example a legal hold) are never changed: their rows stay listed and read only, and a choice on a name skips them. Resolving never shares a conversation, invites anyone, or sends a notification or email; conversations stay staff-only until you use **Share with owner/vendor…**. Each choice, and each automatic run, is recorded once in Activity.
 

@@ -23,7 +23,7 @@
  *     vendor's people or the vendor itself is that vendor; the person is
  *     added as the vendor's contact.
  *  5. Otherwise nothing is decided. A domain that reads like a vendor's name
- *     ("flatironsteel.com" for "Flatiron Steel Inc") is offered as a
+ *     ("acmesteel.com" for "Acme Steel Inc") is offered as a
  *     suggestion only.
  */
 
@@ -190,14 +190,14 @@ function domainOf(email: string): string | null {
   return splitEmail(email)?.domain ?? null
 }
 
-/** "Flatiron Steel, Inc." → "flatironsteel". */
+/** "Acme Steel, Inc." → "acmesteel". */
 export function compactCompanyName(name: string): string {
   const words = name.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean)
   while (words.length > 1 && COMPANY_SUFFIXES.has(words[words.length - 1] ?? "")) words.pop()
   return words.join("")
 }
 
-/** The labels of a domain that could be a company name ("orders.flatironsteel.com" → ["orders", "flatironsteel"]). */
+/** The labels of a domain that could be a company name ("orders.acmesteel.com" → ["orders", "acmesteel"]). */
 function domainNameLabels(domain: string): readonly string[] {
   const labels = domain.toLowerCase().split(".")
   return labels.slice(0, -1).map((label) => label.replace(/[^a-z0-9]/g, "")).filter((label) => label.length >= 4)

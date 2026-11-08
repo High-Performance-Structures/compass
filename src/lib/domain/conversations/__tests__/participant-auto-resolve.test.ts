@@ -95,7 +95,7 @@ beforeEach(() => {
   insert("vendors", { id: "v-own", organization_id: ORG, name: "Our Own Subcontractor", category: "Subcontractor", directory_status: "active", created_at: NOW, updated_at: NOW })
   insert("vendor_contacts", { id: "vc-dan-old", vendor_id: "v-own", name: "Dan Vogel", email: "dan@old.example", active: 1, created_at: NOW, updated_at: NOW })
   insert("vendors", { id: "v-bldr", organization_id: ORG, name: "Builders Supply", category: "Supplier", directory_status: "active", created_at: NOW, updated_at: NOW })
-  insert("vendor_contacts", { id: "vc-aaron", vendor_id: "v-bldr", name: "Aaron Southard", email: "aaron@bldr.example", active: 1, created_at: NOW, updated_at: NOW })
+  insert("vendor_contacts", { id: "vc-aaron", vendor_id: "v-bldr", name: "Alex South", email: "aaron@bldr.example", active: 1, created_at: NOW, updated_at: NOW })
 
   const t1 = thread(P1, "t-1")
   const t2 = thread(P2, "t-2")
@@ -108,9 +108,9 @@ beforeEach(() => {
   unresolved(HOLD, hold, "unknown:email:dan@old.example", "dan@old.example", "cc")
   // A vendor person by exact email, and a new one at the same company by domain.
   unresolved(P1, t1, "unknown:email:aaron@bldr.example", "aaron@bldr.example")
-  unresolved(P2, t2, "unknown:email:dawn@bldr.example", "Dawn Wheeler <dawn@bldr.example>")
+  unresolved(P2, t2, "unknown:email:dana@bldr.example", "Dana West <dana@bldr.example>")
   // Nobody can tell who these are.
-  unresolved(P1, t1, "owner:1", "Keith and Jennifer Hinson")
+  unresolved(P1, t1, "owner:1", "Kim and Jo Harper")
   unresolved(P2, t2, "unknown:email:pal@gmail.com", "pal@gmail.com")
 })
 
@@ -158,10 +158,10 @@ describe("one decision for every row of a name", () => {
   })
 
   it("adds a person as a new contact of a vendor", async () => {
-    const anchor = rows("SELECT id FROM project_source_record_participants WHERE source_contact_name LIKE 'Dawn%'")[0]?.id
+    const anchor = rows("SELECT id FROM project_source_record_participants WHERE source_contact_name LIKE 'Dana%'")[0]?.id
     const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-bldr" }, apply: true, now: LATER })
-    expect(result).toMatchObject({ success: true, data: { people: ["Dawn Wheeler"], rowsReviewed: 1 } })
-    expect(rows("SELECT vendor_id, name, email FROM vendor_contacts WHERE email = 'dawn@bldr.example'")).toEqual([{ vendor_id: "v-bldr", name: "Dawn Wheeler", email: "dawn@bldr.example" }])
+    expect(result).toMatchObject({ success: true, data: { people: ["Dana West"], rowsReviewed: 1 } })
+    expect(rows("SELECT vendor_id, name, email FROM vendor_contacts WHERE email = 'dana@bldr.example'")).toEqual([{ vendor_id: "v-bldr", name: "Dana West", email: "dana@bldr.example" }])
     expect(rows("SELECT owner_portal_visible, sub_vendor_portal_visible, vendor_id FROM project_contacts WHERE project_id = ?", P2))
       .toEqual([{ owner_portal_visible: 0, sub_vendor_portal_visible: 0, vendor_id: "v-bldr" }])
     expect(await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-elsewhere" }, apply: true, now: LATER })).toMatchObject({ success: false })
@@ -190,7 +190,7 @@ describe("automatic pass", () => {
     expect(rows("SELECT project_id, source_contact_name FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message' AND review_status = 'unreviewed' ORDER BY id"))
       .toEqual([
         { project_id: HOLD, source_contact_name: "dan@old.example" },
-        { project_id: P1, source_contact_name: "Keith and Jennifer Hinson" },
+        { project_id: P1, source_contact_name: "Kim and Jo Harper" },
         { project_id: P2, source_contact_name: "pal@gmail.com" },
       ])
     // Aaron links to his vendor contact on the project, uninvited.
