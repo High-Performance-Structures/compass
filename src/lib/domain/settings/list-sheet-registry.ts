@@ -365,6 +365,100 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     defaultSort: null,
     startFilter: null,
   },
+  {
+    id: "contacts.internal",
+    label: "Internal contacts",
+    where: "Contacts, internal staff directory",
+    columns: [
+      { id: "name", label: "Name", kind: "text", required: true },
+      { id: "company", label: "Company", kind: "text" },
+      { id: "role", label: "Role", kind: "text" },
+      { id: "email", label: "Email", kind: "text" },
+      { id: "phone", label: "Phone", kind: "text" },
+      { id: "access", label: "Compass access", kind: "status" },
+    ],
+    defaultSort: null,
+    startFilter: null,
+  },
+  {
+    id: "contacts.unassigned",
+    label: "Unassigned people",
+    where: "Contacts, people not connected to a company",
+    columns: [
+      { id: "name", label: "Name", kind: "text", required: true },
+      { id: "email", label: "Email", kind: "text" },
+      { id: "company", label: "Imported company", kind: "text" },
+      { id: "projects", label: "Projects", kind: "text" },
+    ],
+    defaultSort: null,
+    startFilter: null,
+  },
+  {
+    id: "settings.people",
+    label: "Team members",
+    where: "Settings › Team",
+    columns: [
+      { id: "name", label: "Name", kind: "text", required: true },
+      { id: "role", label: "Role", kind: "text" },
+      { id: "teams", label: "Teams", kind: "text" },
+      { id: "groups", label: "Groups", kind: "text" },
+      { id: "projects", label: "Projects", kind: "number" },
+    ],
+    defaultSort: null,
+    startFilter: {
+      options: [
+        { value: "all", label: "All" },
+        { value: "active", label: "Active" },
+        { value: "invited", label: "Invitation pending" },
+      ],
+      defaultValue: "all",
+    },
+  },
+  {
+    id: "settings.invite-links",
+    label: "Invite links",
+    where: "Settings › Team, invite links",
+    columns: [
+      { id: "code", label: "Code", kind: "text", required: true },
+      { id: "role", label: "Role", kind: "text" },
+      { id: "uses", label: "Uses", kind: "number" },
+      { id: "expires", label: "Expires", kind: "date" },
+      { id: "createdBy", label: "Created by", kind: "text" },
+    ],
+    defaultSort: null,
+    startFilter: {
+      options: [
+        { value: "open", label: "Open" },
+        { value: "expired", label: "Expired" },
+        { value: "used_up", label: "Used up" },
+        { value: "revoked", label: "Revoked" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "open",
+    },
+  },
+  {
+    id: "settings.account-deletion-requests",
+    label: "Account deletion requests",
+    where: "Settings › Permissions, account deletion requests",
+    columns: [
+      { id: "person", label: "Person", kind: "text", required: true },
+      { id: "requested", label: "Requested", kind: "date" },
+      { id: "status", label: "Status", kind: "status" },
+    ],
+    defaultSort: null,
+    startFilter: {
+      options: [
+        { value: "open", label: "Open" },
+        { value: "pending", label: "Pending" },
+        { value: "processing", label: "Processing" },
+        { value: "completed", label: "Deleted" },
+        { value: "cancelled", label: "Cancelled" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "open",
+    },
+  },
 ]
 
 /** The sheets a company sets up in Settings > Lists. */

@@ -107,13 +107,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/files/project-file-groups.tsx": "file browser",
 
   "src/components/client-follow-up/client-follow-up-board.tsx": "growing list",
-  "src/components/contacts/internal-contacts-table.tsx": "growing list",
-  "src/components/contacts/unassigned-people-table.tsx": "growing list",
   "src/components/equipment/equipment-workspace.tsx": "growing list",
   "src/components/financials/entity-table.tsx": "growing list",
   "src/components/financials/square-receipts-table.tsx": "growing list",
   "src/components/nutech/nutech-catalog-workspace.tsx": "growing list",
-  "src/components/people-table.tsx": "growing list",
   "src/components/projects/project-estimate-list.tsx": "growing list",
   "src/components/projects/project-historical-rfq-list.tsx": "growing list",
   "src/components/projects/project-warranty-source-review.tsx": "growing list",
@@ -123,12 +120,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/use-archive-pagination.ts": "growing list",
   "src/components/schedule/schedule-list-view.tsx": "growing list",
   "src/components/schedule/workday-exceptions-view.tsx": "growing list",
-  "src/components/settings/account-deletion-requests-card.tsx": "growing list",
-  "src/components/settings/invite-links-section.tsx": "growing list",
 }
 
 /** Older growing lists still on hand-built tables. Lower it when one moves to the shared sheet; never raise it. */
-const GROWING_LIST_CEILING = 19
+const GROWING_LIST_CEILING = 14
 
 const HAND_BUILT = /<table\b|<Table\b|\buseReactTable\(/
 

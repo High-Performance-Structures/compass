@@ -5,7 +5,12 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
+import { internalContactColumns } from "@/components/contacts/internal-contacts-table"
 import { participantReviewColumns } from "@/components/contacts/participant-review-table"
+import { unassignedPeopleColumns } from "@/components/contacts/unassigned-people-table"
+import { peopleColumns } from "@/components/people-table"
+import { accountDeletionRequestColumns } from "@/components/settings/account-deletion-requests-card"
+import { inviteLinkColumns } from "@/components/settings/invite-links-section"
 import { customerColumns } from "@/components/financials/customers-table"
 import { billedItemColumns, receivedPaymentColumns } from "@/components/financials/received-payments-panel"
 import { invoiceColumns } from "@/components/financials/project-invoices-table"
@@ -106,6 +111,11 @@ describe("list sheet standard", () => {
       vendors: () => vendorColumns({ onView: noop }, {}, { selectable: true, developerMode: true }),
       customers: () => customerColumns({ onEdit: noop }, { selectable: true, developerMode: true }),
       "contacts.review": () => participantReviewColumns(noop),
+      "contacts.internal": () => internalContactColumns({ canEdit: true, canArchive: true, busy: false, onEdit: noop, onArchive: noop, onRestore: noop }, { developerMode: true, hasActions: true }),
+      "contacts.unassigned": () => unassignedPeopleColumns({ canEdit: true, canConnect: true, onEdit: noop, onConnect: noop, onArchive: noop }),
+      "settings.people": () => peopleColumns({ onEditUser: noop }),
+      "settings.invite-links": () => inviteLinkColumns({ onCopy: noop, onRevoke: noop }),
+      "settings.account-deletion-requests": () => accountDeletionRequestColumns({ busyId: null, onStart: noop, onComplete: noop }),
     }
     const serverSortIds: Readonly<Record<string, readonly string[]>> = {
       vendors: VENDOR_SORT_IDS,

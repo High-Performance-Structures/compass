@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 
 import {
@@ -22,14 +23,9 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordTable, useRecordTable } from "@/components/record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 
 const STATUS_LABELS: Record<AdminAccountDeletionRequest["status"], string> = {
   pending: "Pending",
@@ -47,6 +43,116 @@ function personLabel(request: AdminAccountDeletionRequest): string {
   return request.displayName ?? request.email ?? "Unknown user"
 }
 
+type RequestFilter = "open" | AdminAccountDeletionRequest["status"] | "all"
+
+const SHEET_ID = "settings.account-deletion-requests"
+
+const REQUEST_FILTERS: readonly { readonly value: RequestFilter; readonly label: string; readonly pinned?: boolean }[] = [
+  { value: "open", label: "Open", pinned: true },
+  { value: "pending", label: STATUS_LABELS.pending },
+  { value: "processing", label: STATUS_LABELS.processing },
+  { value: "completed", label: STATUS_LABELS.completed },
+  { value: "cancelled", label: STATUS_LABELS.cancelled },
+  { value: "all", label: "All", pinned: true },
+]
+
+/** Open requests still need an admin: pending or processing. */
+function matchesFilter(request: AdminAccountDeletionRequest, filter: RequestFilter): boolean {
+  if (filter === "all") return true
+  if (filter === "open") return request.status === "pending" || request.status === "processing"
+  return request.status === filter
+}
+
+function isRequestFilter(value: string): value is RequestFilter {
+  return REQUEST_FILTERS.some((option) => option.value === value)
+}
+
+/** The date in the Action column once a request is closed. */
+function closedDate(request: AdminAccountDeletionRequest): string | null {
+  if (request.status === "completed") return request.completedAt
+  if (request.status === "cancelled") return request.cancelledAt
+  return null
+}
+
+const STATUS_ORDER: Record<AdminAccountDeletionRequest["status"], number> = {
+  pending: 0,
+  processing: 1,
+  completed: 2,
+  cancelled: 3,
+}
+
+type RequestActions = {
+  readonly busyId: string | null
+  readonly onStart: (request: AdminAccountDeletionRequest) => void
+  readonly onComplete: (request: AdminAccountDeletionRequest) => void
+}
+
+/** The deletion request sheet's columns ("settings.account-deletion-requests" in the list sheet registry). */
+export function accountDeletionRequestColumns(actions: RequestActions): ColumnDef<AdminAccountDeletionRequest>[] {
+  const { busyId, onStart, onComplete } = actions
+  return [
+    {
+      id: "person",
+      header: "Person",
+      accessorFn: (request) => personLabel(request),
+      cell: ({ row }) => {
+        const request = row.original
+        return (
+          <>
+            <div className="text-sm">{personLabel(request)}</div>
+            {request.status !== "completed" && request.email && request.displayName && (
+              <div className="text-xs text-muted-foreground">{request.email}</div>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      id: "requested",
+      header: "Requested",
+      accessorFn: (request) => request.requestedAt,
+      cell: ({ row }) => <span className="text-sm">{formatDate(row.original.requestedAt)}</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (request) => STATUS_ORDER[request.status],
+      cell: ({ row }) => (
+        <Badge variant="outline" className="rounded-[4px]">
+          {STATUS_LABELS[row.original.status]}
+        </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      header: () => <span className="block text-right">Action</span>,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const request = row.original
+        return (
+          <div className="text-right">
+            {request.status === "pending" && (
+              <Button type="button" size="sm" variant="outline" disabled={busyId !== null} onClick={() => onStart(request)}>
+                {busyId === request.id ? "Starting..." : "Start processing"}
+              </Button>
+            )}
+            {request.status === "processing" && (
+              <Button type="button" size="sm" variant="destructive" disabled={busyId !== null} onClick={() => onComplete(request)}>
+                Delete account
+              </Button>
+            )}
+            {request.status === "completed" || request.status === "cancelled" ? (
+              <span className="text-xs text-muted-foreground">{formatDate(closedDate(request))}</span>
+            ) : null}
+          </div>
+        )
+      },
+    },
+  ]
+}
+
+const requestRowId = (request: AdminAccountDeletionRequest): string => request.id
+
 /**
  * Admin queue for account deletion requests. Renders nothing for people who
  * can't manage them.
@@ -59,6 +165,8 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
   const [completing, setCompleting] =
     React.useState<AdminAccountDeletionRequest | null>(null)
   const [confirmation, setConfirmation] = React.useState("")
+  const startFilter = useListSheetStartFilter(SHEET_ID, "open")
+  const [filter, setFilter] = React.useState<RequestFilter>(isRequestFilter(startFilter) ? startFilter : "open")
 
   const refresh = React.useCallback(() => {
     void getAccountDeletionRequestsForAdmin().then(setRequests)
@@ -68,9 +176,7 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
     refresh()
   }, [refresh])
 
-  if (requests === null) return null
-
-  async function handleStart(request: AdminAccountDeletionRequest) {
+  const handleStart = React.useCallback(async (request: AdminAccountDeletionRequest): Promise<void> => {
     setBusyId(request.id)
     const result = await startAccountDeletionProcessing(request.id)
     setBusyId(null)
@@ -80,9 +186,27 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
     }
     toast.success("Processing started. The person can no longer cancel.")
     refresh()
-  }
+  }, [refresh])
 
-  async function handleComplete() {
+  const columns = React.useMemo(
+    () => accountDeletionRequestColumns({ busyId, onStart: (request) => void handleStart(request), onComplete: setCompleting }),
+    [busyId, handleStart],
+  )
+  const visible = React.useMemo(
+    () => (requests ?? []).filter((request) => matchesFilter(request, filter)),
+    [requests, filter],
+  )
+  const table = useRecordTable({
+    data: visible,
+    columns,
+    getRowId: requestRowId,
+    resetKey: filter,
+    sheetId: "settings.account-deletion-requests",
+  })
+
+  if (requests === null) return null
+
+  async function handleComplete(): Promise<void> {
     if (!completing) return
     setBusyId(completing.id)
     const result = await completeAccountDeletion(completing.id, confirmation)
@@ -111,74 +235,24 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
       {requests.length === 0 ? (
         <p className="text-sm text-muted-foreground">No requests.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Person</TableHead>
-              <TableHead>Requested</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {requests.map((request) => (
-              <TableRow key={request.id}>
-                <TableCell>
-                  <div className="text-sm">{personLabel(request)}</div>
-                  {request.status !== "completed" &&
-                    request.email &&
-                    request.displayName && (
-                      <div className="text-xs text-muted-foreground">
-                        {request.email}
-                      </div>
-                    )}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {formatDate(request.requestedAt)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="rounded-[4px]">
-                    {STATUS_LABELS[request.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {request.status === "pending" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={busyId !== null}
-                      onClick={() => void handleStart(request)}
-                    >
-                      {busyId === request.id ? "Starting..." : "Start processing"}
-                    </Button>
-                  )}
-                  {request.status === "processing" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      disabled={busyId !== null}
-                      onClick={() => setCompleting(request)}
-                    >
-                      Delete account
-                    </Button>
-                  )}
-                  {request.status === "completed" && (
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(request.completedAt)}
-                    </span>
-                  )}
-                  {request.status === "cancelled" && (
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(request.cancelledAt)}
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="flex min-w-0 flex-col gap-3">
+          <StatusFilterBar
+            kind="button"
+            label="Filter account deletion requests by status"
+            selected={filter}
+            onSelect={setFilter}
+            options={REQUEST_FILTERS.map((option) => ({
+              ...option,
+              count: requests.filter((request) => matchesFilter(request, option.value)).length,
+            }))}
+          />
+          <RecordTable
+            table={table}
+            itemLabel="account deletion requests"
+            emptyMessage="No requests with this status."
+            rowIdPrefix="account-deletion-request"
+          />
+        </div>
       )}
 
       <AlertDialog
