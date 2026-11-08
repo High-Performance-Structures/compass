@@ -41,6 +41,10 @@ describe("Sage client/project write contract", () => {
       "Internal Operations"
     )
     expect(sageJobName("O-123-456", "x".repeat(80))).toHaveLength(75)
+    expect(sageJobName("H-100-200", "H-100-200 Sample Rd - Example Builder")).toBe(
+      "H-100-200-Sample Rd - Example Builder"
+    )
+    expect(sageJobName("H-100-200", "H-100-200")).toBe("H-100-200")
   })
 
   it("validates the exact target company and required job selections", () => {

@@ -177,9 +177,14 @@ export function sageJobName(
 ): string {
   const normalizedName = projectName.trim().replace(/\s+/g, " ")
   const normalizedNumber = projectNumber?.trim().replace(/\s+/g, " ") ?? ""
-  const fullName = normalizedNumber
-    ? `${normalizedNumber}-${normalizedName}`
-    : normalizedName
+  // Imported project names often already start with the job number ("H-412-3367 Prospector Dr").
+  const nameWithoutNumber =
+    normalizedNumber && normalizedName.toLowerCase().startsWith(normalizedNumber.toLowerCase())
+      ? normalizedName.slice(normalizedNumber.length).replace(/^[\s\-–—:]+/, "")
+      : normalizedName
+  const fullName = normalizedNumber && nameWithoutNumber
+    ? `${normalizedNumber}-${nameWithoutNumber}`
+    : normalizedNumber || normalizedName
   return fullName.slice(0, 75)
 }
 
