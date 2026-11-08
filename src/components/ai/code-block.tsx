@@ -73,7 +73,11 @@ type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 let highlighterPromise: Promise<HighlighterCore> | null = null
 
 function getHighlighter(): Promise<HighlighterCore> {
-  if (highlighterPromise === null) {
+  // Highlighting runs in an effect, so the server never needs the grammars;
+  // the constant branch keeps them out of the Worker's server bundle.
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Code highlighting runs in the browser"))
+  } else if (highlighterPromise === null) {
     highlighterPromise = createHighlighterCore({
       themes: [
         import("@shikijs/themes/one-light"),

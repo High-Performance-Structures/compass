@@ -7,10 +7,8 @@ import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageList } from "@/components/conversations/message-list"
-import {
-  MessageComposer,
-  type ProjectRecipientContact,
-} from "@/components/conversations/message-composer"
+import type { ProjectRecipientContact } from "@/components/conversations/message-composer"
+import { MessageComposer } from "@/components/conversations/message-composer-loader"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { isInternalStaffRole } from "@/lib/user-roles"

@@ -11,7 +11,7 @@ import { getThreadMessages, markThreadRead } from "@/app/actions/chat-messages"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { getChannel } from "@/app/actions/conversations"
 import { MessageItem } from "./message-item"
-import { MessageComposer } from "./message-composer"
+import { MessageComposer } from "./message-composer-loader"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 export function ThreadPanel({ currentUserId }: { readonly currentUserId: string | null }): React.ReactElement | null {

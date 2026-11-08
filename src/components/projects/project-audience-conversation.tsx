@@ -8,7 +8,7 @@ import { resolveProjectAudienceViewer } from "@/lib/project-audience-viewer"
 
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ChannelHeader } from "@/components/conversations/channel-header"
-import { MessageComposer } from "@/components/conversations/message-composer"
+import { MessageComposer } from "@/components/conversations/message-composer-loader"
 import { MessageList } from "@/components/conversations/message-list"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"

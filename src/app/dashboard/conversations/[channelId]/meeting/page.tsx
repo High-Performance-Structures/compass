@@ -1,6 +1,6 @@
 import type * as React from "react"
 
-import { RealtimeKitMeetingWindow } from "@/components/voice/realtimekit-meeting-window"
+import { RealtimeKitMeetingWindowLoader } from "@/components/voice/realtimekit-meeting-window-loader"
 import { getCurrentUser } from "@/lib/auth"
 import { canUseOfficeTalk } from "@/lib/permissions"
 import { ClientRedirect } from "@/components/client-redirect"
@@ -17,5 +17,5 @@ export default async function ConversationMeetingPage({
     return <ClientRedirect href={"/dashboard/access-restricted?feature=conversations&action=join"} />
   }
   const { channelId } = await params
-  return <RealtimeKitMeetingWindow channelId={channelId} userId={user.id} />
+  return <RealtimeKitMeetingWindowLoader channelId={channelId} userId={user.id} />
 }
