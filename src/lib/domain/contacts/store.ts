@@ -625,14 +625,14 @@ const SAGE_DIRECTORY: Readonly<Record<SageDirectoryKind, {
     parent: "vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)" },
 }
 
-/** Writes the Sage client identity the Windows writer returned for a customer. */
+/** The Sage client the Windows writer returned for a customer; skipped while another client holds it (a duplicate to merge), since the unique index would fail the whole result batch. */
 export function sageClientWriteResultCustomerStatement(database: D1Database, input: {
-  readonly customerId: string; readonly sageClientId: string; readonly sageClientNumber: string
-  readonly sageClientStatusId: number; readonly now: string
+  readonly customerId: string; readonly sageClientId: string; readonly sageClientNumber: string; readonly sageClientStatusId: number; readonly now: string
 }): D1PreparedStatement {
-  return database.prepare(`UPDATE customers SET sage_client_id = ?, sage_client_number = ?,
-    sage_client_status_id = ?, updated_at = ? WHERE id = ?`)
-    .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId)
+  return database.prepare(`UPDATE customers SET sage_client_id = ?, sage_client_number = ?, sage_client_status_id = ?, updated_at = ?
+    WHERE id = ? AND NOT EXISTS (SELECT 1 FROM customers other WHERE other.id <> customers.id AND other.organization_id IS customers.organization_id
+      AND (upper(other.sage_client_id) = upper(?) OR other.sage_client_number = ?))`)
+    .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId, input.sageClientId, input.sageClientNumber)
 }
 
 /** Applies a verified Sage snapshot's `assignments` to the still-linked directory row; `binds` follow the SQL. */
