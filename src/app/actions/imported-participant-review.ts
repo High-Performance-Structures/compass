@@ -35,6 +35,7 @@ import { canManageUserAccessRole, isInternalStaffRole } from "@/lib/user-roles"
  */
 
 const STAFF_ONLY = "Only staff can review imported participants."
+const ADMINS_FOR_STAFF_ONLY = "Only admins can include projects whose imported conversations are kept staff-only."
 
 /** One server page of the list. */
 export async function getImportedParticipantReviewPage(raw: unknown): Promise<ActionResult<RecordPage<ImportedParticipantReviewRow>>> {
@@ -104,7 +105,13 @@ const decisionInput = z.discriminatedUnion("type", [
   z.object({ type: z.literal("vendor"), vendorId: z.string().trim().min(1).max(200) }),
 ])
 
-const resolveInput = z.object({ rowId: rowIdInput, decision: decisionInput, apply: z.boolean() })
+const resolveInput = z.object({
+  rowId: rowIdInput,
+  decision: decisionInput,
+  apply: z.boolean(),
+  /** Admins: also change rows on projects whose imported conversations are kept staff-only (default off). */
+  includeStaffOnlyProjects: z.boolean().default(false),
+})
 
 export type ImportedParticipantResolveResult = ActionResult<GroupReviewOutcome>
 
@@ -136,8 +143,10 @@ export async function resolveImportedParticipantAction(raw: z.input<typeof resol
     if (!context.success) return context
     const { db, user, organizationId } = context.data
     if (!isInternalStaffRole(user.role)) return actionFailure(STAFF_ONLY)
+    if (input.includeStaffOnlyProjects && !canManageUserAccessRole(user.role)) return actionFailure(ADMINS_FOR_STAFF_ONLY)
     const result = await resolveParticipantGroup({
       db, organizationId, rowId: input.rowId, decision: input.decision, apply: input.apply, now: new Date().toISOString(),
+      includeStaffOnlyProjects: input.includeStaffOnlyProjects,
     })
     if (!result.success || !input.apply || !result.data.changed) return result
     const outcome = result.data
@@ -153,7 +162,7 @@ export async function resolveImportedParticipantAction(raw: z.input<typeof resol
       entityId: outcome.projectId ?? organizationId,
       summary: activitySummary(outcome),
       // A manual staff choice: who was picked (directory references) is kept with the actor.
-      metadata: { decision: outcome.decision, manual: true, refs: outcome.refs, people: outcome.people.length, rows: outcome.rowsReviewed, projects: outcome.projects, legalHoldRows: outcome.legalHoldRows, stillStaffOnly: outcome.stillStaffOnly },
+      metadata: { decision: outcome.decision, manual: true, includedStaffOnlyProjects: input.includeStaffOnlyProjects, refs: outcome.refs, people: outcome.people.length, rows: outcome.rowsReviewed, projects: outcome.projects, legalHoldRows: outcome.legalHoldRows, stillStaffOnly: outcome.stillStaffOnly },
     })
     revalidatePath("/dashboard/contacts")
     if (outcome.projectId) revalidatePath(`/dashboard/projects/${outcome.projectId}/contacts`)
@@ -183,16 +192,18 @@ export async function getImportedParticipantCompanySuggestions(rowId: string): P
  * The automatic pass over every clearly matched name or email (admins).
  * `apply: false` previews what it would do; `apply: true` resolves them and
  * records one Activity summary for the run. Nothing is shared, notified or
- * emailed, and legal-hold projects are never changed.
+ * emailed. Legal-hold projects are changed only when `includeStaffOnlyProjects`
+ * (default off), and their conversations stay staff-only.
  */
-export async function runImportedParticipantAutoResolve(apply: boolean): Promise<ActionResult<AutoResolveSummary>> {
+export async function runImportedParticipantAutoResolve(apply: boolean, includeStaffOnlyProjects = false): Promise<ActionResult<AutoResolveSummary>> {
   try {
     const shouldApply = z.boolean().parse(apply)
+    const include = z.boolean().parse(includeStaffOnlyProjects)
     const context = await orgContext({ feature: "project-contacts", action: "update", mutation: shouldApply })
     if (!context.success) return context
     const { db, user, organizationId } = context.data
     if (!canManageUserAccessRole(user.role)) return actionFailure("Only admins can run automatic matching.")
-    const summary = await runAutoResolve(db, { organizationId, apply: shouldApply, now: new Date().toISOString() })
+    const summary = await runAutoResolve(db, { organizationId, apply: shouldApply, now: new Date().toISOString(), includeStaffOnlyProjects: include })
     if (shouldApply && summary.resolved.rows > 0) {
       await recordActivityEvent({
         db, organizationId, actor: user, category: "conversation",
@@ -200,6 +211,7 @@ export async function runImportedParticipantAutoResolve(apply: boolean): Promise
         summary: `Automatically matched ${summary.resolved.identities} imported participants (${summary.resolved.rows} message entries on ${summary.resolved.groups} project groups). Conversation visibility unchanged.`,
         metadata: {
           identities: summary.resolved.identities, rows: summary.resolved.rows, groups: summary.resolved.groups,
+          includedStaffOnlyProjects: include,
           leftoverIdentities: summary.leftover.identities, leftoverRows: summary.leftover.rows, legalHoldRows: summary.legalHold.rows,
           byMatchType: Object.fromEntries(Object.entries(summary.byMatchType).map(([type, totals]) => [type, totals.rows])),
         },

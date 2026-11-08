@@ -52,7 +52,9 @@ import {
  * when the person is new to the project (uninvited), and the thread row
  * "Share with owner/vendor…" reads, active only while the conversation is
  * staff-only. Projects that keep imported conversations staff-only (legal
- * hold) are never changed. Nothing is shared, notified or emailed.
+ * hold) are left out unless staff explicitly include them
+ * (`includeStaffOnlyProjects`, default off); either way conversation
+ * visibility never changes. Nothing is shared, notified or emailed.
  */
 
 const NOT_LEGAL_HOLD = sql`NOT EXISTS (SELECT 1 FROM projects lh WHERE lh.id = p.project_id AND lh.imported_conversations_staff_only = 1)`
@@ -72,10 +74,16 @@ function unresolvedPersonRows(organizationId: string): SQL {
         AND l.identity_status LIKE 'boundary\\_unproven:%' ESCAPE '\\' AND l.source_contact_name = p.source_contact_name)`
 }
 
+/** Leaves out projects that keep imported conversations staff-only, unless staff included them. */
+const projectFilter = (includeStaffOnlyProjects: boolean): SQL => (includeStaffOnlyProjects ? sql`1 = 1` : NOT_LEGAL_HOLD)
+
 /** The unresolved rows of one identity on one project that may be changed. */
-function writableRows(organizationId: string, projectId: string, key: string): SQL {
-  return sql`${unresolvedPersonRows(organizationId)} AND p.project_id = ${projectId} AND ${KEY} = ${key} AND ${NOT_LEGAL_HOLD}`
+function writableRows(organizationId: string, projectId: string, key: string, includeStaffOnlyProjects: boolean): SQL {
+  return sql`${unresolvedPersonRows(organizationId)} AND p.project_id = ${projectId} AND ${KEY} = ${key} AND ${projectFilter(includeStaffOnlyProjects)}`
 }
+
+/** A group the decision leaves alone: its project keeps imported conversations staff-only and staff did not include those. */
+export const isHeldGroup = (group: IdentityGroup, includeStaffOnlyProjects: boolean): boolean => group.projectStaffOnly && !includeStaffOnlyProjects
 
 export type IdentityGroup = {
   readonly key: string
@@ -213,7 +221,14 @@ type Written = { readonly statements: readonly Statement[]; readonly resolved: R
 /** The statements that resolve one identity's rows on one project to a person. */
 async function groupStatements(
   db: Db,
-  input: { readonly organizationId: string; readonly group: IdentityGroup; readonly target: IdentityTarget; readonly known: Map<string, string>; readonly now: string },
+  input: {
+    readonly organizationId: string
+    readonly group: IdentityGroup
+    readonly target: IdentityTarget
+    readonly known: Map<string, string>
+    readonly now: string
+    readonly includeStaffOnlyProjects: boolean
+  },
 ): Promise<Written> {
   const { organizationId, group, known, now } = input
   const chosen = input.target.kind === "vendor" ? vendorPersonFor(organizationId, input.target, group, now) : { person: input.target.person, statement: null }
@@ -222,7 +237,7 @@ async function groupStatements(
   // A contact created here stands for the person on this project for the rest of the run.
   const linkType = person.type === "internal" || person.type === "vendor_contact" || person.type === "customer_contact" ? person.type : null
   if (linkType && resolved.contactId) known.set(knownContactKey(group.projectId, linkType, person.id), resolved.contactId)
-  const rows = writableRows(organizationId, group.projectId, group.key)
+  const rows = writableRows(organizationId, group.projectId, group.key, input.includeStaffOnlyProjects)
   const statements = [
     chosen.statement ? chosen.statement(db) : null,
     resolved.contactStatement,
@@ -250,9 +265,9 @@ async function runBatches(db: Db, statements: readonly Statement[]): Promise<voi
 }
 
 /** Marks every writable row of an identity reviewed with no person ("Leave as is"). */
-function leaveStatement(db: Db, organizationId: string, key: string, now: string): Statement {
+function leaveStatement(db: Db, organizationId: string, key: string, now: string, includeStaffOnlyProjects: boolean): Statement {
   return updateSourceRecordParticipantsStatement(db, sql`${projectSourceRecordParticipants.id} IN (SELECT p.id FROM project_source_record_participants p
-      WHERE ${unresolvedPersonRows(organizationId)} AND ${KEY} = ${key} AND ${NOT_LEGAL_HOLD})`, { reviewStatus: "reviewed", updatedAt: now })
+      WHERE ${unresolvedPersonRows(organizationId)} AND ${KEY} = ${key} AND ${projectFilter(includeStaffOnlyProjects)})`, { reviewStatus: "reviewed", updatedAt: now })
 }
 
 export type IdentityDecisionOutcome = {
@@ -268,7 +283,8 @@ export type IdentityDecisionOutcome = {
 
 /**
  * One staff decision applied to every unresolved row of an identity, across
- * every project and conversation (legal-hold projects are skipped).
+ * every project and conversation (legal-hold projects are skipped unless
+ * `includeStaffOnlyProjects`; their conversations stay staff-only).
  */
 export async function decideIdentity(
   db: Db,
@@ -279,25 +295,27 @@ export async function decideIdentity(
     /** Preloaded project contacts for the chosen person (by link), from `knownContactsFor`. */
     readonly known: Map<string, string>
     readonly now: string
+    readonly includeStaffOnlyProjects: boolean
   },
 ): Promise<IdentityDecisionOutcome> {
+  const include = input.includeStaffOnlyProjects
   const groups = await listIdentityGroups(db, input.organizationId, input.key)
-  const writable = groups.filter((group) => !group.projectStaffOnly)
-  const legalHoldRows = groups.filter((group) => group.projectStaffOnly).reduce((sum, group) => sum + group.rows, 0)
+  const writable = groups.filter((group) => !isHeldGroup(group, include))
+  const legalHoldRows = groups.filter((group) => isHeldGroup(group, include)).reduce((sum, group) => sum + group.rows, 0)
   const rowsReviewed = writable.reduce((sum, group) => sum + group.rows, 0)
   const literal = groups[0]?.literal ?? input.key
   const base = { key: input.key, literal, projects: writable.length, rowsReviewed, legalHoldRows }
   if (writable.length === 0) return { ...base, people: [], refs: [], rowsReviewed: 0 }
   const target = input.target
   if (target.kind === "leave") {
-    await runBatches(db, [leaveStatement(db, input.organizationId, input.key, input.now)])
+    await runBatches(db, [leaveStatement(db, input.organizationId, input.key, input.now, include)])
     return { ...base, people: [], refs: [] }
   }
   const statements: Statement[] = []
   let name = target.kind === "vendor" ? target.vendorName : target.person.name
   let ref = target.kind === "person" ? target.person.ref : null
   for (const group of writable) {
-    const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known: input.known, now: input.now })
+    const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known: input.known, now: input.now, includeStaffOnlyProjects: include })
     statements.push(...written.statements)
     name = written.resolved.name
     ref = written.resolved.ref ?? ref
@@ -341,6 +359,8 @@ type AutoResolveExample = {
 
 export type AutoResolveSummary = {
   readonly applied: boolean
+  /** Projects that keep imported conversations staff-only were included (their conversations stay staff-only). */
+  readonly includedStaffOnlyProjects: boolean
   readonly identities: number
   readonly rows: number
   readonly resolved: MatchTypeTotals
@@ -363,8 +383,8 @@ const targetLabel = (directory: BuiltDirectory, result: MatchResult): string => 
 }
 
 /** Summarizes a plan: what would be resolved, by match type, and what is left. */
-function summarizePlan(directory: BuiltDirectory, planned: readonly PlannedGroup[], applied: boolean): AutoResolveSummary {
-  const writable = planned.filter((group) => !group.projectStaffOnly)
+function summarizePlan(directory: BuiltDirectory, planned: readonly PlannedGroup[], applied: boolean, include: boolean): AutoResolveSummary {
+  const writable = planned.filter((group) => !isHeldGroup(group, include))
   const decided = writable.filter((group) => group.result.kind !== "none")
   const byMatchType = Object.fromEntries(MATCH_TYPES.map((type) => [type, totals(decided.filter((group) => group.result.kind !== "none" && group.result.matchType === type))]))
   const exampleMap = new Map<string, { literal: string; target: string; matchType: MatchType; projects: number; rows: number }>()
@@ -382,15 +402,16 @@ function summarizePlan(directory: BuiltDirectory, planned: readonly PlannedGroup
   }
   return {
     applied,
+    includedStaffOnlyProjects: include,
     identities: new Set(planned.map((group) => group.key)).size,
     rows: planned.reduce((sum, group) => sum + group.rows, 0),
     resolved: totals(decided),
     byMatchType: {
       staff_email: byMatchType.staff_email ?? totals([]), staff_other_email: byMatchType.staff_other_email ?? totals([]),
-      staff_company_domain: byMatchType.staff_company_domain ?? totals([]), staff_name: byMatchType.staff_name ?? totals([]),
+      staff_company_domain: byMatchType.staff_company_domain ?? totals([]), staff_record_email: byMatchType.staff_record_email ?? totals([]), staff_name: byMatchType.staff_name ?? totals([]),
       same_email: byMatchType.same_email ?? totals([]), same_name: byMatchType.same_name ?? totals([]), vendor_domain: byMatchType.vendor_domain ?? totals([]),
     },
-    legalHold: totals(planned.filter((group) => group.projectStaffOnly)),
+    legalHold: totals(planned.filter((group) => isHeldGroup(group, include))),
     leftover: totals(writable.filter((group) => group.result.kind === "none")),
     examples: [...exampleMap.values()].sort((a, b) => b.rows - a.rows).slice(0, 50),
   }
@@ -398,18 +419,23 @@ function summarizePlan(directory: BuiltDirectory, planned: readonly PlannedGroup
 
 /**
  * The automatic pass: every identity the matcher decides clearly, on every
- * project except legal-hold ones. `apply: false` only reports what it would
- * do (the preview staff check first).
+ * project except legal-hold ones (included only when
+ * `includeStaffOnlyProjects`). `apply: false` only reports what it would do
+ * (the preview staff check first).
  */
-export async function runAutoResolve(db: Db, input: { readonly organizationId: string; readonly apply: boolean; readonly now: string }): Promise<AutoResolveSummary> {
+export async function runAutoResolve(
+  db: Db,
+  input: { readonly organizationId: string; readonly apply: boolean; readonly now: string; readonly includeStaffOnlyProjects: boolean },
+): Promise<AutoResolveSummary> {
+  const include = input.includeStaffOnlyProjects
   const [directory, groups] = await Promise.all([loadMatchDirectory(db, input.organizationId), listIdentityGroups(db, input.organizationId)])
   const planned = planIdentityGroups(directory, groups)
-  const summary = summarizePlan(directory, planned, input.apply)
+  const summary = summarizePlan(directory, planned, input.apply, include)
   if (!input.apply) return summary
   const known = new Map(directory.known)
   const statements: Statement[] = []
   for (const group of planned) {
-    if (group.projectStaffOnly) continue
+    if (isHeldGroup(group, include)) continue
     const result = group.result
     let target: IdentityTarget | null = null
     if (result.kind === "vendor" && result.companyKind === "vendor") target = { kind: "vendor", vendorId: result.vendorId, vendorName: result.vendorName }
@@ -418,7 +444,7 @@ export async function runAutoResolve(db: Db, input: { readonly organizationId: s
       target = person ? { kind: "person", person } : null
     }
     if (!target) continue
-    const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known, now: input.now })
+    const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known, now: input.now, includeStaffOnlyProjects: include })
     statements.push(...written.statements)
   }
   await runBatches(db, statements)

@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/imported-participant-review"
 import { CompanySearchPicker } from "@/components/contacts/company-merge-picker"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -162,9 +163,12 @@ export function ParticipantReviewDialog({
   action,
   onOpenChange,
   onReviewed,
+  canIncludeStaffOnly = false,
 }: {
   readonly row: ImportedParticipantReviewRow | null
   readonly action: ReviewAction
+  /** Admins may include projects whose imported conversations are kept staff-only. */
+  readonly canIncludeStaffOnly?: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onReviewed: () => void
 }): React.ReactElement {
@@ -177,6 +181,7 @@ export function ParticipantReviewDialog({
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
   const [done, setDone] = React.useState<GroupReviewOutcome | null>(null)
+  const [includeStaffOnly, setIncludeStaffOnly] = React.useState(false)
 
   const rowId = row?.id ?? null
   const literal = row?.literal ?? ""
@@ -187,6 +192,7 @@ export function ParticipantReviewDialog({
     setLines(null)
     setError(null)
     setDone(null)
+    setIncludeStaffOnly(false)
     setPieces(initialPieces(literal))
     if (!rowId || action !== "pick") return
     let current = true
@@ -241,7 +247,7 @@ export function ParticipantReviewDialog({
         : { type: "leave" as const }
     setSaving(true)
     setError(null)
-    const result = await resolveImportedParticipantAction({ rowId: row.id, decision, apply: true })
+    const result = await resolveImportedParticipantAction({ rowId: row.id, decision, apply: true, includeStaffOnlyProjects: includeStaffOnly })
     setSaving(false)
     if (!result.success) {
       setError(result.error)
@@ -252,7 +258,8 @@ export function ParticipantReviewDialog({
     onReviewed()
   }
 
-  const canSave = !saving && (action === "leave" || (action === "pick" && (picked !== null || company !== null)) || (action === "split" && lines !== null && lines.length > 0))
+  const heldOnly = row?.readOnlyReason !== null && row?.readOnlyReason !== undefined
+  const canSave = !saving && (!heldOnly || includeStaffOnly) && (action === "leave" || (action === "pick" && (picked !== null || company !== null)) || (action === "split" && lines !== null && lines.length > 0))
 
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
@@ -261,7 +268,8 @@ export function ParticipantReviewDialog({
           <DialogTitle>{TITLES[action]}</DialogTitle>
           <DialogDescription className="break-words">
             As written: <span className="font-medium text-foreground">{row?.literal}</span>
-            {row ? <span className="block">{row.messageCount} {row.messageCount === 1 ? "message" : "messages"} on {row.projectCount} {row.projectCount === 1 ? "project" : "projects"}. Your choice applies to all of them{row.someLegalHold ? ", except legal-hold projects, which stay unchanged" : ""}.</span> : null}
+            {row ? <span className="block">{row.messageCount} {row.messageCount === 1 ? "message" : "messages"} on {row.projectCount} {row.projectCount === 1 ? "project" : "projects"}. Your choice applies to all of them{row.someLegalHold && !includeStaffOnly ? ", except legal-hold projects, which stay unchanged" : ""}.</span> : null}
+            {row?.readOnlyReason ? <span className="block">Every project here keeps imported conversations staff-only. Tick the box below to decide it anyway.</span> : null}
           </DialogDescription>
         </DialogHeader>
 
@@ -325,6 +333,12 @@ export function ParticipantReviewDialog({
           <p className="text-sm text-muted-foreground">Mark every row of this name as reviewed with no person. The text stays exactly as written.</p>
         )}
 
+        {!done && canIncludeStaffOnly && (row?.someLegalHold || row?.readOnlyReason) ? (
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={includeStaffOnly} onCheckedChange={(value) => setIncludeStaffOnly(value === true)} />
+            <span>Include projects whose imported conversations are kept staff-only (for example a legal hold). Conversations stay staff-only.</span>
+          </label>
+        ) : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>

@@ -124,7 +124,7 @@ describe("one decision for every row of a name", () => {
   it("applies a pick to every project and leaves legal-hold rows unchanged", async () => {
     const anchor = rows("SELECT id FROM project_source_record_participants WHERE project_id = ? AND source_contact_name = 'dan@old.example' LIMIT 1", P1)[0]?.id
     expect(typeof anchor).toBe("string")
-    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "pick", ref: "internal:ic-dan" }, apply: true, now: LATER })
+    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "pick", ref: "internal:ic-dan" }, apply: true, now: LATER, includeStaffOnlyProjects: false })
     expect(result).toMatchObject({ success: true, data: { changed: true, projects: 2, rowsReviewed: 3, legalHoldRows: 1, people: ["Dan Vogel"] } })
     expect(rows("SELECT project_id, user_id, review_status FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message' AND (source_contact_name LIKE '%dan@old.example%') ORDER BY project_id, id"))
       .toEqual([
@@ -142,26 +142,26 @@ describe("one decision for every row of a name", () => {
     expect(rows("SELECT DISTINCT audience FROM channels")).toEqual([{ audience: "staff" }])
     expect(nothingSent()).toEqual([{ n: 0 }])
     // A repeat finds nothing left to change outside the legal hold.
-    const again = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "leave" }, apply: true, now: LATER })
+    const again = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "leave" }, apply: true, now: LATER, includeStaffOnlyProjects: false })
     expect(again).toMatchObject({ success: false })
   })
 
   it("refuses a decision when every row is on a legal-hold project", async () => {
     const anchor = rows("SELECT id FROM project_source_record_participants WHERE project_id = ? LIMIT 1", HOLD)[0]?.id
-    await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "pick", ref: "internal:ic-dan" }, apply: true, now: LATER })
-    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "leave" }, apply: true, now: LATER })
+    await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "pick", ref: "internal:ic-dan" }, apply: true, now: LATER, includeStaffOnlyProjects: false })
+    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "leave" }, apply: true, now: LATER, includeStaffOnlyProjects: false })
     expect(result).toMatchObject({ success: false })
     expect(participantRows(String(anchor))).toMatchObject({ review_status: "unreviewed", user_id: null })
   })
 
   it("adds a person as a new contact of a vendor", async () => {
     const anchor = rows("SELECT id FROM project_source_record_participants WHERE source_contact_name LIKE 'Dana%'")[0]?.id
-    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-bldr" }, apply: true, now: LATER })
+    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-bldr" }, apply: true, now: LATER, includeStaffOnlyProjects: false })
     expect(result).toMatchObject({ success: true, data: { people: ["Dana West"], rowsReviewed: 1 } })
     expect(rows("SELECT vendor_id, name, email FROM vendor_contacts WHERE email = 'dana@bldr.example'")).toEqual([{ vendor_id: "v-bldr", name: "Dana West", email: "dana@bldr.example" }])
     expect(rows("SELECT owner_portal_visible, sub_vendor_portal_visible, vendor_id FROM project_contacts WHERE project_id = ?", P2))
       .toEqual([{ owner_portal_visible: 0, sub_vendor_portal_visible: 0, vendor_id: "v-bldr" }])
-    expect(await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-elsewhere" }, apply: true, now: LATER })).toMatchObject({ success: false })
+    expect(await resolveParticipantGroup({ db, organizationId: ORG, rowId: String(anchor), decision: { type: "vendor", vendorId: "v-elsewhere" }, apply: true, now: LATER, includeStaffOnlyProjects: false })).toMatchObject({ success: false })
   })
 })
 
@@ -170,7 +170,7 @@ describe("automatic pass", () => {
     // Dan's old address is listed as his other email address.
     expect(await addAlternateEmail(db, { organizationId: ORG, userId: "u-dan", email: "Dan@Old.example", actorUserId: "u-dan", now: NOW })).toMatchObject({ success: true })
 
-    const preview = await runAutoResolve(db, { organizationId: ORG, apply: false, now: LATER })
+    const preview = await runAutoResolve(db, { organizationId: ORG, apply: false, now: LATER, includeStaffOnlyProjects: false })
     expect(preview.byMatchType.staff_other_email).toEqual({ identities: 1, groups: 2, rows: 3 })
     expect(preview.byMatchType.same_email).toEqual({ identities: 1, groups: 1, rows: 1 })
     expect(preview.byMatchType.vendor_domain).toEqual({ identities: 1, groups: 1, rows: 1 })
@@ -178,7 +178,7 @@ describe("automatic pass", () => {
     expect(preview.leftover).toEqual({ identities: 2, groups: 2, rows: 2 })
     expect(rows("SELECT count(*) AS n FROM project_source_record_participants WHERE review_status = 'reviewed'")).toEqual([{ n: 0 }])
 
-    const summary = await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER })
+    const summary = await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER, includeStaffOnlyProjects: false })
     expect(summary.resolved).toEqual({ identities: 3, groups: 4, rows: 5 })
     // Dan, not the vendor contact with his old address.
     expect(rows("SELECT DISTINCT user_id, project_contact_id FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message' AND source_contact_name LIKE '%dan@old.example%' AND review_status = 'reviewed'"))
@@ -195,7 +195,57 @@ describe("automatic pass", () => {
       .toEqual([{ vendor_contact_id: "vc-aaron" }])
     expect(nothingSent()).toEqual([{ n: 0 }])
     // A second run finds nothing more.
-    expect((await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER })).resolved.rows).toBe(0)
+    expect((await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER, includeStaffOnlyProjects: false })).resolved.rows).toBe(0)
+  })
+})
+
+describe("projects whose imported conversations are kept staff-only", () => {
+  it("are included in the automatic pass only when asked, and their conversations stay staff-only", async () => {
+    expect(await addAlternateEmail(db, { organizationId: ORG, userId: "u-dan", email: "dan@old.example", actorUserId: "u-dan", now: NOW })).toMatchObject({ success: true })
+    const preview = await runAutoResolve(db, { organizationId: ORG, apply: false, now: LATER, includeStaffOnlyProjects: true })
+    expect(preview.includedStaffOnlyProjects).toBe(true)
+    expect(preview.byMatchType.staff_other_email).toEqual({ identities: 1, groups: 3, rows: 4 })
+    expect(preview.legalHold).toEqual({ identities: 0, groups: 0, rows: 0 })
+    const summary = await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER, includeStaffOnlyProjects: true })
+    expect(summary.resolved.rows).toBe(6)
+    expect(rows("SELECT user_id, review_status FROM project_source_record_participants WHERE project_id = ? AND source_record_type = 'buildertrend_message'", HOLD))
+      .toEqual([{ user_id: "u-dan", review_status: "reviewed" }])
+    expect(rows("SELECT imported_conversations_staff_only AS held FROM projects WHERE id = ?", HOLD)).toEqual([{ held: 1 }])
+    expect(rows("SELECT DISTINCT audience FROM channels")).toEqual([{ audience: "staff" }])
+    expect(nothingSent()).toEqual([{ n: 0 }])
+  })
+
+  it("are included in a manual decision only when asked", async () => {
+    const anchor = String(rows("SELECT id FROM project_source_record_participants WHERE project_id = ? LIMIT 1", HOLD)[0]?.id)
+    expect(await resolveParticipantGroup({ db, organizationId: ORG, rowId: anchor, decision: { type: "pick", ref: "internal:ic-dan" }, apply: false, now: LATER }))
+      .toMatchObject({ success: true, data: { projects: 2, rowsReviewed: 3, legalHoldRows: 1 } })
+    const result = await resolveParticipantGroup({ db, organizationId: ORG, rowId: anchor, decision: { type: "pick", ref: "internal:ic-dan" }, apply: true, now: LATER, includeStaffOnlyProjects: true })
+    expect(result).toMatchObject({ success: true, data: { projects: 3, rowsReviewed: 4, legalHoldRows: 0, stillStaffOnly: true } })
+    expect(participantRows(anchor)).toMatchObject({ user_id: "u-dan", review_status: "reviewed" })
+    expect(rows("SELECT active FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread' AND project_id = ?", HOLD)).toEqual([{ active: 1 }])
+    expect(rows("SELECT DISTINCT audience FROM channels")).toEqual([{ audience: "staff" }])
+  })
+})
+
+describe("former staff without an account", () => {
+  it("are matched by their email on a company domain and linked as former staff", async () => {
+    insert("organization_feature_settings", { organization_id: ORG, feature_key: "company-email-domains", value: JSON.stringify({ domains: ["old.example", "new.example"] }), updated_at: NOW })
+    insert("internal_contacts", { id: "ic-mia", organization_id: ORG, user_id: null, name: "Mia Stone", email: "mia@old.example", active: 0, created_at: NOW, updated_at: NOW })
+    const t3 = thread(P1, "t-3")
+    const exact = unresolved(P1, t3, "unknown:email:mia@old.example", "mia@old.example")
+    const otherDomain = unresolved(P2, thread(P2, "t-4"), "unknown:email:mia@new.example", "Mia Stone <mia@new.example>")
+    const preview = await runAutoResolve(db, { organizationId: ORG, apply: false, now: LATER, includeStaffOnlyProjects: false })
+    expect(preview.byMatchType.staff_record_email).toEqual({ identities: 2, groups: 2, rows: 2 })
+    await runAutoResolve(db, { organizationId: ORG, apply: true, now: LATER, includeStaffOnlyProjects: false })
+    for (const id of [exact, otherDomain]) {
+      const row = participantRows(id)
+      expect(row).toMatchObject({ user_id: null, review_status: "reviewed", identity_status: "matched" })
+      expect(rows("SELECT internal_contact_id, contact_type, owner_portal_visible, sub_vendor_portal_visible FROM project_contacts WHERE id = ?", row?.project_contact_id))
+        .toEqual([{ internal_contact_id: "ic-mia", contact_type: "internal", owner_portal_visible: 0, sub_vendor_portal_visible: 0 }])
+    }
+    expect(rows("SELECT participant_role, audience FROM project_source_record_participants WHERE source_record_type = 'buildertrend_message_thread' AND source_record_id = 't-3'"))
+      .toEqual([{ participant_role: "former_staff", audience: "internal" }])
+    expect(nothingSent()).toEqual([{ n: 0 }])
   })
 })
 

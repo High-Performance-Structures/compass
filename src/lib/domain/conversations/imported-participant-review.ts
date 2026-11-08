@@ -72,6 +72,11 @@ export type ImportedParticipantReviewRow = {
   readonly canPick: boolean
   readonly canSplit: boolean
   readonly canLeave: boolean
+  /**
+   * What staff may do when they explicitly include projects whose imported
+   * conversations are kept staff-only (admins; the conversations stay staff-only).
+   */
+  readonly whenStaffOnlyIncluded: { readonly canPick: boolean; readonly canSplit: boolean; readonly canLeave: boolean }
 }
 
 export const REVIEW_SORT_IDS = ["literal", "projects", "messages", "date"] as const
@@ -219,6 +224,11 @@ function reviewRow(row: Readonly<Record<string, unknown>>): ImportedParticipantR
     canPick: matchable && kind !== "run_together",
     canSplit: matchable && kind === "run_together",
     canLeave: readOnlyReason === null,
+    whenStaffOnlyIncluded: {
+      canPick: isMatchableSource(sourceSystem) && kind !== "run_together",
+      canSplit: isMatchableSource(sourceSystem) && kind === "run_together",
+      canLeave: true,
+    },
   }
 }
 

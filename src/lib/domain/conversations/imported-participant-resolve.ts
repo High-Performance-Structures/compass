@@ -288,14 +288,20 @@ function resolveNewPerson(db: Db, key: string, piece: { readonly displayName: st
 const notStaffOnlyProject = (projectId: string) =>
   sql`NOT EXISTS (SELECT 1 FROM projects WHERE id = ${projectId} AND imported_conversations_staff_only = 1)`
 
-/** Marks rows reviewed, only while still unreviewed and never on a staff-only project. */
-function reviewRowsStatement(db: Db, group: ReviewGroup, rows: readonly ReviewGroupRow[], set: Parameters<typeof updateSourceRecordParticipantsStatement>[2]): Statement | null {
+/** Marks rows reviewed, only while still unreviewed and never on a staff-only project unless staff included those. */
+function reviewRowsStatement(
+  db: Db,
+  group: ReviewGroup,
+  rows: readonly ReviewGroupRow[],
+  set: Parameters<typeof updateSourceRecordParticipantsStatement>[2],
+  includeStaffOnlyProjects: boolean,
+): Statement | null {
   if (rows.length === 0) return null
   return updateSourceRecordParticipantsStatement(db, and(
     eq(projectSourceRecordParticipants.organizationId, group.anchor.organizationId),
     inArray(projectSourceRecordParticipants.id, rows.map((row) => row.id)),
     eq(projectSourceRecordParticipants.reviewStatus, "unreviewed"),
-    notStaffOnlyProject(group.anchor.projectId),
+    includeStaffOnlyProjects ? undefined : notStaffOnlyProject(group.anchor.projectId),
   ), set)
 }
 
@@ -341,6 +347,8 @@ export type ResolveInput = {
   /** False: check and describe the outcome without writing (split preview). */
   readonly apply: boolean
   readonly now: string
+  /** Also change rows on a project that keeps imported conversations staff-only (default off); the conversation stays staff-only. */
+  readonly includeStaffOnlyProjects?: boolean
 }
 
 export type ResolveResult = ActionResult<ReviewOutcome & { readonly pieces: readonly SplitPieceOutcome[] }>
@@ -351,7 +359,8 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
   const { db, organizationId, decision, now } = input
   const group = await loadReviewGroup(db, organizationId, input.rowId)
   if (!group) return fail("This participant was not found.")
-  if (group.projectStaffOnly) return fail(LEGAL_HOLD_ERROR)
+  const include = input.includeStaffOnlyProjects === true
+  if (group.projectStaffOnly && !include) return fail(LEGAL_HOLD_ERROR)
   if (decision.type === "split" && group.kind !== "run_together") return fail("Only names run together can be split.")
   if (decision.type === "pick" && group.kind === "run_together") return fail("Split names run together into people instead.")
   if (decision.type !== "leave" && !isMatchable(group)) return fail("People from this source can only be left as is.")
@@ -366,7 +375,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
 
   if (decision.type === "leave") {
     if (unreviewed.length === 0) return recordedDecision(group) === "leave" ? repeat : fail(ALREADY_REVIEWED)
-    const statement = reviewRowsStatement(db, group, unreviewed, { reviewStatus: "reviewed", updatedAt: now })
+    const statement = reviewRowsStatement(db, group, unreviewed, { reviewStatus: "reviewed", updatedAt: now }, include)
     if (input.apply && statement) await db.batch([statement])
     return { success: true, data: { ...base, changed: input.apply, people: [], refs: [], rowsReviewed: unreviewed.length, pieces: [] } }
   }
@@ -386,7 +395,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
       reviewRowsStatement(db, group, unreviewed, {
         projectContactId: person.contactId, userId: person.userId,
         identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
-      }),
+      }, include),
       threadRowStatement(db, group, person, now),
     ].filter((statement): statement is Statement => statement !== null)
     if (input.apply) await runBatch(db, statements)
@@ -451,13 +460,13 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
   const statements = [
     ...contactStatements.values(),
     ...messageRows,
-    reviewRowsStatement(db, group, literalRows, { identityStatus: REVIEW_IDENTITY_STATUSES.split, reviewStatus: "reviewed", updatedAt: now }),
+    reviewRowsStatement(db, group, literalRows, { identityStatus: REVIEW_IDENTITY_STATUSES.split, reviewStatus: "reviewed", updatedAt: now }, include),
     sender && people.length === 1
       ? reviewRowsStatement(db, group, senderRows, {
           projectContactId: sender.contactId, userId: sender.userId,
           identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
-        })
-      : reviewRowsStatement(db, group, senderRows, { reviewStatus: "reviewed", updatedAt: now }),
+        }, include)
+      : reviewRowsStatement(db, group, senderRows, { reviewStatus: "reviewed", updatedAt: now }, include),
     ...people.map((person) => threadRowStatement(db, group, person, now)),
   ].filter((statement): statement is Statement => statement !== null)
   if (input.apply) await runBatch(db, statements)
