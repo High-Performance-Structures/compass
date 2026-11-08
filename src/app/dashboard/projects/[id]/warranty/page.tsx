@@ -8,6 +8,7 @@ import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
 import { getProjectWarrantySourceReview } from "@/app/actions/project-warranty-source-review"
 import { ProjectWarrantySourceReview } from "@/components/projects/project-warranty-source-review"
+import { listSheetFirstPageQuery } from "@/lib/domain/settings/list-sheets"
 import { warrantyAssigneeOptions } from "@/lib/warranty/assignee"
 import { Button } from "@/components/ui/button"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
@@ -17,10 +18,8 @@ export const dynamic = "force-dynamic"
 
 export default async function ProjectWarrantyPage({
   params,
-  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
-  readonly searchParams: Promise<{ readonly historyPage?: string | readonly string[]; readonly historySize?: string | readonly string[] }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
@@ -38,10 +37,9 @@ export default async function ProjectWarrantyPage({
   )
   if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [workspace, assigneeOptions] = loaded.data
-  const historyQuery = await searchParams
-  const sourceReview = workspace.viewerIsInternal
-    ? await getProjectWarrantySourceReview(id, typeof historyQuery.historyPage === "string" ? historyQuery.historyPage : "1", typeof historyQuery.historySize === "string" ? historyQuery.historySize : "25")
-    : null
+  // The first page of the staff-only history sheet, in its opening sort (Settings > Lists).
+  const historyQuery = workspace.viewerIsInternal ? await listSheetFirstPageQuery("warranty.source-review") : null
+  const sourceReview = historyQuery ? await getProjectWarrantySourceReview(id, historyQuery) : null
   const warrantyOptions = warrantyAssigneeOptions(assigneeOptions)
 
   return (
@@ -57,7 +55,7 @@ export default async function ProjectWarrantyPage({
           assigneeOptions={warrantyOptions}
         />
       </div>
-      {sourceReview ? <ProjectWarrantySourceReview page={sourceReview} /> : null}
+      {sourceReview && historyQuery ? <ProjectWarrantySourceReview projectId={id} page={sourceReview} query={historyQuery} /> : null}
     </main>
   )
 }

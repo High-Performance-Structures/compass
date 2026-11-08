@@ -113,3 +113,17 @@ export function useListSheetFilterLabel(sheetId: string): (value: string, fallba
     return (value, fallback) => labels[value] ?? fallback
   }, [definition, company])
 }
+
+/**
+ * The filter a client-side sheet opens on: the company's choice (Settings >
+ * Lists), else the sheet's registered default, else `fallback`.
+ */
+export function useListSheetStartFilter(sheetId: string, fallback: string): string {
+  const context = useListSheetContext()
+  const definition = listSheetDefinition(sheetId)
+  const company = definition ? context?.preferences.company[definition.id] ?? null : null
+  return React.useMemo(
+    () => (definition ? resolveListSheetLayout(definition, company, null).startFilter : null) ?? fallback,
+    [definition, company, fallback],
+  )
+}

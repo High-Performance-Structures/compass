@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconLock } from "@tabler/icons-react"
+import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 
 import {
@@ -13,7 +14,13 @@ import {
 } from "@/app/actions/trade-letters"
 import { VendorTradeDocsDialog } from "@/components/financials/vendor-trade-docs-dialog"
 import { TradeLetterDialog, type TradeLetterDialogTarget } from "@/components/projects/trade-letter-dialog"
-import { TradeOrdersCell, TradePurchaseOrderButton, useTradePurchaseOrderSetup } from "@/components/projects/trade-purchase-orders"
+import {
+  TradeOrdersCell,
+  TradePurchaseOrderButton,
+  useTradePurchaseOrderSetup,
+  type TradePurchaseOrderSetup,
+} from "@/components/projects/trade-purchase-orders"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TRADE_LETTER_KIND_LABELS, TRADE_LETTER_STATUS_LABELS, longDate, tradeLetterAvailability, type TradeLetterKind } from "@/lib/trade-letters/letter"
+import { TRADE_LETTER_KIND_LABELS, TRADE_LETTER_STATUS_LABELS, longDate, tradeLetterAvailability } from "@/lib/trade-letters/letter"
 import { formatCents as money, formatDate } from "@/lib/format"
 
 /** Letter timestamps as "Oct 30"; nothing when the step hasn't happened. */
@@ -112,6 +119,134 @@ function LetterCell({
   )
 }
 
+const tradeRowId = (row: TradeLetterRow): string => row.trade.rfqId
+
+function tradeSearchText(row: TradeLetterRow): string {
+  return [row.trade.vendor, row.vendor?.category, row.trade.rfqNumber, ...row.trade.codes.map((code) => `${code.costCode ?? ""} ${code.description}`)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+}
+
+type TradeLetterColumnActions = {
+  readonly projectId: string
+  readonly canEdit: boolean
+  readonly ownerSigned: boolean
+  readonly poSetup: TradePurchaseOrderSetup | null
+  readonly onOpenDocs: (vendor: { readonly id: string; readonly name: string }) => void
+  readonly onCompose: (target: TradeLetterDialogTarget) => void
+  readonly onDelete: (letter: TradeLetterSummary) => void
+  readonly onReload: () => void
+}
+
+export function tradeLetterColumns(actions: TradeLetterColumnActions): ColumnDef<TradeLetterRow>[] {
+  const { projectId, canEdit, ownerSigned, poSetup, onOpenDocs, onCompose, onDelete, onReload } = actions
+  return [
+    {
+      id: "trade",
+      accessorFn: (row) => row.trade.vendor,
+      header: "Trade",
+      size: 240,
+      cell: ({ row: { original: row } }) => (
+        <div>
+          <span className="font-medium">{row.trade.vendor}</span>
+          {row.trade.ownerScope && <Badge variant="outline" className="ml-2">Owner scope</Badge>}
+          <p className="text-xs text-muted-foreground">
+            {[row.vendor?.category, row.trade.rfqNumber].filter(Boolean).join(" · ")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Accepted {row.trade.acceptedAt ? longDate(row.trade.acceptedAt.slice(0, 10)) : ""}
+            {row.trade.acceptedByName ? ` · ${row.trade.acceptedByName}` : ""}
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: "costCodes",
+      accessorFn: (row) => row.trade.codes[0]?.costCode ?? undefined,
+      header: "Cost codes",
+      size: 200,
+      cell: ({ row: { original: row } }) => (
+        <div className="text-xs">
+          {row.trade.codes.map((code, index) => (
+            <div key={`${code.costCode ?? ""}-${index}`}>
+              {code.costCode ?? ""} {code.description}
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "accepted",
+      accessorFn: (row) => row.trade.totalCents,
+      header: "Accepted",
+      size: 120,
+      cell: ({ row }) => <span className="block text-right tabular-nums">{money(row.original.trade.totalCents)}</span>,
+    },
+    {
+      id: "tradeDocs",
+      header: "Trade docs",
+      enableSorting: false,
+      size: 180,
+      cell: ({ row: { original: row } }) => (
+        <DocsCell row={row} onOpen={() => row.vendor && onOpenDocs({ id: row.vendor.id, name: row.vendor.name })} />
+      ),
+    },
+    {
+      id: "letters",
+      header: "Letters and POs",
+      enableSorting: false,
+      size: 240,
+      cell: ({ row: { original: row } }) => (
+        <LetterCell
+          projectId={projectId}
+          row={row}
+          canEdit={canEdit}
+          onEdit={(letter) => onCompose({ row, kind: letter.kind, letterId: letter.id })}
+          onDelete={onDelete}
+        />
+      ),
+    },
+    {
+      id: "actions",
+      header: "Next step",
+      enableSorting: false,
+      size: 200,
+      cell: ({ row: { original: row } }) => {
+        const award = tradeLetterAvailability("award", ownerSigned)
+        const intent = tradeLetterAvailability("intent", ownerSigned)
+        const hasSignedAward = row.letters.some((letter) => letter.kind === "award" && letter.status === "signed")
+        return (
+          <div className="text-right">
+            {row.route === "purchase_order" && canEdit && poSetup && (
+              <TradePurchaseOrderButton projectId={projectId} row={row} setup={poSetup} onCreated={onReload} />
+            )}
+            {row.route === "letter" && canEdit && !hasSignedAward && (
+              <div className="flex flex-wrap justify-end gap-2">
+                {intent.allowed && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => onCompose({ row, kind: "intent", letterId: null })}>
+                    Letter of intent
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={award.allowed ? "default" : "outline"}
+                  disabled={!award.allowed}
+                  title={award.allowed ? undefined : award.reason}
+                  onClick={() => onCompose({ row, kind: "award", letterId: null })}
+                >
+                  Award letter
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      },
+    },
+  ]
+}
+
 /**
  * Everyone whose bid was accepted into this estimate, with their trade docs
  * and the letters sent to them. Award letters unlock once the owner signs;
@@ -126,6 +261,7 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
   const [pending, startTransition] = React.useTransition()
   const hasSuppliers = board?.canEdit === true && board.rows.some((row) => row.route === "purchase_order")
   const poSetup = useTradePurchaseOrderSetup(projectId, hasSuppliers)
+  const [query, setQuery] = React.useState("")
 
   const load = React.useCallback(async () => {
     const result = await getTradeLetterBoard(projectId, estimateId)
@@ -141,16 +277,34 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
     void load()
   }, [load, refreshKey])
 
+  const rows = React.useMemo(() => {
+    const term = query.trim().toLowerCase()
+    const all = board?.rows ?? []
+    return term === "" ? all : all.filter((row) => tradeSearchText(row).includes(term))
+  }, [board, query])
+  const canEdit = board?.canEdit === true
+  const ownerSigned = board?.ownerSigned === true
+  const columns = React.useMemo(
+    () => tradeLetterColumns({
+      projectId,
+      canEdit,
+      ownerSigned,
+      poSetup,
+      onOpenDocs: (vendor) => setDocsVendor(vendor),
+      onCompose: setComposer,
+      onDelete: setRemoving,
+      onReload: () => void load(),
+    }),
+    [projectId, canEdit, ownerSigned, poSetup, load],
+  )
+  const table = useRecordTable({ data: rows, columns, getRowId: tradeRowId, resetKey: query, sheetId: "trade-letters.estimate" })
+
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!board || board.rows.length === 0) return null
 
   const selected = board.rows.filter((row) => !row.trade.ownerScope)
   const total = selected.reduce((sum, row) => sum + row.trade.totalCents, 0)
   const letterRows = board.rows.filter((row) => row.route === "letter")
-
-  function open(row: TradeLetterRow, kind: TradeLetterKind): void {
-    setComposer({ row, kind, letterId: null })
-  }
 
   function confirmDelete(): void {
     const letter = removing
@@ -191,86 +345,21 @@ export function TradeLettersSection({ projectId, estimateId, refreshKey }: { rea
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px] text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="py-2 pr-4 font-medium">Trade</th>
-              <th className="py-2 pr-4 font-medium">Cost codes</th>
-              <th className="py-2 pr-4 text-right font-medium">Accepted</th>
-              <th className="py-2 pr-4 font-medium">Trade docs</th>
-              <th className="py-2 pr-4 font-medium">Letters and POs</th>
-              <th className="py-2 text-right font-medium">Next step</th>
-            </tr>
-          </thead>
-          <tbody>
-            {board.rows.map((row) => {
-              const award = tradeLetterAvailability("award", board.ownerSigned)
-              const intent = tradeLetterAvailability("intent", board.ownerSigned)
-              const hasSignedAward = row.letters.some((letter) => letter.kind === "award" && letter.status === "signed")
-              return (
-                <tr key={row.trade.rfqId} className="border-b align-top">
-                  <td className="py-3 pr-4">
-                    <span className="font-medium">{row.trade.vendor}</span>
-                    {row.trade.ownerScope && <Badge variant="outline" className="ml-2">Owner scope</Badge>}
-                    <p className="text-xs text-muted-foreground">
-                      {[row.vendor?.category, row.trade.rfqNumber].filter(Boolean).join(" · ")}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Accepted {row.trade.acceptedAt ? longDate(row.trade.acceptedAt.slice(0, 10)) : ""}
-                      {row.trade.acceptedByName ? ` · ${row.trade.acceptedByName}` : ""}
-                    </p>
-                  </td>
-                  <td className="py-3 pr-4 text-xs">
-                    {row.trade.codes.map((code, index) => (
-                      <div key={`${code.costCode ?? ""}-${index}`}>
-                        {code.costCode ?? ""} {code.description}
-                      </div>
-                    ))}
-                  </td>
-                  <td className="py-3 pr-4 text-right tabular-nums">{money(row.trade.totalCents)}</td>
-                  <td className="py-3 pr-4">
-                    <DocsCell row={row} onOpen={() => row.vendor && setDocsVendor({ id: row.vendor.id, name: row.vendor.name })} />
-                  </td>
-                  <td className="py-3 pr-4">
-                    <LetterCell
-                      projectId={projectId}
-                      row={row}
-                      canEdit={board.canEdit}
-                      onEdit={(letter) => setComposer({ row, kind: letter.kind, letterId: letter.id })}
-                      onDelete={setRemoving}
-                    />
-                  </td>
-                  <td className="py-3 text-right">
-                    {row.route === "purchase_order" && board.canEdit && poSetup && (
-                      <TradePurchaseOrderButton projectId={projectId} row={row} setup={poSetup} onCreated={() => void load()} />
-                    )}
-                    {row.route === "letter" && board.canEdit && !hasSignedAward && (
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {intent.allowed && (
-                          <Button type="button" size="sm" variant="outline" onClick={() => open(row, "intent")}>
-                            Letter of intent
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={award.allowed ? "default" : "outline"}
-                          disabled={!award.allowed}
-                          title={award.allowed ? undefined : award.reason}
-                          onClick={() => open(row, "award")}
-                        >
-                          Award letter
-                        </Button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {board.rows.length > 10 && (
+        <RecordSearchInput
+          value={query}
+          onChange={setQuery}
+          label="Search selected trades"
+          placeholder="Search trade, RFQ or cost code…"
+          className="sm:max-w-xs"
+        />
+      )}
+      <RecordTable
+        table={table}
+        itemLabel="selected trades"
+        emptyMessage="No selected trades match this search."
+        rowIdPrefix="selected-trade"
+      />
       <p className="text-xs text-muted-foreground">
         Missing documents don&apos;t block a letter: it lists what&apos;s still owed, and no payment is made until they&apos;re in.
         Suppliers get one or more purchase orders against their accepted price.

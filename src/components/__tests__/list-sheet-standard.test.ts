@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import type { ColumnDef } from "@tanstack/react-table"
+import { createElement } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
@@ -22,6 +23,11 @@ import { purchaseOrderColumns } from "@/components/purchase-orders/purchase-orde
 import { CUSTOMER_SORT_IDS, VENDOR_SORT_IDS } from "@/lib/domain/contacts/directory-page"
 import { REVIEW_SORT_IDS } from "@/lib/domain/conversations/imported-participant-review"
 import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
+import { estimateColumns } from "@/components/projects/project-estimate-list"
+import { shopTicketColumns } from "@/components/projects/shop-tickets-workspace"
+import { tradeLetterColumns } from "@/components/projects/trade-letters-section"
+import { warrantySourceColumns } from "@/components/projects/project-warranty-source-review"
+import { archiveEditionColumns } from "@/components/projects/project-archive-library"
 import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { LIST_SHEETS } from "@/lib/domain/settings/list-sheet-registry"
 
@@ -106,6 +112,11 @@ describe("list sheet standard", () => {
       vendors: () => vendorColumns({ onView: noop }, {}, { selectable: true, developerMode: true }),
       customers: () => customerColumns({ onEdit: noop }, { selectable: true, developerMode: true }),
       "contacts.review": () => participantReviewColumns(noop),
+      "estimates.job": () => estimateColumns("p", () => createElement("span")),
+      "shop-tickets.job": () => shopTicketColumns({ projectId: "p", canEdit: true, onEdit: noop, onVoid: noop }),
+      "trade-letters.estimate": () => tradeLetterColumns({ projectId: "p", canEdit: true, ownerSigned: false, poSetup: null, onOpenDocs: noop, onCompose: noop, onDelete: noop, onReload: noop }),
+      "warranty.source-review": () => warrantySourceColumns(noop),
+      "archives.audience": () => archiveEditionColumns("p"),
     }
     const serverSortIds: Readonly<Record<string, readonly string[]>> = {
       vendors: VENDOR_SORT_IDS,
