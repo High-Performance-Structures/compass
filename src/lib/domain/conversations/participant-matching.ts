@@ -170,8 +170,7 @@ export const MATCH_TYPE_LABELS: Readonly<Record<MatchType, string>> = {
   vendor_domain: "Vendor's email domain",
 }
 
-const NO_MATCH_REASONS = ["no_match", "several_people", "company_mailbox", "several_vendors"] as const
-type NoMatchReason = (typeof NO_MATCH_REASONS)[number]
+type NoMatchReason = "no_match" | "several_people" | "company_mailbox" | "several_vendors"
 
 export type VendorSuggestion = { readonly vendorId: string; readonly vendorName: string }
 

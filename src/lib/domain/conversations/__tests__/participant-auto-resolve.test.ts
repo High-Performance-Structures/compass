@@ -74,8 +74,6 @@ function participantRows(id: string): Row | undefined {
   return rows("SELECT user_id, project_contact_id, identity_status, review_status, active FROM project_source_record_participants WHERE id = ?", id)[0]
 }
 
-let dan: { readonly t1: string; readonly t2: string; readonly hold: string }
-
 beforeEach(() => {
   messageNumber = 0
   sqlite = migratedDatabase()
@@ -100,7 +98,6 @@ beforeEach(() => {
   const t1 = thread(P1, "t-1")
   const t2 = thread(P2, "t-2")
   const hold = thread(HOLD, "t-9")
-  dan = { t1, t2, hold }
   // Dan's old address on many messages, on two projects and a legal-hold one.
   unresolved(P1, t1, "unknown:email:dan@old.example", "dan@old.example", "cc")
   unresolved(P1, t1, "unknown:email:dan@old.example", "dan@old.example", "cc")
