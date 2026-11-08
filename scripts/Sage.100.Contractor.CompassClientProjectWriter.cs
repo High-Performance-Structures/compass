@@ -223,6 +223,8 @@ namespace CompassSageClientProjectWriter
                 return RunChangeOrderDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--change-order-run", StringComparison.OrdinalIgnoreCase))
                 return RunChangeOrdersOnly();
+            if (args.Length > 1 && String.Equals(args[0], "--proposal-line-amount-fix", StringComparison.OrdinalIgnoreCase))
+                return RunProposalLineAmountFix(args[1]);
             if (args.Length > 0 && String.Equals(args[0], "--estimate-diagnose", StringComparison.OrdinalIgnoreCase))
                 return RunEstimateDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--estimate-run", StringComparison.OrdinalIgnoreCase))

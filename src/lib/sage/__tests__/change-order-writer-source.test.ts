@@ -49,10 +49,17 @@ const estimate = script("Sage.100.Contractor.CompassEstimateWriter.cs")
 
 describe("Sage estimate writer source boundary", () => {
   it("only adds a proposal and budget, never modifies or deletes one", () => {
-    expect(estimate).toContain('EstimateOperation = "add_job_proposal_lines"')
-    expect(estimate).toContain('EstimateRequestXml("ProposalAddRq"')
-    expect(estimate).toContain('EstimateRequestXml("BudgetAddRq"')
-    expect(estimate).not.toMatch(/ProposalModRq|ProposalDelRq|BudgetModRq|BudgetDelRq|INSERT |UPDATE |DELETE /)
+    // The one exception is the hand-run proposal line amount fix, never queued from Compass.
+    const fix = estimate.slice(estimate.indexOf("public sealed class ProposalAmountFix"), estimate.indexOf("private static string EstimateRequestXml"))
+    const queued = estimate.replace(fix, "")
+    expect(queued).toContain('EstimateOperation = "add_job_proposal_lines"')
+    expect(queued).toContain('EstimateRequestXml("ProposalAddRq"')
+    expect(queued).toContain('EstimateRequestXml("BudgetAddRq"')
+    expect(queued).not.toMatch(/ProposalModRq|ProposalDelRq|BudgetModRq|BudgetDelRq|INSERT |UPDATE |DELETE /)
+    expect(estimate).not.toMatch(/ProposalDelRq|BudgetModRq|BudgetDelRq|INSERT |UPDATE |DELETE /)
+    expect(fix).toContain("private static int RunProposalLineAmountFix(string path)")
+    expect(fix.indexOf("nothing was changed")).toBeLessThan(fix.indexOf('EstimateRequestXml("ProposalModRq"'))
+    expect(fix).not.toMatch(/<(Desc|UserDefined1|Memo|CostCodeRef)>|"(Desc|UserDefined1|Memo|CostCodeRef)"/)
   })
 
   it("sets the proposal up by cost code, not bid item", () => {
