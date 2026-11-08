@@ -5,7 +5,11 @@ import { IconMailForward } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { sendProjectAccessInvitation } from "@/app/actions/project-access-invitations"
+import {
+  listPriorBuildertrendProjects,
+  sendProjectAccessInvitation,
+} from "@/app/actions/project-access-invitations"
+import { ProjectContactInvitePriorProjects } from "@/components/projects/project-contact-invite-prior-projects"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +23,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { projectAccessWelcomeTemplate } from "@/lib/email/project-access-welcome"
+import type { PriorProject } from "@/lib/domain/contacts/prior-project-access"
 import type { ProjectContactAccessStatus, ProjectContactCompassAccountStatus } from "@/lib/project-contact-access-status"
 
 type InvitableContactType = "owner" | "subcontractor" | "supplier" | "internal"
@@ -60,6 +65,8 @@ export function ProjectContactInviteButton({
   const [subject, setSubject] = React.useState(template.subject)
   const [message, setMessage] = React.useState(template.message)
   const [sending, setSending] = React.useState(false)
+  const [priorProjects, setPriorProjects] = React.useState<readonly PriorProject[]>([])
+  const [selectedProjects, setSelectedProjects] = React.useState<ReadonlySet<string>>(new Set())
   const grantsExistingAccount = compassAccountStatus === "active"
   const resendsPendingInvitation = accessStatus === "pending" && !grantsExistingAccount
   const actionLabel = resendWelcome ? "Resend welcome email" : grantsExistingAccount
@@ -77,7 +84,15 @@ export function ProjectContactInviteButton({
       })
       setSubject(nextTemplate.subject)
       setMessage(nextTemplate.message)
+      if (!resendWelcome) void loadPriorProjects()
     }
+  }
+
+  const loadPriorProjects = async (): Promise<void> => {
+    const result = await listPriorBuildertrendProjects({ projectId, contactId })
+    const projects = result.success ? result.projects : []
+    setPriorProjects(projects)
+    setSelectedProjects(new Set(projects.filter((project) => !project.locked).map((project) => project.projectId)))
   }
 
   const handleSend = async (): Promise<void> => {
@@ -89,12 +104,16 @@ export function ProjectContactInviteButton({
         subject,
         message,
         intent: resendWelcome ? "resend_welcome" : "invite",
+        additionalProjectIds: resendWelcome ? [] : [...selectedProjects],
       })
       if (!result.success) {
         toast.error(result.error)
         return
       }
 
+      if (result.additionalProjects) {
+        toast.success(`${result.additionalProjects} more project${result.additionalProjects === 1 ? "" : "s"} added to this invitation`)
+      }
       if (result.warning) toast.warning(result.warning)
       else if (resendWelcome) toast.success("Welcome email sent")
       else if (result.accessStatus === "access_granted") {
@@ -120,7 +139,7 @@ export function ProjectContactInviteButton({
         variant="outline"
         size="sm"
         className="h-7"
-        onClick={() => setOpen(true)}
+        onClick={() => handleOpenChange(true)}
       >
         <IconMailForward className="size-3.5" />
         {actionLabel}
@@ -160,10 +179,21 @@ export function ProjectContactInviteButton({
                   {accessLabel(contactType)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {projectLabel} only
+                  {selectedProjects.size > 0
+                    ? `${projectLabel} and ${selectedProjects.size} more`
+                    : `${projectLabel} only`}
                 </p>
               </div>
             </div>
+
+            {!resendWelcome ? (
+              <ProjectContactInvitePriorProjects
+                projects={priorProjects}
+                selected={selectedProjects}
+                onSelectedChange={setSelectedProjects}
+                disabled={sending}
+              />
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor={`invite-subject-${contactId}`}>
@@ -194,10 +224,16 @@ export function ProjectContactInviteButton({
               {resendWelcome
                 ? "This person already has project access. Resending the welcome email does not change their access."
                 : grantsExistingAccount
-                ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
+                ? selectedProjects.size > 0
+                  ? "This Compass account is already active. Access to this project and the ticked projects is granted immediately; no account invitation is sent."
+                  : "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
                 : resendsPendingInvitation
-                  ? "The current account invitation will be resent. No other project access is added."
-                  : "New users receive a secure WorkOS account invitation. No other project access is added."}
+                  ? selectedProjects.size > 0
+                    ? "The current account invitation will be resent. The ticked projects open when they accept."
+                    : "The current account invitation will be resent. No other project access is added."
+                  : selectedProjects.size > 0
+                    ? `New users receive one secure account invitation. Access to the ticked projects starts when they accept.`
+                    : "New users receive a secure WorkOS account invitation. No other project access is added."}
             </p>
           </div>
 
@@ -223,7 +259,9 @@ export function ProjectContactInviteButton({
                   ? "Send Welcome and Grant Access"
                   : resendsPendingInvitation
                     ? "Resend Invitation and Welcome"
-                    : "Send Welcome and Access"}
+                    : selectedProjects.size > 0
+                      ? `Send Welcome and Access to ${selectedProjects.size + 1} projects`
+                      : "Send Welcome and Access"}
             </Button>
           </SheetFooter>
         </SheetContent>

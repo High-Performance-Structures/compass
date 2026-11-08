@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm"
 import {
   customers,
   organizations,
+  projectContacts,
   projects,
   scheduleTasks,
   users,
@@ -244,6 +245,10 @@ export const buildertrendAccessCandidates = sqliteTable(
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    /** Compass project contact this BT job access row was matched to (0307). */
+    projectContactId: text("project_contact_id").references(() => projectContacts.id, {
+      onDelete: "set null",
+    }),
     buildertrendJobId: text("buildertrend_job_id"),
     buildertrendLeadId: text("buildertrend_lead_id"),
     buildertrendContactId: text("buildertrend_contact_id"),
@@ -297,6 +302,9 @@ export const buildertrendAccessCandidates = sqliteTable(
     ),
     index("buildertrend_staging_access_candidates_matched_vendor_id_idx").on(table.matchedVendorId),
     index("buildertrend_staging_access_candidates_matched_customer_id_idx").on(table.matchedCustomerId),
+    index("buildertrend_staging_access_project_contact_idx").on(table.projectContactId),
+    index("buildertrend_staging_access_entity_idx").on(table.organizationId, table.buildertrendContactId),
+    index("buildertrend_staging_access_email_idx").on(table.organizationId, table.email),
   ]
 )
 
