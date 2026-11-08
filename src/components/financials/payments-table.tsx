@@ -1,18 +1,20 @@
 "use client"
 
+import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { Payment } from "@/db/schema-netsuite"
 import { Badge } from "@/components/ui/badge"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
+import { EntityTable, filterEntityRows } from "@/components/financials/entity-table"
 import {
   actionsColumn,
   dollarsColumn,
   MobileRecordActions,
+  RecordName,
   RecordsEmpty,
-  searchInputClass,
   selectColumn,
 } from "@/components/financials/record-columns"
+import { useRecordTable } from "@/components/record-table"
 import { localeDateText } from "@/lib/domain/financials/rules"
 import { formatDollars } from "@/lib/format"
 
@@ -25,26 +27,19 @@ interface PaymentsTableProps {
   onDelete?: (id: string) => void
 }
 
-const SEARCH = { columnId: "referenceNumber", placeholder: "Search by reference number..." }
+const paymentRowId = (record: Payment): string => record.id
+const paymentSearchText = (record: Payment): string => record.referenceNumber ?? ""
 
-export function PaymentsTable({
-  payments,
-  customerMap,
-  vendorMap,
-  projectMap,
-  onEdit,
-  onDelete,
-}: PaymentsTableProps) {
-  const columns: ColumnDef<Payment>[] = [
+type ColumnOptions = Pick<PaymentsTableProps, "customerMap" | "vendorMap" | "projectMap" | "onEdit" | "onDelete">
+
+/** The Financials page's sheet columns (sheet "financials.payments"). */
+export function paymentColumns({ customerMap, vendorMap, projectMap, onEdit, onDelete }: ColumnOptions): ColumnDef<Payment>[] {
+  return [
     selectColumn<Payment>(),
     {
       accessorKey: "referenceNumber",
       header: "Reference #",
-      cell: ({ row }) => (
-        <span className="font-medium">
-          {row.original.referenceNumber || "-"}
-        </span>
-      ),
+      cell: ({ row }) => <RecordName record={row.original} label={row.original.referenceNumber || "-"} onOpen={onEdit} />,
     },
     {
       accessorKey: "paymentType",
@@ -61,6 +56,7 @@ export function PaymentsTable({
     },
     {
       id: "counterparty",
+      accessorFn: (p) => (p.customerId ? customerMap[p.customerId] ?? null : p.vendorId ? vendorMap[p.vendorId] ?? null : null),
       header: "Customer/Vendor",
       cell: ({ row }) => {
         const p = row.original
@@ -71,6 +67,7 @@ export function PaymentsTable({
     },
     {
       id: "project",
+      accessorFn: (p) => (p.projectId ? projectMap[p.projectId] ?? null : null),
       header: "Project",
       cell: ({ row }) =>
         row.original.projectId
@@ -93,17 +90,39 @@ export function PaymentsTable({
     },
     actionsColumn<Payment>(onEdit, onDelete),
   ]
+}
+
+export function PaymentsTable({
+  payments,
+  customerMap,
+  vendorMap,
+  projectMap,
+  onEdit,
+  onDelete,
+}: PaymentsTableProps): React.ReactElement {
+  const [search, setSearch] = React.useState("")
+  const rows = React.useMemo(
+    () => filterEntityRows(payments, search, paymentSearchText),
+    [payments, search],
+  )
+  const columns = React.useMemo(
+    () => paymentColumns({ customerMap, vendorMap, projectMap, onEdit, onDelete }),
+    [customerMap, vendorMap, projectMap, onEdit, onDelete],
+  )
+  const table = useRecordTable({
+    data: rows,
+    columns,
+    getRowId: paymentRowId,
+    resetKey: search,
+    enableSelection: true,
+    sheetId: "financials.payments",
+  })
 
   return (
     <EntityTable
-      data={payments}
-      columns={columns}
-      mobileToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
-      )}
-      desktopToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
-      )}
+      table={table}
+      search={{ value: search, onChange: setSearch, label: "Search payments", placeholder: "Search by reference number..." }}
+      onRowOpen={onEdit}
       mobileRow={(p) => {
         const counterparty = p.customerId
           ? customerMap[p.customerId]

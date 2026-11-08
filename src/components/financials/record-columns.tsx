@@ -136,4 +136,22 @@ export function RecordsEmpty({ title, hint }: { readonly title: string; readonly
   )
 }
 
-export const searchInputClass = { mobile: "w-full", desktop: "w-full sm:max-w-sm" } as const
+
+/** The record's number: a button that opens it when the list can edit, else plain text. */
+export function RecordName<T>({
+  record,
+  label,
+  onOpen,
+}: {
+  readonly record: T
+  readonly label: string
+  readonly onOpen?: (record: T) => void
+}): React.ReactElement {
+  return onOpen ? (
+    <button type="button" className="font-medium text-left hover:underline" onClick={() => onOpen(record)}>
+      {label}
+    </button>
+  ) : (
+    <span className="font-medium">{label}</span>
+  )
+}

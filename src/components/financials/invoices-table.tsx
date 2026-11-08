@@ -1,20 +1,23 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { Invoice } from "@/db/schema-netsuite"
 import { Badge } from "@/components/ui/badge"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
+import { ALL_STATUSES, EntityTable, filterEntityRows } from "@/components/financials/entity-table"
 import {
   actionsColumn,
   dollarsColumn,
   MobileRecordActions,
+  RecordName,
   RecordsEmpty,
-  searchInputClass,
   selectColumn,
   type BadgeVariant,
 } from "@/components/financials/record-columns"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useRecordTable } from "@/components/record-table"
 import { invoiceAcceptsPayments, localeDateText } from "@/lib/domain/financials/rules"
 import { formatDollars } from "@/lib/format"
 
@@ -35,7 +38,18 @@ interface InvoicesTableProps {
   onDelete?: (id: string) => void
 }
 
-const SEARCH = { columnId: "invoiceNumber", placeholder: "Search by invoice number..." }
+const STATUSES: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "draft", label: "Draft" },
+  { value: "sent", label: "Sent" },
+  { value: "partially_paid", label: "Partially paid" },
+  { value: "overdue", label: "Overdue" },
+  { value: "paid", label: "Paid" },
+  { value: "void", label: "Void" },
+]
+
+const invoiceRowId = (invoice: Invoice): string => invoice.id
+const invoiceStatus = (invoice: Invoice): string => invoice.status
+const invoiceSearchText = (invoice: Invoice): string => invoice.invoiceNumber ?? ""
 
 /** Payments are recorded on the project's financials, where the customer's other open items are. */
 function recordPaymentHref(invoice: Invoice): string | null {
@@ -43,32 +57,27 @@ function recordPaymentHref(invoice: Invoice): string | null {
   return `/dashboard/projects/${encodeURIComponent(invoice.projectId)}/financials?recordPayment=${encodeURIComponent(`invoice:${invoice.id}`)}`
 }
 
-export function InvoicesTable({
-  invoices,
-  customerMap,
-  projectMap,
-  onEdit,
-  onDelete,
-}: InvoicesTableProps) {
-  const columns: ColumnDef<Invoice>[] = [
+type InvoiceColumnOptions = Pick<InvoicesTableProps, "customerMap" | "projectMap" | "onEdit" | "onDelete">
+
+/** The Financials page's invoice sheet columns (sheet "financials.invoices"). */
+export function financialInvoiceColumns({ customerMap, projectMap, onEdit, onDelete }: InvoiceColumnOptions): ColumnDef<Invoice>[] {
+  return [
     selectColumn<Invoice>(),
     {
       accessorKey: "invoiceNumber",
       header: "Invoice #",
-      cell: ({ row }) => (
-        <span className="font-medium">
-          {row.original.invoiceNumber || "-"}
-        </span>
-      ),
+      cell: ({ row }) => <RecordName record={row.original} label={row.original.invoiceNumber || "-"} onOpen={onEdit} />,
     },
     {
       id: "customer",
+      accessorFn: (invoice) => customerMap[invoice.customerId] ?? null,
       header: "Customer",
       cell: ({ row }) =>
         customerMap[row.original.customerId] ?? "-",
     },
     {
       id: "project",
+      accessorFn: (invoice) => (invoice.projectId ? projectMap[invoice.projectId] ?? null : null),
       header: "Project",
       cell: ({ row }) =>
         row.original.projectId
@@ -117,17 +126,48 @@ export function InvoicesTable({
     },
     actionsColumn<Invoice>(onEdit, onDelete),
   ]
+}
+
+export function InvoicesTable({
+  invoices,
+  customerMap,
+  projectMap,
+  onEdit,
+  onDelete,
+}: InvoicesTableProps): React.ReactElement {
+  const [search, setSearch] = React.useState("")
+  const startFilter = useListSheetStartFilter("financials.invoices", ALL_STATUSES)
+  const [status, setStatus] = React.useState(startFilter)
+  const rows = React.useMemo(
+    () => filterEntityRows(invoices, search, invoiceSearchText, { selected: status, of: invoiceStatus }),
+    [invoices, search, status],
+  )
+  const columns = React.useMemo(
+    () => financialInvoiceColumns({ customerMap, projectMap, onEdit, onDelete }),
+    [customerMap, projectMap, onEdit, onDelete],
+  )
+  const table = useRecordTable({
+    data: rows,
+    columns,
+    getRowId: invoiceRowId,
+    resetKey: `${status}|${search}`,
+    enableSelection: true,
+    sheetId: "financials.invoices",
+  })
 
   return (
     <EntityTable
-      data={invoices}
-      columns={columns}
-      mobileToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
-      )}
-      desktopToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
-      )}
+      table={table}
+      search={{ value: search, onChange: setSearch, label: "Search invoices", placeholder: "Search by invoice number..." }}
+      statusFilter={{
+        label: "Filter invoices by status",
+        rows: invoices,
+        of: invoiceStatus,
+        known: STATUSES,
+        selected: status,
+        onSelect: setStatus,
+      }}
+      onRowOpen={onEdit}
       mobileRow={(inv) => {
         const status = inv.status
         return (
