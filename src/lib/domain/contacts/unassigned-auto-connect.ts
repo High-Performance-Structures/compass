@@ -14,7 +14,9 @@ import { unassignedPersonWhere } from "./unassigned-people"
  * 2026-11-08): every person the matcher ties clearly to one vendor or client
  * is connected through the same write path as "Connect to company…"
  * (connectUnassignedPerson), once per importer identity, so duplicates end on
- * one company person. Legal-hold projects are skipped. Staff and unclear
+ * one company person. Legal-hold projects are skipped unless staff include
+ * them (`includeStaffOnlyProjects`, default off; their imported
+ * conversations stay staff-only). Staff and unclear
  * people stay in Unassigned. Nobody is invited, notified or emailed.
  *
  * Connecting runs several reads and writes per person, so one call handles a
@@ -59,9 +61,15 @@ async function loadRows(db: Db, organizationId: string): Promise<Parameters<type
     .limit(5000)
 }
 
-export async function runUnassignedAutoConnect(scope: Scope, input: { readonly apply: boolean; readonly skipped: readonly string[] }): Promise<UnassignedAutoConnectResult> {
+export async function runUnassignedAutoConnect(
+  scope: Scope,
+  input: { readonly apply: boolean; readonly skipped: readonly string[]; readonly includeStaffOnlyProjects: boolean },
+): Promise<UnassignedAutoConnectResult> {
   const { db, organizationId } = scope
-  const [built, rows] = await Promise.all([loadMatchDirectory(db, organizationId, true), loadRows(db, organizationId)])
+  const include = input.includeStaffOnlyProjects
+  const [built, loaded] = await Promise.all([loadMatchDirectory(db, organizationId, true), loadRows(db, organizationId)])
+  // Included staff-only projects count as writable; nothing about their conversations changes.
+  const rows = include ? loaded.map((row) => ({ ...row, staffOnly: false })) : loaded
   const plan = planUnassigned(built, rows)
   const summary = summarizeUnassignedPlan(plan)
   const clear = plan.filter((group) => group.result.kind === "connect" && group.legalHoldRows < group.rows)
@@ -87,7 +95,7 @@ export async function runUnassignedAutoConnect(scope: Scope, input: { readonly a
     let any = false
     // One identity at a time; the first creates (or finds) the company person and the rest reuse it.
     for (const identity of group.identities) {
-      const result = await connectUnassignedPerson(scope, { identity, kind: group.result.companyKind, companyId: group.result.companyId }, { personId, skipStaffOnlyProjects: true })
+      const result = await connectUnassignedPerson(scope, { identity, kind: group.result.companyKind, companyId: group.result.companyId }, { personId, skipStaffOnlyProjects: !include })
       // Every row of this identity is on a legal-hold project: nothing to do here.
       if (!result.success && result.error === ALREADY_CONNECTED) continue
       if (!result.success) {

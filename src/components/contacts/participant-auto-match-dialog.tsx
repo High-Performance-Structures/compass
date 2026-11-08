@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { runImportedParticipantAutoResolve } from "@/app/actions/imported-participant-review"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -27,8 +28,9 @@ const count = (value: number): string => value.toLocaleString()
 /**
  * Automatic matching for Contacts → Needs review (admins): first a preview of
  * every name or email Compass can match clearly, by how it matched, then one
- * click to resolve them all. Legal-hold projects are never changed, and
- * nothing is shared, notified or emailed.
+ * click to resolve them all. Legal-hold projects are left out unless the
+ * admin ticks the box to include them (their conversations stay staff-only),
+ * and nothing is shared, notified or emailed.
  */
 export function ParticipantAutoMatchDialog({ open, onOpenChange, onDone }: {
   readonly open: boolean
@@ -37,21 +39,26 @@ export function ParticipantAutoMatchDialog({ open, onOpenChange, onDone }: {
 }): React.ReactElement {
   const [state, setState] = React.useState<State>({ kind: "loading" })
   const [running, setRunning] = React.useState(false)
+  const [includeStaffOnly, setIncludeStaffOnly] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!open) setIncludeStaffOnly(false)
+  }, [open])
 
   React.useEffect(() => {
     if (!open) return
     let current = true
     setState({ kind: "loading" })
-    void runImportedParticipantAutoResolve(false).then((result) => {
+    void runImportedParticipantAutoResolve(false, includeStaffOnly).then((result) => {
       if (!current) return
       setState(result.success ? { kind: "preview", summary: result.data } : { kind: "error", message: result.error })
     })
     return () => { current = false }
-  }, [open])
+  }, [open, includeStaffOnly])
 
   async function apply(): Promise<void> {
     setRunning(true)
-    const result = await runImportedParticipantAutoResolve(true)
+    const result = await runImportedParticipantAutoResolve(true, includeStaffOnly)
     setRunning(false)
     if (!result.success) {
       setState({ kind: "error", message: result.error })
@@ -74,6 +81,12 @@ export function ParticipantAutoMatchDialog({ open, onOpenChange, onDone }: {
           </DialogDescription>
         </DialogHeader>
 
+        {state.kind === "done" ? null : (
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={includeStaffOnly} disabled={running} onCheckedChange={(value) => setIncludeStaffOnly(value === true)} />
+            <span>Include projects whose imported conversations are kept staff-only (for example a legal hold). Conversations stay staff-only.</span>
+          </label>
+        )}
         {state.kind === "loading" ? <p className="text-sm text-muted-foreground">Checking every name and email…</p> : null}
         {state.kind === "error" ? <p role="alert" className="text-sm text-destructive">{state.message}</p> : null}
         {summary ? (
@@ -82,6 +95,7 @@ export function ParticipantAutoMatchDialog({ open, onOpenChange, onDone }: {
               {state.kind === "done" ? "Matched" : "Will match"} <span className="font-medium">{count(summary.resolved.identities)}</span> of {count(summary.identities)} names and emails
               ({count(summary.resolved.rows)} of {count(summary.rows)} message entries).
               {" "}{count(summary.leftover.identities)} stay for review{summary.legalHold.rows > 0 ? `, and ${count(summary.legalHold.rows)} entries on legal-hold projects are left unchanged` : ""}.
+              {summary.includedStaffOnlyProjects ? " Projects whose imported conversations are kept staff-only are included." : ""}
             </p>
             <ul aria-label="How names were matched" className="divide-y border-y">
               {MATCH_TYPES.filter((type) => summary.byMatchType[type].groups > 0).map((type) => (

@@ -8,6 +8,7 @@
 //   bun scripts/contact-review-dry-run.mjs --remote           # production D1 (read only)
 //   bun scripts/contact-review-dry-run.mjs --org <id>         # one organization (default: every one with rows)
 //   bun scripts/contact-review-dry-run.mjs --json             # the full plan as JSON
+//   bun scripts/contact-review-dry-run.mjs --include-staff-only  # also projects whose imported conversations are kept staff-only
 //   # What-ifs, without saving anything:
 //   bun scripts/contact-review-dry-run.mjs --remote --company-domains old.com,new.com
 //   bun scripts/contact-review-dry-run.mjs --remote --assume-other-email name@old.com=name@new.com
@@ -32,6 +33,8 @@ function argValues(name) {
 
 const remote = process.argv.includes("--remote")
 const json = process.argv.includes("--json")
+// The "Include projects whose imported conversations are kept staff-only" box: those projects count as writable.
+const includeStaffOnly = process.argv.includes("--include-staff-only")
 const database = argValue("--database") ?? "compass-db"
 const onlyOrg = argValue("--org")
 const extraDomains = (argValue("--company-domains") ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean)
@@ -135,13 +138,13 @@ for (const organizationId of orgs) {
   const built = buildMatchDirectory(directoryRows)
   // Contacts → Unassigned can connect people to clients too.
   const builtWithClients = buildMatchDirectory({ ...directoryRows, customers })
-  const unassignedRows = unassignedAll.filter((row) => row.organizationId === organizationId).map((row) => ({ ...row, staffOnly: bool(row.staffOnly), name: row.name ?? "" }))
+  const unassignedRows = unassignedAll.filter((row) => row.organizationId === organizationId).map((row) => ({ ...row, staffOnly: !includeStaffOnly && bool(row.staffOnly), name: row.name ?? "" }))
   const unassignedPlan = planUnassigned(builtWithClients, unassignedRows)
 
   const planned = groupsAll.filter((group) => group.organizationId === organizationId).flatMap((group) => {
     const identity = identityFromKey(group.identityKey)
     if (!identity) return []
-    return [{ ...group, staffOnly: group.staffOnly === 1, result: matchParticipant(built.directory, identity, group.projectId) }]
+    return [{ ...group, staffOnly: !includeStaffOnly && group.staffOnly === 1, result: matchParticipant(built.directory, identity, group.projectId) }]
   })
   report.push({ organizationId, built, planned, unassignedPlan })
 }
@@ -185,7 +188,7 @@ for (const group of leftovers) {
 }
 
 const summary = {
-  database, remote, companyDomainsAssumed: extraDomains, otherEmailsAssumed: assumedOther,
+  database, remote, includeStaffOnly, companyDomainsAssumed: extraDomains, otherEmailsAssumed: assumedOther,
   total: sum(all), legalHold: sum(all.filter((group) => group.staffOnly)), resolved: sum(decided), leftover: sum(leftovers),
   runTogetherRows: runTogether,
   byMatchType: Object.fromEntries(MATCH_TYPES.map((type) => [type, sum(decided.filter((group) => group.result.matchType === type))])),
@@ -207,6 +210,7 @@ if (json) {
 } else {
   const line = (label, value) => console.log(`${label.padEnd(36)} ${String(value.identities).padStart(6)} names ${String(value.groups).padStart(6)} groups ${String(value.rows).padStart(7)} rows`)
   console.log(`Contacts → Needs review dry run (${remote ? "remote" : "local"} ${database}; read only)`)
+  if (includeStaffOnly) console.log("Including projects whose imported conversations are kept staff-only (conversations stay staff-only)")
   if (extraDomains.length) console.log(`Assuming company domains: ${extraDomains.join(", ")}`)
   if (assumedOther.length) console.log(`Assuming other emails: ${assumedOther.map((pair) => `${pair.other} → ${pair.signIn}`).join(", ")}`)
   line("Unresolved (person rows)", summary.total)

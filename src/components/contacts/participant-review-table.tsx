@@ -18,6 +18,8 @@ import type { RecordPage, RecordPageQuery } from "@/lib/record-page"
 /** The contacts review sheet's columns (sheet "contacts.review"). */
 export function participantReviewColumns(
   onAction: (row: ImportedParticipantReviewRow, action: ReviewAction) => void,
+  /** Admins may decide names whose projects all keep imported conversations staff-only (explicit opt-in in the dialog). */
+  canIncludeStaffOnly = false,
 ): ColumnDef<ImportedParticipantReviewRow>[] {
   return [
     {
@@ -75,12 +77,13 @@ export function participantReviewColumns(
       enableSorting: false,
       cell: ({ row }) => {
         const item = row.original
-        if (item.readOnlyReason) return <span className="text-xs text-muted-foreground" title={item.readOnlyReason}>Read only</span>
+        if (item.readOnlyReason && !canIncludeStaffOnly) return <span className="text-xs text-muted-foreground" title={item.readOnlyReason}>Read only</span>
+        const can = item.readOnlyReason ? item.whenStaffOnlyIncluded : item
         return (
           <div className="flex flex-wrap justify-end gap-2">
-            {item.canPick ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "pick")}>Pick person</Button> : null}
-            {item.canSplit ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "split")}>Split into people</Button> : null}
-            {item.canLeave ? <Button type="button" size="sm" variant="ghost" onClick={() => onAction(item, "leave")}>Leave as is</Button> : null}
+            {can.canPick ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "pick")}>Pick person</Button> : null}
+            {can.canSplit ? <Button type="button" size="sm" variant="outline" onClick={() => onAction(item, "split")}>Split into people</Button> : null}
+            {can.canLeave ? <Button type="button" size="sm" variant="ghost" onClick={() => onAction(item, "leave")}>Leave as is</Button> : null}
           </div>
         )
       },
@@ -112,7 +115,7 @@ export function ParticipantReviewTable({
   const [autoOpen, setAutoOpen] = React.useState(false)
   const [active, setActive] = React.useState<{ readonly row: ImportedParticipantReviewRow; readonly action: ReviewAction } | null>(null)
 
-  const columns = React.useMemo(() => participantReviewColumns((row, action) => setActive({ row, action })), [])
+  const columns = React.useMemo(() => participantReviewColumns((row, action) => setActive({ row, action }), canAutoMatch), [canAutoMatch])
 
   const list = useServerRecordTable({
     columns,
@@ -161,6 +164,7 @@ export function ParticipantReviewTable({
       <ParticipantReviewDialog
         row={active?.row ?? null}
         action={active?.action ?? "leave"}
+        canIncludeStaffOnly={canAutoMatch}
         onOpenChange={(open) => { if (!open) setActive(null) }}
         onReviewed={() => {
           setReloadToken((value) => value + 1)

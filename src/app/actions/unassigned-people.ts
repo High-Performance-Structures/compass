@@ -230,7 +230,12 @@ export async function archiveUnassignedPersonAction(identity: string): Promise<A
   }
 }
 
-const autoConnectInput = z.object({ apply: z.boolean(), skipped: z.array(z.string().max(400)).max(2000) })
+const autoConnectInput = z.object({
+  apply: z.boolean(),
+  skipped: z.array(z.string().max(400)).max(2000),
+  /** Also connect people on projects whose imported conversations are kept staff-only (default off). */
+  includeStaffOnlyProjects: z.boolean().default(false),
+})
 
 /**
  * "Connect automatically…" (admins): previews, or connects the next bounded
@@ -266,6 +271,7 @@ const runTotalsInput = z.object({
   people: z.number().int().min(0).max(100000),
   contacts: z.number().int().min(0).max(100000),
   failed: z.number().int().min(0).max(100000),
+  includedStaffOnlyProjects: z.boolean().default(false),
 })
 
 /** One Activity record for a whole automatic run (it spans several calls). */
@@ -285,7 +291,7 @@ export async function recordUnassignedAutoConnectRun(raw: z.input<typeof runTota
       entityType: "organization",
       entityId: organizationId,
       summary: `Automatically connected ${totals.people} people from imported messages to their companies (${totals.contacts} project contacts)${totals.failed > 0 ? `; ${totals.failed} could not be connected` : ""}. Nobody was invited or notified.`,
-      metadata: { people: totals.people, contacts: totals.contacts, failed: totals.failed },
+      metadata: { people: totals.people, contacts: totals.contacts, failed: totals.failed, includedStaffOnlyProjects: totals.includedStaffOnlyProjects },
     })
     return { success: true, data: null }
   } catch (error) {

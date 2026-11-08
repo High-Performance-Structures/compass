@@ -159,6 +159,17 @@ describe("Connect automatically", () => {
     expect(rows("SELECT action FROM activity_events WHERE action LIKE 'unassigned_person.%'")).toEqual([{ action: "unassigned_person.auto_connected" }])
   })
 
+  it("includes projects whose imported conversations are kept staff-only only when asked", async () => {
+    const preview = await runUnassignedAutoConnectAction({ apply: false, skipped: [], includeStaffOnlyProjects: true })
+    expect(preview).toMatchObject({ success: true, data: { remaining: 2, summary: { connect: { people: 2 }, legalHoldOnly: { people: 0 } } } })
+    const result = await runUnassignedAutoConnectAction({ apply: true, skipped: [], includeStaffOnlyProjects: true })
+    expect(result).toMatchObject({ success: true, data: { connectedPeople: 2, connectedContacts: 3, failed: [], remaining: 0 } })
+    expect(rows("SELECT vendor_id, owner_portal_visible, sub_vendor_portal_visible FROM project_contacts WHERE id = 'pc-hold'"))
+      .toEqual([{ vendor_id: "vendor-acme", owner_portal_visible: 0, sub_vendor_portal_visible: 0 }])
+    expect(rows("SELECT imported_conversations_staff_only AS held FROM projects WHERE id = 'project-hold'")).toEqual([{ held: 1 }])
+    expect(rows("SELECT count(*) AS n FROM project_access_invitations")).toEqual([{ n: 0 }])
+  })
+
   it("is for admins only", async () => {
     mocks.user.mockResolvedValue({ id: "staff-2", email: "o@new.example", organizationId: ORG, role: "office", isActive: true, displayName: "Office" })
     expect(await runUnassignedAutoConnectAction({ apply: true, skipped: [] })).toMatchObject({ success: false })

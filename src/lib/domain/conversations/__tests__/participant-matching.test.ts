@@ -137,6 +137,54 @@ describe("matching", () => {
     expect(match("Cassandra Vance")).toMatchObject({ kind: "person", matchType: "staff_name", ref: "user:u-cass" })
   })
 
+  it("matches a staff record without an account (a former employee) by email, real accounts first", () => {
+    const former = (overrides: Partial<DirectoryRows> = {}): DirectoryRows => rows({
+      companyDomains: ["old.example", "new.example"],
+      internal: [
+        { id: "ic-dan", userId: "u-dan", name: "Dan Vogel", email: "dan@new.example", active: true, phone: null },
+        { id: "ic-mia", userId: null, name: "Mia Stone", email: "mia@old.example", active: false, phone: null },
+      ],
+      ...overrides,
+    })
+    // Exact address of an archived staff record with no account.
+    expect(match("mia@old.example", former())).toMatchObject({ kind: "person", matchType: "staff_record_email", ref: "internal:ic-mia", staff: false })
+    // The same name before the @ on another company domain.
+    expect(match("Mia Stone <mia@new.example>", former())).toMatchObject({ kind: "person", matchType: "staff_record_email", ref: "internal:ic-mia" })
+    // An active record without an account counts too.
+    expect(match("mia@old.example", former({ internal: [{ id: "ic-mia", userId: null, name: "Mia Stone", email: "mia@old.example", active: true, phone: null }] })))
+      .toMatchObject({ kind: "person", matchType: "staff_record_email", ref: "internal:ic-mia" })
+    // A staff record wins over a vendor contact with the same address.
+    expect(match("mia@old.example", former({
+      vendorPeople: [{ id: "vc-mia", vendorId: "v-bldr", vendorName: "Builders Supply LLC", name: "Mia Stone", email: "mia@old.example", userId: null, active: true, phone: null }],
+    }))).toMatchObject({ kind: "person", matchType: "staff_record_email", ref: "internal:ic-mia" })
+    // A real account with the same name before the @ wins over an account-less record.
+    expect(match("dan@old.example", former({
+      internal: [
+        { id: "ic-dan", userId: "u-dan", name: "Dan Vogel", email: "dan@new.example", active: true, phone: null },
+        { id: "ic-dan-old", userId: null, name: "Daniel Old", email: "dan@other.example", active: false, phone: null },
+      ],
+      companyDomains: ["old.example", "new.example", "other.example"],
+    }))).toMatchObject({ kind: "person", matchType: "staff_company_domain", ref: "internal:ic-dan" })
+    // Two different former employees with the same name before the @: several people.
+    expect(match("sam@new.example", former({
+      internal: [
+        { id: "ic-sam-1", userId: null, name: "Sam Hill", email: "sam@old.example", active: false, phone: null },
+        { id: "ic-sam-2", userId: null, name: "Sam Ford", email: "sam@other.example", active: false, phone: null },
+      ],
+      companyDomains: ["old.example", "new.example", "other.example"],
+    }))).toEqual({ kind: "none", reason: "several_people", suggestion: null })
+    // Two records of the same person (same name) are one person; active first.
+    expect(match("sam@new.example", former({
+      internal: [
+        { id: "ic-sam-1", userId: null, name: "Sam Hill", email: "sam@old.example", active: false, phone: null },
+        { id: "ic-sam-2", userId: null, name: "Sam  hill", email: "sam@other.example", active: true, phone: null },
+      ],
+      companyDomains: ["old.example", "new.example", "other.example"],
+    }))).toMatchObject({ kind: "person", matchType: "staff_record_email", ref: "internal:ic-sam-2" })
+    // A shared mailbox is still nobody.
+    expect(match("office@old.example", former())).toMatchObject({ kind: "none", reason: "company_mailbox" })
+  })
+
   it("matches a business domain to its one vendor, never free mail or a staff domain", () => {
     expect(match("Dana West <dana@bldr.example>")).toEqual({ kind: "vendor", matchType: "vendor_domain", companyKind: "vendor", vendorId: "v-bldr", vendorName: "Builders Supply LLC" })
     expect(match("someone@gmail.com")).toEqual({ kind: "none", reason: "no_match", suggestion: null })

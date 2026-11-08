@@ -13,9 +13,13 @@
  *  1. Staff win. An email that is a staff member's sign-in email or one of
  *     their other email addresses is that staff member, even when a vendor
  *     or client record carries the same address.
+ *     A staff record without a current account (a former employee's
+ *     archived internal contact) with that exact address is that person too;
+ *     a real account always wins over such a record.
  *  2. A company domain (Settings) is the company's own: an address on it is
- *     the staff member with the same name before the @, or nobody (shared
- *     mailboxes stay for review). It is never matched to a vendor or client.
+ *     the staff member with the same name before the @ (an account first,
+ *     then a staff record without one), or nobody (shared mailboxes stay for
+ *     review). It is never matched to a vendor or client.
  *  3. Everyone else found by the exact email is ONE person, however many
  *     project contact rows they have; so are people found by the exact name
  *     who share an email or the same directory person or account.
@@ -156,6 +160,7 @@ export const MATCH_TYPES = [
   "staff_email",
   "staff_other_email",
   "staff_company_domain",
+  "staff_record_email",
   "staff_name",
   "same_email",
   "same_name",
@@ -167,6 +172,7 @@ export const MATCH_TYPE_LABELS: Readonly<Record<MatchType, string>> = {
   staff_email: "Staff sign-in email",
   staff_other_email: "Staff other email address",
   staff_company_domain: "Staff on a company domain",
+  staff_record_email: "Staff record without an account (email)",
   staff_name: "Staff name",
   same_email: "Same email, one person",
   same_name: "Same name, one person",
@@ -307,6 +313,22 @@ function oneStaff(entries: readonly DirectoryEntry[]): DirectoryEntry | "several
   return canonicalEntry(staff, null)
 }
 
+/**
+ * Staff records without a current staff account (an internal contact with no
+ * account, active or archived): one person, or several different people.
+ * Records with the same name are one person (a rehire, a duplicate record).
+ */
+function oneStaffRecord(directory: MatchDirectory, entries: readonly DirectoryEntry[]): DirectoryEntry | "several" | null {
+  const records = entries.filter((entry) => entry.type === "internal" && !entry.staff)
+  if (records.length === 0) return null
+  const people = new Set(peopleOf(directory, records).map((group) => {
+    const named = group.find((entry) => entry.type === "internal" && entry.name !== null)
+    return named?.name ? `name:${normalizePersonName(named.name)}` : `ref:${group[0]?.ref ?? ""}`
+  }))
+  if (people.size > 1) return "several"
+  return canonicalEntry(records, null)
+}
+
 function matchEmail(directory: MatchDirectory, identity: Extract<ParticipantIdentity, { kind: "email" }>, projectId: string): MatchResult {
   const { email, local, domain } = identity
   // Everyone with the address, plus every entry linked to them (account, directory person).
@@ -316,6 +338,10 @@ function matchEmail(directory: MatchDirectory, identity: Extract<ParticipantIden
   const staff = oneStaff(candidates)
   if (staff === "several") return none("several_people")
   if (staff) return person(staff.otherEmails.includes(email) ? "staff_other_email" : "staff_email", staff)
+  // A staff record without an account (a former employee) with this exact address.
+  const record = oneStaffRecord(directory, candidates)
+  if (record === "several") return none("several_people")
+  if (record) return person("staff_record_email", record)
 
   // 2. The company's own domain: the staff member with the same name before the @, or nobody.
   const companyDomains = new Set(directory.companyDomains)
@@ -325,8 +351,17 @@ function matchEmail(directory: MatchDirectory, identity: Extract<ParticipantIden
       return parts !== null && parts.local === local && companyDomains.has(parts.domain)
     }))
     const byLocal = oneStaff(sameLocal)
-    if (byLocal && byLocal !== "several") return person("staff_company_domain", byLocal)
-    return none(byLocal === "several" ? "several_people" : "company_mailbox")
+    if (byLocal === "several") return none("several_people")
+    if (byLocal) return person("staff_company_domain", byLocal)
+    // No account: a staff record (active or archived) with the same name before the @ on a company domain.
+    const recordsByLocal = directory.entries.filter((entry) => entry.type === "internal" && !entry.staff && entry.emails.some((address) => {
+      const parts = splitEmail(address)
+      return parts !== null && parts.local === local && companyDomains.has(parts.domain)
+    }))
+    const byRecord = oneStaffRecord(directory, recordsByLocal)
+    if (byRecord === "several") return none("several_people")
+    if (byRecord) return person("staff_record_email", byRecord)
+    return none("company_mailbox")
   }
 
   // 3. Everyone found by the exact address is one person.

@@ -9,13 +9,14 @@ import type { Db } from "@/lib/server/action-context"
 
 import { LEGAL_HOLD_ERROR, resolveImportedParticipant, type ReviewDecision } from "./imported-participant-resolve"
 import { loadReviewGroup } from "./imported-participant-review"
-import { decideIdentity, identityKeyOfRow, knownContactsFor, listIdentityGroups } from "./participant-auto-resolve"
+import { decideIdentity, identityKeyOfRow, isHeldGroup, knownContactsFor, listIdentityGroups } from "./participant-auto-resolve"
 import { IDENTITY_KEY_SQL, identityFromKey, isFreeMailDomain, suggestVendorForDomain, type VendorSuggestion } from "./participant-matching"
 
 /*
  * Contacts → Needs review lists one row per identity (a name or email across
  * every project and conversation). One decision applies to every unresolved
- * row of that identity; rows on legal-hold projects stay unchanged. Names
+ * row of that identity; rows on legal-hold projects stay unchanged unless
+ * staff explicitly include them (their conversations stay staff-only). Names
  * run together are still split one conversation at a time by the single
  * review (resolveImportedParticipant), applied to each conversation that
  * shows the same text.
@@ -64,7 +65,10 @@ async function runTogetherAnchors(db: Db, organizationId: string, key: string): 
 }
 
 /** A split (or leave) of names run together, applied to each conversation that shows the same text. */
-async function resolveRunTogether(db: Db, input: { readonly organizationId: string; readonly rowId: string; readonly key: string; readonly decision: ReviewDecision; readonly apply: boolean; readonly now: string }): Promise<ActionResult<GroupReviewOutcome>> {
+async function resolveRunTogether(
+  db: Db,
+  input: { readonly organizationId: string; readonly rowId: string; readonly key: string; readonly decision: ReviewDecision; readonly apply: boolean; readonly now: string; readonly includeStaffOnlyProjects: boolean },
+): Promise<ActionResult<GroupReviewOutcome>> {
   const anchors = await runTogetherAnchors(db, input.organizationId, input.key)
   const ids = anchors.includes(input.rowId) ? anchors : [input.rowId, ...anchors]
   const people = new Set<string>()
@@ -75,7 +79,9 @@ async function resolveRunTogether(db: Db, input: { readonly organizationId: stri
   let legalHoldRows = 0
   let literal = input.key.slice("literal:".length)
   for (const id of ids) {
-    const result = await resolveImportedParticipant({ db, organizationId: input.organizationId, rowId: id, decision: input.decision, apply: input.apply, now: input.now })
+    const result = await resolveImportedParticipant({
+      db, organizationId: input.organizationId, rowId: id, decision: input.decision, apply: input.apply, now: input.now, includeStaffOnlyProjects: input.includeStaffOnlyProjects,
+    })
     if (!result.success) {
       if (result.error === LEGAL_HOLD_ERROR) {
         legalHoldRows += 1
@@ -109,6 +115,8 @@ async function resolveRunTogether(db: Db, input: { readonly organizationId: stri
 /**
  * Applies one staff decision to every unresolved row of the identity the
  * listed row belongs to. `apply: false` describes the outcome without writing.
+ * `includeStaffOnlyProjects` (default off) also changes rows on projects that
+ * keep imported conversations staff-only; those conversations stay staff-only.
  */
 export async function resolveParticipantGroup(input: {
   readonly db: Db
@@ -117,8 +125,10 @@ export async function resolveParticipantGroup(input: {
   readonly decision: GroupDecision
   readonly apply: boolean
   readonly now: string
+  readonly includeStaffOnlyProjects?: boolean
 }): Promise<ActionResult<GroupReviewOutcome>> {
   const { db, organizationId, decision } = input
+  const include = input.includeStaffOnlyProjects === true
   const anchor = await loadReviewGroup(db, organizationId, input.rowId)
   if (!anchor) return fail("This participant was not found.")
   const key = await identityKeyOfRow(db, organizationId, input.rowId)
@@ -126,13 +136,13 @@ export async function resolveParticipantGroup(input: {
 
   if (key.startsWith("literal:")) {
     if (decision.type === "vendor") return fail("Split names run together into people instead.")
-    return resolveRunTogether(db, { organizationId, rowId: input.rowId, key, decision, apply: input.apply, now: input.now })
+    return resolveRunTogether(db, { organizationId, rowId: input.rowId, key, decision, apply: input.apply, now: input.now, includeStaffOnlyProjects: include })
   }
   if (decision.type === "split") return fail("Only names run together can be split.")
 
   const groups = await listIdentityGroups(db, organizationId, key)
-  const writable = groups.filter((group) => !group.projectStaffOnly)
-  const legalHoldRows = groups.filter((group) => group.projectStaffOnly).reduce((sum, group) => sum + group.rows, 0)
+  const writable = groups.filter((group) => !isHeldGroup(group, include))
+  const legalHoldRows = groups.filter((group) => isHeldGroup(group, include)).reduce((sum, group) => sum + group.rows, 0)
   if (writable.length === 0) return groups.length > 0 ? fail(LEGAL_HOLD_ERROR) : fail("Every row of this participant has already been reviewed.")
 
   let target: Parameters<typeof decideIdentity>[1]["target"]
@@ -163,7 +173,7 @@ export async function resolveParticipantGroup(input: {
   if (!input.apply) {
     return { success: true, data: { ...common, changed: false, people: preview, refs: decision.type === "pick" ? [decision.ref] : [], rowsReviewed } }
   }
-  const outcome = await decideIdentity(db, { organizationId, key, target, known, now: input.now })
+  const outcome = await decideIdentity(db, { organizationId, key, target, known, now: input.now, includeStaffOnlyProjects: include })
   return { success: true, data: { ...common, changed: outcome.rowsReviewed > 0, people: outcome.people, refs: outcome.refs, rowsReviewed: outcome.rowsReviewed, projects: outcome.projects } }
 }
 
