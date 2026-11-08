@@ -13,7 +13,7 @@ export const sageContactReviewSettingsSchema = z.object({
 
 export type SageContactReviewSettings = z.infer<typeof sageContactReviewSettingsSchema>
 
-export const DEFAULT_SAGE_CONTACT_REVIEW_SETTINGS: SageContactReviewSettings = {
+const DEFAULT_SAGE_CONTACT_REVIEW_SETTINGS: SageContactReviewSettings = {
   requireSecondApprover: false,
 }
 
