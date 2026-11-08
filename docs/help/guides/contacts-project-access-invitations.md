@@ -83,6 +83,12 @@ For the names that are left, choose **Pick person**, **Split into people** (for 
 
 Projects that keep imported conversations staff-only (for example a legal hold) are never changed: their rows stay listed and read only, and a choice on a name skips them. Resolving never shares a conversation, invites anyone, or sends a notification or email; conversations stay staff-only until you use **Share with owner/vendor…**. Each choice, and each automatic run, is recorded once in Activity.
 
+## Connect Unassigned People {#unassigned}
+
+**Contacts > Unassigned** lists people added from imported messages who are not connected to a vendor or client yet, one row per person: addresses the import stored separately but that are the same email (also when written **Name <email>**) are shown as one person, and a choice applies to all of them.
+
+Administrators can choose **Connect automatically…**. Compass first shows how many people it can connect, how each matched, and the companies they would join, so you can check them. It connects a person only when their email is the same as someone at a vendor or client, or their business email domain is used by exactly one vendor or client; each is connected the same way as **Connect to company…** (added to that company, or matched to the person already there, and linked on every project). Staff, recognized by their sign-in and other email addresses and your company email domains, are never connected to a company. Free email addresses never match by domain. A company whose name reads like the email domain is only a suggestion. People on projects that keep imported conversations staff-only (legal hold) are left as they are. Nobody is invited, notified or emailed, and the run is recorded once in Activity. Everyone else stays in **Unassigned** for **Connect to company…**.
+
 ## Resend a Pending Invitation {#resend-invitation}
 
 If an invited person has not joined, use the pending invitation's resend action rather than creating another person or assignment. Verify the email, project, and role first. Pending invitee links can exist before a Compass account ID is available. After acceptance, verify the actual workspace and feature access.

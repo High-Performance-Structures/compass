@@ -194,9 +194,9 @@ export async function companySuggestions(db: Db, organizationId: string, rowId: 
   const suggestions: CompanySuggestion[] = byDomain.flatMap((row) => {
     const id = cleanText(field(row, "id"))
     const name = cleanText(field(row, "name"))
-    return id && name ? [{ vendorId: id, vendorName: name, reason: "domain" as const }] : []
+    return id && name ? [{ companyKind: "vendor" as const, vendorId: id, vendorName: name, reason: "domain" as const }] : []
   })
-  const byName = suggestVendorForDomain(identity.domain, named.map((row) => ({ id: row.id, name: row.name, emails: [] })))
+  const byName = suggestVendorForDomain(identity.domain, named.map((row) => ({ companyKind: "vendor" as const, id: row.id, name: row.name, emails: [] })))
   if (byName && !suggestions.some((item) => item.vendorId === byName.vendorId)) suggestions.push({ ...byName, reason: "name" })
   return { success: true, data: suggestions }
 }

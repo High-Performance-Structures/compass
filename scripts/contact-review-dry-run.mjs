@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process"
 
 import { buildMatchDirectory } from "../src/lib/domain/conversations/participant-directory.ts"
 import { isInternalStaffRole } from "../src/lib/user-roles.ts"
+import { planUnassigned, summarizeUnassignedPlan } from "../src/lib/domain/contacts/unassigned-matching.ts"
 import { IDENTITY_KEY_SQL, MATCH_TYPES, MATCH_TYPE_LABELS, identityFromKey, matchParticipant } from "../src/lib/domain/conversations/participant-matching.ts"
 
 function argValue(name) {
@@ -80,7 +81,13 @@ const groupsAll = select(`SELECT p.organization_id AS organizationId, ${IDENTITY
 const runTogether = select(`SELECT COUNT(*) AS n FROM project_source_record_participants p
   WHERE p.review_status = 'unreviewed' AND p.identity_status LIKE 'boundary\\_unproven:%' ESCAPE '\\' ${onlyOrg ? `AND p.organization_id = ${quote(onlyOrg)}` : ""}`)[0]?.n ?? 0
 
-const orgs = [...new Set(groupsAll.map((group) => group.organizationId))]
+const unassignedAll = select(`SELECT pr.organization_id AS organizationId, pc.id AS contactId, pc.source_entity_id AS identity, pc.display_name AS name,
+    pc.email, pc.project_id AS projectId, pr.imported_conversations_staff_only AS staffOnly
+  FROM project_contacts pc JOIN projects pr ON pr.id = pc.project_id
+  WHERE pc.source_entity_type = 'buildertrend_new_person' AND pc.active = 1 AND pc.vendor_id IS NULL AND pc.customer_id IS NULL
+    ${onlyOrg ? `AND pr.organization_id = ${quote(onlyOrg)}` : ""}`)
+
+const orgs = [...new Set([...groupsAll, ...unassignedAll].map((group) => group.organizationId))]
 const report = []
 
 for (const organizationId of orgs) {
@@ -95,7 +102,7 @@ for (const organizationId of orgs) {
     if (owner) alternates.push({ userId: owner.userId, email: pair.other })
     else console.error(`--assume-other-email: no staff sign-in ${pair.signIn}`)
   }
-  const vendors = select(`SELECT id, name, email, primary_email AS primaryEmail FROM vendors WHERE organization_id = ${org} AND merged_into_vendor_id IS NULL`)
+  const vendors = select(`SELECT id, name, email, primary_email AS primaryEmail, category FROM vendors WHERE organization_id = ${org} AND merged_into_vendor_id IS NULL`)
   const vendorPeople = select(`SELECT vc.id, vc.vendor_id AS vendorId, v.name AS vendorName, vc.name, vc.email, vc.user_id AS userId, vc.active, vc.phone
     FROM vendor_contacts vc JOIN vendors v ON v.id = vc.vendor_id
     WHERE v.organization_id = ${org} AND v.merged_into_vendor_id IS NULL AND vc.merged_into_person_id IS NULL`)
@@ -114,7 +121,8 @@ for (const organizationId of orgs) {
     savedDomains = []
   }
   const bool = (value) => value === 1 || value === true
-  const built = buildMatchDirectory({
+  const customers = select(`SELECT id, COALESCE(NULLIF(trim(company), ''), name) AS name, email FROM customers WHERE organization_id = ${org} AND merged_into_customer_id IS NULL`)
+  const directoryRows = {
     staff: staff.map((row) => ({ ...row, active: bool(row.active), name: row.name || null })),
     internal: internal.map((row) => ({ ...row, active: bool(row.active) })),
     alternates,
@@ -123,14 +131,19 @@ for (const organizationId of orgs) {
     clientPeople: clientPeople.map((row) => ({ ...row, active: bool(row.active) })),
     projectContacts: projectContacts.map((row) => ({ ...row, name: row.name ?? "", active: bool(row.active) })),
     companyDomains: [...savedDomains, ...extraDomains],
-  })
+  }
+  const built = buildMatchDirectory(directoryRows)
+  // Contacts → Unassigned can connect people to clients too.
+  const builtWithClients = buildMatchDirectory({ ...directoryRows, customers })
+  const unassignedRows = unassignedAll.filter((row) => row.organizationId === organizationId).map((row) => ({ ...row, staffOnly: bool(row.staffOnly), name: row.name ?? "" }))
+  const unassignedPlan = planUnassigned(builtWithClients, unassignedRows)
 
   const planned = groupsAll.filter((group) => group.organizationId === organizationId).flatMap((group) => {
     const identity = identityFromKey(group.identityKey)
     if (!identity) return []
     return [{ ...group, staffOnly: group.staffOnly === 1, result: matchParticipant(built.directory, identity, group.projectId) }]
   })
-  report.push({ organizationId, built, planned })
+  report.push({ organizationId, built, planned, unassignedPlan })
 }
 
 const sum = (groups) => ({
@@ -180,8 +193,17 @@ const summary = {
   leftovers: [...leftoverByIdentity.values()].sort((a, b) => b.rows - a.rows).map((item) => ({ ...item, reasons: [...item.reasons] })),
 }
 
+const unassignedPlan = report.flatMap((entry) => entry.unassignedPlan)
+const unassignedSummary = summarizeUnassignedPlan(unassignedPlan)
+const unassignedConnections = unassignedPlan
+  .filter((group) => group.result.kind === "connect" && group.legalHoldRows < group.rows)
+  .map((group) => ({ person: group.email ?? group.name, company: group.result.companyName, companyKind: group.result.companyKind, matchType: group.result.matchType, identities: group.identities.length, rows: group.rows }))
+const unassignedLeftovers = unassignedPlan
+  .filter((group) => group.result.kind !== "connect" && group.legalHoldRows < group.rows)
+  .map((group) => ({ person: group.email ?? group.name, why: group.result.kind === "staff" ? `staff: ${group.result.name}` : group.result.reason, suggestion: group.result.kind === "none" ? group.result.suggestion?.vendorName ?? null : null, identities: group.identities.length, rows: group.rows }))
+
 if (json) {
-  console.log(JSON.stringify(summary, null, 2))
+  console.log(JSON.stringify({ ...summary, unassigned: { summary: unassignedSummary, connections: unassignedConnections, leftovers: unassignedLeftovers } }, null, 2))
 } else {
   const line = (label, value) => console.log(`${label.padEnd(36)} ${String(value.identities).padStart(6)} names ${String(value.groups).padStart(6)} groups ${String(value.rows).padStart(7)} rows`)
   console.log(`Contacts → Needs review dry run (${remote ? "remote" : "local"} ${database}; read only)`)
@@ -197,4 +219,27 @@ if (json) {
   for (const item of summary.resolutions.slice(0, 40)) console.log(`  ${String(item.rows).padStart(6)}  ${item.literal} → ${item.target}  [${item.matchType}, ${item.projects} projects]`)
   console.log("\nLeftovers (largest first):")
   for (const item of summary.leftovers) console.log(`  ${String(item.rows).padStart(6)}  ${item.literal}  [${item.reasons.join(", ")}, ${item.projects} projects]${item.suggestion ? `  suggest: ${item.suggestion}` : ""}`)
+}
+
+if (!json) {
+  const u = unassignedSummary
+  const uline = (label, value) => console.log(`${label.padEnd(36)} ${String(value.people).padStart(6)} people ${String(value.identities).padStart(6)} identities ${String(value.rows).padStart(6)} rows`)
+  console.log("\nContacts → Unassigned")
+  uline("Unassigned (active, no company)", u.total)
+  console.log(`${"  duplicate groups (one person)".padEnd(36)} ${String(u.duplicateGroups).padStart(6)} people ${String(u.duplicateIdentities).padStart(6)} identities`)
+  uline("  only on legal-hold projects", u.legalHoldOnly)
+  uline("Would connect automatically", u.connect)
+  for (const type of MATCH_TYPES) if (u.byMatchType[type]) uline(`  ${MATCH_TYPE_LABELS[type]}`, u.byMatchType[type])
+  uline("Staff (not connected)", u.staff)
+  uline("Left in Unassigned", u.leftover)
+  console.log(`  with a suggested company: ${u.withSuggestion}`)
+  console.log("\nUnassigned connections (first 40):")
+  for (const item of unassignedConnections.slice(0, 40)) console.log(`  ${item.person} → ${item.company} (${item.companyKind}) [${item.matchType}${item.identities > 1 ? `, ${item.identities} duplicates` : ""}]`)
+  console.log("\nUnassigned leftovers by reason:")
+  const reasons = new Map()
+  for (const item of unassignedLeftovers) {
+    const why = item.why.startsWith("staff:") ? "staff" : item.why
+    reasons.set(why, (reasons.get(why) ?? 0) + 1)
+  }
+  for (const [why, n] of reasons) console.log(`  ${why}: ${n}`)
 }

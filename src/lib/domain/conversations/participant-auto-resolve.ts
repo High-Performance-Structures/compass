@@ -124,9 +124,13 @@ export async function identityKeyOfRow(db: Db, organizationId: string, rowId: st
 
 // ---- The directory --------------------------------------------------------------
 
-/** Every directory person of the company, for matching (each read scoped to the organization). */
-async function loadMatchDirectory(db: Db, organizationId: string): Promise<BuiltDirectory> {
-  const [staff, internal, alternates, vendorRows, vendorPeople, clientPeople, contacts, domains] = await Promise.all([
+/**
+ * Every directory person of the company, for matching (each read scoped to
+ * the organization). `withClients` also counts client companies for domain
+ * matching (Contacts → Unassigned can connect a person to a client).
+ */
+export async function loadMatchDirectory(db: Db, organizationId: string, withClients = false): Promise<BuiltDirectory> {
+  const [staff, internal, alternates, vendorRows, vendorPeople, clientPeople, contacts, domains, clientRows] = await Promise.all([
     db.select({ userId: users.id, email: users.email, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: organizationMembers.role, active: users.isActive, phone: users.phone })
       .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
       .where(eq(organizationMembers.organizationId, organizationId)),
@@ -134,7 +138,7 @@ async function loadMatchDirectory(db: Db, organizationId: string): Promise<Built
       .from(internalContacts).where(eq(internalContacts.organizationId, organizationId)),
     db.select({ userId: userAlternateEmails.userId, email: userAlternateEmails.email })
       .from(userAlternateEmails).where(eq(userAlternateEmails.organizationId, organizationId)),
-    db.select({ id: vendors.id, name: vendors.name, email: vendors.email, primaryEmail: vendors.primaryEmail })
+    db.select({ id: vendors.id, name: vendors.name, email: vendors.email, primaryEmail: vendors.primaryEmail, category: vendors.category })
       .from(vendors).where(and(eq(vendors.organizationId, organizationId), isNull(vendors.mergedIntoVendorId))),
     db.select({ id: vendorContacts.id, vendorId: vendorContacts.vendorId, vendorName: vendors.name, name: vendorContacts.name, email: vendorContacts.email, userId: vendorContacts.userId, active: vendorContacts.active, phone: vendorContacts.phone })
       .from(vendorContacts).innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
@@ -149,6 +153,10 @@ async function loadMatchDirectory(db: Db, organizationId: string): Promise<Built
       sourceEntityType: projectContacts.sourceEntityType, sourceEntityId: projectContacts.sourceEntityId, active: projectContacts.active,
     }).from(projectContacts).innerJoin(projects, eq(projects.id, projectContacts.projectId)).where(eq(projects.organizationId, organizationId)),
     readFeatureSettings(db, organizationId, "company-email-domains"),
+    withClients
+      ? db.select({ id: customers.id, name: sql<string>`COALESCE(NULLIF(trim(${customers.company}), ''), ${customers.name})`, email: customers.email })
+        .from(customers).where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId)))
+      : Promise.resolve([]),
   ])
   const rows: DirectoryRows = {
     staff: staff.filter((row) => isInternalStaffRole(row.role)).map((row) => ({
@@ -157,6 +165,7 @@ async function loadMatchDirectory(db: Db, organizationId: string): Promise<Built
     })),
     internal, alternates, vendors: vendorRows, vendorPeople, clientPeople, projectContacts: contacts,
     companyDomains: domains.domains,
+    customers: clientRows,
   }
   return buildMatchDirectory(rows)
 }
@@ -403,7 +412,7 @@ export async function runAutoResolve(db: Db, input: { readonly organizationId: s
     if (group.projectStaffOnly) continue
     const result = group.result
     let target: IdentityTarget | null = null
-    if (result.kind === "vendor") target = { kind: "vendor", vendorId: result.vendorId, vendorName: result.vendorName }
+    if (result.kind === "vendor" && result.companyKind === "vendor") target = { kind: "vendor", vendorId: result.vendorId, vendorName: result.vendorName }
     if (result.kind === "person") {
       const person = directory.people.get(result.ref)
       target = person ? { kind: "person", person } : null

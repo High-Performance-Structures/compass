@@ -138,7 +138,7 @@ describe("matching", () => {
   })
 
   it("matches a business domain to its one vendor, never free mail or a staff domain", () => {
-    expect(match("Dana West <dana@bldr.example>")).toEqual({ kind: "vendor", matchType: "vendor_domain", vendorId: "v-bldr", vendorName: "Builders Supply LLC" })
+    expect(match("Dana West <dana@bldr.example>")).toEqual({ kind: "vendor", matchType: "vendor_domain", companyKind: "vendor", vendorId: "v-bldr", vendorName: "Builders Supply LLC" })
     expect(match("someone@gmail.com")).toEqual({ kind: "none", reason: "no_match", suggestion: null })
     // A domain only staff use is the company's own even before Settings lists it.
     expect(match("nancy@new.example")).toMatchObject({ kind: "none", reason: "company_mailbox" })
@@ -147,10 +147,10 @@ describe("matching", () => {
   })
 
   it("only suggests a vendor whose name reads like the domain", () => {
-    expect(match("ordercs@acmesteel.com")).toEqual({ kind: "none", reason: "no_match", suggestion: { vendorId: "v-acme", vendorName: "Acme Steel, Inc." } })
+    expect(match("ordercs@acmesteel.com")).toEqual({ kind: "none", reason: "no_match", suggestion: { companyKind: "vendor", vendorId: "v-acme", vendorName: "Acme Steel, Inc." } })
     expect(compactCompanyName("Acme Steel, Inc.")).toBe("acmesteel")
-    expect(suggestVendorForDomain("gmail.com", [{ id: "g", name: "Gmail", emails: [] }])).toBeNull()
-    expect(suggestVendorForDomain("orders.acmesteel.com", [{ id: "v", name: "Acme Steel Co", emails: [] }])).toEqual({ vendorId: "v", vendorName: "Acme Steel Co" })
+    expect(suggestVendorForDomain("gmail.com", [{ companyKind: "vendor", id: "g", name: "Gmail", emails: [] }])).toBeNull()
+    expect(suggestVendorForDomain("orders.acmesteel.com", [{ companyKind: "vendor", id: "v", name: "Acme Steel Co", emails: [] }])).toEqual({ companyKind: "vendor", vendorId: "v", vendorName: "Acme Steel Co" })
   })
 
   it("finds nobody for an unknown name", () => {

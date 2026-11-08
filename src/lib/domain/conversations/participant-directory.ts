@@ -13,7 +13,8 @@ export type DirectoryRows = {
   readonly staff: readonly { readonly userId: string; readonly email: string | null; readonly name: string | null; readonly active: boolean; readonly phone: string | null }[]
   readonly internal: readonly { readonly id: string; readonly userId: string | null; readonly name: string; readonly email: string | null; readonly active: boolean; readonly phone: string | null }[]
   readonly alternates: readonly { readonly userId: string; readonly email: string }[]
-  readonly vendors: readonly { readonly id: string; readonly name: string; readonly email: string | null; readonly primaryEmail: string | null }[]
+  /** `category`: an "internal" vendor record (the company itself) is never matched by domain. */
+  readonly vendors: readonly { readonly id: string; readonly name: string; readonly email: string | null; readonly primaryEmail: string | null; readonly category?: string | null }[]
   readonly vendorPeople: readonly { readonly id: string; readonly vendorId: string; readonly vendorName: string; readonly name: string; readonly email: string | null; readonly userId: string | null; readonly active: boolean; readonly phone: string | null }[]
   readonly clientPeople: readonly { readonly id: string; readonly customerId: string; readonly customerName: string; readonly name: string; readonly email: string | null; readonly userId: string | null; readonly active: boolean; readonly phone: string | null }[]
   readonly projectContacts: readonly {
@@ -33,6 +34,12 @@ export type DirectoryRows = {
     readonly active: boolean
   }[]
   readonly companyDomains: readonly string[]
+  /**
+   * Client companies, only for flows that can connect a person to a client
+   * (Contacts → Unassigned). Their own and their people's addresses then
+   * count for domain matching too.
+   */
+  readonly customers?: readonly { readonly id: string; readonly name: string; readonly email: string | null }[]
 }
 
 export type BuiltDirectory = {
@@ -126,10 +133,21 @@ export function buildMatchDirectory(rows: DirectoryRows): BuiltDirectory {
     const email = address(row.email)
     if (email) peopleEmails.set(row.vendorId, [...(peopleEmails.get(row.vendorId) ?? []), email])
   }
-  const vendors: DirectoryVendor[] = rows.vendors.map((row) => ({
-    id: row.id, name: row.name,
-    emails: unique([address(row.email), address(row.primaryEmail), ...(peopleEmails.get(row.id) ?? [])]),
-  }))
+  const clientEmails = new Map<string, string[]>()
+  for (const row of rows.clientPeople) {
+    const email = address(row.email)
+    if (email) clientEmails.set(row.customerId, [...(clientEmails.get(row.customerId) ?? []), email])
+  }
+  const vendors: DirectoryVendor[] = [
+    ...rows.vendors.filter((row) => row.category?.trim().toLowerCase() !== "internal").map((row) => ({
+      companyKind: "vendor" as const, id: row.id, name: row.name,
+      emails: unique([address(row.email), address(row.primaryEmail), ...(peopleEmails.get(row.id) ?? [])]),
+    })),
+    ...(rows.customers ?? []).map((row) => ({
+      companyKind: "customer" as const, id: row.id, name: row.name,
+      emails: unique([address(row.email), ...(clientEmails.get(row.id) ?? [])]),
+    })),
+  ]
 
   const companyDomains = unique(rows.companyDomains.map((domain) => domain.trim().toLowerCase() || null)).filter((domain) => !isFreeMailDomain(domain))
   return { directory: { entries, vendors, companyDomains }, people, known }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/contacts/connect-unassigned-person"
 import { INTERNAL_MERGE_BLOCKER, searchCompanyMergeCandidates, type CompanyMergeCandidate } from "@/lib/domain/contacts/directory-page"
 import { revalidateProjectContactPaths } from "@/lib/domain/contacts/paths"
+import { runUnassignedAutoConnect, type UnassignedAutoConnectResult } from "@/lib/domain/contacts/unassigned-auto-connect"
 import { archiveUnassignedPerson, saveUnassignedPerson } from "@/lib/domain/contacts/unassigned-person-edit"
 import {
   listUnassignedPeople,
@@ -23,6 +24,7 @@ import { canFeature } from "@/lib/permission-enforcement"
 import { can } from "@/lib/permissions"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
 import { orgContext } from "@/lib/server/action-context"
+import { canManageUserAccessRole } from "@/lib/user-roles"
 
 /** People from imported messages not yet connected to a company (Contacts → Unassigned). */
 export async function getUnassignedPeople(): Promise<readonly UnassignedPerson[]> {
@@ -72,7 +74,7 @@ export async function getUnassignedCompanySuggestion(companyName: string | null)
 }
 
 const connectInput = z.object({
-  identity: z.string().trim().min(1).max(300),
+  identity: z.string().trim().min(1).max(4000),
   kind: kindInput,
   companyId: z.string().trim().min(1).max(200),
 })
@@ -134,7 +136,7 @@ export async function connectUnassignedPersonToCompany(
 }
 
 const editInput = z.object({
-  identity: z.string().trim().min(1).max(300),
+  identity: z.string().trim().min(1).max(4000),
   name: z.string().trim().min(1).max(200),
   email: z.union([z.literal(""), z.email().max(254)]),
   phone: z.string().trim().max(60),
@@ -200,7 +202,7 @@ export async function editUnassignedPerson(
  */
 export async function archiveUnassignedPersonAction(identity: string): Promise<ActionResult<{ readonly name: string }>> {
   try {
-    const parsed = z.string().trim().min(1).max(300).safeParse(identity)
+    const parsed = z.string().trim().min(1).max(4000).safeParse(identity)
     if (!parsed.success) return actionFailure("Choose a person to archive.")
     const context = await unassignedEditContext()
     if (!context.success) return context
@@ -225,5 +227,69 @@ export async function archiveUnassignedPersonAction(identity: string): Promise<A
   } catch (error) {
     console.error("Failed to archive unassigned person", error)
     return actionFailure("Could not archive this person.")
+  }
+}
+
+const autoConnectInput = z.object({ apply: z.boolean(), skipped: z.array(z.string().max(400)).max(2000) })
+
+/**
+ * "Connect automatically…" (admins): previews, or connects the next bounded
+ * batch of people the matcher ties clearly to one vendor or client, through
+ * the same path as "Connect to company…". The caller repeats while
+ * `remaining` is above zero, then records the run once in Activity.
+ */
+export async function runUnassignedAutoConnectAction(raw: z.input<typeof autoConnectInput>): Promise<ActionResult<UnassignedAutoConnectResult>> {
+  try {
+    const input = autoConnectInput.parse(raw)
+    const context = await orgContext({ feature: "project-contacts", action: "update", mutation: input.apply })
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    if (!canManageUserAccessRole(user.role)) return actionFailure("Only admins can connect people automatically.")
+    const result = await runUnassignedAutoConnect({ db, user, organizationId }, input)
+    for (const projectId of result.projectIds) {
+      await queueProjectContactTrackerRefresh({ db, organizationId, projectId })
+      revalidateProjectContactPaths(projectId)
+    }
+    if (result.projectIds.length > 0) {
+      revalidatePath("/dashboard/contacts")
+      revalidatePath("/dashboard/vendors")
+      revalidatePath("/dashboard/customers")
+    }
+    return { success: true, data: result }
+  } catch (error) {
+    console.error("Failed to connect unassigned people automatically", error)
+    return actionFailure("Could not connect people automatically.")
+  }
+}
+
+const runTotalsInput = z.object({
+  people: z.number().int().min(0).max(100000),
+  contacts: z.number().int().min(0).max(100000),
+  failed: z.number().int().min(0).max(100000),
+})
+
+/** One Activity record for a whole automatic run (it spans several calls). */
+export async function recordUnassignedAutoConnectRun(raw: z.input<typeof runTotalsInput>): Promise<ActionResult<null>> {
+  try {
+    const totals = runTotalsInput.parse(raw)
+    const context = await orgContext({ mutation: true })
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    if (!canManageUserAccessRole(user.role)) return actionFailure("Only admins can connect people automatically.")
+    if (totals.people === 0) return { success: true, data: null }
+    await recordActivityEvent({
+      db, organizationId,
+      actor: { id: user.id, email: user.email, displayName: user.displayName, firstName: user.firstName, lastName: user.lastName, role: user.role },
+      category: "account",
+      action: "unassigned_person.auto_connected",
+      entityType: "organization",
+      entityId: organizationId,
+      summary: `Automatically connected ${totals.people} people from imported messages to their companies (${totals.contacts} project contacts)${totals.failed > 0 ? `; ${totals.failed} could not be connected` : ""}. Nobody was invited or notified.`,
+      metadata: { people: totals.people, contacts: totals.contacts, failed: totals.failed },
+    })
+    return { success: true, data: null }
+  } catch (error) {
+    console.error("Failed to record the automatic connect run", error)
+    return actionFailure("Could not record the run.")
   }
 }

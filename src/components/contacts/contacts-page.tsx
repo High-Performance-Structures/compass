@@ -534,6 +534,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               people={unassigned}
               connectKinds={connectKinds}
               canEdit={Boolean(directoryAccess?.canEditProjectContacts)}
+              canAutoConnect={(directoryAccess?.canManageAccounts ?? false) && connectKinds.length > 0}
               onConnected={unassignedConnected}
               onChanged={() => void getUnassignedPeople().then(setUnassigned)}
             />

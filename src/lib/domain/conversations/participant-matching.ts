@@ -33,7 +33,8 @@ const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
   "msn.com", "aol.com", "icloud.com", "me.com", "mac.com", "comcast.net", "att.net", "sbcglobal.net", "verizon.net",
   "bellsouth.net", "cox.net", "charter.net", "earthlink.net", "protonmail.com", "proton.me", "gmx.com", "mail.com",
   "zoho.com", "yandex.com", "q.com", "centurylink.net", "frontier.com", "frontiernet.net", "windstream.net",
-  "privaterelay.appleid.com",
+  "privaterelay.appleid.com", "qwestoffice.net", "qwest.net", "centurytel.net", "embarqmail.com", "juno.com", "netzero.net",
+  "roadrunner.com", "rr.com", "twc.com", "optonline.net", "mindspring.com", "peoplepc.com", "hughes.net", "wildblue.net", "xfinity.com",
 ])
 
 /** Legal suffixes dropped when a company name is compared with a domain. */
@@ -52,7 +53,7 @@ export function parseParticipantText(value: string): { readonly name: string | n
   return { name: text || null, email: null }
 }
 
-function normalizePersonName(value: string): string {
+export function normalizePersonName(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase()
 }
 
@@ -136,6 +137,8 @@ export type DirectoryEntry = {
 }
 
 export type DirectoryVendor = {
+  /** A vendor, or (only where a flow can connect people to clients) a client company. */
+  readonly companyKind: "vendor" | "customer"
   readonly id: string
   readonly name: string
   /** The vendor's own addresses and its people's addresses (lowercased). */
@@ -167,16 +170,16 @@ export const MATCH_TYPE_LABELS: Readonly<Record<MatchType, string>> = {
   staff_name: "Staff name",
   same_email: "Same email, one person",
   same_name: "Same name, one person",
-  vendor_domain: "Vendor's email domain",
+  vendor_domain: "Company's email domain",
 }
 
 type NoMatchReason = "no_match" | "several_people" | "company_mailbox" | "several_vendors"
 
-export type VendorSuggestion = { readonly vendorId: string; readonly vendorName: string }
+export type VendorSuggestion = { readonly companyKind: "vendor" | "customer"; readonly vendorId: string; readonly vendorName: string }
 
 export type MatchResult =
   | { readonly kind: "person"; readonly matchType: MatchType; readonly ref: string; readonly name: string | null; readonly staff: boolean }
-  | { readonly kind: "vendor"; readonly matchType: "vendor_domain"; readonly vendorId: string; readonly vendorName: string }
+  | { readonly kind: "vendor"; readonly matchType: "vendor_domain"; readonly companyKind: "vendor" | "customer"; readonly vendorId: string; readonly vendorName: string }
   | { readonly kind: "none"; readonly reason: NoMatchReason; readonly suggestion: VendorSuggestion | null }
 
 const none = (reason: NoMatchReason, suggestion: VendorSuggestion | null = null): MatchResult => ({ kind: "none", reason, suggestion })
@@ -211,7 +214,7 @@ export function suggestVendorForDomain(domain: string, vendors: readonly Directo
     return compact.length >= 4 && labels.has(compact)
   })
   const [hit] = hits
-  return hit && hits.length === 1 ? { vendorId: hit.id, vendorName: hit.name } : null
+  return hit && hits.length === 1 ? { companyKind: hit.companyKind, vendorId: hit.id, vendorName: hit.name } : null
 }
 
 // ---- One person from several entries ------------------------------------------------
@@ -341,7 +344,7 @@ function matchEmail(directory: MatchDirectory, identity: Extract<ParticipantIden
   if (staffDomains.has(domain)) return none("company_mailbox")
   const vendors = directory.vendors.filter((vendor) => vendor.emails.some((address) => domainOf(address) === domain))
   const [vendor] = vendors
-  if (vendor && vendors.length === 1) return { kind: "vendor", matchType: "vendor_domain", vendorId: vendor.id, vendorName: vendor.name }
+  if (vendor && vendors.length === 1) return { kind: "vendor", matchType: "vendor_domain", companyKind: vendor.companyKind, vendorId: vendor.id, vendorName: vendor.name }
   if (vendors.length > 1) return none("several_vendors")
 
   // 5. A domain that reads like a vendor's name: a suggestion only.
