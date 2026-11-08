@@ -20,7 +20,13 @@ export type EstimateSageSyncState = {
   readonly export: EstimateSageExportView | null
   readonly notApplicable: string | null
   readonly proposal: {
-    readonly lines: readonly { readonly costCode: string; readonly description: string; readonly amountCents: number; readonly sageCostCodeName: string | null }[]
+    readonly lines: readonly {
+      readonly costCode: string
+      readonly description: string
+      readonly amountCents: number
+      readonly sageCostCodeName: string | null
+      readonly taxable: boolean
+    }[]
     readonly totalCents: number
     readonly blockers: readonly string[]
     readonly budgetLineCount: number | null
@@ -58,6 +64,7 @@ export async function getEstimateSageSyncState(projectId: string, estimateId: st
               description: line.description,
               amountCents: line.amountCents,
               sageCostCodeName: line.sageCostCodeName,
+              taxable: line.taxable,
             })),
             totalCents: source.plan.proposalTotalCents,
             blockers: source.plan.blockers,

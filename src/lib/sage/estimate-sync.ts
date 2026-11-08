@@ -1,14 +1,15 @@
 import "server-only"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 
 import { projects, users } from "@/db/schema"
-import { projectContractBudgetLines, projectContractBudgetRevisions, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
+import { projectContractBudgetRevisions, projectEstimateLineCostItems, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { sageClientProjectWriteOperations, sageEstimateExports, sageJobProposalReads } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
 import { getCloudflareContext } from "@/lib/db"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
+import { BUILDER_FEE_NAMES } from "@/lib/domain/financials/builder-fee-codes"
 import { planSageEstimate, type SageEstimatePlan } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
 import { upsertSageEstimateExport } from "@/lib/domain/sage-bridge/estimate-store"
 import type { SageEstimateExportStatus } from "@/lib/domain/sage-bridge/statuses"
@@ -22,8 +23,9 @@ import type { Db } from "@/lib/server/action-context"
 
 /*
  * Accepted estimate → Sage: the job (created first through the existing job
- * write when Sage doesn't have it), then the proposal from the contract
- * budget, then the budget when the company sends it. Queued automatically on
+ * write when Sage doesn't have it), then the proposal (one line per estimate
+ * line, as it flows into the contract, plus the builder fees), then the
+ * budget when the company sends it. Queued automatically on
  * acceptance (Settings > Workflows > Sage estimates) or by staff with Retry.
  * Guards stop it with "Needs attention" instead of sending something wrong.
  */
@@ -51,6 +53,9 @@ export async function loadEstimateSageSource(
         status: projectEstimates.status,
         changeOrderId: projectEstimates.changeOrderId,
         phaseProposalId: projectEstimates.phaseProposalId,
+        overheadCents: projectEstimates.overheadCents,
+        marginCents: projectEstimates.marginCents,
+        contingencyCents: projectEstimates.contingencyCents,
       })
       .from(projectEstimates)
       .where(and(eq(projectEstimates.id, input.estimateId), eq(projectEstimates.projectId, input.projectId)))
@@ -63,7 +68,11 @@ export async function loadEstimateSageSource(
   ])
   if (!estimate || !project) return null
   const sageJobNumber = project.sageJobNumber?.trim() || null
-  const base = { estimate, sageJobNumber, sageJobId: project.sageJobId?.trim() || null }
+  const base = {
+    estimate: { id: estimate.id, estimateNumber: estimate.estimateNumber, status: estimate.status, projectId: estimate.projectId },
+    sageJobNumber,
+    sageJobId: project.sageJobId?.trim() || null,
+  }
   if (estimate.status !== "accepted") return { ...base, plan: null, notApplicable: "The estimate isn't accepted." }
   if (estimate.changeOrderId || estimate.phaseProposalId) {
     return { ...base, plan: null, notApplicable: "Change-order and phase estimates go to Sage with their change order or phase." }
@@ -82,25 +91,66 @@ export async function loadEstimateSageSource(
     .get()
   if (!revision) return { ...base, plan: null, notApplicable: "The estimate has no contract budget to send." }
 
-  const [contractLines, costLines, catalog, settings, proposal] = await Promise.all([
+  const [lines, taxableItems, catalog, settings, proposal] = await Promise.all([
     db
-      .select({ costCode: projectContractBudgetLines.costCode, description: projectContractBudgetLines.description, amountCents: projectContractBudgetLines.originalEstimateCents })
-      .from(projectContractBudgetLines)
-      .where(and(eq(projectContractBudgetLines.projectId, input.projectId), eq(projectContractBudgetLines.revisionId, revision.id)))
-      .orderBy(asc(projectContractBudgetLines.sortOrder)),
-    db
-      .select({ costCode: projectEstimateLines.costCode, costCents: projectEstimateLines.directCostCents })
+      .select({
+        id: projectEstimateLines.id,
+        costCode: projectEstimateLines.costCode,
+        costCodeName: projectEstimateLines.costCodeName,
+        divisionCode: projectEstimateLines.divisionCode,
+        description: projectEstimateLines.description,
+        amountCents: projectEstimateLines.lineTotalCents,
+        costCents: projectEstimateLines.directCostCents,
+        sortOrder: projectEstimateLines.sortOrder,
+        taxable: projectEstimateLines.taxable,
+        taxName: projectEstimateLines.taxName,
+        taxRateBasisPoints: projectEstimateLines.taxRateBasisPoints,
+      })
       .from(projectEstimateLines)
       .where(and(eq(projectEstimateLines.projectId, input.projectId), eq(projectEstimateLines.estimateId, estimate.id))),
+    db
+      .select({
+        estimateLineId: projectEstimateLineCostItems.estimateLineId,
+        taxName: projectEstimateLineCostItems.taxName,
+        taxRateBasisPoints: projectEstimateLineCostItems.taxRateBasisPoints,
+      })
+      .from(projectEstimateLineCostItems)
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.estimateId, estimate.id),
+          eq(projectEstimateLineCostItems.taxable, true),
+          isNull(projectEstimateLineCostItems.deletedAt)
+        )
+      ),
     loadProjectCostCodeCatalog(db),
     readFeatureSettings(db, input.organizationId, "sage-estimates"),
     db.select().from(sageJobProposalReads).where(eq(sageJobProposalReads.projectId, input.projectId)).get(),
   ])
+  // A line is taxable when it is, or when any of its cost items is (its first taxable item names the tax).
+  const taxableItemByLine = new Map<string, (typeof taxableItems)[number]>()
+  for (const item of taxableItems) if (!taxableItemByLine.has(item.estimateLineId)) taxableItemByLine.set(item.estimateLineId, item)
   const index = indexSageCatalog(catalog)
+  // The builder fees, as the contract budget files them (in BUILDER_FEE_NAMES order).
+  const feeAmounts = [estimate.overheadCents, estimate.marginCents, estimate.contingencyCents]
   const plan = planSageEstimate({
-    contractLines,
+    estimateLines: lines.map((line) => {
+      const item = taxableItemByLine.get(line.id)
+      const lineTax = line.taxable && line.taxName?.trim()
+      return {
+        costCode: line.costCode,
+        costCodeName: line.costCodeName,
+        divisionCode: line.divisionCode,
+        description: line.description,
+        amountCents: line.amountCents,
+        sortOrder: line.sortOrder,
+        taxable: line.taxable || Boolean(item),
+        taxName: lineTax ? line.taxName : (item?.taxName ?? line.taxName),
+        taxRateBasisPoints: lineTax || !item ? line.taxRateBasisPoints : item.taxRateBasisPoints,
+      }
+    }),
+    feeLines: BUILDER_FEE_NAMES.map((costCode, feeIndex) => ({ costCode, amountCents: feeAmounts[feeIndex] ?? 0 })),
     contractTotalCents: revision.total,
-    costLines,
+    costLines: lines.map((line) => ({ costCode: line.costCode, costCents: line.costCents })),
     sendBudget: settings.sendBudget,
     mapCostCode: (costCode) => mapToSageCostCode(costCode, index),
     // A summary of another Sage job (the project was relinked) doesn't count.

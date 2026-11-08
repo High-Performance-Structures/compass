@@ -7,9 +7,10 @@ using System.Text;
 // Accepted estimates → Sage, as part of the approved Compass Sage writer
 // (Sage's API approval belongs to that one installed program). Compass queues
 // an accepted estimate once Sage has its job; the writer adds the job's
-// proposal (ProposalAddRq, one ProposalLineAdd per contract budget line with
-// the whole amount in Other) and, when the company sends it, the job budget
-// at cost (BudgetAddRq). It only ever adds: a job that already has proposal
+// proposal (ProposalAddRq, one ProposalLineAdd per estimate line with the
+// whole amount in Other, "Taxable" in UserDefined1 and the tax in Memo for a
+// taxable line) and, when the company sends it, the job budget at cost
+// (BudgetAddRq, one line per cost code). It only ever adds: a job that already has proposal
 // lines (or budget lines, when a budget is sent) is left alone and reported
 // as needing attention. It never modifies or deletes a proposal or budget.
 //
@@ -24,6 +25,9 @@ namespace CompassSageClientProjectWriter
     {
         private const string EstimateRequestsTarget = "/api/integrations/sage/estimates/requests?limit=3";
         private const string EstimateResultsTarget = "/api/integrations/sage/estimates/results";
+        // Per-estimate-line proposals with Taxable tags; Compass no longer sends the
+        // older per-cost-code "add_job_proposal".
+        private const string EstimateOperation = "add_job_proposal_lines";
 
         public sealed class EstimateEnvelope
         {
@@ -55,6 +59,10 @@ namespace CompassSageClientProjectWriter
             public string description { get; set; }
             public string costCodeRecordNumber { get; set; }
             public string otherAmount { get; set; }
+            /** Proposal lines only: "Taxable" or empty. */
+            public string userDefined1 { get; set; }
+            /** Proposal lines only: the tax name and rate, or empty. */
+            public string memo { get; set; }
         }
         private sealed class EstimateOutcome
         {
@@ -107,7 +115,7 @@ namespace CompassSageClientProjectWriter
             {
                 RequireConfiguration(false);
                 string user = Required("SAGE_API_USER");
-                EstimateLine[] sample = new EstimateLine[] { new EstimateLine { description = "Compass diagnostic", costCodeRecordNumber = "1", otherAmount = "12.34" } };
+                EstimateLine[] sample = new EstimateLine[] { new EstimateLine { description = "Compass diagnostic", costCodeRecordNumber = "1", otherAmount = "12.34", userDefined1 = "Taxable", memo = "Compass diagnostic tax 2.9%" } };
                 string proposal = BuildProposalAddXml(user, 1, sample);
                 string budget = BuildBudgetAddXml(user, 1, sample);
                 int count;
@@ -198,7 +206,7 @@ namespace CompassSageClientProjectWriter
             EstimatePayload payload = request == null ? null : request.payload;
             if (payload == null || payload.job == null || payload.proposal == null || payload.proposal.lines == null || payload.proposal.lines.Length == 0)
                 throw new InvalidOperationException("Compass estimate payload is incomplete; no write was attempted.");
-            if (!String.Equals(payload.operationType, "add_job_proposal", StringComparison.Ordinal))
+            if (!String.Equals(payload.operationType, EstimateOperation, StringComparison.Ordinal))
                 throw new InvalidOperationException("Compass requested an unsupported Sage estimate operation.");
             long jobNumber;
             if (!Int64.TryParse(payload.job.sageJobNumber, NumberStyles.None, CultureInfo.InvariantCulture, out jobNumber) || jobNumber < 1)
@@ -285,6 +293,10 @@ namespace CompassSageClientProjectWriter
                 AppendReference(body, "CostCodeRef", line.costCodeRecordNumber);
                 AppendElement(body, "Desc", Truncate((line.description ?? "").Trim(), 50));
                 AppendElement(body, "OtherAmount", line.otherAmount);
+                string userDefined1 = Truncate((line.userDefined1 ?? "").Trim(), 50);
+                if (userDefined1.Length > 0) AppendElement(body, "UserDefined1", userDefined1);
+                string memo = (line.memo ?? "").Trim();
+                if (memo.Length > 0) AppendElement(body, "Memo", Truncate(memo, 100));
                 body.Append("</ProposalLineAdd>");
             }
             return EstimateRequestXml("ProposalAddRq", user, body.ToString());

@@ -1,13 +1,16 @@
 import { z } from "zod/v4"
 
 import { sageAmount } from "@/lib/domain/sage-bridge/change-order-rules"
-import { sageEstimateWriterLines, type SageEstimatePlan } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
+import { sageEstimateWriterLines, sageProposalWriterLines, type SageEstimatePlan } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
 import { envFlag } from "@/lib/shared/env"
 
 /*
  * The request Compass hands the Sage writer for an accepted estimate: the
- * job's proposal (ProposalAddRq) and, when the company sends it, the job
- * budget (BudgetAddRq). Amounts are decimal strings.
+ * job's proposal (ProposalAddRq, one line per estimate line, "Taxable" in
+ * UserDefined1 and the tax in Memo) and, when the company sends it, the job
+ * budget (BudgetAddRq). Amounts are decimal strings. The operation is
+ * "add_job_proposal_lines": a writer built before per-line proposals refuses
+ * it (unsupported operation) instead of dropping the Taxable tags.
  */
 
 const decimalAmount = z.string().regex(/^-?\d{1,9}\.\d{2}$/)
@@ -19,12 +22,19 @@ const lineSchema = z.strictObject({
   otherAmount: decimalAmount,
 })
 
+const proposalLineSchema = lineSchema.extend({
+  userDefined1: z.string().trim().max(50),
+  memo: z.string().trim().max(100),
+})
+
+const SAGE_ESTIMATE_OPERATION = "add_job_proposal_lines"
+
 const sageEstimateWritePayloadSchema = z.strictObject({
-  operationType: z.literal("add_job_proposal"),
+  operationType: z.literal(SAGE_ESTIMATE_OPERATION),
   compassProjectId: z.string().min(1),
   compassEstimateId: z.string().min(1),
   job: z.strictObject({ sageJobNumber: sageRecordNumber, sageJobId: z.string().min(1).nullable() }),
-  proposal: z.strictObject({ lines: z.array(lineSchema).min(1).max(500), totalAmount: decimalAmount }),
+  proposal: z.strictObject({ lines: z.array(proposalLineSchema).min(1).max(500), totalAmount: decimalAmount }),
   budget: z.strictObject({ lines: z.array(lineSchema).min(1).max(500), totalAmount: decimalAmount }).nullable(),
 })
 
@@ -62,11 +72,11 @@ export function sageEstimateWritePayload(
       }
     : null
   const parsed = sageEstimateWritePayloadSchema.safeParse({
-    operationType: "add_job_proposal",
+    operationType: SAGE_ESTIMATE_OPERATION,
     compassProjectId: input.projectId,
     compassEstimateId: input.estimateId,
     job: { sageJobNumber: input.sageJobNumber.trim(), sageJobId: input.sageJobId },
-    proposal: { lines: sageEstimateWriterLines(plan.proposalLines), totalAmount: sageAmount(plan.proposalTotalCents) },
+    proposal: { lines: sageProposalWriterLines(plan.proposalLines), totalAmount: sageAmount(plan.proposalTotalCents) },
     budget,
   })
   return parsed.success ? parsed.data : null

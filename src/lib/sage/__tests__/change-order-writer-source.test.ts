@@ -49,7 +49,7 @@ const estimate = script("Sage.100.Contractor.CompassEstimateWriter.cs")
 
 describe("Sage estimate writer source boundary", () => {
   it("only adds a proposal and budget, never modifies or deletes one", () => {
-    expect(estimate).toContain('"add_job_proposal"')
+    expect(estimate).toContain('EstimateOperation = "add_job_proposal_lines"')
     expect(estimate).toContain('EstimateRequestXml("ProposalAddRq"')
     expect(estimate).toContain('EstimateRequestXml("BudgetAddRq"')
     expect(estimate).not.toMatch(/ProposalModRq|ProposalDelRq|BudgetModRq|BudgetDelRq|INSERT |UPDATE |DELETE /)
@@ -58,6 +58,14 @@ describe("Sage estimate writer source boundary", () => {
   it("puts the whole proposal amount in Other", () => {
     expect(estimate).toContain('AppendElement(body, "OtherAmount", line.otherAmount)')
     expect(estimate).not.toMatch(/ProposedMaterialAmount|SubcontractAmount/)
+  })
+
+  it("tags taxable proposal lines in UserDefined1 and Memo, after the amount as the schema orders them", () => {
+    const proposal = estimate.slice(estimate.indexOf("private static string BuildProposalAddXml"), estimate.indexOf("private static string BuildBudgetAddXml"))
+    expect(proposal.indexOf('"OtherAmount"')).toBeLessThan(proposal.indexOf('"UserDefined1"'))
+    expect(proposal.indexOf('"UserDefined1"')).toBeLessThan(proposal.indexOf('"Memo"'))
+    const budget = estimate.slice(estimate.indexOf("private static string BuildBudgetAddXml"))
+    expect(budget).not.toContain("UserDefined1")
   })
 
   it("is off unless its own switch is on, and refuses a second proposal or budget before writing", () => {
