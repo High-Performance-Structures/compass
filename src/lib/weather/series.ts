@@ -6,6 +6,12 @@ export const STEP_HOURS = 3
 export const STEP_MS = STEP_HOURS * 60 * 60 * 1000
 /** Seven days of 3-hour steps. */
 export const SERIES_STEPS = 56
+/**
+ * A day of past steps kept ahead of the forecast, so a day's high and low
+ * still count its earlier hours. NWS drops past hours from the gridpoint
+ * data, so each refresh carries them over from the stored series.
+ */
+export const HISTORY_STEPS = 8
 
 export type CellSeries = {
   /** ISO time of the first step (a 3-hour boundary, UTC). */
@@ -68,7 +74,10 @@ export function stepStart(ms: number): number {
   return Math.floor(ms / STEP_MS) * STEP_MS
 }
 
-/** Gridpoint `properties` → a cell series starting at the step containing `nowMs`. */
+/**
+ * Gridpoint `properties` → a cell series starting `HISTORY_STEPS` before the
+ * step containing `nowMs` and running `SERIES_STEPS` from that step.
+ */
 export function parseGridSeries(properties: unknown, nowMs: number): CellSeries | null {
   if (typeof properties !== "object" || properties === null) return null
   const get = (key: string): unknown => (key in properties ? Reflect.get(properties, key) : null)
@@ -79,14 +88,14 @@ export function parseGridSeries(properties: unknown, nowMs: number): CellSeries 
   const gusts = hourlyValues(get("windGust"), "level")
   const direction = hourlyValues(get("windDirection"), "level")
 
-  const start = stepStart(nowMs)
+  const start = stepStart(nowMs) - HISTORY_STEPS * STEP_MS
   const tempMinF: (number | null)[] = []
   const tempMaxF: (number | null)[] = []
   const precipIn: (number | null)[] = []
   const snowIn: (number | null)[] = []
   const gustMph: (number | null)[] = []
   const windDir: (number | null)[] = []
-  for (let step = 0; step < SERIES_STEPS; step += 1) {
+  for (let step = 0; step < HISTORY_STEPS + SERIES_STEPS; step += 1) {
     let min: number | null = null
     let max: number | null = null
     let rain: number | null = null
@@ -164,5 +173,26 @@ export function alignSeries(series: CellSeries, startMs: number, steps: number):
     snowIn: pick(series.snowIn),
     gustMph: pick(series.gustMph),
     windDir: pick(series.windDir),
+  }
+}
+
+/**
+ * A fresh series with its past steps filled from the previously stored one
+ * wherever NWS no longer reports them.
+ */
+export function withHistory(fresh: CellSeries, previous: CellSeries | null): CellSeries {
+  if (!previous) return fresh
+  const length = fresh.tempMaxF.length
+  const old = alignSeries(previous, Date.parse(fresh.start), length)
+  const fill = (now: readonly (number | null)[], before: readonly (number | null)[]): (number | null)[] =>
+    now.map((value, i) => (i < HISTORY_STEPS ? (value ?? before[i] ?? null) : value))
+  return {
+    start: fresh.start,
+    tempMinF: fill(fresh.tempMinF, old.tempMinF),
+    tempMaxF: fill(fresh.tempMaxF, old.tempMaxF),
+    precipIn: fill(fresh.precipIn, old.precipIn),
+    snowIn: fill(fresh.snowIn, old.snowIn),
+    gustMph: fill(fresh.gustMph, old.gustMph),
+    windDir: fill(fresh.windDir, old.windDir),
   }
 }

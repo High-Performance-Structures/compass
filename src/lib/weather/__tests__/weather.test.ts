@@ -4,7 +4,7 @@ import { areaGrid, areaSamplePoints, DEFAULT_WEATHER_AREA, WEATHER_AREAS, weathe
 import { fireName, parseFires } from "@/lib/weather/fires"
 import { milesToRing, pointInRing, simplifyRing } from "@/lib/weather/geometry"
 import { DEFAULT_WEATHER_LIMITS, fireFlags, forecastFlags, windowTotals } from "@/lib/weather/layer"
-import { alignSeries, durationHours, parseGridSeries, readCellSeries, SERIES_STEPS, type CellSeries } from "@/lib/weather/series"
+import { alignSeries, durationHours, HISTORY_STEPS, parseGridSeries, readCellSeries, SERIES_STEPS, withHistory, type CellSeries } from "@/lib/weather/series"
 
 const NOW = Date.parse("2026-10-25T13:30:00Z")
 
@@ -29,27 +29,45 @@ describe("forecast series", () => {
     )
     expect(series).not.toBeNull()
     if (!series) return
-    expect(series.start).toBe("2026-10-25T12:00:00.000Z")
-    expect(series.tempMinF.length).toBe(SERIES_STEPS)
-    expect(series.tempMinF[0]).toBe(23)
+    // A day of past steps comes first.
+    expect(series.start).toBe("2026-10-24T12:00:00.000Z")
+    expect(series.tempMinF.length).toBe(HISTORY_STEPS + SERIES_STEPS)
+    const now = HISTORY_STEPS
+    expect(series.tempMinF[now - 1]).toBeNull()
+    expect(series.tempMinF[now]).toBe(23)
     // 15.24 mm over 6 hours → 0.3 in per 3-hour step.
-    expect(series.precipIn[0]).toBe(0.3)
-    expect(series.snowIn[0]).toBe(3)
-    expect(series.gustMph[0]).toBe(40)
-    expect(series.gustMph[1]).toBe(20)
-    expect(series.windDir[0]).toBe(270)
-    expect(series.tempMinF[2]).toBeNull()
+    expect(series.precipIn[now]).toBe(0.3)
+    expect(series.snowIn[now]).toBe(3)
+    expect(series.gustMph[now]).toBe(40)
+    expect(series.gustMph[now + 1]).toBe(20)
+    expect(series.windDir[now]).toBe(270)
+    expect(series.tempMinF[now + 2]).toBeNull()
   })
 
   it("round-trips and re-aligns stored series", () => {
     const series = parseGridSeries({ temperature: { values: [{ validTime: "2026-10-25T12:00:00+00:00/P1D", value: 10 }] } }, NOW)
     if (!series) throw new Error("expected a series")
     const stored = readCellSeries(JSON.stringify(series))
-    expect(stored?.tempMaxF[0]).toBe(50)
+    expect(stored?.tempMaxF[HISTORY_STEPS]).toBe(50)
     const later = alignSeries(series, Date.parse("2026-10-25T18:00:00Z"), 4)
     expect(later.start).toBe("2026-10-25T18:00:00.000Z")
     expect(later.tempMaxF).toEqual([50, 50, 50, 50])
     expect(readCellSeries("not json")).toBeNull()
+  })
+
+  it("carries past hours NWS no longer reports over from the stored series", () => {
+    const morning = parseGridSeries({ temperature: { values: [{ validTime: "2026-10-25T12:00:00+00:00/PT6H", value: 5 }] } }, NOW)
+    // By evening NWS only reports from 18Z on.
+    const evening = parseGridSeries({ temperature: { values: [{ validTime: "2026-10-25T18:00:00+00:00/PT6H", value: 1 }] } }, Date.parse("2026-10-25T22:00:00Z"))
+    if (!morning || !evening) throw new Error("expected series")
+    const merged = withHistory(evening, morning)
+    expect(merged.start).toBe(evening.start)
+    const at = (iso: string): number => (Date.parse(iso) - Date.parse(merged.start)) / (3 * 60 * 60 * 1000)
+    expect(merged.tempMaxF[at("2026-10-25T12:00:00Z")]).toBe(41)
+    expect(merged.tempMaxF[at("2026-10-25T15:00:00Z")]).toBe(41)
+    // Where NWS still reports a step, the fresh value wins.
+    expect(merged.tempMaxF[at("2026-10-25T18:00:00Z")]).toBe(34)
+    expect(withHistory(evening, null)).toBe(evening)
   })
 })
 

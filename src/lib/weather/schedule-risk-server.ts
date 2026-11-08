@@ -10,7 +10,7 @@ import { alertActiveBetween, alertCovers, fireFlags, type WeatherFlag } from "@/
 import { readAreaHazards, readSiteForecasts, type WeatherJobSite } from "@/lib/weather/read-server"
 import { nearestAirReading } from "@/lib/weather/air"
 import { addDays, scheduleAirRisks, scheduleWeatherRisks, type ScheduleRisk } from "@/lib/weather/schedule-risk"
-import { SERIES_STEPS, STEP_MS, type CellSeries } from "@/lib/weather/series"
+import { HISTORY_STEPS, SERIES_STEPS, STEP_MS, type CellSeries } from "@/lib/weather/series"
 
 type Db = ReturnType<typeof getDb>
 
@@ -122,7 +122,8 @@ export async function projectSiteWeather(db: Db, organizationId: string, project
   if (!project || project.lat === null || project.lon === null) return { data: { status: "no_site" }, markInUse: noop }
   const site: WeatherJobSite = { projectId, lat: project.lat, lon: project.lon }
   const [forecasts, hazards, limits, timeZone] = await Promise.all([
-    readSiteForecasts(db, [site], nowMs, SERIES_STEPS),
+    // Today's earlier hours too, so the day's high and low cover the whole day.
+    readSiteForecasts(db, [site], nowMs, SERIES_STEPS, HISTORY_STEPS),
     organizationWeatherArea(db, organizationId).then((area) => readAreaHazards(db, area)),
     readFeatureSettings(db, organizationId, "weather-alerts"),
     organizationTimeZone(db, organizationId),

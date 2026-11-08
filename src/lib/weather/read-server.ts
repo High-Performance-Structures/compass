@@ -7,7 +7,7 @@ import { readAlerts } from "@/lib/weather/alerts"
 import { areaSamplePoints, weatherPointKey, type WeatherArea } from "@/lib/weather/areas"
 import { readFires } from "@/lib/weather/fires"
 import { FLAG_WINDOW_STEPS, LAYER_STEPS, type FireLayerData, type JobWeather, type WeatherLayerCell, type WeatherLayerData } from "@/lib/weather/layer"
-import { alignSeries, readCellSeries, stepStart } from "@/lib/weather/series"
+import { alignSeries, readCellSeries, STEP_MS, stepStart } from "@/lib/weather/series"
 
 type Db = ReturnType<typeof getDb>
 
@@ -164,14 +164,16 @@ export type SiteForecast = {
 }
 
 /**
- * Full stored forecasts (re-based to the current step) for job sites, plus a
- * follow-up that queues new sites and keeps these cells refreshing.
+ * Full stored forecasts for job sites, re-based to start `historySteps`
+ * before the current step, plus a follow-up that queues new sites and keeps
+ * these cells refreshing.
  */
 export async function readSiteForecasts(
   db: Db,
   sites: readonly WeatherJobSite[],
   nowMs: number,
   steps: number,
+  historySteps = 0,
 ): Promise<{ readonly byProject: ReadonlyMap<string, SiteForecast>; readonly markInUse: () => Promise<void> }> {
   const siteKeys = new Map(sites.map((site) => [site.projectId, weatherPointKey(site.lat, site.lon)]))
   const points = await selectPoints(db, [...siteKeys.values()])
@@ -179,7 +181,7 @@ export async function readSiteForecasts(
   const cellKeys = points.flatMap((point) => (point.cellKey ? [point.cellKey] : []))
   const cells = await selectCells(db, cellKeys)
   const cellByKey = new Map(cells.map((cell) => [cell.cellKey, cell]))
-  const start = stepStart(nowMs)
+  const start = stepStart(nowMs) - historySteps * STEP_MS
   const byProject = new Map<string, SiteForecast>()
   for (const [projectId, key] of siteKeys) {
     const cellKey = pointByKey.get(key)?.cellKey
@@ -187,7 +189,7 @@ export async function readSiteForecasts(
     const series = readCellSeries(cell?.series ?? null)
     if (!cell || !series || !cell.fetchedAt) continue
     byProject.set(projectId, {
-      series: alignSeries(series, start, steps),
+      series: alignSeries(series, start, historySteps + steps),
       forecastElevationFt: cell.elevationM === null ? null : Math.round(cell.elevationM * 3.28084),
       fetchedAt: cell.fetchedAt,
     })
