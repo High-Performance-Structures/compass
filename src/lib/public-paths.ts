@@ -50,6 +50,8 @@ const sageBridgePaths = [
   "/api/integrations/sage/prime-change-orders/results",
   "/api/integrations/sage/estimates/requests",
   "/api/integrations/sage/estimates/results",
+  "/api/integrations/sage/ar-invoices/requests",
+  "/api/integrations/sage/ar-invoices/results",
   "/api/integrations/square/auth-health",
 ]
 

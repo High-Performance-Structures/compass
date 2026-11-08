@@ -122,7 +122,8 @@ export function SageExportSettingsSection(): React.ReactElement {
               ))}
             </RadioGroup>
             <p className="text-xs text-muted-foreground">
-              Compass: staff build each pay request in Compass. Sage: the office builds the progress billing in Sage, and Sync with Sage
+              Compass: staff build each pay request in Compass and send it to the owner; once approved for billing it goes to Sage as an AR
+              invoice (Sage AR invoices, below). Sage: the office builds the progress billing in Sage, and Sync with Sage
               brings it into Compass as the pay request for review, owner approval, email and payments. Billed amounts then stay as Sage has them.
             </p>
           </div>

@@ -80,6 +80,9 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/api/integrations/sage/estimates/requests")).toBe(true)
     expect(isPublicPath("/api/integrations/sage/estimates/results")).toBe(true)
     expect(isPublicPath("/api/integrations/sage/estimates/requests/extra")).toBe(false)
+    expect(isPublicPath("/api/integrations/sage/ar-invoices/requests")).toBe(true)
+    expect(isPublicPath("/api/integrations/sage/ar-invoices/results")).toBe(true)
+    expect(isPublicPath("/api/integrations/sage/ar-invoices/requests/extra")).toBe(false)
     expect(isPublicPath("/api/integrations/sage/admin")).toBe(false)
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/requests/extra")

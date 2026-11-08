@@ -9,6 +9,8 @@ import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { cancelSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { queueArInvoiceSageExport } from "@/lib/sage/ar-invoice-sync"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
@@ -17,8 +19,10 @@ import { requireUserContext } from "@/lib/server/action-context"
 
 /*
  * After review, staff approve a Compass pay application for billing: it is
- * marked billed, locked, and published to the owner. The Sage invoice number
- * is recorded once the draw is entered in Sage (Compass doesn't write it).
+ * marked billed, locked, and published to the owner. When the company sends
+ * billed pay requests to Sage, approving also queues the Sage AR invoice, and
+ * the Sage invoice number is recorded once Sage has it; otherwise staff
+ * record it after entering the draw in Sage.
  */
 
 type BillingActionResult =
@@ -103,6 +107,8 @@ export async function approveProjectOwnerPayApplicationForBilling(
       summary: `Approved pay application ${application.applicationNumber} for billing and published it to the owner.`,
       metadata: { currentPaymentDue: application.currentPaymentDue, approvedBy: activityActorName(user) },
     })
+    // Sage gets the bill as an AR invoice; never fails the approval.
+    await queueArInvoiceSageExport({ db, organizationId, projectId, applicationId, actor: user, automatic: true })
     revalidateBillingPaths(projectId, applicationId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -142,6 +148,9 @@ export async function undoProjectOwnerPayApplicationBilling(
       throw new Error("Payments are recorded against this draw. Void them first.")
     }
     const now = new Date().toISOString()
+    if (!(await cancelSageArInvoiceExport(db, { organizationId, applicationId, now }))) {
+      throw new Error("This draw is being sent to Sage as an AR invoice (or Sage already has it). Wait for it to finish, then void the invoice in Sage first.")
+    }
     await db.batch([
       updateBudgetApplicationsStatement(
         db,

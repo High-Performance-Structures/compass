@@ -44,7 +44,8 @@ This section describes each one in the same way: its data flow, how it authentic
   - `…CompassSquareFeeWriter.cs`;
   - `…CompassVendorCertificateWriter.cs`;
   - `…CompassChangeOrderWriter.cs` (adds approved prime change orders; never modifies or deletes one);
-  - `…CompassEstimateWriter.cs` (adds an accepted estimate as the job's proposal, and the job budget when the company sends it; never a second one).
+  - `…CompassEstimateWriter.cs` (adds an accepted estimate as the job's proposal, and the job budget when the company sends it; never a second one);
+  - `…CompassArInvoiceWriter.cs` (adds a billed pay request as an AR invoice: this period's billing by cost code with retention; refuses an invoice number the accounting system already has with other amounts; never modifies or voids one).
 
   It calls the accounting system's API library through reflection. It is installed and repaired by `install_sage_client_project_writer.ps1`, `install_sage_contact_writer_release.ps1` (which swaps the binary and restores it on failure) and `repair_sage_client_project_writer.ps1`. Logs rotate at 5 MB.
 
@@ -67,6 +68,7 @@ This section describes each one in the same way: its data flow, how it authentic
 | Prime change orders read | accounting → Compass (read) | `prime-change-orders/{requests,results}` | `sage_prime_change_orders`, `sage_prime_change_order_reads` |
 | Change orders and variances | Compass → accounting (write) | `change-orders/{requests,results}` | `sage_change_order_exports` |
 | Accepted estimate → proposal (and budget) | Compass → accounting (write) | `estimates/{requests,results}` | `sage_estimate_exports`, `sage_job_proposal_reads` |
+| Billed pay request → AR invoice | Compass → accounting (write) | `ar-invoices/{requests,results}` | `sage_ar_invoice_exports` |
 
 **Pay requests built in Sage.** Settings › Workflows › Sage export › "Pay requests are created in" chooses Compass (the default: staff build pay requests in Compass's G702/G703 editor) or Sage. For a Sage company, **Sync with Sage** on a project's Financials page or pay application page queues a pay-application read. When a snapshot reconciles, `src/lib/financials/sage-pay-request-sync.ts` turns it into the Compass pay application with the same number: it creates one (billed amounts read only, a small [Sage] tag, `billing_source = 'sage'`), refreshes one still in draft or review, or links a pay application built in Compass without changing it. Sage lines map onto Compass cost codes with the Sage export's matching (`sage-export-codes.ts`); variances are split from change orders by the project's own change orders. A linked Compass pay application shows a line-by-line comparison, and staff may choose **Use Sage amounts**, which keeps the earlier amounts in `pay_application_sage_syncs`. Issued shop tickets not yet billed are listed as a checklist; a sync marks those Sage's current-period amounts plainly cover as already included. Every sync, choice and tick is recorded in Activity. Nothing is written to Sage.
 
@@ -78,7 +80,7 @@ This section describes each one in the same way: its data flow, how it authentic
 
 **Two keys for every write.** A write needs a switch on each side:
 
-- the worker's `vars`: `SAGE_CLIENT_PROJECT_WRITES_ENABLED`, `SAGE_CONTACT_WRITES_ENABLED`, `SAGE_CONTACT_CREATES_ENABLED`, `SAGE_SQUARE_PAYMENT_WRITES_ENABLED`, `SAGE_CHANGE_ORDER_WRITES_ENABLED`, `SAGE_ESTIMATE_WRITES_ENABLED`;
+- the worker's `vars`: `SAGE_CLIENT_PROJECT_WRITES_ENABLED`, `SAGE_CONTACT_WRITES_ENABLED`, `SAGE_CONTACT_CREATES_ENABLED`, `SAGE_SQUARE_PAYMENT_WRITES_ENABLED`, `SAGE_CHANGE_ORDER_WRITES_ENABLED`, `SAGE_ESTIMATE_WRITES_ENABLED`, `SAGE_AR_INVOICE_WRITES_ENABLED`;
 - the agent's own machine variables.
 
 `SAGE_SQUARE_ORGANIZATION_ID` and `SAGE_CONTACT_ORGANIZATION_ID` pin the bridge to one tenant. The demo environment turns every switch off.

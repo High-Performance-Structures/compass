@@ -18,6 +18,7 @@ $squareFeeSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contract
 $vendorCertificateSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassVendorCertificateWriter.cs"
 $changeOrderSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassChangeOrderWriter.cs"
 $estimateSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassEstimateWriter.cs"
+$arInvoiceSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassArInvoiceWriter.cs"
 
 if (-not (Test-Path $SourcePath)) { throw "Writer source not found: $SourcePath" }
 if (-not (Test-Path $contactSource)) { throw "Contact writer source not found: $contactSource" }
@@ -25,6 +26,7 @@ if (-not (Test-Path $squareFeeSource)) { throw "Square fee writer source not fou
 if (-not (Test-Path $vendorCertificateSource)) { throw "Vendor certificate writer source not found: $vendorCertificateSource" }
 if (-not (Test-Path $changeOrderSource)) { throw "Change order writer source not found: $changeOrderSource" }
 if (-not (Test-Path $estimateSource)) { throw "Estimate writer source not found: $estimateSource" }
+if (-not (Test-Path $arInvoiceSource)) { throw "AR invoice writer source not found: $arInvoiceSource" }
 if (-not (Test-Path $binary)) { throw "Installed writer not found: $binary" }
 if (-not (Test-Path $compiler)) { throw "C# compiler not found: $compiler" }
 
@@ -49,7 +51,7 @@ try {
   }
 
   Remove-Item -Path $candidateBinary -Force -ErrorAction SilentlyContinue
-  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath $contactSource $squareFeeSource $vendorCertificateSource $changeOrderSource $estimateSource
+  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath $contactSource $squareFeeSource $vendorCertificateSource $changeOrderSource $estimateSource $arInvoiceSource
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path $candidateBinary)) {
     throw "C# compilation failed."
   }

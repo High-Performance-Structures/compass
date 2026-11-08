@@ -9,12 +9,13 @@ $squareFeeSource = Join-Path $PSScriptRoot "Sage.100.Contractor.CompassSquareFee
 $vendorCertificateSource = Join-Path $PSScriptRoot "Sage.100.Contractor.CompassVendorCertificateWriter.cs"
 $changeOrderSource = Join-Path $PSScriptRoot "Sage.100.Contractor.CompassChangeOrderWriter.cs"
 $estimateSource = Join-Path $PSScriptRoot "Sage.100.Contractor.CompassEstimateWriter.cs"
+$arInvoiceSource = Join-Path $PSScriptRoot "Sage.100.Contractor.CompassArInvoiceWriter.cs"
 $install = "C:\ProgramData\HPS\CompassSageWriter"
 $binary = Join-Path $install "CompassSageClientProjectWriter.exe"
 $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe"
 
 New-Item -ItemType Directory -Force -Path $install | Out-Null
-& $compiler /nologo /optimize+ /target:exe /out:$binary /reference:System.Data.dll /reference:System.Web.Extensions.dll $source $contactSource $squareFeeSource $vendorCertificateSource $changeOrderSource $estimateSource
+& $compiler /nologo /optimize+ /target:exe /out:$binary /reference:System.Data.dll /reference:System.Web.Extensions.dll $source $contactSource $squareFeeSource $vendorCertificateSource $changeOrderSource $estimateSource $arInvoiceSource
 if ($LASTEXITCODE -ne 0) { throw "C# compilation failed." }
 
 Write-Host "Compiled $binary"

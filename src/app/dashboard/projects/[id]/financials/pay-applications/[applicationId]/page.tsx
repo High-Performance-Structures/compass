@@ -16,6 +16,8 @@ import { SageExportPreviewDocument } from "@/components/financials/sage-export-p
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { getPayRequestSageState, getSagePayRequestPanel } from "@/app/actions/sage-pay-requests"
 import { PayRequestSageSection } from "@/components/financials/pay-request-sage-section"
+import { getPayRequestSageInvoiceState } from "@/app/actions/sage-ar-invoices"
+import { PayRequestSageInvoice } from "@/components/financials/pay-request-sage-invoice"
 
 export default async function ProjectPayApplicationPage({
   params,
@@ -28,12 +30,14 @@ export default async function ProjectPayApplicationPage({
   if (!application) notFound()
   // The Sage export preview is for draws not yet billed (draft or ready); office staff only.
   const showSagePreview = application.status !== "billed"
-  const [shopTickets, receivables, sagePreview, sageState, sagePanel] = await Promise.all([
+  const [shopTickets, receivables, sagePreview, sageState, sagePanel, sageInvoice] = await Promise.all([
     getPayApplicationShopTickets(id, applicationId).catch(() => null),
     getProjectReceivablePayments(id),
     showSagePreview ? getSageExportPreview(id, applicationId).catch(() => null) : null,
     getPayRequestSageState(id, applicationId),
     getSagePayRequestPanel(id),
+    // Office staff with finance access only; a failure just hides the panel.
+    getPayRequestSageInvoiceState(id, applicationId).catch(() => null),
   ])
   // Billed amounts synced from Sage are read only here; they change in Sage.
   const sageSynced = application.billingSource === "sage"
@@ -61,6 +65,9 @@ export default async function ProjectPayApplicationPage({
           state={sageState}
           panel={sagePanel}
         />
+      ) : null}
+      {sageInvoice?.success && !sageSynced ? (
+        <PayRequestSageInvoice projectId={id} applicationId={applicationId} state={sageInvoice.data} />
       ) : null}
       {showPayments && receivables.success ? (
         <div className="mt-6">

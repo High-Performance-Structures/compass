@@ -84,3 +84,33 @@ describe("Sage estimate writer source boundary", () => {
     expect(script("repair_sage_client_project_writer.ps1")).toContain("$estimateSource")
   })
 })
+
+const arInvoice = script("Sage.100.Contractor.CompassArInvoiceWriter.cs")
+
+describe("Sage AR invoice writer source boundary", () => {
+  it("only adds an AR invoice, never modifies, voids or deletes one", () => {
+    expect(arInvoice).toContain('"add_ar_invoice"')
+    expect(arInvoice).toContain("<ARInvoiceAddRq requestID=")
+    expect(arInvoice).not.toMatch(/ARInvoiceModRq|ARInvoiceDelRq|ARInvoiceVoid|INSERT |UPDATE |DELETE /)
+  })
+
+  it("sends a credit as quantity -1 at a positive unit price", () => {
+    expect(arInvoice).toContain('AppendElement(body, "Quantity", amount < 0 ? "-1" : "1")')
+    expect(arInvoice).toContain('AppendElement(body, "UnitPrice", Positive(amount))')
+  })
+
+  it("is off unless its own switch is on, and checks Sage's invoice numbers before writing", () => {
+    expect(arInvoice).toContain('ArInvoiceSwitch("SAGE_AR_INVOICE_WRITES_ENABLED")')
+    expect(arInvoice).toContain('ArInvoiceSwitch("SAGE_AR_INVOICE_DRY_RUN")')
+    const process = arInvoice.slice(arInvoice.indexOf("private static void ProcessArInvoice"))
+    expect(process.indexOf("Sage already has invoice")).toBeLessThan(process.indexOf("submit Sage AR invoice add"))
+    expect(process.indexOf("if (dryRun)")).toBeLessThan(process.indexOf("submit Sage AR invoice add"))
+  })
+
+  it("runs from the installed writer after estimates", () => {
+    expect(writer.indexOf("RunEstimatesAfterWriterRun();")).toBeLessThan(writer.indexOf("RunArInvoicesAfterWriterRun();"))
+    expect(writer).toContain('"--ar-invoice-diagnose"')
+    expect(script("install_sage_client_project_writer.ps1")).toContain("$arInvoiceSource")
+    expect(script("repair_sage_client_project_writer.ps1")).toContain("$arInvoiceSource")
+  })
+})

@@ -22,3 +22,12 @@ export type SageChangeOrderExportStatus = (typeof SAGE_CHANGE_ORDER_EXPORT_STATU
  */
 export const SAGE_ESTIMATE_EXPORT_STATUSES = ["queued", "waiting_for_job", "running", "succeeded", "failed", "needs_attention"] as const
 export type SageEstimateExportStatus = (typeof SAGE_ESTIMATE_EXPORT_STATUSES)[number]
+
+/**
+ * A billed pay request sent to Sage as an AR invoice (ARInvoiceAddRq).
+ * "needs_attention" is a guard that stopped it (or Sage's totals read back
+ * differently) until staff look; "cancelled" when the billing was taken back
+ * before it was sent.
+ */
+export const SAGE_AR_INVOICE_EXPORT_STATUSES = ["queued", "running", "succeeded", "failed", "needs_attention", "cancelled"] as const
+export type SageArInvoiceExportStatus = (typeof SAGE_AR_INVOICE_EXPORT_STATUSES)[number]
