@@ -1,5 +1,6 @@
 "use server"
 
+import { estimateExportsFollowJobStatements } from "@/lib/sage/estimate-sync"
 import { revalidatePath } from "next/cache"
 import { and, eq } from "drizzle-orm"
 
@@ -358,6 +359,10 @@ export async function updateProjectRegistry(
         ownerUpdateCadence,
         updatedAt: now,
       })
+    if (sageJobNumber) {
+      // Estimates that stopped because the job wasn't in Sage follow the newly linked job.
+      await db.batch([...estimateExportsFollowJobStatements(db, { organizationId: orgId, projectId, now })])
+    }
 
     await upsertProjectLink(db, projectId, {
       system: "sage",

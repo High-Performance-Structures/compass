@@ -2,20 +2,35 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconCircleCheck, IconRefresh, IconSend } from "@tabler/icons-react"
+import { IconAlertTriangle, IconCirclePlus, IconCircleCheck, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { sendProjectToSage } from "@/app/actions/project-sage-send"
+import { createProjectInSage, sendProjectToSage } from "@/app/actions/project-sage-send"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
-import type { ProjectSageStatus, SageClientChoice } from "@/lib/domain/sage-bridge/project-send-rules"
+import type {
+  ProjectSageStatus,
+  SageClientChoice,
+  SageJobCreatePreview,
+  SageJobCreateSelection,
+} from "@/lib/domain/sage-bridge/project-send-rules"
 
 const SENDING_REFRESH_MS = 5_000
 
 /**
  * The Overview's Sage line for office staff: linked job number, a job on its
- * way, or why Sage didn't take it with a button to send it again.
+ * way, why Sage didn't take it with a button to send it again, or Create in
+ * Sage for a job that was never sent.
  */
 export function ProjectSageStatusLine({
   projectId,
@@ -74,8 +89,13 @@ export function ProjectSageStatusLine({
 
   if (status.kind === "not_linked") {
     return (
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge variant="outline">Not linked to Sage</Badge>
+        {status.create ? (
+          <CreateInSage projectId={projectId} preview={status.create} />
+        ) : status.createBlocker ? (
+          <span className="text-muted-foreground">{status.createBlocker}</span>
+        ) : null}
       </div>
     )
   }
@@ -120,5 +140,118 @@ export function ProjectSageStatusLine({
         </Button>
       </div>
     </div>
+  )
+}
+
+function selectionKey(selection: SageJobCreateSelection | null): string {
+  if (!selection) return ""
+  return selection.kind === "new_client" ? "new" : `${selection.sageRecordId}:${selection.sageClientNumber}`
+}
+
+/** Create in Sage: confirms the Sage job name, client and job type, then queues the job write. */
+function CreateInSage({
+  projectId,
+  preview,
+}: {
+  readonly projectId: string
+  readonly preview: SageJobCreatePreview
+}): React.ReactElement {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
+  const [pending, startTransition] = React.useTransition()
+  const [selection, setSelection] = React.useState<SageJobCreateSelection | null>(null)
+  const client = preview.client
+  const needsChoice = client.kind === "choose"
+
+  function create(): void {
+    startTransition(async () => {
+      const result = await createProjectInSage(projectId, needsChoice ? selection : null)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setOpen(false)
+      toast.success("Sent to Sage. This updates when Sage finishes.")
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" className="print:hidden" onClick={() => setOpen(true)}>
+        <IconCirclePlus className="size-4" />
+        Create in Sage
+      </Button>
+      <AlertDialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create this job in Sage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Compass sends this job to Sage once. If it&apos;s already in Sage under another name, don&apos;t create
+              it here; ask an admin to link it to its Sage job instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <dt className="text-muted-foreground">Sage job name</dt>
+            <dd className="font-medium">{preview.jobName}</dd>
+            <dt className="text-muted-foreground">Client</dt>
+            <dd>
+              {preview.clientName}
+              {client.kind === "linked" ? (
+                <span className="text-muted-foreground"> · Sage client #{client.sageClientNumber}</span>
+              ) : client.kind === "new" ? (
+                <span className="text-muted-foreground"> · added to Sage as a new client</span>
+              ) : null}
+            </dd>
+            <dt className="text-muted-foreground">Job type</dt>
+            <dd>{preview.jobTypeName}</dd>
+            <dt className="text-muted-foreground">Job status</dt>
+            <dd>{preview.jobStatusName}</dd>
+          </dl>
+          {client.kind === "choose" ? (
+            <fieldset className="space-y-1.5 text-sm">
+              <legend className="mb-1.5 font-medium">Sage has clients with a matching name. Which one is this?</legend>
+              {client.choices.map((choice: SageClientChoice) => {
+                const value: SageJobCreateSelection = {
+                  kind: "sage_client", sageRecordId: choice.sageRecordId, sageClientNumber: choice.sageClientNumber,
+                }
+                return (
+                  <label key={choice.sageRecordId} className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`sage-create-client-${projectId}`}
+                      checked={selectionKey(selection) === selectionKey(value)}
+                      onChange={() => setSelection(value)}
+                    />
+                    <span>
+                      Sage client #{choice.sageClientNumber} · {choice.name}
+                      <span className="text-muted-foreground"> · {choice.email ?? "no email"}</span>
+                    </span>
+                  </label>
+                )
+              })}
+              {client.allowNew ? (
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`sage-create-client-${projectId}`}
+                    checked={selection?.kind === "new_client"}
+                    onChange={() => setSelection({ kind: "new_client" })}
+                  />
+                  <span>None of these: add {preview.clientName} to Sage as a new client</span>
+                </label>
+              ) : null}
+            </fieldset>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending || (needsChoice && !selection)} onClick={create}>
+              {pending ? <IconRefresh className="size-4 animate-spin" /> : <IconSend className="size-4" />}
+              Create in Sage
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

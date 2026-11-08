@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 
 import { projects, users } from "@/db/schema"
 import { projectContractBudgetRevisions, projectEstimateLineCostItems, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
@@ -11,7 +11,13 @@ import { getCloudflareContext } from "@/lib/db"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { BUILDER_FEE_NAMES } from "@/lib/domain/financials/builder-fee-codes"
 import { planSageEstimate, type SageEstimatePlan } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
-import { upsertSageEstimateExport } from "@/lib/domain/sage-bridge/estimate-store"
+import {
+  exportsStoppedForJobEstimateIds,
+  exportsStoppedForJobWhere,
+  updateSageEstimateExportsStatement,
+  upsertSageEstimateExport,
+} from "@/lib/domain/sage-bridge/estimate-store"
+import { SAGE_JOB_MISSING_ESTIMATE_REASON, SAGE_JOB_MISSING_ESTIMATE_REASONS } from "@/lib/domain/sage-bridge/project-send-rules"
 import type { SageEstimateExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { requeueFailedSageClientProjectWriteStatement } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -201,10 +207,35 @@ async function ensureSageJob(
     }).run()
     if (result.meta.changes === 1) return { kind: "waiting" }
   }
-  return {
-    kind: "missing",
-    reason: "The job isn't in Sage yet. Send it from the project Overview (Send to Sage) or link it to its Sage job; the estimate follows.",
-  }
+  return { kind: "missing", reason: SAGE_JOB_MISSING_ESTIMATE_REASON }
+}
+
+/**
+ * Puts the project's estimate exports that stopped only because Sage didn't
+ * have the job back to waiting for the job, for the caller's batch with the
+ * job write (Create in Sage, Send to Sage) or the job link. The writer offers
+ * them as soon as the project has its Sage job number. Estimates first: their
+ * subquery reads the exports before the second statement changes them.
+ */
+export function estimateExportsFollowJobStatements(
+  db: Db,
+  input: { readonly organizationId: string; readonly projectId: string; readonly now: string }
+) {
+  const where = exportsStoppedForJobWhere({ ...input, reasons: SAGE_JOB_MISSING_ESTIMATE_REASONS })
+  return [
+    updateEstimatesStatement(
+      db,
+      and(eq(projectEstimates.projectId, input.projectId), inArray(projectEstimates.id, exportsStoppedForJobEstimateIds(db, where))),
+      { sageStatus: estimateSageStatus("waiting_for_job"), updatedAt: input.now }
+    ),
+    updateSageEstimateExportsStatement(db, where, {
+      status: "waiting_for_job",
+      claimToken: null,
+      errorMessage: null,
+      completedAt: null,
+      updatedAt: input.now,
+    }),
+  ] as const
 }
 
 export type QueueEstimateSageSyncResult =
