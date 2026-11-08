@@ -1,19 +1,22 @@
 "use client"
 
+import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { CreditMemo } from "@/db/schema-netsuite"
 import { Badge } from "@/components/ui/badge"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
+import { ALL_STATUSES, EntityTable, filterEntityRows } from "@/components/financials/entity-table"
 import {
   actionsColumn,
   dollarsColumn,
   MobileRecordActions,
+  RecordName,
   RecordsEmpty,
-  searchInputClass,
   selectColumn,
   type BadgeVariant,
 } from "@/components/financials/record-columns"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useRecordTable } from "@/components/record-table"
 import { localeDateText } from "@/lib/domain/financials/rules"
 import { formatDollars } from "@/lib/format"
 
@@ -30,27 +33,30 @@ interface CreditMemosTableProps {
   onDelete?: (id: string) => void
 }
 
-const SEARCH = { columnId: "memoNumber", placeholder: "Search by memo number..." }
+const creditMemoRowId = (record: CreditMemo): string => record.id
+const creditMemoSearchText = (record: CreditMemo): string => record.memoNumber ?? ""
+const creditMemoStatus = (record: CreditMemo): string => record.status
 
-export function CreditMemosTable({
-  creditMemos,
-  customerMap,
-  onEdit,
-  onDelete,
-}: CreditMemosTableProps) {
-  const columns: ColumnDef<CreditMemo>[] = [
+const STATUSES: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "draft", label: "Draft" },
+  { value: "applied", label: "Applied" },
+  { value: "void", label: "Void" },
+]
+
+type ColumnOptions = Pick<CreditMemosTableProps, "customerMap" | "onEdit" | "onDelete">
+
+/** The Financials page's sheet columns (sheet "financials.credit-memos"). */
+export function creditMemoColumns({ customerMap, onEdit, onDelete }: ColumnOptions): ColumnDef<CreditMemo>[] {
+  return [
     selectColumn<CreditMemo>(),
     {
       accessorKey: "memoNumber",
       header: "Memo #",
-      cell: ({ row }) => (
-        <span className="font-medium">
-          {row.original.memoNumber || "-"}
-        </span>
-      ),
+      cell: ({ row }) => <RecordName record={row.original} label={row.original.memoNumber || "-"} onOpen={onEdit} />,
     },
     {
       id: "customer",
+      accessorFn: (memo) => customerMap[memo.customerId] ?? null,
       header: "Customer",
       cell: ({ row }) =>
         customerMap[row.original.customerId] ?? "-",
@@ -77,17 +83,47 @@ export function CreditMemosTable({
     dollarsColumn<CreditMemo>("amountRemaining", "Remaining", (memo) => memo.amountRemaining),
     actionsColumn<CreditMemo>(onEdit, onDelete),
   ]
+}
+
+export function CreditMemosTable({
+  creditMemos,
+  customerMap,
+  onEdit,
+  onDelete,
+}: CreditMemosTableProps): React.ReactElement {
+  const [search, setSearch] = React.useState("")
+  const startFilter = useListSheetStartFilter("financials.credit-memos", ALL_STATUSES)
+  const [status, setStatus] = React.useState(startFilter)
+  const rows = React.useMemo(
+    () => filterEntityRows(creditMemos, search, creditMemoSearchText, { selected: status, of: creditMemoStatus }),
+    [creditMemos, search, status],
+  )
+  const columns = React.useMemo(
+    () => creditMemoColumns({ customerMap, onEdit, onDelete }),
+    [customerMap, onEdit, onDelete],
+  )
+  const table = useRecordTable({
+    data: rows,
+    columns,
+    getRowId: creditMemoRowId,
+    resetKey: `${status}|${search}`,
+    enableSelection: true,
+    sheetId: "financials.credit-memos",
+  })
 
   return (
     <EntityTable
-      data={creditMemos}
-      columns={columns}
-      mobileToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
-      )}
-      desktopToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
-      )}
+      table={table}
+      search={{ value: search, onChange: setSearch, label: "Search credit memos", placeholder: "Search by memo number..." }}
+      statusFilter={{
+        label: "Filter credit memos by status",
+        rows: creditMemos,
+        of: creditMemoStatus,
+        known: STATUSES,
+        selected: status,
+        onSelect: setStatus,
+      }}
+      onRowOpen={onEdit}
       mobileRow={(memo) => {
         const status = memo.status
         return (

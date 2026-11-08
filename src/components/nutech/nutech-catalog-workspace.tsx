@@ -1,7 +1,9 @@
 "use client"
 
+import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useTransition } from "react"
+import type { ColumnDef } from "@tanstack/react-table"
 import {
   IconCheck,
   IconDatabaseImport,
@@ -24,7 +26,7 @@ import {
   NUTECH_2026_CATALOG_SOURCES,
   NUTECH_RESOURCE_LINKS,
 } from "@/lib/nutech/resources"
-import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
+import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -32,22 +34,6 @@ import { Input } from "@/components/ui/input"
 import { formatCents, formatDate } from "@/lib/format"
 
 type Product = NuTechCatalogWorkspace["products"][number]
-type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode" | "truck" | "taxable"
-
-const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string | number | null>> = {
-  sku: (product) => product.manufacturerSku,
-  package: (product) => product.packageLabel,
-  cost: (product) => product.airliteCostCents,
-  newStandard: (product) => product.newStandardPriceCents,
-  newCash: (product) => product.newCashPriceCents,
-  returning: (product) => product.returningStandardPriceCents,
-  returningCash: (product) => product.returningCashPriceCents,
-  form: (product) => product.airliteTemplateRow,
-  costCode: (product) => product.sageCostCodeLabel,
-  truck: (product) => product.bundlesPerTruckload,
-  taxable: (product) => (product.taxable ? 1 : 0),
-}
-
 // Picker values: a numbered Sage code by id, or a named company code by name.
 function mappingValue(product: Product): string {
   if (product.sageCostCodeId) return `sage:${product.sageCostCodeId}`
@@ -63,10 +49,170 @@ function mappingFromValue(value: string): NuTechProductCostCodeMapping {
 
 function PriceCell({ product, cents }: { readonly product: Product; readonly cents: number }): React.ReactElement {
   return (
-    <td className="px-3 py-2 text-right align-top">
+    <span className="block text-right">
       {product.quotedPerOrder ? <span className="text-muted-foreground">Quoted</span> : formatCents(cents)}
-    </td>
+    </span>
   )
+}
+
+function Right({ children }: { readonly children: React.ReactNode }): React.ReactElement {
+  return <span className="block text-right">{children}</span>
+}
+
+const productRowId = (product: Product): string => product.id
+
+function productSearchText(product: Product): string {
+  return [product.manufacturerSku, product.name, product.packageLabel, product.sageCostCodeLabel].filter(Boolean).join(" ").toLowerCase()
+}
+
+type ProductColumnOptions = {
+  readonly workspace: NuTechCatalogWorkspace
+  readonly isPending: boolean
+  readonly onMapSageCostCode: (productId: string, value: string) => void
+  readonly onSetBundlesPerTruckload: (product: Product, text: string) => void
+  readonly onSetTaxable: (productId: string, taxable: boolean) => void
+}
+
+function priceColumn(id: string, header: string, read: (product: Product) => number): ColumnDef<Product> {
+  return {
+    id,
+    accessorFn: read,
+    header: () => <Right>{header}</Right>,
+    cell: ({ row: { original } }) => <PriceCell product={original} cents={read(original)} />,
+  }
+}
+
+/** The active product catalog sheet's columns (sheet "nutech.catalog"). */
+export function catalogProductColumns({
+  workspace,
+  isPending,
+  onMapSageCostCode,
+  onSetBundlesPerTruckload,
+  onSetTaxable,
+}: ProductColumnOptions): ColumnDef<Product>[] {
+  return [
+    {
+      id: "sku",
+      accessorFn: (product) => product.manufacturerSku,
+      header: "SKU / product",
+      cell: ({ row: { original: product } }) => (
+        <>
+          <p className="font-medium">{product.manufacturerSku}</p>
+          <p className="mt-0.5 text-muted-foreground">{product.name}</p>
+        </>
+      ),
+    },
+    {
+      id: "package",
+      accessorFn: (product) => product.packageLabel,
+      header: "Package",
+      cell: ({ row: { original: product } }) => (
+        <span className="text-muted-foreground">{product.packageLabel} · {product.priceUnit}</span>
+      ),
+    },
+    priceColumn("cost", "Airlite cost", (product) => product.airliteCostCents),
+    priceColumn("newStandard", "New standard", (product) => product.newStandardPriceCents),
+    priceColumn("newCash", "New cash", (product) => product.newCashPriceCents),
+    priceColumn("returning", "Returning", (product) => product.returningStandardPriceCents),
+    priceColumn("returningCash", "Returning cash", (product) => product.returningCashPriceCents),
+    {
+      id: "form",
+      accessorFn: (product) => product.airliteTemplateRow,
+      header: "Airlite form",
+      cell: ({ row: { original: product } }) => (
+        <Badge variant={product.airliteMappingStatus === "mapped" ? "secondary" : "outline"}>
+          {product.airliteTemplateRow ? `Row ${product.airliteTemplateRow}` : "Addendum"}
+        </Badge>
+      ),
+    },
+    {
+      id: "costCode",
+      accessorFn: (product) => product.sageCostCodeLabel,
+      header: "Sage cost code",
+      cell: ({ row: { original: product } }) =>
+        workspace.canImport ? (
+          <SearchableCombobox
+            className="h-9"
+            // A code missing from the list shows as unmapped
+            // instead of letting the picker's reset unmap it.
+            value={
+              workspace.sageCostCodes.some(
+                (costCode) => `sage:${costCode.id}` === mappingValue(product)
+              ) ||
+              workspace.namedCostCodes.some(
+                (costCode) => `named:${costCode.name}` === mappingValue(product)
+              )
+                ? mappingValue(product)
+                : ""
+            }
+            disabled={isPending}
+            onValueChange={(value) => {
+              if (value !== mappingValue(product)) {
+                onMapSageCostCode(product.id, value)
+              }
+            }}
+            options={[
+              { value: "", label: "Not mapped" },
+              ...workspace.sageCostCodes.map((costCode) => ({
+                value: `sage:${costCode.id}`,
+                label: costCode.displayLabel,
+              })),
+              ...workspace.namedCostCodes.map((costCode) => ({
+                value: `named:${costCode.name}`,
+                label: costCode.label,
+              })),
+            ]}
+            ariaLabel={`Sage cost code for ${product.name}`}
+            placeholder="Not mapped"
+            searchPlaceholder="Search cost codes..."
+            emptyMessage="No matching cost codes."
+          />
+        ) : (
+          <span className="text-muted-foreground">
+            {product.sageCostCodeLabel ?? "Not mapped"}
+          </span>
+        ),
+    },
+    {
+      id: "truck",
+      accessorFn: (product) => product.bundlesPerTruckload,
+      header: () => <Right>Bundles / truck</Right>,
+      cell: ({ row: { original: product } }) => (
+        <Right>
+          {workspace.canImport ? (
+            <Input
+              key={product.bundlesPerTruckload ?? "unset"}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              defaultValue={product.bundlesPerTruckload ?? ""}
+              placeholder="—"
+              disabled={isPending}
+              aria-label={`Bundles of ${product.manufacturerSku} per truckload`}
+              className="ml-auto h-9 w-20 text-right tabular-nums"
+              onBlur={(event) => onSetBundlesPerTruckload(product, event.target.value)}
+            />
+          ) : (
+            <span className="tabular-nums text-muted-foreground">{product.bundlesPerTruckload ?? "—"}</span>
+          )}
+        </Right>
+      ),
+    },
+    {
+      id: "taxable",
+      accessorFn: (product) => (product.taxable ? 1 : 0),
+      header: "Taxable",
+      cell: ({ row: { original: product } }) => (
+        <Checkbox
+          checked={product.taxable}
+          disabled={isPending || !workspace.canImport}
+          aria-label={`${product.name} is taxable`}
+          onCheckedChange={(checked) => onSetTaxable(product.id, checked === true)}
+        />
+      ),
+    },
+  ]
 }
 
 function sheetUrl(spreadsheetId: string): string {
@@ -164,7 +310,7 @@ export function NuTechCatalogWorkspacePanel({
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const { rows: products, sort, toggle } = useTableSort(workspace.products, PRODUCT_SORT)
+  const [search, setSearch] = React.useState("")
 
   function importCatalog(): void {
     startTransition(async () => {
@@ -243,6 +389,30 @@ export function NuTechCatalogWorkspacePanel({
       router.refresh()
     })
   }
+
+  const products = React.useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return query ? workspace.products.filter((product) => productSearchText(product).includes(query)) : workspace.products
+  }, [workspace.products, search])
+  const columns = React.useMemo(
+    () => catalogProductColumns({
+      workspace,
+      isPending,
+      onMapSageCostCode: mapSageCostCode,
+      onSetBundlesPerTruckload: setBundlesPerTruckload,
+      onSetTaxable: setTaxable,
+    }),
+    // The handlers only start transitions and refresh; they read nothing that changes between renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspace, isPending],
+  )
+  const table = useRecordTable({
+    data: products,
+    columns,
+    getRowId: productRowId,
+    resetKey: search,
+    sheetId: "nutech.catalog",
+  })
 
   return (
     <div className="space-y-6">
@@ -331,126 +501,15 @@ export function NuTechCatalogWorkspacePanel({
             Activate an imported catalog to review its products.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-xs">
-              <thead className="border-b bg-muted/40 text-muted-foreground">
-                <tr>
-                  <SortableTh sortKey="sku" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">SKU / product</SortableTh>
-                  <SortableTh sortKey="package" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Package</SortableTh>
-                  <SortableTh sortKey="cost" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Airlite cost</SortableTh>
-                  <SortableTh sortKey="newStandard" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">New standard</SortableTh>
-                  <SortableTh sortKey="newCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">New cash</SortableTh>
-                  <SortableTh sortKey="returning" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning</SortableTh>
-                  <SortableTh sortKey="returningCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning cash</SortableTh>
-                  <SortableTh sortKey="form" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Airlite form</SortableTh>
-                  <SortableTh sortKey="costCode" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Sage cost code</SortableTh>
-                  <SortableTh sortKey="truck" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Bundles / truck</SortableTh>
-                  <SortableTh sortKey="taxable" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Taxable</SortableTh>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {products.map((product) => (
-                  <tr key={product.id}>
-                    <td className="px-3 py-2 align-top">
-                      <p className="font-medium">{product.manufacturerSku}</p>
-                      <p className="mt-0.5 text-muted-foreground">{product.name}</p>
-                    </td>
-                    <td className="px-3 py-2 align-top text-muted-foreground">
-                      {product.packageLabel} · {product.priceUnit}
-                    </td>
-                    <PriceCell product={product} cents={product.airliteCostCents} />
-                    <PriceCell product={product} cents={product.newStandardPriceCents} />
-                    <PriceCell product={product} cents={product.newCashPriceCents} />
-                    <PriceCell product={product} cents={product.returningStandardPriceCents} />
-                    <PriceCell product={product} cents={product.returningCashPriceCents} />
-                    <td className="px-3 py-2 align-top">
-                      <Badge
-                        variant={
-                          product.airliteMappingStatus === "mapped"
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {product.airliteTemplateRow
-                          ? `Row ${product.airliteTemplateRow}`
-                          : "Addendum"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      {workspace.canImport ? (
-                        <SearchableCombobox
-                          className="h-9"
-                          // A code missing from the list shows as unmapped
-                          // instead of letting the picker's reset unmap it.
-                          value={
-                            workspace.sageCostCodes.some(
-                              (costCode) => `sage:${costCode.id}` === mappingValue(product)
-                            ) ||
-                            workspace.namedCostCodes.some(
-                              (costCode) => `named:${costCode.name}` === mappingValue(product)
-                            )
-                              ? mappingValue(product)
-                              : ""
-                          }
-                          disabled={isPending}
-                          onValueChange={(value) => {
-                            if (value !== mappingValue(product)) {
-                              mapSageCostCode(product.id, value)
-                            }
-                          }}
-                          options={[
-                            { value: "", label: "Not mapped" },
-                            ...workspace.sageCostCodes.map((costCode) => ({
-                              value: `sage:${costCode.id}`,
-                              label: costCode.displayLabel,
-                            })),
-                            ...workspace.namedCostCodes.map((costCode) => ({
-                              value: `named:${costCode.name}`,
-                              label: costCode.label,
-                            })),
-                          ]}
-                          ariaLabel={`Sage cost code for ${product.name}`}
-                          placeholder="Not mapped"
-                          searchPlaceholder="Search cost codes..."
-                          emptyMessage="No matching cost codes."
-                        />
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {product.sageCostCodeLabel ?? "Not mapped"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {workspace.canImport ? (
-                        <Input
-                          key={product.bundlesPerTruckload ?? "unset"}
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          step={1}
-                          defaultValue={product.bundlesPerTruckload ?? ""}
-                          placeholder="—"
-                          disabled={isPending}
-                          aria-label={`Bundles of ${product.manufacturerSku} per truckload`}
-                          className="ml-auto h-9 w-20 text-right tabular-nums"
-                          onBlur={(event) => setBundlesPerTruckload(product, event.target.value)}
-                        />
-                      ) : (
-                        <span className="tabular-nums text-muted-foreground">{product.bundlesPerTruckload ?? "—"}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      <Checkbox
-                        checked={product.taxable}
-                        disabled={isPending || !workspace.canImport}
-                        aria-label={`${product.name} is taxable`}
-                        onCheckedChange={(checked) => setTaxable(product.id, checked === true)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex min-w-0 flex-col gap-3 py-3">
+            <RecordSearchInput
+              value={search}
+              onChange={setSearch}
+              label="Search Nu-Tech products"
+              placeholder="Search SKU, product, package or cost code…"
+              className="px-4 sm:max-w-md"
+            />
+            <RecordTable table={table} itemLabel="products" emptyMessage="No products match this search." rowIdPrefix="nutech-product" />
           </div>
         )}
       </section>

@@ -1,19 +1,22 @@
 "use client"
 
+import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { VendorBill } from "@/db/schema-netsuite"
 import { Badge } from "@/components/ui/badge"
-import { EntitySearchInput, EntityTable } from "@/components/financials/entity-table"
+import { ALL_STATUSES, EntityTable, filterEntityRows } from "@/components/financials/entity-table"
 import {
   actionsColumn,
   dollarsColumn,
   MobileRecordActions,
+  RecordName,
   RecordsEmpty,
-  searchInputClass,
   selectColumn,
   type BadgeVariant,
 } from "@/components/financials/record-columns"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { useRecordTable } from "@/components/record-table"
 import { localeDateText } from "@/lib/domain/financials/rules"
 import { formatDollars } from "@/lib/format"
 
@@ -33,33 +36,38 @@ interface VendorBillsTableProps {
   onDelete?: (id: string) => void
 }
 
-const SEARCH = { columnId: "billNumber", placeholder: "Search by bill number..." }
+const vendorBillRowId = (record: VendorBill): string => record.id
+const vendorBillSearchText = (record: VendorBill): string => record.billNumber ?? ""
+const vendorBillStatus = (record: VendorBill): string => record.status
 
-export function VendorBillsTable({
-  bills,
-  vendorMap,
-  projectMap,
-  onEdit,
-  onDelete,
-}: VendorBillsTableProps) {
-  const columns: ColumnDef<VendorBill>[] = [
+const STATUSES: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "partially_paid", label: "Partially paid" },
+  { value: "paid", label: "Paid" },
+  { value: "void", label: "Void" },
+]
+
+type ColumnOptions = Pick<VendorBillsTableProps, "vendorMap" | "projectMap" | "onEdit" | "onDelete">
+
+/** The Financials page's sheet columns (sheet "financials.vendor-bills"). */
+export function vendorBillColumns({ vendorMap, projectMap, onEdit, onDelete }: ColumnOptions): ColumnDef<VendorBill>[] {
+  return [
     selectColumn<VendorBill>(),
     {
       accessorKey: "billNumber",
       header: "Bill #",
-      cell: ({ row }) => (
-        <span className="font-medium">
-          {row.original.billNumber || "-"}
-        </span>
-      ),
+      cell: ({ row }) => <RecordName record={row.original} label={row.original.billNumber || "-"} onOpen={onEdit} />,
     },
     {
       id: "vendor",
+      accessorFn: (bill) => vendorMap[bill.vendorId] ?? null,
       header: "Vendor",
       cell: ({ row }) => vendorMap[row.original.vendorId] ?? "-",
     },
     {
       id: "project",
+      accessorFn: (bill) => (bill.projectId ? projectMap[bill.projectId] ?? null : null),
       header: "Project",
       cell: ({ row }) =>
         row.original.projectId
@@ -95,17 +103,48 @@ export function VendorBillsTable({
     dollarsColumn<VendorBill>("amountDue", "Amount Due", (bill) => bill.amountDue),
     actionsColumn<VendorBill>(onEdit, onDelete),
   ]
+}
+
+export function VendorBillsTable({
+  bills,
+  vendorMap,
+  projectMap,
+  onEdit,
+  onDelete,
+}: VendorBillsTableProps): React.ReactElement {
+  const [search, setSearch] = React.useState("")
+  const startFilter = useListSheetStartFilter("financials.vendor-bills", ALL_STATUSES)
+  const [status, setStatus] = React.useState(startFilter)
+  const rows = React.useMemo(
+    () => filterEntityRows(bills, search, vendorBillSearchText, { selected: status, of: vendorBillStatus }),
+    [bills, search, status],
+  )
+  const columns = React.useMemo(
+    () => vendorBillColumns({ vendorMap, projectMap, onEdit, onDelete }),
+    [vendorMap, projectMap, onEdit, onDelete],
+  )
+  const table = useRecordTable({
+    data: rows,
+    columns,
+    getRowId: vendorBillRowId,
+    resetKey: `${status}|${search}`,
+    enableSelection: true,
+    sheetId: "financials.vendor-bills",
+  })
 
   return (
     <EntityTable
-      data={bills}
-      columns={columns}
-      mobileToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.mobile} />
-      )}
-      desktopToolbar={({ table }) => (
-        <EntitySearchInput table={table} {...SEARCH} className={searchInputClass.desktop} />
-      )}
+      table={table}
+      search={{ value: search, onChange: setSearch, label: "Search vendor bills", placeholder: "Search by bill number..." }}
+      statusFilter={{
+        label: "Filter vendor bills by status",
+        rows: bills,
+        of: vendorBillStatus,
+        known: STATUSES,
+        selected: status,
+        onSelect: setStatus,
+      }}
+      onRowOpen={onEdit}
       mobileRow={(bill) => {
         const status = bill.status
         return (

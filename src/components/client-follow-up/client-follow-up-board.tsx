@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import type { ColumnDef } from "@tanstack/react-table"
 import { IconExternalLink, IconMessagePlus, IconSearch, IconTrophy } from "@tabler/icons-react"
 import type { ClientFollowUpJob, ClientFollowUpWorkspace } from "@/app/actions/client-follow-up"
 import { getProjectInteractionFormOptions, type ProjectInteractionFormOptions } from "@/app/actions/project-profile"
@@ -13,7 +14,9 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
+import { useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordTable, useRecordTable } from "@/components/record-table"
+import { StatusFilterBar } from "@/components/status-filter-bar"
 import {
   CLIENT_FOLLOW_UP_PERIODS,
   CLIENT_FOLLOW_UP_PERIOD_LABEL,
@@ -47,14 +50,53 @@ function when(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
 }
 
-type JobSortKey = "job" | "level" | "lastContact" | "owner" | "period"
+type JobLevelFilter = "attention" | "all"
 
-const JOB_SORT: Readonly<Record<JobSortKey, (job: ClientFollowUpJob) => string | number | null>> = {
-  job: (job) => jobLabel(job),
-  level: (job) => LEVEL_RANK[job.signal.level],
-  lastContact: (job) => job.signal.businessDaysSinceLastTouch === null ? Number.MAX_SAFE_INTEGER : -job.signal.businessDaysSinceLastTouch,
-  owner: (job) => job.ownerName,
-  period: (job) => job.periodInteractions,
+const jobRowId = (job: ClientFollowUpJob): string => job.id
+
+/** The followed-jobs sheet's columns (sheet "client-follow-up.jobs"). */
+export function followUpJobColumns(onSelect: (job: ClientFollowUpJob) => void): ColumnDef<ClientFollowUpJob>[] {
+  return [
+    {
+      id: "job",
+      accessorFn: (job) => jobLabel(job),
+      header: "Job",
+      cell: ({ row: { original: job } }) => (
+        <>
+          <button type="button" className="text-left font-medium hover:underline" onClick={() => onSelect(job)}>{jobLabel(job)}</button>
+          {job.clientName ? <span className="block text-xs text-muted-foreground">{job.clientName}</span> : null}
+        </>
+      ),
+    },
+    {
+      id: "level",
+      accessorFn: (job) => LEVEL_RANK[job.signal.level],
+      header: "Follow-up",
+      cell: ({ row: { original: job } }) => {
+        const level = PROJECT_AGING_LEVELS[job.signal.level]
+        return <span className="border px-1.5 py-0.5 text-xs" style={{ borderColor: `var(${level.colorToken})`, color: `var(${level.colorToken})` }}>{level.label}</span>
+      },
+    },
+    {
+      id: "lastContact",
+      // Most recent contact first when ascending; never contacted last.
+      accessorFn: (job) => job.signal.businessDaysSinceLastTouch === null ? Number.MAX_SAFE_INTEGER : -job.signal.businessDaysSinceLastTouch,
+      header: "Last contact",
+      cell: ({ row: { original: job } }) => <span className="text-xs text-muted-foreground">{followUpSummary(job.signal)}</span>,
+    },
+    {
+      id: "owner",
+      accessorFn: (job) => job.ownerName,
+      header: "Owner",
+      cell: ({ row: { original: job } }) => <span className="text-xs">{job.ownerName ?? "—"}</span>,
+    },
+    {
+      id: "period",
+      accessorFn: (job) => job.periodInteractions,
+      header: () => <span className="block text-right">Logged</span>,
+      cell: ({ row: { original: job } }) => <span className="block text-right tabular-nums">{job.periodInteractions}</span>,
+    },
+  ]
 }
 
 type OptionsState =
@@ -158,7 +200,8 @@ export function ClientFollowUpBoard({
   const [jobId, setJobId] = React.useState<string | null>(
     initialJobId && workspace.jobs.some((job) => job.id === initialJobId) ? initialJobId : null,
   )
-  const [levelFilter, setLevelFilter] = React.useState<"attention" | "all">("attention")
+  const startFilter = useListSheetStartFilter("client-follow-up.jobs", "attention")
+  const [levelFilter, setLevelFilter] = React.useState<JobLevelFilter>(() => (startFilter === "all" ? "all" : "attention"))
   const [query, setQuery] = React.useState("")
   const [logOpen, setLogOpen] = React.useState(false)
   const { settings } = workspace
@@ -205,7 +248,19 @@ export function ClientFollowUpBoard({
     if (!normalizedQuery) return true
     return `${jobLabel(job)} ${job.clientName ?? ""} ${job.ownerName ?? ""}`.toLowerCase().includes(normalizedQuery)
   })
-  const { rows: sortedJobs, sort, toggle } = useTableSort<ClientFollowUpJob, JobSortKey>(listedJobs, JOB_SORT, { key: "level", direction: "asc" })
+  const attentionCount = counts.overdue + counts.due + counts.no_contact
+  const jobColumns = React.useMemo(
+    () => followUpJobColumns((job) => setJobId((current) => (job.id === current ? null : job.id))),
+    [],
+  )
+  const jobsTable = useRecordTable({
+    data: listedJobs,
+    columns: jobColumns,
+    getRowId: jobRowId,
+    resetKey: `${levelFilter}|${jobId ?? ""}|${personId ?? ""}|${normalizedQuery}`,
+    initialSorting: [{ id: "level", desc: false }],
+    sheetId: "client-follow-up.jobs",
+  })
 
   const feed = workspace.interactions.filter((item) => {
     if (personId && item.createdBy !== personId) return false
@@ -322,49 +377,31 @@ export function ClientFollowUpBoard({
         <section aria-labelledby="crm-jobs" className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="crm-jobs" className="font-semibold">{levelFilter === "attention" && !jobId ? "Needs follow-up" : "All followed jobs"}</h2>
-            <span className="text-xs text-muted-foreground">{sortedJobs.length}</span>
+            <span className="text-xs text-muted-foreground">{listedJobs.length}</span>
             {!jobId ? (
-              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setLevelFilter(levelFilter === "attention" ? "all" : "attention")}>
-                {levelFilter === "attention" ? "Show all followed jobs" : "Show only jobs needing follow-up"}
-              </Button>
+              <div className="ml-auto">
+                <StatusFilterBar
+                  kind="button"
+                  label="Filter followed jobs"
+                  selected={levelFilter}
+                  onSelect={setLevelFilter}
+                  options={[
+                    { value: "attention", label: "Needs follow-up", count: attentionCount, pinned: true },
+                    { value: "all", label: "All followed jobs", count: workspace.jobs.length, pinned: true },
+                  ]}
+                />
+              </div>
             ) : null}
           </div>
-          {sortedJobs.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Nothing needs follow-up here. Every job has recent client contact.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <SortableTh sortKey="job" sort={sort} onSort={toggle} className="py-2 pr-3 font-medium">Job</SortableTh>
-                    <SortableTh sortKey="level" sort={sort} onSort={toggle} className="py-2 pr-3 font-medium">Follow-up</SortableTh>
-                    <SortableTh sortKey="lastContact" sort={sort} onSort={toggle} className="py-2 pr-3 font-medium">Last contact</SortableTh>
-                    <SortableTh sortKey="owner" sort={sort} onSort={toggle} className="py-2 pr-3 font-medium">Owner</SortableTh>
-                    <SortableTh sortKey="period" sort={sort} onSort={toggle} align="right" className="py-2 text-right font-medium">Logged</SortableTh>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedJobs.map((job) => {
-                    const level = PROJECT_AGING_LEVELS[job.signal.level]
-                    return (
-                      <tr key={job.id} className={cn("cursor-pointer border-b hover:bg-muted/40", job.id === jobId && "bg-muted")} onClick={() => setJobId(job.id === jobId ? null : job.id)}>
-                        <td className="py-2 pr-3">
-                          <span className="font-medium">{jobLabel(job)}</span>
-                          {job.clientName ? <span className="block text-xs text-muted-foreground">{job.clientName}</span> : null}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <span className="border px-1.5 py-0.5 text-xs" style={{ borderColor: `var(${level.colorToken})`, color: `var(${level.colorToken})` }}>{level.label}</span>
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-muted-foreground">{followUpSummary(job.signal)}</td>
-                        <td className="py-2 pr-3 text-xs">{job.ownerName ?? "—"}</td>
-                        <td className="py-2 text-right tabular-nums">{job.periodInteractions}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <RecordTable
+            table={jobsTable}
+            itemLabel="jobs"
+            emptyMessage="Nothing needs follow-up here. Every job has recent client contact."
+            rowIdPrefix="crm-job"
+            focusedRowId={jobId}
+            scrollToFocusedRow={false}
+            onRowOpen={(job) => setJobId(job.id === jobId ? null : job.id)}
+          />
         </section>
 
         <section aria-labelledby="crm-feed" className="space-y-2">

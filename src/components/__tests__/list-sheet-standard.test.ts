@@ -32,6 +32,15 @@ import { workdayExceptionColumns } from "@/components/schedule/workday-exception
 import { SCHEDULE_LIST_COLUMNS } from "@/lib/schedule/saved-views"
 import { DEFAULT_DISPLAY_COLOR_PALETTE } from "@/lib/schedule/appearance"
 import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
+import { followUpJobColumns } from "@/components/client-follow-up/client-follow-up-board"
+import { machineColumns, machineLogEntryColumns } from "@/components/equipment/equipment-workspace"
+import { creditMemoColumns } from "@/components/financials/credit-memos-table"
+import { financialInvoiceColumns } from "@/components/financials/invoices-table"
+import { paymentColumns } from "@/components/financials/payments-table"
+import { squareReceiptColumns } from "@/components/financials/square-receipts-table"
+import { vendorBillColumns } from "@/components/financials/vendor-bills-table"
+import { catalogProductColumns } from "@/components/nutech/nutech-catalog-workspace"
+import type { NuTechCatalogWorkspace } from "@/app/actions/nutech-catalog"
 import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { LIST_SHEETS } from "@/lib/domain/settings/list-sheet-registry"
 
@@ -97,6 +106,7 @@ describe("list sheet standard", () => {
 
   it("matches each registered sheet's table columns and sortability", () => {
     const noop = (): void => undefined
+    const catalogWorkspace: NuTechCatalogWorkspace = { canImport: true, canDelete: true, versions: [], activeVersionId: null, products: [], sageCostCodes: [], namedCostCodes: [] }
     const builders: Readonly<Record<string, () => readonly ColumnDef<never>[]>> = {
       "purchase-orders.job": () => purchaseOrderColumns(false, "open", defaultRecordStatusList("purchase_order")),
       "purchase-orders.all-jobs": () => purchaseOrderColumns(true, "open", defaultRecordStatusList("purchase_order")),
@@ -135,6 +145,15 @@ describe("list sheet standard", () => {
       "schedule.workday-exceptions": () => workdayExceptionColumns({ onOpen: noop, onDelete: noop }),
       "recurring-duties.workspace": () =>
         recurringDutyColumns({ canEdit: true, canManage: true, pending: false, onDone: noop, onEdit: noop, onUndo: noop }),
+      "financials.invoices": () => financialInvoiceColumns({ customerMap: {}, projectMap: {}, onEdit: noop, onDelete: noop }),
+      "financials.vendor-bills": () => vendorBillColumns({ vendorMap: {}, projectMap: {}, onEdit: noop, onDelete: noop }),
+      "financials.payments": () => paymentColumns({ customerMap: {}, vendorMap: {}, projectMap: {}, onEdit: noop, onDelete: noop }),
+      "financials.credit-memos": () => creditMemoColumns({ customerMap: {}, onEdit: noop, onDelete: noop }),
+      "financials.square-receipts": () => squareReceiptColumns(),
+      "nutech.catalog": () => catalogProductColumns({ workspace: catalogWorkspace, isPending: false, onMapSageCostCode: noop, onSetBundlesPerTruckload: noop, onSetTaxable: noop }),
+      "equipment.machines": () => machineColumns({ canManage: true, onSetUp: noop }),
+      "equipment.log-entries": () => machineLogEntryColumns({ pending: false, onChange: noop, onRemove: noop }),
+      "client-follow-up.jobs": () => followUpJobColumns(noop),
     }
     const serverSortIds: Readonly<Record<string, readonly string[]>> = {
       vendors: VENDOR_SORT_IDS,
