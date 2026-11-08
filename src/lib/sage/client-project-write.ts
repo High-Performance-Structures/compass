@@ -99,6 +99,21 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
         mobile: z.string().max(20).nullable(),
       }),
     }),
+    // Fills an existing Sage job's blank sales tax district from the accepted
+    // estimate; the writer never replaces a district someone already set.
+    z.object({
+      operationType: z.literal("set_job_tax_district"),
+      company: z.literal("High Performance Structures Inc"),
+      job: z.object({
+        compassProjectId: z.string().min(1),
+        sageJobId: z.string().min(1),
+        sageJobNumber: z.string().min(1),
+      }),
+      taxDistrict: z.object({
+        number: z.number().int().positive(),
+        name: z.string().min(1).max(100),
+      }),
+    }),
     z.object({
       operationType: z.literal("update_client_email"),
       company: z.literal("High Performance Structures Inc"),

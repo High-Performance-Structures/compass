@@ -18,6 +18,7 @@ import {
   sageClientProjectWriteResultSchema,
   sageClientProjectWritesEnabled,
 } from "@/lib/sage/client-project-write"
+import { recordSageJobTaxDistrictResult } from "@/lib/sage/job-tax-district"
 
 function unauthorized(error: string): Response {
   return Response.json({ error }, { status: 401 })
@@ -94,6 +95,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       eq(sageClientProjectWriteOperations.id, operation.id)
     )
+    await recordTaxDistrictResult(db, operation, result.error, now)
     return Response.json({ success: true, status: "failed" }, { status: 202 })
   }
 
@@ -134,5 +136,23 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
   await env.DB.batch(statements)
+  await recordTaxDistrictResult(db, operation, null, now)
   return Response.json({ success: true, status: "succeeded" })
+}
+
+async function recordTaxDistrictResult(
+  db: ReturnType<typeof getDb>,
+  operation: typeof sageClientProjectWriteOperations.$inferSelect,
+  error: string | null,
+  now: string
+): Promise<void> {
+  if (operation.operationType !== "set_job_tax_district" || !operation.projectId) return
+  try {
+    await recordSageJobTaxDistrictResult(db, {
+      organizationId: operation.organizationId, projectId: operation.projectId, operationId: operation.id,
+      requestedByUserId: operation.requestedByUserId, payloadJson: operation.payloadJson, error, now,
+    })
+  } catch (failure) {
+    console.error("Sage job tax district activity could not be recorded", failure)
+  }
 }

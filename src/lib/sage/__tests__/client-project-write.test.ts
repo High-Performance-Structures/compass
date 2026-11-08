@@ -157,6 +157,22 @@ describe("Sage client/project write contract", () => {
     ).toBe(false)
   })
 
+  it("sets an existing job's tax district by Sage job and district number", () => {
+    const write = {
+      operationType: "set_job_tax_district",
+      company: "High Performance Structures Inc",
+      job: { compassProjectId: "project-1", sageJobId: "job-guid", sageJobNumber: "100" },
+      taxDistrict: { number: 640001, name: "64-0001 Example Combined" },
+    }
+    expect(sageClientProjectWritePayloadSchema.safeParse(write).success).toBe(true)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, taxDistrict: { ...write.taxDistrict, number: 0 } }).success
+    ).toBe(false)
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({ ...write, job: { ...write.job, sageJobId: "" } }).success
+    ).toBe(false)
+  })
+
   it("adds a contact line to a linked Sage client", () => {
     const write = {
       operationType: "add_client_contact",

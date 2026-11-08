@@ -11,12 +11,13 @@ const source = readFileSync(
 )
 
 describe("Sage client/project worker source boundary", () => {
-  it("contains only the five approved queue operations and no destructive request", () => {
+  it("contains only the six approved queue operations and no destructive request", () => {
     expect(source).toContain('"ensure_client"')
     expect(source).toContain('"ensure_client_and_job"')
     expect(source).toContain('"update_client_email"')
     expect(source).toContain('"set_job_client"')
     expect(source).toContain('"add_client_contact"')
+    expect(source).toContain('"set_job_tax_district"')
     expect(source).toContain('BuildXml("ClientModRq"')
     expect(source).toContain('BuildXml("JobModRq"')
     expect(source).not.toMatch(/DeleteRq|VoidRq/)
@@ -32,6 +33,19 @@ describe("Sage client/project worker source boundary", () => {
     expect(setJobClient).toContain("The Sage job already has client")
     expect(setJobClient).not.toMatch(/JobAdd/)
     expect(source).toContain("JobModRq has no client field; no write was attempted.")
+  })
+
+  it("only fills a blank job tax district, never replacing one already set", () => {
+    const setTaxDistrict = source.slice(
+      source.indexOf("private static WriteOutcome ProcessSetJobTaxDistrict"),
+      source.indexOf("private static bool TaxDistrictExists")
+    )
+    expect(setTaxDistrict).toContain("The Sage job ID and number do not identify the same job")
+    const refuse = setTaxDistrict.indexOf("already has tax district")
+    expect(refuse).toBeGreaterThan(-1)
+    expect(refuse).toBeLessThan(setTaxDistrict.indexOf("submit Sage job tax district"))
+    expect(setTaxDistrict).not.toMatch(/JobAdd/)
+    expect(source).toContain("JobModRq has no sales tax district field; no write was attempted.")
   })
 
   it("refuses to add a job when Sage already has one with the same project number", () => {
