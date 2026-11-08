@@ -854,6 +854,9 @@
     "typingSessions": [
       "src/app/actions/conversations-realtime.ts"
     ],
+    "userAlternateEmails": [
+      "src/lib/domain/identity/store.ts"
+    ],
     "userListSheetColumnPreferences": [
       "src/lib/domain/settings/store.ts"
     ],

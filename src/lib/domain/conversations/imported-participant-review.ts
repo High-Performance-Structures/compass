@@ -5,6 +5,8 @@ import { containsPattern, type RecordPage, type RecordPageQuery } from "@/lib/re
 import { cleanText, field, finiteNumber, isRecord } from "@/lib/shared/guards"
 import type { Db } from "@/lib/server/action-context"
 
+import { IDENTITY_KEY_SQL } from "./participant-matching"
+
 /*
  * Imported conversation participants the importer could not resolve, for
  * staff review (Contacts → Needs review). Two kinds are stored by the
@@ -19,9 +21,11 @@ import type { Db } from "@/lib/server/action-context"
  *   zero-match full name or email becomes a new contact instead.
  *
  * Both are `review_status = 'unreviewed'`, `active = 0`, and their thread was
- * imported staff-only. Rows are listed per conversation and literal, so one
- * decision covers every message in the thread that shows it. Generic over
- * `<source>_message` record types; nothing here is specific to one company.
+ * imported staff-only. The list shows one row per identity across every
+ * project and conversation (the email the text shows, else the whole name;
+ * see IDENTITY_KEY_SQL), so one decision covers every message that names
+ * the person (owner decision 2026-11-08). Generic over `<source>_message`
+ * record types; nothing here is specific to one company.
  */
 
 /** Participant rows recorded per imported message end in this suffix. */
@@ -35,36 +39,42 @@ type ReviewKind = "ambiguous" | "run_together" | "not_full_name"
 export const REVIEW_IDENTITY_STATUSES = { matched: "matched", split: "boundary_split" } as const
 
 const REVIEW_REASONS: Readonly<Record<ReviewKind, string>> = {
-  ambiguous: "Name matches more than one contact",
+  ambiguous: "Not matched to one person",
   run_together: "Several names run together",
   not_full_name: "Not a full name or email",
 }
 
 export type ImportedParticipantReviewRow = {
-  /** A participant row of the group; actions resolve the whole group from it. */
+  /** A participant row of the group; actions resolve the whole identity from it. */
   readonly id: string
   readonly kind: ReviewKind
   readonly reason: string
-  /** The name or email exactly as the source showed it. */
+  /** The name or email as the source showed it (the fullest form, such as "Name <email>"). */
   readonly literal: string
   readonly role: string
   readonly sourceSystem: string
+  /** The project of the anchor row; `projectCount` says how many projects the identity is on. */
   readonly projectId: string
   readonly projectName: string
   readonly projectNumber: string | null
+  readonly projectCount: number
+  /** The conversation when the identity is in exactly one; otherwise null. */
   readonly channelId: string | null
   readonly channelName: string | null
+  readonly conversationCount: number
   readonly messageCount: number
   readonly firstAt: string | null
   readonly lastAt: string | null
-  /** Set when the project keeps imported conversations staff-only (for example a legal hold): listed, never changed. */
+  /** Set when every project of the identity keeps imported conversations staff-only (for example a legal hold): listed, never changed. */
   readonly readOnlyReason: string | null
+  /** Some (not all) of its projects are on legal hold: a decision leaves those rows unchanged. */
+  readonly someLegalHold: boolean
   readonly canPick: boolean
   readonly canSplit: boolean
   readonly canLeave: boolean
 }
 
-export const REVIEW_SORT_IDS = ["literal", "project", "messages", "date"] as const
+export const REVIEW_SORT_IDS = ["literal", "projects", "messages", "date"] as const
 
 /** Sources whose exact matching rules review can reuse (the importer's). Others may only be left as is. */
 export const MATCHABLE_SOURCES = ["buildertrend"] as const
@@ -131,13 +141,12 @@ function unresolvedFrom(organizationId: string, search: string): SQL {
       ${searchClause}`
 }
 
-/** One group per conversation and literal. */
-const GROUP_KEY = sql`p.project_id, m.channel_id,
-  CASE WHEN p.identity_status LIKE 'boundary\\_unproven:%' ESCAPE '\\' THEN 'literal:' || COALESCE(p.source_contact_name, '') ELSE 'person:' || p.source_participant_id END`
+/** One group per identity, across every project and conversation. */
+const GROUP_KEY = sql.raw(IDENTITY_KEY_SQL)
 
 const ORDER_BY: Readonly<Record<(typeof REVIEW_SORT_IDS)[number], SQL>> = {
   literal: sql`lower(literal)`,
-  project: sql`lower(project_name)`,
+  projects: sql`project_count`,
   messages: sql`message_count`,
   date: sql`last_at`,
 }
@@ -146,31 +155,33 @@ function text(row: unknown, key: string): string | null {
   return cleanText(field(row, key))
 }
 
-/** One server page of unresolved participants (bounded LIMIT; no unions). */
+/** One server page of unresolved participants, one row per identity (bounded LIMIT; no unions). */
 export async function listUnresolvedParticipants(
   db: Db,
   organizationId: string,
   query: RecordPageQuery
 ): Promise<RecordPage<ImportedParticipantReviewRow>> {
   const from = unresolvedFrom(organizationId, query.search)
-  const sortId = REVIEW_SORT_IDS.find((id) => id === query.sortId) ?? "date"
+  const sortId = REVIEW_SORT_IDS.find((id) => id === query.sortId) ?? "messages"
   const direction = query.sortId === null ? sql`DESC` : query.sortDesc ? sql`DESC` : sql`ASC`
   const limit = Math.min(Math.max(query.pageSize, 1), 100)
   const offset = Math.max(query.pageIndex, 0) * limit
   const [rows, totals] = await Promise.all([
     db.all(sql`
       SELECT MIN(p.id) AS id, MIN(p.identity_status) AS identity_status, MIN(p.source_participant_id) AS participant_key,
-        COALESCE(MIN(p.source_contact_name), MIN(p.source_participant_id)) AS literal,
+        COALESCE(MAX(CASE WHEN instr(p.source_contact_name, '<') > 0 THEN p.source_contact_name END), MIN(p.source_contact_name), MIN(p.source_participant_id)) AS literal,
         MIN(p.participant_role) AS role, MIN(p.source_record_type) AS record_type,
-        p.project_id AS project_id, MIN(pr.name) AS project_name, MIN(pr.project_number) AS project_number,
-        MAX(pr.imported_conversations_staff_only) AS staff_only,
-        m.channel_id AS channel_id, MIN(c.name) AS channel_name,
-        COUNT(DISTINCT p.source_record_id) AS message_count, MIN(m.created_at) AS first_at, MAX(m.created_at) AS last_at
+        MIN(p.project_id) AS project_id, MIN(pr.name) AS project_name, MIN(pr.project_number) AS project_number,
+        COUNT(DISTINCT p.project_id) AS project_count,
+        MIN(pr.imported_conversations_staff_only) AS all_staff_only, MAX(pr.imported_conversations_staff_only) AS some_staff_only,
+        MIN(m.channel_id) AS channel_id, MIN(c.name) AS channel_name, COUNT(DISTINCT m.channel_id) AS conversation_count,
+        COUNT(DISTINCT p.project_id || ':' || p.source_record_id) AS message_count, MIN(m.created_at) AS first_at, MAX(m.created_at) AS last_at
       ${from}
       GROUP BY ${GROUP_KEY}
       ORDER BY ${ORDER_BY[sortId]} ${direction}, MIN(p.id)
       LIMIT ${limit} OFFSET ${offset}`),
-    db.all(sql`SELECT COUNT(*) AS total FROM (SELECT 1 ${from} GROUP BY ${GROUP_KEY} LIMIT 10000)`),
+    // The true number of identities (no cap).
+    db.all(sql`SELECT COUNT(DISTINCT ${GROUP_KEY}) AS total ${from}`),
   ])
   const total = finiteNumber(field(totals[0], "total")) ?? 0
   return { rows: rows.flatMap((row) => (isRecord(row) ? [reviewRow(row)] : [])), total }
@@ -183,8 +194,9 @@ function reviewRow(row: Readonly<Record<string, unknown>>): ImportedParticipantR
   const literal = typeof row.literal === "string" && row.literal !== participantKey ? row.literal : keyed.email ?? keyed.name ?? participantKey
   const kind = reviewKindFor({ identityStatus, literal, participantKey })
   const sourceSystem = sourceSystemOf(text(row, "record_type") ?? "")
-  const readOnlyReason = finiteNumber(row.staff_only) === 1 ? LEGAL_HOLD_REASON : null
+  const readOnlyReason = finiteNumber(row.all_staff_only) === 1 ? LEGAL_HOLD_REASON : null
   const matchable = readOnlyReason === null && isMatchableSource(sourceSystem)
+  const conversationCount = finiteNumber(row.conversation_count) ?? 0
   return {
     id: text(row, "id") ?? "",
     kind,
@@ -195,12 +207,15 @@ function reviewRow(row: Readonly<Record<string, unknown>>): ImportedParticipantR
     projectId: text(row, "project_id") ?? "",
     projectName: text(row, "project_name") ?? "",
     projectNumber: text(row, "project_number"),
-    channelId: text(row, "channel_id"),
-    channelName: text(row, "channel_name"),
+    projectCount: finiteNumber(row.project_count) ?? 1,
+    channelId: conversationCount === 1 ? text(row, "channel_id") : null,
+    channelName: conversationCount === 1 ? text(row, "channel_name") : null,
+    conversationCount,
     messageCount: finiteNumber(row.message_count) ?? 0,
     firstAt: text(row, "first_at"),
     lastAt: text(row, "last_at"),
     readOnlyReason,
+    someLegalHold: readOnlyReason === null && finiteNumber(row.some_staff_only) === 1,
     canPick: matchable && kind !== "run_together",
     canSplit: matchable && kind === "run_together",
     canLeave: readOnlyReason === null,

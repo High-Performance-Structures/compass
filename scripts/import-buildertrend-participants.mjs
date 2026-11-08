@@ -161,6 +161,11 @@ export function participantKey(participant) {
   return `${participant.namespace}:name:${normalizeName(participant.displayName) ?? "unknown"}`
 }
 
+/** The vendor person id for a new person connected to a vendor, keyed by their identity (`new:email:…`). */
+export function importedVendorContactId(organizationId, identity) {
+  return shortId("bt-vendor-contact", organizationId, identity)
+}
+
 export function importedContactId(projectId, key) {
   return shortId("bt-contact", projectId, key)
 }
@@ -314,7 +319,7 @@ function newUnassignedPerson(ref, context) {
   // connect them as that vendor's contact (owner decision 2026-11-02).
   const vendorId = vendorByExactName(context.directory, ref.companyName ?? context.companyName ?? null)
   if (vendorId) {
-    const vendorContactId = shortId("bt-vendor-contact", context.organizationId, identity)
+    const vendorContactId = importedVendorContactId(context.organizationId, identity)
     return {
       entry: {
         decision: "new_contact", kind: "vendor", userId: null, contactIds: {}, identity,

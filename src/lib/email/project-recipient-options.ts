@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectContacts } from "@/db/schema"
+import { internalContacts, projectContacts, userAlternateEmails } from "@/db/schema"
 import {
   buildProjectEmailRecipientOptions,
+  withStaffAlternateEmails,
   type EmailRecipientOption,
   type ProjectEmailContact,
 } from "@/lib/email/recipient-options"
@@ -32,8 +33,28 @@ export async function projectEmailRecipientOptions(
     })
     .from(projectContacts)
     .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
-  return buildProjectEmailRecipientOptions(
-    rows.map((row) => ({ ...row, contactType: contactType(row.contactType) })),
-    recommended
+  const alternates = await db
+    .select({ contactId: projectContacts.id, displayName: projectContacts.displayName, email: userAlternateEmails.email })
+    .from(projectContacts)
+    .leftJoin(internalContacts, eq(internalContacts.id, projectContacts.internalContactId))
+    // The staff member is the internal contact's account, or the account a staff row was added from.
+    .innerJoin(userAlternateEmails, or(
+      eq(userAlternateEmails.userId, internalContacts.userId),
+      and(eq(projectContacts.sourceEntityType, "user"), eq(userAlternateEmails.userId, projectContacts.sourceEntityId)),
+    ))
+    .where(and(
+      eq(projectContacts.projectId, projectId),
+      eq(projectContacts.active, true),
+      eq(projectContacts.contactType, "internal"),
+      // Only addresses kept by the project's own company.
+      sql`${userAlternateEmails.organizationId} = (SELECT organization_id FROM projects WHERE id = ${projectId})`,
+    ))
+    .limit(200)
+  return withStaffAlternateEmails(
+    buildProjectEmailRecipientOptions(
+      rows.map((row) => ({ ...row, contactType: contactType(row.contactType) })),
+      recommended
+    ),
+    alternates
   )
 }

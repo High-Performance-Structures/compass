@@ -6,7 +6,8 @@ import { toast } from "sonner"
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { updateUserRole } from "@/app/actions/users"
-import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
+import { USER_ROLE_OPTIONS, isInternalStaffRole, userRoleDescription } from "@/lib/user-roles"
+import { AlternateEmailsSection } from "@/components/people/alternate-emails-section"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -121,9 +122,13 @@ export function UserDrawer({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Sign-in email</Label>
               <Input id="email" defaultValue={user.email} disabled />
             </div>
+
+            {isInternalStaffRole(user.role) ? (
+              <AlternateEmailsSection userId={user.id} signInEmail={user.email} />
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="displayName">Display Name</Label>

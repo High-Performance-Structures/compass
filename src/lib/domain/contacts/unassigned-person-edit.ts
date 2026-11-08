@@ -12,7 +12,7 @@
  * returns a warning instead of resending.
  * Callers check permissions, log activity and revalidate.
  */
-import { and, eq, inArray, isNull, or } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 
 import { organizationMembers, projectAccessInvitations, projectContacts, projectMembers, users } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
@@ -22,7 +22,7 @@ import type { Db } from "@/lib/server/action-context"
 import { stalePendingInvitationCount, stalePendingInvitationWarning } from "./pending-invitations"
 import { normalizeEmailKey } from "./rules"
 import { deactivateProjectContact, updateUnassignedPersonRows } from "./store"
-import { unassignedPersonWhere } from "./unassigned-people"
+import { unassignedIdentityWhere, unassignedPersonWhere } from "./unassigned-people"
 
 export type UnassignedPersonInput = {
   readonly name: string
@@ -58,10 +58,7 @@ async function personRows(db: Db, organizationId: string, identity: string): Pro
     .where(
       and(
         unassignedPersonWhere(organizationId),
-        or(
-          eq(projectContacts.sourceEntityId, identity),
-          and(isNull(projectContacts.sourceEntityId), eq(projectContacts.id, identity))
-        )
+        unassignedIdentityWhere(identity)
       )
     )
     .limit(200)

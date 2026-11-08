@@ -410,10 +410,10 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     columns: [
       { id: "literal", label: "As written", kind: "text", required: true },
       { id: "reason", label: "Reason", kind: "text", sortable: false },
-      { id: "project", label: "Project", kind: "text" },
-      { id: "conversation", label: "Conversation", kind: "text", sortable: false },
+      { id: "projects", label: "Projects", kind: "number" },
+      { id: "conversation", label: "Conversations", kind: "text", sortable: false },
       { id: "messages", label: "Messages", kind: "number" },
-      { id: "date", label: "Date", kind: "date" },
+      { id: "date", label: "Last message", kind: "date" },
     ],
     defaultSort: null,
     startFilter: null,

@@ -52,6 +52,7 @@ import { ProjectCalendarSettingsSection } from "@/components/settings/project-ca
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
+import { CompanyEmailDomainsSettingsSection } from "@/components/settings/company-email-domains-settings-section"
 import { ProjectDuplicateSettingsSection } from "@/components/settings/project-duplicate-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
@@ -237,6 +238,7 @@ const WORKFLOW_AREAS = [
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
+  { value: "company-email-domains", label: "Company email domains", description: "Your own email domains, old ones too: never matched to a vendor, and used to recognize staff on imported messages." },
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "portfolio-map", label: "Portfolio map", description: "Which state the dashboard map shows, and which job statuses and departments appear on it, in which phase." },
@@ -275,6 +277,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <JobWorkflowSettingsSection />
     case "job-emails":
       return <JobEmailSettingsSection />
+    case "company-email-domains":
+      return <CompanyEmailDomainsSettingsSection />
     case "message-desk":
       return <MessageDeskSettingsSection />
     case "project-aging":

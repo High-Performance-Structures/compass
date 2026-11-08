@@ -1,7 +1,8 @@
 /**
  * The only code that writes the identity tables (architecture standard,
  * section 1): users, organization memberships, project access invitations
- * (including their welcome-email queue) and account deletion requests.
+ * (including their welcome-email queue), staff members' other email
+ * addresses and account deletion requests.
  * Callers resolve access first; nothing here checks who is asking.
  * Functions named `…Statement` return a statement for the caller's
  * `db.batch`, so writes that must land together stay in one batch.
@@ -13,6 +14,7 @@ import {
   accountDeletionRequests,
   organizationMembers,
   projectAccessInvitations,
+  userAlternateEmails,
   users,
   type NewOrganizationMember,
   type NewProjectAccessInvitation,
@@ -409,4 +411,25 @@ export async function runAccountDeletion(
       })
       .where(eq(accountDeletionRequests.id, requestId)),
   ])
+}
+
+// ---------------------------------------------------------------------------
+// Staff members' other email addresses (not for sign-in)
+// ---------------------------------------------------------------------------
+
+export async function insertUserAlternateEmail(db: Db, row: typeof userAlternateEmails.$inferInsert): Promise<void> {
+  await db.insert(userAlternateEmails).values(row)
+}
+
+/** Removes one address of this person in this company; returns whether a row was removed. */
+export async function deleteUserAlternateEmail(db: Db, input: { readonly organizationId: string; readonly userId: string; readonly id: string }): Promise<boolean> {
+  const removed = await db
+    .delete(userAlternateEmails)
+    .where(and(
+      eq(userAlternateEmails.id, input.id),
+      eq(userAlternateEmails.organizationId, input.organizationId),
+      eq(userAlternateEmails.userId, input.userId),
+    ))
+    .returning({ id: userAlternateEmails.id })
+  return removed.length > 0
 }

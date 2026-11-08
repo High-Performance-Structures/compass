@@ -5,6 +5,7 @@ import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { archiveUnassignedPersonAction, editUnassignedPerson } from "@/app/actions/unassigned-people"
+import { UnassignedAutoConnectDialog } from "@/components/contacts/unassigned-auto-connect-dialog"
 import { ConnectUnassignedDialog } from "@/components/contacts/connect-unassigned-dialog"
 import { PersonEditDialog, type PersonEditField } from "@/components/contacts/person-edit-dialog"
 import {
@@ -149,8 +150,11 @@ export function UnassignedPeopleTable({
   canEdit,
   onConnected,
   onChanged,
+  canAutoConnect = false,
 }: {
   readonly people: readonly UnassignedPerson[]
+  /** Admins may connect clear matches automatically. */
+  readonly canAutoConnect?: boolean
   /** The company kinds this user may connect people to; none hides the action. */
   readonly connectKinds: readonly ConnectCompanyKind[]
   readonly canEdit: boolean
@@ -162,6 +166,7 @@ export function UnassignedPeopleTable({
   const [editing, setEditing] = React.useState<UnassignedPerson | null>(null)
   const [archiving, setArchiving] = React.useState<UnassignedPerson | null>(null)
   const [archiveBusy, setArchiveBusy] = React.useState(false)
+  const [autoOpen, setAutoOpen] = React.useState(false)
 
   const archive = async (): Promise<void> => {
     if (!archiving) return
@@ -206,13 +211,19 @@ export function UnassignedPeopleTable({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <RecordSearchInput
-        value={search}
-        onChange={setSearch}
-        label="Search unassigned people"
-        placeholder="Search unassigned people"
-        className="sm:max-w-sm"
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <RecordSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search unassigned people"
+          placeholder="Search unassigned people"
+          className="sm:max-w-sm"
+        />
+        {canAutoConnect ? (
+          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setAutoOpen(true)}>Connect automatically…</Button>
+        ) : null}
+      </div>
+      {canAutoConnect ? <UnassignedAutoConnectDialog open={autoOpen} onOpenChange={setAutoOpen} onDone={onChanged} /> : null}
       <RecordTable
         table={table}
         itemLabel="unassigned people"

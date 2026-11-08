@@ -534,13 +534,14 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               people={unassigned}
               connectKinds={connectKinds}
               canEdit={Boolean(directoryAccess?.canEditProjectContacts)}
+              canAutoConnect={(directoryAccess?.canManageAccounts ?? false) && connectKinds.length > 0}
               onConnected={unassignedConnected}
               onChanged={() => void getUnassignedPeople().then(setUnassigned)}
             />
           </TabsContent>
           <TabsContent value="review" className="mt-3 flex-1 min-h-0 flex flex-col">
             {/* Split names may add new unassigned people, so Unassigned is re-read. */}
-            <ParticipantReviewTable initialPage={bootstrap.participantReview} initialQuery={bootstrap.firstPageQueries.participantReview} onReviewed={() => void getUnassignedPeople().then(setUnassigned)} />
+            <ParticipantReviewTable initialPage={bootstrap.participantReview} initialQuery={bootstrap.firstPageQueries.participantReview} canAutoMatch={directoryAccess?.canManageAccounts ?? false} onReviewed={() => void getUnassignedPeople().then(setUnassigned)} />
           </TabsContent>
         </Tabs>
       </div>

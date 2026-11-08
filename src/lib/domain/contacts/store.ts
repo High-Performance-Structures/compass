@@ -573,8 +573,8 @@ export function updateVendorPersonStatement(
     .where(and(eq(vendorContacts.id, input.personId), eq(vendorContacts.vendorId, input.vendorId)))
 }
 
-export function insertVendorPersonStatement(db: Db, values: VendorContactInsert): Statement {
-  return db.insert(vendorContacts).values(values)
+export function insertVendorPersonStatement(db: Db, values: VendorContactInsert, ifMissing = false): Statement {
+  return ifMissing ? db.insert(vendorContacts).values(values).onConflictDoNothing() : db.insert(vendorContacts).values(values)
 }
 
 export async function deactivateVendorPeople(db: Db, input: { readonly personIds: readonly string[]; readonly now: string }): Promise<void> {

@@ -4103,6 +4103,33 @@ export const internalContacts = sqliteTable(
   ]
 )
 
+/**
+ * Other email addresses a staff member writes from (an old company domain, a
+ * shared mailbox they own). Never used to sign in: they help recognize the
+ * person on imported messages and are offered as extra send-to addresses.
+ * Stored lowercased; one owner per address in a company.
+ */
+export const userAlternateEmails = sqliteTable(
+  "user_alternate_emails",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_alternate_emails_org_email_unique").on(table.organizationId, table.email),
+    index("user_alternate_emails_user_idx").on(table.userId, table.organizationId),
+    index("user_alternate_emails_created_by_idx").on(table.createdByUserId),
+  ]
+)
+
 // Employee residential addresses are never selected with ordinary directory
 // people or project assignments. Access requires a dedicated private action.
 export const internalContactPrivateAddresses = sqliteTable(

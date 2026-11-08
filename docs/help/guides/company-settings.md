@@ -7,12 +7,12 @@
   "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, record statuses, list columns, and the project paper trail.",
   "contextSummary": "Settings changes affect company-wide workflows and future outputs. Review permissions, save deliberately, and verify the actual document, mailbox, or Drive copy.",
   "category": "Start Here",
-  "tags": ["settings", "Company", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters", "Lists", "columns", "sheets"],
+  "tags": ["settings", "Company", "email domains", "other email addresses", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters", "Lists", "columns", "sheets"],
   "audiences": ["staff"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-06"
+  "lastReviewed": "2026-11-08"
 }
 ---
 
@@ -27,6 +27,12 @@ Save before choosing **Check sending mailbox**. This asks Google whether Compass
 Admins use **Settings → Workflows** for **Staff Message Desk** thresholds, stale reminders, **Project aging**, **Nu-Tech emails**, the catalog link, and **Project paper trail**. Follow-up thresholds use business days. Project aging measures time since logged client contact and must have an overdue threshold later than its follow-up-due threshold.
 
 Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. Department profiles supply the sending mailbox and office identity. Use [Conversations and notifications](/dashboard/help/conversations-and-notifications#message-desk), [Navigating projects](/dashboard/help/navigating-projects#project-follow-up), and [Nu-Tech orders](/dashboard/help/nutech-orders) for the operational steps.
+
+## Staff Email Addresses and Company Domains {#staff-email}
+
+Open a staff member in **Settings > Team** to see **Other email addresses**: addresses they also write from, such as an old company domain or a mailbox they own. They are never used to sign in. Compass uses them to recognize the person on imported messages (**Contacts > Needs review**) and offers them as extra send-to choices next to the person's usual address, which stays the default. Administrators add and remove them; removing one asks for confirmation. An address that is anyone's sign-in email, or another staff member's other address, is refused. Each change is recorded in Activity.
+
+**Settings > Workflows > Company email domains** lists your company's own domains, old ones included. Addresses on them are never matched to a vendor by domain, and imported messages from them are matched to the staff member with the same name before the @ (for example name@old-domain.com to name@current-domain.com). Shared mailboxes such as accounting@ stay for review unless a staff member lists them as an other address. Never list a free email service such as gmail.com.
 
 ## Choose List Columns {#lists}
 

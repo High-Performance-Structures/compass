@@ -18,11 +18,12 @@
  * Nothing is shared, invited or notified: portal visibility is left as the
  * import set it, and staff-only imported conversations stay staff-only.
  */
-import { and, eq, isNull, ne, or } from "drizzle-orm"
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm"
 
 import { customerContacts, customers, projectContacts, vendorContacts, vendors } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
+import { parseParticipantText } from "@/lib/domain/conversations/participant-matching"
 import type { Db } from "@/lib/server/action-context"
 
 import { addVendorPerson, saveCustomerPerson } from "./directory-people"
@@ -30,7 +31,7 @@ import { normalizeDirectoryKey } from "./rules"
 import { commitProjectContactSave, planProjectContactSave } from "./save-contact"
 import { updateProjectContactById } from "./store"
 import type { ProjectContactMutationInput, ProjectContactType } from "./types"
-import { unassignedPersonWhere } from "./unassigned-people"
+import { unassignedIdentityWhere, unassignedPersonWhere } from "./unassigned-people"
 
 export const CONNECT_COMPANY_KINDS = ["vendor", "customer"] as const
 export type ConnectCompanyKind = (typeof CONNECT_COMPANY_KINDS)[number]
@@ -58,20 +59,25 @@ type ImportedContact = typeof projectContacts.$inferSelect
 
 const fail = (error: string): ActionFailure => ({ success: false, error })
 
+export const ALREADY_CONNECTED = "This person is already connected to a company."
+
 /** Every still-unassigned imported project contact for one person. */
 async function loadUnassignedPersonContacts(
   db: Db,
   organizationId: string,
-  identity: string
+  identity: string,
+  skipStaffOnlyProjects: boolean,
 ): Promise<readonly ImportedContact[]> {
   return db
     .select({ contact: projectContacts })
     .from(projectContacts)
     .where(and(
       unassignedPersonWhere(organizationId),
-      // The Unassigned list keys a person by the importer's identity, or by
-      // the contact id when the importer gave none.
-      or(eq(projectContacts.sourceEntityId, identity), and(isNull(projectContacts.sourceEntityId), eq(projectContacts.id, identity))),
+      // The Unassigned list keys a person by the importer's identities (or the
+      // contact id when the importer gave none); one listed person may have several.
+      unassignedIdentityWhere(identity),
+      // The automatic pass never touches a project that keeps imported conversations staff-only (legal hold).
+      skipStaffOnlyProjects ? sql`NOT EXISTS (SELECT 1 FROM projects lh WHERE lh.id = ${projectContacts.projectId} AND lh.imported_conversations_staff_only = 1)` : undefined,
     ))
     .then((rows) => rows.map((row) => row.contact))
 }
@@ -88,7 +94,7 @@ type CompanyPerson =
  */
 async function resolveCompanyPerson(
   db: Db,
-  input: { readonly organizationId: string; readonly kind: ConnectCompanyKind; readonly companyId: string; readonly name: string }
+  input: { readonly organizationId: string; readonly kind: ConnectCompanyKind; readonly companyId: string; readonly name: string; readonly personId: string | null }
 ): Promise<{ readonly success: true; readonly companyName: string; readonly sageLinked: boolean; readonly person: CompanyPerson } | ActionFailure> {
   const nameKey = normalizeDirectoryKey(input.name)
   if (input.kind === "vendor") {
@@ -103,7 +109,7 @@ async function resolveCompanyPerson(
       .select({ id: vendorContacts.id, name: vendorContacts.name })
       .from(vendorContacts)
       .where(and(eq(vendorContacts.vendorId, vendor.id), eq(vendorContacts.active, true)))
-    const same = people.find((person) => normalizeDirectoryKey(person.name) === nameKey)
+    const same = people.find((person) => person.id === input.personId) ?? people.find((person) => normalizeDirectoryKey(person.name) === nameKey)
     return {
       success: true,
       companyName: vendor.name,
@@ -119,14 +125,14 @@ async function resolveCompanyPerson(
   if (!customer) return fail("Client was not found.")
   const companyName = customer.company?.trim() || customer.name
   const sageLinked = Boolean(customer.sageClientId || customer.sageClientNumber)
-  if (normalizeDirectoryKey(customer.name) === nameKey) {
+  if (!input.personId && normalizeDirectoryKey(customer.name) === nameKey) {
     return { success: true, companyName, sageLinked, person: { kind: "existing", personId: null } }
   }
   const people = await db
     .select({ id: customerContacts.id, name: customerContacts.name })
     .from(customerContacts)
     .where(and(eq(customerContacts.customerId, customer.id), eq(customerContacts.active, true)))
-  const same = people.find((person) => normalizeDirectoryKey(person.name) === nameKey)
+  const same = people.find((person) => person.id === input.personId) ?? people.find((person) => normalizeDirectoryKey(person.name) === nameKey)
   return {
     success: true,
     companyName,
@@ -212,16 +218,25 @@ async function projectAlreadyListsPerson(
   return Boolean(other)
 }
 
+/**
+ * Options for the automatic pass: `personId` is the company's person this one
+ * already is (the same email), used before a same-name match; legal-hold
+ * projects can be left out.
+ */
+export type ConnectUnassignedOptions = { readonly personId: string | null; readonly skipStaffOnlyProjects: boolean }
+
 export async function connectUnassignedPerson(
   scope: Scope,
-  input: ConnectUnassignedInput
+  input: ConnectUnassignedInput,
+  options: ConnectUnassignedOptions = { personId: null, skipStaffOnlyProjects: false },
 ): Promise<{ readonly success: true; readonly data: ConnectUnassignedOutcome } | ActionFailure> {
   const { db, organizationId } = scope
-  const rows = await loadUnassignedPersonContacts(db, organizationId, input.identity)
+  const rows = await loadUnassignedPersonContacts(db, organizationId, input.identity, options.skipStaffOnlyProjects)
   const first = rows[0]
-  if (!first) return fail("This person is already connected to a company.")
-  const name = first.displayName
-  const resolved = await resolveCompanyPerson(db, { organizationId, kind: input.kind, companyId: input.companyId, name })
+  if (!first) return fail(ALREADY_CONNECTED)
+  // An imported display name may be "Name <email>": the person's name is the name part.
+  const name = parseParticipantText(first.displayName).name ?? first.displayName
+  const resolved = await resolveCompanyPerson(db, { organizationId, kind: input.kind, companyId: input.companyId, name, personId: options.personId })
   if (!resolved.success) return resolved
 
   const now = new Date().toISOString()
@@ -233,7 +248,8 @@ export async function connectUnassignedPerson(
     const person = {
       name,
       title: "",
-      email: firstText(rows, (row) => row.email),
+      // An imported email may read "Name <email>": keep the address.
+      email: parseParticipantText(firstText(rows, (row) => row.email)).email ?? firstText(rows, (row) => row.email),
       phone: firstText(rows, (row) => row.phone),
       // Primary stays with the people Sage manages.
       isPrimary: resolved.person.isPrimary && !resolved.sageLinked,

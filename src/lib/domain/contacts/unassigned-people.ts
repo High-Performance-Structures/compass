@@ -1,18 +1,40 @@
-import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm"
 
 import { customers, projectAccessInvitations, projectContacts, projects, users, vendors } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeCompanyName } from "./rules"
+import { unassignedPersonKeys } from "./unassigned-matching"
 
 /*
  * People added from imported (Buildertrend) messages who are not connected to
  * any vendor or customer company yet (owner decision 2026-11-02). Staff find
  * them on the Contacts page and connect each one to the company they work for
  * ("Connect to company…", see connect-unassigned-person.ts). One row per
- * person, keyed by the identity the importer gave them, with every project
- * they appear on.
+ * person with every project they appear on. The importer gave each address
+ * or name its own identity, so identities that are the same person (the same
+ * email, case-insensitive, also when written "Name <email>") are one row; its
+ * `identity` then lists them all (owner decision 2026-11-08).
  */
+
+/** Separates the importer identities of one listed person. */
+const IDENTITY_SEPARATOR = "\u001f"
+
+/** The importer identities a listed person stands for. */
+function splitUnassignedIdentity(identity: string): readonly string[] {
+  return [...new Set(identity.split(IDENTITY_SEPARATOR).map((value) => value.trim()).filter(Boolean))].slice(0, 50)
+}
+
+/** Rows of one listed person: their identities, or the contact id when the importer gave none. */
+export function unassignedIdentityWhere(identity: string): SQL {
+  const identities = [...splitUnassignedIdentity(identity)]
+  const where = or(
+    inArray(projectContacts.sourceEntityId, identities),
+    and(isNull(projectContacts.sourceEntityId), inArray(projectContacts.id, identities)),
+  )
+  if (!where) throw new Error("Unassigned identity filter is empty")
+  return where
+}
 
 export type UnassignedPerson = {
   readonly identity: string
@@ -71,19 +93,24 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
     .orderBy(asc(projectContacts.displayName), asc(projects.name))
     .limit(MAX_ROWS)
 
-  type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; hasAccount: boolean; projects: UnassignedPerson["projects"][number][] }
+  type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; hasAccount: boolean; identities: Set<string>; projects: UnassignedPerson["projects"][number][] }
   const people = new Map<string, Person>()
+  // The same person under several importer identities is one row.
+  const keys = unassignedPersonKeys(rows.map((row) => ({ identity: row.identity ?? row.contactId, name: row.name, email: row.email })))
   for (const row of rows) {
     const identity = row.identity ?? row.contactId
-    const person = people.get(identity) ?? { name: row.name, email: row.email, phone: row.phone, companyName: null, hasAccount: false, projects: [] }
+    const { key, email } = keys.get(identity) ?? { key: `identity:${identity}`, email: null }
+    // The plain address, also when the import stored "Name <email>".
+    const person = people.get(key) ?? { name: row.name, email: email ?? row.email, phone: row.phone, companyName: null, hasAccount: false, identities: new Set<string>(), projects: [] }
+    person.identities.add(identity)
     person.projects.push({ projectId: row.projectId, projectName: row.projectName, projectNumber: row.projectNumber, contactId: row.contactId })
     if (!person.email && row.email) person.email = row.email
     if (Number(row.accepted) === 1) person.hasAccount = true
     if (!person.phone && row.phone) person.phone = row.phone
     if (!person.companyName && row.companyName?.trim()) person.companyName = row.companyName.trim()
-    people.set(identity, person)
+    people.set(key, person)
   }
-  return [...people.entries()].map(([identity, person]) => ({ identity, ...person }))
+  return [...people.values()].map(({ identities, ...person }) => ({ identity: [...identities].sort().join(IDENTITY_SEPARATOR), ...person }))
 }
 
 export type CompanySuggestion = { readonly kind: "vendor" | "customer"; readonly id: string; readonly name: string }
