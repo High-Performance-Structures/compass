@@ -221,6 +221,10 @@ function sageLineDescription(line: InvoiceLineComputed): string {
  * The simple invoice as a Sage AR invoice plan (the same shape a billed pay
  * request uses, so the writer payload, the writer and the result route are
  * shared). Blockers say why it can't go to Sage yet.
+ *
+ * A credit memo (stored as positive amounts) goes to Sage as an AR invoice
+ * whose every line is negative: the writer sends each as quantity -1 at the
+ * positive price, so Sage records the credit against the job's receivable.
  */
 export function planSimpleInvoiceForSage(input: {
   readonly invoiceNumber: string | null
@@ -234,12 +238,16 @@ export function planSimpleInvoiceForSage(input: {
   readonly incomeAccount: number | null
   readonly sageJobNumber: string | null
   readonly mapCostCode: (costCode: string) => SageCostCodeMapping
+  /** A credit memo: every line goes to Sage negative. */
+  readonly credit?: boolean
 }): ArInvoicePlan {
   const blockers: string[] = []
+  const sign = input.credit ? -1 : 1
+  const noun = input.credit ? "credit memo" : "invoice"
   if (!input.sageJobNumber) blockers.push("The project isn't linked to a Sage job. Link it (or send it to Sage) from the project Overview.")
-  if (!input.invoiceNumber) blockers.push("Finalize the invoice first; that gives it its number.")
-  if (!input.invoiceDate) blockers.push("The invoice has no date.")
-  const description = input.title.replaceAll(/\s+/g, " ").trim() || (input.invoiceNumber ? `Invoice ${input.invoiceNumber}` : "")
+  if (!input.invoiceNumber) blockers.push(`Finalize the ${noun} first; that gives it its number.`)
+  if (!input.invoiceDate) blockers.push(`The ${noun} has no date.`)
+  const description = input.title.replaceAll(/\s+/g, " ").trim() || (input.invoiceNumber ? `${input.credit ? "Credit memo" : "Invoice"} ${input.invoiceNumber}` : "")
   if (description.length > SAGE_HEADER_DESCRIPTION_MAX) {
     blockers.push(`Sage allows ${SAGE_HEADER_DESCRIPTION_MAX} characters for the invoice description; "${description}" has ${description.length}.`)
   }
@@ -255,8 +263,8 @@ export function planSimpleInvoiceForSage(input: {
       costCode: line.costCode,
       description: sageLineDescription(line),
       taxable: line.taxable,
-      amountCents: line.amountCents,
-      billedCents: line.amountCents,
+      amountCents: sign * line.amountCents,
+      billedCents: sign * line.amountCents,
       sageCostCodeRecord: record,
       sageCostCodeName: mapping.status === "mapped" ? mapping.sageName : null,
       accountNumber: input.incomeAccount,
@@ -269,10 +277,11 @@ export function planSimpleInvoiceForSage(input: {
   }
   if (lines.length === 0) blockers.push("Add at least one line.")
   const linesTotalCents = lines.reduce((sum, line) => sum + line.amountCents, 0)
-  if (lines.length > 0 && linesTotalCents <= 0) blockers.push("The invoice total must be more than zero.")
+  if (lines.length > 0 && sign * linesTotalCents <= 0) blockers.push(`The ${noun} total must be more than zero.`)
   const taxableCents = taxable.reduce((sum, line) => sum + line.amountCents, 0)
   const taxDistrict = taxable.length > 0 ? input.taxDistrict : null
-  const expectedSalesTaxCents = salesTaxCents(taxableCents, taxDistrict?.rateBasisPoints ?? null)
+  // A credit's tax is the invoice's own tax, negative (rounded on the positive amount, as Compass stored it).
+  const expectedSalesTaxCents = sign * salesTaxCents(sign * taxableCents, taxDistrict?.rateBasisPoints ?? null)
   const netDueCents = linesTotalCents + expectedSalesTaxCents
   return {
     invoiceNumber: input.invoiceNumber ?? "",

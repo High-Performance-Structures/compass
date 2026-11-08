@@ -58,6 +58,7 @@ export async function loadSimpleInvoiceDocument(db: Db, projectId: string, invoi
   if (!invoice) return null
   return {
     invoiceNumber: invoice.invoiceNumber,
+    creditMemo: invoice.invoiceKind === "credit_memo",
     status: invoice.status,
     title: invoice.title,
     memo: invoice.memo,

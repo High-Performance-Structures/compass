@@ -722,6 +722,9 @@
     "sageEstimateExports": [
       "src/lib/domain/sage-bridge/estimate-store.ts"
     ],
+    "sageDepositArExports": [
+      "src/lib/domain/sage-bridge/ar-invoice-store.ts"
+    ],
     "sageInvoiceArExports": [
       "src/lib/domain/sage-bridge/ar-invoice-store.ts"
     ],

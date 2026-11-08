@@ -8,6 +8,7 @@ import {
   updateSageInvoiceArExportsStatement,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { sageBridgeBatchLimit, sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
+import { claimDepositWriterRequests } from "@/lib/financials/deposit-sage"
 import { buildSimpleInvoiceWriterRequest } from "@/lib/financials/simple-invoice-sage"
 import { buildArInvoiceWriterRequest } from "@/lib/sage/ar-invoice-sync"
 import { AR_INVOICE_WRITER, authorizeSageChangeOrderBridge } from "@/lib/sage/change-order-bridge"
@@ -16,8 +17,8 @@ const MAX_BATCH = 5
 const CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
 
 /**
- * The Sage writer's poll for billed pay requests and simple Compass
- * invoices: claims queued AR invoices, each built from its record right now. A guard that fails here flags
+ * The Sage writer's poll for billed pay requests, simple Compass invoices
+ * (credit memos among them) and deposit requests: claims queued AR invoices, each built from its record right now. A guard that fails here flags
  * the pay request as needing attention instead of sending it.
  */
 export async function GET(request: Request): Promise<Response> {
@@ -118,5 +119,7 @@ export async function GET(request: Request): Promise<Response> {
       requests.push({ id: candidate.id, claimToken, payload: built.payload })
     }
   }
+  // Deposit requests share the writer too, claimed from their own table.
+  requests.push(...(await claimDepositWriterRequests(db, { organizationId, limit: limit - requests.length, nowIso, staleBefore })))
   return Response.json({ organizationId, requests })
 }

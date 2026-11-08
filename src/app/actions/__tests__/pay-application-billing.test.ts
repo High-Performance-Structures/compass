@@ -129,7 +129,7 @@ describe("deposit requests", () => {
     ]).run()
     const requests = await getProjectDepositRequests("bishop")
     expect(requests).toEqual([
-      { id: "second", number: "H-430-1900-DEP-2", status: "requested", amountCents: 25_000_00, requestedAt: "2026-10-19", dueDate: "2026-11-01", receivedAt: null },
+      { id: "second", number: "H-430-1900-DEP2", status: "requested", amountCents: 25_000_00, requestedAt: "2026-10-19", dueDate: "2026-11-01", receivedAt: null },
     ])
     expect(JSON.stringify(requests)).not.toContain("Internal only")
     expect(mocks.assertProjectAccess).toHaveBeenCalled()

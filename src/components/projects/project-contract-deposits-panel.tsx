@@ -11,7 +11,9 @@ import {
   type ProjectContractDepositItem,
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
+import type { DepositSageState } from "@/app/actions/project-deposit-sage"
 import { DepositRequestDialog } from "@/components/projects/deposit-request-dialog"
+import { DepositSageControl } from "@/components/projects/deposit-sage-control"
 import { ImportedDrawDepositDialog, type ImportedDrawDepositTarget } from "@/components/projects/imported-draw-deposit-dialog"
 import { OwnerDocumentNoticeActions } from "@/components/projects/owner-document-notice-actions"
 import { Badge } from "@/components/ui/badge"
@@ -224,9 +226,12 @@ function DepositDialog({
 export function ProjectContractDepositsPanel({
   projectId,
   summary,
+  sage = null,
 }: {
   readonly projectId: string
   readonly summary: ProjectContractDepositSummary
+  /** Deposit requests' Sage AR invoices; null hides Send to Sage. */
+  readonly sage?: DepositSageState | null
 }): React.ReactElement {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -246,7 +251,8 @@ export function ProjectContractDepositsPanel({
   }
 
   function voidDeposit(deposit: ProjectContractDepositItem): void {
-    if (!window.confirm("Void this deposit? It will no longer be applied to pay applications.")) return
+    const inSage = sage?.deposits[deposit.id]?.export?.status === "succeeded"
+    if (!window.confirm(`Void this deposit? It will no longer be applied to pay applications.${inSage ? " Its AR invoice stays in Sage; void it in Sage too." : ""}`)) return
     startTransition(async () => {
       const result = await voidProjectContractDeposit(projectId, deposit.id)
       if (!result.success) {
@@ -355,6 +361,9 @@ export function ProjectContractDepositsPanel({
                     documentLabel={`the ${money(deposit.requestedAmountCents)} deposit request`}
                     size="sm"
                   />
+                )}
+                {sage?.deposits[deposit.id] && (
+                  <DepositSageControl projectId={projectId} depositId={deposit.id} row={sage.deposits[deposit.id]} writesEnabled={sage.writesEnabled} />
                 )}
                 {deposit.evidenceUrl && (
                   <Button variant="ghost" size="sm" asChild>

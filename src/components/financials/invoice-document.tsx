@@ -21,10 +21,10 @@ export function InvoiceDocument({ brand, invoice }: { readonly brand: ProjectBra
           </div>
         </div>
         <div className="text-right">
-          <h1 className="text-3xl font-bold uppercase tracking-wide">{invoice.status === "void" ? "Void invoice" : "Invoice"}</h1>
+          <h1 className="text-3xl font-bold uppercase tracking-wide">{invoice.status === "void" ? (invoice.creditMemo ? "Void credit memo" : "Void invoice") : invoice.creditMemo ? "Credit memo" : "Invoice"}</h1>
           <p className="mt-2 text-sm font-semibold">{invoice.invoiceNumber ?? "Draft"}</p>
           <p>Date: {formatDate(invoice.issueDate)}</p>
-          <p>Due: {invoice.dueDate ? formatDate(invoice.dueDate) : "Upon receipt"}</p>
+          {invoice.creditMemo ? null : <p>Due: {invoice.dueDate ? formatDate(invoice.dueDate) : "Upon receipt"}</p>}
         </div>
       </div>
 
@@ -93,7 +93,7 @@ export function InvoiceDocument({ brand, invoice }: { readonly brand: ProjectBra
             </tr>
           )}
           <tr>
-            <td colSpan={anyTaxable ? 4 : 3} className="py-2 text-right text-base font-bold uppercase">Balance due</td>
+            <td colSpan={anyTaxable ? 4 : 3} className="py-2 text-right text-base font-bold uppercase">{invoice.creditMemo ? "Credit total" : "Balance due"}</td>
             <td className="py-2 text-right text-lg font-bold tabular-nums">{formatCents(invoice.status === "void" ? 0 : balance)}</td>
           </tr>
         </tfoot>

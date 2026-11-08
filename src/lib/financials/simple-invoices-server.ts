@@ -15,7 +15,7 @@ import {
   type EstimateLineBilling,
   type InvoiceLineInput,
 } from "@/lib/domain/financials/simple-invoice-rules"
-import type { InvoiceCustomerType, InvoicePriceMode } from "@/lib/domain/financials/statuses"
+import type { InvoiceCustomerType, InvoicePriceMode, SimpleInvoiceKind } from "@/lib/domain/financials/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { SimpleInvoiceSettings } from "@/lib/feature-settings/simple-invoice-settings"
 import { nuTechCustomerPriceCents } from "@/lib/nutech/catalog-pricing"
@@ -434,7 +434,7 @@ export type SimpleInvoiceRecord = {
   readonly id: string
   readonly projectId: string
   readonly status: string
-  readonly invoiceKind: "nutech_sale" | "other"
+  readonly invoiceKind: SimpleInvoiceKind
   readonly invoiceNumber: string | null
   readonly sequenceNumber: number | null
   readonly customerId: string
@@ -535,6 +535,7 @@ export async function loadSimpleInvoice(db: Db, organizationId: string, projectI
 
 export type SimpleInvoiceListItem = {
   readonly id: string
+  readonly invoiceKind: SimpleInvoiceKind | null
   readonly invoiceNumber: string | null
   readonly title: string | null
   readonly status: string
@@ -552,6 +553,7 @@ export async function listSimpleInvoices(db: Db, organizationId: string, project
   const rows = await db
     .select({
       id: invoices.id,
+      invoiceKind: invoices.invoiceKind,
       invoiceNumber: invoices.invoiceNumber,
       title: invoices.title,
       status: invoices.status,
@@ -571,6 +573,7 @@ export async function listSimpleInvoices(db: Db, organizationId: string, project
     .limit(500)
   return rows.map((row) => ({
     id: row.id,
+    invoiceKind: row.invoiceKind,
     invoiceNumber: row.invoiceNumber,
     title: row.title,
     status: row.status,
@@ -585,7 +588,7 @@ export async function listSimpleInvoices(db: Db, organizationId: string, project
 }
 
 /** The next free sequence number for the project's invoices of a kind. */
-export async function nextInvoiceSequence(db: Db, projectId: string, kind: "nutech_sale" | "other"): Promise<number> {
+export async function nextInvoiceSequence(db: Db, projectId: string, kind: SimpleInvoiceKind): Promise<number> {
   const row = await db
     .select({ max: sql<number | null>`max(${invoices.sequenceNumber})` })
     .from(invoices)

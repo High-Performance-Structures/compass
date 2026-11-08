@@ -27,9 +27,19 @@ export type ReceivablePaidState = "open" | "partially_paid" | "paid"
  * from, and the Square invoice's state.
  */
 
-/** "nutech_sale" uses the material sale format ({project}-S01); "other" the other billing format ({project}-INV01). */
-export const SIMPLE_INVOICE_KINDS = ["nutech_sale", "other"] as const
+/**
+ * "nutech_sale" uses the material sale format ({project}-S01); "other" the
+ * other billing format ({project}-INV01); "credit_memo" the credit memo format
+ * ({project}-CM01). A credit memo's lines and totals are stored as positive
+ * amounts (what is credited); it goes to Sage as an AR invoice with negative
+ * lines, and never takes payments or a Square link.
+ */
+export const SIMPLE_INVOICE_KINDS = ["nutech_sale", "other", "credit_memo"] as const
 export type SimpleInvoiceKind = (typeof SIMPLE_INVOICE_KINDS)[number]
+
+export function isCreditMemoKind(kind: string | null | undefined): boolean {
+  return kind === "credit_memo"
+}
 
 /** Draft (editable), open (final: numbered, can go to Sage, be emailed and take payments), paid states, void. */
 export const SIMPLE_INVOICE_STATUSES = ["draft", "open", "partially_paid", "paid", "void"] as const

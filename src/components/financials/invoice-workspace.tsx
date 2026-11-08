@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import type { InvoiceCustomerType, InvoicePriceMode } from "@/lib/domain/financials/statuses"
+import { SIMPLE_INVOICE_KINDS, type InvoiceCustomerType, type InvoicePriceMode, type SimpleInvoiceKind } from "@/lib/domain/financials/statuses"
 import { formatCents, formatDate } from "@/lib/format"
 import { printPreviewHref } from "@/lib/print/print-documents"
 
@@ -43,7 +43,7 @@ const STATUS_LABEL: Readonly<Record<string, string>> = { draft: "Draft", open: "
 
 type Draft = {
   customerId: string
-  invoiceKind: "nutech_sale" | "other"
+  invoiceKind: SimpleInvoiceKind
   title: string
   memo: string
   issueDate: string
@@ -174,13 +174,18 @@ export function InvoiceWorkspace({ editor }: { readonly editor: ProjectInvoiceEd
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="invoice-kind">Numbering</Label>
-          <Select value={draft.invoiceKind} disabled={!editable || invoice.sequenceNumber !== null} onValueChange={(value) => change({ invoiceKind: value === "nutech_sale" ? "nutech_sale" : "other" })}>
+          <Select value={draft.invoiceKind} disabled={!editable || invoice.sequenceNumber !== null} onValueChange={(value) => {
+            const kind = SIMPLE_INVOICE_KINDS.find((option) => option === value) ?? "other"
+            // A credit memo never has a Square link and isn't a deposit.
+            change(kind === "credit_memo" ? { invoiceKind: kind, squareRequested: false, isDeposit: false } : { invoiceKind: kind })
+          }}>
             <SelectTrigger id="invoice-kind" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="nutech_sale">Material sale (S01, S02…)</SelectItem>
               <SelectItem value="other">Other billing (INV01, INV02…)</SelectItem>
+              <SelectItem value="credit_memo">Credit memo (CM01, CM02…)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -229,20 +234,22 @@ export function InvoiceWorkspace({ editor }: { readonly editor: ProjectInvoiceEd
         )}
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <Label className="flex items-center gap-2 font-normal">
-            <Checkbox checked={draft.isDeposit} disabled={!editable} onCheckedChange={(checked) => change({ isDeposit: checked === true, squareRequested: checked === true && !editor.square.allowed ? false : draft.squareRequested })} />
+            <Checkbox checked={draft.isDeposit} disabled={!editable || draft.invoiceKind === "credit_memo"} onCheckedChange={(checked) => change({ isDeposit: checked === true, squareRequested: checked === true && !editor.square.allowed ? false : draft.squareRequested })} />
             This is a deposit invoice
           </Label>
           <Label className="flex items-start gap-2 font-normal">
             <Checkbox
               className="mt-0.5"
               checked={draft.squareRequested}
-              disabled={!editable || (draft.isDeposit && !editor.square.allowed)}
+              disabled={!editable || draft.invoiceKind === "credit_memo" || (draft.isDeposit && !editor.square.allowed)}
               onCheckedChange={(checked) => change({ squareRequested: checked === true })}
             />
             <span>
               Create Square invoice
               <span className="block text-xs text-muted-foreground">
-                {draft.isDeposit && !editor.square.allowed
+                {draft.invoiceKind === "credit_memo"
+                  ? "A credit memo gives money back; it has no Square link. Enter the credit as positive amounts; Sage gets them as negative lines."
+                  : draft.isDeposit && !editor.square.allowed
                   ? editor.square.reason
                   : !editor.square.connected
                     ? "Square not connected for invoices."

@@ -53,7 +53,7 @@ const invoiceSearchText = (invoice: Invoice): string => invoice.invoiceNumber ??
 
 /** Payments are recorded on the project's financials, where the customer's other open items are. */
 function recordPaymentHref(invoice: Invoice): string | null {
-  if (!invoice.projectId || invoice.amountDue <= 0 || !invoiceAcceptsPayments(invoice.status)) return null
+  if (!invoice.projectId || invoice.amountDue <= 0 || invoice.invoiceKind === "credit_memo" || !invoiceAcceptsPayments(invoice.status)) return null
   return `/dashboard/projects/${encodeURIComponent(invoice.projectId)}/financials?recordPayment=${encodeURIComponent(`invoice:${invoice.id}`)}`
 }
 

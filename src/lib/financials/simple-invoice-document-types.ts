@@ -1,6 +1,8 @@
 /** A simple invoice as its Print Preview and emailed PDF show it. */
 export type InvoiceDocumentData = {
   readonly invoiceNumber: string | null
+  /** A credit memo prints as one, with the credit total instead of a balance due. */
+  readonly creditMemo: boolean
   readonly status: string
   readonly title: string | null
   readonly memo: string | null

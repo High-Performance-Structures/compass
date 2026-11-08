@@ -23,6 +23,7 @@ import {
   INVOICE_CUSTOMER_TYPES,
   INVOICE_PRICE_MODES,
   SIMPLE_INVOICE_KINDS,
+  isCreditMemoKind,
   type InvoiceCustomerType,
   type InvoicePriceMode,
 } from "@/lib/domain/financials/statuses"
@@ -35,7 +36,7 @@ import {
 import { cancelSageInvoiceArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { addDays } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { formatSageInvoiceNumber } from "@/lib/financials/sage-invoice-number"
+import { formatSageInvoiceNumber, simpleInvoiceNumberFormat } from "@/lib/financials/sage-invoice-number"
 import { loadSimpleInvoiceExport, queueSimpleInvoiceSageExport } from "@/lib/financials/simple-invoice-sage"
 import {
   loadCatalogProducts,
@@ -226,6 +227,12 @@ export async function saveProjectInvoiceDraft(projectId: string, invoiceId: stri
     if (input.title.trim().length > 50) return actionFailure("Keep the invoice description to 50 characters (Sage's limit).")
     if (input.memo.length > 2000) return actionFailure("Keep the note under 2,000 characters.")
     if (!(await validCustomer(db, organizationId, input.customerId))) return actionFailure("Choose who the invoice is billed to.")
+    // A credit memo gives money back: no Square link, not a deposit, and only added lines (it never bills estimate lines).
+    if (isCreditMemoKind(kind)) {
+      if (input.squareRequested) return actionFailure("A credit memo can't have a Square invoice.")
+      if (input.isDeposit) return actionFailure("A credit memo can't be a deposit invoice.")
+      if (input.lines.some((line) => line.source === "estimate")) return actionFailure("A credit memo can't bill estimate lines. Remove them and add the credit as added lines.")
+    }
     if (input.squareRequested) {
       const eligibility = squareEligibility({ isDeposit: input.isDeposit, department: project.department, blockedDepositDepartments: settings.squareBlockedDepositDepartments })
       if (!eligibility.allowed) return actionFailure(eligibility.reason)
@@ -313,7 +320,7 @@ export async function finalizeProjectInvoice(projectId: string, invoiceId: strin
     if (invoice.lines.length === 0) return actionFailure("Add at least one line first.")
     if (invoice.totalCents <= 0) return actionFailure("The invoice total must be more than zero.")
     if (invoice.lines.some((line) => line.taxable) && !invoice.taxEntityId) return actionFailure("Some lines are taxable; choose the sales tax district first.")
-    const format = invoice.invoiceKind === "nutech_sale" ? exportSettings.materialSaleInvoiceFormat : exportSettings.otherBillingInvoiceFormat
+    const format = simpleInvoiceNumberFormat(invoice.invoiceKind, exportSettings)
     // A reopened invoice keeps its number; a new one takes the next free number of its kind.
     let sequence = invoice.sequenceNumber ?? (await nextInvoiceSequence(db, projectId, invoice.invoiceKind))
     let number = formatSageInvoiceNumber(format, { projectNumber: project.projectNumber, sageJobNumber: project.sageJobNumber, number: String(sequence) })
@@ -344,7 +351,7 @@ export async function finalizeProjectInvoice(projectId: string, invoiceId: strin
       action: "invoice_finalized",
       entityType: "invoice",
       entityId: invoiceId,
-      summary: `Invoice ${number.value} finalized (${formatCents(invoice.totalCents)}).`,
+      summary: `${isCreditMemoKind(invoice.invoiceKind) ? "Credit memo" : "Invoice"} ${number.value} finalized (${formatCents(invoice.totalCents)}).`,
       createdAt: now,
     })
     revalidateInvoice(projectId, invoiceId)

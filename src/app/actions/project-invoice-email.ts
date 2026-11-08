@@ -93,11 +93,14 @@ function invoiceText(input: {
   readonly totalCents: number
   readonly dueDate: string | null
   readonly squareUrl: string | null
+  readonly creditMemo: boolean
 }): string {
   return [
     input.message.trim(),
     "",
-    `Invoice ${input.invoiceNumber} for ${input.projectName}: ${formatCents(input.totalCents)}${input.dueDate ? `, due ${formatDate(input.dueDate)}` : ""}. The invoice is attached.`,
+    input.creditMemo
+      ? `Credit memo ${input.invoiceNumber} for ${input.projectName}: ${formatCents(input.totalCents)} credited. The credit memo is attached.`
+      : `Invoice ${input.invoiceNumber} for ${input.projectName}: ${formatCents(input.totalCents)}${input.dueDate ? `, due ${formatDate(input.dueDate)}` : ""}. The invoice is attached.`,
     ...(input.squareUrl ? ["", `Pay online (card or bank transfer): ${input.squareUrl}`] : []),
   ].join("\n")
 }
@@ -237,8 +240,9 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
         totalCents: invoice.totalCents,
         dueDate: invoice.dueDate,
         squareUrl,
+        creditMemo: invoice.invoiceKind === "credit_memo",
       }),
-      attachments: [{ filename: `Invoice ${invoice.invoiceNumber}.pdf`.replace(/[^\w .-]/g, "-"), contentType: "application/pdf", content: pdf.bytes }],
+      attachments: [{ filename: `${invoice.invoiceKind === "credit_memo" ? "Credit memo" : "Invoice"} ${invoice.invoiceNumber}.pdf`.replace(/[^\w .-]/g, "-"), contentType: "application/pdf", content: pdf.bytes }],
       sender: from ?? undefined,
       replyName: `${from?.name ?? activityActorName(user)} - Invoice ${invoice.invoiceNumber}`,
       alsoReplyTo: [from?.address ?? user.email],

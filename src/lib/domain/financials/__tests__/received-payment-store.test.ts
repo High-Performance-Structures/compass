@@ -44,7 +44,7 @@ CREATE TABLE invoices (
   id TEXT PRIMARY KEY, organization_id TEXT, customer_id TEXT NOT NULL, project_id TEXT,
   source_system TEXT NOT NULL DEFAULT 'compass', invoice_number TEXT, status TEXT NOT NULL,
   issue_date TEXT NOT NULL, total REAL NOT NULL, amount_paid REAL NOT NULL DEFAULT 0,
-  amount_due REAL NOT NULL DEFAULT 0, billing_scope TEXT NOT NULL DEFAULT 'construction',
+  amount_due REAL NOT NULL DEFAULT 0, billing_scope TEXT NOT NULL DEFAULT 'construction', invoice_kind TEXT,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX invoices_scope_record_unique ON invoices (organization_id, project_id, id);
@@ -74,7 +74,7 @@ INSERT INTO project_budget_applications VALUES
   ('app-1', 'p1', 'compass_contract_budget', '3', '2026-10-25', 'billed', 10000, '2026-10-26T00:00:00Z', NULL, '2026-10-26', 1),
   ('app-2', 'p1', 'compass_contract_budget', '4', '2026-11-25', 'internal_review', 9000, NULL, NULL, '2026-11-26', 0);
 INSERT INTO invoices VALUES
-  ('inv-1', 'org-1', 'client-1', 'p1', 'compass', '1001', 'sent', '2026-10-01', 500, 0, 500, 'construction', 'x', 'x');
+  ('inv-1', 'org-1', 'client-1', 'p1', 'compass', '1001', 'sent', '2026-10-01', 500, 0, 500, 'construction', NULL, 'x', 'x');
 `
 
 const migration = [
@@ -357,10 +357,20 @@ describe("shared Sage invoice numbers", () => {
   it("flags a draw and an imported Sage invoice with the same Sage invoice number", async () => {
     sqlite.exec(`UPDATE project_budget_applications SET sage_invoice_number = 'S-77' WHERE id = 'app-1';
       INSERT INTO invoices VALUES
-        ('inv-s', 'org-1', 'client-1', 'p1', 'sage', 's-77', 'open', '2026-10-02', 100, 0, 100, 'construction', 'x', 'x');`)
+        ('inv-s', 'org-1', 'client-1', 'p1', 'sage', 's-77', 'open', '2026-10-02', 100, 0, 100, 'construction', NULL, 'x', 'x');`)
     const items = await readProjectReceivables(db, scope)
     expect(items.find((item) => item.id === "app-1")?.sharedSageInvoiceWith).toBe("Invoice s-77")
     expect(items.find((item) => item.id === "inv-s")?.sharedSageInvoiceWith).toBe("Pay application 3")
     expect(items.find((item) => item.id === "inv-1")?.sharedSageInvoiceWith).toBeNull()
+  })
+})
+
+describe("credit memos", () => {
+  it("never lists a credit memo as something a payment can apply to", async () => {
+    sqlite.exec(`INSERT INTO invoices VALUES
+        ('inv-cm', 'org-1', 'client-1', 'p1', 'compass', 'O-100-1-CM01', 'open', '2026-10-03', 50, 0, 50, 'construction', 'credit_memo', 'x', 'x');`)
+    const items = await readProjectReceivables(db, scope)
+    expect(items.some((item) => item.id === "inv-cm")).toBe(false)
+    expect(items.some((item) => item.id === "inv-1")).toBe(true)
   })
 })

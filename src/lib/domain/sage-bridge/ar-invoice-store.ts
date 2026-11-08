@@ -1,14 +1,15 @@
 /**
- * The only writer of sage_ar_invoice_exports and sage_invoice_ar_exports
- * (architecture standard, section 1): billed pay requests and simple Compass
- * invoices queued for Sage as AR invoices. Writes are
+ * The only writer of sage_ar_invoice_exports, sage_invoice_ar_exports and
+ * sage_deposit_ar_exports (architecture standard, section 1): billed pay
+ * requests, simple Compass invoices (credit memos among them) and deposit
+ * requests queued for Sage as AR invoices. Writes are
  * fenced by status and claim token in the WHERE clause, like the rest of the
  * Sage bridge. No auth here: callers resolve access or verify the bridge
  * signature first.
  */
 import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm"
 
-import { sageArInvoiceExports, sageInvoiceArExports } from "@/db/schema-sage"
+import { sageArInvoiceExports, sageDepositArExports, sageInvoiceArExports } from "@/db/schema-sage"
 import { SAGE_AR_INVOICE_EXPORT_STATUSES, type SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -269,5 +270,125 @@ export async function cancelSageInvoiceArExport(
   }).returning({ id: sageInvoiceArExports.id })
   if (cancelled.length > 0) return true
   const row = await db.select({ id: sageInvoiceArExports.id }).from(sageInvoiceArExports).where(forInvoice).get()
+  return !row
+}
+
+// ---------------------------------------------------------------------------
+// Deposit requests (sage_deposit_ar_exports): the same lifecycle, keyed by
+// the deposit.
+// ---------------------------------------------------------------------------
+
+export type SageDepositArExportRequest = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly depositId: string
+  readonly status: Extract<SageArInvoiceExportStatus, "queued" | "needs_attention">
+  readonly invoiceNumber: string
+  readonly requestedByUserId: string | null
+  readonly errorMessage: string | null
+  readonly now: string
+}
+
+/** Queues (or flags) a deposit request's export; a running or succeeded row is left alone. Returns whether it was written. */
+export async function upsertSageDepositArExport(db: Db, row: SageDepositArExportRequest): Promise<boolean> {
+  const values = {
+    id: crypto.randomUUID(),
+    organizationId: row.organizationId,
+    projectId: row.projectId,
+    depositId: row.depositId,
+    status: row.status,
+    invoiceNumber: row.invoiceNumber,
+    requestedByUserId: row.requestedByUserId,
+    requestedAt: row.now,
+    errorMessage: row.errorMessage,
+    updatedAt: row.now,
+  }
+  assertListFields("sage_deposit_ar_exports", values, LISTS)
+  const written = await db
+    .insert(sageDepositArExports)
+    .values(values)
+    .onConflictDoUpdate({
+      target: sageDepositArExports.depositId,
+      set: {
+        status: row.status,
+        invoiceNumber: row.invoiceNumber,
+        requestedByUserId: row.requestedByUserId,
+        requestedAt: row.now,
+        claimToken: null,
+        claimedAt: null,
+        payloadJson: null,
+        errorMessage: row.errorMessage,
+        completedAt: null,
+        updatedAt: row.now,
+      },
+      setWhere: and(
+        eq(sageDepositArExports.organizationId, row.organizationId),
+        ne(sageDepositArExports.status, "running"),
+        ne(sageDepositArExports.status, "succeeded")
+      ),
+    })
+    .returning({ id: sageDepositArExports.id })
+  return written.length > 0
+}
+
+/** Claims one queued (or stale running) deposit export for the writer. */
+export async function claimSageDepositArExport(
+  db: Db,
+  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly now: string; readonly staleBefore: string }
+): Promise<boolean> {
+  const claimed = await db
+    .update(sageDepositArExports)
+    .set({
+      status: "running",
+      claimToken: input.claimToken,
+      claimedAt: input.now,
+      attemptCount: sql`${sageDepositArExports.attemptCount} + 1`,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(sageDepositArExports.id, input.id),
+        eq(sageDepositArExports.organizationId, input.organizationId),
+        or(
+          eq(sageDepositArExports.status, "queued"),
+          and(eq(sageDepositArExports.status, "running"), lt(sageDepositArExports.claimedAt, input.staleBefore))
+        )
+      )
+    )
+    .returning({ id: sageDepositArExports.id })
+  return claimed.length > 0
+}
+
+function depositExportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
+  assertListFields("sage_deposit_ar_exports", patch, LISTS)
+  return db.update(sageDepositArExports).set(patch).where(where)
+}
+
+/** Unexecuted update fenced by the caller's `where`, for a batch. */
+export function updateSageDepositArExportsStatement(
+  db: Db,
+  where: SQL | undefined,
+  patch: SageArInvoiceExportPatch
+): ReturnType<typeof depositExportUpdate> {
+  return depositExportUpdate(db, where, patch)
+}
+
+/**
+ * Cancels a deposit's export that hasn't reached Sage (deposit voided).
+ * Returns false when the writer is running it or it already succeeded.
+ */
+export async function cancelSageDepositArExport(
+  db: Db,
+  input: { readonly organizationId: string; readonly depositId: string; readonly now: string }
+): Promise<boolean> {
+  const forDeposit = and(eq(sageDepositArExports.depositId, input.depositId), eq(sageDepositArExports.organizationId, input.organizationId))
+  const cancelled = await depositExportUpdate(db, and(forDeposit, inArray(sageDepositArExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+    status: "cancelled",
+    claimToken: null,
+    completedAt: input.now,
+    updatedAt: input.now,
+  }).returning({ id: sageDepositArExports.id })
+  if (cancelled.length > 0) return true
+  const row = await db.select({ id: sageDepositArExports.id }).from(sageDepositArExports).where(forDeposit).get()
   return !row
 }

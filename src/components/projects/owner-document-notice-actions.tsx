@@ -39,7 +39,7 @@ export function OwnerDocumentNoticeActions({
   readonly projectId: string
   readonly kind: OwnerDocumentKind
   readonly documentId: string
-  /** "pay application 1", "deposit request H-430-1900-DEP-1" */
+  /** "pay application 1", "deposit request H-430-1900-DEP1" */
   readonly documentLabel: string
   readonly size?: "default" | "sm"
 }): React.ReactElement {
