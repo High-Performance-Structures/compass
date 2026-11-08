@@ -119,7 +119,7 @@ export function SageArInvoiceSettingsSection(): React.ReactElement {
               <p className="text-xs text-muted-foreground">
                 When pay requests are created in Compass, approving one for billing sends it to Sage as an AR invoice: this period&apos;s billing on
                 every cost code (change orders and variances each on their own line, taxable work on its own line), with the period&apos;s retention.
-                Anything that doesn&apos;t tie shows on the pay request as Needs attention. Office staff can also send or retry from the pay request.
+                Anything that doesn&apos;t tie shows on the pay request as Needs attention. Office staff can also send or retry from the pay request. Off by default: pay requests built in Sage never go as AR invoices.
               </p>
             </div>
             <Switch

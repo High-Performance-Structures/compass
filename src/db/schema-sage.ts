@@ -13,7 +13,7 @@ import {
   SAGE_ESTIMATE_EXPORT_STATUSES,
   SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
 } from "../lib/domain/sage-bridge/statuses"
-import { PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
+import { PAY_APPLICATION_SAGE_CHECK_STATUSES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
 import { customers, organizations, projectBudgetApplications, projectChangeOrders, projects, users, vendors } from "./schema"
 import { projectEstimates } from "./schema-estimates"
 
@@ -446,6 +446,37 @@ export const payApplicationSageSyncs = sqliteTable(
     index("pay_application_sage_syncs_project_idx").on(table.projectId, table.createdAt),
     index("pay_application_sage_syncs_snapshot_idx").on(table.snapshotId),
     index("pay_application_sage_syncs_created_by_idx").on(table.createdBy),
+  ]
+)
+
+/**
+ * Each change in the Sage check of a pay request built in Sage: its posted AR
+ * invoice against what the pay request should have produced. A row is added
+ * only when the result changes, so Activity and notices fire once per change.
+ */
+export const payApplicationSageChecks = sqliteTable(
+  "pay_application_sage_checks",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => projectBudgetApplications.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => sagePayApplicationSnapshots.id, { onDelete: "cascade" }),
+    status: text("status", { enum: PAY_APPLICATION_SAGE_CHECK_STATUSES }).notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    // json: the findings shown at the time ({ key, message }[]), kept for the audit trail.
+    findingsJson: text("findings_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("pay_application_sage_checks_application_idx").on(table.applicationId, table.createdAt),
+    index("pay_application_sage_checks_project_idx").on(table.projectId),
+    index("pay_application_sage_checks_snapshot_idx").on(table.snapshotId),
   ]
 )
 

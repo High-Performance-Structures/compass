@@ -2,6 +2,45 @@ import { z } from "zod/v4"
 
 const money = z.number().finite().min(-1_000_000_000_000).max(1_000_000_000_000)
 const MAX_PAY_APPLICATION_LINES = 150
+const MAX_INVOICE_LINES = 150
+
+/** A Sage tax district (taxdst.recnum) with its name and combined rate, when Sage has them. */
+const sageTaxDistrictSchema = z.object({
+  code: z.string().trim().min(1).max(32),
+  name: z.string().max(256).nullable(),
+  ratePercent: z.number().finite().min(0).max(100).nullable(),
+})
+
+/**
+ * The AR invoice Sage created when the progress billing was posted (acrinv
+ * and its arivln lines), read only. Bridges before snapshot v4 don't send it.
+ */
+const sageArInvoiceReadSchema = z.object({
+  sourceInvoiceId: z.string().min(1).max(256),
+  invoiceNumber: z.string().trim().max(64).nullable(),
+  invoiceDate: z.iso.date().nullable(),
+  status: z.string().max(32).nullable(),
+  taxDistrict: sageTaxDistrictSchema.nullable(),
+  taxableAmount: money,
+  nonTaxableAmount: money,
+  salesTax: money,
+  retention: money,
+  total: money,
+  lines: z
+    .array(
+      z.object({
+        lineNumber: z.number().int(),
+        description: z.string().max(1000).nullable(),
+        costCode: z.string().max(128).nullable(),
+        amount: money,
+        retention: money,
+        taxable: z.boolean(),
+      })
+    )
+    .max(MAX_INVOICE_LINES),
+})
+
+export type SageArInvoiceRead = z.infer<typeof sageArInvoiceReadSchema>
 
 export const sagePayApplicationHeaderSchema = z.object({
   sourceApplicationId: z.string().min(1).max(256),
@@ -22,6 +61,14 @@ export const sagePayApplicationHeaderSchema = z.object({
   balanceToFinish: money,
   /** Sage's AR invoice number for the application, once it is invoiced; older bridges don't send it. */
   invoiceNumber: z.string().trim().min(1).max(64).nullable().optional(),
+  // Snapshot v4 and later (older bridges leave these out):
+  /** The progress billing's tax district (aiafrm.taxdst). */
+  taxDistrict: sageTaxDistrictSchema.nullable().optional(),
+  /** The progress billing's sales tax and invoice total (aiafrm.slstax / invttl). */
+  salesTax: money.optional(),
+  invoiceTotal: money.optional(),
+  /** The posted AR invoice; null until posted. */
+  invoice: sageArInvoiceReadSchema.nullable().optional(),
 })
 
 export const sagePayApplicationLineSchema = z.object({
@@ -42,6 +89,8 @@ export const sagePayApplicationLineSchema = z.object({
   retainageHeld: money,
   balanceToFinish: money,
   sortOrder: z.number().int().min(0),
+  /** Sage's Taxable flag on the G703 line (aialin.taxabl); snapshot v4 and later. */
+  taxable: z.boolean().optional(),
 })
 
 export const sagePayApplicationSnapshotSchema = z.object({

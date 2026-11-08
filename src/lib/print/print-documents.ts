@@ -13,6 +13,7 @@ export const PRINT_DOCUMENTS = {
   "meeting-transcript": { title: "Meeting transcript", render: "page", params: ["meetingId"], landscape: false },
   "daily-logs": { title: "Daily logs", render: "pdf", params: ["logIds", "start", "end", "author"], landscape: false },
   "sage-export-preview": { title: "Sage export preview", render: "page", params: ["applicationId"], landscape: true },
+  "sage-billing-checklist": { title: "Enter in Sage", render: "page", params: ["applicationId"], landscape: true },
   "estimate-compare": {
     title: "Estimate version comparison",
     render: "page",

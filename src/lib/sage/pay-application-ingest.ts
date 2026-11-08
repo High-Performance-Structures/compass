@@ -21,7 +21,8 @@ import {
 } from "@/lib/domain/sage-bridge/store"
 import { validateSageSyncClaim } from "@/lib/sage/sync-claim"
 import { projects } from "@/db/schema"
-import { sageSyncActor, syncPayRequestFromSageSnapshot } from "@/lib/financials/sage-pay-request-sync"
+import { recordSageBillingCheck } from "@/lib/financials/sage-billing-check"
+import { loadSageSnapshot, sageSyncActor, syncPayRequestFromSageSnapshot } from "@/lib/financials/sage-pay-request-sync"
 import {
   sageSnapshotApplicationInsertStatement,
   sageSnapshotBudgetLineInsertStatement,
@@ -131,13 +132,21 @@ async function syncPayRequest(
     const db = getDb(env.DB)
     const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, run.projectId)).get()
     if (!project?.organizationId) return
-    await syncPayRequestFromSageSnapshot(db, {
+    const actor = await sageSyncActor(db, run.requestedByUserId)
+    const outcome = await syncPayRequestFromSageSnapshot(db, {
       organizationId: project.organizationId,
       projectId: run.projectId,
       snapshotId,
-      actor: await sageSyncActor(db, run.requestedByUserId),
+      actor,
       now: new Date().toISOString(),
     })
+    // Check the pay request against Sage's billing (and its posted invoice).
+    if (outcome.kind !== "skipped") {
+      const snapshot = await loadSageSnapshot(db, run.projectId, snapshotId)
+      if (snapshot) {
+        await recordSageBillingCheck(db, { organizationId: project.organizationId, projectId: run.projectId, applicationId: outcome.applicationId, snapshot, actor })
+      }
+    }
   } catch (error) {
     console.error("Unable to sync the pay request from Sage", error)
   }

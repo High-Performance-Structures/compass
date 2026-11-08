@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
+import type { MessageDeskSettings } from "@/lib/feature-settings/message-desk-settings"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map-settings-section"
 import { WeatherAlertSettingsSection } from "@/components/settings/weather-alert-settings-section"
@@ -28,6 +29,7 @@ import { ChangeOrderAcceptanceSettingsSection } from "@/components/settings/chan
 import { VarianceSettingsSection } from "@/components/settings/variance-settings-section"
 import { SageExportSettingsSection } from "@/components/settings/sage-export-settings-section"
 import { SageArInvoiceSettingsSection } from "@/components/settings/sage-ar-invoice-settings-section"
+import { SagePayRequestCheckSettingsSection } from "@/components/settings/sage-pay-request-check-settings-section"
 import { SageChangeOrderSettingsSection } from "@/components/settings/sage-change-order-settings-section"
 import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
@@ -302,6 +304,7 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return (
         <div className="space-y-6">
           <SageExportSettingsSection />
+          <SagePayRequestCheckSettingsSection />
           <SageArInvoiceSettingsSection />
         </div>
       )

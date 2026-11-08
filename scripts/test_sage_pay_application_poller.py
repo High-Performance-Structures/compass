@@ -136,7 +136,7 @@ class SagePayApplicationPollerTests(unittest.TestCase):
         )
 
         self.assertEqual(snapshot["header"]["sourceApplicationId"], "sage-aiafrm:13")
-        self.assertTrue(snapshot["header"]["sourceRevision"].startswith("mapping=v3;"))
+        self.assertTrue(snapshot["header"]["sourceRevision"].startswith("mapping=v4;"))
         self.assertEqual(
             snapshot["header"]["sageJobId"],
             "78021b5e-5342-f111-a841-bccd992bc5d1",
@@ -154,6 +154,108 @@ class SagePayApplicationPollerTests(unittest.TestCase):
             request, {**header, "invnum": " X-100-PR03 "}, lines, "2026-07-01T18:00:00+00:00"
         )
         self.assertEqual(invoiced["header"]["invoiceNumber"], "X-100-PR03")
+        # No posted AR invoice and no tax district on an open application.
+        self.assertIsNone(snapshot["header"]["invoice"])
+        self.assertIsNone(snapshot["header"]["taxDistrict"])
+        self.assertFalse(snapshot["lines"][0]["taxable"])
+
+    def test_build_snapshot_carries_posted_invoice_and_taxable_flags(self) -> None:
+        request = PollRequest(
+            run_id="11111111-1111-4111-8111-111111111111",
+            project_id="project-1",
+            sage_job_id="620",
+            sage_job_number="620",
+            claim_token="22222222-2222-4222-8222-222222222222",
+        )
+        header = {
+            "recnum": 21,
+            "jobnum": 620,
+            "sage_job_id": "job-guid",
+            "appnum": 9,
+            "period": dt.date(2026, 10, 31),
+            "status": 3,
+            "schttl": Decimal("1000.00"),
+            "chgttl": Decimal("0.00"),
+            "conttl": Decimal("1000.00"),
+            "cmpttl": Decimal("500.00"),
+            "ttlret": Decimal("0.00"),
+            "ttlern": Decimal("0.00"),
+            "prvbil": Decimal("400.00"),
+            "crtdue": Decimal("100.00"),
+            "balfin": Decimal("500.00"),
+            "upddte": dt.datetime(2026, 11, 1, 9, 0),
+            "taxdst": 640001,
+            "dstnme": "Example Combined",
+            "sumrte": Decimal("8.1500"),
+            "slstax": Decimal("8.15"),
+            "invttl": Decimal("108.15"),
+            "invoice_recnum": 1700,
+            "invnum": "X-100-PR09",
+            "invoice_invdte": dt.date(2026, 10, 31),
+            "invoice_status": 1,
+            "invoice_taxdst": 640001,
+            "invoice_dstnme": "Example Combined",
+            "invoice_sumrte": Decimal("8.1500"),
+            "invoice_taxabl": Decimal("100.00"),
+            "invoice_nontax": Decimal("0.00"),
+            "invoice_slstax": Decimal("8.15"),
+            "invoice_retain": Decimal("0.00"),
+            "invoice_invttl": Decimal("108.15"),
+            "invoice_upddte": dt.datetime(2026, 11, 1, 9, 5),
+        }
+        line = {
+            "recnum": 21,
+            "linnum": 1,
+            "divnum": 6,
+            "master_divnum": 6,
+            "cstcde": Decimal("61000.000"),
+            "cdenme": "Rough Carpentry",
+            "dscrpt": "06 Framing",
+            "schamt": Decimal("1000.00"),
+            "chgamt": Decimal("0.00"),
+            "newcon": Decimal("1000.00"),
+            "prvbll": Decimal("400.00"),
+            "curbll": Decimal("100.00"),
+            "strmat": Decimal("0.00"),
+            "ttlcmp": Decimal("500.00"),
+            "retamt": Decimal("0.00"),
+            "balfin": Decimal("500.00"),
+            "upddte": dt.datetime(2026, 11, 1, 9, 0),
+            "taxabl": "Y",
+        }
+        invoice_lines = [
+            {"linnum": 1, "dscrpt": "Progress billing", "cstcde": None, "extprc": Decimal("100.00"), "hldamt": Decimal("0.00"), "taxabl": "Y"}
+        ]
+
+        snapshot = build_snapshot(
+            request, header, [line], "2026-11-01T18:00:00+00:00", invoice_lines
+        )
+
+        self.assertTrue(snapshot["lines"][0]["taxable"])
+        self.assertEqual(snapshot["header"]["status"], "3")
+        self.assertEqual(
+            snapshot["header"]["taxDistrict"],
+            {"code": "640001", "name": "Example Combined", "ratePercent": 8.15},
+        )
+        self.assertEqual(snapshot["header"]["invoiceTotal"], 108.15)
+        invoice = snapshot["header"]["invoice"]
+        self.assertEqual(invoice["sourceInvoiceId"], "sage-acrinv:1700")
+        self.assertEqual(invoice["invoiceNumber"], "X-100-PR09")
+        self.assertEqual(invoice["invoiceDate"], "2026-10-31")
+        self.assertEqual(invoice["salesTax"], 8.15)
+        self.assertEqual(invoice["total"], 108.15)
+        self.assertEqual(invoice["taxDistrict"]["code"], "640001")
+        self.assertEqual(
+            invoice["lines"],
+            [{"lineNumber": 1, "description": "Progress billing", "costCode": None, "amount": 100.0, "retention": 0.0, "taxable": True}],
+        )
+        # Posting and the invoice are part of the source revision.
+        self.assertIn(";status=3;invoice=2026-11-01T09:05:00+00:00", snapshot["header"]["sourceRevision"])
+        unposted = build_snapshot(
+            request, {**header, "status": 2, "invoice_recnum": None}, [line], "2026-11-01T18:00:00+00:00"
+        )
+        self.assertNotEqual(unposted["header"]["sourceRevision"], snapshot["header"]["sourceRevision"])
+        self.assertIsNone(unposted["header"]["invoice"])
 
     def test_buildertrend_style_special_cost_codes_use_description_division(self) -> None:
         request = PollRequest(

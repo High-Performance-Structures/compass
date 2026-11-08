@@ -30,6 +30,8 @@ export type SageSnapshotLine = {
   readonly retainageHeld: number
   readonly balanceToFinish: number
   readonly sortOrder: number
+  /** Sage's Taxable flag on the line; bridges before snapshot v4 leave it out. */
+  readonly taxable?: boolean
 }
 
 /** A Compass cost code the project already bills on (its contract budget). */

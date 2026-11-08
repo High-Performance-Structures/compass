@@ -108,6 +108,27 @@ export async function latestSageSnapshot(db: Db, projectId: string): Promise<Sag
   return null
 }
 
+/**
+ * The newest reconciled snapshot of the Sage application a pay application
+ * follows. A billed pay application keeps its amounts, so later snapshots
+ * (posting, the AR invoice) aren't recorded as syncs; this finds them.
+ */
+export async function latestSnapshotForPayApplication(db: Db, projectId: string, applicationId: string): Promise<SageSnapshotRecord | null> {
+  const latest = await latestSageSync(db, applicationId)
+  if (!latest) return null
+  const rows = await db
+    .select()
+    .from(sagePayApplicationSnapshots)
+    .where(and(eq(sagePayApplicationSnapshots.projectId, projectId), eq(sagePayApplicationSnapshots.sourceApplicationId, latest.sourceApplicationId)))
+    .orderBy(desc(sagePayApplicationSnapshots.capturedAt))
+    .limit(5)
+  for (const row of rows) {
+    const record = snapshotRecord(row)
+    if (record) return record
+  }
+  return null
+}
+
 /** The current contract budget revision and its cost codes, which synced lines map onto. */
 async function currentRevision(db: Db, projectId: string): Promise<{ readonly id: string | null; readonly codes: readonly CompassCostCode[] }> {
   const revision = await db

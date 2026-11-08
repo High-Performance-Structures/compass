@@ -389,6 +389,9 @@
     "payApplicationPrepaidMarks": [
       "src/lib/domain/financials/store.ts"
     ],
+    "payApplicationSageChecks": [
+      "src/lib/domain/budget/store.ts"
+    ],
     "payApplicationSageSyncs": [
       "src/lib/domain/budget/store.ts"
     ],
@@ -668,6 +671,9 @@
     "rolePermissionOverrides": [
       "src/app/actions/permission-overrides.ts"
     ],
+    "sageArInvoiceExports": [
+      "src/lib/domain/sage-bridge/ar-invoice-store.ts"
+    ],
     "sageBridgeRequestNonces": [
       "src/lib/domain/sage-bridge/store.ts"
     ],
@@ -703,9 +709,6 @@
     ],
     "sageContactReadRequests": [
       "src/lib/domain/sage-bridge/contact-store.ts"
-    ],
-    "sageArInvoiceExports": [
-      "src/lib/domain/sage-bridge/ar-invoice-store.ts"
     ],
     "sageContactSnapshots": [
       "src/lib/domain/sage-bridge/contact-store.ts"
@@ -957,7 +960,7 @@
     "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1039,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
-    "src/lib/feature-settings/registry.ts": 990,
+    "src/lib/feature-settings/registry.ts": 981,
     "src/lib/notifications/create-event.ts": 843,
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,
