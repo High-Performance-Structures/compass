@@ -14,7 +14,7 @@ import {
   SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
 } from "../lib/domain/sage-bridge/statuses"
 import { PAY_APPLICATION_SAGE_CHECK_STATUSES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
-import { customers, organizations, projectBudgetApplications, projectChangeOrders, projects, users, vendors } from "./schema"
+import { customers, organizations, projectBudgetApplications, projectChangeOrders, projectContractDeposits, projects, users, vendors } from "./schema"
 import { projectEstimates } from "./schema-estimates"
 import { invoices } from "./schema-netsuite"
 
@@ -891,5 +891,52 @@ export const sageInvoiceArExports = sqliteTable(
     index("sage_invoice_ar_exports_project_idx").on(table.projectId, table.status),
     index("sage_invoice_ar_exports_organization_id_idx").on(table.organizationId),
     index("sage_invoice_ar_exports_requested_by_user_id_idx").on(table.requestedByUserId),
+  ]
+)
+
+/**
+ * A Compass deposit request queued for Sage as its own AR invoice
+ * (<job>-DEP1): one line for the deposit on the company's deposit account.
+ * The same writer, payload and lifecycle as simple invoices, keyed by the
+ * deposit. Written only by src/lib/domain/sage-bridge/ar-invoice-store.ts.
+ */
+export const sageDepositArExports = sqliteTable(
+  "sage_deposit_ar_exports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    depositId: text("deposit_id")
+      .notNull()
+      .references(() => projectContractDeposits.id, { onDelete: "cascade" }),
+    status: text("status", { enum: SAGE_AR_INVOICE_EXPORT_STATUSES }).notNull().default("queued"),
+    // snapshot: the invoice number sent to Sage.
+    invoiceNumber: text("invoice_number").notNull(),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    requestedAt: text("requested_at").notNull(),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    // json: provider request snapshot, the AR invoice header and line sent to the Sage writer
+    payloadJson: text("payload_json"),
+    /** Sage's AR invoice record number (acrinv.recnum), once added or found. */
+    sageRecordId: text("sage_record_id"),
+    sageTotalCents: integer("sage_total_cents"),
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_deposit_ar_exports_deposit_idx").on(table.depositId),
+    index("sage_deposit_ar_exports_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
+    index("sage_deposit_ar_exports_project_idx").on(table.projectId, table.status),
+    index("sage_deposit_ar_exports_organization_id_idx").on(table.organizationId),
+    index("sage_deposit_ar_exports_requested_by_user_id_idx").on(table.requestedByUserId),
   ]
 )

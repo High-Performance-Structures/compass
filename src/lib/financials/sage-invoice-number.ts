@@ -1,4 +1,5 @@
-import { SAGE_INVOICE_NUMBER_MAX_LENGTH } from "@/lib/feature-settings/contract-settings"
+import { SAGE_INVOICE_NUMBER_MAX_LENGTH, type SageExportSettings } from "@/lib/feature-settings/contract-settings"
+import type { SimpleInvoiceKind } from "@/lib/domain/financials/statuses"
 
 /*
  * Invoice numbers Compass suggests for Sage, from the company's formats in
@@ -38,4 +39,11 @@ export function formatSageInvoiceNumber(
     return { value, error: `Sage allows ${SAGE_INVOICE_NUMBER_MAX_LENGTH} characters; this invoice number has ${value.length}.` }
   }
   return { value, error: null }
+}
+
+/** The number format a simple invoice of this kind uses: material sale, credit memo, or other billing. */
+export function simpleInvoiceNumberFormat(kind: SimpleInvoiceKind, settings: SageExportSettings): string {
+  if (kind === "nutech_sale") return settings.materialSaleInvoiceFormat
+  if (kind === "credit_memo") return settings.creditMemoInvoiceFormat
+  return settings.otherBillingInvoiceFormat
 }

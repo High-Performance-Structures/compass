@@ -187,6 +187,7 @@ export async function readProjectReceivables(
         billingScope: invoices.billingScope,
         customerId: invoices.customerId,
         sourceSystem: invoices.sourceSystem,
+        invoiceKind: invoices.invoiceKind,
       })
       .from(invoices)
       .where(and(
@@ -220,7 +221,8 @@ export async function readProjectReceivables(
     }))
   }
   for (const invoice of invoiceRows) {
-    if (!invoiceAcceptsPayments(invoice.status)) continue
+    // A credit memo gives money back; it never takes a payment.
+    if (!invoiceAcceptsPayments(invoice.status) || invoice.invoiceKind === "credit_memo") continue
     const number = invoice.invoiceNumber?.trim() || invoice.id.slice(0, 8)
     rows.push(row({
       kind: "invoice",

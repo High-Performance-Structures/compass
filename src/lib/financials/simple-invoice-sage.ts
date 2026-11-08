@@ -15,6 +15,7 @@ import { incomeAccountFor } from "@/lib/feature-settings/sage-ar-invoice-setting
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { indexSageCatalog, mapToSageCostCode } from "@/lib/financials/sage-export-codes"
 import { loadSimpleInvoice, loadSimpleInvoiceProject, type SimpleInvoiceRecord } from "@/lib/financials/simple-invoices-server"
+import { isCreditMemoKind } from "@/lib/domain/financials/statuses"
 import { formatCents } from "@/lib/format"
 import { sageArInvoiceWritePayload, sageArInvoiceWritesEnabled, type SageArInvoiceWritePayload } from "@/lib/sage/ar-invoice-write"
 import type { Db } from "@/lib/server/action-context"
@@ -82,6 +83,7 @@ export async function loadSimpleInvoiceSageSource(
     incomeAccount: incomeAccountFor(settings, project.department),
     sageJobNumber: project.sageJobNumber,
     mapCostCode: (costCode) => mapToSageCostCode(costCode, index),
+    credit: isCreditMemoKind(invoice.invoiceKind),
   })
   return { invoice, sageJobNumber: project.sageJobNumber, sageJobId: project.sageJobId, plan, invoiceType: settings.invoiceType, invoiceStatus: settings.invoiceStatus }
 }
@@ -105,6 +107,7 @@ export async function queueSimpleInvoiceSageExport(input: {
   if (!source) return { status: "skipped", reason: "Invoice not found." }
   if (source.invoice.status === "draft") return { status: "skipped", reason: "Finalize the invoice first." }
   if (source.invoice.status === "void") return { status: "skipped", reason: "This invoice is void." }
+  const label = isCreditMemoKind(source.invoice.invoiceKind) ? "Credit memo" : "Invoice"
   const blocker = source.plan.blockers.length > 0 ? source.plan.blockers.join(" ") : null
   const status = blocker ? "needs_attention" : "queued"
   const now = new Date().toISOString()
@@ -130,8 +133,8 @@ export async function queueSimpleInvoiceSageExport(input: {
     entityId: invoiceId,
     summary:
       status === "needs_attention"
-        ? `Invoice ${source.plan.invoiceNumber}: Sage AR invoice needs attention. ${blocker ?? ""}`.trim()
-        : `Invoice ${source.plan.invoiceNumber}: sent to Sage as an AR invoice (${source.plan.lines.length} lines, ${formatCents(source.plan.netDueCents)}).`,
+        ? `${label} ${source.plan.invoiceNumber}: Sage AR invoice needs attention. ${blocker ?? ""}`.trim()
+        : `${label} ${source.plan.invoiceNumber}: sent to Sage as an AR invoice (${source.plan.lines.length} lines, ${formatCents(source.plan.netDueCents)}).`,
     metadata: { status, invoiceNumber: source.plan.invoiceNumber, totalCents: source.plan.netDueCents },
     createdAt: now,
   })
@@ -169,7 +172,8 @@ export async function buildSimpleInvoiceWriterRequest(
     invoiceStatus: source.invoiceStatus,
   })
   if (!payload) return { kind: "needs_attention", reason: "The invoice's Sage details aren't complete." }
-  return { kind: "ready", payload: { ...payload, invoice: { ...payload.invoice, memo: `Compass invoice ${source.plan.invoiceNumber}`.slice(0, 200) } } }
+  const memo = `Compass ${isCreditMemoKind(source.invoice.invoiceKind) ? "credit memo" : "invoice"} ${source.plan.invoiceNumber}`
+  return { kind: "ready", payload: { ...payload, invoice: { ...payload.invoice, memo: memo.slice(0, 200) } } }
 }
 
 export type SimpleInvoiceExportView = {

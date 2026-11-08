@@ -7,6 +7,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
@@ -69,8 +70,8 @@ export async function POST(request: Request): Promise<Response> {
     .where(fence)
     .get()
   if (!row) {
-    // Not a pay request's export: a simple Compass invoice's, or a stale claim.
-    const invoiceResult = await applySimpleInvoiceSageResult(db, organizationId, result)
+    // Not a pay request's export: a simple Compass invoice's, a deposit request's, or a stale claim.
+    const invoiceResult = (await applySimpleInvoiceSageResult(db, organizationId, result)) ?? (await applyDepositSageResult(db, organizationId, result))
     if (!invoiceResult) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
     return Response.json({ success: true, status: invoiceResult.status }, { status: invoiceResult.httpStatus })
   }

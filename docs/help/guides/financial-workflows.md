@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-11-07"
+  "lastReviewed": "2026-11-08"
 }
 ---
 
@@ -175,7 +175,9 @@ Review original and adjusted estimates, approved changes, scheduled value, prior
 
 Record deposits on a project's **Financials** page under **Contract deposits**. Choose **Record deposit**, then save it as **Requested** (amount and due date) or **Received** (amount, date, how it was paid and the check or reference number). If the contract packet sets a deposit percentage, the amount starts from that. Open a requested deposit and choose **Record payment** when the money arrives. **Void** removes a deposit you entered by mistake.
 
-To ask the client for a deposit, choose **Request deposit**: enter the amount (it starts from the contract's deposit percentage when there is one), a due date and an optional note to the client. Compass creates a numbered **Deposit request** (for example H-430-1900-DEP-1) with a Print Preview to print, save as a PDF or email, and shows it to the owner under **Deposit requests** in the client portal. To let the owner know, use **Create email** or **Send notification** on the open request (see **Telling the owner** below). When the money arrives, choose **Record payment** on it; the request then shows as paid. **Void** withdraws a request.
+To ask the client for a deposit, choose **Request deposit**: enter the amount (it starts from the contract's deposit percentage when there is one), a due date and an optional note to the client. Compass creates a numbered **Deposit request** (for example O-100-1-DEP1, from the deposit format under **Sage export** in Settings) with a Print Preview to print, save as a PDF or email, and shows it to the owner under **Deposit requests** in the client portal. To let the owner know, use **Create email** or **Send notification** on the open request (see **Telling the owner** below). When the money arrives, choose **Record payment** on it; the request then shows as paid. **Void** withdraws a request.
+
+Office staff with finance access can choose **Send to Sage** on an open deposit request. Sage adds it as its own AR invoice with the request's number: one line for the requested amount on the deposit account chosen in Settings › Workflows › Sage AR invoices (no cost code, no sales tax). The deposits list shows its Sage state; a request that needs attention says why and can be sent again. Once it is in Sage its amount and request date can't change. Payments are never sent to Sage; staff enter receipts in Sage. Voiding a request that is in Sage leaves the Sage invoice; void it in Sage too.
 
 A received deposit is applied to pay applications before the client pays the balance. By default Compass applies as much of the unapplied deposit as each new draft pay application can take, starting with the oldest draft. On the pay application, **Less deposit applied** shows the amount; type a different amount and choose **Apply amount**, or **Apply automatically** to go back. Admins can turn automatic application off in Settings under **Contract deposits**.
 
@@ -184,7 +186,8 @@ Use **Invoices** on Project Financials for material sales and one-off work, such
 
 - **New invoice** starts a blank invoice. **Invoice from estimate** (Nu-Tech and other departments without a contract budget, set in Settings › Workflows › Simple invoices) starts from a sent or accepted estimate with everything not yet invoiced, or empty so you pick lines. Each estimate line shows what earlier invoices billed; going over the estimate asks you to confirm.
 - One line editor for every invoice: lines from the estimate, items from the Nu-Tech price list, or typed lines (description, cost code, quantity, unit price). Lines not on the estimate are marked **Added (not on estimate)** and don't count against it. The **Taxable** box is editable on every line; tax uses the invoice's sales tax district.
-- **Finalize** gives the invoice its number from the Sage export formats (material sales `{project}-S01`, other billing `{project}-INV01`). A final invoice can be reopened until it goes out.
+- **Finalize** gives the invoice its number from the Sage export formats (material sales `{project}-S01`, other billing `{project}-INV01`, credit memos `{project}-CM01`).
+- **Credit memo**: choose **Credit memo** under **Numbering** to give money back to a customer. Enter the credit as positive amounts on added lines (a credit memo never bills estimate lines, takes payments or has a Square link). It prints and emails as a credit memo, and **Send to Sage** adds it as an AR invoice whose lines are negative, so Sage reduces the job's receivable. A final invoice can be reopened until it goes out.
 - **Send to Sage** (office staff with finance access) adds it to Sage as an AR invoice. Sage posts an AR invoice as soon as it saves it, so check the lines and the taxable column in the preview first.
 - **Email invoice** sends the PDF from the invoice mailbox in Settings, with replies coming back to the invoice.
 - **Create Square invoice** (off by default): once the invoice is in Sage, emailing creates and publishes the Square invoice (Square sends nothing) and Compass emails the PDF with the payment link. Material sales on Square use the regular price; the cash/check price applies only off Square. Deposits on H and O jobs can't use Square (a setting). Square payments post their fee to Sage automatically; receipts are still entered in Sage by staff.

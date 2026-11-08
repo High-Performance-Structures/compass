@@ -17,6 +17,7 @@ import {
   getProjectContractDeposits,
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
+import { getProjectDepositSageState, type DepositSageState } from "@/app/actions/project-deposit-sage"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectReceivablePayments } from "@/app/actions/received-payments"
 import { getSageChangeOrderSendState } from "@/app/actions/sage-change-orders"
@@ -79,6 +80,12 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project contract deposits unavailable", error)
   }
+  // Deposit requests' Sage AR invoices: office staff with finance access only.
+  const depositRequestIds = (deposits?.deposits ?? [])
+    .filter((deposit) => deposit.sourceSystem === "compass" && deposit.status !== "void" && deposit.requestedAt && deposit.requestedAmountCents !== null)
+    .map((deposit) => deposit.id)
+  const depositSage: DepositSageState | null =
+    depositRequestIds.length > 0 ? await getProjectDepositSageState(id, depositRequestIds).catch(() => null) : null
   // The change order panel is for office staff with finance access only; it is left out for everyone else.
   // Simple invoices are for office staff with finance access; a failure just hides the panel.
   const [receivables, sagePanel, sageChangeOrders, invoicesPanel] = await Promise.all([
@@ -114,7 +121,7 @@ export default async function ProjectFinancialsPage({
             selectedReceiptId={selectedSquareReceipt}
           />
           {invoicesPanel?.success && <ProjectInvoicesPanel projectId={id} panel={invoicesPanel.data} />}
-          {deposits && <ProjectContractDepositsPanel projectId={id} summary={deposits} />}
+          {deposits && <ProjectContractDepositsPanel projectId={id} summary={deposits} sage={depositSage} />}
           {receivables.success && (
             <ReceivedPaymentsPanel
               projectId={id}

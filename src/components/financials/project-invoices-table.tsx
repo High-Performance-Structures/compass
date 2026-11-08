@@ -48,6 +48,7 @@ export function invoiceColumns(href: (item: SimpleInvoiceListItem) => string): C
       cell: ({ row: { original } }) => (
         <Link href={href(original)} className="whitespace-nowrap font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {original.invoiceNumber ?? "Draft"}
+          {original.invoiceKind === "credit_memo" ? <span className="ml-1 text-xs font-normal text-muted-foreground">(credit memo)</span> : null}
         </Link>
       ),
     },
@@ -77,7 +78,7 @@ export function invoiceColumns(href: (item: SimpleInvoiceListItem) => string): C
       accessorFn: (item) => item.totalCents,
       header: "Total",
       size: 120,
-      cell: ({ row: { original } }) => <span className="block whitespace-nowrap text-right tabular-nums">{formatCents(original.totalCents)}</span>,
+      cell: ({ row: { original } }) => <span className="block whitespace-nowrap text-right tabular-nums">{original.invoiceKind === "credit_memo" ? `(${formatCents(original.totalCents)})` : formatCents(original.totalCents)}</span>,
     },
     {
       id: "paid",

@@ -11,7 +11,7 @@ export type OwnerDocumentFacts = {
   readonly kind: OwnerDocumentKind
   readonly projectName: string
   readonly projectNumber: string | null
-  /** "1" for pay application #1, "H-430-1900-DEP-1" for a deposit request. */
+  /** "1" for pay application #1, "H-430-1900-DEP1" for a deposit request. */
   readonly documentNumber: string
   readonly amountCents: number
   /** YYYY-MM-DD */

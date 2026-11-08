@@ -35,6 +35,8 @@ import { formatCents } from "@/lib/format"
 import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { refreshAutoDepositPayApplications } from "@/lib/financials/owner-pay-application-refresh"
+import { depositSageExportStatus } from "@/lib/financials/deposit-sage"
+import { cancelSageDepositArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { requireOrg } from "@/lib/org-scope"
 import { projectDepositRequests, type DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -490,6 +492,17 @@ export async function saveProjectContractDeposit(
         .get()
       if (!existing) throw new Error("Deposit not found.")
       if (existing.status === "void") throw new Error("This deposit was voided.")
+      // A request whose AR invoice is in Sage (or on its way) keeps its amount and date.
+      if (["running", "succeeded"].includes((await depositSageExportStatus(db, id)) ?? "")) {
+        const sent = await db
+          .select({ cents: projectContractDeposits.requestedAmountCents, at: projectContractDeposits.requestedAt })
+          .from(projectContractDeposits)
+          .where(eq(projectContractDeposits.id, id))
+          .get()
+        if (sent && (sent.cents !== values.requestedAmountCents || sent.at !== values.requestedAt)) {
+          throw new Error("This deposit request is in Sage as an AR invoice; its requested amount and date can't change. Record the payment without changing them.")
+        }
+      }
       await assertStillCoversApplied(db, projectId, (existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0) - (values.receivedAmountCents ?? 0))
       await db.update(projectContractDeposits).set({ ...values, updatedAt: now }).where(eq(projectContractDeposits.id, id)).run()
     } else {
@@ -563,7 +576,7 @@ export async function requestProjectContractDeposit(
 export async function voidProjectContractDeposit(projectId: string, depositId: string): Promise<DepositActionResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
-    const { db } = await depositAccess(projectId, true)
+    const { db, organizationId } = await depositAccess(projectId, true)
     const existing = await db
       .select({ status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents })
       .from(projectContractDeposits)
@@ -571,6 +584,11 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
       .get()
     if (!existing) throw new Error("Deposit not found.")
     if (existing.status === "void") return { success: true, id: depositId }
+    // A queued Sage AR invoice is withdrawn; one being added right now must finish first.
+    // One already in Sage stays there (void it in Sage too).
+    const sageStatus = await depositSageExportStatus(db, depositId)
+    if (sageStatus === "running") throw new Error("Sage is adding this deposit request's AR invoice right now. Try again in a minute.")
+    if (sageStatus && sageStatus !== "succeeded") await cancelSageDepositArExport(db, { organizationId, depositId, now: new Date().toISOString() })
     await assertStillCoversApplied(db, projectId, existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0)
     const now = new Date().toISOString()
     await db.update(projectContractDeposits).set({ status: "void", updatedAt: now }).where(eq(projectContractDeposits.id, depositId)).run()

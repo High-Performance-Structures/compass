@@ -103,10 +103,10 @@ describe("Create email", () => {
     const result = await getOwnerDocumentEmailDraft("bishop", "deposit-request", "dep")
     expect(result.success).toBe(true)
     if (!result.success) return
-    expect(result.data.subject).toBe("Deposit Request H-430-1900-DEP-1 - Ezell Residence (H-430-1900)")
+    expect(result.data.subject).toBe("Deposit Request H-430-1900-DEP1 - Ezell Residence (H-430-1900)")
     expect(result.data.body).toContain("We're requesting a deposit of $25,000.00 for Ezell Residence, due November 1, 2026.")
     expect(result.data.attachment?.url).toContain("/api/projects/bishop/print/deposit-request")
-    expect(result.data.attachment?.fileName).toBe("H-430-1900-DEP-1.pdf")
+    expect(result.data.attachment?.fileName).toBe("H-430-1900-DEP1.pdf")
   })
 
   it("refuses clients", async () => {
