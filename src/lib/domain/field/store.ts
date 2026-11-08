@@ -1,12 +1,13 @@
 /**
  * The only code that writes the field tables (architecture standard,
- * section 1): daily logs, daily log photos, daily log task links and owner
- * project updates. No auth logic here; callers resolve access first.
+ * section 1): daily logs, daily log photos and their aliases, daily log task
+ * links and owner project updates. No auth logic here; callers resolve access first.
  */
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
+  dailyLogPhotoAliases,
   dailyLogPhotos,
   dailyLogs,
   dailyLogTaskLinks,
@@ -153,6 +154,29 @@ export async function moveDailyLogPhotosToProject(
         eq(dailyLogPhotos.dailyLogId, input.dailyLogId)
       )
     )
+}
+
+/**
+ * Deletes photos and the alias rows that point at them (hidden duplicate
+ * copies are passed in with their canonical photos). Aliases go first: their
+ * foreign keys restrict deleting a photo they still name.
+ */
+export async function deleteDailyLogPhotos(
+  db: Db,
+  projectId: string,
+  photoIds: readonly string[]
+): Promise<void> {
+  for (const ids of chunkD1Values(photoIds)) {
+    await db
+      .delete(dailyLogPhotoAliases)
+      .where(and(eq(dailyLogPhotoAliases.projectId, projectId), inArray(dailyLogPhotoAliases.sourcePhotoId, ids)))
+    await db
+      .delete(dailyLogPhotoAliases)
+      .where(and(eq(dailyLogPhotoAliases.projectId, projectId), inArray(dailyLogPhotoAliases.canonicalPhotoId, ids)))
+  }
+  for (const ids of chunkD1Values(photoIds)) {
+    await db.delete(dailyLogPhotos).where(and(eq(dailyLogPhotos.projectId, projectId), inArray(dailyLogPhotos.id, ids)))
+  }
 }
 
 export async function setPhotoPhaseOverride(

@@ -291,3 +291,6 @@ export function photoUploadError(result: unknown): string {
   const error = field(result, "error")
   return typeof error === "string" ? error : "Unable to upload photo."
 }
+
+/** One delete request takes at most this many selected photos; the page sends larger selections in parts. */
+export const PHOTO_DELETE_BATCH_LIMIT = 200

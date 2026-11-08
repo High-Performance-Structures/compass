@@ -159,6 +159,9 @@
     "customThemes": [
       "src/lib/domain/settings/store.ts"
     ],
+    "dailyLogPhotoAliases": [
+      "src/lib/domain/field/store.ts"
+    ],
     "dailyLogPhotos": [
       "src/lib/domain/field/store.ts"
     ],

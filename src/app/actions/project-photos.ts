@@ -5,11 +5,15 @@ import { revalidatePath } from "next/cache"
 
 import { dailyLogPhotos, dailyLogs, projectPhotoSourceDates, projects, scheduleTasks } from "@/db/schema"
 import { errorMessage } from "@/lib/action-result"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { normalizedPhotoKind, normalizedPhotoReviewStatus } from "@/lib/domain/field/rules"
-import { setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
+import { planPhotoDelete } from "@/lib/domain/field/photo-delete"
+import { deleteDailyLogPhotos, setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
+import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
+import { PHOTO_DELETE_BATCH_LIMIT } from "@/lib/photos/review"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -316,6 +320,120 @@ export async function updateProjectPhotoPermissions(
     return {
       success: false,
       error: errorMessage(error, "Unable to update photos"),
+    }
+  }
+}
+
+type DeletePhotosResult =
+  | {
+      readonly success: true
+      readonly deletedIds: readonly string[]
+      readonly deletedCount: number
+      readonly keptInUse: number
+      readonly driveTrashFailed: number
+    }
+  | { readonly success: false; readonly error: string }
+
+/**
+ * Deletes selected photos, with their hidden duplicate copies, for staff who
+ * can change photo visibility. Projects whose records are held (imported
+ * conversations staff-only, e.g. a legal hold) refuse. A full copy of every
+ * row goes to Activity before anything is removed, and the Drive files go to
+ * the Drive trash, so a delete can be undone.
+ */
+export async function deleteProjectPhotos(
+  projectId: string,
+  photoIds: readonly string[]
+): Promise<DeletePhotosResult> {
+  try {
+    const context = await projectContext(projectId, {
+      scope: "organization",
+      feature: "project-photos",
+      mutation: true,
+    })
+    if (!context.success) return context
+    const { db, env, user } = context.data
+
+    const ids = [...new Set(photoIds.map((id) => id.trim()).filter((id) => id.length > 0))]
+    if (ids.length === 0) return { success: false, error: "Select at least one photo." }
+    if (ids.length > PHOTO_DELETE_BATCH_LIMIT) {
+      return { success: false, error: `Delete at most ${PHOTO_DELETE_BATCH_LIMIT} photos at a time.` }
+    }
+
+    const [project] = await db
+      .select({ organizationId: projects.organizationId, held: projects.importedConversationsStaffOnly })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+    if (!project?.organizationId) return { success: false, error: "Project not found" }
+    const { organizationId } = project
+    if (project.held) {
+      return { success: false, error: "This project's records are on hold, so its photos can't be deleted." }
+    }
+
+    const plan = await planPhotoDelete(db, { projectId, photoIds: ids })
+    if (plan.rows.length > 0) {
+      // Record first so a failed audit write never leaves an unrecorded delete.
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId,
+        actor: user,
+        category: "file",
+        action: "photos.deleted",
+        entityType: "daily_log_photo",
+        entityId: null,
+        summary: `Deleted ${plan.selectedCount} photo${plan.selectedCount === 1 ? "" : "s"}.`,
+        metadata: {
+          selectedCount: plan.selectedCount,
+          hiddenCopies: plan.aliasCount,
+          driveFileIds: plan.driveFileIds,
+          // Imports skip these, so a re-run never brings a deleted photo back.
+          sourceRecords: plan.rows.flatMap((row) =>
+            row.sourceExternalId ? [`${row.sourceSystem}:${row.sourceExternalId}`] : []
+          ),
+          // Full copy of the records for recovery.
+          photos: JSON.stringify(plan.rows),
+        },
+      })
+      await deleteDailyLogPhotos(db, projectId, plan.rows.map((row) => row.id))
+    }
+
+    let driveTrashFailed = 0
+    if (plan.driveFileIds.length > 0) {
+      const drive = await getOrganizationDriveContext({
+        db,
+        environment: env,
+        organizationId,
+        user,
+      }).catch(() => null)
+      for (const fileId of plan.driveFileIds) {
+        try {
+          if (!drive) throw new Error("Drive is not connected")
+          await drive.client.trashFile(drive.userEmail, fileId)
+        } catch {
+          driveTrashFailed += 1
+        }
+      }
+    }
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/photos`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+
+    const selectedDeleted = new Set(plan.rows.map((row) => row.id))
+    return {
+      success: true,
+      deletedIds: ids.filter((id) => selectedDeleted.has(id)),
+      deletedCount: plan.selectedCount,
+      keptInUse: plan.keptInUse,
+      driveTrashFailed,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: errorMessage(error, "Unable to delete photos"),
     }
   }
 }
