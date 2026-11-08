@@ -79,6 +79,9 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/estimate-version-acceptance-fields.tsx": "line items",
   "src/components/projects/pay-application-shop-tickets.tsx": "line items",
   "src/components/projects/project-change-order-version-lines.tsx": "line items",
+  // Captured line items inside one historical RFQ response (read-only evidence); the responses
+  // themselves are a cursor-paged list of expandable evidence, not a table.
+  "src/components/projects/project-historical-rfq-list.tsx": "line items",
   // Logs from before the duty log, each waiting for a duty; the entries themselves are the sheet above it.
   "src/components/projects/duty-log-workspace.tsx": "line items",
 
@@ -105,17 +108,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
 
   "src/components/files/file-list.tsx": "file browser",
   "src/components/files/project-file-groups.tsx": "file browser",
-
-  "src/components/projects/project-estimate-list.tsx": "growing list",
-  "src/components/projects/project-historical-rfq-list.tsx": "growing list",
-  "src/components/projects/project-warranty-source-review.tsx": "growing list",
-  "src/components/projects/shop-tickets-workspace.tsx": "growing list",
-  "src/components/projects/trade-letters-section.tsx": "growing list",
-  "src/components/projects/use-archive-pagination.ts": "growing list",
 }
 
 /** Older growing lists still on hand-built tables. Lower it when one moves to the shared sheet; never raise it. */
-const GROWING_LIST_CEILING = 6
+const GROWING_LIST_CEILING = 0
 
 const HAND_BUILT = /<table\b|<Table\b|\buseReactTable\(/
 
