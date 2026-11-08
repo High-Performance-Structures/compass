@@ -6,6 +6,7 @@ import { IconUsers } from "@tabler/icons-react"
 import type { ProjectPhotoLibrary } from "@/app/actions/project-photos"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Button } from "@/components/ui/button"
+import { PhotoDeleteButton } from "@/components/projects/photo-review/photo-delete-button"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Select,
@@ -57,6 +58,7 @@ export function PhotoReviewToolbar({
   onClearSelection,
   onApplyPermissions,
   onRejectSelected,
+  onDeleteSelected,
 }: {
   readonly phases: ProjectPhotoLibrary["phases"]
   readonly filters: PhotoReviewFilters
@@ -69,6 +71,7 @@ export function PhotoReviewToolbar({
   readonly onClearSelection: () => void
   readonly onApplyPermissions: () => void
   readonly onRejectSelected: () => void
+  readonly onDeleteSelected: () => void
 }): React.ReactElement {
   const { dateFilter, setDateFilter, phaseFilter, setPhaseFilter } = filters
   return (
@@ -203,7 +206,7 @@ export function PhotoReviewToolbar({
               <ContextualHelpBeacon topicId="photos.visibility.batch-actions" />
             </div>
             <p className="text-xs text-muted-foreground">
-              Apply updates visibility.
+              Apply updates visibility; Delete removes them.
             </p>
           </div>
           <Select
@@ -265,6 +268,11 @@ export function PhotoReviewToolbar({
           >
             Reject selected
           </Button>
+          <PhotoDeleteButton
+            selectedCount={selectedCount}
+            disabled={isPending}
+            onConfirm={onDeleteSelected}
+          />
           {message && (
             <p className="basis-full text-xs text-muted-foreground">
               {message}

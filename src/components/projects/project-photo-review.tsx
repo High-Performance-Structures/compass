@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconUpload } from "@tabler/icons-react"
 
 import {
+  deleteProjectPhotos,
   updateProjectPhotoPhase,
   updateProjectPhotoPermissions,
   type ProjectPhotoLibrary,
@@ -24,6 +25,7 @@ import { adjacentPhoto } from "@/lib/photos/carousel"
 import {
   filterAndSortPhotos,
   nextSelectedIds,
+  PHOTO_DELETE_BATCH_LIMIT,
   photoReviewCounts,
   photoWithPhase,
   type PhotoReviewCounts,
@@ -229,6 +231,41 @@ export function ProjectPhotoReview({
     })
   }
 
+  /** Deletes the selected photos in parts the server accepts, stopping at the first error. */
+  function deleteSelectedPhotos(): void {
+    const photoIds = selectedIds
+    setMessage(null)
+    startTransition(async () => {
+      const removed = new Set<string>()
+      let deleted = 0
+      let kept = 0
+      let driveFailed = 0
+      let error: string | null = null
+      for (let index = 0; index < photoIds.length; index += PHOTO_DELETE_BATCH_LIMIT) {
+        const result = await deleteProjectPhotos(
+          library.project.id,
+          photoIds.slice(index, index + PHOTO_DELETE_BATCH_LIMIT)
+        )
+        if (!result.success) {
+          error = result.error
+          break
+        }
+        for (const id of result.deletedIds) removed.add(id)
+        deleted += result.deletedCount
+        kept += result.keptInUse
+        driveFailed += result.driveTrashFailed
+      }
+
+      setPhotos((current) => current.filter((photo) => !removed.has(photo.id)))
+      setSelectedIds((current) => current.filter((id) => !removed.has(id)))
+      const parts = [`Deleted ${deleted} photo${deleted === 1 ? "" : "s"}.`]
+      if (kept > 0) parts.push(`Kept ${kept} shown in a client update or social post.`)
+      if (driveFailed > 0) parts.push(`${driveFailed} Drive file${driveFailed === 1 ? "" : "s"} couldn't be moved to the trash.`)
+      if (error) parts.push(error)
+      setMessage(parts.join(" "))
+    })
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
@@ -296,6 +333,7 @@ export function ProjectPhotoReview({
           onClearSelection={clearSelection}
           onApplyPermissions={() => updateSelectedPhotos("approved")}
           onRejectSelected={() => updateSelectedPhotos("rejected")}
+          onDeleteSelected={deleteSelectedPhotos}
         />
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">

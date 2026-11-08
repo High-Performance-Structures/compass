@@ -46,6 +46,8 @@ Attaching a photo to a daily log does not make it owner-visible. An owner update
 
 Use filtered selection only after reviewing the active filters. Confirm every selected image before applying visibility. Compass clears selection after an action so an earlier batch is not accidentally reused.
 
+**Delete** removes the selected photos after a confirmation that shows the count. Hidden duplicate copies go with them, the files move to the Google Drive trash, and Activity keeps a full record of the delete. Photos shown in a client update or social post are kept until they are taken out of it. Projects whose records are on hold, such as a legal hold, can't delete photos.
+
 ## Prepare Photos for Social Publishing {#social-publishing}
 
 Public-shareable approval makes a reviewed photo eligible for the project's **Social posts** workflow; it does not publish it. Confirm the approved public project title and town/city, department destinations, text, and image contents before a public post. See [Social posts](/dashboard/help/social-posts) for setup, drafting, publishing, and failure recovery.
