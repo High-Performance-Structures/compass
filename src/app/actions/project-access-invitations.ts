@@ -32,6 +32,7 @@ import {
 import { invitationEmailNotice } from "@/lib/email/delivery-recovery"
 import { sendOrResendProjectWorkOSInvitation } from "@/lib/workos-invitations"
 import { requirePermission } from "@/lib/permissions"
+import { projectContext } from "@/lib/server/action-context"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import {
   projectContactAccessStatus,
@@ -50,6 +51,11 @@ import {
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import {
+  grantPriorProjectAccess,
+  priorBuildertrendProjects,
+  type PriorProject,
+} from "@/lib/domain/contacts/prior-project-access"
 
 const invitationSchema = z.object({
   projectId: z.string().trim().min(1),
@@ -57,6 +63,8 @@ const invitationSchema = z.object({
   subject: z.string().trim().min(1).max(180),
   message: z.string().trim().min(1).max(8000),
   intent: z.enum(["invite", "resend_welcome"]).default("invite"),
+  /** Other projects this person could see in Buildertrend, ticked on the invite panel. */
+  additionalProjectIds: z.array(z.string().trim().min(1)).max(300).default([]),
 })
 
 export type SendProjectAccessInvitationInput = z.input<
@@ -68,6 +76,7 @@ export type SendProjectAccessInvitationResult =
       readonly success: true
       readonly accessStatus: "invited" | "access_granted"
       readonly warning: string | null
+      readonly additionalProjects?: number
     }
   | { readonly success: false; readonly error: string }
 
@@ -585,6 +594,21 @@ export async function sendProjectAccessInvitation(
       warning: invitationEmailNotice("queued", null) }
 
     const emailDelivery = await deliverInvitationEmail({ db, env, invitationId })
+    const additionalProjects = welcomeOnly ? 0 : await grantPriorProjectAccess(db, {
+      organizationId: row.organizationId,
+      sourceProjectId: parsed.data.projectId,
+      source: row.contact,
+      requestedProjectIds: parsed.data.additionalProjectIds,
+      email: inviteEmail,
+      role: membershipRole,
+      activeUserId: activeExistingUser?.id ?? null,
+      workosInvitationId,
+      workosExpiresAt,
+      actor: currentUser,
+      invitedBy: currentUser.id,
+      sourceProjectLabel: projectLabel,
+      now,
+    })
 
     await recordActivityEvent({
       db,
@@ -610,6 +634,7 @@ export async function sendProjectAccessInvitation(
       success: true,
       accessStatus,
       warning: invitationEmailNotice(emailDelivery.status, emailDelivery.nextAttemptAt),
+      ...(additionalProjects > 0 ? { additionalProjects } : {}),
     }
   } catch (error) {
     console.error("Project access invitation failed", error)
@@ -620,5 +645,50 @@ export async function sendProjectAccessInvitation(
           ? error.message
           : "Unable to send the project invitation.",
     }
+  }
+}
+
+export type PriorBuildertrendProjectsResult =
+  | { readonly success: true; readonly projects: readonly PriorProject[] }
+  | { readonly success: false; readonly error: string }
+
+/** Projects the contact could see in Buildertrend, offered on the invite panel. */
+export async function listPriorBuildertrendProjects(input: {
+  readonly projectId: string
+  readonly contactId: string
+}): Promise<PriorBuildertrendProjectsResult> {
+  try {
+    const context = await projectContext(input.projectId, { scope: "organization" })
+    if (!context.success) return context
+    const { user: currentUser, db, organizationId } = context.data
+    requirePermission(currentUser, "project", "update")
+    if (currentUser.organizationType !== "internal" || !organizationId || !isInternalStaffRole(currentUser.role)) {
+      return { success: false, error: "Only authorized staff can invite project contacts." }
+    }
+    const row = await db
+      .select({ contact: projectContacts, vendorEmail: vendorContacts.email, customerEmail: customerContacts.email })
+      .from(projectContacts)
+      .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+      .leftJoin(vendorContacts, eq(vendorContacts.id, projectContacts.vendorContactId))
+      .leftJoin(customerContacts, eq(customerContacts.id, projectContacts.customerContactId))
+      .where(and(
+        eq(projectContacts.id, input.contactId),
+        eq(projectContacts.projectId, input.projectId),
+        eq(projectContacts.active, true),
+        eq(projects.organizationId, organizationId),
+      ))
+      .get()
+    if (!row || row.contact.contactType === "internal") return { success: true, projects: [] }
+    const projectsList = await priorBuildertrendProjects(db, {
+      organizationId,
+      projectId: input.projectId,
+      contactId: row.contact.id,
+      emails: [row.contact.email ?? "", row.vendorEmail ?? "", row.customerEmail ?? ""],
+      vendorId: row.contact.vendorId,
+    })
+    return { success: true, projects: projectsList }
+  } catch (error) {
+    console.error("Prior Buildertrend projects lookup failed", error)
+    return { success: false, error: "Unable to load Buildertrend projects." }
   }
 }
