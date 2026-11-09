@@ -4,7 +4,9 @@ import { decideRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-gate"
 import { isRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-throttle"
 
 const REALTIMEKIT_API_ORIGIN = "https://api.realtime.cloudflare.com"
-const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type"] as const
+// content-encoding: the SDK gzips its log and telemetry uploads; without this
+// header RealtimeKit receives compressed bytes it can't read.
+const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "content-encoding"] as const
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control"] as const
 
 type RouteContext = {
