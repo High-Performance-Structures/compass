@@ -55,6 +55,7 @@ function row(overrides: Partial<Row> = {}): Row {
     purchaseOrderOperationId: null,
     notes: null,
     sortOrder: 0,
+    roundKey: null,
     syncStatus: "imported",
     lastSyncedAt: null,
     createdAt: "2026-10-01T00:00:00.000Z",

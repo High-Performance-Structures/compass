@@ -29,6 +29,7 @@ export async function loadSelectionSheet(db: Db, projectId: string): Promise<rea
         allowanceCents: projectSelectionDecisions.allowanceCents,
         dueDate: projectSelectionDecisions.decisionDueDate,
         published: projectSelectionDecisions.published,
+        roundKey: projectFinishSelections.roundKey,
       })
       .from(projectFinishSelections)
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))

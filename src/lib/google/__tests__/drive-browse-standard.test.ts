@@ -39,7 +39,7 @@ describe("Drive files are browsed to, never only pasted", () => {
       "src/components/settings/trade-doc-settings-section.tsx",
       "src/components/settings/trade-doc-import-dialog.tsx",
       "src/components/settings/nutech-email-settings-section.tsx",
-      "src/components/projects/projects-hub.tsx",
+      "src/components/projects/projects-hub-registry-fields.tsx",
       "src/components/projects/project-registry-panel.tsx",
     ]) {
       expect(source(file), file).toContain("<DriveItemField")

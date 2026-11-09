@@ -43,6 +43,11 @@
 	"ai": {
 		"binding": "AI"
 	},
+	// Lets /api/deployment-version say which version answered, so open tabs
+	// stay on their own version during an update (docs/architecture/server-bundle.md).
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA"
+	},
 	"observability": {
 		"enabled": true
 	},
@@ -122,6 +127,7 @@
 	},
 	"vars": {
 		"COMPASS_CORRESPONDENCE_ENABLED": "true",
+		"COMPASS_WORKER_NAME": "compass",
 		"CLOUDFLARE_ACCOUNT_ID": "8716137c706ea3d5c209b330084fa9e2",
 		"COMPASS_PUBLIC_BASE_URL": "https://compass.openrangeconstruction.ltd",
 		"GIFTBIT_ENVIRONMENT": "testbed",
@@ -180,6 +186,9 @@
 			"ai": {
 				"binding": "AI"
 			},
+			"version_metadata": {
+				"binding": "CF_VERSION_METADATA"
+			},
 			"d1_databases": [
 				{
 					"binding": "DB",
@@ -205,6 +214,7 @@
 			},
 			"vars": {
 				"COMPASS_CORRESPONDENCE_ENABLED": "false",
+				"COMPASS_WORKER_NAME": "compass-demo",
 				"CLOUDFLARE_ACCOUNT_ID": "8716137c706ea3d5c209b330084fa9e2",
 				"COMPASS_APP_URL": "https://demo.openrangeconstruction.ltd",
 				"COMPASS_PUBLIC_BASE_URL": "https://demo.openrangeconstruction.ltd",

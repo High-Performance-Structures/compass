@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { JobEmailDeliveryView } from "@/lib/job-workflows/email-delivery-server"
+import type { JobEmailDeliveryView } from "@/lib/domain/job-workflows/store"
 
 export function JobEmailDeliverySettings({ canEdit }: { readonly canEdit: boolean }): React.ReactElement {
   const [settings, setSettings] = React.useState<JobEmailDeliveryView | null>(null)

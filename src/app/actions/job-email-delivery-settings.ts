@@ -1,14 +1,12 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { jobEmailDeliverySettings } from "@/db/schema-job-workflows"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { MAX_W9_BYTES } from "@/lib/job-workflows/email-delivery"
-import { readJobEmailDeliverySettings, type JobEmailDeliveryView } from "@/lib/job-workflows/email-delivery-server"
+import { clearJobEmailW9, readJobEmailDeliverySettings, writeJobEmailDeliverySettings, type JobEmailDeliveryView } from "@/lib/domain/job-workflows/store"
 import { requireOrg } from "@/lib/org-scope"
 import { requireUserContext } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -68,11 +66,7 @@ export async function saveJobEmailDeliverySettings(formData: FormData): Promise<
       }
     }
 
-    const values = { insuranceAgentEmail, ...w9 }
-    await db.insert(jobEmailDeliverySettings).values({ organizationId, ...values }).onConflictDoUpdate({
-      target: jobEmailDeliverySettings.organizationId,
-      set: values,
-    })
+    await writeJobEmailDeliverySettings(db, organizationId, insuranceAgentEmail, w9)
     if (w9) {
       await recordActivityEvent({
         db, organizationId, actor: user, category: "settings", action: "job_email_w9_uploaded",
@@ -91,10 +85,7 @@ export async function saveJobEmailDeliverySettings(formData: FormData): Promise<
 export async function removeJobEmailW9(version: string): Promise<Result<JobEmailDeliveryView>> {
   try {
     const { db, organizationId, user } = await settingsContext(true)
-    const [removed] = await db.update(jobEmailDeliverySettings)
-      .set({ w9Version: null, w9Filename: null, w9Pdf: null })
-      .where(and(eq(jobEmailDeliverySettings.organizationId, organizationId), eq(jobEmailDeliverySettings.w9Version, version)))
-      .returning({ organizationId: jobEmailDeliverySettings.organizationId })
+    const removed = await clearJobEmailW9(db, organizationId, version)
     if (!removed) return { success: false, error: "The W-9 changed. Reload Settings and try again." }
     await recordActivityEvent({
       db, organizationId, actor: user, category: "settings", action: "job_email_w9_removed",

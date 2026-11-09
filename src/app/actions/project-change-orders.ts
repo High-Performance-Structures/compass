@@ -3,7 +3,7 @@
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { requireProjectAudienceReadUser, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { createDriveUploadSession as getUploadSessionUrl } from "@/lib/domain/documents/drive-session"
@@ -18,7 +18,6 @@ import {
 } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
-import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
 import { cleanScheduleImpactDays } from "@/lib/change-orders/schedule-impact"
 import {
   budgetTreatmentForKind,
@@ -44,7 +43,12 @@ import {
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
+import {
+  executeBaselineReplacement,
+  rebaselineViewData,
+  requireRebaselineSelection,
+  type RebaselineViewData,
+} from "@/lib/change-orders/rebaseline-store"
 import {
   isChangeOrderBudgetTreatment,
   rebaselineEstimateDocumentLinks,
@@ -72,6 +76,15 @@ import { changeOrderCompletionView } from "@/lib/domain/estimates/rules"
 import { changeOrderAcceptanceView, changeOrderExecutionLinesError } from "@/lib/domain/estimates/change-order-acceptance"
 import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import { varianceTransitionAllowed, varianceView } from "@/lib/domain/estimates/variance-rules"
+import {
+  cleanDocuments,
+  cleanExecutedDocument,
+  cleanLimitedText,
+  estimateOption,
+  requireText,
+  safeDocumentUrl,
+  validAudience,
+} from "@/lib/domain/estimates/change-order-rules"
 import type {
   ChangeOrderAudience,
   ChangeOrderDocumentInput,
@@ -80,7 +93,6 @@ import type {
   ProjectChangeOrderCompanyOption,
   ProjectChangeOrderCostCodeOption,
   ProjectChangeOrderPhaseOption,
-  ProjectChangeOrderEstimateOption,
   ProjectChangeOrderFormOptions,
   ProjectChangeOrderItem,
 } from "@/lib/change-orders/types"
@@ -144,150 +156,6 @@ type ChangeOrderActionResult =
 type ChangeOrderUploadSessionResult =
   | { readonly success: true; readonly uploadUrl: string }
   | { readonly success: false; readonly error: string }
-
-function requireText(value: string, label: string, maxLength = 10_000): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) throw new Error(`${label} is required`)
-  if (cleaned.length > maxLength) {
-    throw new Error(`${label} must be ${maxLength} characters or fewer`)
-  }
-  return cleaned
-}
-
-function cleanLimitedText(
-  value: string | null,
-  label: string,
-  maxLength: number
-): string | null {
-  const cleaned = cleanText(value)
-  if (!cleaned) return null
-  if (cleaned.length > maxLength) {
-    throw new Error(`${label} must be ${maxLength} characters or fewer`)
-  }
-  return cleaned
-}
-
-function validAudience(value: string): value is ChangeOrderAudience {
-  return ["internal", "owner", "sub_vendor"].includes(value)
-}
-
-function safeDocumentUrl(value: string): string {
-  const cleaned = requireText(value, "Document URL", 2_048)
-  const parsed = new URL(cleaned)
-  if (!["https:", "http:"].includes(parsed.protocol)) {
-    throw new Error("Document links must use HTTP or HTTPS")
-  }
-  return parsed.toString()
-}
-
-function cleanExecutedDocument(
-  input: ChangeOrderExecutedDocumentInput
-): { readonly url: string; readonly label: string } {
-  if (!input.attested) {
-    throw new Error(
-      "Confirm that the uploaded file is the complete, fully executed change order."
-    )
-  }
-  const url = requireText(input.url, "Executed document URL", 2_048)
-  const source = executedDocumentSource(url)
-  if (!source) {
-    throw new Error(
-      "The executed change order must use a secure Compass, Google Drive, or HTTPS document link."
-    )
-  }
-  return {
-    url: source.kind === "external" ? source.url : url,
-    label: requireText(input.label, "Executed document label", 200),
-  }
-}
-
-function cleanDocuments(
-  documents: readonly ChangeOrderDocumentInput[]
-): readonly ChangeOrderDocumentInput[] {
-  if (documents.length > 20) {
-    throw new Error("A change order can have at most 20 supporting documents")
-  }
-  return documents
-    .filter((document) => cleanText(document.url) !== null)
-    .map((document) => ({
-      label: document.label.trim()
-        ? requireText(document.label, "Document label", 200)
-        : "Supporting document",
-      url: safeDocumentUrl(document.url),
-      notes: cleanLimitedText(document.notes, "Document notes", 1_000),
-    }))
-}
-
-type RebaselineSelection = {
-  readonly baseline: typeof projectEstimates.$inferSelect
-  readonly replacement: typeof projectEstimates.$inferSelect
-}
-
-async function requireRebaselineSelection(input: {
-  readonly context: ChangeOrderContext
-  readonly projectId: string
-  readonly replacementEstimateId: string | null
-  readonly expectedBaselineEstimateId?: string | null
-}): Promise<RebaselineSelection> {
-  if (!input.replacementEstimateId) {
-    throw new Error("Choose the revised estimate that will replace the baseline.")
-  }
-  const [baselineRows, replacementRows] = await Promise.all([
-    input.context.db
-      .select()
-      .from(projectEstimates)
-      .where(
-        and(
-          eq(projectEstimates.projectId, input.projectId),
-          eq(projectEstimates.status, "accepted"),
-          ...contractEstimateConditions()
-        )
-      )
-      .orderBy(desc(projectEstimates.versionNumber))
-      .limit(1),
-    input.context.db
-      .select()
-      .from(projectEstimates)
-      .where(
-        and(
-          eq(projectEstimates.projectId, input.projectId),
-          eq(projectEstimates.id, input.replacementEstimateId)
-        )
-      )
-      .limit(1),
-  ])
-  const baseline = baselineRows[0]
-  const replacement = replacementRows[0]
-  if (!baseline) {
-    throw new Error("Accept the original estimate before creating a rebaseline amendment.")
-  }
-  if (
-    input.expectedBaselineEstimateId &&
-    baseline.id !== input.expectedBaselineEstimateId
-  ) {
-    throw new Error("The accepted estimate changed. Review the amendment baseline again.")
-  }
-  if (!replacement) {
-    throw new Error("The replacement estimate could not be found.")
-  }
-  if (
-    !["draft", "internal_review", "signature_pending"].includes(
-      replacement.status
-    )
-  ) {
-    throw new Error("Choose an editable or signature-pending estimate revision.")
-  }
-  if (replacement.id === baseline.id) {
-    throw new Error("The replacement must be a different estimate version.")
-  }
-  if (replacement.estimateNumber !== baseline.estimateNumber) {
-    throw new Error("The replacement must be a revision of the accepted estimate.")
-  }
-  if (replacement.versionNumber <= baseline.versionNumber) {
-    throw new Error("The replacement must be newer than the accepted estimate.")
-  }
-  return { baseline, replacement }
-}
 
 async function changeOrderContext(
   projectId: string,
@@ -357,91 +225,6 @@ function revalidateChangeOrderPaths(projectId: string): void {
 
 function actorName(user: AuthUser): string {
   return user.displayName ?? user.email
-}
-
-function estimateOption(
-  row: typeof projectEstimates.$inferSelect
-): ProjectChangeOrderEstimateOption {
-  return {
-    id: row.id,
-    estimateNumber: row.estimateNumber,
-    versionNumber: row.versionNumber,
-    title: row.title,
-    status: row.status,
-    estimateTotalCents: row.estimateTotalCents,
-  }
-}
-
-type RebaselineViewData = {
-  readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
-  readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
-  readonly blockers: readonly string[]
-  /** Latest version of this change order's own estimate (staff only). */
-  readonly changeOrderEstimate?: ProjectChangeOrderEstimateOption | null
-}
-
-async function rebaselineViewData(
-  context: ChangeOrderContext,
-  row: typeof projectChangeOrders.$inferSelect
-): Promise<RebaselineViewData> {
-  if (
-    row.budgetTreatment !== "baseline_replacement" ||
-    !row.baselineEstimateId ||
-    !row.replacementEstimateId
-  ) {
-    return {
-      baselineEstimate: null,
-      replacementEstimate: null,
-      blockers: [],
-    }
-  }
-
-  const estimateRows = await context.db
-    .select()
-    .from(projectEstimates)
-    .where(
-      and(
-        eq(projectEstimates.projectId, row.projectId),
-        inArray(projectEstimates.id, [
-          row.baselineEstimateId,
-          row.replacementEstimateId,
-        ])
-      )
-    )
-  const baseline = estimateRows.find(
-    (estimate) => estimate.id === row.baselineEstimateId
-  )
-  const replacement = estimateRows.find(
-    (estimate) => estimate.id === row.replacementEstimateId
-  )
-  if (!baseline || !replacement) {
-    return {
-      baselineEstimate: baseline ? estimateOption(baseline) : null,
-      replacementEstimate: replacement ? estimateOption(replacement) : null,
-      blockers: ["A linked estimate version could not be found."],
-    }
-  }
-  if (row.rebaselineCompletedAt) {
-    return {
-      baselineEstimate: estimateOption(baseline),
-      replacementEstimate: estimateOption(replacement),
-      blockers: [],
-    }
-  }
-
-  const blockers = await rebaselineBlockers(context.db, {
-    projectId: row.projectId,
-    changeOrderId: row.id,
-    ownerAudience: row.audience === "owner",
-    baseline,
-    replacement,
-  })
-
-  return {
-    baselineEstimate: estimateOption(baseline),
-    replacementEstimate: estimateOption(replacement),
-    blockers,
-  }
 }
 
 function viewModel(
@@ -811,7 +594,7 @@ export async function getProjectChangeOrder(
               : null,
         }))
 
-  const rebaseline = await rebaselineViewData(authorizedContext, row)
+  const rebaseline = await rebaselineViewData(authorizedContext.db, row)
   const changeOrderEstimateRow = context.internal
     ? await context.db
         .select()
@@ -879,7 +662,7 @@ export async function createProjectChangeOrder(
     const rebaselineSelection =
       budgetTreatment === "baseline_replacement"
         ? await requireRebaselineSelection({
-            context,
+            db: context.db,
             projectId,
             replacementEstimateId: input.replacementEstimateId,
           })
@@ -1089,7 +872,7 @@ export async function updateProjectChangeOrder(
       budgetTreatment === "baseline_replacement" &&
       !existing.rebaselineCompletedAt
         ? await requireRebaselineSelection({
-            context,
+            db: context.db,
             projectId,
             replacementEstimateId:
               contentAllowed && context.internal
@@ -1476,7 +1259,7 @@ export async function executeProjectChangeOrderRebaseline(
       }
     }
 
-    const assessment = await rebaselineViewData(context, changeOrder)
+    const assessment = await rebaselineViewData(context.db, changeOrder)
     if (!assessment.replacementEstimate || assessment.blockers.length > 0) {
       return {
         success: false,

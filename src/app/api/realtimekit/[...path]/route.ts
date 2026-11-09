@@ -1,8 +1,12 @@
 import { getCurrentUser } from "@/lib/auth"
 import { canUseOfficeTalk } from "@/lib/permissions"
+import { decideRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-gate"
+import { isRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-throttle"
 
 const REALTIMEKIT_API_ORIGIN = "https://api.realtime.cloudflare.com"
-const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type"] as const
+// content-encoding: the SDK gzips its log and telemetry uploads; without this
+// header RealtimeKit receives compressed bytes it can't read.
+const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "content-encoding"] as const
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control"] as const
 
 type RouteContext = {
@@ -65,21 +69,30 @@ async function realtimeKitProxy(
   request: Request,
   context: RouteContext
 ): Promise<Response> {
-  const user = await getCurrentUser()
-  if (!user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!canUseOfficeTalk(user)) {
-    return Response.json({ error: "Forbidden" }, { status: 403 })
+  const { path } = await context.params
+  const method = request.method.toUpperCase()
+
+  // The SDK's diagnostic log uploads are throttled (see
+  // src/lib/realtimekit/log-upload-throttle.ts): most get a 204 here without
+  // reading the body or calling Cloudflare.
+  if (isRealtimeKitLogUpload(method, path)) {
+    const decision = await decideRealtimeKitLogUpload(request)
+    if (decision !== "forward") return decision
+  } else {
+    const user = await getCurrentUser()
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    if (!canUseOfficeTalk(user)) {
+      return Response.json({ error: "Forbidden" }, { status: 403 })
+    }
   }
 
-  const { path } = await context.params
   const url = upstreamUrl(request, path)
   if (!url) {
     return Response.json({ error: "Missing RealtimeKit path" }, { status: 400 })
   }
 
-  const method = request.method.toUpperCase()
   const body =
     method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer()
 

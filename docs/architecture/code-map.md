@@ -84,6 +84,11 @@ visibility, members, linked jobs and job families.
   `rfqs`, `selections`, `change-orders`, `warranty`, `messages` and more)
 - Components: `src/components/projects/`, `src/components/dashboard/`
   (dashboard, portfolio map)
+- The Projects list page: `src/components/projects/projects-hub.tsx`, with
+  its parts beside it: `projects-hub-model.ts` (departments, status filters,
+  search; pure functions), `projects-hub-departments.tsx`,
+  `projects-hub-project-card.tsx`, `projects-hub-department-lane.tsx`,
+  `projects-hub-department-landing.tsx`, `projects-hub-registry-fields.tsx`
 - Docs: [portfolio map](../modules/portfolio-map.md),
   [multi-tenancy](multi-tenancy.md)
 
@@ -107,6 +112,12 @@ acceptance and e-signature; change orders and variances; templates.
 - Components: `src/components/projects/estimate-workspace/`,
   `src/components/projects/project-estimate*.tsx`, `src/components/rfqs/`,
   `src/components/templates/`, `src/components/rate-book/`
+- Change orders in detail: the server actions are
+  `src/app/actions/project-change-orders.ts` (thin: permission context, load,
+  save, revalidate); input checks are `src/lib/domain/estimates/change-order-rules.ts`;
+  replacing the accepted estimate (rebaseline) is
+  `src/lib/change-orders/rebaseline-store.ts` (database) and
+  `src/lib/change-orders/rebaseline.ts` (rules)
 - Docs: [estimate report phases](../modules/estimate-report-phases.md),
   [rate book](../modules/rate-book.md)
 
@@ -340,6 +351,8 @@ Company settings (everything under Settings) and per-person preferences.
 - Page: `src/app/dashboard/settings/page.tsx`
 - Components: `src/components/settings/` (`settings-page.tsx` plus one
   `*-settings-section.tsx` per group)
+- Theme presets: `src/lib/theme/presets/` (one file per built-in theme,
+  `index.ts` lists them)
 - Docs: [theming](../development/theming.md)
 
 ### Sign-in, users, teams and permissions
@@ -373,6 +386,12 @@ Company settings (everything under Settings) and per-person preferences.
   `src/app/api/integrations/jarvis/`, `src/app/api/bridge/`
 - Components: `src/components/agent/`, `src/components/ai/`,
   `src/components/feedback/`
+- Jarvis on-screen UI (json-render): `src/lib/agent/render/catalog.ts` (the
+  components Jarvis may use), `src/lib/agent/render/registry.tsx` (maps each
+  one to React code), with the renderers grouped by kind in
+  `src/lib/agent/render/registry/` (`layout.tsx`, `form-fields.tsx`,
+  `form-controls.tsx`, `data-display.tsx`, `charts.tsx`, `code.tsx`,
+  `skeletons.tsx`)
 - Docs: [AI agent](ai-agent.md),
   [Jarvis feedback bridge](jarvis-feedback-bridge.md)
 
@@ -383,7 +402,7 @@ Company settings (everything under Settings) and per-person preferences.
 | CHERISH board and greeting cards | `src/db/schema-cherish.ts`, `src/lib/cherish/`, `src/lib/greeting-cards/`, `src/app/actions/cherish-*.ts`, `src/components/cherish/`; [greeting cards](../modules/cherish-cards.md) |
 | Weather and fire map layers | `src/db/schema-weather.ts`, `src/lib/weather/`, `src/lib/domain/weather/`, `src/app/api/operations/weather/` |
 | Social posts | `src/db/schema-social.ts`, `src/lib/social/`, `src/app/api/social/`; [social publishing](../modules/social-publishing.md) |
-| Listening Room and Office Talk | `src/lib/listening-room*.ts`, `src/lib/realtimekit/`, `src/components/voice/`, `src/app/api/realtimekit/` |
+| Listening Room and Office Talk | `src/lib/listening-room*.ts`, `src/lib/realtimekit/`, `src/components/voice/`, `src/app/api/realtimekit/`. The RealtimeKit SDK's diagnostic log uploads are throttled to about one per company every 12 hours (immediately, capped, after an Office Talk join or connection failure): rule in `src/lib/realtimekit/log-upload-throttle.ts`, gate in `log-upload-gate.ts` |
 | Internal workspaces and duties | `src/db/schema-internal-duties.ts`, `src/lib/domain/duties/`; [internal workspaces](../modules/internal-workspaces.md) |
 | Desktop app | `electron/`; [desktop](../modules/desktop.md) |
 | NetSuite (legacy) | `src/lib/netsuite/`; [NetSuite](../modules/netsuite.md) |
@@ -504,8 +523,15 @@ PR merges:
    UI standards, help check, build, unit tests, E2E).
 2. From a clean checkout of the latest `main`, run
    `NODE_OPTIONS=--max-old-space-size=8192 bun run deploy`. This builds with
-   OpenNext, escapes non-ASCII characters in the bundle, and uploads the
-   Worker (`wrangler.jsonc`, Worker name `compass`).
+   OpenNext, escapes non-ASCII characters in the bundle, uploads the Worker
+   as a new version (`wrangler.jsonc`, Worker name `compass`) and puts it live
+   with the previous version kept at 0% for tabs that are already open.
+   Always deploy this way (and set any automated deploy command to
+   `bun run deploy`): open tabs then get a two-minute "Compass will update"
+   countdown during which Save keeps working, followed by a refresh prompt.
+   How it works, the limits, and where the 2-minute constant lives
+   (`src/lib/deployment/update-window.ts`) are in
+   [server bundle: Updates and open tabs](server-bundle.md#updates-and-open-tabs).
 3. Apply any new migrations (`bun run db:migrate:prod`) before or right after
    deploying, depending on whether the old code tolerates the new columns.
 4. Check the site loads (`/login` returns 200) and watch live errors for a few

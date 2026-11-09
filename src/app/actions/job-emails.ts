@@ -11,14 +11,13 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import { addressLines } from "@/lib/department-profiles"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { jobEmailDeliverySettings } from "@/db/schema-job-workflows"
 import { normalizeRecipientEmail, type EmailRecipientOption } from "@/lib/email/recipient-options"
 import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { resolveStaffEmailSender } from "@/lib/email/staff-sender"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { REQUEST_COI_TEMPLATE, SEND_W9_TEMPLATE } from "@/lib/job-workflows/email-delivery"
-import { readJobEmailDeliverySettings } from "@/lib/job-workflows/email-delivery-server"
+import { readJobEmailDeliverySettings, readJobEmailW9 } from "@/lib/domain/job-workflows/store"
 import { createNotificationEvent, projectInternalRecipients } from "@/lib/notifications/events"
 import {
   jobEmailTemplate,
@@ -230,11 +229,8 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     if (sendsW9) {
       const version = formData.get("w9Version")
       if (typeof version !== "string" || !version) return { success: false, error: "Reopen the email to attach the company W-9." }
-      const w9 = await ctx.db.select({ filename: jobEmailDeliverySettings.w9Filename, pdf: jobEmailDeliverySettings.w9Pdf })
-        .from(jobEmailDeliverySettings)
-        .where(and(eq(jobEmailDeliverySettings.organizationId, ctx.organizationId), eq(jobEmailDeliverySettings.w9Version, version)))
-        .get()
-      if (!w9?.filename || !w9.pdf?.length) {
+      const w9 = await readJobEmailW9(ctx.db, ctx.organizationId, version)
+      if (!w9) {
         return { success: false, error: "The company W-9 changed or was removed. Reopen the email to check the attachment." }
       }
       w9Attachment = { filename: w9.filename, contentType: "application/pdf", content: new Uint8Array(w9.pdf) }

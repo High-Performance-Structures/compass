@@ -14,6 +14,7 @@ import {
   projectSelectionLinks,
   projectSelectionPhotos,
 } from "@/db/schema-selection-choices"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import { ownerPriceFromMarkup } from "@/lib/feature-settings/selection-settings"
 import type { Db } from "@/lib/server/action-context"
@@ -40,6 +41,15 @@ type CommentInsert = typeof projectSelectionComments.$inferInsert
 export async function insertSelectionChoice(db: Db, row: ChoiceInsert): Promise<void> {
   assertListFields("project_selection_choices", row, CHOICE_LISTS)
   await db.insert(projectSelectionChoices).values(row).run()
+}
+
+/** Several choices in one batch (a template applied), chunked under D1's parameter limit. */
+export async function insertSelectionChoices(db: Db, rows: readonly ChoiceInsert[]): Promise<void> {
+  assertListFields("project_selection_choices", rows, CHOICE_LISTS)
+  const statements = chunkD1InsertRows(projectSelectionChoices, rows).map((chunk) => db.insert(projectSelectionChoices).values(chunk))
+  const [first, ...rest] = statements
+  if (!first) return
+  await db.batch([first, ...rest])
 }
 
 export async function updateSelectionChoice(db: Db, projectId: string, choiceId: string, patch: ChoicePatch): Promise<void> {
@@ -188,6 +198,15 @@ export async function replaceChoiceDependents(
 export async function insertSelectionLink(db: Db, row: LinkInsert): Promise<void> {
   assertListFields("project_selection_links", row, LINK_LISTS)
   await db.insert(projectSelectionLinks).values(row).run()
+}
+
+/** Plain links saved together (a template's product links), chunked under D1's parameter limit. */
+export async function insertSelectionLinks(db: Db, rows: readonly LinkInsert[]): Promise<void> {
+  assertListFields("project_selection_links", rows, LINK_LISTS)
+  const statements = chunkD1InsertRows(projectSelectionLinks, rows).map((chunk) => db.insert(projectSelectionLinks).values(chunk))
+  const [first, ...rest] = statements
+  if (!first) return
+  await db.batch([first, ...rest])
 }
 
 export async function deleteSelectionLink(db: Db, projectId: string, linkId: string): Promise<void> {

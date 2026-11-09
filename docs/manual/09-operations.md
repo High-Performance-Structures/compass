@@ -24,14 +24,15 @@ A husky pre-commit hook runs `bun lint`.
 
 ```bash
 bun install --frozen-lockfile
-bun run deploy        # OpenNext build with a fresh NEXT_DEPLOYMENT_ID, then wrangler deploy
+bun run deploy        # OpenNext build with a fresh NEXT_DEPLOYMENT_ID, upload, then new@100% + previous@0%
 ```
 
-`scripts/run-with-deployment-id.mjs` stamps every build with a unique deployment id. Next.js uses it to detect browser tabs still running an older bundle, and `/api/deployment-version` lets the client prompt a reload. To deploy the demo environment:
+`scripts/run-with-deployment-id.mjs` stamps every build with a unique deployment id. Next.js uses it to detect browser tabs still running an older bundle, and `/api/deployment-version` lets the client show a two-minute "Compass will update" countdown, during which already-open tabs keep saving to the previous version, followed by a refresh prompt (see [server bundle: Updates and open tabs](../architecture/server-bundle.md#updates-and-open-tabs)). Always deploy with `bun run deploy`. To deploy the demo environment:
 
 ```bash
 bun scripts/run-with-deployment-id.mjs opennextjs-cloudflare build
-bunx opennextjs-cloudflare deploy --env demo
+bun scripts/ascii-worker-bundle.mjs
+node scripts/deploy-with-update-window.mjs --env demo
 ```
 
 **Rollback.** `wrangler rollback` returns to the previous worker version. A database change cannot be rolled back this way. Migrations are additive (section 9.2), so the previous code keeps working against the newer schema.

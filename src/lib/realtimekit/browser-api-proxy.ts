@@ -1,10 +1,53 @@
 "use client"
 
+import {
+  URGENT_LOG_HEADER,
+  URGENT_LOG_HEADER_VALUE,
+  isOfficeTalkFailureDiagnostic,
+  takeUrgentLogTag,
+  urgentLogStateAfterFailure,
+  type UrgentLogState,
+} from "@/lib/realtimekit/log-upload-throttle"
+
 const REALTIMEKIT_API_ORIGIN = "https://api.realtime.cloudflare.com"
 const COMPASS_REALTIMEKIT_PROXY_PREFIX = "/api/realtimekit"
+const REALTIMEKIT_LOGS_URL = `${REALTIMEKIT_API_ORIGIN}/logs`
 
 let originalFetch: typeof fetch | null = null
 let installCount = 0
+let urgentLogState: UrgentLogState | null = null
+
+/**
+ * Called for each meeting-window diagnostic. When one shows Office Talk
+ * stopped working (the meeting would not open, or the call's connection
+ * failed), tag the SDK's next few log uploads so the server forwards them to
+ * Cloudflare despite the log throttle.
+ */
+export function noteRealtimeKitDiagnostic(
+  event: string,
+  payload: Readonly<Record<string, unknown>>
+): void {
+  if (!isOfficeTalkFailureDiagnostic(event, payload)) return
+  urgentLogState = urgentLogStateAfterFailure(Date.now())
+}
+
+/** Adds the urgent header to a log upload while a failure window is open. */
+function withUrgentLogHeader(
+  originalUrl: string,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined
+): RequestInit | undefined {
+  if (!originalUrl.startsWith(REALTIMEKIT_LOGS_URL)) return init
+  const tag = takeUrgentLogTag(urgentLogState, Date.now())
+  urgentLogState = tag.next
+  if (!tag.urgent) return init
+  // init.headers replaces a Request's own headers, so start from those.
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined)
+  )
+  headers.set(URGENT_LOG_HEADER, URGENT_LOG_HEADER_VALUE)
+  return { ...init, headers }
+}
 
 function recordProxyEvent(event: Readonly<Record<string, unknown>>): void {
   if (typeof document === "undefined") return
@@ -68,7 +111,10 @@ export function installRealtimeKitBrowserApiProxy(): () => void {
         recordProxyEvent({ event: "rewrite", originalUrl, proxiedUrl })
       }
       try {
-        const response = await fetchImpl(nextInput, init)
+        const response = await fetchImpl(
+          nextInput,
+          proxied ? withUrgentLogHeader(originalUrl, nextInput, init) : init
+        )
         if (proxied) {
           recordProxyEvent({
             event: "response",

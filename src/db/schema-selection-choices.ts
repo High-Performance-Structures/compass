@@ -1,7 +1,8 @@
 /*
  * The rows under a finish selection: its choices, supplier product links,
  * photo links, comments, and the follow-up selections a choice opens.
- * Added by migrations 0311 and 0312; the older flat `choice_options_json` on
+ * Added by migrations 0311, 0312 and 0313 (round alerts, the company
+ * choice-template library); the older flat `choice_options_json` on
  * project_finish_selections is kept and backfilled into choice rows.
  * Written by: src/lib/domain/selections/choices-store.ts.
  */
@@ -23,7 +24,7 @@ import {
 } from "../lib/domain/selections/statuses"
 import { vendors } from "./schema-contacts"
 import { dailyLogPhotos } from "./schema-field"
-import { users } from "./schema-identity"
+import { organizations, users } from "./schema-identity"
 import { projects } from "./schema-projects"
 import { projectFinishSelections } from "./schema-selections"
 
@@ -177,6 +178,69 @@ export const projectSelectionChoiceDependents = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.choiceId, table.selectionId] }),
     index("project_selection_choice_dependents_selection_idx").on(table.selectionId),
+  ]
+)
+
+/**
+ * "Round ready to finalize" was sent for this job and round. Staff are
+ * alerted once; the row is removed when a pick is cleared, so the alert can
+ * come again.
+ */
+export const projectSelectionRoundAlerts = sqliteTable(
+  "project_selection_round_alerts",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    roundKey: text("round_key").notNull(),
+    alertedAt: text("alerted_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.projectId, table.roundKey] })]
+)
+
+/** Company choice-template library: a named set of choices to apply to any job's selection. */
+export const selectionChoiceTemplates = sqliteTable(
+  "selection_choice_templates",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    category: text("category"),
+    description: text("description"),
+    sourceSystem: text("source_system").notNull().default("compass"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("selection_choice_templates_org_name_unique").on(table.organizationId, table.name),
+    index("selection_choice_templates_created_by_idx").on(table.createdBy),
+  ]
+)
+
+export const selectionChoiceTemplateItems = sqliteTable(
+  "selection_choice_template_items",
+  {
+    id: text("id").primaryKey(),
+    templateId: text("template_id")
+      .notNull()
+      .references(() => selectionChoiceTemplates.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    priceCents: integer("price_cents"),
+    ownerPriceCents: integer("owner_price_cents"),
+    leadTimeDays: integer("lead_time_days"),
+    vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+    supplierName: text("supplier_name"),
+    productUrl: text("product_url"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("selection_choice_template_items_template_idx").on(table.templateId, table.sortOrder),
+    index("selection_choice_template_items_vendor_id_idx").on(table.vendorId),
   ]
 )
 

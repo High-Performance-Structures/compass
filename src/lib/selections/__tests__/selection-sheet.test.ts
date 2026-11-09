@@ -4,7 +4,7 @@ import { choiceLineRefs, choicePricesFromResponse, choiceRfqScopeLine, mergeChoi
 import { ownerBoardTotals } from "@/lib/selections/owner-board"
 import { parseSelectionListFilter, selectionMatchesFilter, selectionSheetRows, type SelectionSheetInput } from "@/lib/selections/sheet"
 
-const base = { category: "Finish", costCode: null, sourceSystem: "compass", sortOrder: 0, legacyParentId: null, allowanceCents: null, dueDate: null, published: false } as const
+const base = { category: "Finish", costCode: null, sourceSystem: "compass", sortOrder: 0, legacyParentId: null, allowanceCents: null, dueDate: null, published: false, roundKey: null } as const
 
 describe("selectionSheetRows", () => {
   const input: SelectionSheetInput = {
