@@ -64,8 +64,8 @@ name prefix, so `src/app/actions/project-rfis.ts` goes with
 The job record itself: number, name, department, status, address, map
 visibility, members, linked jobs and job families.
 
-- Schema: `src/db/schema.ts` (`projects`, numbering, aliases, job statuses,
-  members, access grants, travel charges), `src/db/schema-project-families.ts`,
+- Schema: `src/db/schema-projects.ts` (`projects`, numbering, aliases, job
+  statuses, members, access grants, travel charges), `src/db/schema-project-families.ts`,
   `src/db/schema-project-links.ts`, `src/db/schema-project-archives.ts`,
   `src/db/schema-job-workflows.ts`
 - Domain: `src/lib/domain/project/` (projects, numbering, intake, job status),
@@ -92,8 +92,7 @@ visibility, members, linked jobs and job families.
 Estimates with lines, assemblies and phases; bids and selected trades;
 acceptance and e-signature; change orders and variances; templates.
 
-- Schema: `src/db/schema-estimates.ts`, `src/db/schema.ts` (change order
-  tables), `src/db/schema-templates.ts`, `src/db/schema-rate-book.ts`,
+- Schema: `src/db/schema-estimates.ts`, `src/db/schema-change-orders.ts`, `src/db/schema-templates.ts`, `src/db/schema-rate-book.ts`,
   `src/db/schema-rfqs.ts`
 - Domain: `src/lib/domain/estimates/`, `src/lib/domain/templates/`
 - Other logic: `src/lib/estimates/`, `src/lib/change-orders/`,
@@ -116,8 +115,8 @@ acceptance and e-signature; change orders and variances; templates.
 Contract budgets, pay applications (pay requests), deposits, simple invoices,
 received payments, vendor bills, Square receipts.
 
-- Schema: `src/db/schema.ts` (budget applications, budget lines, contract
-  deposits, Sage cost codes), `src/db/schema-netsuite.ts` (invoices, vendor
+- Schema: `src/db/schema-financials.ts` (budget applications, budget lines,
+  contract deposits, Sage cost codes), `src/db/schema-netsuite.ts` (invoices, vendor
   bills, payments, credit memos: legacy NetSuite columns),
   `src/db/schema-contracts.ts`, `src/db/schema-shop-tickets.ts`
 - Domain: `src/lib/domain/budget/` (budget lines and pay applications),
@@ -166,8 +165,9 @@ signed API routes, runs an approved writer program, and reports back.
 The company directory (customers, vendors, their people, staff), project
 contacts, invitations to the owner and vendor portals, duplicate merges.
 
-- Schema: `src/db/schema.ts` (project contacts, customers, vendors, their
-  contacts, internal contacts, merge events),
+- Schema: `src/db/schema-contacts.ts` (project contacts, customers, vendors,
+  their people, staff, merge events), `src/db/schema-crm.ts` (notes,
+  interactions, follow-ups),
   `src/db/schema-participants.ts`
 - Domain: `src/lib/domain/contacts/`, `src/lib/domain/identity/`
   (alternate emails), `src/lib/domain/crm/` (notes, interactions,
@@ -184,8 +184,8 @@ contacts, invitations to the owner and vendor portals, duplicate merges.
 
 ### Field: daily logs, photos, owner updates, Field Mode
 
-- Schema: `src/db/schema.ts` (daily logs, photos and aliases, owner updates,
-  daily log reminders, videos), `src/db/schema-internal-duties.ts`,
+- Schema: `src/db/schema-field.ts` (daily logs, photos and aliases, owner
+  updates, daily log reminders, videos), `src/db/schema-internal-duties.ts`,
   `src/db/schema-equipment.ts`
 - Domain: `src/lib/domain/field/`, `src/lib/domain/media/`,
   `src/lib/domain/duties/`
@@ -205,9 +205,9 @@ contacts, invitations to the owner and vendor portals, duplicate merges.
 
 ### Schedule and calendars
 
-- Schema: `src/db/schema.ts` (schedule tasks, links, dependencies,
-  baselines, publications, work calendar, Google calendars, My Compass and
-  project calendars)
+- Schema: `src/db/schema-schedule.ts` (schedule tasks, links, dependencies,
+  baselines, publications), `src/db/schema-calendars.ts` (work calendar,
+  Google calendars, My Compass and project calendars, client meetings)
 - Domain: `src/lib/domain/schedule/`, `src/lib/domain/work-calendar/`,
   `src/lib/domain/calendars/`
 - Other logic: `src/lib/schedule/` (critical path, Gantt),
@@ -222,8 +222,9 @@ contacts, invitations to the owner and vendor portals, duplicate merges.
 
 ### Operations: to-dos, purchase orders, RFIs, selections, warranty
 
-- Schema: `src/db/schema.ts` (`project_operations` holds to-dos and purchase
-  orders, purchase order lines, RFIs, finish selections),
+- Schema: `src/db/schema-operations.ts` (`project_operations` holds to-dos
+  and purchase orders; purchase order lines, RFIs),
+  `src/db/schema-selections.ts` (finish selections),
   `src/db/schema-selection-decisions.ts`, `src/db/schema-warranty.ts`,
   `src/db/schema-trade-docs.ts`
 - Domain: `src/lib/domain/operations/`, `src/lib/domain/rfis/`,
@@ -275,8 +276,9 @@ to the record), notifications, Activity, the staff Message Desk.
 
 - Schema: `src/db/schema-conversations.ts`,
   `src/db/schema-correspondence*.ts`, `src/db/schema-project-email.ts`,
-  `src/db/schema.ts` (notifications, email reply threads, inbound email,
-  Activity, Message Desk, push tokens)
+  `src/db/schema-notifications.ts` (notifications, email reply threads,
+  inbound email, Activity, push tokens), `src/db/schema-feedback.ts`
+  (Message Desk, GoTo calls and texts)
 - Domain: `src/lib/domain/conversations/`,
   `src/lib/domain/correspondence/`, `src/lib/domain/notifications/`,
   `src/lib/domain/feedback/` (Message Desk and feedback)
@@ -325,8 +327,8 @@ evidence and are never edited by hand.
 
 Company settings (everything under Settings) and per-person preferences.
 
-- Schema: `src/db/schema.ts` (`organization_feature_settings`, saved views,
-  list sheet settings, view preferences), `src/db/schema-record-statuses.ts`,
+- Schema: `src/db/schema-settings.ts` (`organization_feature_settings`,
+  saved views, list sheet settings, view preferences), `src/db/schema-record-statuses.ts`,
   `src/db/schema-theme.ts`
 - Feature settings: `src/lib/feature-settings/` (registry and readers)
 - Domain: `src/lib/domain/settings/` (saved views, list sheets),
@@ -340,8 +342,8 @@ Company settings (everything under Settings) and per-person preferences.
 
 ### Sign-in, users, teams and permissions
 
-- Schema: `src/db/schema.ts` (users, organizations, members, invites, teams,
-  groups, permission overrides, account deletion requests)
+- Schema: `src/db/schema-identity.ts` (users, organizations, members,
+  invites, teams, groups, permission overrides, account deletion requests)
 - Domain: `src/lib/domain/identity/`
 - Other logic: `src/lib/auth.ts` (WorkOS, `getCurrentUser()`),
   `src/lib/permissions.ts` (who may do what),
@@ -361,7 +363,8 @@ Company settings (everything under Settings) and per-person preferences.
 
 - Schema: `src/db/schema-agent.ts`, `src/db/schema-ai-config.ts`,
   `src/db/schema-jarvis.ts`, `src/db/schema-mcp.ts`,
-  `src/db/schema-plugins.ts`, `src/db/schema.ts` (agent memory, feedback)
+  `src/db/schema-plugins.ts`, `src/db/schema-agent-memory.ts`,
+  `src/db/schema-feedback.ts` (feedback reports)
 - Logic: `src/lib/agent/`, `src/lib/jarvis/`, `src/lib/mcp/`,
   `packages/agent-core/`, `packages/agent-server/`
 - API: `src/app/api/agent/`, `src/app/api/compass/`,
@@ -375,8 +378,8 @@ Company settings (everything under Settings) and per-person preferences.
 
 | Area | Where |
 |------|-------|
-| CHERISH board and greeting cards | `src/lib/cherish/`, `src/lib/greeting-cards/`, `src/app/actions/cherish-*.ts`, `src/components/cherish/`; [greeting cards](../modules/cherish-cards.md) |
-| Weather and fire map layers | `src/lib/weather/`, `src/lib/domain/weather/`, `src/app/api/operations/weather/` |
+| CHERISH board and greeting cards | `src/db/schema-cherish.ts`, `src/lib/cherish/`, `src/lib/greeting-cards/`, `src/app/actions/cherish-*.ts`, `src/components/cherish/`; [greeting cards](../modules/cherish-cards.md) |
+| Weather and fire map layers | `src/db/schema-weather.ts`, `src/lib/weather/`, `src/lib/domain/weather/`, `src/app/api/operations/weather/` |
 | Social posts | `src/db/schema-social.ts`, `src/lib/social/`, `src/app/api/social/`; [social publishing](../modules/social-publishing.md) |
 | Listening Room and Office Talk | `src/lib/listening-room*.ts`, `src/lib/realtimekit/`, `src/components/voice/`, `src/app/api/realtimekit/` |
 | Internal workspaces and duties | `src/db/schema-internal-duties.ts`, `src/lib/domain/duties/`; [internal workspaces](../modules/internal-workspaces.md) |
@@ -402,8 +405,10 @@ Folder conventions
 - **`src/components/ui/`** are the shared building blocks (shadcn/ui).
   Feature components live in a folder named after the feature.
 - **`src/db/`** holds the schema files and the database entry point
-  (`src/db/index.ts`). `src/db/schema.ts` is the core file; the other
-  `schema-*.ts` files each hold one area.
+  (`src/db/index.ts`). Each `schema-*.ts` file holds one area's tables and
+  starts with a comment listing them. `src/db/schema.ts` only re-exports the
+  core area files, so code can keep importing from `@/db/schema`. A new
+  schema file must be added to `drizzle.config.ts`.
 - **`drizzle/`** holds the migrations. `scripts/` holds one-off and
   maintenance scripts (imports, reports, the Sage PC programs).
 - **Tests** sit next to the code in `__tests__/` folders. End-to-end tests are
@@ -465,7 +470,10 @@ its snapshot files in `drizzle/meta/` stopped being updated long ago.
 How deploys work
 ---
 
-Compass runs on Cloudflare Workers. Deploys are run by hand after a PR merges.
+Compass runs on Cloudflare Workers. Cloudflare's Workers Builds integration
+also builds every push (the "Workers Builds: compass" check on a PR), but the
+dependable way to put the latest `main` live is to deploy by hand after the
+PR merges:
 
 1. Merge the PR to `main` once CI is green (`.github/workflows/`: lint, knip,
    UI standards, help check, build, unit tests, E2E).

@@ -22,42 +22,18 @@ What we get in return: zero configuration, no connection pooling, no cold start 
 schema organization
 ---
 
-The schema is split across 8 files, registered in `drizzle.config.ts`:
+The schema is split across one file per area (`src/db/schema-*.ts`), and
+every file is registered in `drizzle.config.ts`. The
+[code map](code-map.md) lists which file holds which area's tables, and each
+file starts with a comment listing what it owns.
 
-```typescript
-// drizzle.config.ts
-export default defineConfig({
-  schema: [
-    "./src/db/schema.ts",
-    "./src/db/schema-netsuite.ts",
-    "./src/db/schema-plugins.ts",
-    "./src/db/schema-agent.ts",
-    "./src/db/schema-ai-config.ts",
-    "./src/db/schema-theme.ts",
-    "./src/db/schema-google.ts",
-    "./src/db/schema-dashboards.ts",
-  ],
-  out: "./drizzle",
-  dialect: "sqlite",
-})
-```
+**`schema.ts`** -- a re-export barrel. The core tables used to live here; they
+now sit in area files (`schema-identity.ts`, `schema-projects.ts`,
+`schema-contacts.ts`, `schema-field.ts`, `schema-schedule.ts`, ...) and
+`schema.ts` re-exports them, so `import { projects } from "@/db/schema"`
+keeps working. New tables go in the area file, not in `schema.ts`.
 
-The split isn't arbitrary. Each file maps to a feature boundary:
-
-**`schema.ts`** -- core tables. This is the foundation that everything else references.
-
-- `users` -- WorkOS user IDs as primary keys, roles (admin/office/field/client), optional `google_email` for Drive impersonation
-- `organizations`, `organizationMembers` -- multi-tenant org structure
-- `teams`, `teamMembers` -- teams within orgs
-- `groups`, `groupMembers` -- cross-org permission groups
-- `projects`, `projectMembers` -- the central domain entity
-- `scheduleTasks`, `taskDependencies` -- Gantt chart data
-- `workdayExceptions`, `scheduleBaselines` -- calendar and snapshot tracking
-- `customers`, `vendors` -- CRM basics, with optional `netsuite_id` columns
-- `feedback`, `feedbackInterviews` -- user feedback and UX research
-- `agentConversations`, `agentMemories` -- chat persistence
-- `slabMemories` -- persistent memory (preferences, workflows, facts, decisions)
-- `pushTokens` -- native app push notification tokens
+The older area files, for example:
 
 **`schema-netsuite.ts`** -- legacy/generic NetSuite integration tables.
 
