@@ -437,7 +437,7 @@ export const PROJECT_CONTACT_DIRECTORY_REQUIRED =
  * Unassigned / Needs review, where staff connect them to a directory record.
  * Kept open pending an owner decision on whether imports must link first.
  */
-export const UNLINKED_IMPORT_SOURCE_SYSTEMS: readonly string[] = ["buildertrend"]
+const UNLINKED_IMPORT_SOURCE_SYSTEMS: readonly string[] = ["buildertrend"]
 
 const LINKED_SOURCE_ENTITY_TYPES: readonly string[] = ["customer", "vendor", "user"]
 
