@@ -224,6 +224,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "contacts-project-access-invitations",
     "sectionId": "compare-sage"
   },
+  "contacts.access.request-add-to-sage": {
+    "guideId": "contacts.access",
+    "guideSlug": "contacts-project-access-invitations",
+    "sectionId": "request-add-to-sage"
+  },
   "contacts.access.merge-contacts": {
     "guideId": "contacts.access",
     "guideSlug": "contacts-project-access-invitations",
@@ -308,6 +313,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideId": "conversations",
     "guideSlug": "conversations-and-notifications",
     "sectionId": "drafts-and-sent"
+  },
+  "conversations.imported-buildertrend-conversations": {
+    "guideId": "conversations",
+    "guideSlug": "conversations-and-notifications",
+    "sectionId": "imported-buildertrend-conversations"
   },
   "conversations.talk": {
     "guideId": "conversations",
@@ -458,6 +468,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideId": "financials",
     "guideSlug": "financial-workflows",
     "sectionId": "pay-applications"
+  },
+  "financials.payments-received": {
+    "guideId": "financials",
+    "guideSlug": "financial-workflows",
+    "sectionId": "payments-received"
   },
   "financials.sage-status": {
     "guideId": "financials",

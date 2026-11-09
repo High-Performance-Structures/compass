@@ -7,12 +7,12 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "conflicts", "workload", "double-booked", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour"],
+  "tags": ["schedule", "tasks", "Gantt", "assignees", "responsible people", "conflicts", "workload", "double-booked", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour", "Treat as never published"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-11-06"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -26,7 +26,7 @@ The task list and timeline scroll together. The Gantt opens around **Today**; us
 
 ## See Every Job Together {#all-jobs}
 
-The all-jobs schedule (**Tasks & Schedule → Project Schedule**) starts with **No grouping**, so items from different jobs interleave by date in the Gantt and the list, each with its job tag and color. Use the grouping menu to choose **By phase**, **By project**, **By crew** (one group per crew or company, from the first **Assigned to** name), or **By status**.
+The all-jobs schedule (**Tasks & Schedule → Project Schedule**) starts with **No grouping**, so items from different jobs interleave by date in the Gantt and the list, each with its job tag and color. Use the grouping menu to choose **By phase**, **By project**, **By crew** (one group per crew or company, from the first **Responsible people** name), or **By status**.
 
 When more than one job is shown, **Workload across jobs, next 6 weeks** draws one bar per day for how many items are scheduled, with the part in conflict in red and a count of days with a double-booked crew. An item whose crew or company is booked on another job over the same days gets a dashed red outline on its Gantt bar and a warning icon on its row; hover to see the other job, item, and days. Choose **Conflicts (n)** to show only those items. Finished items and items on the same job never conflict.
 
@@ -38,7 +38,7 @@ The critical path is calculated from activity duration, dependencies, dates, and
 
 ## Create or Edit a Schedule Item {#schedule-item}
 
-Enter a clear title, start date, workday duration, phase, assignee, and any dependency details. Use **Notes** for additional activity context that belongs with the schedule item, then review calculated dates before saving. If an assignee lacks project access, grant only the project role and permissions their work requires.
+Enter a clear title, start date, workday duration, phase, responsible people, and any dependency details. Use **Notes** for additional activity context that belongs with the schedule item, then review calculated dates before saving. Use **Responsible people** to add everyone responsible for the item; all listed people are equal, with no lead or helper role. The people filter and **My items** match any listed person. **By crew** and a new linked follow-up to-do use the first listed name. Task-level external confirmation and weather-risk ownership use the first listed person who has a linked Compass account. Put people in the order that best fits those single-person workflows. If a responsible person lacks project access, grant only the project role and permissions their work requires.
 
 - **End date or duration.** Type a duration in workdays, or pick an **End** date and Compass works out the duration from the project's workday calendar, skipping weekends and holidays. If you pick a day that isn't a workday, the item ends on the workday before it, and Compass tells you.
 - **Time (optional).** Items are all day unless you add a **Start time**; an **End time** is optional too. A one-day item with a time shows at that time on My Compass and project Google calendars. A longer item stays all day there, with the time in its details.
@@ -58,6 +58,8 @@ The first **Publish schedule** makes selected visible items available in owner a
 A schedule that has never been published is a draft: edit dates, predecessors, and workday exceptions freely, with no shift reason. Once a schedule has been published, including one later moved back to draft, any change that moves dates asks for a **Schedule shift reason**, which is saved in the schedule's activity history.
 
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
+
+After moving a previously published schedule to draft, an authorized manager can choose **Treat as never published**. This resets the publication threshold: edits no longer need schedule-shift reasons and the next publish counts as the first publication. Earlier publications remain in history, and the schedule stays hidden from owner and subcontractor workspaces until it is published again. Use this only when the earlier publication should no longer govern the working schedule, not merely to avoid documenting an ordinary revision.
 
 ## Workday Exceptions {#workday-exceptions}
 
@@ -89,7 +91,7 @@ Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overal
 
 ## Quick Check {#quick-check}
 
-- [ ] The project, title, phase, assignee, dates, and duration are correct.
+- [ ] The project, title, phase, responsible people, dates, and duration are correct.
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.

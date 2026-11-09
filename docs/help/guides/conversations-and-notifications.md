@@ -7,12 +7,12 @@
   "summary": "Use project messages, private drafts, external email, Talk, Message Desk follow-up, texts, and notifications.",
   "contextSummary": "Choose a project channel for durable project communication, use the department numbers for project-update texts, use HPS for text help and project lists, and reserve announcements for truly audience-wide information.",
   "category": "Communication",
-  "tags": ["conversations", "messages", "email", "drafts", "sent", "Talk", "video", "microphone", "transcript", "sms", "Message Desk", "notifications", "Jarvis"],
+  "tags": ["conversations", "messages", "email", "drafts", "sent", "Buildertrend", "imported conversations", "Saved", "Needs reply", "Archive", "Close", "Talk", "video", "microphone", "transcript", "sms", "Message Desk", "notifications", "Jarvis"],
   "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -83,6 +83,14 @@ In **Settings**, confirm the timezone and choose supported in-app, email, push, 
 The project **Messages** workspace has **Inbox**, **Drafts**, **Sent**, **Unread**, **Needs reply**, **Saved**, and **Archived** views. Conversations are a sheet: click a column header (Subject, With, Type, Last activity, Status) to sort, and search subjects and message text to find an existing exchange. **Type** shows whether a conversation is a project **Email** or a Compass **Message**. Click a row to open the conversation: on a wide screen it opens beside the sheet, and on a smaller screen below it. Tick conversations to mark them read, flag them as needs reply, save or archive them together. Admins choose which columns show in **Settings → Lists**. **Drafts** contains your unfinished messages, emails, and replies; use **Save draft** and confirm it saved before leaving. Drafts are private to you. Use the available discard action deliberately: a new composition can offer **Undo discard**, while discarding a conversation reply warns that it cannot be recovered.
 
 **Sent** helps you review what you sent. Staff with project access can use **Global** for the project's shared message history. A personal inbox or private email view is not a guarantee that the sent project record is hidden from authorized project staff. Read the audience notice above a reply: it may be private to you and project staff or shared with all active Compass recipients. Use **New email** when a separate external email or a narrower recipient list is required.
+
+## Work with Imported Buildertrend Conversations {#imported-buildertrend-conversations}
+
+Imported Buildertrend message threads appear with the live conversations in the project's **Messages** inbox. Open the existing subject and reply there so the imported history and new Compass replies stay together. Replies in an imported conversation are not saved as drafts, so send the reply or copy and clear unfinished text before leaving.
+
+**Saved**, **Needs reply**, and **Archive** are personal inbox flags: changing one affects only your view. **Close** and **Reopen** are staff actions that apply to the conversation for everyone who can see it. A new message after a close reopens the conversation automatically. Imported conversations do not offer the read-receipt sharing preference.
+
+An imported conversation whose outside participants have not been safely identified stays staff-only. After confirming the people, select **Existing channels and direct messages** from the project's **Messages** page, open the same conversation in **Conversations**, and use its options to choose **Share with owner…** or **Share with vendor…**. The confirmation lists exactly who will gain access. Sharing grants access to the whole conversation, including the ability to read and reply; it does not notify anyone or mark the conversation unread. A listed project contact without a Compass account joins when that person is later given Compass access. A conversation that includes both owner and vendor participants, or belongs to a project configured to keep imported conversations staff-only, cannot be shared this way.
 
 ## Join and Use Compass Talk {#talk}
 

@@ -7,12 +7,12 @@
   "summary": "Email or call Compass Help with a clear problem report while protecting project, account, and financial data.",
   "contextSummary": "Stop risky retries, preserve the exact error and context, then contact compasshelp@hps-colorado.com or 719-896-6149 without sharing credentials.",
   "category": "Support",
-  "tags": ["help", "feedback", "bug report", "my requests", "feedback desk", "request status", "permissions", "authentication", "support"],
+  "tags": ["help", "feedback", "bug report", "my requests", "feedback desk", "request status", "admin review", "permissions", "authentication", "support"],
   "audiences": ["staff", "owner", "subcontractor", "supplier", "guest"],
   "permissions": ["help:read"],
-  "routes": ["/dashboard/settings", "/dashboard/requests"],
+  "routes": ["/dashboard/settings", "/dashboard/requests", "/dashboard/requests/[id]"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -59,6 +59,8 @@ Staff can send feedback with **Feedback** in the right-click menu, or by asking 
 | **Closed** | Finished, answered, or not going ahead. The last update explains which. |
 
 When a guide covers the answer or the new feature, the update links to it. Select the link to open that section of Compass Help.
+
+If an open request still needs a product or priority decision, Jarvis can ask Feedback Desk administrators to review it. That sends an in-app review notice to the administrators; it does not approve, prioritize, close, or otherwise change the request. Continue following the same request in **My Requests** rather than filing a duplicate.
 
 ## Authentication and Sync {#authentication-sync}
 

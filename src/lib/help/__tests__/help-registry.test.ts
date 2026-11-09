@@ -186,6 +186,30 @@ describe("help registry", () => {
     expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
   })
 
+  it("documents current imported, scheduling, Sage, payment, and support workflows", () => {
+    const conversations = getHelpGuide("conversations-and-notifications")
+    const contacts = getHelpGuide("contacts-project-access-invitations")
+    const schedule = getHelpGuide("schedules-and-tasks")
+    const financials = getHelpGuide("financial-workflows")
+    const support = getHelpGuide("requesting-help")
+
+    expect(conversations?.content).toContain("Imported Buildertrend message threads")
+    expect(conversations?.content).toContain("**Share with owner…**")
+    expect(conversations?.content).toContain("A new message after a close reopens")
+    expect(contacts?.content).toContain("**Their other projects**")
+    expect(contacts?.content).toContain("**Request add to Sage**")
+    expect(schedule?.content).toContain("all listed people are equal")
+    expect(schedule?.content).toContain("**Treat as never published**")
+    expect(financials?.content).toContain("## Record Payments Received")
+    expect(financials?.content).toContain("**Paid before Compass**")
+    expect(financials?.content).toContain("approval also queues the pay request as a Sage AR invoice")
+    expect(financials?.content).toContain("**Send approved change orders to Sage**")
+    expect(support?.content).toContain("ask Feedback Desk administrators to review it")
+    expect(
+      getHelpGuidesForRoute("/dashboard/requests/request-123").map((guide) => guide.id)
+    ).toContain("support")
+  })
+
   it("retains canonical audience and resource-permission metadata", () => {
     expect(helpAudienceForRole("client")).toBe("owner")
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")

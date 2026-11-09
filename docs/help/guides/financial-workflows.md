@@ -7,12 +7,12 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["invoices", "simple invoices", "Square invoice", "estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["invoices", "simple invoices", "Square invoice", "estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "payments received", "unapplied payment", "Paid before Compass", "Sage AR invoice", "Send to Sage", "change orders", "variances", "Create in Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-11-08"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -21,6 +21,8 @@
 Compass provides estimating, budget, Schedule of Values/G703, pay-application, purchase-order, bill, and review workflows. Sage remains the HPS production accounting and job-cost source of truth.
 
 Saving, approving, or queuing a Compass record does not necessarily mean it posted to Sage.
+
+For a new Compass job that is not linked to Sage, authorized office staff may see **Create in Sage** on the job Overview. Review the proposed Sage job name, client, job type, and status. If Sage shows matching clients, choose the exact one or deliberately add a new client. Do not create the job if it may already exist under another name; ask an administrator to link the existing Sage job instead. Wait for the Sage status to confirm completion before relying on the link.
 
 ## Estimates {#estimates}
 
@@ -211,13 +213,17 @@ When a change order is executed, draft pay applications move to the new contract
 
 Before a pay application is billed, office staff with finance access can open **Sage export preview** at the bottom of its G702 / G703 page. It shows what would go to Sage, without sending anything: the Sage job, application number, billing date and period, billing cycle, the description (for example "November 2026 Pay Request") and the suggested invoice number. Below that is one line per cost code with its Sage cost code (CSI codes by the Sage name's prefix, builder fees by name), scheduled value, change orders, variances, previous and current work, stored materials, and whether the line is new to Sage (**Append as new line**). Codes with no Sage cost code are flagged **Unmapped**.
 
-The preview compares each cost code with Sage's latest progress billing for the job (read with **Sync from Sage** on the Budget page) and shows every difference in contract and previous completed, plus the contract and completed totals. It also lists the executed change orders and variances Sage needs first, with their Sage names (variances start with "V-"), cost codes, amounts and periods. Use **Print Preview** to print it. Posting in Sage stays manual.
+The preview compares each cost code with Sage's latest progress billing for the job (read with **Sync from Sage** on the Budget page) and shows every difference in contract and previous completed, plus the contract and completed totals. It also lists the executed change orders and variances Sage needs first, with their Sage names (variances start with "V-"), cost codes, amounts and periods. Use **Print Preview** to print it. The preview is read-only; it does not send anything by itself.
 
 Admins set the billing cycle and the invoice number formats for pay requests, deposits, other billings, credit memos and material sales in Settings under **Sage export**. Sage allows invoice numbers up to 20 characters, and the preview flags a longer one.
 
 **Delete draft** removes a draft pay application and the work entered on it, and frees any deposit it applied. Submitted pay applications can't be deleted.
 
-**Ready for review** locks the draw so it can be reviewed and entered in Sage; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits. Once it's reviewed, **Approve for billing** marks it **Billed** and publishes it to the owner, who sees it under **Pay applications** in the client portal with a **Print Preview** of its G702/G703. Enter the Sage invoice number in **Sage invoice** once the draw is invoiced in Sage; Compass doesn't create the invoice. **Undo approval** sends a billed draw back to review and hides it from the owner, until a later draw is started or a Sage invoice number is recorded.
+**Ready for review** locks the draw so it can be reviewed; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits. Once it's reviewed, **Approve for billing** marks it **Billed** and publishes it to the owner, who sees it under **Pay applications** in the client portal with a **Print Preview** of its G702/G703.
+
+When **Settings → Workflows → Sage AR invoices** is configured to send billed pay requests, approval also queues the pay request as a Sage AR invoice. The **Sage AR invoice** section shows the invoice number, lines, tax, retention, net due, blockers, and whether it is queued, sending, in Sage, failed, or needs attention. Authorized office staff can use **Send to Sage** or **Retry** when automatic sending is off or the invoice needs another attempt. A pay request created in Sage is not sent back as another invoice. Sage posting remains an office step even after Compass reports **In Sage**.
+
+If the company does not send billed pay requests from Compass, record the Sage invoice number after staff enter the draw there. **Undo approval** sends a billed draw back to review and hides it from the owner, but it is blocked after a later draw begins, while a payment is applied, while the Sage invoice is being sent, or once Sage has the invoice unless the accounting record is corrected first.
 
 ### Telling the owner
 
@@ -232,11 +238,25 @@ Every Compass document prints the same way: **Print Preview** opens it in a new 
 
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
 
+## Record Payments Received {#payments-received}
+
+Use **Payments received** on the project **Financials** page or a billed pay application's page. Under **Billed items**, choose **Record payment** for a billed pay application or an invoice that is not draft or void. Enter the amount received, date, method, reference, and optional memo, then apply it to that item. A single payment can be split across the same customer's other open construction items on that project. Construction and preconstruction billing cannot share one payment.
+
+The **Payments** list shows what each payment was applied to and any unapplied balance. Choose **Apply** to allocate an unapplied remainder later. Compass refuses an allocation above an item's outstanding balance or the payment's available amount. If a pay application and invoice carry the same Sage invoice number, treat the warning as a possible duplicate billing and apply the payment to only one after confirming the accounting record.
+
+Imported billed draws from Sage or Drive can take a payment when Compass has a positive current-payment-due amount. Until staff record a payment or use **Paid before Compass**, an imported draw shows **Imported – status unconfirmed**, and the owner does not see a paid or outstanding balance for it. Use **Paid before Compass** only when the imported draw was settled outside Compass and no payment details belong here; the owner sees it as paid, but Compass still creates no Sage receipt. Undoing that mark requires a reason and is blocked while a Compass payment is applied.
+
+Payments are retained as accounting history. Use **Void** with a reason instead of deleting one; its applied amounts become outstanding again. If the receipt was entered in Sage, reverse it there too. Compass-recorded payments do not post receipts to Sage, and these actions do not send an email or notification.
+
 ## Sage Status {#sage-status}
 
 Compass status may distinguish Compass-only, pending review, queued, syncing, synced, failed, or read-only data. Missing mapping means a project, company, phase, cost code, or other required identity must be corrected before handoff.
 
 Only authorized staff should queue Sage writes. Confirm identity, mapping, amounts, dates, approvals, and that the record was not already entered directly. Never retry blindly: delayed responses can create duplicate accounting work.
+
+An accepted estimate can be queued to Sage automatically when the company enables estimate synchronization. The estimate's **Sage** section shows the proposed cost-code lines, taxable state, blockers, and status; authorized office staff can use **Send to Sage** or **Retry** when needed. Confirm the accepted estimate and Sage job mapping before sending.
+
+Approved change orders and variances appear in **Change orders for Sage** on Project Financials and in the individual change-order page. Choose **Send approved change orders to Sage**, review the proposed Sage number, approval date, description, cost types, cost codes, and amounts, then send only the intended records. Compass adds each as an approved prime change order and checks Sage for duplicate numbers. A queued or sent state is not confirmation until the status reads **In Sage**; investigate **Differs in Sage** or a failed status before retrying.
 
 ## Sage Unavailable {#sage-unavailable}
 

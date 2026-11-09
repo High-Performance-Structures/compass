@@ -7,7 +7,7 @@
   "summary": "Manage directory contacts, project assignments, invitations, and access verification.",
   "contextSummary": "A contact record, a project assignment, and a Compass login are separate. Search first, assign the correct project, then invite and verify access.",
   "category": "Start Here",
-  "tags": ["contacts", "access", "permissions", "invitations", "users"],
+  "tags": ["contacts", "access", "permissions", "invitations", "users", "Buildertrend projects", "Request add to Sage", "Sage requests"],
   "audiences": ["staff"],
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
@@ -42,8 +42,9 @@ For an unlinked contact, **Verify Sage link** looks up the exact Sage number wit
 2. From the project **Contacts** page, add the existing contact to that project. An account administrator can also use **Manage Compass access** within Contacts to select multiple accounts and grant specific projects together.
 3. Review the project, contact type, email, intended role, and audience visibility.
 4. Select **Invite to Compass**, or **Grant project access** if the person already has a Compass login, and review the project and welcome message before sending. While an invitation is pending, the button reads **Resend invitation**.
+5. If Compass found other projects the person could see in Buildertrend, review **Their other projects**. Available active and closed projects start ticked so one invitation can restore the person's prior access; untick anything they should not receive. A project marked **Staff-only** cannot be selected.
 
-For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
+For a new user, Compass creates one secure account invitation. The current project and any other ticked projects open when the person accepts it. For an existing user, those explicit project assignments take effect immediately. Compass never adds an unticked project or a staff-only project, and the one welcome email identifies the invitation rather than sending a separate email for every project.
 
 Linking a person to a Compass account is a separate, deliberate administrator action. Use **Compass account** beside the named person and choose the exact login. Never decide a match by email alone; the account link does not grant project access by itself.
 
@@ -64,6 +65,12 @@ Stop before inviting either record when you find a likely duplicate. Ask an admi
 Use **Compare clients with Sage** to search Compass clients and the read-only Sage directory side by side. Request a fresh Sage list when needed and compare the names and exact Sage identifiers. Selecting a pair does not link or merge it. Imported links can use their verification workflow; other identity links still require the review appropriate to that record. Proposed Sage edits and new Sage people require approval by staff with Sage review access (a second person when **Settings > Workflows > Sage contact review** requires it) and confirmed read-back.
 
 Project-phase contacts remain project assignments, separate from the underlying Sage client. Reuse an existing named person when assigning the same client to another phase instead of creating a duplicate.
+
+## Request a New Sage Directory Record {#request-add-to-sage}
+
+For a client, vendor, or one of their people that is not in Sage, authorized office staff can choose **Request add to Sage**. Review and complete the details Sage needs, then choose **Send for approval**. Compass saves those details on the Compass record immediately, blocks an exact duplicate, and shows close look-alikes to the approver. A person's company must already be in Sage or have its own open request before the person can be requested. If a vendor's 1099 status is not known, follow the W-9 request shown by the workflow.
+
+Use **Sage requests** at the top of **Contacts** to follow open requests and the last 30 days of completed decisions. The company's approver, configured in **Settings → Workflows → Adding to Sage**, can compare the details and look-alikes, then choose **Approve and send to Sage** or **Don't add**. Approval queues the Sage writer; it is not proof that Sage accepted the record until the status updates. The requester or approver can withdraw a pending or approved request that has not gone to Sage. Do not create another request while one is open.
 
 ## Merge Duplicate Companies or People {#merge-contacts}
 
