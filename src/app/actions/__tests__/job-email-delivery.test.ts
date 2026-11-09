@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { PDFDocument } from "pdf-lib"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
 import { REQUEST_COI_TEMPLATE, SEND_W9_TEMPLATE } from "@/lib/job-workflows/email-delivery"
@@ -55,7 +56,13 @@ beforeEach(() => {
 
 afterEach(() => database.close())
 
-function settingsForm(pdf?: string): FormData {
+async function makeW9Pdf(text: string): Promise<Uint8Array<ArrayBuffer>> {
+  const document = await PDFDocument.create()
+  document.addPage().drawText(text)
+  return new Uint8Array(await document.save())
+}
+
+function settingsForm(pdf?: BlobPart): FormData {
   const form = new FormData()
   form.set("insuranceAgentEmail", AGENT)
   if (pdf !== undefined) form.set("w9", new File([pdf], "Company W-9.pdf", { type: "application/pdf" }))
@@ -91,9 +98,14 @@ describe("job document emails", () => {
 
   it("attaches only the reviewed version of the private PDF and limits its recipients", async () => {
     expect(await saveJobEmailDeliverySettings(settingsForm("not a PDF"))).toMatchObject({ success: false })
-    const first = await saveJobEmailDeliverySettings(settingsForm("%PDF-1.7 first"))
+    const first = await saveJobEmailDeliverySettings(settingsForm(await makeW9Pdf("First W-9")))
     if (!first.success || !first.data.w9Version) throw new Error("First upload failed")
-    const pdf = "%PDF-1.7 replacement"
+    expect(await saveJobEmailDeliverySettings(settingsForm("%PDF-1.7 truncated"))).toMatchObject({
+      success: false, error: expect.stringContaining("readable"),
+    })
+    expect(await getJobEmailDeliverySettings()).toMatchObject({ success: true, data: { w9Version: first.data.w9Version } })
+
+    const pdf = await makeW9Pdf("Replacement W-9")
     const replacement = await saveJobEmailDeliverySettings(settingsForm(pdf))
     if (!replacement.success || !replacement.data.w9Version) throw new Error("Replacement failed")
     const version = replacement.data.w9Version
@@ -104,7 +116,7 @@ describe("job document emails", () => {
       success: true, data: { to: [CLIENT], requiredAttachment: { filename: "Company W-9.pdf", version } },
     })
     expect(draft.data.recipientOptions).toMatchObject([{ id: "client", email: CLIENT, category: "client" }])
-    expect(JSON.stringify(draft)).not.toContain(pdf)
+    expect(draft.data.requiredAttachment).toEqual({ filename: "Company W-9.pdf", version })
     expect(await sendJobEmail(sendForm(SEND_W9_TEMPLATE, CLIENT, first.data.w9Version))).toMatchObject({ success: false })
     expect(await sendJobEmail(sendForm(SEND_W9_TEMPLATE, "supplier@example.test", version))).toMatchObject({ success: false })
     expect(await removeJobEmailW9(first.data.w9Version)).toMatchObject({ success: false })
@@ -113,7 +125,7 @@ describe("job document emails", () => {
     expect(await sendJobEmail(sendForm(SEND_W9_TEMPLATE, CLIENT, version))).toEqual({ success: true, data: { loggedContact: true } })
     expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({
       to: [CLIENT],
-      attachments: [{ filename: "Company W-9.pdf", contentType: "application/pdf", content: new TextEncoder().encode(pdf) }],
+      attachments: [{ filename: "Company W-9.pdf", contentType: "application/pdf", content: pdf }],
     }))
     expect(database.sqlite.prepare("SELECT project_contact_id FROM project_interactions").all()).toEqual([{ project_contact_id: "client" }])
 
@@ -123,7 +135,7 @@ describe("job document emails", () => {
   })
 
   it("keeps settings within the organization and blocks external users", async () => {
-    expect(await saveJobEmailDeliverySettings(settingsForm("%PDF-1.7 org A"))).toMatchObject({ success: true })
+    expect(await saveJobEmailDeliverySettings(settingsForm(await makeW9Pdf("Organization A")))).toMatchObject({ success: true })
     mocks.auth.mockResolvedValue(context(database, "staff-b", "project-other").user)
     expect(await getJobEmailDeliverySettings()).toEqual({
       success: true, data: { insuranceAgentEmail: null, w9Version: null, w9Filename: null },

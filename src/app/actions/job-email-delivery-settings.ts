@@ -53,6 +53,14 @@ export async function saveJobEmailDeliverySettings(formData: FormData): Promise<
       if (!upload.name.toLowerCase().endsWith(".pdf") || bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
         return { success: false, error: "Upload the W-9 as a PDF." }
       }
+      const unreadablePdf: Result<never> = { success: false, error: "Upload a readable W-9 PDF with at least one page." }
+      try {
+        const { PDFDocument } = await import("pdf-lib")
+        const document = await PDFDocument.load(bytes, { throwOnInvalidObject: true, updateMetadata: false })
+        if (document.getPageCount() === 0) return unreadablePdf
+      } catch {
+        return unreadablePdf
+      }
       w9 = {
         w9Version: crypto.randomUUID(),
         w9Filename: upload.name.replace(/[\x00-\x1f\x7f/\\]/g, "_").slice(0, -4).slice(0, 120) + ".pdf",
