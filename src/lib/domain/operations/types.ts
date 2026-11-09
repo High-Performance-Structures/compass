@@ -257,6 +257,8 @@ export type CreatePurchaseOrderLineInput = {
 
 export type CreateRfqScopeLineInput = {
   readonly selectionId?: string | null
+  /** A selection choice this line asks the supplier to price (with its selectionId). */
+  readonly choiceId?: string | null
   readonly description: string | null
   readonly costCode: string | null
   readonly phaseCode: string | null

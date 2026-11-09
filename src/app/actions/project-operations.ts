@@ -9,7 +9,7 @@ import { projectSelectionProcurementLinks } from "@/db/schema-selection-decision
 import { errorMessage } from "@/lib/action-result"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { resolveVendorLink } from "@/lib/domain/contacts/directory-links"
-import { nextVendorLink } from "@/lib/domain/contacts/rules"
+import { nextVendorLink, type DirectoryVendorPick } from "@/lib/domain/contacts/rules"
 import { operationsContext } from "@/lib/domain/operations/access"
 import {
   countProjectOperations,
@@ -32,11 +32,13 @@ import {
   deleteOperations,
   insertOperations,
   operationInsertQuery,
+  operationUpdateQuery,
   updateOperations,
   type OperationInsert,
 } from "@/lib/domain/operations/store"
 import type {
   CreateRfqRequestInput,
+  CreateRfqScopeLineInput,
   DuplicateRfqRequestInput,
   NormalizedRfqScopeLine,
   ProjectOperationActionResult,
@@ -50,9 +52,11 @@ import type {
 import { markPaperTrailDue } from "@/lib/paper-trail/enqueue"
 import { isSelectableRecordStatus } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
+import { choicesBelongToSelections, loadChoicesForRfq } from "@/lib/domain/selections/choice-rfq-server"
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
-import { specificationJson } from "@/lib/selections/decisions"
+import { choiceLineRefs, mergeChoiceLineRefs, type ChoiceLineRef } from "@/lib/selections/choice-rfq"
+import { parseSpecification, selectionSpecification, specificationJson, type SelectionSpecification } from "@/lib/selections/decisions"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
@@ -234,6 +238,7 @@ export async function createRfqRequest(
     if (selections.length !== selectionIds.length) {
       throw new Error("A linked selection is no longer available in this project.")
     }
+    await assertChoicesBelong(db, projectId, input.scopeItems)
     const row: OperationInsert = {
       id,
       projectId,
@@ -275,7 +280,7 @@ export async function createRfqRequest(
             projectId,
             selectionId: selection.id,
             operationId: id,
-            specificationJson: specificationJson(selection),
+            specificationJson: selectionSnapshotJson(selection, choiceLinesFor(input.scopeItems, selection.id)),
             createdAt: now,
           }),
         ),
@@ -525,5 +530,110 @@ export async function deleteRfqRequest(projectId: string, rfqId: string): Promis
     return { success: true, id: rfqId }
   } catch (error) {
     return { success: false, error: errorMessage(error, "Failed to delete request for quote") }
+  }
+}
+
+/** The procurement snapshot of a selection as sent, with the choice lines it prices. */
+function selectionSnapshotJson(selection: SelectionSpecification, lines: { readonly choiceLines?: readonly ChoiceLineRef[] }): string {
+  return specificationJson(lines.choiceLines ? { ...selectionSpecification(selection), choiceLines: [...lines.choiceLines] } : selection)
+}
+
+/** The `choiceLines` part of a selection's procurement snapshot for lines that price its choices. */
+function choiceLinesFor(
+  lines: readonly CreateRfqScopeLineInput[],
+  selectionId: string,
+  firstLineNumber = 1,
+): { readonly choiceLines?: readonly ChoiceLineRef[] } {
+  const refs = choiceLineRefs(lines, selectionId, firstLineNumber)
+  return refs.length > 0 ? { choiceLines: refs } : {}
+}
+
+async function assertChoicesBelong(db: Db, projectId: string, lines: readonly CreateRfqScopeLineInput[]): Promise<void> {
+  if (!(await choicesBelongToSelections(db, projectId, lines))) {
+    throw new Error("A selection choice on this RFQ is no longer available.")
+  }
+}
+
+export type PriceSelectionChoicesInput = {
+  readonly selectionId: string
+  readonly choiceIds: readonly string[]
+  /** A draft RFQ on this job to add the choices to; null makes a new RFQ. */
+  readonly rfqId: string | null
+  readonly requestedFrom: string | null
+  readonly recipientEmail: string | null
+  readonly responseDueDate: string | null
+  readonly vendorPick: DirectoryVendorPick | null
+}
+
+/**
+ * "Ask supplier to price" on a selection: its choices become scope lines on
+ * a normal RFQ (new, or added to an unsent draft), so the supplier prices
+ * them through the usual RFQ email and no-login price link. The returned
+ * line prices fill the choices (see applyRfqPricesToChoices).
+ */
+export async function priceSelectionChoicesByRfq(
+  projectId: string,
+  input: PriceSelectionChoicesInput,
+): Promise<ProjectOperationActionResult> {
+  try {
+    const { db } = await operationsContext(projectId, "rfqs", true)
+    const { selection, lines } = await loadChoicesForRfq(db, projectId, input.selectionId, input.choiceIds)
+    if (!input.rfqId) {
+      return await createRfqRequest(projectId, {
+        title: `Pricing: ${selection.roomName} ${selection.name}`,
+        vendorCategory: null,
+        requestedFrom: input.requestedFrom,
+        recipientEmail: input.recipientEmail,
+        responseDueDate: input.responseDueDate,
+        vendorPick: input.vendorPick,
+        priority: "normal",
+        scope: `Please price the following ${selection.name.toLowerCase()} options.`,
+        scopeItems: lines,
+        documentLinks: [],
+      })
+    }
+
+    const existing = await loadProjectOperation(db, projectId, input.rfqId, "rfq")
+    if (!existing) return { success: false, error: "RFQ not found." }
+    const existingPayload = parseJsonRecord(existing.sagePayloadJson)
+    if (existing.status !== "draft" || parsePortalRfqPayload(existing.sagePayloadJson).vendorResponse !== null) {
+      return { success: false, error: "Choices can only be added to an RFQ that hasn't been sent yet." }
+    }
+    const current = parseRfqScopeItems(existingPayload, existing.description)
+    if (current.length + lines.length > 200) return { success: false, error: "This RFQ has too many lines. Start a new RFQ." }
+    const firstLineNumber = current.length + 1
+    const added = normalizeRfqScopeLines(lines, selection.name).map((line, index) => ({ ...line, lineNumber: firstLineNumber + index }))
+    await validateRfqScopeCostCodes(db, projectId, added)
+    const scopeItems = [...current.map((line, index) => ({ ...line, lineNumber: index + 1 })), ...added]
+    const now = new Date().toISOString()
+    const link = await db
+      .select({ specificationJson: projectSelectionProcurementLinks.specificationJson })
+      .from(projectSelectionProcurementLinks)
+      .where(and(eq(projectSelectionProcurementLinks.selectionId, selection.id), eq(projectSelectionProcurementLinks.operationId, existing.id)))
+      .get()
+    const choiceLines = mergeChoiceLineRefs(
+      link ? parseSpecification(link.specificationJson)?.choiceLines ?? [] : [],
+      choiceLineRefs(lines, selection.id, firstLineNumber),
+    )
+    const snapshot = selectionSnapshotJson(selection, { choiceLines })
+    await db.batch([
+      operationUpdateQuery(
+        db,
+        and(eq(projectOperations.id, existing.id), eq(projectOperations.projectId, projectId), eq(projectOperations.updatedAt, existing.updatedAt)),
+        { sagePayloadJson: JSON.stringify({ ...existingPayload, scopeItems }), updatedAt: now },
+      ),
+      db
+        .insert(projectSelectionProcurementLinks)
+        .values({ id: crypto.randomUUID(), projectId, selectionId: selection.id, operationId: existing.id, specificationJson: snapshot, createdAt: now })
+        .onConflictDoUpdate({
+          target: [projectSelectionProcurementLinks.selectionId, projectSelectionProcurementLinks.operationId],
+          set: { specificationJson: snapshot },
+        }),
+    ])
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
+    revalidateRfqPaths(projectId)
+    return { success: true, id: existing.id }
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to ask for pricing") }
   }
 }

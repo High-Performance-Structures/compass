@@ -4,7 +4,7 @@
  * section 1). No access rules here: callers resolve access first and pass
  * rows already scoped to the project.
  */
-import { and, eq, inArray, ne } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -97,6 +97,38 @@ export async function setSelectionChoiceChosen(
     .set({ chosen, updatedAt: now })
     .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.selectionId, selectionId)))
   await (chosen ? db.batch([clearOthers, setThis]) : setThis.run())
+}
+
+/**
+ * Supplier prices returned on an RFQ, in one batch. The RFQ's vendor becomes
+ * the choice's supplier only where the choice has none.
+ */
+export async function setChoicePricesFromRfq(
+  db: Db,
+  projectId: string,
+  prices: readonly { readonly choiceId: string; readonly selectionId: string; readonly priceCents: number }[],
+  vendorId: string | null,
+  now: string,
+): Promise<void> {
+  const statements: BatchItem<"sqlite">[] = prices.flatMap((price) => {
+    const where = and(
+      eq(projectSelectionChoices.id, price.choiceId),
+      eq(projectSelectionChoices.selectionId, price.selectionId),
+      eq(projectSelectionChoices.projectId, projectId),
+    )
+    const setPrice = db.update(projectSelectionChoices).set({ priceCents: price.priceCents, updatedAt: now }).where(where)
+    if (!vendorId) return [setPrice]
+    return [
+      setPrice,
+      db
+        .update(projectSelectionChoices)
+        .set({ vendorId, supplierName: null })
+        .where(and(where, isNull(projectSelectionChoices.vendorId), isNull(projectSelectionChoices.supplierName))),
+    ]
+  })
+  const [first, ...rest] = statements
+  if (!first) return
+  await db.batch([first, ...rest])
 }
 
 /** Moves a merged vendor's selection choices to the kept vendor. */

@@ -21,6 +21,8 @@ export type SelectionChoiceInput = {
   readonly description?: string | null
   /** Dollars as typed ("1,250.00"); blank for no price. */
   readonly price?: string | null
+  /** What the owner sees (supplier price plus builder fee), as typed; blank for not yet. */
+  readonly ownerPrice?: string | null
   /** Whole days as typed; blank for unknown. */
   readonly leadTimeDays?: string | null
   readonly vendorId?: string | null
@@ -32,6 +34,7 @@ export type ParsedSelectionChoice = {
   readonly title: string
   readonly description: string | null
   readonly priceCents: number | null
+  readonly ownerPriceCents: number | null
   readonly leadTimeDays: number | null
   readonly vendorId: string | null
   readonly supplierName: string | null
@@ -53,14 +56,31 @@ function isCommentVisibility(value: string): value is SelectionCommentVisibility
   return SELECTION_COMMENT_VISIBILITIES.some((visibility) => visibility === value)
 }
 
+/** Typed dollars as cents; null when blank. */
+function moneyInput(value: string | null | undefined): number | null | "invalid" {
+  const text = value?.trim() ?? ""
+  if (!text) return null
+  const cents = toCents(text)
+  return cents === null || cents < 0 ? "invalid" : cents
+}
+
+/**
+ * Over (+) or under (-) the allowance, in cents; null when either is
+ * missing. Both sides are what the owner sees.
+ */
+export function allowanceDeltaCents(priceCents: number | null, allowanceCents: number | null): number | null {
+  return priceCents === null || allowanceCents === null ? null : priceCents - allowanceCents
+}
+
 export function parseSelectionChoiceInput(input: SelectionChoiceInput): Parsed<ParsedSelectionChoice> {
   const title = input.title.trim()
   if (!title) return { ok: false, error: "Choice title is required." }
   if (title.length > CHOICE_TITLE_MAX) return { ok: false, error: `Choice title must be ${CHOICE_TITLE_MAX} characters or fewer.` }
 
-  const priceText = input.price?.trim() ?? ""
-  const priceCents = priceText ? toCents(priceText) : null
-  if (priceText && (priceCents === null || priceCents < 0)) return { ok: false, error: "Price must be a dollar amount of zero or more." }
+  const priceCents = moneyInput(input.price)
+  if (priceCents === "invalid") return { ok: false, error: "Supplier price must be a dollar amount of zero or more." }
+  const ownerPriceCents = moneyInput(input.ownerPrice)
+  if (ownerPriceCents === "invalid") return { ok: false, error: "Owner price must be a dollar amount of zero or more." }
 
   const leadText = input.leadTimeDays?.trim() ?? ""
   const leadTimeDays = leadText ? Number(leadText) : null
@@ -78,6 +98,7 @@ export function parseSelectionChoiceInput(input: SelectionChoiceInput): Parsed<P
       title,
       description: optionalText(input.description, CHOICE_TEXT_MAX),
       priceCents,
+      ownerPriceCents,
       leadTimeDays,
       vendorId,
       // A vendor record wins; the free-text supplier is the fallback.

@@ -18,6 +18,7 @@ describe("parseSelectionChoiceInput", () => {
         title: "Subway 3x12",
         description: null,
         priceCents: 320050,
+        ownerPriceCents: null,
         leadTimeDays: 21,
         vendorId: null,
         supplierName: "Tile Co",

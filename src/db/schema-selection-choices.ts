@@ -1,7 +1,7 @@
 /*
  * The rows under a finish selection: its choices, supplier product links,
  * photo links, comments, and the follow-up selections a choice opens.
- * Added by migration 0311; the older flat `choice_options_json` on
+ * Added by migrations 0311 and 0312; the older flat `choice_options_json` on
  * project_finish_selections is kept and backfilled into choice rows.
  * Written by: src/lib/domain/selections/choices-store.ts.
  */
@@ -39,7 +39,10 @@ export const projectSelectionChoices = sqliteTable(
       .references(() => projectFinishSelections.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     description: text("description"),
+    // The supplier's price; staff only.
     priceCents: integer("price_cents"),
+    // What the owner sees (supplier price plus builder fee), set by staff (migration 0312).
+    ownerPriceCents: integer("owner_price_cents"),
     leadTimeDays: integer("lead_time_days"),
     vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
     // Free-text supplier for a supplier that is not (yet) a vendor record.
