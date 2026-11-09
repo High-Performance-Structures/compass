@@ -10,7 +10,7 @@ import { compassCatalog } from "../catalog"
 export type CatalogComponents =
   typeof compassCatalog.data.components
 
-export type InferProps<K extends keyof CatalogComponents> =
+type InferProps<K extends keyof CatalogComponents> =
   CatalogComponents[K] extends { props: z.ZodType<infer P> }
     ? P
     : never
@@ -20,7 +20,7 @@ export type StreamingState =
   | "streaming"
   | "done"
 
-export interface ComponentContext<K extends keyof CatalogComponents> {
+interface ComponentContext<K extends keyof CatalogComponents> {
   readonly props: InferProps<K>
   readonly children?: ReactNode
   readonly onAction?: (action: {
