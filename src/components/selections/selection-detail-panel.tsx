@@ -28,6 +28,8 @@ import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { SortableRows } from "@/components/ui/sortable-rows"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
@@ -42,6 +44,51 @@ type Dialogs =
   | { readonly kind: "photos"; readonly choice: SelectionChoiceView | null }
   | { readonly kind: "followUps"; readonly choice: SelectionChoiceView }
   | { readonly kind: "price" }
+
+/** A to-do for this selection, made in place: title and an optional due date. */
+function SelectionTodoForm({
+  defaultTitle,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  readonly defaultTitle: string
+  readonly pending: boolean
+  readonly onCancel: () => void
+  readonly onSubmit: (title: string, dueDate: string | null) => void
+}): React.ReactElement {
+  const [title, setTitle] = React.useState(defaultTitle)
+  const [due, setDue] = React.useState("")
+  const id = React.useId()
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-md border p-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (title.trim()) onSubmit(title.trim(), due || null)
+      }}
+    >
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
+        <div className="grid gap-1">
+          <Label htmlFor={`${id}-title`}>To-do</Label>
+          <Input id={`${id}-title`} value={title} maxLength={200} autoFocus onChange={(event) => setTitle(event.target.value)} />
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor={`${id}-due`}>Due</Label>
+          <Input id={`${id}-due`} type="date" value={due} onChange={(event) => setDue(event.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={pending || !title.trim()}>
+          Add to-do
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 function Section({ title, aside, children }: { readonly title: string; readonly aside?: React.ReactNode; readonly children: React.ReactNode }): React.ReactElement {
   return (
@@ -76,6 +123,7 @@ export function SelectionDetailPanel({
   const [dialog, setDialog] = React.useState<Dialogs>({ kind: "none" })
   const [pending, startTransition] = React.useTransition()
   const [version, setVersion] = React.useState(0)
+  const [todoFormOpen, setTodoFormOpen] = React.useState(false)
 
   React.useEffect(() => {
     let live = true
@@ -115,25 +163,6 @@ export function SelectionDetailPanel({
     run(() => reorderSelectionChoices(projectId, row.id, next.map((choice) => choice.id)))
   }
 
-  function makeTodo(): void {
-    const title = window.prompt("To-do for this selection", `Follow up on ${row.name}`)
-    if (!title?.trim()) return
-    run(() =>
-      createProjectTask(projectId, {
-        title,
-        description: null,
-        sourceRecordType: "staff_task",
-        sourceRecordId: row.id,
-        sourceRecordNumber: null,
-        assigneeName: null,
-        companyName: null,
-        startDate: null,
-        dueDate: null,
-        priority: "normal",
-        externalUrl: null,
-      }),
-    )
-  }
 
   const names = new Map(rows.map((item) => [item.id, item.name]))
   const followUpOptions = rows.map((item) => ({ id: item.id, label: `${item.roomName} · ${item.name}` }))
@@ -214,11 +243,38 @@ export function SelectionDetailPanel({
           <Section
             title="To-dos"
             aside={
-              <Button type="button" variant="ghost" size="sm" onClick={makeTodo}>
-                <IconPlus className="size-4" /> To-do
-              </Button>
+              !todoFormOpen && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setTodoFormOpen(true)}>
+                  <IconPlus className="size-4" /> To-do
+                </Button>
+              )
             }
           >
+            {todoFormOpen && (
+              <SelectionTodoForm
+                defaultTitle={`Follow up on ${row.name}`}
+                pending={pending}
+                onCancel={() => setTodoFormOpen(false)}
+                onSubmit={(title, dueDate) => {
+                  setTodoFormOpen(false)
+                  run(() =>
+                    createProjectTask(projectId, {
+                      title,
+                      description: null,
+                      sourceRecordType: "staff_task",
+                      sourceRecordId: row.id,
+                      sourceRecordNumber: null,
+                      assigneeName: null,
+                      companyName: null,
+                      startDate: null,
+                      dueDate,
+                      priority: "normal",
+                      externalUrl: null,
+                    }),
+                  )
+                }}
+              />
+            )}
             {detail?.todos.length ? (
               <ul className="flex flex-col gap-1 text-sm">
                 {detail.todos.map((todo) => (

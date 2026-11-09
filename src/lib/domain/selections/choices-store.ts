@@ -4,7 +4,7 @@
  * section 1). No access rules here: callers resolve access first and pass
  * rows already scoped to the project.
  */
-import { and, eq, inArray, isNull, ne } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -15,6 +15,7 @@ import {
   projectSelectionPhotos,
 } from "@/db/schema-selection-choices"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import { ownerPriceFromMarkup } from "@/lib/feature-settings/selection-settings"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
@@ -109,6 +110,7 @@ export async function setChoicePricesFromRfq(
   prices: readonly { readonly choiceId: string; readonly selectionId: string; readonly priceCents: number }[],
   vendorId: string | null,
   now: string,
+  ownerMarkupPercent: number | null = null,
 ): Promise<void> {
   const statements: BatchItem<"sqlite">[] = prices.flatMap((price) => {
     const where = and(
@@ -116,7 +118,16 @@ export async function setChoicePricesFromRfq(
       eq(projectSelectionChoices.selectionId, price.selectionId),
       eq(projectSelectionChoices.projectId, projectId),
     )
-    const setPrice = db.update(projectSelectionChoices).set({ priceCents: price.priceCents, updatedAt: now }).where(where)
+    const ownerPrice = ownerPriceFromMarkup(price.priceCents, ownerMarkupPercent)
+    // A blank owner price is filled from the markup; one staff set stays.
+    const setPrice = db
+      .update(projectSelectionChoices)
+      .set({
+        priceCents: price.priceCents,
+        ownerPriceCents: sql`COALESCE(${projectSelectionChoices.ownerPriceCents}, ${ownerPrice})`,
+        updatedAt: now,
+      })
+      .where(where)
     if (!vendorId) return [setPrice]
     return [
       setPrice,

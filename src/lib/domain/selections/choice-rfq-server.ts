@@ -5,11 +5,12 @@
  */
 import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { projectFinishSelections, projectOperations, vendors } from "@/db/schema"
+import { projectFinishSelections, projectOperations, projects, vendors } from "@/db/schema"
 import { projectSelectionChoices, projectSelectionLinks } from "@/db/schema-selection-choices"
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import type { CreateRfqScopeLineInput } from "@/lib/domain/operations/types"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { choicePricesFromResponse, choiceRfqScopeLine } from "@/lib/selections/choice-rfq"
 import { parseSpecification } from "@/lib/selections/decisions"
@@ -125,7 +126,9 @@ async function applyRfqPricesToChoices(db: Db, projectId: string, rfqId: string,
     })),
   )
   if (prices.length === 0) return 0
-  await setChoicePricesFromRfq(db, projectId, prices, rfq.vendorId, now)
+  const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).get()
+  const settings = project?.organizationId ? await readFeatureSettings(db, project.organizationId, "selections") : null
+  await setChoicePricesFromRfq(db, projectId, prices, rfq.vendorId, now, settings?.ownerMarkupPercent ?? null)
   return prices.length
 }
 

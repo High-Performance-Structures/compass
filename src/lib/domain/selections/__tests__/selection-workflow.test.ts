@@ -37,14 +37,22 @@ type Sqlite = InstanceType<typeof Database>
 const NOW = "2026-11-09T12:00:00.000Z"
 let sqlite: Sqlite
 
+// Every migration is replayed once per file; each test gets a fresh copy.
+let migratedImage: Buffer | null = null
+
 function migrated(): Sqlite {
-  const db = new Database(":memory:")
-  const dir = join(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    db.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
+  if (!migratedImage) {
+    const db = new Database(":memory:")
+    const dir = join(process.cwd(), "drizzle")
+    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
+      db.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
+    }
+    migratedImage = db.serialize()
+    db.close()
   }
-  db.exec("PRAGMA foreign_keys = ON")
-  return db
+  const copy = new Database(migratedImage)
+  copy.exec("PRAGMA foreign_keys = ON")
+  return copy
 }
 
 function seed(db: Sqlite): void {

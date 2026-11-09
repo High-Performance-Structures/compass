@@ -86,9 +86,13 @@ export type SelectionChoicesPanel = {
 }
 
 /** The selection's id when it belongs to the project, else null. */
-export async function selectionInProject(db: Db, projectId: string, selectionId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+export async function selectionInProject(
+  db: Db,
+  projectId: string,
+  selectionId: string,
+): Promise<{ readonly id: string; readonly name: string; readonly category: string } | null> {
   const row = await db
-    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name })
+    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, category: projectFinishSelections.category })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
     .get()
