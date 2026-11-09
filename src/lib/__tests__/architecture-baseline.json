@@ -635,6 +635,9 @@
     "projectSelectionProcurementLinks": [
       "src/app/actions/project-operations.ts"
     ],
+    "projectSelectionRoundAlerts": [
+      "src/lib/domain/selections/template-store.ts"
+    ],
     "projectSourceRecordParticipants": [
       "src/lib/domain/documents/store.ts"
     ],
@@ -817,6 +820,12 @@
     ],
     "scheduleTemplateItems": [
       "src/lib/domain/templates/store.ts"
+    ],
+    "selectionChoiceTemplateItems": [
+      "src/lib/domain/selections/template-store.ts"
+    ],
+    "selectionChoiceTemplates": [
+      "src/lib/domain/selections/template-store.ts"
     ],
     "shopTicketLaborClaims": [
       "src/app/actions/shop-tickets.ts"

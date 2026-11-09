@@ -26,12 +26,14 @@ import { SelectionComments } from "@/components/selections/selection-comments"
 import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog } from "@/components/selections/selection-detail-dialogs"
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
+import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SortableRows } from "@/components/ui/sortable-rows"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
+import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
 import { formatCents, formatDate } from "@/lib/format"
 import { moveLine } from "@/lib/shared/line-order"
@@ -106,6 +108,7 @@ export function SelectionDetailPanel({
   projectId,
   row,
   rows,
+  rounds,
   suppliers,
   onChanged,
 }: {
@@ -113,6 +116,8 @@ export function SelectionDetailPanel({
   readonly row: SelectionSheetRow
   /** Every selection on the job, for the follow-up picker and names. */
   readonly rows: readonly SelectionSheetRow[]
+  /** The company's rounds on this job. */
+  readonly rounds: readonly RoundCard[]
   readonly suppliers: readonly SupplierOption[]
   /** Refreshes the sheet after a change. */
   readonly onChanged: () => void
@@ -183,6 +188,15 @@ export function SelectionDetailPanel({
           {row.dueDate && <> · due {formatDate(row.dueDate)}</>}
           {!row.published && <span className="text-muted-foreground"> · not shown to the owner yet</span>}
         </span>
+        <SelectionRoundTemplateControls
+          projectId={projectId}
+          selectionId={row.id}
+          selectionName={row.name}
+          roundKey={row.roundKey}
+          rounds={rounds}
+          hasChoices={row.choiceCount > 0}
+          onChanged={reload}
+        />
       </header>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

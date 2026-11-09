@@ -17,6 +17,7 @@ import { companyMergeNuTechInvoiceStatements } from "@/lib/domain/nutech/store"
 import { companyMergeOperationStatements } from "@/lib/domain/operations/store"
 import { companyMergeProjectStatements } from "@/lib/domain/project/store"
 import { companyMergeSelectionChoiceStatements } from "@/lib/domain/selections/choices-store"
+import { companyMergeChoiceTemplateStatements } from "@/lib/domain/selections/template-store"
 import { companyMergeTradeLetterStatements } from "@/lib/domain/trade-letters/store"
 import { companyMergeWarrantyStatements } from "@/lib/domain/warranty/store"
 import { isRecord } from "@/lib/shared/guards"
@@ -55,6 +56,7 @@ export function companyReferenceMoveStatements(database: D1Database, move: Compa
     ...companyMergeWarrantyStatements(database, move),
     ...companyMergeTradeLetterStatements(database, move),
     ...companyMergeSelectionChoiceStatements(database, move),
+    ...companyMergeChoiceTemplateStatements(database, move),
     ...companyMergeNuTechInvoiceStatements(database, move),
     ...companyMergeFinancialStatements(database, move),
     ...companyMergeProjectStatements(database, move),

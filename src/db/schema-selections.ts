@@ -59,6 +59,8 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   ),
   notes: text("notes"),
   sortOrder: integer("sort_order").notNull().default(0),
+  // The company selection round (Settings > Selections) it belongs to; a key into those settings. Null: no round. (0313)
+  roundKey: text("round_key"),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
@@ -79,6 +81,7 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
     index("idx_finish_selections_parent").on(table.projectId, table.parentSelectionId),
     index("project_finish_selections_purchase_order_operation_id_idx").on(table.purchaseOrderOperationId),
     index("project_finish_selections_rfq_operation_id_idx").on(table.rfqOperationId),
+    index("project_finish_selections_round_idx").on(table.projectId, table.roundKey),
   ])
 
 export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {
