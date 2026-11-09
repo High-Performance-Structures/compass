@@ -84,6 +84,11 @@ visibility, members, linked jobs and job families.
   `rfqs`, `selections`, `change-orders`, `warranty`, `messages` and more)
 - Components: `src/components/projects/`, `src/components/dashboard/`
   (dashboard, portfolio map)
+- The Projects list page: `src/components/projects/projects-hub.tsx`, with
+  its parts beside it: `projects-hub-model.ts` (departments, status filters,
+  search; pure functions), `projects-hub-departments.tsx`,
+  `projects-hub-project-card.tsx`, `projects-hub-department-lane.tsx`,
+  `projects-hub-department-landing.tsx`, `projects-hub-registry-fields.tsx`
 - Docs: [portfolio map](../modules/portfolio-map.md),
   [multi-tenancy](multi-tenancy.md)
 

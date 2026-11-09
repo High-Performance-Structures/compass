@@ -991,7 +991,7 @@
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-purchase-order-create-form.tsx": 1059,
     "src/components/projects/project-rfq-edit-form.tsx": 1002,
-    "src/components/projects/projects-hub.tsx": 1670,
+    "src/components/projects/projects-hub.tsx": 877,
     "src/components/schedule/work-calendar-event-dialog.tsx": 815,
     "src/components/schedule/work-calendar.tsx": 830,
     "src/components/settings/ai-model-tab.tsx": 1379,
