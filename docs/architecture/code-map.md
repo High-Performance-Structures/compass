@@ -340,6 +340,8 @@ Company settings (everything under Settings) and per-person preferences.
 - Page: `src/app/dashboard/settings/page.tsx`
 - Components: `src/components/settings/` (`settings-page.tsx` plus one
   `*-settings-section.tsx` per group)
+- Theme presets: `src/lib/theme/presets/` (one file per built-in theme,
+  `index.ts` lists them)
 - Docs: [theming](../development/theming.md)
 
 ### Sign-in, users, teams and permissions

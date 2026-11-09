@@ -1007,8 +1007,7 @@
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1333,
-    "src/lib/sync/engine.ts": 864,
-    "src/lib/theme/presets.ts": 1942
+    "src/lib/sync/engine.ts": 864
   },
   "localHelpers": {
     "src/app/actions/cherish-cards.ts": 1,

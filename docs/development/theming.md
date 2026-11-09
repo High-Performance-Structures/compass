@@ -159,7 +159,10 @@ The approach is straightforward: build CSS strings for light and dark modes, fin
 Built-in presets
 ---
 
-Ten presets are defined in `src/lib/theme/presets.ts`:
+Sixteen presets ship with Compass. Each one is its own file in
+`src/lib/theme/presets/` (for example `presets/mocha.ts`), and
+`src/lib/theme/presets/index.ts` lists them in picker order. Code imports them
+from `@/lib/theme/presets`. The first ten:
 
 | ID | Name | Description |
 |----|------|-------------|
