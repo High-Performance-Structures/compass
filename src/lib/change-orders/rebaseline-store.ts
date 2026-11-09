@@ -1,3 +1,6 @@
+// Database side of a change order that replaces the accepted estimate
+// (a "rebaseline"): choosing and checking the replacement estimate, reading
+// what still blocks it, and running the replacement as one batch.
 import { and, desc, eq, inArray, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
 import {
@@ -25,6 +28,8 @@ import {
 } from "@/lib/domain/financials/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { estimateOption } from "@/lib/domain/estimates/change-order-rules"
+import type { ProjectChangeOrderEstimateOption } from "@/lib/change-orders/types"
 
 type Db = ReturnType<typeof getDb>
 type BatchStatement = Parameters<Db["batch"]>[0][number]
@@ -295,4 +300,147 @@ export async function executeBaselineReplacement(
   if (!head) return { success: false, error: "The replacement could not be prepared." }
   await db.batch([head, ...tail])
   return { success: true }
+}
+
+export type RebaselineSelection = {
+  readonly baseline: typeof projectEstimates.$inferSelect
+  readonly replacement: typeof projectEstimates.$inferSelect
+}
+
+export async function requireRebaselineSelection(input: {
+  readonly db: Db
+  readonly projectId: string
+  readonly replacementEstimateId: string | null
+  readonly expectedBaselineEstimateId?: string | null
+}): Promise<RebaselineSelection> {
+  if (!input.replacementEstimateId) {
+    throw new Error("Choose the revised estimate that will replace the baseline.")
+  }
+  const [baselineRows, replacementRows] = await Promise.all([
+    input.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.projectId),
+          eq(projectEstimates.status, "accepted"),
+          ...contractEstimateConditions()
+        )
+      )
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1),
+    input.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.projectId),
+          eq(projectEstimates.id, input.replacementEstimateId)
+        )
+      )
+      .limit(1),
+  ])
+  const baseline = baselineRows[0]
+  const replacement = replacementRows[0]
+  if (!baseline) {
+    throw new Error("Accept the original estimate before creating a rebaseline amendment.")
+  }
+  if (
+    input.expectedBaselineEstimateId &&
+    baseline.id !== input.expectedBaselineEstimateId
+  ) {
+    throw new Error("The accepted estimate changed. Review the amendment baseline again.")
+  }
+  if (!replacement) {
+    throw new Error("The replacement estimate could not be found.")
+  }
+  if (
+    !["draft", "internal_review", "signature_pending"].includes(
+      replacement.status
+    )
+  ) {
+    throw new Error("Choose an editable or signature-pending estimate revision.")
+  }
+  if (replacement.id === baseline.id) {
+    throw new Error("The replacement must be a different estimate version.")
+  }
+  if (replacement.estimateNumber !== baseline.estimateNumber) {
+    throw new Error("The replacement must be a revision of the accepted estimate.")
+  }
+  if (replacement.versionNumber <= baseline.versionNumber) {
+    throw new Error("The replacement must be newer than the accepted estimate.")
+  }
+  return { baseline, replacement }
+}
+
+export type RebaselineViewData = {
+  readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
+  readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
+  readonly blockers: readonly string[]
+  /** Latest version of this change order's own estimate (staff only). */
+  readonly changeOrderEstimate?: ProjectChangeOrderEstimateOption | null
+}
+
+export async function rebaselineViewData(
+  db: Db,
+  row: typeof projectChangeOrders.$inferSelect
+): Promise<RebaselineViewData> {
+  if (
+    row.budgetTreatment !== "baseline_replacement" ||
+    !row.baselineEstimateId ||
+    !row.replacementEstimateId
+  ) {
+    return {
+      baselineEstimate: null,
+      replacementEstimate: null,
+      blockers: [],
+    }
+  }
+
+  const estimateRows = await db
+    .select()
+    .from(projectEstimates)
+    .where(
+      and(
+        eq(projectEstimates.projectId, row.projectId),
+        inArray(projectEstimates.id, [
+          row.baselineEstimateId,
+          row.replacementEstimateId,
+        ])
+      )
+    )
+  const baseline = estimateRows.find(
+    (estimate) => estimate.id === row.baselineEstimateId
+  )
+  const replacement = estimateRows.find(
+    (estimate) => estimate.id === row.replacementEstimateId
+  )
+  if (!baseline || !replacement) {
+    return {
+      baselineEstimate: baseline ? estimateOption(baseline) : null,
+      replacementEstimate: replacement ? estimateOption(replacement) : null,
+      blockers: ["A linked estimate version could not be found."],
+    }
+  }
+  if (row.rebaselineCompletedAt) {
+    return {
+      baselineEstimate: estimateOption(baseline),
+      replacementEstimate: estimateOption(replacement),
+      blockers: [],
+    }
+  }
+
+  const blockers = await rebaselineBlockers(db, {
+    projectId: row.projectId,
+    changeOrderId: row.id,
+    ownerAudience: row.audience === "owner",
+    baseline,
+    replacement,
+  })
+
+  return {
+    baselineEstimate: estimateOption(baseline),
+    replacementEstimate: estimateOption(replacement),
+    blockers,
+  }
 }
