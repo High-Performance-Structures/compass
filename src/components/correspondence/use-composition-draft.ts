@@ -4,6 +4,9 @@ import { saveProjectComposition, setProjectDraftDiscarded } from "@/app/actions/
 import type { CompositionContent, SavedComposition } from "@/lib/correspondence/types"
 import { compositionHasContent } from "@/lib/correspondence/draft-content"
 
+/** How long one draft save may take before the composer stops waiting for it. */
+const SAVE_TIMEOUT_MS = 20_000
+
 export type CompositionDraftHandle = { readonly flush: () => Promise<boolean> }
 export function useCompositionDraft(input: {
   readonly projectId: string
@@ -33,7 +36,19 @@ export function useCompositionDraft(input: {
     const pending = queue.current.catch(() => null).then(async () => {
       if (stopped.current) return null
       try {
-        const result = await saveProjectComposition(latest.current.projectId, id, version.current, content)
+        const request = saveProjectComposition(latest.current.projectId, id, version.current, content)
+        // A request lost on a dropped connection never answers. Give up after a
+        // while so later saves (and Send) don't wait behind it forever; if it
+        // does answer later, keep its version so the next save isn't refused.
+        const result = await Promise.race([
+          request,
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), SAVE_TIMEOUT_MS)),
+        ])
+        if (result === null) {
+          void request.then((late) => { if (late.success) version.current = Math.max(version.current, late.data.version) }, () => undefined)
+          latest.current.onStatus("Saving the draft is taking too long. Check your connection, then try again.")
+          return null
+        }
         if (!result.success) { latest.current.onStatus(result.error); return null }
         version.current = result.data.version
         savedKey.current = JSON.stringify(content)
