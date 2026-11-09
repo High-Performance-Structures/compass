@@ -38,6 +38,7 @@ export function TemplateEmailMenu({
   loadDraft,
   send: sendEmail,
   attachmentHint,
+  checklistAction,
 }: {
   readonly projectId: string
   readonly suggested: readonly TemplateEmailOption[]
@@ -45,6 +46,7 @@ export function TemplateEmailMenu({
   readonly loadDraft: (projectId: string, templateId: string) => Promise<Result<TemplateEmailDraft>>
   readonly send: (form: FormData) => Promise<Result<{ readonly loggedContact: boolean }>>
   readonly attachmentHint: string
+  readonly checklistAction?: { readonly template: TemplateEmailOption; readonly variant: "outline" | "link" }
 }): React.ReactElement {
   const router = useRouter()
   const [draft, setDraft] = React.useState<TemplateEmailDraft | null>(null)
@@ -53,7 +55,6 @@ export function TemplateEmailMenu({
   const [loadingId, setLoadingId] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)
-  const formRef = React.useRef<HTMLFormElement | null>(null)
 
   const open = (templateId: string): void => {
     setLoadingId(templateId)
@@ -87,40 +88,55 @@ export function TemplateEmailMenu({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="font-mono text-xs tracking-[0.12em] text-muted-foreground">EMAILS</span>
-      <div className="flex flex-wrap items-center gap-2">
-        {suggested.map((template) => (
-          <Button
-            key={template.id}
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={loadingId !== null}
-            onClick={() => open(template.id)}
-          >
-            <IconMail aria-hidden="true" />
-            {loadingId === template.id ? "Preparing…" : template.label}
-          </Button>
-        ))}
-        <SearchableCombobox
-          className="h-8 w-56 text-xs"
-          value=""
-          onValueChange={(value) => {
-            if (value) open(value)
-          }}
-          options={other.map((template) => ({ value: template.id, label: template.label }))}
-          ariaLabel="Other emails"
-          placeholder={suggested.length > 0 ? "Other emails…" : "Choose an email…"}
-          searchPlaceholder="Search emails..."
-          emptyMessage="No matching emails."
-        />
-      </div>
+    <>
+      {checklistAction ? (
+        <Button
+          type="button"
+          size="sm"
+          variant={checklistAction.variant}
+          disabled={loadingId !== null}
+          onClick={() => open(checklistAction.template.id)}
+        >
+          <IconMail aria-hidden="true" />
+          {loadingId ? "Preparing…" : checklistAction.template.label}
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-xs tracking-[0.12em] text-muted-foreground">EMAILS</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {suggested.map((template) => (
+              <Button
+                key={template.id}
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={loadingId !== null}
+                onClick={() => open(template.id)}
+              >
+                <IconMail aria-hidden="true" />
+                {loadingId === template.id ? "Preparing…" : template.label}
+              </Button>
+            ))}
+            <SearchableCombobox
+              className="h-8 w-56 text-xs"
+              value=""
+              onValueChange={(value) => {
+                if (value) open(value)
+              }}
+              options={other.map((template) => ({ value: template.id, label: template.label }))}
+              ariaLabel="Other emails"
+              placeholder={suggested.length > 0 ? "Other emails…" : "Choose an email…"}
+              searchPlaceholder="Search emails..."
+              emptyMessage="No matching emails."
+            />
+          </div>
+        </div>
+      )}
 
       <Dialog open={draft !== null} onOpenChange={(next) => (next ? null : setDraft(null))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           {draft ? (
-            <form ref={formRef} onSubmit={send} className="flex flex-col gap-4">
+            <form onSubmit={send} className="flex flex-col gap-4">
               <DialogHeader>
                 <DialogTitle>{draft.label}</DialogTitle>
                 <DialogDescription>{draft.description}</DialogDescription>
@@ -141,12 +157,15 @@ export function TemplateEmailMenu({
                   value={to}
                   excludedEmails={cc}
                   onChange={setTo}
+                  allowManual={!draft.contactRecipientsOnly}
+                  placeholder={draft.contactRecipientsOnly ? "Choose a recipient..." : undefined}
                   required
                 />
                 <EmailRecipientPicker
                   id="template-email-cc"
                   label="Cc"
-                  options={draft.recipientOptions}
+                  options={draft.ccOptions ?? draft.recipientOptions}
+                  allowManual={!draft.contactRecipientsOnly}
                   value={cc}
                   excludedEmails={to}
                   onChange={setCc}
@@ -164,7 +183,13 @@ export function TemplateEmailMenu({
                 <Textarea id="template-email-body" name="body" defaultValue={draft.body} rows={14} required />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="template-email-attachments">Attachments</Label>
+                {draft.requiredAttachment ? (
+                  <>
+                    <input type="hidden" name="w9Version" value={draft.requiredAttachment.version} />
+                    <p className="text-sm"><span className="font-medium">{draft.requiredAttachment.filename}</span> is attached from Settings.</p>
+                  </>
+                ) : null}
+                <Label htmlFor="template-email-attachments">{draft.requiredAttachment ? "Additional attachments" : "Attachments"}</Label>
                 <Input id="template-email-attachments" name="attachments" type="file" multiple />
                 <p className="text-xs text-muted-foreground">
                   {attachmentHint} Up to 15 MB in total.
@@ -184,6 +209,6 @@ export function TemplateEmailMenu({
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

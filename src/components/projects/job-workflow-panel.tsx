@@ -41,6 +41,7 @@ export function JobWorkflowPanel({
   completeMessage = "All steps are done.",
   headerAction = null,
   footer = null,
+  itemActions,
   followUp,
   statusSuggestion = null,
   catchUp = null,
@@ -54,6 +55,7 @@ export function JobWorkflowPanel({
   readonly completeMessage?: string
   readonly headerAction?: React.ReactNode
   readonly footer?: React.ReactNode
+  readonly itemActions?: Readonly<Record<string, React.ReactNode>>
   readonly followUp: ProjectFollowUpSignal | null
   readonly statusSuggestion?: StatusSuggestion | null
   /** The job's status is ahead of its checklist: offer to tick the earlier steps. */
@@ -202,7 +204,7 @@ export function JobWorkflowPanel({
               </span>
             )
             return (
-              <li key={item.key} className="flex min-h-10 items-center gap-3 border-b px-1 text-sm">
+              <li key={item.key} className="flex min-h-10 flex-wrap items-center gap-x-3 border-b px-1 text-sm">
                 {item.tickable && item.source !== "record" ? (
                   <button
                     type="button"
@@ -225,6 +227,7 @@ export function JobWorkflowPanel({
                 ) : (
                   <span className={cn("flex-1", done && "text-muted-foreground line-through")}>{item.label}</span>
                 )}
+                {itemActions?.[item.key]}
                 <span className="text-xs text-muted-foreground">
                   {note ?? (item.source === "record" ? "Recorded" : item.path && !done ? <Link href={`${base}/${item.path}`}>Open →</Link> : null)}
                 </span>

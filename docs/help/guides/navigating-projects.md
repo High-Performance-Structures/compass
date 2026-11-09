@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -23,6 +23,14 @@ A scrollbar appears when a page, document editor, form, or panel has more conten
 ## Open a Project {#open-project}
 
 Select **Projects**, choose the appropriate department and status view, then search by project number, client, or name. The project overview and navigation show only the tools allowed by your role and assignment.
+
+## Request a Certificate or Email the W-9 {#job-document-emails}
+
+On a scope-of-work job overview, open **Agreement & deposit**. Next to **Send our certificate of insurance**, choose **Request certificate from insurance agent**. Check the client's name and email in the message and add any certificate holder or coverage instructions before sending. The request asks the agent to deliver the certificate directly to the client. Tick the checklist item once delivery is confirmed.
+
+Choose **Email W-9 to client** to send the company W-9 saved in Settings. Select an active client contact on the job, review the message and check the included PDF filename before sending. A sent W-9 counts as client contact. Compass logs both emails in Activity and routes replies back to the job and the sending mailbox.
+
+Admins set up the agent address and PDF in [Settings → Workflows → Job emails](/dashboard/help/company-settings#job-emails).
 
 ## Find Project Financials {#project-financials}
 

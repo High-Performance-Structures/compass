@@ -264,6 +264,9 @@
     "jarvisBridgeEvents": [
       "src/lib/domain/feedback/store.ts"
     ],
+    "jobEmailDeliverySettings": [
+      "src/lib/domain/job-workflows/store.ts"
+    ],
     "listeningPlaylistItems": [
       "src/lib/domain/listening/store.ts"
     ],

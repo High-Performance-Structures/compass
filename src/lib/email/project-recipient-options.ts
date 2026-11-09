@@ -1,7 +1,8 @@
-import { and, eq, or, sql } from "drizzle-orm"
+import { and, eq, inArray, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { internalContacts, projectContacts, userAlternateEmails } from "@/db/schema"
+import type { ProjectContactType } from "@/lib/domain/contacts/statuses"
 import {
   buildProjectEmailRecipientOptions,
   withStaffAlternateEmails,
@@ -21,7 +22,8 @@ function contactType(value: string): ProjectEmailContact["contactType"] {
 export async function projectEmailRecipientOptions(
   db: ReturnType<typeof getDb>,
   projectId: string,
-  recommended: readonly (string | null | undefined)[] = []
+  recommended: readonly (string | null | undefined)[] = [],
+  contactTypes?: readonly ProjectContactType[]
 ): Promise<readonly EmailRecipientOption[]> {
   const rows = await db
     .select({
@@ -32,7 +34,17 @@ export async function projectEmailRecipientOptions(
       email: projectContacts.email,
     })
     .from(projectContacts)
-    .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
+    .where(and(
+      eq(projectContacts.projectId, projectId),
+      eq(projectContacts.active, true),
+      contactTypes ? inArray(projectContacts.contactType, contactTypes) : undefined,
+    ))
+  const options = buildProjectEmailRecipientOptions(
+    rows.map((row) => ({ ...row, contactType: contactType(row.contactType) })),
+    recommended,
+  )
+  if (contactTypes && !contactTypes.includes("internal")) return options
+
   const alternates = await db
     .select({ contactId: projectContacts.id, displayName: projectContacts.displayName, email: userAlternateEmails.email })
     .from(projectContacts)
@@ -50,11 +62,5 @@ export async function projectEmailRecipientOptions(
       sql`${userAlternateEmails.organizationId} = (SELECT organization_id FROM projects WHERE id = ${projectId})`,
     ))
     .limit(200)
-  return withStaffAlternateEmails(
-    buildProjectEmailRecipientOptions(
-      rows.map((row) => ({ ...row, contactType: contactType(row.contactType) })),
-      recommended
-    ),
-    alternates
-  )
+  return withStaffAlternateEmails(options, alternates)
 }
