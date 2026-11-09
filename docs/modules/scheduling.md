@@ -23,6 +23,8 @@ The scheduling data lives in four tables defined in the core schema (`src/db/sch
 
 **`projects.schedule_published`** -- current visibility switch. Existing projects with a publication remain published when this switch is introduced; new projects start as drafts. Moving a published schedule to draft immediately hides it from owner and subcontractor workspaces while retaining the working schedule and publication history. Publishing again creates a new snapshot and restores external visibility. A published schedule with later internal edits continues showing its last snapshot externally. The staff status compares the current working schedule with that snapshot, excluding live confirmation responses and timestamps, so “draft changes” reflects actual schedule differences.
 
+**Drafts stay quiet** -- while `schedule_published` is off, nothing about the schedule reaches anyone: no assignment notices or confirmation reminders (`schedule-confirmations.ts`), no "end date extended" alert to project administrators (`record-shift.ts`), and no weather-risk notices (`schedule-risk-server.ts`; risks are noticed once the schedule is published). Activity history is still recorded, and draft items still appear on staff members' own Google calendars.
+
 Each schedule item has independent owner and subcontractor visibility. Internal
 staff always retain access, and external visibility changes take effect only
 when the schedule is published. Staff can also require an assigned Compass
