@@ -17,6 +17,8 @@ export type EstimateLineCalculationInput = {
   readonly markupRateBasisPoints: number
   readonly taxable: boolean
   readonly taxRateBasisPoints: number
+  /** Change-order estimates may carry credit lines: a negative unit cost lowers the price. */
+  readonly allowCredit?: boolean
 }
 
 export type EstimateLineCalculation = {
@@ -94,7 +96,9 @@ export function calculateEstimateLine(
   const quantity = Number.isFinite(input.quantity)
     ? Math.max(0, input.quantity)
     : 0
-  const unitCostCents = Math.max(0, safeInteger(input.unitCostCents))
+  const unitCostCents = input.allowCredit
+    ? safeInteger(input.unitCostCents)
+    : Math.max(0, safeInteger(input.unitCostCents))
   const markupRate = safeRate(input.markupRateBasisPoints)
   const taxRate = safeRate(input.taxRateBasisPoints)
   const directCostCents = safeInteger(quantity * unitCostCents)

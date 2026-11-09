@@ -124,11 +124,14 @@ export function lineDraft(line: ProjectEstimateLineItem): LineDraft {
 /** The draft line as input for the shared calculateEstimateLine preview. */
 export function lineDraftCalculationInput(
   line: LineDraft,
-  taxRateBasisPoints: number
+  taxRateBasisPoints: number,
+  allowCredit = false
 ): EstimateLineCalculationInput {
+  const unitCost = draftNumber(line.unitCost)
   return {
     quantity: draftNumber(line.quantity),
-    unitCostCents: Math.round(Math.max(0, draftNumber(line.unitCost)) * 100),
+    unitCostCents: Math.round((allowCredit ? unitCost : Math.max(0, unitCost)) * 100),
+    allowCredit,
     markupRateBasisPoints: Math.round(
       Math.max(0, draftNumber(line.markupPercent)) * 100
     ),

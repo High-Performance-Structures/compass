@@ -227,12 +227,19 @@ export async function saveEstimateLine(
       markupRateBasisPoints,
       taxable: input.taxable,
       taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+      allowCredit: estimate.changeOrderId !== null,
     })
   const pricing = await resolveLinePricingSource(access.db, access.organizationId, input.pricingSource)
   // A line waiting on a quote, the owner or a takeoff can be saved at $0.
   const awaitingPrice = pricing.kind === "set" && calculation.lineTotalCents === 0
-  if (calculation.lineTotalCents <= 0 && !awaitingPrice) {
-    throw new Error("Enter a quantity and unit cost greater than zero, or choose who prices this line.")
+  // A change-order estimate may credit the owner: a negative line lowers the price.
+  const credit = estimate.changeOrderId !== null && calculation.lineTotalCents < 0
+  if (calculation.lineTotalCents <= 0 && !awaitingPrice && !credit) {
+    throw new Error(
+      estimate.changeOrderId !== null
+        ? "Enter a quantity and a unit cost (negative for a credit), or choose who prices this line."
+        : "Enter a quantity and unit cost greater than zero, or choose who prices this line."
+    )
   }
   const ownerScope = pricing.kind === "set" && pricing.source.ownerScope
   if (ownerScope && usesCostBreakdown && breakdownRollup?.taxable) {
@@ -270,7 +277,7 @@ export async function saveEstimateLine(
     // Owner scope is the owner's number: no builder fee and no sales tax.
     includeInBuilderFee: ownerScope ? false : input.includeInBuilderFee,
     ...(ownerScope && !usesCostBreakdown
-      ? { taxable: false, taxEntityId: null, taxCode: null, taxName: null, taxRateBasisPoints: 0, ...calculateEstimateLine({ quantity, unitCostCents, markupRateBasisPoints, taxable: false, taxRateBasisPoints: 0 }) }
+      ? { taxable: false, taxEntityId: null, taxCode: null, taxName: null, taxRateBasisPoints: 0, ...calculateEstimateLine({ quantity, unitCostCents, markupRateBasisPoints, taxable: false, taxRateBasisPoints: 0, allowCredit: estimate.changeOrderId !== null }) }
       : {}),
     ...(pricing.kind === "keep" ? {} : { pricingSource: pricing.kind === "set" ? pricing.source.id : null }),
     updatedAt: now,

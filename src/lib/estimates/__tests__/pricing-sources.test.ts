@@ -55,6 +55,8 @@ describe("estimate pricing sources", () => {
 
   it("blocks signature while lines are waiting on a price", () => {
     expect(unpricedLinesMessage([{ costCode: "1", lineTotalCents: 100 }])).toBeNull()
+    // A change-order credit line is priced, not waiting.
+    expect(unpricedLinesMessage([{ costCode: "1", lineTotalCents: -2_500 }])).toBeNull()
     expect(unpricedLinesMessage([{ costCode: "16.100", lineTotalCents: 0 }, { costCode: "1", lineTotalCents: 5 }])).toBe(
       "Price every line before signature. Still waiting: 16.100.",
     )

@@ -125,8 +125,15 @@ describe("line drafts", () => {
       markupRateBasisPoints: 1_000,
       taxable: true,
       taxRateBasisPoints: 290,
+      allowCredit: false,
     })
     expect(calculateEstimateLine(input).directCostCents).toBe(25_100)
+  })
+
+  it("previews a negative unit cost as a credit on a change-order estimate", () => {
+    const draft = { ...EMPTY_LINE, quantity: "1", unitCost: "-250", markupPercent: "0", taxable: false }
+    expect(calculateEstimateLine(lineDraftCalculationInput(draft, 0, true)).lineTotalCents).toBe(-25_000)
+    expect(calculateEstimateLine(lineDraftCalculationInput(draft, 0)).lineTotalCents).toBe(0)
   })
 
   it("never previews negative costs or markup", () => {
