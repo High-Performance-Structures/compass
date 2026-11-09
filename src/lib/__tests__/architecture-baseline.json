@@ -969,7 +969,7 @@
     "src/app/actions/listening-room.ts": 1085,
     "src/app/actions/nutech-orders.ts": 892,
     "src/app/actions/project-audience-preview.ts": 1004,
-    "src/app/actions/project-change-orders.ts": 1528,
+    "src/app/actions/project-change-orders.ts": 1311,
     "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1393,
     "src/app/actions/schedule-confirmations.ts": 1344,

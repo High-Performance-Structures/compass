@@ -107,6 +107,12 @@ acceptance and e-signature; change orders and variances; templates.
 - Components: `src/components/projects/estimate-workspace/`,
   `src/components/projects/project-estimate*.tsx`, `src/components/rfqs/`,
   `src/components/templates/`, `src/components/rate-book/`
+- Change orders in detail: the server actions are
+  `src/app/actions/project-change-orders.ts` (thin: permission context, load,
+  save, revalidate); input checks are `src/lib/domain/estimates/change-order-rules.ts`;
+  replacing the accepted estimate (rebaseline) is
+  `src/lib/change-orders/rebaseline-store.ts` (database) and
+  `src/lib/change-orders/rebaseline.ts` (rules)
 - Docs: [estimate report phases](../modules/estimate-report-phases.md),
   [rate book](../modules/rate-book.md)
 
