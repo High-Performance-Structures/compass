@@ -7,8 +7,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { claimOrganizationFeatureSettingWindow } from "@/lib/domain/settings/store"
 import { canUseOfficeTalk } from "@/lib/permissions"
 import {
+  DIAGNOSTIC_UPLOAD_MARKER_KEYS,
   LOG_FORWARD_INTERVAL_MS,
-  LOG_FORWARD_MARKER_KEY,
+  type DiagnosticUploadKind,
   isUrgentLogUpload,
   nextRoutineLogForwardAt,
   routineLogForwardStaleBefore,
@@ -17,14 +18,14 @@ import {
 import { userContext } from "@/lib/server/action-context"
 
 /**
- * Server side of the RealtimeKit log throttle; the rule and its reasons are
- * in ./log-upload-throttle.ts. Answers each SDK log upload with "forward" or
+ * Server side of the RealtimeKit diagnostic throttle; the rule and its reasons
+ * are in ./log-upload-throttle.ts. Answers each SDK log or telemetry upload with "forward" or
  * a response to return without touching the body.
  *
  * Log uploads arrive every few seconds per caller, so the expensive parts are
  * remembered per Worker isolate: whether a signed-in session may use Office
  * Talk (rechecked every AUTH_CACHE_MS) and when each company's next routine
- * forward is allowed. D1 is only read or written when an isolate does not yet
+ * forward of each kind is allowed. D1 is only read or written when an isolate does not yet
  * know the company's window, which is at most a few times per window.
  */
 
@@ -40,7 +41,8 @@ type AuthEntry = {
 }
 
 const authCache = new Map<string, AuthEntry>()
-const nextForwardAtByOrganization = new Map<string, number>()
+/** Keyed by `${organizationId}:${kind}`. */
+const nextForwardAtByWindow = new Map<string, number>()
 const urgentForwards = new Map<string, readonly number[]>()
 
 function remember<V>(map: Map<string, V>, key: string, value: V): void {
@@ -83,20 +85,23 @@ async function officeTalkUploader(nowMs: number): Promise<AuthEntry | null> {
 /** Claims the company's routine window in D1, or learns when it reopens. */
 async function claimRoutineForward(
   organizationId: string,
+  kind: DiagnosticUploadKind,
   nowMs: number
 ): Promise<boolean> {
+  const windowKey = `${organizationId}:${kind}`
+  const featureKey = DIAGNOSTIC_UPLOAD_MARKER_KEYS[kind]
   const context = await userContext()
   if (!context.success) return false
   const { db, user } = context.data
   const claimed = await claimOrganizationFeatureSettingWindow(db, {
     organizationId,
-    featureKey: LOG_FORWARD_MARKER_KEY,
+    featureKey,
     claimedAt: new Date(nowMs).toISOString(),
     staleBefore: routineLogForwardStaleBefore(nowMs),
     updatedBy: user.id,
   })
   if (claimed) {
-    remember(nextForwardAtByOrganization, organizationId, nowMs + LOG_FORWARD_INTERVAL_MS)
+    remember(nextForwardAtByWindow, windowKey, nowMs + LOG_FORWARD_INTERVAL_MS)
     return true
   }
   const marker = await db
@@ -105,21 +110,22 @@ async function claimRoutineForward(
     .where(
       and(
         eq(organizationFeatureSettings.organizationId, organizationId),
-        eq(organizationFeatureSettings.featureKey, LOG_FORWARD_MARKER_KEY)
+        eq(organizationFeatureSettings.featureKey, featureKey)
       )
     )
     .get()
   const reopensAt = nextRoutineLogForwardAt(marker?.value ?? null, nowMs)
   remember(
-    nextForwardAtByOrganization,
-    organizationId,
+    nextForwardAtByWindow,
+    windowKey,
     reopensAt > nowMs ? reopensAt : nowMs + RACE_RETRY_MS
   )
   return false
 }
 
 export async function decideRealtimeKitLogUpload(
-  request: Request
+  request: Request,
+  kind: DiagnosticUploadKind
 ): Promise<LogUploadDecision> {
   const nowMs = Date.now()
   const uploader = await officeTalkUploader(nowMs)
@@ -128,22 +134,23 @@ export async function decideRealtimeKitLogUpload(
 
   if (
     isUrgentLogUpload(request.headers) &&
-    takeUrgentLogForward(urgentForwards, uploader.userId, nowMs)
+    takeUrgentLogForward(urgentForwards, `${uploader.userId}:${kind}`, nowMs)
   ) {
     return "forward"
   }
 
   const { organizationId } = uploader
   if (!organizationId) return noContent()
-  const nextForwardAt = nextForwardAtByOrganization.get(organizationId)
+  const windowKey = `${organizationId}:${kind}`
+  const nextForwardAt = nextForwardAtByWindow.get(windowKey)
   if (nextForwardAt !== undefined && nowMs < nextForwardAt) return noContent()
 
   try {
-    return (await claimRoutineForward(organizationId, nowMs)) ? "forward" : noContent()
+    return (await claimRoutineForward(organizationId, kind, nowMs)) ? "forward" : noContent()
   } catch (error) {
     // Losing a diagnostic sample is fine; never fail the caller over it.
     console.warn("RealtimeKit log throttle could not read its marker", error)
-    remember(nextForwardAtByOrganization, organizationId, nowMs + RACE_RETRY_MS)
+    remember(nextForwardAtByWindow, windowKey, nowMs + RACE_RETRY_MS)
     return noContent()
   }
 }

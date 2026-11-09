@@ -11,16 +11,20 @@ import {
 
 const REALTIMEKIT_API_ORIGIN = "https://api.realtime.cloudflare.com"
 const COMPASS_REALTIMEKIT_PROXY_PREFIX = "/api/realtimekit"
-const REALTIMEKIT_LOGS_URL = `${REALTIMEKIT_API_ORIGIN}/logs`
+const REALTIMEKIT_DIAGNOSTIC_URLS = [
+  `${REALTIMEKIT_API_ORIGIN}/logs`,
+  `${REALTIMEKIT_API_ORIGIN}/telemetry`,
+] as const
 
 let originalFetch: typeof fetch | null = null
 let installCount = 0
-let urgentLogState: UrgentLogState | null = null
+/** Urgent tagging state per upload URL, so logs and telemetry each get their share. */
+const urgentLogStates = new Map<string, UrgentLogState>()
 
 /**
  * Called for each meeting-window diagnostic. When one shows Office Talk
  * stopped working (the meeting would not open, or the call's connection
- * failed), tag the SDK's next few log uploads so the server forwards them to
+ * failed), tag the SDK's next few log and telemetry uploads so the server forwards them to
  * Cloudflare despite the log throttle.
  */
 export function noteRealtimeKitDiagnostic(
@@ -28,18 +32,21 @@ export function noteRealtimeKitDiagnostic(
   payload: Readonly<Record<string, unknown>>
 ): void {
   if (!isOfficeTalkFailureDiagnostic(event, payload)) return
-  urgentLogState = urgentLogStateAfterFailure(Date.now())
+  const state = urgentLogStateAfterFailure(Date.now())
+  for (const url of REALTIMEKIT_DIAGNOSTIC_URLS) urgentLogStates.set(url, state)
 }
 
-/** Adds the urgent header to a log upload while a failure window is open. */
+/** Adds the urgent header to a log or telemetry upload while a failure window is open. */
 function withUrgentLogHeader(
   originalUrl: string,
   input: RequestInfo | URL,
   init: RequestInit | undefined
 ): RequestInit | undefined {
-  if (!originalUrl.startsWith(REALTIMEKIT_LOGS_URL)) return init
-  const tag = takeUrgentLogTag(urgentLogState, Date.now())
-  urgentLogState = tag.next
+  const url = REALTIMEKIT_DIAGNOSTIC_URLS.find((candidate) => originalUrl.startsWith(candidate))
+  if (!url) return init
+  const tag = takeUrgentLogTag(urgentLogStates.get(url) ?? null, Date.now())
+  if (tag.next) urgentLogStates.set(url, tag.next)
+  else urgentLogStates.delete(url)
   if (!tag.urgent) return init
   // init.headers replaces a Request's own headers, so start from those.
   const headers = new Headers(

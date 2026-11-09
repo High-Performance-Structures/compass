@@ -1,26 +1,31 @@
 /**
- * RealtimeKit diagnostic log throttle (Office Talk).
+ * RealtimeKit diagnostic upload throttle (Office Talk).
  *
  * WHAT IS THROTTLED
- *   The Cloudflare RealtimeKit browser SDK uploads its own diagnostic logs
- *   (`POST https://api.realtime.cloudflare.com/logs`, a gzipped JSON batch of
- *   up to 50 entries every few seconds during a call). Our browser fetch
- *   wrapper routes them through `/api/realtimekit/logs`. Those uploads are
- *   answered with 204 by Compass and NOT forwarded to Cloudflare, except as
- *   described below. Nothing else that goes through the proxy is affected.
+ *   The Cloudflare RealtimeKit browser SDK uploads two kinds of diagnostics
+ *   for Cloudflare's own use, every few seconds during a call:
+ *   - logs: `POST https://api.realtime.cloudflare.com/logs`, a gzipped JSON
+ *     batch of up to 50 entries;
+ *   - telemetry: `POST https://api.realtime.cloudflare.com/telemetry`, call
+ *     quality data (~1,600 uploads an hour across the company).
+ *   Our browser fetch wrapper routes them through `/api/realtimekit/logs` and
+ *   `/api/realtimekit/telemetry`. Those uploads are answered with 204 by
+ *   Compass and NOT forwarded to Cloudflare, except as described below.
+ *   Nothing else that goes through the proxy (joining, media) is affected.
  *
  * WHY
  *   Since about 2026-11-09 14:00 UTC Cloudflare answered every log upload
  *   with HTTP 500, and Office Talk sent 500-900 of them an hour. Each one
  *   cost a Worker invocation that read the body and fetched upstream for
  *   nothing. The logs are only useful to Cloudflare support, so the owner
- *   decided (2026-11-09) to forward them at most about twice a day.
+ *   decided (2026-11-09) to forward them at most about twice a day, and
+ *   later the same day to treat call-quality telemetry the same way.
  *
  * HOW OFTEN LOGS STILL GO THROUGH
- *   One upload per company per LOG_FORWARD_INTERVAL_MS (12 hours, so about
- *   twice a day) is forwarded so Cloudflare keeps a sample. The window is
- *   shared by every Worker instance through a marker row in
- *   organization_feature_settings (key LOG_FORWARD_MARKER_KEY).
+ *   One upload of each kind per company per LOG_FORWARD_INTERVAL_MS (12
+ *   hours, so about twice a day) is forwarded so Cloudflare keeps a sample.
+ *   The window is shared by every Worker instance through a marker row per
+ *   kind in organization_feature_settings (keys in DIAGNOSTIC_UPLOAD_MARKER_KEYS).
  *
  * WHEN THEY ARE FORWARDED IMMEDIATELY
  *   When Office Talk stops working for someone - the meeting fails to open
@@ -52,17 +57,25 @@ export const URGENT_LOG_FORWARDS_PER_USER_PER_HOUR = 5
 export const URGENT_LOG_HEADER = "x-compass-realtimekit-logs"
 export const URGENT_LOG_HEADER_VALUE = "office-talk-failed"
 
-/** organization_feature_settings key holding the last routine forward time. */
-export const LOG_FORWARD_MARKER_KEY = "realtimekit-log-forward-marker"
+/** The SDK's diagnostic uploads this throttle covers, by proxy path. */
+export const DIAGNOSTIC_UPLOAD_KINDS = ["logs", "telemetry"] as const
+export type DiagnosticUploadKind = (typeof DIAGNOSTIC_UPLOAD_KINDS)[number]
+
+/** organization_feature_settings keys holding each kind's last routine forward time. */
+export const DIAGNOSTIC_UPLOAD_MARKER_KEYS: Readonly<Record<DiagnosticUploadKind, string>> = {
+  logs: "realtimekit-log-forward-marker",
+  telemetry: "realtimekit-telemetry-forward-marker",
+}
 
 const HOUR_MS = 60 * 60 * 1000
 
-/** True for the SDK's diagnostic log upload (`POST /logs`). */
-export function isRealtimeKitLogUpload(
+/** Which diagnostic upload this is (`POST /logs` or `POST /telemetry`), or null. */
+export function realtimeKitDiagnosticUploadKind(
   method: string,
   path: readonly string[]
-): boolean {
-  return method.toUpperCase() === "POST" && path.length === 1 && path[0] === "logs"
+): DiagnosticUploadKind | null {
+  if (method.toUpperCase() !== "POST" || path.length !== 1) return null
+  return DIAGNOSTIC_UPLOAD_KINDS.find((kind) => kind === path[0]) ?? null
 }
 
 /** True when the browser marked this upload as sent after an Office Talk failure. */
