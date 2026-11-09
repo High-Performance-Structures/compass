@@ -75,6 +75,34 @@ async function choice(selectionId: string, title: string, ownerPrice: string): P
   return result.data.id
 }
 
+/**
+ * An accepted contract estimate with a 10% overhead and 5% margin, so a
+ * straight cost-plus variance would get fee lines if they weren't skipped.
+ * Required columns are filled from the migrated schema.
+ */
+function insertAcceptedEstimateWithFee(db: Sqlite): void {
+  const columns = db.prepare("PRAGMA table_info(project_estimates)").all()
+  const values = new Map<string, string | number>([
+    ["id", "est-1"],
+    ["project_id", "p1"],
+    ["status", "accepted"],
+    ["overhead_rate_basis_points", 1000],
+    ["margin_rate_basis_points", 500],
+    ["contingency_rate_basis_points", 0],
+    ["version_number", 1],
+  ])
+  for (const column of columns) {
+    if (typeof column !== "object" || column === null) continue
+    const name = String(Reflect.get(column, "name"))
+    const required = Reflect.get(column, "notnull") === 1 && Reflect.get(column, "dflt_value") === null && Reflect.get(column, "pk") === 0
+    if (!required || values.has(name)) continue
+    const type = String(Reflect.get(column, "type")).toLowerCase()
+    values.set(name, type.includes("int") || type.includes("real") ? 0 : name.endsWith("_at") ? NOW : "x")
+  }
+  const names = [...values.keys()]
+  db.prepare(`INSERT INTO project_estimates (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`).run(...names.map((name) => values.get(name)))
+}
+
 async function twoPagePdf(): Promise<ArrayBuffer> {
   const pdf = await PDFDocument.create()
   pdf.addPage([612, 792])
@@ -162,6 +190,43 @@ describe("round signing", () => {
     expect(again.data.document.toSign.map((line) => line.selectionId)).toEqual(["tile"])
     expect(again.data.document.lines.find((line) => line.selectionId === "faucet")?.signedEarlier).toBe(true)
     expect(again.data.signatures[0]).toMatchObject({ status: "signed", itemCount: 2, signedDocumentHref: "/api/integrations/foxit/envelopes/env-1/document" })
+  })
+
+  it("gives a straight cost-plus round a variance with no second builder fee", async () => {
+    sqlite.exec(`
+      UPDATE projects SET contract_type = 'cost_plus' WHERE id = 'p1';
+      INSERT INTO sage_cost_codes (id, code, description, display_label, division_code, division_description, division_display_label, active, created_at, updated_at) VALUES
+        ('cc1', '09 30 00', 'Tiling', '09 30 00 Tiling', '09', 'Finishes', '09 Finishes', 1, '${NOW}', '${NOW}'),
+        ('cc2', '22 40 00', 'Plumbing fixtures', '22 40 00 Plumbing fixtures', '22', 'Plumbing', '22 Plumbing', 1, '${NOW}', '${NOW}');
+    `)
+    insertAcceptedEstimateWithFee(sqlite)
+    // 5% over the allowance: under the 10% threshold, so a variance.
+    const hex = await choice("tile", "Hex", "3360")
+    const brass = await choice("faucet", "Brass", "525")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    const sent = await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])
+    expect(sent).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT record_type, status, source_type FROM project_change_orders").get()).toEqual({
+      record_type: "variance",
+      status: "draft",
+      source_type: "selection_round",
+    })
+
+    const prepared = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!prepared) throw new Error("no signature")
+    await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: prepared, event: "folder_sent" })
+    const sentRow = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!sentRow) throw new Error("no signature")
+    await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: sentRow, event: "folder_executed" })
+
+    expect(sqlite.prepare("SELECT status FROM project_change_orders").get()).toEqual({ status: "executed" })
+    // Owner prices already include the fee: no builder-fee lines, the owner's difference stands.
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_order_lines WHERE derived_from = 'builder_fee'").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("SELECT cost_code, amount_cents FROM project_change_order_lines WHERE derived_from IS NULL ORDER BY cost_code").all()).toEqual([
+      { cost_code: "09 30 00", amount_cents: 16000 },
+      { cost_code: "22 40 00", amount_cents: 2500 },
+    ])
   })
 
   it("can't send until every selection in the round has a priced pick", async () => {

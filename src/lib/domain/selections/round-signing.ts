@@ -36,7 +36,15 @@ import {
   insertChangeOrderStatement,
   updateChangeOrdersStatement,
 } from "@/lib/domain/estimates/store"
-import { approveVariance, createVariance, projectVarianceSettings, saveVarianceLines, type VarianceActor } from "@/lib/domain/estimates/variances"
+import { SELECTION_ROUND_VARIANCE_SOURCE } from "@/lib/domain/estimates/variance-rules"
+import {
+  approveVariance,
+  changeOrderInsuranceLines,
+  createVariance,
+  projectVarianceSettings,
+  saveVarianceLines,
+  type VarianceActor,
+} from "@/lib/domain/estimates/variances"
 import { announceEsignOutcome } from "@/lib/esign/announce"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -224,7 +232,8 @@ type Actor = VarianceActor & { readonly name: string }
 /**
  * The change order (signature pending, signed in the round document) for a
  * round's difference from the allowance. Priced at owner prices, which
- * already include the builder fee, so no fee lines are added.
+ * already include the builder fee, so no fee lines are added; project
+ * liability insurance is added the way change orders from estimates get it.
  */
 async function createRoundChangeOrder(
   db: Db,
@@ -236,7 +245,12 @@ async function createRoundChangeOrder(
   ])
   const id = crypto.randomUUID()
   const number = changeOrderNumber(project?.projectNumber ?? null, existing)
-  const amountCents = input.lines.reduce((total, line) => total + line.amountCents, 0)
+  const insurance = await changeOrderInsuranceLines({ db, projectId: input.projectId, lines: input.lines })
+  const allLines = [
+    ...input.lines.map((line) => ({ ...line, derivedFrom: null })),
+    ...insurance.map((line) => ({ costCode: line.costCode, description: line.description, amountCents: line.amountCents, derivedFrom: line.derivedFrom })),
+  ]
+  const amountCents = allLines.reduce((total, line) => total + line.amountCents, 0)
   await db.batch([
     insertChangeOrderStatement(db, {
       id,
@@ -265,7 +279,7 @@ async function createRoundChangeOrder(
     }),
     insertChangeOrderLineStatement(
       db,
-      input.lines.map((line, index) => ({
+      allLines.map((line, index) => ({
         id: crypto.randomUUID(),
         projectId: input.projectId,
         changeOrderId: id,
@@ -274,6 +288,7 @@ async function createRoundChangeOrder(
         phaseCode: line.costCode.slice(0, 2),
         costCode: line.costCode,
         amountCents: line.amountCents,
+        derivedFrom: line.derivedFrom,
         createdAt: input.now,
         updatedAt: input.now,
       })),
@@ -361,6 +376,8 @@ export async function prepareRoundSignature(input: {
       title: `${view.roundName} selections`,
       scope: `Selections in ${view.roundName} ${view.document.deltaCents >= 0 ? "over" : "under"} the allowance.`,
       reason: "The owner's selections differ from the allowance.",
+      // Priced at owner prices (fee included), so approving it adds no builder fee.
+      source: { type: SELECTION_ROUND_VARIANCE_SOURCE, recordId: signatureId },
     })
     if (!created.success) throw new Error(created.error)
     const lines = await saveVarianceLines({ db, projectId, changeOrderId: created.id, actor, lines: overage.lines })

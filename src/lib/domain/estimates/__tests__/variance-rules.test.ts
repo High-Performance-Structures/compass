@@ -26,6 +26,11 @@ describe("derivedChangeLines", () => {
     expect(fixedFee.map((line) => [line.derivedFrom, line.amountCents])).toEqual([["insurance", 20_000]])
   })
 
+  it("adds no fee to a variance whose lines already include it (selection rounds), only insurance", () => {
+    const lines = derivedChangeLines({ recordType: "variance", contractType: "cost_plus", lines: [lumber], feeRates, insurance, feeIncluded: true })
+    expect(lines.map((line) => [line.derivedFrom, line.amountCents])).toEqual([["insurance", 20_000]])
+  })
+
   it("adds insurance to a change order too, but never a fee (its estimate priced the fee)", () => {
     const lines = derivedChangeLines({ recordType: "change_order", contractType: "cost_plus", lines: [lumber], feeRates, insurance })
     expect(lines.map((line) => [line.derivedFrom, line.amountCents])).toEqual([["insurance", 20_000]])
