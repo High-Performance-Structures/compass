@@ -375,6 +375,12 @@ Company settings (everything under Settings) and per-person preferences.
   `src/app/api/integrations/jarvis/`, `src/app/api/bridge/`
 - Components: `src/components/agent/`, `src/components/ai/`,
   `src/components/feedback/`
+- Jarvis on-screen UI (json-render): `src/lib/agent/render/catalog.ts` (the
+  components Jarvis may use), `src/lib/agent/render/registry.tsx` (maps each
+  one to React code), with the renderers grouped by kind in
+  `src/lib/agent/render/registry/` (`layout.tsx`, `form-fields.tsx`,
+  `form-controls.tsx`, `data-display.tsx`, `charts.tsx`, `code.tsx`,
+  `skeletons.tsx`)
 - Docs: [AI agent](ai-agent.md),
   [Jarvis feedback bridge](jarvis-feedback-bridge.md)
 
