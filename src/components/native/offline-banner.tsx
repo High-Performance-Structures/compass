@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { WifiOff } from "lucide-react"
 import { useNative } from "@/hooks/use-native"
+import { loadNetworkPlugin } from "@/lib/native/capacitor-plugins"
 
 export function OfflineBanner() {
   const native = useNative()
@@ -25,9 +26,7 @@ export function OfflineBanner() {
     let cleanup: (() => void) | undefined
 
     async function setup() {
-      const { Network } = await import(
-        "@capacitor/network"
-      )
+      const { Network } = await loadNetworkPlugin()
       const status = await Network.getStatus()
       setOffline(!status.connected)
 

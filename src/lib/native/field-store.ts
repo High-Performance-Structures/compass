@@ -1,5 +1,6 @@
 import { type FieldProject, type FieldProjectPacket, type FieldUserProfile } from "@/lib/field/types"
 import { isNative } from "@/lib/native/platform"
+import { loadPreferencesPlugin } from "@/lib/native/capacitor-plugins"
 
 const PROJECTS_KEY = "compass_field_projects_v1"
 const ACTIVE_PROJECT_KEY = "compass_field_active_project_v1"
@@ -11,7 +12,7 @@ function packetKey(projectId: string): string {
 }
 
 async function writeJson(key: string, value: unknown): Promise<void> {
-  const { Preferences } = await import("@capacitor/preferences")
+  const { Preferences } = await loadPreferencesPlugin()
   await Preferences.set({ key, value: JSON.stringify(value) })
 }
 

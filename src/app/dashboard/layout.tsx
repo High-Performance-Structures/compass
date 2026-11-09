@@ -59,7 +59,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { DeveloperModeProvider } from "@/components/developer-mode-provider"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 import { getHelpGuides } from "@/lib/help"
-import { toHelpGuidePreview } from "@/components/help/help-ui-model"
+import { toHelpGuideListing } from "@/components/help/help-ui-model"
 import { HelpUiProvider } from "@/components/help/help-ui-provider"
 import {
   DEVELOPER_MODE_COOKIE,
@@ -93,7 +93,8 @@ export default async function DashboardLayout({
   const allowedHelpGuideIds = new Set(helpAccess.allowedGuideIds)
   const helpGuides = getHelpGuides()
     .filter((guide) => allowedHelpGuideIds.has(guide.id))
-    .map(toHelpGuidePreview)
+    // Titles and headings only; the drawer loads article text when opened.
+    .map(toHelpGuideListing)
   const canViewActivity = authUser
     ? isInternalStaffRole(authUser.role)
     : false

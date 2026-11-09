@@ -1,4 +1,6 @@
-import { getHelpTopic } from "@/lib/help"
+// Uses the light topic index, not `@/lib/help`: the video player is a client
+// component, so anything imported here is bundled for it too.
+import { getHelpTopicLocation } from "@/lib/help/topics"
 
 /**
  * Tutorial videos shown under Help guide sections. Each one is recorded by
@@ -118,9 +120,9 @@ export type HelpVideoWithGuide = HelpVideo & Readonly<{ guideId: string }>
 export function getHelpVideo(videoId: string): HelpVideoWithGuide | null {
   const video = HELP_VIDEOS.find((candidate) => candidate.id === videoId)
   if (!video) return null
-  const topic = getHelpTopic(video.topicId)
-  if (!topic?.section) return null
-  return { ...video, guideId: topic.guide.id }
+  const topic = getHelpTopicLocation(video.topicId)
+  if (!topic?.sectionId) return null
+  return { ...video, guideId: topic.guideId }
 }
 
 /** Videos for one guide, keyed by the section ID they appear under. */
@@ -129,9 +131,9 @@ export function getHelpVideosForGuide(
 ): Readonly<Record<string, HelpVideo>> {
   const bySection: Record<string, HelpVideo> = {}
   for (const video of HELP_VIDEOS) {
-    const topic = getHelpTopic(video.topicId)
-    if (topic?.guide.id === guideId && topic.section) {
-      bySection[topic.section.id] = video
+    const topic = getHelpTopicLocation(video.topicId)
+    if (topic?.guideId === guideId && topic.sectionId) {
+      bySection[topic.sectionId] = video
     }
   }
   return bySection

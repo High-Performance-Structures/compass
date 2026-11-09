@@ -8,7 +8,7 @@ import { getProjects } from "@/app/actions/projects"
 import { getQuickAddProjects } from "@/lib/quick-add-server"
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import { HelpUiProvider } from "@/components/help/help-ui-provider"
-import { toHelpGuidePreview } from "@/components/help/help-ui-model"
+import { toHelpGuideListing } from "@/components/help/help-ui-model"
 import { getHelpGuides } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 
@@ -33,7 +33,8 @@ export default async function PreviewLayout({
   const allowedHelpGuideIds = new Set(helpAccess.allowedGuideIds)
   const helpGuides = getHelpGuides()
     .filter((guide) => allowedHelpGuideIds.has(guide.id))
-    .map(toHelpGuidePreview)
+    // Titles and headings only; the drawer loads article text when opened.
+    .map(toHelpGuideListing)
 
   const departmentProfiles = await currentDepartmentProfiles()
   return (

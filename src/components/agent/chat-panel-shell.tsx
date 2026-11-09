@@ -12,6 +12,7 @@ import {
 import { isNative } from "@/lib/native/platform"
 import { isListeningRoomWindowPath } from "@/lib/listening-room"
 import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
+import { loadKeyboardPlugin } from "@/lib/native/capacitor-plugins"
 
 // The chat view brings markdown, code highlighting, and diagram rendering.
 // Load it on first open instead of with every dashboard page.
@@ -102,9 +103,7 @@ export function ChatPanelShell() {
     let cleanup: (() => void) | undefined
 
     async function setupKeyboard() {
-      const { Keyboard } = await import(
-        "@capacitor/keyboard"
-      )
+      const { Keyboard } = await loadKeyboardPlugin()
       const showListener = await Keyboard.addListener(
         "keyboardWillShow",
         (info) => setKeyboardHeight(info.keyboardHeight),

@@ -3,12 +3,12 @@
 import * as React from "react"
 
 import type {
-  HelpGuidePreview,
+  HelpGuideListing,
   HelpTopicPreview,
 } from "@/components/help/help-ui-model"
 
 type HelpUiContextValue = Readonly<{
-  guides: readonly HelpGuidePreview[]
+  guides: readonly HelpGuideListing[]
   topics: ReadonlyMap<string, HelpTopicPreview>
   canViewHelp: boolean
   canUseJarvis: boolean
@@ -21,7 +21,7 @@ const HelpUiContext = React.createContext<HelpUiContextValue>({
   canUseJarvis: false,
 })
 
-function topicMap(guides: readonly HelpGuidePreview[]): ReadonlyMap<string, HelpTopicPreview> {
+function topicMap(guides: readonly HelpGuideListing[]): ReadonlyMap<string, HelpTopicPreview> {
   const topics = new Map<string, HelpTopicPreview>()
   for (const guide of guides) {
     topics.set(guide.id, {
@@ -47,7 +47,7 @@ export function HelpUiProvider({
   canUseJarvis = false,
   children,
 }: {
-  readonly guides: readonly HelpGuidePreview[]
+  readonly guides: readonly HelpGuideListing[]
   readonly canUseJarvis?: boolean
   readonly children: React.ReactNode
 }): React.ReactElement {
@@ -64,7 +64,7 @@ export function HelpUiProvider({
   return <HelpUiContext.Provider value={value}>{children}</HelpUiContext.Provider>
 }
 
-export function useAllowedHelpGuides(): readonly HelpGuidePreview[] {
+export function useAllowedHelpGuides(): readonly HelpGuideListing[] {
   return React.useContext(HelpUiContext).guides
 }
 

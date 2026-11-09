@@ -49,6 +49,14 @@ export type HelpTopic = Readonly<{
   href: string
 }>
 
+/** Where a guide or section topic ID lives, without the article text. */
+export type HelpTopicLocation = Readonly<{
+  guideId: string
+  guideSlug: string
+  /** Null when the topic ID is the guide itself rather than one section. */
+  sectionId: string | null
+}>
+
 export type HelpSearchOptions = Readonly<{
   audience?: HelpAudience
   limit?: number

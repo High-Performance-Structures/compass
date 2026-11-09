@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useNative, useNativePlatform } from "./use-native"
+import { loadPushNotificationsPlugin } from "@/lib/native/capacitor-plugins"
 
 function useNativePush() {
   const native = useNative()
@@ -16,9 +17,7 @@ function useNativePush() {
     let cleanup: (() => void) | undefined
 
     async function setup() {
-      const { PushNotifications } = await import(
-        "@capacitor/push-notifications"
-      )
+      const { PushNotifications } = await loadPushNotificationsPlugin()
 
       const regListener =
         await PushNotifications.addListener(

@@ -9,8 +9,11 @@ import {
   helpReturnToForLocation,
   safeHelpReturnTo,
   searchAllowedHelpGuides,
+  toHelpGuideListing,
+  toHelpGuidePreview,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
+import { getHelpGuides } from "@/lib/help"
 
 function guide(input: {
   readonly id: string
@@ -117,11 +120,41 @@ describe("Compass Help UI model", () => {
     ).toBe("/dashboard/projects/project-42?tab=rfis")
   })
 
+  it("keeps article and search text out of the per-page listing", () => {
+    const [source] = getHelpGuides()
+    const listing = toHelpGuideListing(source)
+    const serialized = JSON.stringify(listing)
+    expect(listing).not.toHaveProperty("content")
+    expect(listing).not.toHaveProperty("searchText")
+    expect(listing.sections[0]).not.toHaveProperty("searchText")
+    expect(serialized).not.toContain(source.sections[0].content.slice(0, 80))
+    expect(toHelpGuidePreview(source)).toMatchObject({
+      ...listing,
+      content: source.content,
+      sections: listing.sections.map((section) => expect.objectContaining(section)),
+    })
+  })
+
+  it("sends only listings from layouts and loads article text on demand", () => {
+    for (const layout of ["src/app/dashboard/layout.tsx", "src/app/preview/layout.tsx"]) {
+      const source = readFileSync(join(process.cwd(), layout), "utf8")
+      expect(source).toContain(".map(toHelpGuideListing)")
+      expect(source).not.toContain("toHelpGuidePreview")
+    }
+    const drawerSource = readFileSync(
+      join(process.cwd(), "src/components/help/help-drawer.tsx"),
+      "utf8",
+    )
+    expect(drawerSource).toContain("useHelpGuideDetails(")
+  })
+
   it("keeps generated help registries out of client help components", () => {
     for (const filename of [
       "help-drawer.tsx",
       "help-resources-library.tsx",
       "contextual-help-beacon.tsx",
+      "help-guide-details.ts",
+      "help-video.tsx",
     ]) {
       const source = readFileSync(
         join(process.cwd(), "src/components/help", filename),

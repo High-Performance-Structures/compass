@@ -1,27 +1,50 @@
 import type { HelpGuide } from "@/lib/help/types"
 
-type HelpSectionPreview = Readonly<{
+/*
+ * Help comes to the browser in two sizes:
+ *
+ * - `HelpGuideListing`: titles, summaries, routes and section headings. The
+ *   dashboard and preview layouts send this with every page so the Help
+ *   drawer list, page suggestions and contextual beacons work instantly.
+ * - `HelpGuidePreview`: the listing plus article text and search text. It is
+ *   ~7x larger, so the drawer fetches it from `/api/help/guides` only when it
+ *   opens (see `help-guide-details.ts`). The full Help page builds it on the
+ *   server because that page always searches and shows articles.
+ *
+ * Both are built only from guides the server already allowed for the viewer.
+ */
+
+type HelpSectionListing = Readonly<{
   id: string
   topicId: string
   title: string
   summary: string
-  searchText: string
 }>
 
-export type HelpGuidePreview = Readonly<{
+export type HelpGuideListing = Readonly<{
   id: string
   slug: string
   title: string
   summary: string
   contextSummary: string
-  content: string
   category: string
   tags: readonly string[]
   routes: readonly string[]
-  searchText: string
   readingMinutes: number
-  sections: readonly HelpSectionPreview[]
+  sections: readonly HelpSectionListing[]
 }>
+
+type HelpSectionPreview = HelpSectionListing &
+  Readonly<{
+    searchText: string
+  }>
+
+export type HelpGuidePreview = Omit<HelpGuideListing, "sections"> &
+  Readonly<{
+    content: string
+    searchText: string
+    sections: readonly HelpSectionPreview[]
+  }>
 
 export type HelpTopicPreview = Readonly<{
   topicId: string
@@ -70,19 +93,33 @@ function normalizeSearchText(value: string): string {
     .trim()
 }
 
-export function toHelpGuidePreview(guide: HelpGuide): HelpGuidePreview {
+/** The light shape every dashboard page carries; no article or search text. */
+export function toHelpGuideListing(guide: HelpGuide): HelpGuideListing {
   return {
     id: guide.id,
     slug: guide.slug,
     title: guide.title,
     summary: guide.summary,
     contextSummary: guide.contextSummary,
-    content: guide.content,
     category: guide.category,
     tags: guide.tags,
     routes: guide.routes,
-    searchText: guide.searchText,
     readingMinutes: guide.readingMinutes,
+    sections: guide.sections.map((section) => ({
+      id: section.id,
+      topicId: section.topicId,
+      title: section.title,
+      summary: section.summary,
+    })),
+  }
+}
+
+/** The full shape used to read and search guides. */
+export function toHelpGuidePreview(guide: HelpGuide): HelpGuidePreview {
+  return {
+    ...toHelpGuideListing(guide),
+    content: guide.content,
+    searchText: guide.searchText,
     sections: guide.sections.map((section) => ({
       id: section.id,
       topicId: section.topicId,
@@ -155,10 +192,10 @@ function routePatternMatches(pattern: string, pathname: string): boolean {
   })
 }
 
-export function helpGuidesForPathname(
-  guides: readonly HelpGuidePreview[],
+export function helpGuidesForPathname<Guide extends HelpGuideListing>(
+  guides: readonly Guide[],
   pathname: string,
-): readonly HelpGuidePreview[] {
+): readonly Guide[] {
   const cleanPathname = pathname.split(/[?#]/, 1)[0]
   return guides.filter((guide) =>
     guide.routes.some((route) => routePatternMatches(route, cleanPathname)),

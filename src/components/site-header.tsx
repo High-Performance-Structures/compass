@@ -44,6 +44,7 @@ import { useNative, useNativePlatform } from "@/hooks/use-native"
 import { fieldModeUrl } from "@/lib/native/field-mode-url"
 import { browserHandoffUrl } from "@/lib/native/browser-handoff"
 import { QuickAddMenu } from "@/components/quick-add-menu"
+import { loadAppLauncherPlugin } from "@/lib/native/capacitor-plugins"
 
 const OFFICE_TALK_MEETING_HREF =
   `/dashboard/conversations/${OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID}/meeting`
@@ -117,7 +118,7 @@ export function SiteHeader({
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
     const url = browserHandoffUrl(window.location.origin, current)
     try {
-      const { AppLauncher } = await import("@capacitor/app-launcher")
+      const { AppLauncher } = await loadAppLauncherPlugin()
       await AppLauncher.openUrl({ url })
     } catch {
       // App builds without the launcher plugin hand window.open to the OS.
