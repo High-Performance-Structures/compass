@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, isNull, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customers, projects } from "@/db/schema"
@@ -9,6 +9,7 @@ import { actionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
 import { sageIdentityLinkStatement } from "@/lib/domain/contacts/store"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
+import { updateProjectsReturningIds } from "@/lib/domain/project/store"
 import { resolveShellJobStatus } from "@/lib/domain/project/intake-shell"
 import { sageClientJobPayload } from "@/lib/domain/project/rules"
 import {
@@ -381,6 +382,79 @@ export async function sendProjectToSage(
       status: "queued", sageClientNumber: link?.sageClientNumber ?? null, linkedClient: linkCustomer,
       ...(movedFromCustomerId ? { movedFromCustomerId, customerId: customer?.id ?? null } : {}),
     }),
+    createdAt: now,
+  })
+  revalidatePath(`/dashboard/projects/${projectId}`)
+  return { success: true }
+}
+
+/**
+ * Links a job that is already in Sage (made there by hand, or before Compass
+ * created jobs) by its Sage job number, instead of creating it again. Compass
+ * has no copy of Sage's job list, so it checks the number's form and that no
+ * other Compass job uses it.
+ */
+export async function linkProjectToExistingSageJob(projectId: string, rawJobNumber: string): Promise<SendResult> {
+  const context = await projectContext(projectId, {
+    scope: "organization", feature: "project-hub", action: "update", mutation: true,
+  })
+  if (!context.success) return context
+  const { db, user, organizationId } = context.data
+  if (!organizationId) return actionFailure("No active organization")
+  if (!isOfficeStaff(user)) return actionFailure("Only office staff can link jobs to Sage.")
+
+  const jobNumber = rawJobNumber.trim()
+  if (!/^\d{1,10}$/.test(jobNumber) || Number(jobNumber) < 1) {
+    return actionFailure("Enter the Sage job number, digits only (for example 722).")
+  }
+  const project = await db.select({ name: projects.name, projectNumber: projects.projectNumber, sageJobNumber: projects.sageJobNumber })
+    .from(projects).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))).get()
+  if (!project) return actionFailure("Project not found.")
+  if (project.sageJobNumber) return actionFailure(`This job is already linked to Sage job ${project.sageJobNumber}.`)
+  const write = await loadWrite(db, organizationId, projectId)
+  if (write && (write.status === "queued" || write.status === "running")) {
+    return actionFailure("Compass is creating this job in Sage right now. Wait for it to finish before linking another job.")
+  }
+  const taken = await db.select({ name: projects.name, projectNumber: projects.projectNumber }).from(projects).where(and(
+    eq(projects.organizationId, organizationId),
+    eq(projects.sageJobNumber, jobNumber),
+    ne(projects.id, projectId),
+  )).limit(1).get()
+  if (taken) {
+    return actionFailure(`Sage job ${jobNumber} is already linked to ${taken.projectNumber ? `${taken.projectNumber} ` : ""}${taken.name}.`)
+  }
+
+  const now = new Date().toISOString()
+  const changed = await updateProjectsReturningIds(
+    db,
+    and(eq(projects.id, projectId), eq(projects.organizationId, organizationId), isNull(projects.sageJobNumber)),
+    { sageJobNumber: jobNumber, updatedAt: now },
+  )
+  if (changed.length === 0) return actionFailure("This job changed while you were linking it. Refresh and try again.")
+  // Estimates that stopped because the job wasn't in Sage follow the job now.
+  await db.batch([...estimateExportsFollowJobStatements(db, { organizationId, projectId, now })])
+
+  await recordProjectAudit(db, {
+    organizationId,
+    projectId,
+    actorUserId: user.id,
+    eventType: "project.sage_job_linked",
+    entityType: "project",
+    entityId: projectId,
+    beforeJson: JSON.stringify({ sageJobNumber: null }),
+    afterJson: JSON.stringify({ sageJobNumber: jobNumber }),
+    createdAt: now,
+  })
+  await recordActivityEvent({
+    db,
+    organizationId,
+    projectId,
+    actor: user,
+    category: "financial",
+    action: "project_sage_job_linked",
+    entityType: "project",
+    entityId: projectId,
+    summary: `Linked ${project.projectNumber ?? project.name} to existing Sage job ${jobNumber}.`,
     createdAt: now,
   })
   revalidatePath(`/dashboard/projects/${projectId}`)
