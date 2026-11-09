@@ -14,9 +14,12 @@ import { useListSheetFilterLabel } from "@/components/list-sheets/use-list-sheet
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { RecordStatusBadge } from "@/components/record-status-badge"
 import { OverUnder } from "@/components/selections/selection-choice-card"
+import { ChoiceTemplatesDialog } from "@/components/selections/choice-templates-dialog"
 import { SelectionDetailPanel } from "@/components/selections/selection-detail-panel"
+import { SelectionRoundCards } from "@/components/selections/selection-round-cards"
 import { SourceTag } from "@/components/shared/source-tag"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
 import { formatDate } from "@/lib/format"
@@ -44,7 +47,8 @@ const GROUP_COLOR: Readonly<Record<ReturnType<typeof selectionStatusGroup>, Reco
 const rowId = (row: SelectionSheetRow): string => row.id
 
 /** The Selections sheet's columns (registry sheet "selections.job"). */
-export function selectionColumns(): ColumnDef<SelectionSheetRow>[] {
+export function selectionColumns(roundNames: ReadonlyMap<string, string> = new Map()): ColumnDef<SelectionSheetRow>[] {
+  const roundName = (row: SelectionSheetRow): string | undefined => (row.roundKey ? roundNames.get(row.roundKey) : undefined)
   return [
     {
       id: "selection",
@@ -72,6 +76,13 @@ export function selectionColumns(): ColumnDef<SelectionSheetRow>[] {
       header: "Room",
       size: 140,
       cell: ({ row: { original } }) => <span className="break-words">{original.roomName}</span>,
+    },
+    {
+      id: "round",
+      accessorFn: (row) => roundName(row)?.toLocaleLowerCase(),
+      header: "Round",
+      size: 120,
+      cell: ({ row: { original } }) => <span className="break-words">{roundName(original) ?? <span className="text-muted-foreground">—</span>}</span>,
     },
     {
       id: "costCode",
@@ -129,28 +140,37 @@ export function SelectionsSheet({
   projectId,
   rows,
   suppliers,
+  rounds,
   initialFilter,
 }: {
   readonly projectId: string
   readonly rows: readonly SelectionSheetRow[]
   readonly suppliers: readonly SupplierOption[]
+  readonly rounds: readonly RoundCard[]
   readonly initialFilter: SelectionListFilter
 }): React.ReactElement {
   const router = useRouter()
   const [filter, setFilter] = React.useState<SelectionListFilter>(initialFilter)
   const [query, setQuery] = React.useState("")
   const [openId, setOpenId] = React.useState<string | null>(null)
-  const visible = React.useMemo(
-    () => rows.filter((row) => selectionMatchesFilter(row, filter) && selectionMatchesSearch(row, query)),
-    [rows, filter, query],
+  // A round key, "" for selections in no round, or null for every round.
+  const [round, setRound] = React.useState<string | null>(null)
+  const inRound = React.useMemo(
+    () => (round === null ? rows : rows.filter((row) => (row.roundKey ?? "") === round)),
+    [rows, round],
   )
-  const columns = React.useMemo(() => selectionColumns(), [])
+  const visible = React.useMemo(
+    () => inRound.filter((row) => selectionMatchesFilter(row, filter) && selectionMatchesSearch(row, query)),
+    [inRound, filter, query],
+  )
+  const roundNames = React.useMemo(() => new Map(rounds.map((item) => [item.key, item.name])), [rounds])
+  const columns = React.useMemo(() => selectionColumns(roundNames), [roundNames])
   const filterLabel = useListSheetFilterLabel("selections.job")
   const table = useRecordTable({
     data: visible,
     columns,
     getRowId: rowId,
-    resetKey: `${filter}:${query}`,
+    resetKey: `${filter}:${query}:${round ?? "*"}`,
     sheetId: "selections.job",
   })
   const open = rows.find((row) => row.id === openId) ?? null
@@ -158,6 +178,15 @@ export function SelectionsSheet({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ChoiceTemplatesDialog projectId={projectId} />
+      </div>
+      <SelectionRoundCards
+        rounds={rounds}
+        selected={round}
+        onSelect={setRound}
+        unassigned={rows.filter((row) => !row.roundKey || !roundNames.has(row.roundKey)).length}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <StatusFilterBar
           kind="button"
@@ -165,7 +194,7 @@ export function SelectionsSheet({
           options={SELECTION_LIST_FILTERS.map((option) => ({
             ...option,
             label: filterLabel(option.value, option.label),
-            count: rows.filter((row) => selectionMatchesFilter(row, option.value)).length,
+            count: inRound.filter((row) => selectionMatchesFilter(row, option.value)).length,
             pinned: option.value === "open" || option.value === "all",
           }))}
           selected={filter}
@@ -192,7 +221,7 @@ export function SelectionsSheet({
         </div>
         {open && (
           <div className="min-w-0 flex-[1_1_400px]">
-            <SelectionDetailPanel key={open.id} projectId={projectId} row={open} rows={rows} suppliers={suppliers} onChanged={refresh} />
+            <SelectionDetailPanel key={open.id} projectId={projectId} row={open} rows={rows} rounds={rounds} suppliers={suppliers} onChanged={refresh} />
           </div>
         )}
       </div>

@@ -32,6 +32,7 @@ import {
   type SelectionChoicesPanel,
 } from "@/lib/domain/selections/choices-read"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
+import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
 import {
   loadDraftRfqOptions,
   loadSelectionRfqs,
@@ -209,8 +210,9 @@ export async function saveSelectionChoice(
 
 export async function deleteSelectionChoice(projectId: string, choiceId: string): Promise<Done> {
   try {
-    const { db } = await staffChoice(projectId, choiceId)
+    const { db, user } = await staffChoice(projectId, choiceId)
     await deleteChoiceRow(db, projectId, choiceId)
+    await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }
   } catch (error) {
@@ -249,11 +251,13 @@ export async function setSelectionChoiceChosen(projectId: string, choiceId: stri
         return { success: false, error: "This selection is already approved. Ask your builder to reopen it." }
       }
       await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString())
+      await checkRoundsReady(access.db, projectId, access.user.id)
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
-    const { db, choice } = await staffChoice(projectId, choiceId)
+    const { db, choice, user } = await staffChoice(projectId, choiceId)
     await setChosenRow(db, choice.selectionId, choiceId, chosen, new Date().toISOString())
+    await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }
   } catch (error) {
@@ -456,13 +460,15 @@ export async function deleteSelectionComment(projectId: string, selectionId: str
 export type SelectionSheetData = {
   readonly rows: readonly SelectionSheetRow[]
   readonly suppliers: readonly SupplierOption[]
+  /** The company's rounds as cards for this job (Settings > Selections). */
+  readonly rounds: readonly RoundCard[]
 }
 
 /** The staff Selections sheet: every selection on the job plus the supplier list. Throws the access errors. */
 export async function getSelectionSheet(projectId: string): Promise<SelectionSheetData> {
   const { db, organizationId } = await staffSelectionContext(projectId, "read")
   const [rows, suppliers] = await Promise.all([loadSelectionSheet(db, projectId), loadSupplierOptions(db, organizationId)])
-  return { rows, suppliers }
+  return { rows, suppliers, rounds: await loadRoundCards(db, projectId, organizationId, rows) }
 }
 
 /** The owner's choosing view (staff may preview it). Throws the access errors. */

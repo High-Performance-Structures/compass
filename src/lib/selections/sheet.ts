@@ -21,6 +21,7 @@ export type SelectionSheetInput = {
     readonly allowanceCents: number | null
     readonly dueDate: string | null
     readonly published: boolean
+    readonly roundKey: string | null
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -56,6 +57,8 @@ export type SelectionSheetRow = {
   readonly deltaCents: number | null
   readonly dueDate: string | null
   readonly published: boolean
+  /** The company round (Settings > Selections) it belongs to, or null. */
+  readonly roundKey: string | null
   /** Sorts room, then parent, then its follow-ups right under it. */
   readonly orderKey: string
 }
@@ -101,6 +104,7 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       deltaCents: pickOwnerPriceCents === null || row.allowanceCents === null ? null : pickOwnerPriceCents - row.allowanceCents,
       dueDate: row.dueDate,
       published: row.published,
+      roundKey: row.roundKey,
       orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })

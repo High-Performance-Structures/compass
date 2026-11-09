@@ -40,6 +40,10 @@ In the detail panel:
 
 Records imported from another system show a small source tag.
 
+**Rounds.** Cards above the sheet show each of the company's selection rounds on this job: the due date (from the job's schedule), how many selections have the owner's pick, and how far the picks are over or under the allowance. Click a card to show only that round's selections; **No round** shows the rest. Put a selection in a round from its detail panel. When every selection in a round has the owner's pick, project staff get a "ready to finalize" notification once; if a pick is cleared, the next completion notifies again.
+
+**Choice templates.** Reuse a set of choices on any job. In a selection's detail panel, **Save as template** saves its choices (prices, suppliers, lead times, product links), and **Apply template** adds a template's choices to it. **Choice templates** above the sheet lists the company's templates, applies one to every selection on the job in the template's category, deletes them, and imports templates from a CSV file. The CSV has one row per choice, with the columns Template, Category, Title, Description, Supplier, Supplier price, Owner price, Lead time days and Product URL; Template and Title are required. Supplier names that match a vendor link to it, and importing a template name that already exists replaces that template.
+
 Admins set the company defaults in **Settings › Workflows › Selections**: the selection rounds and the schedule item that sets each round's due date, default lead times by category (new choices start with them), the owner-price markup (a blank owner price is filled in from the supplier price, including prices returned on an RFQ; staff can change it), and the over-budget percent at which a variance is handled as a change order.
 
 ## Owner Choosing {#owner-choosing}
