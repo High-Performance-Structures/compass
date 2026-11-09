@@ -21,12 +21,13 @@ import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import {
+  type SelectionAuthorAudience,
   SELECTION_AUTHOR_AUDIENCES,
   SELECTION_CHOICE_STATUSES,
   SELECTION_COMMENT_VISIBILITIES,
 } from "./statuses"
 
-const CHOICE_LISTS = { status: SELECTION_CHOICE_STATUSES }
+const CHOICE_LISTS = { status: SELECTION_CHOICE_STATUSES, chosenByAudience: SELECTION_AUTHOR_AUDIENCES }
 const LINK_LISTS = { addedByAudience: SELECTION_AUTHOR_AUDIENCES }
 const COMMENT_LISTS = { visibility: SELECTION_COMMENT_VISIBILITIES, authorAudience: SELECTION_AUTHOR_AUDIENCES }
 
@@ -98,14 +99,20 @@ export async function setSelectionChoiceChosen(
   choiceId: string,
   chosen: boolean,
   now: string,
+  pickedBy: { readonly userId: string; readonly audience: SelectionAuthorAudience; readonly note: string | null },
 ): Promise<void> {
+  const cleared = { chosen: false, chosenByUserId: null, chosenByAudience: null, chosenAt: null, chosenNote: null, updatedAt: now }
   const clearOthers = db
     .update(projectSelectionChoices)
-    .set({ chosen: false, updatedAt: now })
+    .set(cleared)
     .where(and(eq(projectSelectionChoices.selectionId, selectionId), ne(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.chosen, true)))
   const setThis = db
     .update(projectSelectionChoices)
-    .set({ chosen, updatedAt: now })
+    .set(
+      chosen
+        ? { chosen: true, chosenByUserId: pickedBy.userId, chosenByAudience: pickedBy.audience, chosenAt: now, chosenNote: pickedBy.note, updatedAt: now }
+        : cleared,
+    )
     .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.selectionId, selectionId)))
   await (chosen ? db.batch([clearOthers, setThis]) : setThis.run())
 }

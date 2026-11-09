@@ -8,6 +8,7 @@
  * owner-visible photos, and only owner-visible comments.
  */
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 
 import { dailyLogPhotos, projectFinishSelections, users, vendors } from "@/db/schema"
 import {
@@ -19,6 +20,9 @@ import {
 } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
 import type { Db } from "@/lib/server/action-context"
+
+// The person who made a choice's current pick.
+const chooser = alias(users, "chooser")
 
 import { commentVisibleTo } from "./choice-rules"
 import type { SelectionAuthorAudience, SelectionChoiceStatus, SelectionCommentVisibility } from "./statuses"
@@ -57,6 +61,11 @@ export type SelectionChoiceView = {
   readonly supplierName: string | null
   readonly sortOrder: number
   readonly chosen: boolean
+  /** Who made the current pick (staff picking for the owner, or the owner), when, and the staff note. */
+  readonly chosenByName: string | null
+  readonly chosenByAudience: SelectionAuthorAudience | null
+  readonly chosenAt: string | null
+  readonly chosenNote: string | null
   readonly status: SelectionChoiceStatus
   readonly sourceSystem: string
   readonly links: readonly SelectionLinkView[]
@@ -165,11 +174,17 @@ export async function loadChoicePanels(
         supplierName: projectSelectionChoices.supplierName,
         sortOrder: projectSelectionChoices.sortOrder,
         chosen: projectSelectionChoices.chosen,
+        chosenByName: chooser.displayName,
+        chosenByEmail: chooser.email,
+        chosenByAudience: projectSelectionChoices.chosenByAudience,
+        chosenAt: projectSelectionChoices.chosenAt,
+        chosenNote: projectSelectionChoices.chosenNote,
         status: projectSelectionChoices.status,
         sourceSystem: projectSelectionChoices.sourceSystem,
       })
       .from(projectSelectionChoices)
       .leftJoin(vendors, eq(vendors.id, projectSelectionChoices.vendorId))
+      .leftJoin(chooser, eq(chooser.id, projectSelectionChoices.chosenByUserId))
       .where(and(eq(projectSelectionChoices.projectId, projectId), inArray(projectSelectionChoices.selectionId, ids)))
       .orderBy(asc(projectSelectionChoices.sortOrder), asc(projectSelectionChoices.createdAt)),
     db
@@ -242,8 +257,11 @@ export async function loadChoicePanels(
 
   return ids.map((selectionId) => ({
     selectionId,
-    choices: choices.filter((choice) => choice.selectionId === selectionId).map((choice): SelectionChoiceView => ({
+    choices: choices.filter((choice) => choice.selectionId === selectionId).map(({ chosenByEmail, ...choice }): SelectionChoiceView => ({
       ...choice,
+      chosenByName: choice.chosenByName ?? chosenByEmail,
+      // Owners see that they picked it, not staff notes.
+      chosenNote: staff ? choice.chosenNote : null,
       priceCents: staff ? choice.priceCents : null,
       vendorId: staff ? choice.vendorId : null,
       vendorName: staff ? choice.vendorName : null,

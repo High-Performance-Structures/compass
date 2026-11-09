@@ -182,6 +182,7 @@ export function SelectionsSheet({
         <ChoiceTemplatesDialog projectId={projectId} />
       </div>
       <SelectionRoundCards
+        projectId={projectId}
         rounds={rounds}
         selected={round}
         onSelect={setRound}

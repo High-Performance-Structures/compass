@@ -90,7 +90,7 @@ describe("rounds", () => {
     const faucetChoice = await choice("faucet", "Brass")
     let sheet = await getSelectionSheet("p1")
     expect(sheet.rounds).toEqual([
-      { key: "rough-in", name: "Rough-in", dueDate: "2026-12-04", alerted: false, total: 2, chosen: 0, deltaCents: 0, ready: false },
+      { key: "rough-in", name: "Rough-in", dueDate: "2026-12-04", alerted: false, signature: null, total: 2, chosen: 0, deltaCents: 0, ready: false },
     ])
 
     await setSelectionChoiceChosen("p1", tileChoice, true)

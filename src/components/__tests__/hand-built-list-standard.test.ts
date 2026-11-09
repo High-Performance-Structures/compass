@@ -63,6 +63,7 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/projects/shop-ticket-sage-hours.tsx": "report",
 
   "src/components/projects/deposit-request-document.tsx": "document",
+  "src/components/selections/selection-round-document.tsx": "document",
   "src/components/financials/invoice-document.tsx": "document",
   "src/components/projects/pay-application-client-report.tsx": "document",
   "src/components/projects/purchase-order-document.tsx": "document",

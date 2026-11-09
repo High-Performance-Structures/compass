@@ -10,17 +10,22 @@
 import * as React from "react"
 
 import { OverUnder } from "@/components/selections/selection-choice-card"
+import { SelectionRoundSigningDialog } from "@/components/selections/selection-round-signing-dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import { formatDate } from "@/lib/format"
+import { printPreviewHref } from "@/lib/print/print-documents"
 import { cn } from "@/lib/utils"
 
 export function SelectionRoundCards({
+  projectId,
   rounds,
   selected,
   onSelect,
   unassigned,
 }: {
+  readonly projectId: string
   readonly rounds: readonly RoundCard[]
   /** The round the sheet is showing, or null for all. */
   readonly selected: string | null
@@ -28,41 +33,68 @@ export function SelectionRoundCards({
   /** Selections not in any round. */
   readonly unassigned: number
 }): React.ReactElement | null {
+  const [signing, setSigning] = React.useState<RoundCard | null>(null)
   if (rounds.length === 0) return null
   return (
     <div className="flex flex-wrap gap-3" role="group" aria-label="Selection rounds">
       {rounds.map((round) => {
         const percent = round.total ? Math.round((round.chosen / round.total) * 100) : 0
         const active = selected === round.key
+        const signature = round.signature
         return (
-          <button
+          <div
             key={round.key}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onSelect(active ? null : round.key)}
-            className={cn(
-              "flex min-w-60 flex-1 flex-col gap-1.5 rounded-lg border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              active && "border-2 border-primary",
-            )}
+            className={cn("flex min-w-60 flex-1 flex-col gap-2 rounded-lg border bg-card p-3", active && "border-2 border-primary")}
           >
-            <span className="flex items-start justify-between gap-2">
-              <span className="font-semibold">{round.name}</span>
-              {round.ready ? <Badge>Ready to finalize</Badge> : round.total === 0 ? <Badge variant="outline">No selections</Badge> : null}
-            </span>
-            <span className="text-xs text-muted-foreground">{round.dueDate ? `Due ${formatDate(round.dueDate)} from the schedule` : "No schedule date"}</span>
-            <span className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
-            </span>
-            <span className="text-sm">
-              {round.chosen} of {round.total} chosen
-              {round.deltaCents !== 0 && (
-                <>
-                  {" · "}
-                  <OverUnder deltaCents={round.deltaCents} /> {round.deltaCents > 0 ? "over" : "under"} allowance
-                </>
-              )}
-            </span>
-          </button>
+            <button
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(active ? null : round.key)}
+              className="flex flex-col gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="flex items-start justify-between gap-2">
+                <span className="font-semibold">{round.name}</span>
+                {signature?.status === "signed" ? (
+                  <Badge>Signed {formatDate(signature.at)}</Badge>
+                ) : signature?.status === "sent" ? (
+                  <Badge variant="outline">Out for signature</Badge>
+                ) : round.ready ? (
+                  <Badge>Ready to finalize</Badge>
+                ) : round.total === 0 ? (
+                  <Badge variant="outline">No selections</Badge>
+                ) : null}
+              </span>
+              <span className="text-xs text-muted-foreground">{round.dueDate ? `Due ${formatDate(round.dueDate)} from the schedule` : "No schedule date"}</span>
+              <span className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+                <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
+              </span>
+              <span className="text-sm">
+                {round.chosen} of {round.total} chosen
+                {round.deltaCents !== 0 && (
+                  <>
+                    {" · "}
+                    <OverUnder deltaCents={round.deltaCents} /> {round.deltaCents > 0 ? "over" : "under"} allowance
+                  </>
+                )}
+              </span>
+            </button>
+            {round.ready && (
+              <span className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href={printPreviewHref({ projectId, document: "selections-round", params: { round: round.key }, number: `${round.name} selections` })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Print round
+                  </a>
+                </Button>
+                <Button type="button" size="sm" onClick={() => setSigning(round)}>
+                  {signature?.status === "signed" ? "Signatures" : "Send for signature"}
+                </Button>
+              </span>
+            )}
+          </div>
         )
       })}
       {unassigned > 0 && (
@@ -78,6 +110,15 @@ export function SelectionRoundCards({
           <span className="font-semibold">No round</span>
           <span className="text-muted-foreground">{unassigned} selection{unassigned === 1 ? "" : "s"}</span>
         </button>
+      )}
+      {signing && (
+        <SelectionRoundSigningDialog
+          projectId={projectId}
+          roundKey={signing.key}
+          roundName={signing.name}
+          open
+          onOpenChange={(open) => !open && setSigning(null)}
+        />
       )}
     </div>
   )

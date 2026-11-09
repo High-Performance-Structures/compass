@@ -1,4 +1,4 @@
-export type EsignDocumentKind = "contract" | "estimate" | "change_order" | "trade_letter"
+export type EsignDocumentKind = "contract" | "estimate" | "change_order" | "trade_letter" | "selections_round"
 
 export type EsignOutcome = "signed" | "declined" | "cancelled"
 
@@ -6,6 +6,7 @@ function kindLabel(kind: EsignDocumentKind): string {
   if (kind === "contract") return "Contract"
   if (kind === "change_order") return "Change order"
   if (kind === "trade_letter") return "Letter"
+  if (kind === "selections_round") return "Selections round"
   return "Estimate"
 }
 
@@ -30,6 +31,8 @@ export function esignAnnouncementText(input: {
   const href =
     input.kind === "contract"
       ? `${project}/contracts`
+      : input.kind === "selections_round"
+        ? `${project}/selections`
       : input.kind === "trade_letter"
         ? `${project}/estimate${input.estimateId ? `?estimateId=${encodeURIComponent(input.estimateId)}` : ""}`
       : input.kind === "change_order" && input.changeOrderId

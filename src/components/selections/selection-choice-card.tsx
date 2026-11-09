@@ -16,7 +16,7 @@ import { SourceTag } from "@/components/shared/source-tag"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { allowanceDeltaCents } from "@/lib/domain/selections/choice-rules"
+import { allowanceDeltaCents, pickedByLabel } from "@/lib/domain/selections/choice-rules"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
 import { formatCents } from "@/lib/format"
 import { projectInternalPhotoUrl } from "@/lib/photo-sources"
@@ -121,6 +121,12 @@ export function SelectionChoiceCard({
             <> · <OverUnder deltaCents={allowanceDeltaCents(choice.ownerPriceCents, allowanceCents)} /></>
           )}
         </span>
+        {choice.chosen && choice.chosenAt && (
+          <p className="text-xs text-muted-foreground">
+            {pickedByLabel(choice)}
+            {choice.chosenNote && <> · &ldquo;{choice.chosenNote}&rdquo;</>}
+          </p>
+        )}
         {choice.description && <p className="line-clamp-2 text-xs text-muted-foreground">{choice.description}</p>}
         {choice.links.map((link) => (
           <SelectionLinkCard key={link.id} link={link} addedByOwner={link.addedByAudience === "owner"} onRemove={() => onRemoveLink(link.id)} />

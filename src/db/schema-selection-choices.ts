@@ -1,8 +1,8 @@
 /*
  * The rows under a finish selection: its choices, supplier product links,
  * photo links, comments, and the follow-up selections a choice opens.
- * Added by migrations 0311, 0312 and 0313 (round alerts, the company
- * choice-template library); the older flat `choice_options_json` on
+ * Added by migrations 0311, 0312, 0313 (round alerts, the company
+ * choice-template library) and 0314 (who picked, round signatures); the older flat `choice_options_json` on
  * project_finish_selections is kept and backfilled into choice rows.
  * Written by: src/lib/domain/selections/choices-store.ts.
  */
@@ -21,7 +21,10 @@ import {
   SELECTION_AUTHOR_AUDIENCES,
   SELECTION_CHOICE_STATUSES,
   SELECTION_COMMENT_VISIBILITIES,
+  SELECTION_OVERAGE_TREATMENTS,
+  SELECTION_ROUND_SIGNATURE_STATUSES,
 } from "../lib/domain/selections/statuses"
+import { projectChangeOrders } from "./schema-change-orders"
 import { vendors } from "./schema-contacts"
 import { dailyLogPhotos } from "./schema-field"
 import { organizations, users } from "./schema-identity"
@@ -50,6 +53,11 @@ export const projectSelectionChoices = sqliteTable(
     supplierName: text("supplier_name"),
     sortOrder: integer("sort_order").notNull().default(0),
     chosen: integer("chosen", { mode: "boolean" }).notNull().default(false),
+    // Who made the current pick, when, and why (e.g. staff "per phone call"); cleared with the pick (0314).
+    chosenByUserId: text("chosen_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    chosenByAudience: text("chosen_by_audience", { enum: SELECTION_AUTHOR_AUDIENCES }),
+    chosenAt: text("chosen_at"),
+    chosenNote: text("chosen_note"),
     status: text("status", { enum: SELECTION_CHOICE_STATUSES }).notNull().default("proposed"),
     sourceSystem: text("source_system").notNull().default("compass"),
     btChoiceId: text("bt_choice_id"),
@@ -62,6 +70,7 @@ export const projectSelectionChoices = sqliteTable(
     index("project_selection_choices_project_idx").on(table.projectId),
     index("project_selection_choices_vendor_id_idx").on(table.vendorId),
     index("project_selection_choices_created_by_idx").on(table.createdBy),
+    index("project_selection_choices_chosen_by_user_id_idx").on(table.chosenByUserId),
     // At most one chosen choice per selection.
     uniqueIndex("project_selection_choices_one_chosen")
       .on(table.selectionId)
@@ -241,6 +250,75 @@ export const selectionChoiceTemplateItems = sqliteTable(
   (table) => [
     index("selection_choice_template_items_template_idx").on(table.templateId, table.sortOrder),
     index("selection_choice_template_items_vendor_id_idx").on(table.vendorId),
+  ]
+)
+
+/**
+ * One owner signature request for a selections round (Foxit e-sign). The
+ * signed document covers the items listed in
+ * project_selection_round_signature_items; a round can be signed more than
+ * once when picks change after signing.
+ */
+export const projectSelectionRoundSignatures = sqliteTable(
+  "project_selection_round_signatures",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    roundKey: text("round_key").notNull(),
+    // snapshot: the round's name when it was sent.
+    roundNameSnapshot: text("round_name_snapshot").notNull(),
+    status: text("status", { enum: SELECTION_ROUND_SIGNATURE_STATUSES }).notNull().default("preparing"),
+    // json: snapshot of the signers it was sent to ({ name, email }[]).
+    signersJsonSnapshot: text("signers_json_snapshot").notNull(),
+    allowanceCents: integer("allowance_cents").notNull(),
+    ownerTotalCents: integer("owner_total_cents").notNull(),
+    deltaCents: integer("delta_cents").notNull(),
+    treatment: text("treatment", { enum: SELECTION_OVERAGE_TREATMENTS }).notNull().default("none"),
+    // The change order or variance for the over/under, signed in the same document.
+    changeOrderId: text("change_order_id").references(() => projectChangeOrders.id, { onDelete: "set null" }),
+    foxitEnvelopeId: text("foxit_envelope_id"),
+    foxitEmbeddedSessionUrl: text("foxit_embedded_session_url"),
+    sentAt: text("sent_at"),
+    signedAt: text("signed_at"),
+    // The signed PDF saved in the job's Drive folder.
+    signedDriveFileId: text("signed_drive_file_id"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("project_selection_round_signatures_round_idx").on(table.projectId, table.roundKey),
+    uniqueIndex("project_selection_round_signatures_envelope_unique")
+      .on(table.foxitEnvelopeId)
+      .where(sql`"foxit_envelope_id" IS NOT NULL`),
+    index("project_selection_round_signatures_change_order_id_idx").on(table.changeOrderId),
+    index("project_selection_round_signatures_created_by_idx").on(table.createdBy),
+  ]
+)
+
+/** What one round signature covers: each selection with the pick and prices as signed. */
+export const projectSelectionRoundSignatureItems = sqliteTable(
+  "project_selection_round_signature_items",
+  {
+    signatureId: text("signature_id")
+      .notNull()
+      .references(() => projectSelectionRoundSignatures.id, { onDelete: "cascade" }),
+    selectionId: text("selection_id")
+      .notNull()
+      .references(() => projectFinishSelections.id, { onDelete: "cascade" }),
+    // The pick that was signed; a later different pick needs a new signature.
+    choiceId: text("choice_id").references(() => projectSelectionChoices.id, { onDelete: "set null" }),
+    // snapshot: the choice title, owner price and allowance as signed.
+    choiceTitleSnapshot: text("choice_title_snapshot").notNull(),
+    ownerPriceCentsSnapshot: integer("owner_price_cents_snapshot"),
+    allowanceCentsSnapshot: integer("allowance_cents_snapshot"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.signatureId, table.selectionId] }),
+    index("project_selection_round_signature_items_selection_idx").on(table.selectionId),
+    index("project_selection_round_signature_items_choice_id_idx").on(table.choiceId),
   ]
 )
 

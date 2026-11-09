@@ -638,6 +638,12 @@
     "projectSelectionRoundAlerts": [
       "src/lib/domain/selections/template-store.ts"
     ],
+    "projectSelectionRoundSignatureItems": [
+      "src/lib/domain/selections/round-signature-store.ts"
+    ],
+    "projectSelectionRoundSignatures": [
+      "src/lib/domain/selections/round-signature-store.ts"
+    ],
     "projectSourceRecordParticipants": [
       "src/lib/domain/documents/store.ts"
     ],

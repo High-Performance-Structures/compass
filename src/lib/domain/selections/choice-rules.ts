@@ -3,7 +3,7 @@
  * validation and what each audience may see. No database or network access.
  */
 import { ownerPriceFromMarkup } from "@/lib/feature-settings/selection-settings"
-import { toCents } from "@/lib/format"
+import { formatDate, toCents } from "@/lib/format"
 
 import {
   SELECTION_CHOICE_STATUSES,
@@ -85,6 +85,18 @@ export function withSelectionDefaults(
   const ownerPriceCents = value.ownerPriceCents ?? ownerPriceFromMarkup(value.priceCents, defaults.ownerMarkupPercent)
   const leadTimeDays = value.leadTimeDays ?? (defaults.isNew ? defaults.categoryLeadTimeDays : null)
   return { ...value, ownerPriceCents, leadTimeDays }
+}
+
+/** "Picked by Pat PM for the owner, Nov 9, 2026" or "Picked by the owner (Olive Owner), Nov 9, 2026". */
+export function pickedByLabel(choice: {
+  readonly chosenByName: string | null
+  readonly chosenByAudience: "staff" | "owner" | null
+  readonly chosenAt: string | null
+}): string | null {
+  if (!choice.chosenAt) return null
+  const when = formatDate(choice.chosenAt)
+  if (choice.chosenByAudience === "owner") return `Picked by the owner${choice.chosenByName ? ` (${choice.chosenByName})` : ""}, ${when}`
+  return `Picked by ${choice.chosenByName ?? "staff"} for the owner, ${when}`
 }
 
 export function parseSelectionChoiceInput(input: SelectionChoiceInput): Parsed<ParsedSelectionChoice> {
