@@ -41,6 +41,7 @@ beforeEach(() => {
     ALTER TABLE projects ADD COLUMN client_name TEXT;
     UPDATE projects SET project_number = 'H-1', address = '1 Ridge Road' WHERE id = 'project-a';
     INSERT INTO project_contacts (id, project_id, contact_type, display_name, email) VALUES
+      ('shared-vendor', 'project-a', 'supplier', 'Vendor with shared address', '${CLIENT}'),
       ('client', 'project-a', 'owner', 'Pat Lee', '${CLIENT}'),
       ('supplier', 'project-a', 'supplier', 'Supplier', 'supplier@example.test');
   `)
@@ -102,6 +103,7 @@ describe("job document emails", () => {
     expect(draft).toMatchObject({
       success: true, data: { to: [CLIENT], requiredAttachment: { filename: "Company W-9.pdf", version } },
     })
+    expect(draft.data.recipientOptions).toMatchObject([{ id: "client", email: CLIENT, category: "client" }])
     expect(JSON.stringify(draft)).not.toContain(pdf)
     expect(await sendJobEmail(sendForm(SEND_W9_TEMPLATE, CLIENT, first.data.w9Version))).toMatchObject({ success: false })
     expect(await sendJobEmail(sendForm(SEND_W9_TEMPLATE, "supplier@example.test", version))).toMatchObject({ success: false })

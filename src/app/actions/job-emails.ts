@@ -91,6 +91,21 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
   return { user, organizationId, env, db, department, settings, sender, departmentSender, senderDelivery: resolved.success ? resolved.delivery : "system", client: client ?? null, context }
 }
 
+async function jobDocumentRecipients(
+  db: Awaited<ReturnType<typeof jobEmailContext>>["db"],
+  projectId: string,
+  sendsW9: boolean,
+  recommended?: string | null,
+): Promise<{ readonly clients: readonly EmailRecipientOption[]; readonly cc: readonly EmailRecipientOption[] }> {
+  // Filter before deduplicating so a supplier or staff entry sharing a client's email cannot hide the client.
+  const [clients, staff] = await Promise.all([
+    sendsW9 ? projectEmailRecipientOptions(db, projectId, [recommended], ["owner"]) : [],
+    projectEmailRecipientOptions(db, projectId, [], ["internal"]),
+  ])
+  const clientEmails = new Set(clients.map((option) => option.email))
+  return { clients, cc: [...clients, ...staff.filter((option) => !clientEmails.has(option.email))] }
+}
+
 /** A template filled in for this job, ready to review in the composer. */
 export async function getJobEmailDraft(projectId: string, templateId: string): Promise<Result<TemplateEmailDraft>> {
   try {
@@ -112,14 +127,16 @@ export async function getJobEmailDraft(projectId: string, templateId: string): P
       return { success: false, error: "Upload the company W-9 in Settings → Workflows → Job emails." }
     }
 
-    const contacts = await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email])
-    const clientOptions = contacts.filter((option) => option.category === "client")
+    const documentRecipients = requestsCoi || sendsW9
+      ? await jobDocumentRecipients(ctx.db, projectId, sendsW9, ctx.client?.email)
+      : null
+    const clientOptions = documentRecipients?.clients ?? []
     if (sendsW9 && clientOptions.length === 0) {
       return { success: false, error: "Add an active client contact with an email address to this job before sending the W-9." }
     }
     const recipientOptions: readonly EmailRecipientOption[] = requestsCoi && agent
       ? [{ id: "insurance-agent", email: agent, displayName: "Insurance agent", companyName: null, category: "vendor", recommended: true }]
-      : sendsW9 ? clientOptions : contacts
+      : sendsW9 ? clientOptions : await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email])
     const defaultClientEmail = sendsW9
       ? clientOptions.find((option) => option.email === normalizeRecipientEmail(ctx.client?.email ?? ""))?.email ?? ""
       : ctx.client?.email
@@ -136,10 +153,7 @@ export async function getJobEmailDraft(projectId: string, templateId: string): P
         to,
         cc: [],
         recipientOptions,
-        ...(requestsCoi || sendsW9 ? {
-          contactRecipientsOnly: true,
-          ccOptions: contacts.filter((option) => option.category === "internal" || (sendsW9 && option.category === "client")),
-        } : {}),
+        ...(documentRecipients ? { contactRecipientsOnly: true, ccOptions: documentRecipients.cc } : {}),
         ...(sendsW9 && w9 ? { requiredAttachment: w9 } : {}),
         subject: rendered.subject,
         body: rendered.body,
@@ -190,8 +204,8 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     const sendsW9 = template.id === SEND_W9_TEMPLATE
     let clientContactId = ctx.client?.id ?? null
     if (requestsCoi || sendsW9) {
-      const contacts = await projectEmailRecipientOptions(ctx.db, projectId)
-      const allowedCc = new Set(contacts.filter((option) => option.category === "internal" || (sendsW9 && option.category === "client")).map((option) => option.email))
+      const documentRecipients = await jobDocumentRecipients(ctx.db, projectId, sendsW9)
+      const allowedCc = new Set(documentRecipients.cc.map((option) => option.email))
       if (cc.some((address) => !allowedCc.has(normalizeRecipientEmail(address)))) {
         return { success: false, error: "Choose Cc recipients from the contacts offered for this email." }
       }
@@ -201,7 +215,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
           return { success: false, error: "Use the configured insurance agent as the only To recipient. Reopen the draft if the address changed." }
         }
       } else {
-        const clients = new Map(contacts.filter((option) => option.category === "client").map((option) => [option.email, option.id]))
+        const clients = new Map(documentRecipients.clients.map((option) => [option.email, option.id]))
         if (to.some((address) => !clients.has(normalizeRecipientEmail(address)))) {
           return { success: false, error: "Send the W-9 to active client contacts on this job." }
         }
