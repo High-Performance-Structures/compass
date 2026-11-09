@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useNative } from "./use-native"
+import {
+  loadNativeBiometricPlugin,
+  loadPreferencesPlugin,
+} from "@/lib/native/capacitor-plugins"
 
 const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
 const BIOMETRIC_PROMPTED_KEY = "compass_biometric_prompted"
@@ -28,8 +32,8 @@ export function useBiometricAuth() {
     async function check() {
       try {
         const [{ NativeBiometric }, { Preferences }] = await Promise.all([
-          import("@capgo/capacitor-native-biometric"),
-          import("@capacitor/preferences"),
+          loadNativeBiometricPlugin(),
+          loadPreferencesPlugin(),
         ])
         const result =
           await NativeBiometric.isAvailable()
@@ -83,9 +87,7 @@ export function useBiometricAuth() {
   const authenticate = useCallback(async (): Promise<boolean> => {
     if (!native) return true
     try {
-      const { NativeBiometric } = await import(
-        "@capgo/capacitor-native-biometric"
-      )
+      const { NativeBiometric } = await loadNativeBiometricPlugin()
       await NativeBiometric.verifyIdentity({
         reason: "Unlock Compass",
         title: "Authentication Required",
@@ -98,7 +100,7 @@ export function useBiometricAuth() {
 
   const setEnabled = useCallback(
     async (enabled: boolean): Promise<void> => {
-      const { Preferences } = await import("@capacitor/preferences")
+      const { Preferences } = await loadPreferencesPlugin()
       await Preferences.set({
         key: BIOMETRIC_ENABLED_KEY,
         value: String(enabled),
@@ -109,7 +111,7 @@ export function useBiometricAuth() {
   )
 
   const markPrompted = useCallback(async (): Promise<void> => {
-    const { Preferences } = await import("@capacitor/preferences")
+    const { Preferences } = await loadPreferencesPlugin()
     await Preferences.set({ key: BIOMETRIC_PROMPTED_KEY, value: "true" })
     setState((prev) => ({
       ...prev,

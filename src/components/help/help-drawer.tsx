@@ -16,12 +16,14 @@ import {
 
 import { useAgentOptional, useChatStateOptional } from "@/components/agent/chat-provider"
 import { HelpCompassIcon } from "@/components/help/help-compass-icon"
+import { useHelpGuideDetails } from "@/components/help/help-guide-details"
 import {
   buildHelpTopicPrompt,
   helpGuidesForPathname,
   helpHrefWithReturnTo,
   helpReturnToForLocation,
   searchAllowedHelpGuides,
+  type HelpGuideListing,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
 import {
@@ -46,6 +48,11 @@ const MarkdownRenderer = dynamic(
   { ssr: false }
 )
 
+/**
+ * The Help drawer in the site header. The topic list and page suggestions use
+ * the light listings from the layout; article text and full-text search load
+ * from `/api/help/guides` when the drawer first opens (`useHelpGuideDetails`).
+ */
 export function HelpDrawer({
   triggerClassName,
   triggerLabel,
@@ -62,20 +69,35 @@ export function HelpDrawer({
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [selectedGuide, setSelectedGuide] = React.useState<Readonly<{
-    guide: HelpGuidePreview
+    guide: HelpGuideListing
     sectionId: string | null
   }> | null>(null)
   const accessibleGuides = useAllowedHelpGuides()
+  const { state: details, retry: retryDetails } = useHelpGuideDetails(
+    open,
+    accessibleGuides,
+  )
   const suggestedGuides = React.useMemo(
     () => helpGuidesForPathname(accessibleGuides, pathname),
     [accessibleGuides, pathname],
   )
   const searchResults = React.useMemo(
-    () => searchAllowedHelpGuides(accessibleGuides, query, 20),
-    [accessibleGuides, query],
+    () =>
+      details.status === "ready"
+        ? searchAllowedHelpGuides(details.guides, query, 20)
+        : [],
+    [details, query],
   )
-  const shownResults =
-    query.trim().length > 0
+  const selectedGuideDetails =
+    selectedGuide && details.status === "ready"
+      ? details.guides.find((guide) => guide.id === selectedGuide.guide.id) ?? null
+      : null
+  const searching = query.trim().length > 0
+  // Search needs the article text; until it arrives, say so instead of
+  // claiming there are no matches.
+  const searchPending = searching && details.status !== "ready"
+  const shownResults: ReadonlyArray<Readonly<{ guide: HelpGuideListing; href: string }>> =
+    searching
       ? searchResults
       : (suggestedGuides.length > 0 ? suggestedGuides : accessibleGuides).map(
           (guide) => ({
@@ -90,7 +112,7 @@ export function HelpDrawer({
     if (!nextOpen) setSelectedGuide(null)
   }
 
-  function selectGuide(guide: HelpGuidePreview, href: string): void {
+  function selectGuide(guide: HelpGuideListing, href: string): void {
     const hashIndex = href.indexOf("#")
     setSelectedGuide({
       guide,
@@ -167,7 +189,11 @@ export function HelpDrawer({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && shownResults.length === 0) {
+                    if (
+                      event.key === "Enter" &&
+                      !searchPending &&
+                      shownResults.length === 0
+                    ) {
                       void askJarvis()
                     }
                   }}
@@ -184,11 +210,17 @@ export function HelpDrawer({
 
         <ScrollArea className="min-h-0 flex-1">
           {selectedGuide ? (
-            <DrawerGuideArticle
-              guide={selectedGuide.guide}
-              sectionId={selectedGuide.sectionId}
-              returnTo={returnTo}
-            />
+            selectedGuideDetails ? (
+              <DrawerGuideArticle
+                guide={selectedGuideDetails}
+                sectionId={selectedGuide.sectionId}
+                returnTo={returnTo}
+              />
+            ) : (
+              <HelpDetailsStatus failed={details.status === "error"} onRetry={retryDetails} />
+            )
+          ) : searchPending ? (
+            <HelpDetailsStatus failed={details.status === "error"} onRetry={retryDetails} />
           ) : (
             <div className="px-5 py-4">
               <p
@@ -297,6 +329,33 @@ export function HelpDrawer({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/** Shown while the drawer's article text is loading, or if it failed. */
+function HelpDetailsStatus({
+  failed,
+  onRetry,
+}: {
+  readonly failed: boolean
+  readonly onRetry: () => void
+}): React.ReactElement {
+  return (
+    <div className="px-5 py-10 text-center" aria-live="polite">
+      {failed ? (
+        <>
+          <p className="font-medium">Help didn&apos;t load</p>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+            Check your connection and try again.
+          </p>
+          <Button className="mt-4" variant="outline" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Loading Help…</p>
+      )}
+    </div>
   )
 }
 

@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useTheme } from "@/components/theme-provider"
 import { useNative } from "@/hooks/use-native"
+import { loadStatusBarPlugin } from "@/lib/native/capacitor-plugins"
 
 // Syncs native status bar style with the current theme
 export function NativeShell() {
@@ -13,9 +14,7 @@ export function NativeShell() {
     if (!native) return
 
     async function syncStatusBar() {
-      const { StatusBar, Style } = await import(
-        "@capacitor/status-bar"
-      )
+      const { StatusBar, Style } = await loadStatusBarPlugin()
       try {
         await StatusBar.setStyle({
           style:

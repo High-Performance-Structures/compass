@@ -19,7 +19,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 /** Keeps an owner or vendor preview's scope on the request, as page links do. */
-function previewScoped(href: string): string {
+export function previewScoped(href: string): string {
   const scope = audienceScopeFromUrl(new URL(window.location.href))
   return scope ? scopedAudienceHref(href, scope) : href
 }

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -9,8 +9,34 @@ import {
   getHelpVideosForGuide,
   helpVideoUrl,
 } from "@/lib/help/videos"
+import { getHelpTopicLocation } from "@/lib/help/topics"
 
 describe("help tutorial videos", () => {
+  it("resolves topics from the light index exactly like the full guides", () => {
+    for (const guide of getHelpGuides()) {
+      expect(getHelpTopicLocation(guide.id)).toEqual({
+        guideId: guide.id,
+        guideSlug: guide.slug,
+        sectionId: null,
+      })
+      for (const section of guide.sections) {
+        expect(getHelpTopicLocation(section.topicId), section.topicId).toEqual({
+          guideId: getHelpTopic(section.topicId)?.guide.id,
+          guideSlug: guide.slug,
+          sectionId: getHelpTopic(section.topicId)?.section?.id,
+        })
+      }
+    }
+    expect(getHelpTopicLocation("not-a-topic")).toBeNull()
+    expect(getHelpTopicLocation("constructor")).toBeNull()
+  })
+
+  it("keeps the video module off the full guide registry", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/lib/help/videos.ts"), "utf8")
+    expect(source).not.toContain('from "@/lib/help"')
+    expect(source).not.toContain("help-guides.generated")
+  })
+
   it("attaches every video to an existing guide section", () => {
     for (const video of HELP_VIDEOS) {
       expect(getHelpTopic(video.topicId)?.section, video.topicId).toBeTruthy()

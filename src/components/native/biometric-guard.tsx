@@ -6,6 +6,7 @@ import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 import { Fingerprint, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { isDemoUser } from "@/lib/demo"
+import { loadAppPlugin } from "@/lib/native/capacitor-plugins"
 
 const BACKGROUND_THRESHOLD_MS = 30_000
 
@@ -51,7 +52,7 @@ export function BiometricGuard({
     let cleanup: (() => void) | undefined
 
     async function setup() {
-      const { App } = await import("@capacitor/app")
+      const { App } = await loadAppPlugin()
       const listener = await App.addListener(
         "appStateChange",
         (state) => {
