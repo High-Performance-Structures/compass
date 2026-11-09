@@ -71,6 +71,8 @@ export type NotificationPreferenceState = {
   readonly smsQuietHoursStart: string
   readonly smsQuietHoursEnd: string
   readonly weeklyDigestEnabled: boolean
+  /** Opts out of the company notification digest: every change is sent right away. */
+  readonly changesRightAway: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
   readonly scheduleEnabled: boolean
@@ -152,6 +154,7 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   smsQuietHoursStart: "21:00",
   smsQuietHoursEnd: "07:00",
   weeklyDigestEnabled: false,
+  changesRightAway: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
   scheduleEnabled: true,
@@ -183,6 +186,7 @@ function preferenceFromRow(
     smsQuietHoursStart: row.smsQuietHoursStart,
     smsQuietHoursEnd: row.smsQuietHoursEnd,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
+    changesRightAway: row.changesRightAway,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
     scheduleEnabled: row.scheduleEnabled,

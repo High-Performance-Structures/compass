@@ -37,6 +37,9 @@ import { sendPushNotification } from "@/lib/push/send"
 import { isRecord } from "@/lib/shared/guards"
 import { envString } from "@/lib/shared/env"
 import { notificationSourceHref } from "@/lib/notifications/source-href"
+import { holdDeliveriesForDigest, readDigestSettings } from "@/lib/notifications/digest-hold"
+import { extractProviderMessageId, gotoAccountKey, notificationSmsBody, toBasicAuthToken } from "@/lib/notifications/goto-sms-format"
+import { holdsForDigest } from "@/lib/notifications/digest"
 import {
   isConversationSmsEligibleChannel,
   isProjectActivitySmsEvent,
@@ -62,6 +65,7 @@ type NotificationPreferenceState = {
   readonly smsQuietHoursStart: string
   readonly smsQuietHoursEnd: string
   readonly weeklyDigestEnabled: boolean
+  readonly changesRightAway: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
   readonly scheduleEnabled: boolean
@@ -108,6 +112,7 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   smsQuietHoursStart: "21:00",
   smsQuietHoursEnd: "07:00",
   weeklyDigestEnabled: false,
+  changesRightAway: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
   scheduleEnabled: true,
@@ -130,15 +135,6 @@ type GotoAccessTokenResult =
     }
   | { readonly success: false; readonly error: string }
 
-function gotoAccountKey(value: Readonly<Record<string, unknown>>): string | null {
-  const field = value.account_key ?? value.accountKey
-  if (typeof field === "string" && field.trim().length > 0) {
-    return field.trim()
-  }
-  return typeof field === "number" && Number.isFinite(field)
-    ? String(field)
-    : null
-}
 
 export function isMissingNotificationTableError(
   error: unknown
@@ -174,6 +170,7 @@ function preferenceFromRow(
     smsQuietHoursStart: row.smsQuietHoursStart,
     smsQuietHoursEnd: row.smsQuietHoursEnd,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
+    changesRightAway: row.changesRightAway,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
     scheduleEnabled: row.scheduleEnabled,
@@ -291,27 +288,6 @@ async function sendNotificationEmail(input: {
   } catch (error) {
     return { status: "failed", provider: "compass", providerMessageId: null, error: error instanceof Error ? error.message.slice(0, 500) : "Email delivery failed" }
   }
-}
-
-function toBasicAuthToken(clientId: string, clientSecret: string): string {
-  return btoa(`${clientId}:${clientSecret}`)
-}
-
-function notificationSmsBody(title: string, body: string): string {
-  const message = `${title}\n${body}\nReply STOP to opt out.`.trim()
-  return message.length > 1000
-    ? `${message.slice(0, 997)}...`
-    : message
-}
-
-function extractProviderMessageId(value: unknown): string | null {
-  if (!isRecord(value)) return null
-  if (typeof value.id === "string") return value.id
-  if (typeof value.messageId === "string") return value.messageId
-  if (!Array.isArray(value.messages)) return null
-  const firstMessage = value.messages[0]
-  if (!isRecord(firstMessage)) return null
-  return typeof firstMessage.id === "string" ? firstMessage.id : null
 }
 
 export async function getGotoAccessToken(
@@ -644,6 +620,8 @@ async function persistNotificationEvent(rawInput: CreateNotificationInput): Prom
       createdAt: now,
     })
 
+    const digestSettings = await readDigestSettings(db, input.organizationId)
+
     // One read for every recipient's preferences (user_id is the key).
     const preferencesByUser = await getPreferencesForUsers(
       db,
@@ -693,6 +671,9 @@ async function persistNotificationEvent(rawInput: CreateNotificationInput): Prom
         continue
       }
 
+      // Email, text and push for changes wait for the next digest; the bell row is written now.
+      const heldForDigest = digestSettings !== null && holdsForDigest(digestSettings, input.eventType, preferences.changesRightAway)
+
       const recipientId = crypto.randomUUID()
       await insertNotificationRecipient(db, {
         id: recipientId,
@@ -706,6 +687,15 @@ async function persistNotificationEvent(rawInput: CreateNotificationInput): Prom
         dismissedAt: null,
         createdAt: now,
       })
+
+      if (heldForDigest) {
+        await holdDeliveriesForDigest(db, { eventId, recipientId, userId: recipient.userId, createdAt: now }, [
+          emailEnabled ? { channel: "email", toAddress: recipient.googleEmail ?? recipient.email } : null,
+          smsEnabled && preferences.smsPhoneNumber ? { channel: "sms", toAddress: preferences.smsPhoneNumber } : null,
+          delivery.push ? { channel: "push", toAddress: null } : null,
+        ])
+        continue
+      }
 
       if (emailEnabled) {
         const emailDelivery = await sendNotificationEmail({

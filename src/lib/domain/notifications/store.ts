@@ -64,6 +64,26 @@ export async function insertNotificationDelivery(db: Db, row: DeliveryInsert): P
   await db.insert(notificationDeliveries).values(row)
 }
 
+/** The outcome written onto held deliveries once a digest went out (or was skipped). */
+export type DigestDeliveryOutcome = {
+  readonly status: string
+  readonly provider: string
+  readonly providerMessageId: string | null
+  readonly error: string | null
+  readonly attemptedAt: string
+}
+
+/** Marks held digest deliveries with what happened to them. */
+export async function markDigestDeliveries(
+  db: Db,
+  deliveryIds: readonly string[],
+  outcome: DigestDeliveryOutcome
+): Promise<void> {
+  for (const chunk of chunkD1Values(deliveryIds)) {
+    await db.update(notificationDeliveries).set(outcome).where(inArray(notificationDeliveries.id, chunk)).run()
+  }
+}
+
 /** Which of one person's notification events a change applies to. */
 export type NotificationSourceMatch = {
   readonly organizationId: string

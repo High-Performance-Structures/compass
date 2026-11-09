@@ -97,6 +97,7 @@ export function PreferencesTab() {
       smsQuietHoursStart: "21:00",
       smsQuietHoursEnd: "07:00",
       weeklyDigestEnabled: false,
+      changesRightAway: false,
       rfiEnabled: true,
       ownerUpdateEnabled: true,
       scheduleEnabled: true,
@@ -319,6 +320,22 @@ export function PreferencesTab() {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label className="text-xs">Send changes right away</Label>
+              <p className="text-muted-foreground text-xs">
+                Skip your company&apos;s daily summary and get an email, text or push for every change as it happens.
+              </p>
+            </div>
+            <Switch
+              checked={preferences.changesRightAway}
+              onCheckedChange={(checked) =>
+                updatePreference("changesRightAway", checked)
+              }
+              className="shrink-0"
+            />
           </div>
 
           <div className="flex items-center justify-between gap-4">

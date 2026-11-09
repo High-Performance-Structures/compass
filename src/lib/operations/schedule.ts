@@ -175,6 +175,15 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
 
   // ── Every 15 minutes (health checks) ─────────────────────────────────────
   {
+    name: "Notification digest",
+    path: "/api/operations/notifications/digest",
+    call: "signed",
+    everyMinutes: 15,
+    offsetMinute: 0,
+    heavy: false,
+    why: "Runs on the hour and quarter hours, so a digest set for 12:00 or 17:00 goes out right on time.",
+  },
+  {
     name: "Sage bridge health",
     path: "/api/operations/sage/health",
     call: "signed",
