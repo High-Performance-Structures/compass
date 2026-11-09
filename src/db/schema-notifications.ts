@@ -75,6 +75,10 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   smsQuietHoursEnd: text("sms_quiet_hours_end")
     .notNull()
     .default("07:00"),
+  /** Opts this person out of the company's notification digest: every change is sent right away (0315). */
+  changesRightAway: integer("changes_right_away", { mode: "boolean" })
+    .notNull()
+    .default(false),
   weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
     .notNull()
     .default(false),

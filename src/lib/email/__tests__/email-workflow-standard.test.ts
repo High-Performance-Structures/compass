@@ -33,6 +33,7 @@ const UNTRACKED_SENDERS: Readonly<Record<string, string>> = {
   "src/lib/email/compass-email.ts": "defines sendCompassEmail",
   "src/lib/email/tracked-send.ts": "the tracked sender itself",
   "src/lib/notifications/create-event.ts": "notification emails to staff",
+  "src/lib/notifications/digest-server.ts": "notification digest emails to staff",
   "src/app/actions/project-email.ts": "project email keeps its own conversation reply thread",
   "src/lib/email/invitation-delivery.ts": "durable account invitation welcome delivery",
   "src/app/actions/greeting-cards.ts": "greeting cards",

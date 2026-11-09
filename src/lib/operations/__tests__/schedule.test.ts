@@ -58,12 +58,12 @@ describe("scheduled job table", () => {
   })
 
   it("lists which jobs run in sample minutes", () => {
-    expect(namesAt(0)).toEqual([ALWAYS, "project paper trail"])
+    expect(namesAt(0)).toEqual([ALWAYS, "project paper trail", "Notification digest"])
     expect(namesAt(1)).toEqual([ALWAYS, "My Compass calendars", "GoTo message recovery"])
     expect(namesAt(2)).toEqual([ALWAYS, "invitation email recovery", "Weather and fire"])
     expect(namesAt(5)).toEqual([ALWAYS, "project paper trail", "Sage bridge health"])
     expect(namesAt(10)).toEqual([ALWAYS, "project paper trail", "Square authentication health"])
-    expect(namesAt(15)).toEqual([ALWAYS, "project paper trail"])
+    expect(namesAt(15)).toEqual([ALWAYS, "project paper trail", "Notification digest"])
     expect(namesAt(17)).toEqual([ALWAYS, "invitation email recovery", "Client meeting transcripts"])
     expect(namesAt(59)).toEqual([ALWAYS, "Sage Square manual receipts", "feedback reconciliation"])
   })
