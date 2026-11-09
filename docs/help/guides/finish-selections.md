@@ -58,7 +58,7 @@ Choose the division first to narrow cost codes. If a valid project code is marke
 
 ## Status and Approval {#status-approval}
 
-Status should describe the current business state: needed, proposed, owner review, approved, pricing requested, ordered, or unavailable. Owner visibility and approval are separate from internal drafting.
+Status should describe the current business state: Needed, Proposed, With owner, Approved, Pricing, RFQ sent, Ordered, Installed, Unavailable or Deferred. Change it from the dropdown at the top of a selection's detail panel. Compass also moves it forward on its own, and never backward: publishing it to the owner makes it With owner, sending its purchase order makes it Ordered, and ticking it under **Selections installed** on a daily log makes it Installed. Each automatic move is listed in Activity. Owner visibility and approval are separate from internal drafting.
 
 ## Change an Approved Selection {#approved-change}
 

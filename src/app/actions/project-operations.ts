@@ -53,6 +53,7 @@ import { markPaperTrailDue } from "@/lib/paper-trail/enqueue"
 import { isSelectableRecordStatus } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { choicesBelongToSelections, loadChoicesForRfq } from "@/lib/domain/selections/choice-rfq-server"
+import { advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { parsePortalRfqPayload } from "@/lib/rfqs/portal-response"
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { choiceLineRefs, mergeChoiceLineRefs, type ChoiceLineRef } from "@/lib/selections/choice-rfq"
@@ -96,7 +97,7 @@ export async function updateProjectOperationStatus(
       const approver = await orgContext({ feature: "rfqs", action: "approve" })
       if (!approver.success) throw new Error(approver.error)
     }
-    const { db, organizationId } = await operationsContext(
+    const { db, organizationId, user } = await operationsContext(
       projectId,
       operationKind === "purchase_order" ? "purchase-orders" : "rfqs",
       true,
@@ -139,6 +140,15 @@ export async function updateProjectOperationStatus(
       ),
       { status: requestedStatus, updatedAt: new Date().toISOString() },
     )
+    if (operationKind === "purchase_order") {
+      await advanceSelectionsForPurchaseOrder(db, {
+        projectId,
+        purchaseOrderId: operationId,
+        purchaseOrderNumber: existing.sourceRecordNumber,
+        status: requestedStatus,
+        actor: user,
+      })
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/${operationKind === "purchase_order" ? "purchase-orders" : "rfqs"}`)

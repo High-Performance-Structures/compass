@@ -1,10 +1,13 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
+import type { DailyLogInstallableSelection } from "@/lib/daily-logs/log-followups"
+import { advanceSelectionStatus } from "@/lib/domain/selections/status-advance"
 import type { getDb } from "@/db"
 import {
   dailyLogs,
   organizationCalendarSettings,
   organizationMembers,
   projectContacts,
+  projectFinishSelections,
   projectOperations,
   projects,
   projectTodoEvents,
@@ -54,6 +57,8 @@ type DailyLogAssigneeOption = {
 export type DailyLogFollowUpSetup = {
   readonly rules: DailyLogFollowUpRules
   readonly openTodos: readonly DailyLogOpenTodo[]
+  /** Not sent to Field Mode phones; Full Compass logs show the checklist. */
+  readonly installableSelections?: readonly DailyLogInstallableSelection[]
   readonly clientContacts: readonly DailyLogClientContactOption[]
   readonly assignees: readonly DailyLogAssigneeOption[]
 }
@@ -180,13 +185,14 @@ async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: 
 }
 
 export async function dailyLogFollowUpSetup(db: Db, organizationId: string, projectId: string): Promise<DailyLogFollowUpSetup> {
-  const [rules, openTodos, clientContacts, assignees] = await Promise.all([
+  const [rules, openTodos, clientContacts, assignees, installableSelections] = await Promise.all([
     dailyLogFollowUpRules(db, organizationId),
     loadOpenDailyLogTodos(db, projectId),
     loadDailyLogClientContacts(db, projectId),
     loadDailyLogAssignees(db, organizationId, projectId),
+    loadInstallableSelections(db, projectId),
   ])
-  return { rules, openTodos, clientContacts, assignees }
+  return { rules, openTodos, clientContacts, assignees, installableSelections }
 }
 
 /** A follow-up plan the server checked and can apply once the log is saved. */
@@ -219,19 +225,23 @@ export async function checkDailyLogFollowUps(
    */
   lenient = false,
 ): Promise<CheckedDailyLogFollowUps> {
-  const [rules, openTodos, contactOptions, timeZone, interactionSettings] = await Promise.all([
+  const [rules, openTodos, contactOptions, timeZone, interactionSettings, installable] = await Promise.all([
     dailyLogFollowUpRules(db, organizationId),
     loadOpenDailyLogTodos(db, projectId),
     loadDailyLogClientContacts(db, projectId),
     companyTimeZone(db, organizationId),
     readFeatureSettings(db, organizationId, "client-interactions"),
+    loadInstallableSelections(db, projectId),
   ])
+  const installableIds = new Set(installable.map((selection) => selection.id))
   const todos = new Map(openTodos.map((todo) => [todo.id, todo]))
   const contacts = new Map(contactOptions.map((contact) => [contact.id, contact]))
   const cleaned: DailyLogFollowUps = {
     todoUpdates: followUps.todoUpdates.filter((update) => todos.has(update.todoId)),
     newTodos: rules.todoMode === "off" ? [] : followUps.newTodos.map((todo) => ({ ...todo, costCode: rules.crewPicksCostCode ? todo.costCode : "" })),
     clientContacts: rules.clientContact ? followUps.clientContacts : [],
+    // Selections installed already, or not on this job, are dropped rather than failing the log.
+    installedSelectionIds: (followUps.installedSelectionIds ?? []).filter((id) => installableIds.has(id)),
   }
   const contactProblem = (contact: DailyLogFollowUps["clientContacts"][number]): string | null => {
     if (!contacts.has(contact.contactId)) return "Choose an active client contact on this project."
@@ -240,6 +250,7 @@ export async function checkDailyLogFollowUps(
   if (lenient) {
     const kept: DailyLogFollowUps = {
       todoUpdates: cleaned.todoUpdates,
+      installedSelectionIds: cleaned.installedSelectionIds,
       newTodos: cleaned.newTodos.filter((todo) => validateDailyLogFollowUps({ ...EMPTY_DAILY_LOG_FOLLOW_UPS, newTodos: [todo] }, rules).length === 0),
       clientContacts: cleaned.clientContacts.filter(
         (contact) => validateDailyLogFollowUps({ ...EMPTY_DAILY_LOG_FOLLOW_UPS, clientContacts: [contact] }, rules).length === 0 && contactProblem(contact) === null,
@@ -313,6 +324,14 @@ export async function applyDailyLogFollowUps(
   const userId = creator.id
   const { rules, followUps } = checked
   const now = new Date().toISOString()
+  // Selections the log says were installed move to Installed (forward only, logged to Activity).
+  await advanceSelectionStatus(db, {
+    projectId,
+    selectionIds: followUps.installedSelectionIds ?? [],
+    target: "installed",
+    reason: { kind: "daily_log", dailyLogId, logDate: input.logDate },
+    actor: creator,
+  })
   const hoursByTodo = new Map<string, number>()
   const noteByTodo = new Map<string, string>()
   for (const line of input.lines) {
@@ -546,4 +565,14 @@ export async function loadTodoWorkedLogCounts(db: Db, projectId: string): Promis
     logs.set(row.todoId, set)
   }
   return new Map([...logs].map(([todoId, set]) => [todoId, set.size]))
+}
+
+/** Approved or ordered selections on the job, which a log can mark installed. */
+async function loadInstallableSelections(db: Db, projectId: string): Promise<readonly DailyLogInstallableSelection[]> {
+  return db
+    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, roomName: projectFinishSelections.roomName })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.status, ["approved", "ordered"])))
+    .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.name))
+    .limit(200)
 }

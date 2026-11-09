@@ -1,5 +1,6 @@
 "use client"
 
+import { DailyLogSelectionsInstalled } from "@/components/projects/daily-log/daily-log-selections-installed"
 import * as React from "react"
 
 import { Input } from "@/components/ui/input"
@@ -140,6 +141,15 @@ export function DailyLogFields({
           rules={rules}
           worked={allFollowUps.draft.worked}
           onToggle={allFollowUps.onToggleTodo}
+        />
+      )}
+
+      {allFollowUps && (
+        <DailyLogSelectionsInstalled
+          idPrefix={idPrefix}
+          selections={allFollowUps.setup.installableSelections ?? []}
+          draft={allFollowUps.draft}
+          onChange={allFollowUps.onChange}
         />
       )}
 

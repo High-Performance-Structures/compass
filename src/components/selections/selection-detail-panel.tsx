@@ -19,6 +19,7 @@ import {
   setSelectionChoiceChosen,
   type SelectionDetail,
 } from "@/app/actions/selection-choices"
+import { ProjectSelectionStatusSelect } from "@/components/projects/project-selection-status-select"
 import { RecordStatusBadge } from "@/components/record-status-badge"
 import { SelectionChoiceCard } from "@/components/selections/selection-choice-card"
 import { SelectionChoiceForm } from "@/components/selections/selection-choice-form"
@@ -180,10 +181,14 @@ export function SelectionDetailPanel({
         <span className="text-xs text-muted-foreground">
           {[row.roomName, row.costCode, row.parentName ? `Follow-up of ${row.parentName}` : null].filter(Boolean).join(" · ")}
         </span>
-        <h2 className="text-xl font-semibold">
-          {row.name}
-          {row.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1.5" />}
-        </h2>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h2 className="text-xl font-semibold">
+            {row.name}
+            {row.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1.5" />}
+          </h2>
+          {/* Keyed on the status so an automatic move or another edit shows after refresh. */}
+          <ProjectSelectionStatusSelect key={row.status} projectId={projectId} selectionId={row.id} status={row.status} onChanged={onChanged} />
+        </div>
         <span className="text-sm">
           Allowance {row.allowanceCents !== null ? <b>{formatCents(row.allowanceCents)}</b> : <span className="text-muted-foreground">not published</span>}
           {row.dueDate && <> · due {formatDate(row.dueDate)}</>}

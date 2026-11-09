@@ -1,5 +1,6 @@
 "use client"
 
+import { PROJECT_SELECTION_STATUS_OPTIONS } from "@/lib/domain/selections/statuses"
 import * as React from "react"
 
 import {
@@ -10,30 +11,19 @@ import type {
 } from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 
-const STATUS_OPTIONS: readonly {
-  readonly value: ProjectSelectionStatus
-  readonly label: string
-}[] = [
-  { value: "needed", label: "Needed" },
-  { value: "proposed", label: "Proposed" },
-  { value: "owner_review", label: "Owner review" },
-  { value: "approved", label: "Approved" },
-  { value: "pricing", label: "Pricing" },
-  { value: "rfq_sent", label: "RFQ sent" },
-  { value: "ordered", label: "Ordered" },
-  { value: "installed", label: "Installed" },
-  { value: "unavailable", label: "Unavailable" },
-  { value: "deferred", label: "Deferred" },
-]
+const STATUS_OPTIONS = PROJECT_SELECTION_STATUS_OPTIONS
 
 export function ProjectSelectionStatusSelect({
   projectId,
   selectionId,
   status,
+  onChanged,
 }: {
   readonly projectId: string
   readonly selectionId: string
   readonly status: ProjectSelectionStatus
+  /** Called after a change saves (e.g. to refresh the sheet). */
+  readonly onChanged?: () => void
 }): React.ReactElement {
   const [currentStatus, setCurrentStatus] =
     React.useState<ProjectSelectionStatus>(status)
@@ -55,7 +45,9 @@ export function ProjectSelectionStatusSelect({
 
     if (!result.success) {
       setCurrentStatus(previous)
+      return
     }
+    onChanged?.()
   }
 
   return (

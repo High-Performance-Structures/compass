@@ -144,7 +144,7 @@ describe("rfq matching and labels", () => {
   it("labels contact types and statuses", () => {
     expect(contactTypeLabel("subcontractor")).toBe("Subcontractor")
     expect(contactTypeLabel("other")).toBe("other")
-    expect(selectionStatusLabel("owner_review")).toBe("Owner Review")
+    expect(selectionStatusLabel("owner_review")).toBe("With owner")
   })
 })
 
