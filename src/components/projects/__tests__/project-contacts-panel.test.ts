@@ -46,6 +46,7 @@ function contact(
     compassAccountStatus: "not_registered",
     identityManagedByActiveUser: false,
     welcomeEmail: null,
+    sageNumber: null,
   }
 }
 

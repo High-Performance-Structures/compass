@@ -89,7 +89,8 @@ export function toContactItem(
   accessStatus: ProjectContactAccessStatus = "not_invited",
   directoryIdentityManaged = false,
   compassAccountStatus: ProjectContactCompassAccountStatus = "not_registered",
-  welcomeEmail: ProjectContactItem["welcomeEmail"] = null
+  welcomeEmail: ProjectContactItem["welcomeEmail"] = null,
+  sageNumber: string | null = null
 ): ProjectContactItem {
   return {
     id: row.id,
@@ -129,6 +130,7 @@ export function toContactItem(
       accessStatus === "active" ||
       directoryIdentityManaged ||
       isCanonicalDirectoryAssignment(row),
+    sageNumber,
   }
 }
 

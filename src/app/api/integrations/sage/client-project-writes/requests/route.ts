@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, or, sql } from "drizzle-orm"
+import { and, asc, eq, lt, ne, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -25,6 +25,7 @@ import {
 import {
   sageClientProjectWritePayloadSchema,
   sageClientProjectWritesEnabled,
+  sageVendorCreatesEnabled,
 } from "@/lib/sage/client-project-write"
 
 const MAX_BATCH = 10
@@ -77,16 +78,23 @@ export async function GET(request: Request): Promise<Response> {
 
   await sageBridgeHeartbeatStatement(env.DB, "client-project-writer", nowIso).run()
 
+  // Approved new vendors wait in the queue until the worker's vendor switch is on.
+  const vendorAdds = sageVendorCreatesEnabled(env)
+    ? undefined
+    : ne(sageClientProjectWriteOperations.operationType, "ensure_vendor")
   const candidates = await db
     .select({ id: sageClientProjectWriteOperations.id })
     .from(sageClientProjectWriteOperations)
     .where(
-      or(
-        eq(sageClientProjectWriteOperations.status, "queued"),
-        and(
-          eq(sageClientProjectWriteOperations.status, "running"),
-          lt(sageClientProjectWriteOperations.claimedAt, staleClaimIso)
-        )
+      and(
+        or(
+          eq(sageClientProjectWriteOperations.status, "queued"),
+          and(
+            eq(sageClientProjectWriteOperations.status, "running"),
+            lt(sageClientProjectWriteOperations.claimedAt, staleClaimIso)
+          )
+        ),
+        vendorAdds
       )
     )
     .orderBy(asc(sageClientProjectWriteOperations.requestedAt))

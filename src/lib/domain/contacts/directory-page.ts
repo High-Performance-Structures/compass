@@ -46,10 +46,14 @@ export type VendorDirectoryRow = {
   readonly syncStatus: string
   readonly peopleCount: number
   readonly primaryPersonName: string | null
+  readonly sageVendorNumber: string | null
+  /** Someone asked to add it to Sage and Sage doesn't have it yet. */
+  readonly sageAddRequested: boolean
 }
 
 export type CustomerDirectoryRow = Customer & {
   readonly peopleCount: number
+  readonly sageAddRequested: boolean
 }
 
 export type CompanyMergeCandidate = {
@@ -143,6 +147,11 @@ function vendorSortExpression(sortId: string | null): SQL | AnyColumn {
 
 const customerPeopleCount = sql<number>`(select count(*) from customer_contacts p where p.customer_id = ${customerIdRef} and p.active = 1)`
 
+/** An open "Request add to Sage" for the company, shown as "Sage: requested" until Sage has it. */
+function sageAddRequested(kind: "vendor_company" | "client_company", idRef: SQL): SQL<number> {
+  return sql<number>`exists (select 1 from sage_directory_add_requests r where r.kind = ${kind} and r.entity_id = ${idRef} and r.status in ('pending', 'approved', 'sent'))`
+}
+
 function customerSortExpression(sortId: string | null): SQL | AnyColumn {
   if (sortId === "email") return sql`coalesce(nullif(${customers.primaryEmail}, ''), ${customers.email})`
   if (sortId === "phone") return customers.phone
@@ -173,6 +182,8 @@ export async function listVendorDirectoryPage(
       syncStatus: vendors.syncStatus,
       peopleCount: vendorPeopleCount,
       primaryPersonName: vendorPrimaryPerson,
+      sageVendorNumber: vendors.sageVendorNumber,
+      sageAddRequested: sageAddRequested("vendor_company", vendorIdRef),
       total: windowTotal,
     })
     .from(vendors)
@@ -193,6 +204,8 @@ export async function listVendorDirectoryPage(
       syncStatus: row.syncStatus,
       peopleCount: Number(row.peopleCount),
       primaryPersonName: row.primaryPersonName,
+      sageVendorNumber: row.sageVendorNumber,
+      sageAddRequested: Boolean(Number(row.sageAddRequested)),
     })),
     total: Number(total),
   }
@@ -208,6 +221,7 @@ export async function listCustomerDirectoryPage(
     .select({
       customer: customers,
       peopleCount: customerPeopleCount,
+      sageAddRequested: sageAddRequested("client_company", customerIdRef),
       total: windowTotal,
     })
     .from(customers)
@@ -216,7 +230,10 @@ export async function listCustomerDirectoryPage(
     .limit(query.pageSize)
     .offset(query.pageIndex * query.pageSize)
   const total = rows[0]?.total ?? (query.pageIndex > 0 ? await countCustomers(db, where) : 0)
-  return { rows: rows.map((row) => ({ ...row.customer, peopleCount: Number(row.peopleCount) })), total: Number(total) }
+  return {
+    rows: rows.map((row) => ({ ...row.customer, peopleCount: Number(row.peopleCount), sageAddRequested: Boolean(Number(row.sageAddRequested)) })),
+    total: Number(total),
+  }
 }
 
 async function countVendors(db: Db, where: SQL | undefined): Promise<number> {

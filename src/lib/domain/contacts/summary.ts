@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm"
 
-import { projectAccessInvitations, projectContacts, projectContactSourceLinks, projectMembers, users } from "@/db/schema"
+import { customers, projectAccessInvitations, projectContacts, projectContactSourceLinks, projectMembers, users, vendors } from "@/db/schema"
 import { activeDirectoryIdentityKeys } from "@/lib/contact-identity-ownership"
 import { chunkD1Values } from "@/lib/d1-query"
 import {
@@ -128,6 +128,25 @@ function sourceCounts(
   }
 }
 
+/** Sage numbers of the contacts' vendor and client companies, keyed "vendor:<id>" / "customer:<id>". */
+async function companySageNumbers(
+  db: ProjectContext["db"],
+  rows: readonly { readonly vendorId: string | null; readonly customerId: string | null }[]
+): Promise<ReadonlyMap<string, string>> {
+  const vendorIds = [...new Set(rows.flatMap((row) => (row.vendorId ? [row.vendorId] : [])))]
+  const customerIds = [...new Set(rows.flatMap((row) => (row.customerId ? [row.customerId] : [])))]
+  const [vendorRows, customerRows] = await Promise.all([
+    Promise.all(chunkD1Values(vendorIds).map((ids) =>
+      db.select({ id: vendors.id, number: vendors.sageVendorNumber }).from(vendors).where(inArray(vendors.id, [...ids])))),
+    Promise.all(chunkD1Values(customerIds).map((ids) =>
+      db.select({ id: customers.id, number: customers.sageClientNumber }).from(customers).where(inArray(customers.id, [...ids])))),
+  ])
+  const numbers = new Map<string, string>()
+  for (const row of vendorRows.flat()) if (row.number) numbers.set(`vendor:${row.id}`, row.number)
+  for (const row of customerRows.flat()) if (row.number) numbers.set(`customer:${row.id}`, row.number)
+  return numbers
+}
+
 async function loadProjectContactsSummary(
   context: ProjectContext,
   audience: ProjectContactAudience,
@@ -152,7 +171,7 @@ async function loadProjectContactsSummary(
   const contactEmails = Array.from(
     new Set(rows.map((row) => normalizeEmailKey(row.email)).filter((email) => email.length > 0))
   )
-  const [directoryIdentityKeys, invitationRows, activeProjectMemberRows, compassAccountChunks, sourceLinks] =
+  const [directoryIdentityKeys, invitationRows, activeProjectMemberRows, compassAccountChunks, sourceLinks, sageNumbers] =
     await Promise.all([
       activeDirectoryIdentityKeys({ db, organizationId, entityIds: directoryEntityIds(rows) }),
       db
@@ -187,6 +206,7 @@ async function loadProjectContactsSummary(
         .select({ matchStatus: projectContactSourceLinks.matchStatus })
         .from(projectContactSourceLinks)
         .where(eq(projectContactSourceLinks.projectId, projectId)),
+      companySageNumbers(db, rows),
     ])
 
   const compassAccountStatuses = accountStatusByEmail(compassAccountChunks.flat())
@@ -226,7 +246,9 @@ async function loadProjectContactsSummary(
         (row.vendorContactId !== null && directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)) ||
         (row.customerContactId !== null && directoryIdentityKeys.has(`customer_contact:${row.customerContactId}`)),
       compassAccountStatus,
-      latestInvitation?.welcomeEmail ?? null
+      latestInvitation?.welcomeEmail ?? null,
+      (row.vendorId ? sageNumbers.get(`vendor:${row.vendorId}`) : undefined) ??
+        (row.customerId ? sageNumbers.get(`customer:${row.customerId}`) : undefined) ?? null
     )
   }
   const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)

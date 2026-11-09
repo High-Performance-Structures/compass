@@ -725,6 +725,9 @@
     "sageDepositArExports": [
       "src/lib/domain/sage-bridge/ar-invoice-store.ts"
     ],
+    "sageDirectoryAddRequests": [
+      "src/lib/domain/sage-bridge/directory-add-store.ts"
+    ],
     "sageInvoiceArExports": [
       "src/lib/domain/sage-bridge/ar-invoice-store.ts"
     ],

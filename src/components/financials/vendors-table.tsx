@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { TradeDocStatusBadge } from "@/components/financials/trade-doc-status-badge"
 import { RecordSearchInput, RecordTable, recordSelectionColumn } from "@/components/record-table"
@@ -96,11 +97,16 @@ export function vendorColumns(
       id: "name",
       accessorFn: (vendor) => vendor.name,
       header: "Name",
-      cell: ({ row }) => open ? (
-        <button type="button" className="text-left font-medium hover:underline" onClick={() => open(row.original)}>
-          {row.original.name}
-        </button>
-      ) : <span className="font-medium">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <div className="flex flex-col items-start gap-1">
+          {open ? (
+            <button type="button" className="text-left font-medium hover:underline" onClick={() => open(row.original)}>
+              {row.original.name}
+            </button>
+          ) : <span className="font-medium">{row.original.name}</span>}
+          <SageNumberBadge number={row.original.sageVendorNumber} requested={row.original.sageAddRequested} />
+        </div>
+      ),
     },
     {
       id: "category",

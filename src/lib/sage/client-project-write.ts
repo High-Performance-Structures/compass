@@ -114,6 +114,26 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
         name: z.string().min(1).max(100),
       }),
     }),
+    // Adds one vendor (approved "Request add to Sage"); Sage assigns the number.
+    // The writer refuses when Sage already has a vendor with this name.
+    z.object({
+      operationType: z.literal("ensure_vendor"),
+      company: z.literal("High Performance Structures Inc"),
+      vendor: z.object({
+        compassVendorId: z.string().min(1),
+        name: z.string().trim().min(1).max(75),
+        shortName: z.string().trim().min(1).max(30),
+        addressLine1: z.string().max(50).nullable(),
+        addressLine2: z.string().max(50).nullable(),
+        city: z.string().max(50).nullable(),
+        state: z.string().max(2).nullable(),
+        postalCode: z.string().max(10).nullable(),
+        phone: z.string().max(14).nullable(),
+        email: z.string().email().max(75).nullable(),
+        vendorType: z.string().trim().min(1).max(50),
+        print1099: z.boolean(),
+      }),
+    }),
     z.object({
       operationType: z.literal("update_client_email"),
       company: z.literal("High Performance Structures Inc"),
@@ -147,6 +167,19 @@ const sageWriteSuccessSchema = z.object({
     .nullable(),
 })
 
+/** An "ensure_vendor" add: the new (or already-added) Sage vendor. */
+const sageVendorWriteSuccessSchema = z.object({
+  operationId: z.string().min(1),
+  claimToken: z.string().uuid(),
+  outcome: z.literal("succeeded"),
+  vendor: z.object({
+    id: z.string().min(1),
+    number: z.string().min(1),
+    // False when this Sage version's vendor add has no 1099 field; the add still counts.
+    print1099Applied: z.boolean(),
+  }),
+})
+
 const sageWriteFailureSchema = z.object({
   operationId: z.string().min(1),
   claimToken: z.string().uuid(),
@@ -154,10 +187,17 @@ const sageWriteFailureSchema = z.object({
   error: z.string().min(1).max(4000),
 })
 
-export const sageClientProjectWriteResultSchema = z.discriminatedUnion(
-  "outcome",
-  [sageWriteSuccessSchema, sageWriteFailureSchema]
-)
+export const sageClientProjectWriteResultSchema = z.union([
+  sageVendorWriteSuccessSchema,
+  sageWriteSuccessSchema,
+  sageWriteFailureSchema,
+])
+
+/** The Sage writer's vendor-add switch (worker side); the PC writer has its own. */
+export function sageVendorCreatesEnabled(env: CloudflareEnv): boolean {
+  const value: unknown = Reflect.get(env, "SAGE_VENDOR_CREATES_ENABLED")
+  return typeof value === "string" && value.trim().toLowerCase() === "true"
+}
 
 export function parseSageClientStatusId(value: unknown): SageClientStatusId | null {
   const parsed = typeof value === "number" ? value : Number(value)

@@ -123,6 +123,7 @@ Names only. Values live in the Cloudflare dashboard (secrets), `wrangler.jsonc` 
 | `SAGE_CONTACT_WRITES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SAGE_INVOICE_CREATOR_USER_MAP` | var / build-time (optional) | `src/lib/sage/square-creator-alerts.ts` |
 | `SAGE_PAY_APPLICATION_BRIDGE_SECRET` | secret (required) | `src/lib/sage/config.ts` |
+| `SAGE_VENDOR_CREATES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/client-project-write.ts` |
 | `SAGE_READ_ONLY` | var / build-time (optional) | `src/lib/sage/config.ts` |
 | `SAGE_SQUARE_CREATOR_ALERTS_FROM` | var / build-time (optional) | `src/lib/sage/square-creator-alerts.ts` |
 | `SAGE_SQUARE_ORGANIZATION_ID` | var (`wrangler.jsonc`) | `src/app/api/integrations/square/auth-health/route.ts`, `src/app/api/operations/square/auth-health/route.ts`, `src/lib/sage/square-creator-alerts.ts` +1 more |

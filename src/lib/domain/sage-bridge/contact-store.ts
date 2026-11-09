@@ -509,6 +509,8 @@ export function sageContactCreateSucceededStatement(
     readonly canonicalTable: "customer_contacts" | "vendor_contacts"
     readonly sageContactId: string
     readonly sageLineNumber: number
+    /** The directory row that carries it: the new row (the proposal's id) or the linked Compass person. */
+    readonly personId: string
   }
 ): D1PreparedStatement {
   return database.prepare(
@@ -517,5 +519,5 @@ export function sageContactCreateSucceededStatement(
        WHERE id = ? AND organization_id = ? AND status = 'running' AND claim_token = ?
          AND EXISTS (SELECT 1 FROM ${input.canonicalTable} WHERE id = ? AND sage_contact_id = ?)`
   ).bind(input.sageContactId, input.sageLineNumber, claim.now, claim.now, claim.proposalId, claim.organizationId,
-    claim.claimToken, claim.proposalId, input.sageContactId)
+    claim.claimToken, input.personId, input.sageContactId)
 }

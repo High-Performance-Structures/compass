@@ -44,6 +44,8 @@ import { SageContactReviewDialog } from "@/components/contacts/sage-contact-revi
 import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
 import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
 import { SageClientMatchingDialog } from "@/components/contacts/sage-client-matching-dialog"
+import { SageAddRequestDialog, type SageAddRequestTarget } from "@/components/contacts/sage-add-request-dialog"
+import { SageAddRequestsDialog } from "@/components/contacts/sage-add-requests-dialog"
 import { ContactMergeDialog } from "@/components/contacts/contact-merge-dialog"
 import { CompanyMergePicker, type MergeChoice } from "@/components/contacts/company-merge-picker"
 import { CompanySelectionBar } from "@/components/contacts/company-selection-bar"
@@ -142,6 +144,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
   const [editingVendor, setEditingVendor] = React.useState<VendorDirectoryCompany | null>(null)
   const [tradeDocsVendor, setTradeDocsVendor] = React.useState<{ readonly id: string; readonly name: string } | null>(null)
   const showTradeDocs = bootstrap.vendors?.tradeDocStatuses != null
+  // "Request add to Sage": the record being asked for, and the requests list (notifications link with ?review=sage-adds).
+  const [sageAddTarget, setSageAddTarget] = React.useState<SageAddRequestTarget | null>(null)
+  const canRequestSageAdds = Boolean(directoryAccess?.vendors.edit || directoryAccess?.customers.edit)
+  const [sageAddsOpen, setSageAddsOpen] = React.useState(() => canRequestSageAdds && searchParams.get("review") === "sage-adds")
 
   React.useEffect(() => {
     if (bootstrap.loadFailed) toast.error("Failed to load contacts")
@@ -444,6 +450,9 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
               {directoryAccess?.canReadSageReview ? (
                 <Button variant="outline" size="sm" className="h-8" onClick={() => setSageReviewOpen(true)}>Sage review</Button>
               ) : null}
+              {canRequestSageAdds ? (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageAddsOpen(true)}>Sage requests</Button>
+              ) : null}
               {directoryAccess?.canManageAccounts && (
                 <Button variant="outline" size="sm" className="h-8" onClick={() => setAccessDialogOpen(true)}>
                   Manage Compass access
@@ -603,6 +612,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
         } : undefined}
         onSageLinkedSaved={reloadLists}
         canEdit={directoryAccess?.customers.edit ?? false}
+        onRequestSageAdd={editingCustomer && directoryAccess?.customers.edit ? () => {
+          setCustomerDialogOpen(false)
+          setSageAddTarget({ kind: "client_company", entityId: editingCustomer.id })
+        } : undefined}
         onSageLinkCompany={editingCustomer && directoryAccess?.canReadSageReview ? () => {
           setCustomerDialogOpen(false)
           setSageLinkTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name, sageRecordNumber: editingCustomer.sageClientNumber })
@@ -637,10 +650,18 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           setVendorDialogOpen(false)
           setMergeSelection({ kind: "vendor_person", choices: [choice(people[0]), choice(people[1])], anchor: null })
         } : undefined}
+        onRequestSageAdd={directoryAccess?.vendors.edit && !vendorReadOnly ? (kind, entityId) => {
+          setVendorDialogOpen(false)
+          setSageAddTarget({ kind, entityId })
+        } : undefined}
       />
       <CustomerPeopleDialog
         key={peopleCustomer?.id ?? "none"}
-        customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber), sageVerified: Boolean(peopleCustomer.sageClientId) } : null}
+        customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber), sageVerified: Boolean(peopleCustomer.sageClientId), sageNumber: peopleCustomer.sageClientNumber } : null}
+        onRequestSageAdd={directoryAccess?.customers.edit ? (person: CustomerDirectoryPerson) => {
+          setPeopleCustomer(null)
+          setSageAddTarget({ kind: "client_person", entityId: person.id })
+        } : undefined}
         onOpenChange={(open) => { if (!open) setPeopleCustomer(null) }}
         canEdit={directoryAccess?.customers.edit ?? false}
         canCreate={directoryAccess?.customers.create ?? false}
@@ -688,6 +709,19 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
         onOpenChange={(open) => { if (!open) setSageCreateTarget(null) }}
         onSubmitted={reloadLists}
       />
+      <SageAddRequestDialog
+        key={sageAddTarget ? `${sageAddTarget.kind}:${sageAddTarget.entityId}` : "none"}
+        target={sageAddTarget}
+        onOpenChange={(open) => { if (!open) setSageAddTarget(null) }}
+        onSubmitted={reloadLists}
+        onRequestCompany={setSageAddTarget}
+        onLinkSage={directoryAccess?.canReadSageReview ? (target, name, sageNumber) => {
+          setSageAddTarget(null)
+          setSageLinkTarget({ kind: target.kind, entityId: target.entityId, name, sageRecordNumber: sageNumber })
+        } : undefined}
+        onRequestW9={showTradeDocs ? (id, name) => setTradeDocsVendor({ id, name }) : undefined}
+      />
+      {canRequestSageAdds ? <SageAddRequestsDialog open={sageAddsOpen} onOpenChange={setSageAddsOpen} onChanged={reloadLists} /> : null}
       <DirectoryAccountLinkDialog
         key={accountLinkTarget ? `${accountLinkTarget.kind}:${accountLinkTarget.personId}` : "none"}
         target={accountLinkTarget}

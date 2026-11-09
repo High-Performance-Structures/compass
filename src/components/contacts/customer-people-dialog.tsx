@@ -32,6 +32,7 @@ import {
   useSageLinkedEditState,
 } from "@/components/contacts/sage-linked-edit"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 
 const EMPTY: CustomerPersonInput = { name: "", title: "", email: "", phone: "", isPrimary: false }
 
@@ -47,8 +48,11 @@ export function CustomerPeopleDialog({
   onVerifySageCompany,
   onLinkAccount,
   onMergePeople,
+  onRequestSageAdd,
 }: {
-  readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean; readonly sageVerified: boolean } | null
+  readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean; readonly sageVerified: boolean; readonly sageNumber: string | null } | null
+  /** "Request add to Sage" for a person not in Sage. */
+  readonly onRequestSageAdd?: (person: CustomerDirectoryPerson) => void
   readonly onOpenChange: (open: boolean) => void
   readonly canEdit: boolean
   readonly canCreate: boolean
@@ -166,6 +170,7 @@ export function CustomerPeopleDialog({
                   {person.name}{person.isPrimary ? " · Primary" : ""}
                   {customer?.sageLinked && !person.sageContactId ? <span className="ml-2 text-xs font-normal text-muted-foreground">Compass only, not in Sage</span> : null}
                 </div>
+                {person.sageContactId ? <SageNumberBadge number={customer?.sageNumber} className="my-1" /> : null}
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
                 {sageState?.pending[person.id] ? (
                   <div className="flex flex-wrap items-center gap-2">
@@ -180,6 +185,7 @@ export function CustomerPeopleDialog({
               </div>
               <div className="flex flex-wrap gap-2">
                 {!person.sageContactId && customer?.sageVerified && onSageLink ? <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(person)}>Verify Sage link</Button> : null}
+                {!person.sageContactId && onRequestSageAdd ? <Button type="button" size="sm" variant="outline" onClick={() => onRequestSageAdd(person)}>Request add to Sage</Button> : null}
                 {canLinkAccounts ? <Button type="button" size="sm" variant="outline" onClick={() => onLinkAccount(person)}>Compass account</Button> : null}
                 {canEdit
                   ? <Button type="button" size="sm" variant="outline" onClick={() => edit(person)}>Edit</Button> : null}

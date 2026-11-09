@@ -31,3 +31,14 @@ export type SageEstimateExportStatus = (typeof SAGE_ESTIMATE_EXPORT_STATUSES)[nu
  */
 export const SAGE_AR_INVOICE_EXPORT_STATUSES = ["queued", "running", "succeeded", "failed", "needs_attention", "cancelled"] as const
 export type SageArInvoiceExportStatus = (typeof SAGE_AR_INVOICE_EXPORT_STATUSES)[number]
+
+/**
+ * A staff request to add a vendor, client, or one of their people to Sage.
+ * "approved" waits for its company to reach Sage first; "sent" is with the
+ * Sage writer.
+ */
+export const SAGE_DIRECTORY_ADD_STATUSES = ["pending", "approved", "sent", "succeeded", "failed", "rejected", "cancelled"] as const
+export type SageDirectoryAddStatus = (typeof SAGE_DIRECTORY_ADD_STATUSES)[number]
+
+export const SAGE_DIRECTORY_ADD_KINDS = ["vendor_company", "client_company", "vendor_person", "client_person"] as const
+export type SageDirectoryAddKind = (typeof SAGE_DIRECTORY_ADD_KINDS)[number]

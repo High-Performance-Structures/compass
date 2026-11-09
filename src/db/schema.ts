@@ -33,7 +33,7 @@ import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from
 import { FEEDBACK_TYPES, STAFF_MESSAGE_STATUSES } from "../lib/domain/feedback/statuses"
 import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
 import { LIST_SHEET_SORT_DIRECTIONS, SAVED_VIEW_SCOPES, SAVED_VIEW_VISIBILITIES } from "../lib/domain/settings/statuses"
-import { PROJECT_CONTACT_TYPES } from "../lib/domain/contacts/statuses"
+import { PROJECT_CONTACT_TYPES, VENDOR_1099_STATUSES } from "../lib/domain/contacts/statuses"
 import {
   DEPENDENCY_TYPES,
   SCHEDULE_TASK_STATUSES,
@@ -3934,6 +3934,8 @@ export const vendors = sqliteTable("vendors", {
   tradeDocsFolderId: text("trade_docs_folder_id"),
   /** "flag" or "hold" bills while trade docs are missing; null uses the company default. */
   tradeDocsBillMode: text("trade_docs_bill_mode"),
+  /** Whether the vendor gets a 1099 (yes, no, unknown until their W-9 is on file); sent to Sage on add. */
+  form1099Status: text("form_1099_status", { enum: VENDOR_1099_STATUSES }).notNull().default("unknown"),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   organizationId: text("organization_id").references(() => organizations.id),

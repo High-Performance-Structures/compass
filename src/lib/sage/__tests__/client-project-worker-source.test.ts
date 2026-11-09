@@ -11,16 +11,29 @@ const source = readFileSync(
 )
 
 describe("Sage client/project worker source boundary", () => {
-  it("contains only the six approved queue operations and no destructive request", () => {
+  it("contains only the seven approved queue operations and no destructive request", () => {
     expect(source).toContain('"ensure_client"')
     expect(source).toContain('"ensure_client_and_job"')
     expect(source).toContain('"update_client_email"')
     expect(source).toContain('"set_job_client"')
     expect(source).toContain('"add_client_contact"')
     expect(source).toContain('"set_job_tax_district"')
+    expect(source).toContain('"ensure_vendor"')
     expect(source).toContain('BuildXml("ClientModRq"')
     expect(source).toContain('BuildXml("JobModRq"')
-    expect(source).not.toMatch(/DeleteRq|VoidRq/)
+    expect(source).not.toMatch(/DeleteRq|VoidRq|VendorModRq/)
+  })
+
+  it("adds a vendor only behind its own local switch and never over a name Sage already has", () => {
+    const ensureVendor = source.slice(
+      source.indexOf("private static WriteOutcome ProcessEnsureVendor"),
+      source.indexOf("private static readonly string[] VendorAddRequests")
+    )
+    expect(ensureVendor).toContain('"SAGE_VENDOR_CREATE_WRITES_ENABLED"')
+    expect(ensureVendor).toContain("Local Sage vendor-add switch is off; no write was attempted.")
+    // The name check runs before the add is submitted.
+    expect(ensureVendor.indexOf("FindVendorByName(vendor.name)")).toBeLessThan(ensureVendor.indexOf("submit Sage vendor add"))
+    expect(ensureVendor).toContain("link it in Compass instead of adding another. No write was attempted.")
   })
 
   it("only gives a client to an existing job that has none, matched by ID and name", () => {
