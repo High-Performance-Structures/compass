@@ -1,4 +1,4 @@
-import { audienceReadCacheControl, assertAudienceResourceProject, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+import { audiencePhotoCacheControl, audienceReadCacheControl, assertAudienceResourceProject, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { resolveProjectAudienceViewer } from "@/lib/project-audience-viewer"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
@@ -31,6 +31,10 @@ import { assertOwnerUpdateReadAccess } from "@/lib/owner-updates/access"
 import { assertProjectAccess } from "@/lib/project-access"
 import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  PHOTO_RENDITION_LONGEST_SIDE_PX,
+  photoRenditionFromSizeParam,
+} from "@/lib/photos/photo-rendition"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
 
@@ -237,18 +241,26 @@ export async function GET(
     const serviceAccountKey = parseServiceAccountKey(keyJson)
     const client = new DriveClient({ serviceAccountKey })
     const googleEmail = downloadUserEmail(env)
-    // Keep the same project/record authorization above for print renditions.
-    // Published owner updates use this route rather than the generic Drive route.
-    if (request.nextUrl.searchParams.get("size") === "print") {
+    // Grids ask for ?size=thumb and printed documents for ?size=print; both
+    // come from Drive's thumbnail service so a page full of photos never
+    // streams every full-size original (see src/lib/photos/photo-rendition.ts).
+    // The authorization above applies to every size. Without a Drive
+    // thumbnail, fall through to the original.
+    const rendition = photoRenditionFromSizeParam(request.nextUrl.searchParams.get("size"))
+    if (rendition !== null) {
       const file = await client.getFile(googleEmail, photo.driveFileId)
       if (file.mimeType.startsWith("image/") && file.thumbnailLink) {
-        const thumbnail = await client.downloadThumbnail(googleEmail, file.thumbnailLink, 800)
+        const thumbnail = await client.downloadThumbnail(
+          googleEmail,
+          file.thumbnailLink,
+          PHOTO_RENDITION_LONGEST_SIDE_PX[rendition]
+        )
         if (thumbnail) {
           return new Response(thumbnail.body, {
             headers: {
               "Content-Type": externalResponseMimeType(thumbnail.headers.get("Content-Type")),
               "Content-Disposition": 'inline; filename="shared-photo"',
-              "Cache-Control": await audienceReadCacheControl(),
+              "Cache-Control": await audiencePhotoCacheControl(),
               "X-Content-Type-Options": "nosniff",
             },
           })
@@ -303,7 +315,10 @@ export async function GET(
       headers: {
         "Content-Type": responseMimeType,
         "Content-Disposition": `${responseMimeType.startsWith("image/") ? "inline" : "attachment"}; filename="${safeFileName(responseFileName)}"`,
-        "Cache-Control": await audienceReadCacheControl(),
+        // Owner-update documents are files, not photos; keep their short cache.
+        "Cache-Control": resourceType === "photo"
+          ? await audiencePhotoCacheControl()
+          : await audienceReadCacheControl(),
         "X-Content-Type-Options": "nosniff",
       },
     })

@@ -428,7 +428,7 @@ export class DriveClient {
 
   /**
    * A resized copy of an image from Drive's thumbnail service (longest side
-   * in pixels), or null when Drive has none. Used for printing photos.
+   * in pixels), or null when Drive has none. Used for photo grids and printing.
    */
   async downloadThumbnail(
     userEmail: string,
@@ -441,6 +441,8 @@ export class DriveClient {
       : `${thumbnailLink}=s${size}`
     const unsigned = await fetch(url)
     if (unsigned.ok && unsigned.body) return unsigned
+    // Release the failed response before retrying with credentials.
+    await unsigned.body?.cancel()
     const token = await this.getToken(userEmail)
     const signed = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     return signed.ok && signed.body ? signed : null

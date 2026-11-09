@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import {
   nextPhotoImageRetryAttempt,
   photoImageSourceForRetry,
@@ -325,11 +326,12 @@ export function ProjectAudiencePhotoGallery({
               {filteredPhotos.map((photo) => {
                 const resolvedImage = resolvePhotoImageSource(photo)
                 const retryAttempt = imageRetryAttempts[photo.id] ?? 0
+                // Grid tiles load the thumbnail copy; the preview loads the original.
                 const imageSrc =
                   failedImageSet.has(photo.id) || resolvedImage.src === null
                     ? null
                     : photoImageSourceForRetry(
-                        resolvedImage.src,
+                        photoThumbnailSrc(resolvedImage.src),
                         retryAttempt
                       )
 

@@ -10,6 +10,7 @@ import {
   nextPhotoImageRetryAttempt,
   photoImageSourceForRetry,
 } from "@/lib/photos/image-retry"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import type { ProjectPhotoLibraryItem } from "@/app/actions/project-photos"
 
 type PhotoImage = {
@@ -20,8 +21,17 @@ type PhotoImage = {
   readonly imageSrc: string | null
 }
 
+/**
+ * "thumbnail" for grid cards (a small copy, see photo-rendition.ts);
+ * "original" for the large preview.
+ */
+type PhotoImageSize = "thumbnail" | "original"
+
 export type PhotoImageRetry = {
-  readonly imageFor: (photo: ProjectPhotoLibraryItem) => PhotoImage
+  readonly imageFor: (
+    photo: ProjectPhotoLibraryItem,
+    size: PhotoImageSize
+  ) => PhotoImage
   readonly markImageFailed: (photoId: string) => void
 }
 
@@ -75,7 +85,10 @@ export function usePhotoImageRetry(projectId: string): PhotoImageRetry {
     )
   }
 
-  function imageFor(photo: ProjectPhotoLibraryItem): PhotoImage {
+  function imageFor(
+    photo: ProjectPhotoLibraryItem,
+    size: PhotoImageSize
+  ): PhotoImage {
     const resolvedImage = resolvePhotoImageSource({
       ...photo,
       thumbnailUrl: projectInternalPhotoUrl(projectId, photo.id),
@@ -84,7 +97,12 @@ export function usePhotoImageRetry(projectId: string): PhotoImageRetry {
     const imageSrc =
       failedImageSet.has(photo.id) || resolvedImage.src === null
         ? null
-        : photoImageSourceForRetry(resolvedImage.src, retryAttempt)
+        : photoImageSourceForRetry(
+            size === "thumbnail"
+              ? photoThumbnailSrc(resolvedImage.src)
+              : resolvedImage.src,
+            retryAttempt
+          )
     return { resolvedImage, retryAttempt, imageSrc }
   }
 

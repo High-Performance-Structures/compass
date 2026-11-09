@@ -82,7 +82,7 @@ function PhotoPreviewBody({
   readonly onClose: () => void
   readonly onShowAdjacent: (direction: "previous" | "next") => void
 }): React.ReactElement {
-  const { resolvedImage, retryAttempt, imageSrc } = images.imageFor(previewPhoto)
+  const { resolvedImage, retryAttempt, imageSrc } = images.imageFor(previewPhoto, "original")
 
   return (
     <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">

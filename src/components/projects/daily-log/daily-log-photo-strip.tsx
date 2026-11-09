@@ -27,6 +27,7 @@ import {
   projectInternalPhotoUrl,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import { adjacentPhoto } from "@/lib/photos/carousel"
 import { statusLabel } from "@/lib/daily-logs/workspace-view"
 
@@ -42,7 +43,11 @@ export function DailyLogPhotoThumb({
     ...photo,
     thumbnailUrl: projectInternalPhotoUrl(projectId, photo.id),
   })
-  const imageSrc = imageFailed ? null : resolvedImage.src
+  // Strip tiles are small, so they load the thumbnail copy.
+  const imageSrc =
+    imageFailed || resolvedImage.src === null
+      ? null
+      : photoThumbnailSrc(resolvedImage.src)
 
   if (imageSrc !== null) {
     return (

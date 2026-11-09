@@ -21,9 +21,10 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
-
-/** Longest side, in pixels, of photos on printed documents. */
-const PRINT_IMAGE_SIZE = 800
+import {
+  PHOTO_RENDITION_LONGEST_SIDE_PX,
+  photoRenditionFromSizeParam,
+} from "@/lib/photos/photo-rendition"
 
 export async function GET(
   request: NextRequest,
@@ -118,18 +119,26 @@ export async function GET(
       }
     }
 
-    // Print pages ask for photos at print size so large photo sets stay small.
+    // Photo grids (?size=thumb) and print pages (?size=print) get a resized
+    // copy from Drive's thumbnail service instead of the full original, so
+    // large photo sets stay small (see src/lib/photos/photo-rendition.ts).
+    const rendition = photoRenditionFromSizeParam(request.nextUrl.searchParams.get("size"))
     if (
-      request.nextUrl.searchParams.get("size") === "print" &&
+      rendition !== null &&
       fileMeta.mimeType.startsWith("image/") &&
       fileMeta.thumbnailLink
     ) {
-      const thumbnail = await client.downloadThumbnail(googleEmail, fileMeta.thumbnailLink, PRINT_IMAGE_SIZE)
+      const thumbnail = await client.downloadThumbnail(
+        googleEmail,
+        fileMeta.thumbnailLink,
+        PHOTO_RENDITION_LONGEST_SIDE_PX[rendition]
+      )
       if (thumbnail) {
         return new Response(thumbnail.body, {
           headers: {
             "Content-Type": thumbnail.headers.get("Content-Type") ?? "image/jpeg",
-            "Cache-Control": "private, max-age=3600",
+            // Resized photo previews: a day in the viewer's own browser.
+            "Cache-Control": "private, max-age=86400",
           },
         })
       }

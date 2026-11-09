@@ -51,6 +51,7 @@ import type {
 import { photoUploadSizeCheck } from "@/lib/domain/field/rules"
 import { PHOTO_UPLOAD_LIMIT_LABEL } from "@/lib/photos/upload-limits"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import {
   ownerUpdateDraftStorageKey,
   parseRecoverableOwnerUpdateDraft,
@@ -893,9 +894,8 @@ export function OwnerUpdateDraftEditor({
               {document.availablePhotos.map((photo) => {
                 const checked = selectedPhotoIdSet.has(photo.id)
                 const resolvedImage = resolvePhotoImageSource(photo)
-                const src = failedImageSet.has(photo.id)
-                  ? null
-                  : resolvedImage.src
+                const src = failedImageSet.has(photo.id) || resolvedImage.src === null
+                  ? null : photoThumbnailSrc(resolvedImage.src)
                 return (
                   <article
                     key={photo.id}

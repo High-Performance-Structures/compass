@@ -50,6 +50,16 @@ export async function audienceReadCacheControl(): Promise<"private, no-store" | 
   return await getProjectAudienceRequestScope() ? "private, no-store" : "private, max-age=300"
 }
 
+/**
+ * Cache header for photo bytes. A photo's Drive file never changes after
+ * upload, so a viewer's browser may keep it for a day instead of asking again
+ * every five minutes. Access is still checked on every request that reaches
+ * the server, and staff previews are never cached.
+ */
+export async function audiencePhotoCacheControl(): Promise<"private, no-store" | "private, max-age=86400"> {
+  return await getProjectAudienceRequestScope() ? "private, no-store" : "private, max-age=86400"
+}
+
 /** A resource ID cannot use another project's grants through a preview. */
 export async function assertAudienceResourceProject(projectId: string): Promise<void> {
   const scope = await getProjectAudienceRequestScope()
