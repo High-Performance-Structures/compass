@@ -2,10 +2,10 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconCirclePlus, IconRefresh, IconSend } from "@tabler/icons-react"
+import { IconAlertTriangle, IconCirclePlus, IconLink, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { createProjectInSage, sendProjectToSage } from "@/app/actions/project-sage-send"
+import { createProjectInSage, linkProjectToExistingSageJob, sendProjectToSage } from "@/app/actions/project-sage-send"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,6 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { SageNumberBadge } from "@/components/sage-number-badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import type {
   ProjectSageStatus,
@@ -31,7 +33,8 @@ const SENDING_REFRESH_MS = 5_000
 /**
  * The Overview's Sage line for office staff: linked job number, a job on its
  * way, why Sage didn't take it with a button to send it again, or Create in
- * Sage for a job that was never sent.
+ * Sage for a job that was never sent. A job already in Sage is linked by its
+ * Sage job number instead.
  */
 export function ProjectSageStatusLine({
   projectId,
@@ -89,6 +92,7 @@ export function ProjectSageStatusLine({
     return (
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge variant="outline">Not linked to Sage</Badge>
+        <LinkExistingSageJob projectId={projectId} />
         {status.create ? (
           <CreateInSage projectId={projectId} preview={status.create} />
         ) : status.createBlocker ? (
@@ -126,7 +130,8 @@ export function ProjectSageStatusLine({
           ))}
         </div>
       ) : null}
-      <div className="pl-6">
+      <div className="flex flex-wrap gap-2 pl-6">
+        <LinkExistingSageJob projectId={projectId} />
         <Button
           type="button"
           size="sm"
@@ -186,7 +191,7 @@ function CreateInSage({
             <AlertDialogTitle>Create this job in Sage?</AlertDialogTitle>
             <AlertDialogDescription>
               Compass sends this job to Sage once. If it&apos;s already in Sage under another name, don&apos;t create
-              it here; ask an admin to link it to its Sage job instead.
+              it here; use Link existing Sage job instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
@@ -246,6 +251,67 @@ function CreateInSage({
             <Button type="button" disabled={pending || (needsChoice && !selection)} onClick={create}>
               {pending ? <IconRefresh className="size-4 animate-spin" /> : <IconSend className="size-4" />}
               Create in Sage
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+/** Link existing Sage job: for a job already in Sage, record its Sage job number instead of creating it again. */
+function LinkExistingSageJob({ projectId }: { readonly projectId: string }): React.ReactElement {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
+  const [jobNumber, setJobNumber] = React.useState("")
+  const [pending, startTransition] = React.useTransition()
+  const inputId = `sage-link-job-${projectId}`
+
+  function link(): void {
+    startTransition(async () => {
+      const result = await linkProjectToExistingSageJob(projectId, jobNumber)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setOpen(false)
+      toast.success(`Linked to Sage job ${jobNumber.trim()}.`)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" className="print:hidden" onClick={() => setOpen(true)}>
+        <IconLink className="size-4" />
+        Link existing Sage job
+      </Button>
+      <AlertDialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Link to a job already in Sage</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter the job&apos;s number from Sage. Nothing is created or changed in Sage; Compass records the
+              number so change orders, estimates and billing go to that job.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor={inputId}>Sage job number</Label>
+            <Input
+              id={inputId}
+              inputMode="numeric"
+              placeholder="722"
+              value={jobNumber}
+              disabled={pending}
+              onChange={(event) => setJobNumber(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && jobNumber.trim()) { event.preventDefault(); link() } }}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending || !jobNumber.trim()} onClick={link}>
+              {pending ? <IconRefresh className="size-4 animate-spin" /> : <IconLink className="size-4" />}
+              Link job
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
