@@ -192,6 +192,8 @@ export async function sweepScheduleWeatherRisks(db: Db, options: { readonly budg
         isNotNull(projects.siteLatitude),
         isNotNull(projects.siteLongitude),
         isNotNull(projects.organizationId),
+        // Draft schedules stay quiet; their risks are noticed once published.
+        eq(projects.schedulePublished, true),
         ne(scheduleTasks.status, "COMPLETE"),
         lte(scheduleTasks.startDate, addDays(roughToday, RISK_HORIZON_DAYS + 2)),
         gte(scheduleTasks.endDateCalculated, roughToday),

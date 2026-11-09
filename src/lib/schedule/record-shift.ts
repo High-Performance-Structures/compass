@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm"
+
 import type { getDb } from "@/db"
+import { projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { notifyScheduleEndDateExtended } from "@/lib/notifications/events"
@@ -47,6 +50,14 @@ export async function recordScheduleShift(
   ) {
     return
   }
+
+  // A draft schedule is still being worked out; nobody is told it moved.
+  const project = await input.db
+    .select({ schedulePublished: projects.schedulePublished })
+    .from(projects)
+    .where(eq(projects.id, input.projectId))
+    .get()
+  if (project?.schedulePublished !== true) return
 
   try {
     await notifyScheduleEndDateExtended({
