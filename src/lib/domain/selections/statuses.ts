@@ -8,6 +8,24 @@
 export const PROJECT_SELECTION_STATUSES = ["needed", "proposed", "owner_review", "approved", "pricing", "rfq_sent", "ordered", "installed", "unavailable", "deferred"] as const
 export type ProjectSelectionStatus = (typeof PROJECT_SELECTION_STATUSES)[number]
 
+/** The one label for each selection status, used by every selections screen. */
+export const PROJECT_SELECTION_STATUS_LABELS: Readonly<Record<ProjectSelectionStatus, string>> = {
+  needed: "Needed",
+  proposed: "Proposed",
+  owner_review: "With owner",
+  approved: "Approved",
+  pricing: "Pricing",
+  rfq_sent: "RFQ sent",
+  ordered: "Ordered",
+  installed: "Installed",
+  unavailable: "Unavailable",
+  deferred: "Deferred",
+}
+
+/** Status picker options in workflow order. */
+export const PROJECT_SELECTION_STATUS_OPTIONS: readonly { readonly value: ProjectSelectionStatus; readonly label: string }[] =
+  PROJECT_SELECTION_STATUSES.map((value) => ({ value, label: PROJECT_SELECTION_STATUS_LABELS[value] }))
+
 export const SELECTION_REQUEST_KINDS = ["pricing", "alternative"] as const
 
 export const SELECTION_REQUEST_STATUSES = ["open", "resolved", "withdrawn"] as const

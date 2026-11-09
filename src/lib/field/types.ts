@@ -215,6 +215,7 @@ const fieldDailyLogFollowUpsSchema = z.object({
     summary: z.string().max(4000),
     followUpTodo: z.boolean(),
   })).max(10),
+  installedSelectionIds: z.array(z.string().max(80)).max(100).default([]),
 })
 
 export const fieldDailyLogDraftSchema = z.object({

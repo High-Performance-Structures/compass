@@ -15,6 +15,7 @@ import {
 } from "@/db/schema-selection-decisions"
 import { selectionAccess } from "@/lib/domain/selections/access"
 import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
+import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
@@ -217,6 +218,10 @@ export async function publishSelectionDecision(
       throw new Error(
         "The selection changed while saving. Refresh and try again."
       )
+    // Released to the owner: the selection is now with the owner.
+    if (input.published) {
+      await advanceSelectionStatus(db, { projectId, selectionIds: [row.id], target: "owner_review", reason: { kind: "published" }, actor: user })
+    }
     revalidate(projectId)
     return { success: true }
   } catch (error) {
@@ -400,7 +405,7 @@ export async function linkSelectionPurchaseOrder(
       )
       .get()
     const operation = await db
-      .select({ id: projectOperations.id })
+      .select({ id: projectOperations.id, status: projectOperations.status, number: projectOperations.sourceRecordNumber })
       .from(projectOperations)
       .where(
         and(
@@ -443,6 +448,14 @@ export async function linkSelectionPurchaseOrder(
           .where(eq(links.id, token))
       ),
     ])
+    // Linked to a purchase order that already went to the vendor: ordered.
+    await advanceSelectionsForPurchaseOrder(db, {
+      projectId,
+      purchaseOrderId: operation.id,
+      purchaseOrderNumber: operation.number,
+      status: operation.status,
+      actor: user,
+    })
     revalidate(projectId)
     return { success: true }
   } catch (error) {

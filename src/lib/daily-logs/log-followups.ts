@@ -164,14 +164,19 @@ type DailyLogClientContactDraft = {
   readonly followUpTodo: boolean
 }
 
+/** A finish selection a log can mark installed (approved or ordered, not yet installed). */
+export type DailyLogInstallableSelection = { readonly id: string; readonly name: string; readonly roomName: string }
+
 /** Everything a log carries besides its own fields. */
 export type DailyLogFollowUps = {
   readonly todoUpdates: readonly DailyLogTodoUpdateDraft[]
   readonly newTodos: readonly DailyLogNewTodoDraft[]
   readonly clientContacts: readonly DailyLogClientContactDraft[]
+  /** Finish selections the log says were installed (they move to Installed). */
+  readonly installedSelectionIds?: readonly string[]
 }
 
-export const EMPTY_DAILY_LOG_FOLLOW_UPS: DailyLogFollowUps = { todoUpdates: [], newTodos: [], clientContacts: [] }
+export const EMPTY_DAILY_LOG_FOLLOW_UPS: DailyLogFollowUps = { todoUpdates: [], newTodos: [], clientContacts: [], installedSelectionIds: [] }
 
 const MAX_LINES = 20
 const MAX_TITLE = 200
@@ -336,6 +341,8 @@ export type DailyLogFollowUpDraft = {
   readonly contacts: readonly DailyLogClientContactRow[]
   /** The crew dismissed the "log it as client contact?" suggestion. */
   readonly suggestionDismissed: boolean
+  /** Selections ticked as installed. Missing on drafts saved before this existed. */
+  readonly installed?: readonly string[]
 }
 
 export const EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT: DailyLogFollowUpDraft = {
@@ -419,7 +426,7 @@ export function followUpsFromDraft(
         followUpTodo: row.followUpTodo,
       }))
     : []
-  return { todoUpdates, newTodos, clientContacts }
+  return { todoUpdates, newTodos, clientContacts, installedSelectionIds: [...(draft.installed ?? [])] }
 }
 
 export function emptyClientContactRow(key: string, contactId = "", interactionType: DailyLogInteractionType = "call"): DailyLogClientContactRow {

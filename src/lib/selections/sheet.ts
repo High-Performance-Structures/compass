@@ -4,7 +4,7 @@
  * allowance, the status groups behind the filter buttons, and search. Pure:
  * no React, database or network access.
  */
-import type { ProjectSelectionStatus } from "@/lib/domain/selections/statuses"
+import { PROJECT_SELECTION_STATUS_LABELS, type ProjectSelectionStatus } from "@/lib/domain/selections/statuses"
 
 export type SelectionSheetInput = {
   readonly selections: readonly {
@@ -137,18 +137,8 @@ const GROUP_BY_STATUS: Readonly<Record<ProjectSelectionStatus, SelectionStatusGr
   deferred: "deferred",
 }
 
-export const SELECTION_STATUS_LABELS: Readonly<Record<ProjectSelectionStatus, string>> = {
-  needed: "Needed",
-  proposed: "Proposed",
-  owner_review: "With owner",
-  approved: "Approved",
-  pricing: "Pricing",
-  rfq_sent: "RFQ sent",
-  ordered: "Ordered",
-  installed: "Installed",
-  unavailable: "Unavailable",
-  deferred: "Deferred",
-}
+/** The shared status labels (one list for every selections screen). */
+export const SELECTION_STATUS_LABELS = PROJECT_SELECTION_STATUS_LABELS
 
 export function selectionStatusGroup(status: ProjectSelectionStatus): SelectionStatusGroup {
   return GROUP_BY_STATUS[status]

@@ -1,5 +1,6 @@
 "use client"
 
+import { PROJECT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/statuses"
 import { ProjectDriveFilePicker } from "@/components/projects/project-drive-file-picker"
 import { withPickedFiles } from "@/lib/files/picked-files"
 import * as React from "react"
@@ -149,10 +150,7 @@ function newDocumentLink(): DraftRfqDocumentLink {
 }
 
 function selectionStatusLabel(status: ProjectSelectionItem["status"]): string {
-  return status
-    .split("_")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ")
+  return PROJECT_SELECTION_STATUS_LABELS[status]
 }
 
 function flattenSelections(

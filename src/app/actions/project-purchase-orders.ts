@@ -1,5 +1,6 @@
 "use server"
 
+import { advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -429,13 +430,22 @@ export async function sendPurchaseOrderEmail(
       }
     }
 
+    const sentStatus = purchaseOrderStatusAfterEmail(operation.status)
     await updateOperationById(db, purchaseOrderId, {
-      status: purchaseOrderStatusAfterEmail(operation.status),
+      status: sentStatus,
       sagePayloadJson: withPortalPurchaseOrderRecipients(operation.sagePayloadJson, [...to, ...cc]),
       updatedAt: new Date().toISOString(),
     })
     // Freeze a dated copy of exactly what the vendor received.
     await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
+    // The vendor has the PO: its selections move to Ordered.
+    await advanceSelectionsForPurchaseOrder(db, {
+      projectId,
+      purchaseOrderId,
+      purchaseOrderNumber: operation.sourceRecordNumber,
+      status: sentStatus,
+      actor: user,
+    })
     await recordActivityEvent({
       db,
       organizationId: orgId,

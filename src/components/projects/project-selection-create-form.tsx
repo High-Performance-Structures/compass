@@ -1,5 +1,6 @@
 "use client"
 
+import { PROJECT_SELECTION_STATUS_OPTIONS } from "@/lib/domain/selections/statuses"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { IconCheck, IconLoader2, IconPalette, IconPlus, IconTemplate } from "@tabler/icons-react"
@@ -35,21 +36,7 @@ type FormState =
   | { readonly kind: "saved" }
   | { readonly kind: "error"; readonly message: string }
 
-const STATUS_OPTIONS: readonly {
-  readonly value: ProjectSelectionStatus
-  readonly label: string
-}[] = [
-  { value: "needed", label: "Needed" },
-  { value: "proposed", label: "Proposed" },
-  { value: "owner_review", label: "Owner review" },
-  { value: "approved", label: "Approved" },
-  { value: "pricing", label: "Pricing" },
-  { value: "rfq_sent", label: "RFQ sent" },
-  { value: "ordered", label: "Ordered" },
-  { value: "installed", label: "Installed" },
-  { value: "unavailable", label: "Unavailable" },
-  { value: "deferred", label: "Deferred" }
-]
+const STATUS_OPTIONS = PROJECT_SELECTION_STATUS_OPTIONS
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"

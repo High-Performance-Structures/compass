@@ -1,5 +1,6 @@
 "use client"
 
+import { PROJECT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/statuses"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -62,29 +63,7 @@ function sourceLabel(selection: ProjectSelectionItem): string {
 }
 
 function selectionStatusLabel(status: ProjectSelectionItem["status"]): string {
-  switch (status) {
-    case "proposed":
-      return "Proposed"
-    case "owner_review":
-      return "Owner review"
-    case "approved":
-      return "Approved"
-    case "pricing":
-      return "Pricing"
-    case "rfq_sent":
-      return "RFQ sent"
-    case "ordered":
-      return "Ordered"
-    case "installed":
-      return "Installed"
-    case "unavailable":
-      return "Unavailable"
-    case "deferred":
-      return "Deferred"
-    case "needed":
-    default:
-      return "Needed"
-  }
+  return PROJECT_SELECTION_STATUS_LABELS[status]
 }
 
 function buildCostCodeMap(
