@@ -39,7 +39,7 @@ import { projectContactAddress } from "@/lib/project-contact-privacy"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 
-import { normalizeEmailKey } from "./rules"
+import { normalizeEmailKey, PROJECT_CONTACT_DIRECTORY_REQUIRED } from "./rules"
 import {
   clearProjectPrimaryContact,
   insertProjectContact,
@@ -123,6 +123,11 @@ export function projectContactInputError(input: ProjectContactMutationInput): st
   }
   if (input.contactType === "internal" && input.directorySourceType !== null && input.directorySourceType !== "team") {
     return "Choose an internal directory contact."
+  }
+  // A new contact always comes from the directory. Existing unlinked rows
+  // stay editable until they are connected.
+  if (!input.contactId && (!input.directorySourceType || !input.directorySourceId)) {
+    return PROJECT_CONTACT_DIRECTORY_REQUIRED
   }
   return null
 }

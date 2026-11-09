@@ -8,12 +8,12 @@ import {
   IconTrashX,
   IconUsersGroup,
 } from "@tabler/icons-react"
+import Link from "next/link"
 
 import {
   addIndependentContactToProjectFromReview,
   approveContactSourceLink,
   assignContactSourceLink,
-  createContactFromSourceLink,
   ignoreContactSourceLink,
   restoreContactSourceLink,
   updateProjectContactTypeFromReview,
@@ -56,14 +56,6 @@ async function addIndependentContactToProjectForm(
   "use server"
 
   await addIndependentContactToProjectFromReview(formData)
-}
-
-async function createContactFromSourceLinkForm(
-  formData: FormData
-): Promise<void> {
-  "use server"
-
-  await createContactFromSourceLink(formData)
 }
 
 async function ignoreContactSourceLinkForm(formData: FormData): Promise<void> {
@@ -269,11 +261,10 @@ function AssignContactForm({
   )
 }
 
-function CreateContactForm({
-  projectId,
+/** Unmatched rows are never turned into contacts here: the person is added in Contacts first. */
+function NotInDirectoryHint({
   group,
 }: {
-  readonly projectId: string
   readonly group: SourceLinkGroup
 }): React.ReactElement {
   if (group.primary.matchStatus !== "unmatched") {
@@ -281,28 +272,13 @@ function CreateContactForm({
   }
 
   return (
-    <form
-      action={createContactFromSourceLinkForm}
-      data-contact-review-form="true"
-      className="flex flex-col gap-2 sm:flex-row"
-    >
-      <input type="hidden" name="projectId" value={projectId} />
-      <LinkIdInputs links={group.links} />
-      <Select name="contactType" defaultValue="subcontractor">
-        <SelectTrigger aria-label="New contact type" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="subcontractor">New subcontractor</SelectItem>
-          <SelectItem value="supplier">New supplier</SelectItem>
-          <SelectItem value="owner">New owner contact</SelectItem>
-        </SelectContent>
-      </Select>
-      <Button type="submit" size="sm" variant="secondary">
-        <IconLink />
-        Create contact
-      </Button>
-    </form>
+    <p className="text-xs text-muted-foreground">
+      Not in the directory?{" "}
+      <Link href="/dashboard/contacts" className="underline underline-offset-2">
+        Add them in Contacts
+      </Link>
+      , then add them here from the directory.
+    </p>
   )
 }
 
@@ -461,7 +437,7 @@ function MatchReviewGroupRow({
                 group={group}
                 independentContacts={independentContacts}
               />
-              <CreateContactForm projectId={projectId} group={group} />
+              <NotInDirectoryHint group={group} />
               <UpdateContactTypeForm projectId={projectId} link={link} />
             </>
           )}

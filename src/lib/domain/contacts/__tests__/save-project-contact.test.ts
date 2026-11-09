@@ -17,6 +17,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { PROJECT_CONTACT_DIRECTORY_REQUIRED } from "@/lib/domain/contacts/rules"
 import type { ProjectContactMutationInput } from "@/lib/domain/contacts/types"
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn() }))
@@ -177,17 +178,12 @@ describe("saveProjectContact", () => {
     expect(sqlite.prepare("SELECT email FROM vendor_contacts WHERE id = 'person-1'").get()).toEqual({ email: "sam@acme.com" })
   })
 
-  it("stores typed identity for an unlinked contact and rejects a duplicate assignment", async () => {
-    const created = await saveProjectContact(input({}))
-    expect(created.success).toBe(true)
-    if (!created.success) return
-    expect(storedContact(created.contactId)).toMatchObject({
-      source_entity_type: "manual",
-      display_name: "Typed Name",
-      company_name: "Typed Co",
-      email: "typed@example.com",
-      phone: null,
+  it("refuses a new contact that is not in the directory and rejects a duplicate assignment", async () => {
+    expect(await saveProjectContact(input({}))).toEqual({
+      success: false,
+      error: PROJECT_CONTACT_DIRECTORY_REQUIRED,
     })
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM project_contacts").get()).toEqual({ n: 0 })
 
     const vendorInput = input({
       contactType: "subcontractor",
@@ -202,6 +198,22 @@ describe("saveProjectContact", () => {
     })
   })
 
+  it("keeps an existing unlinked contact editable", async () => {
+    insert("project_contacts", {
+      id: "legacy-1",
+      project_id: "project-1",
+      contact_type: "owner",
+      source_system: "compass",
+      source_entity_type: "manual",
+      display_name: "Typed Name",
+      active: 1,
+      created_at: NOW,
+      updated_at: NOW,
+    })
+    expect(await saveProjectContact(input({ contactId: "legacy-1", phone: "555" }))).toEqual({ success: true, contactId: "legacy-1" })
+    expect(storedContact("legacy-1")).toMatchObject({ source_entity_type: "manual", email: "typed@example.com", phone: "555" })
+  })
+
   it("keeps the existing validation messages", async () => {
     expect(await saveProjectContact(input({ contactType: "subcontractor" }))).toEqual({
       success: false,
@@ -214,7 +226,9 @@ describe("saveProjectContact", () => {
   })
 
   it("removes a contact by hiding it", async () => {
-    const created = await saveProjectContact(input({}))
+    const created = await saveProjectContact(
+      input({ contactType: "subcontractor", directorySourceType: "vendor", directorySourceId: "vendor-1", vendorContactId: "person-1" })
+    )
     if (!created.success) throw new Error(created.error)
     expect(await removeProjectContact("project-1", created.contactId)).toEqual({ success: true, contactId: created.contactId })
     expect(storedContact(created.contactId)).toMatchObject({ active: 0, owner_portal_visible: 0, internal_visible: 0 })

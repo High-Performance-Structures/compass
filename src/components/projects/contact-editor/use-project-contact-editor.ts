@@ -95,8 +95,12 @@ export function useProjectContactEditor({
   // A directory-linked contact's details are edited in Contacts. A
   // standalone contact who accepted a Compass invitation stays editable here
   // except for the email they sign in with (owner decision 2026-11-04).
+  // A new contact is always picked from (or first added to) the directory,
+  // so its details are never typed here.
   const identityReadOnly =
-    selectedDirectory !== null || (identityManagedByActiveUser && input.directorySourceType !== null)
+    !isEditing || selectedDirectory !== null || (identityManagedByActiveUser && input.directorySourceType !== null)
+  // Save stays off until a new contact names a directory record.
+  const needsDirectorySelection = !isEditing && (!input.directorySourceType || !input.directorySourceId)
   const signInEmailLocked = !identityReadOnly && identityManagedByActiveUser
 
   function updateInput<Key extends keyof ProjectContactMutationInput>(
@@ -224,6 +228,7 @@ export function useProjectContactEditor({
     identityManagedByActiveUser,
     identityReadOnly,
     signInEmailLocked,
+    needsDirectorySelection,
     resetEditor,
     refreshDirectory,
     applyDirectoryOption,

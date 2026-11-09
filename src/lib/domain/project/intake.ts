@@ -289,6 +289,11 @@ export async function resolveIntakeAssignee(
           intakeAssigneeName(candidate).toLowerCase() === assignedTo.toLowerCase()
       ) ?? null
     : null
+  // The project manager becomes a job contact, so it must be a staff member
+  // from the directory; a typed name would be an unlinked contact.
+  if (assignedTo && !assignee) {
+    return { ok: false, error: "Choose the project manager from active staff. Add new staff in Contacts first." }
+  }
   const projectManagerName = assignee ? intakeAssigneeName(assignee) : assignedTo
   const assigneeDirectory = assignee
     ? await db
@@ -422,7 +427,7 @@ export function intakeRecordStatements(
 ): readonly [Statement, ...Statement[]] {
   const { ids, organizationId, projectNumber, department, customerValues, customerMatch, now } = input
   const { projectId } = ids
-  const { assignedTo, assignee, assigneeDirectory, assigneeDirectoryId, projectManagerName } = input.assignee
+  const { assignee, assigneeDirectory, assigneeDirectoryId, projectManagerName } = input.assignee
   // A new client is written before the project, because the project links to
   // it by foreign key (projects.client_customer_id).
   const projectInsert = insertProjectStatement(db, {
@@ -496,34 +501,32 @@ export function intakeRecordStatements(
       createdAt: now,
       updatedAt: now,
     }),
-    ...(assignedTo && ids.internalContactId
+    ...(assignee && assigneeDirectoryId && ids.internalContactId
       ? [
           insertProjectContactStatement(db, {
             id: ids.internalContactId,
             projectId,
             contactType: "internal",
-            sourceSystem: assignee ? "internal_directory" : "compass_project_intake",
-            sourceRecordId: assigneeDirectoryId ?? projectId,
-            sourceEntityType: assignee ? "internal_contact" : "manual",
+            sourceSystem: "internal_directory",
+            sourceRecordId: assigneeDirectoryId,
+            sourceEntityType: "internal_contact",
             sourceEntityId: assigneeDirectoryId,
             internalContactId: assigneeDirectoryId,
-            displayName: assigneeDirectory?.name ?? projectManagerName ?? assignedTo,
+            displayName: assigneeDirectory?.name ?? projectManagerName ?? assignee.email,
             companyName: null,
             role: "Project manager",
-            email: assigneeDirectory?.email ?? assignee?.email ?? null,
-            phone: assigneeDirectory?.phone ?? assignee?.phone ?? null,
+            email: assigneeDirectory?.email ?? assignee.email,
+            phone: assigneeDirectory?.phone ?? assignee.phone,
             address: null,
-            notes: assignee
-              ? null
-              : "Typed project intake assignment; match this contact to an active team member when available.",
+            notes: null,
             ownerPortalVisible: true,
             subVendorPortalVisible: true,
             internalVisible: true,
             primaryContact: true,
             active: true,
             sortOrder: 200,
-            syncStatus: assignee ? "synced" : "manual",
-            lastSyncedAt: assignee ? now : null,
+            syncStatus: "synced",
+            lastSyncedAt: now,
             createdAt: now,
             updatedAt: now,
           }),

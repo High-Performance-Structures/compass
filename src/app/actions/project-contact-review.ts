@@ -9,7 +9,6 @@ import {
   approveSourceLinksForProject,
   assignSourceLinksToContact,
   changeContactTypeFromReview,
-  createContactFromSourceLinks,
   ignoreSourceLinks,
   loadProjectContactMatchReview,
   restoreSourceLinks,
@@ -114,21 +113,6 @@ export async function assignContactSourceLink(
         projectId,
         linkIds: requireLinkIds(formData),
         projectContactId: requireStringField(formData, "projectContactId"),
-      })
-  )
-}
-
-export async function createContactFromSourceLink(
-  formData: FormData
-): Promise<ContactMatchResult> {
-  return reviewMutation(
-    formData,
-    { log: "Failed to create contact from source link", error: "Failed to create project contact" },
-    (db, projectId) =>
-      createContactFromSourceLinks(db, {
-        projectId,
-        linkIds: requireLinkIds(formData),
-        contactType: toWritableContactType(requireStringField(formData, "contactType")),
       })
   )
 }

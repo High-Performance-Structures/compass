@@ -228,64 +228,6 @@ export async function assignSourceLinksToContact(
   return { success: true }
 }
 
-/** A new project contact, pending Sage review, built from the selected rows. */
-export async function createContactFromSourceLinks(
-  db: Db,
-  input: { readonly projectId: string; readonly linkIds: readonly string[]; readonly contactType: ProjectContactType }
-): Promise<ContactMatchResult> {
-  const links = await selectedLinks(db, input.projectId, input.linkIds)
-  if (links.length !== input.linkIds.length) return { success: false, error: "Source link not found" }
-
-  const now = new Date().toISOString()
-  const link = links[0]
-  if (!link) return { success: false, error: "Source link not found" }
-  const contactId = crypto.randomUUID()
-  const isExternal = isExternalContactType(input.contactType)
-
-  await insertProjectContact(db, {
-    id: contactId,
-    projectId: input.projectId,
-    contactType: input.contactType,
-    sourceSystem: "compass_review",
-    sourceRecordId: link.id,
-    sourceEntityType: "manual_pending_sage",
-    sourceEntityId: null,
-    displayName: link.sourceName,
-    companyName: isExternal ? link.sourceName : null,
-    role: reviewRoleForContactType(input.contactType),
-    trade: null,
-    csiDivision: null,
-    csiDivisionName: null,
-    primaryCostCode: null,
-    email: null,
-    phone: null,
-    notes: `Created from Compass match review using ${links.length} source row${links.length === 1 ? "" : "s"}. First source: ${link.sourceSystem} ${link.sourceRecordType}: ${link.sourceLabel}`,
-    ownerPortalVisible: false,
-    subVendorPortalVisible: isExternal,
-    internalVisible: true,
-    primaryContact: false,
-    active: true,
-    sortOrder: 800,
-    syncStatus: "needs_sage_review",
-    lastSyncedAt: null,
-    createdAt: now,
-    updatedAt: now,
-  })
-
-  await setSourceLinkMatch(db, {
-    projectId: input.projectId,
-    linkIds: input.linkIds,
-    match: {
-      projectContactId: contactId,
-      matchStatus: "matched",
-      matchConfidence: 1,
-      matchReason: "Created as a Compass project contact from match review.",
-      updatedAt: now,
-    },
-  })
-  return { success: true }
-}
-
 export async function changeContactTypeFromReview(
   db: Db,
   input: { readonly projectId: string; readonly projectContactId: string; readonly contactType: ProjectContactType }
