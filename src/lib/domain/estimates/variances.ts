@@ -26,6 +26,7 @@ import {
   isInsuranceLine,
   nextChangeOrderNumber,
   nextVarianceNumbers,
+  SELECTION_ROUND_VARIANCE_SOURCE,
   planVarianceLines,
   projectIsClosed,
   reclassificationError,
@@ -239,6 +240,8 @@ export async function createVariance(input: {
   readonly title: string
   readonly scope: string
   readonly reason: string | null
+  /** What made it, when not staff by hand (a selections round signature). */
+  readonly source?: { readonly type: typeof SELECTION_ROUND_VARIANCE_SOURCE; readonly recordId: string }
 }): Promise<VarianceResult> {
   const { db, projectId, actor } = input
   const project = await varianceProject(db, projectId)
@@ -272,7 +275,8 @@ export async function createVariance(input: {
       requesterType: "internal",
       requesterUserId: actor.id,
       requesterName: activityActorName(actor).slice(0, 200),
-      sourceType: "internal_request",
+      sourceType: input.source?.type ?? "internal_request",
+      sourceRecordId: input.source?.recordId ?? null,
       budgetTreatment: "additive",
       changeOrderKind: null,
       createdBy: actor.id,
@@ -377,7 +381,14 @@ export async function approveVariance(input: {
     contractFeeRates(db, projectId),
     projectInsuranceRule(db, projectId, project.settings),
   ])
-  const derived = derivedChangeLines({ recordType: "variance", contractType: project.contractType, lines: priced, feeRates, insurance })
+  const derived = derivedChangeLines({
+    recordType: "variance",
+    contractType: project.contractType,
+    lines: priced,
+    feeRates,
+    insurance,
+    feeIncluded: row.sourceType === SELECTION_ROUND_VARIANCE_SOURCE,
+  })
   const now = new Date().toISOString()
   const amountCents = [...priced, ...derived].reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
   const firstLineNumber = Math.max(0, ...priced.map((line) => line.lineNumber)) + 1

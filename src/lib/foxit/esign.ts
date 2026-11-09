@@ -66,9 +66,10 @@ export async function createFoxitPreparedEnvelope(input: {
   readonly fields: readonly FoxitEnvelopeField[]
   readonly successUrl: string
   readonly errorUrl: string
-  readonly estimateId: string
+  readonly estimateId?: string
   readonly contractPacketId?: string
   readonly tradeLetterId?: string
+  readonly selectionRoundSignatureId?: string
   readonly sourceHash: string
   /** Signers sign one after another, in `sequence` order. */
   readonly signInSequence?: boolean
@@ -111,11 +112,12 @@ export async function createFoxitPreparedEnvelope(input: {
       sendSuccessUrl: input.successUrl,
       sendErrorUrl: input.errorUrl,
       metadata: {
-        compassEstimateId: input.estimateId,
+        ...(input.estimateId ? { compassEstimateId: input.estimateId } : {}),
         ...(input.contractPacketId
           ? { compassContractPacketId: input.contractPacketId }
           : {}),
         ...(input.tradeLetterId ? { compassTradeLetterId: input.tradeLetterId } : {}),
+        ...(input.selectionRoundSignatureId ? { compassSelectionRoundSignatureId: input.selectionRoundSignatureId } : {}),
         compassSourceHash: input.sourceHash,
       },
     }),

@@ -23,7 +23,7 @@ import { RecordStatusBadge } from "@/components/record-status-badge"
 import { SelectionChoiceCard } from "@/components/selections/selection-choice-card"
 import { SelectionChoiceForm } from "@/components/selections/selection-choice-form"
 import { SelectionComments } from "@/components/selections/selection-comments"
-import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog } from "@/components/selections/selection-detail-dialogs"
+import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialog } from "@/components/selections/selection-detail-dialogs"
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
@@ -45,6 +45,7 @@ type Dialogs =
   | { readonly kind: "link"; readonly choice: SelectionChoiceView | null }
   | { readonly kind: "photos"; readonly choice: SelectionChoiceView | null }
   | { readonly kind: "followUps"; readonly choice: SelectionChoiceView }
+  | { readonly kind: "pick"; readonly choice: SelectionChoiceView }
   | { readonly kind: "price" }
 
 /** A to-do for this selection, made in place: title and an optional due date. */
@@ -220,7 +221,7 @@ export function SelectionDetailPanel({
                       followUpNames={choice.dependentSelectionIds.flatMap((id) => names.get(id) ?? [])}
                       busy={pending}
                       onEdit={() => setDialog({ kind: "choice", choice })}
-                      onTogglePick={() => run(() => setSelectionChoiceChosen(projectId, choice.id, !choice.chosen))}
+                      onTogglePick={() => (choice.chosen ? run(() => setSelectionChoiceChosen(projectId, choice.id, false)) : setDialog({ kind: "pick", choice }))}
                       onAddLink={() => setDialog({ kind: "link", choice })}
                       onAttachPhotos={() => setDialog({ kind: "photos", choice })}
                       onFollowUps={() => setDialog({ kind: "followUps", choice })}
@@ -361,6 +362,16 @@ export function SelectionDetailPanel({
         onOpenChange={(open) => !open && setDialog({ kind: "none" })}
         onSaved={reload}
       />
+      {dialog.kind === "pick" && (
+        <PickForOwnerDialog
+          projectId={projectId}
+          choiceId={dialog.choice.id}
+          choiceTitle={dialog.choice.title}
+          open
+          onOpenChange={(open) => !open && setDialog({ kind: "none" })}
+          onSaved={reload}
+        />
+      )}
       {dialog.kind === "followUps" && (
         <FollowUpsDialog
           projectId={projectId}

@@ -13,6 +13,7 @@ import {
   detachSelectionPhoto,
   getAttachableSelectionPhotos,
   setChoiceDependentSelections,
+  setSelectionChoiceChosen,
 } from "@/app/actions/selection-choices"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -298,6 +299,74 @@ export function FollowUpsDialog({
           </Button>
           <Button type="button" disabled={pending} onClick={save}>
             Save follow-ups
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Staff marking the owner's pick for them, with an optional note such as "per phone call". */
+export function PickForOwnerDialog({
+  projectId,
+  choiceId,
+  choiceTitle,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  readonly projectId: string
+  readonly choiceId: string
+  readonly choiceTitle: string
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+  readonly onSaved: () => void
+}): React.ReactElement {
+  const [note, setNote] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
+  const [pending, startTransition] = React.useTransition()
+  const inputId = React.useId()
+
+  React.useEffect(() => {
+    if (open) {
+      setNote("")
+      setError(null)
+    }
+  }, [open])
+
+  function submit(event: React.FormEvent): void {
+    event.preventDefault()
+    startTransition(async () => {
+      const result = await setSelectionChoiceChosen(projectId, choiceId, true, "staff", note)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      onOpenChange(false)
+      onSaved()
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Mark the owner&apos;s pick</DialogTitle>
+          <DialogDescription>
+            Records that you picked {choiceTitle} for the owner, with your name and today&apos;s date. The owner still signs for the round.
+          </DialogDescription>
+        </DialogHeader>
+        <form id={inputId} onSubmit={submit} className="grid gap-1.5">
+          <Label htmlFor={`${inputId}-note`}>Note (optional)</Label>
+          <Input id={`${inputId}-note`} value={note} maxLength={500} placeholder="e.g. per phone call" onChange={(event) => setNote(event.target.value)} />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" form={inputId} disabled={pending}>
+            Mark as owner&apos;s pick
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -24,3 +24,10 @@ export type SelectionCommentVisibility = (typeof SELECTION_COMMENT_VISIBILITIES)
 export const SELECTION_AUTHOR_AUDIENCES = ["staff", "owner"] as const
 export type SelectionAuthorAudience = (typeof SELECTION_AUTHOR_AUDIENCES)[number]
 
+
+/** Where an owner signature for a selections round stands (Foxit e-sign). */
+export const SELECTION_ROUND_SIGNATURE_STATUSES = ["preparing", "sent", "signed", "declined", "cancelled"] as const
+export type SelectionRoundSignatureStatus = (typeof SELECTION_ROUND_SIGNATURE_STATUSES)[number]
+
+/** How a round's over/under the allowance changes the contract when the owner signs. */
+export const SELECTION_OVERAGE_TREATMENTS = ["none", "variance", "change_order"] as const

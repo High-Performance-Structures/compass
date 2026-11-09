@@ -80,7 +80,7 @@ export function selectionColumns(roundNames: ReadonlyMap<string, string> = new M
     {
       id: "round",
       accessorFn: (row) => roundName(row)?.toLocaleLowerCase(),
-      header: "Round",
+      header: "Selection Phase",
       size: 120,
       cell: ({ row: { original } }) => <span className="break-words">{roundName(original) ?? <span className="text-muted-foreground">—</span>}</span>,
     },
@@ -182,6 +182,7 @@ export function SelectionsSheet({
         <ChoiceTemplatesDialog projectId={projectId} />
       </div>
       <SelectionRoundCards
+        projectId={projectId}
         rounds={rounds}
         selected={round}
         onSelect={setRound}

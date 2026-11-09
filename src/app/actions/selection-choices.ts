@@ -1,6 +1,10 @@
 "use server"
 
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+
+import { projectFinishSelections } from "@/db/schema"
+import { projectSelectionChoices } from "@/db/schema-selection-choices"
 
 import { actionFailure, errorMessage, type ActionFailure, type ActionResult } from "@/lib/action-result"
 import { selectionAccess, staffSelectionContext } from "@/lib/domain/selections/access"
@@ -32,7 +36,9 @@ import {
   type SelectionChoicesPanel,
 } from "@/lib/domain/selections/choices-read"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
+import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
+import { updateFinishSelections } from "@/lib/domain/selections/store"
 import {
   loadDraftRfqOptions,
   loadSelectionRfqs,
@@ -102,6 +108,16 @@ async function staffChoice(projectId: string, choiceId: string) {
   const choice = await choiceInProject(context.db, projectId, choiceId)
   if (!choice) throw new Error("Choice not found")
   return { ...context, choice }
+}
+
+/** The selection's current pick, or null. */
+async function currentPickId(db: Awaited<ReturnType<typeof staffSelectionContext>>["db"], selectionId: string): Promise<string | null> {
+  const row = await db
+    .select({ id: projectSelectionChoices.id })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.selectionId, selectionId), eq(projectSelectionChoices.chosen, true)))
+    .get()
+  return row?.id ?? null
 }
 
 // ---- reads
@@ -241,7 +257,14 @@ export async function reorderSelectionChoices(projectId: string, selectionId: st
  * Staff can set it at any time; the owner can change their pick on a
  * selection published to them until it is approved.
  */
-export async function setSelectionChoiceChosen(projectId: string, choiceId: string, chosen: boolean, audience: Audience = "staff"): Promise<Done> {
+export async function setSelectionChoiceChosen(
+  projectId: string,
+  choiceId: string,
+  chosen: boolean,
+  audience: Audience = "staff",
+  /** Staff picking for the owner can say why (e.g. "per phone call"). */
+  note: string | null = null,
+): Promise<Done> {
   try {
     if (audience === "owner") {
       const access = await selectionAccess(projectId, "owner", true)
@@ -250,13 +273,31 @@ export async function setSelectionChoiceChosen(projectId: string, choiceId: stri
       if (await selectionApprovedByOwner(access.db, projectId, choice.selectionId)) {
         return { success: false, error: "This selection is already approved. Ask your builder to reopen it." }
       }
-      await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString())
+      if (await selectionPickIsSigned(access.db, choice.selectionId, await currentPickId(access.db, choice.selectionId))) {
+        return { success: false, error: "You've signed for this selection. Ask your builder to change it." }
+      }
+      await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString(), { userId: access.user.id, audience: "owner", note: null })
       await checkRoundsReady(access.db, projectId, access.user.id)
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
     const { db, choice, user } = await staffChoice(projectId, choiceId)
-    await setChosenRow(db, choice.selectionId, choiceId, chosen, new Date().toISOString())
+    const before = await currentPickId(db, choice.selectionId)
+    const wasSigned = await selectionPickIsSigned(db, choice.selectionId, before)
+    const now = new Date().toISOString()
+    await setChosenRow(db, choice.selectionId, choiceId, chosen, now, {
+      userId: user.id,
+      audience: "staff",
+      note: note?.trim().slice(0, 500) || null,
+    })
+    // Changing a signed pick reopens just this selection; the next round signature covers it.
+    if (wasSigned && (!chosen || before !== choiceId)) {
+      await updateFinishSelections(
+        db,
+        and(eq(projectFinishSelections.id, choice.selectionId), eq(projectFinishSelections.projectId, projectId)),
+        { status: "owner_review", ownerApproved: false, approvedBy: null, approvedAt: null, updatedAt: now },
+      )
+    }
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }

@@ -26,6 +26,7 @@ import { contractVersionBaseline } from "@/lib/change-orders/contract-version-ac
 import { announceEsignOutcome } from "@/lib/esign/announce"
 import { findTradeLetterByEnvelope } from "@/lib/trade-letters/server"
 import { handleTradeLetterEvent } from "@/lib/trade-letters/webhook"
+import { findRoundSignatureByEnvelope, handleRoundSignatureEvent } from "@/lib/domain/selections/round-signing"
 
 function objectValue(value: unknown): object | null {
   return value && typeof value === "object" ? value : null
@@ -90,6 +91,11 @@ export async function POST(request: Request): Promise<Response> {
   const db = getDb(env.DB)
   const letter = await findTradeLetterByEnvelope(db, envelopeId)
   if (letter) return handleTradeLetterEvent({ db, env, letter, event })
+  const roundSignature = await findRoundSignatureByEnvelope(db, envelopeId)
+  if (roundSignature) {
+    await handleRoundSignatureEvent({ db, env, signature: roundSignature, event })
+    return Response.json({ success: true })
+  }
   const packetRows = await db
     .select()
     .from(contractPackets)

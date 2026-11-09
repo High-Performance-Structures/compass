@@ -90,14 +90,14 @@ describe("rounds", () => {
     const faucetChoice = await choice("faucet", "Brass")
     let sheet = await getSelectionSheet("p1")
     expect(sheet.rounds).toEqual([
-      { key: "rough-in", name: "Rough-in", dueDate: "2026-12-04", alerted: false, total: 2, chosen: 0, deltaCents: 0, ready: false },
+      { key: "rough-in", name: "Rough-in", dueDate: "2026-12-04", alerted: false, signature: null, total: 2, chosen: 0, deltaCents: 0, ready: false },
     ])
 
     await setSelectionChoiceChosen("p1", tileChoice, true)
     expect(mocks.notify).not.toHaveBeenCalled()
     await setSelectionChoiceChosen("p1", faucetChoice, true)
     expect(mocks.notify).toHaveBeenCalledTimes(1)
-    expect(mocks.notify.mock.calls[0]?.[0]).toMatchObject({ projectId: "p1", eventType: "selection_round_ready", title: "Rough-in selections ready to finalize" })
+    expect(mocks.notify.mock.calls[0]?.[0]).toMatchObject({ projectId: "p1", eventType: "selection_round_ready", title: "Selection Phase Rough-in ready to finalize" })
     sheet = await getSelectionSheet("p1")
     expect(sheet.rounds[0]).toMatchObject({ chosen: 2, ready: true, alerted: true })
 

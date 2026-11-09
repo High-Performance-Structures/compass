@@ -241,9 +241,17 @@ export function contractInsuranceRate(
  *   the record, unless the record already has an insurance line.
  * Lines already derived are ignored, so approving again recomputes them.
  */
+/**
+ * A variance made by an owner's selections signature. Its lines are priced at
+ * owner prices, which already include the builder fee, so no fee is added.
+ */
+export const SELECTION_ROUND_VARIANCE_SOURCE = "selection_round"
+
 export function derivedChangeLines(input: {
   readonly recordType: ChangeOrderRecordType
   readonly contractType: ProjectContractType
+  /** The lines already include the builder fee (selection-round variances); only insurance is added. */
+  readonly feeIncluded?: boolean
   readonly lines: readonly {
     readonly costCode: string | null
     readonly description: string
@@ -255,7 +263,7 @@ export function derivedChangeLines(input: {
 }): readonly DerivedChangeLine[] {
   const priced = input.lines.filter((line) => line.derivedFrom === null)
   const derived: DerivedChangeLine[] = []
-  if (input.recordType === "variance" && feeFollowsVariances(input.contractType)) {
+  if (input.recordType === "variance" && feeFollowsVariances(input.contractType) && !input.feeIncluded) {
     const baseCents = priced
       .filter((line) => !(line.costCode && isBuilderFeeCostCode(line.costCode)) && !isInsuranceLine(line, input.insurance))
       .reduce((sum, line) => sum + (line.amountCents ?? 0), 0)

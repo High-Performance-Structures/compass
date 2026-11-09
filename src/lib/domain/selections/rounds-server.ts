@@ -11,7 +11,7 @@
  */
 import { asc, eq } from "drizzle-orm"
 
-import { projectSelectionRoundAlerts } from "@/db/schema-selection-choices"
+import { projectSelectionRoundAlerts, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projects, scheduleTasks } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { SelectionRound } from "@/lib/feature-settings/selection-settings"
@@ -21,6 +21,7 @@ import type { SelectionSheetRow } from "@/lib/selections/sheet"
 import type { Db } from "@/lib/server/action-context"
 
 import { loadSelectionSheet } from "./selection-sheet-read"
+import type { SelectionRoundSignatureStatus } from "./statuses"
 import { clearRoundAlerts, recordRoundAlert } from "./template-store"
 
 export type RoundCard = RoundProgress & {
@@ -29,6 +30,8 @@ export type RoundCard = RoundProgress & {
   readonly dueDate: string | null
   /** Staff were already told it is ready to finalize. */
   readonly alerted: boolean
+  /** The round's latest owner signature, if any. */
+  readonly signature: { readonly status: SelectionRoundSignatureStatus; readonly at: string } | null
 }
 
 function cards(
@@ -36,6 +39,7 @@ function cards(
   rows: readonly SelectionSheetRow[],
   schedule: readonly { readonly title: string; readonly startDate: string }[],
   alerted: ReadonlySet<string>,
+  signatures: ReadonlyMap<string, RoundCard["signature"]>,
 ): readonly RoundCard[] {
   const selections = rows.map((row) => ({ roundKey: row.roundKey, hasPick: row.pickTitle !== null, deltaCents: row.deltaCents }))
   return rounds.map((round) => ({
@@ -43,6 +47,7 @@ function cards(
     name: round.name,
     dueDate: roundDueDate(round, schedule),
     alerted: alerted.has(round.id),
+    signature: signatures.get(round.id) ?? null,
     ...roundProgress(round.id, selections),
   }))
 }
@@ -54,7 +59,7 @@ export async function loadRoundCards(
   organizationId: string,
   rows?: readonly SelectionSheetRow[],
 ): Promise<readonly RoundCard[]> {
-  const [settings, sheet, schedule, alerts] = await Promise.all([
+  const [settings, sheet, schedule, alerts, signatureRows] = await Promise.all([
     readFeatureSettings(db, organizationId, "selections"),
     rows ? Promise.resolve(rows) : loadSelectionSheet(db, projectId),
     db
@@ -63,8 +68,19 @@ export async function loadRoundCards(
       .where(eq(scheduleTasks.projectId, projectId))
       .orderBy(asc(scheduleTasks.startDate)),
     db.select({ roundKey: projectSelectionRoundAlerts.roundKey }).from(projectSelectionRoundAlerts).where(eq(projectSelectionRoundAlerts.projectId, projectId)),
+    db
+      .select({
+        roundKey: projectSelectionRoundSignatures.roundKey,
+        status: projectSelectionRoundSignatures.status,
+        at: projectSelectionRoundSignatures.updatedAt,
+      })
+      .from(projectSelectionRoundSignatures)
+      .where(eq(projectSelectionRoundSignatures.projectId, projectId))
+      .orderBy(asc(projectSelectionRoundSignatures.createdAt)),
   ])
-  return cards(settings.rounds, sheet, schedule, new Set(alerts.map((alert) => alert.roundKey)))
+  // Later signatures replace earlier ones for each round.
+  const latest = new Map(signatureRows.map((row) => [row.roundKey, { status: row.status, at: row.at }]))
+  return cards(settings.rounds, sheet, schedule, new Set(alerts.map((alert) => alert.roundKey)), latest)
 }
 
 /**
@@ -90,8 +106,8 @@ export async function checkRoundsReady(db: Db, projectId: string, actorUserId: s
         eventType: "selection_round_ready",
         sourceType: "selection_round",
         sourceId: `${projectId}:${round.key}`,
-        title: `${round.name} selections ready to finalize`,
-        body: `Every selection in ${round.name} on ${project.name} has the owner's pick (${round.chosen} of ${round.total}). Review the picks and finalize the round.`,
+        title: `Selection Phase ${round.name} ready to finalize`,
+        body: `Every selection in the ${round.name} Selection Phase on ${project.name} has the owner's pick (${round.chosen} of ${round.total}). Review the picks and finalize the Selection Phase.`,
         href: `/dashboard/projects/${encodeURIComponent(projectId)}/selections`,
         priority: "high",
         ownerUserId: null,

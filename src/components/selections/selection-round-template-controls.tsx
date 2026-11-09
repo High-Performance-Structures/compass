@@ -90,14 +90,14 @@ export function SelectionRoundTemplateControls({
     <div className="flex flex-wrap items-end gap-2">
       {rounds.length > 0 && (
         <div className="grid min-w-44 gap-1">
-          <Label className="text-xs text-muted-foreground">Round</Label>
+          <Label className="text-xs text-muted-foreground">Phase</Label>
           <SearchableCombobox
-            ariaLabel="Round"
+            ariaLabel="Selection Phase"
             value={known && roundKey ? roundKey : NO_ROUND}
             onValueChange={chooseRound}
             disabled={pending}
-            options={[{ value: NO_ROUND, label: "No round" }, ...rounds.map((round) => ({ value: round.key, label: round.name }))]}
-            placeholder="No round"
+            options={[{ value: NO_ROUND, label: "No phase" }, ...rounds.map((round) => ({ value: round.key, label: round.name }))]}
+            placeholder="No phase"
           />
         </div>
       )}

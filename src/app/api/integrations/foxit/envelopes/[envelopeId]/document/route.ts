@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { downloadFoxitExecutedEnvelope } from "@/lib/foxit/esign"
 import { assertProjectAccess } from "@/lib/project-access"
+import { findRoundSignatureByEnvelope } from "@/lib/domain/selections/round-signing"
 import { findTradeLetterByEnvelope } from "@/lib/trade-letters/server"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -44,6 +45,7 @@ export async function GET(
           .limit(1)
     const packet = packetRows[0]
     const letter = estimate || packet ? null : await findTradeLetterByEnvelope(db, envelopeId)
+    const roundSignature = estimate || packet || letter ? null : await findRoundSignatureByEnvelope(db, envelopeId)
     // Letters to trades are internal records, for staff only.
     if (letter && !isInternalStaffRole(user.role)) {
       return new Response("Executed contract document not found.", { status: 404 })
@@ -61,7 +63,9 @@ export async function GET(
             }
           : letter?.status === "signed"
             ? { projectId: letter.projectId, fileName: `${letter.letterNumber}-signed.pdf` }
-            : null
+            : roundSignature?.status === "signed"
+              ? { projectId: roundSignature.projectId, fileName: `${roundSignature.roundNameSnapshot}-selections-signed.pdf` }
+              : null
     if (!executedDocument) {
       return new Response("Executed contract document not found.", { status: 404 })
     }
