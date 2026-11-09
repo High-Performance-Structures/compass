@@ -1,3 +1,5 @@
+// Estimates domain: saving estimate lines and their cost items, and
+// recomputing line and estimate totals on the server.
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm"
 
 import {

@@ -1,3 +1,5 @@
+// Contacts domain: the project Contacts page summary (who is on the job, their
+// invitation and account status, where each contact came from). Read only.
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm"
 
 import { customers, projectAccessInvitations, projectContacts, projectContactSourceLinks, projectMembers, users, vendors } from "@/db/schema"

@@ -1,3 +1,5 @@
+// Warranty domain: the shapes of warranty claims, their attachments and events
+// as the warranty pages receive them.
 type WarrantyClaimAttachmentItem = {
   readonly id: string
   readonly fileName: string

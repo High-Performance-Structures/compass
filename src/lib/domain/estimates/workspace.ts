@@ -1,3 +1,6 @@
+// Estimates domain: loads everything the project Estimate page shows
+// (estimates, lines, assemblies, phases) and the version comparison view. Read
+// only.
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
 
 import { projectChangeOrders, projectContacts } from "@/db/schema"

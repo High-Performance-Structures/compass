@@ -1,3 +1,5 @@
+// Estimates domain: variances (owner-requested changes billed with a fee by
+// contract type, plus liability insurance), recorded as change orders.
 import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm"
 
 import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders, projects } from "@/db/schema"

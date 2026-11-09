@@ -13,6 +13,7 @@
 		"lint": "eslint .",
 		"ui:check": "node scripts/check-ui-standards.mjs",
 		"knip": "knip",
+		"bundle:report": "node scripts/bundle-report.mjs",
 		"deploy": "bun scripts/run-with-deployment-id.mjs opennextjs-cloudflare build && bun scripts/ascii-worker-bundle.mjs && opennextjs-cloudflare deploy",
 		"upload": "bun scripts/run-with-deployment-id.mjs opennextjs-cloudflare build && bun scripts/ascii-worker-bundle.mjs && opennextjs-cloudflare upload",
 		"preview": "bun scripts/run-with-deployment-id.mjs opennextjs-cloudflare build && bun scripts/ascii-worker-bundle.mjs && opennextjs-cloudflare preview",

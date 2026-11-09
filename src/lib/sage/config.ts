@@ -1,3 +1,5 @@
+// Sage bridge: reads the Sage environment settings and reports whether the
+// bridge is configured.
 import { envValue } from "@/lib/shared/env"
 
 type SageConnectionMode = "sql-server"
