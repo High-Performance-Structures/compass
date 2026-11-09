@@ -30,6 +30,7 @@ export function EstimateLineFields({
   availableCostCodes,
   lineUsesCostBreakdown,
   taxEntityOptions,
+  allowCredit,
 }: {
   readonly line: LineDraft
   readonly setLine: Dispatch<SetStateAction<LineDraft>>
@@ -38,6 +39,8 @@ export function EstimateLineFields({
   readonly availableCostCodes: readonly ProjectEstimateCostCodeOption[]
   readonly lineUsesCostBreakdown: boolean
   readonly taxEntityOptions: readonly TaxEntityComboboxOption[]
+  /** Change-order estimates: a negative unit cost is a credit. */
+  readonly allowCredit: boolean
 }): React.ReactElement {
   return (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -133,6 +136,7 @@ export function EstimateLineFields({
                 <div className="space-y-1.5">
                 <Label htmlFor="estimateUnitCost">Unit cost</Label>
                 <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
+                {allowCredit ? <p className="text-xs text-muted-foreground">Negative for a credit, e.g. -250.</p> : null}
               </div>
                 <div className="space-y-1.5">
                 <Label htmlFor="estimateMarkup">Line markup %</Label>

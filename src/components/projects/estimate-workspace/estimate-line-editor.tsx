@@ -63,7 +63,7 @@ export function EstimateLineEditor({
     (option) => option.value === effectiveLineTaxEntityId
   )
   const linePreview = calculateEstimateLine(
-    lineDraftCalculationInput(line, effectiveLineTaxEntity?.rateBasisPoints ?? 0)
+    lineDraftCalculationInput(line, effectiveLineTaxEntity?.rateBasisPoints ?? 0, Boolean(estimate.changeOrderId))
   )
 
   function saveLine(event: FormEvent<HTMLFormElement>): void {
@@ -176,6 +176,7 @@ export function EstimateLineEditor({
                 availableCostCodes={availableCostCodes}
                 lineUsesCostBreakdown={lineUsesCostBreakdown}
                 taxEntityOptions={taxEntityOptions}
+                allowCredit={Boolean(estimate.changeOrderId)}
               />
               {!lineUsesCostBreakdown && (
                 <EstimateLinePreview

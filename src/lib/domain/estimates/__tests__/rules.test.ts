@@ -274,3 +274,20 @@ describe("estimate input rules", () => {
     expect(signerInitials("one two three four five six seven")).toBe("OTTFFS")
   })
 })
+
+describe("change-order credit lines", () => {
+  const base = { quantity: 2, unitCostCents: -12_500, markupRateBasisPoints: 1_000, taxable: false, taxRateBasisPoints: 0 }
+
+  it("keeps a negative unit cost on a change-order estimate, markup included", () => {
+    expect(calculateEstimateLine({ ...base, allowCredit: true })).toEqual({
+      directCostCents: -25_000,
+      markupCents: -2_500,
+      taxCents: 0,
+      lineTotalCents: -27_500,
+    })
+  })
+
+  it("still treats a negative unit cost as zero on other estimates", () => {
+    expect(calculateEstimateLine(base).lineTotalCents).toBe(0)
+  })
+})

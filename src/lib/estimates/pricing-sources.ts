@@ -100,7 +100,8 @@ export function takeoffTodoTitle(input: { readonly costCode: string; readonly co
 export function unpricedLinesMessage(
   lines: readonly { readonly costCode: string; readonly lineTotalCents: number }[],
 ): string | null {
-  const waiting = lines.filter((line) => line.lineTotalCents <= 0)
+  // Only $0 lines wait for a price; a negative line is a change-order credit.
+  const waiting = lines.filter((line) => line.lineTotalCents === 0)
   if (waiting.length === 0) return null
   const codes = waiting.slice(0, 5).map((line) => line.costCode).join(", ")
   const more = waiting.length > 5 ? ` and ${waiting.length - 5} more` : ""
