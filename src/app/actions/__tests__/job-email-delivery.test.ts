@@ -84,9 +84,15 @@ describe("job document emails", () => {
   it("prefills the agent and client details, then sends only to the configured agent", async () => {
     expect(await getJobEmailDraft(PROJECT, REQUEST_COI_TEMPLATE)).toMatchObject({ success: false, error: expect.stringContaining("Settings") })
     expect(await saveJobEmailDeliverySettings(settingsForm())).toMatchObject({ success: true })
+    database.sqlite.exec(`
+      UPDATE project_contacts SET primary_contact = 1 WHERE id = 'client';
+      INSERT INTO project_contacts (id, project_id, contact_type, display_name, email)
+        VALUES ('secondary-client', 'project-a', 'owner', 'Avery Lee', 'secondary@example.test');
+    `)
     const draft = await getJobEmailDraft(PROJECT, REQUEST_COI_TEMPLATE)
     if (!draft.success) throw new Error(draft.error)
     expect(draft).toMatchObject({ success: true, data: { to: [AGENT], body: expect.stringContaining(CLIENT) } })
+    expect(draft.data.body).not.toContain("secondary@example.test")
     expect(await sendJobEmail(sendForm(REQUEST_COI_TEMPLATE, CLIENT))).toMatchObject({ success: false })
     expect(mocks.deliver).not.toHaveBeenCalled()
 

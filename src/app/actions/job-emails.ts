@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
 import { projectContacts, projects } from "@/db/schema"
@@ -38,7 +38,7 @@ type Result<T> = { readonly success: true; readonly data: T } | { readonly succe
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-async function jobEmailContext(projectId: string, action: "read" | "update") {
+async function jobEmailContext(projectId: string, templateId: string, action: "read" | "update") {
   const { user, db, env } = await requireUserContext()
   if (!user.isActive || !isInternalStaffRole(user.role)) throw new Error("Job emails are available to office staff.")
   await requireFeaturePermission(user, "project-hub", action)
@@ -52,6 +52,9 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
     .get()
   if (!project) throw new Error("Project not found.")
   const department = projectDepartment({ projectId: project.id, projectNumber: project.projectNumber })
+  const clientOrder = templateId === REQUEST_COI_TEMPLATE || templateId === SEND_W9_TEMPLATE
+    ? [desc(projectContacts.primaryContact), asc(projectContacts.sortOrder), asc(projectContacts.displayName)]
+    : [asc(projectContacts.displayName)]
   const [settings, profiles, client] = await Promise.all([
     readFeatureSettings(db, organizationId, "job-emails"),
     readDepartmentProfiles(db, organizationId),
@@ -59,7 +62,7 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
       .select({ id: projectContacts.id, displayName: projectContacts.displayName, email: projectContacts.email })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-      .orderBy(asc(projectContacts.displayName))
+      .orderBy(...clientOrder)
       .limit(1)
       .get(),
   ])
@@ -109,7 +112,7 @@ async function jobDocumentRecipients(
 /** A template filled in for this job, ready to review in the composer. */
 export async function getJobEmailDraft(projectId: string, templateId: string): Promise<Result<TemplateEmailDraft>> {
   try {
-    const ctx = await jobEmailContext(projectId, "read")
+    const ctx = await jobEmailContext(projectId, templateId, "read")
     const template = jobEmailTemplate(ctx.department, templateId)
     if (!template) return { success: false, error: "Unknown email template." }
     const rendered = renderJobEmail(jobEmailTemplateText(ctx.department, template, ctx.settings.templates), ctx.context)
@@ -195,7 +198,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     const invalid = [...to, ...cc].find((address) => !EMAIL_PATTERN.test(address))
     if (invalid) return { success: false, error: `"${invalid}" is not an email address.` }
 
-    const ctx = await jobEmailContext(projectId, "update")
+    const ctx = await jobEmailContext(projectId, templateId, "update")
     if (isDemoUser(ctx.user.id) || isDemoOrg(ctx.organizationId)) return { success: false, error: "Demo data cannot be changed." }
     const template = jobEmailTemplate(ctx.department, templateId)
     if (!template) return { success: false, error: "Unknown email template." }
