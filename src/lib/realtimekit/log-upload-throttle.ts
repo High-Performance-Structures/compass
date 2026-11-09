@@ -58,7 +58,7 @@ export const URGENT_LOG_HEADER = "x-compass-realtimekit-logs"
 export const URGENT_LOG_HEADER_VALUE = "office-talk-failed"
 
 /** The SDK's diagnostic uploads this throttle covers, by proxy path. */
-export const DIAGNOSTIC_UPLOAD_KINDS = ["logs", "telemetry"] as const
+const DIAGNOSTIC_UPLOAD_KINDS = ["logs", "telemetry"] as const
 export type DiagnosticUploadKind = (typeof DIAGNOSTIC_UPLOAD_KINDS)[number]
 
 /** organization_feature_settings keys holding each kind's last routine forward time. */
