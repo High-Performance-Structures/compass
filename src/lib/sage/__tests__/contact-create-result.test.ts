@@ -10,6 +10,12 @@ const migration = readFileSync(
   new URL("../../../../drizzle/0171_sage_contact_create_review.sql", import.meta.url),
   "utf8"
 ).split("--> statement-breakpoint").map((statement) => statement.trim()).filter(Boolean)
+// "Request add to Sage" (0310): its table and the proposal's compass_person_id; nothing else of 0310 is part of this test.
+const addRequests = readFileSync(
+  new URL("../../../../drizzle/0310_sage_directory_add_requests.sql", import.meta.url),
+  "utf8"
+).split("--> statement-breakpoint").map((statement) => statement.trim())
+  .filter((statement) => /^(?:--[^\n]*\n)*(?:CREATE[^`]*`sage_directory_add_requests|ALTER TABLE `sage_contact_create_proposals`)/.test(statement))
 
 const foundation = [
   "CREATE TABLE organizations (id TEXT PRIMARY KEY)",
@@ -50,7 +56,7 @@ describe("Sage child Add result reconciliation", () => {
     })
     database = await runtime.getD1Database("DB")
     await database.batch(foundation.map((statement) => database.prepare(statement)))
-    for (const statement of migration) await database.prepare(statement).run()
+    for (const statement of [...migration, ...addRequests]) await database.prepare(statement).run()
     await database.batch([
       database.prepare("INSERT INTO organizations VALUES ('org-1')"),
       database.prepare("INSERT INTO users VALUES ('requester')"),
@@ -123,6 +129,37 @@ describe("Sage child Add result reconciliation", () => {
     expect(result.status).toBe(202)
     expect(await database.prepare("SELECT vendor_id, sage_contact_id FROM vendor_contacts").first())
       .toEqual({ vendor_id: "vendor-1", sage_contact_id: "new-vendor-person-id" })
+  })
+
+  it("links an Add requested for an existing Compass person instead of copying them", async () => {
+    const linkedProposalId = "55555555-5555-4555-8555-555555555555"
+    const linkedClaim = "66666666-6666-4666-8666-666666666666"
+    await database.prepare("INSERT INTO vendors VALUES ('vendor-2', 'org-1', 'vendor-2-sage-id', 'active')").run()
+    await database.prepare(
+      `INSERT INTO vendor_contacts (id, vendor_id, name, email, is_primary, active, source_system, created_at, updated_at)
+       VALUES ('existing-person', 'vendor-2', 'Test Person', 'test@example.invalid', 0, 1, 'manual', ?, ?)`
+    ).bind(now, now).run()
+    await database.prepare(
+      `INSERT INTO sage_contact_create_proposals
+       (id, organization_id, kind, vendor_id, parent_sage_record_id, fields_json,
+        dedupe_key, status, requested_by_user_id, requested_at, updated_at,
+        claim_token, claimed_at, attempt_count, compass_person_id)
+       VALUES (?, 'org-1', 'vendor_person', 'vendor-2', 'vendor-2-sage-id', ?,
+        'linked-dedupe', 'running', 'requester', ?, ?, ?, ?, 1, 'existing-person')`
+    ).bind(linkedProposalId, JSON.stringify(fields), now, now, linkedClaim, now).run()
+    const result = await handleSageContactCreateResult(
+      { SAGE_CONTACT_ORGANIZATION_ID: "org-1" }, database,
+      { outcome: "succeeded", id: linkedProposalId, claimToken: linkedClaim, snapshot: {
+        kind: "vendor_person", entityId: linkedProposalId,
+        sageRecordId: "linked-sage-person", sageRecordNumber: "4",
+        parentSageRecordId: "vendor-2-sage-id", revision: "revision-4", fields,
+      } }, now
+    )
+    expect(await result.json()).toEqual({ success: true, status: "succeeded" })
+    expect((await database.prepare("SELECT id, sage_contact_id, sage_line_number FROM vendor_contacts WHERE vendor_id = 'vendor-2'").all()).results)
+      .toEqual([{ id: "existing-person", sage_contact_id: "linked-sage-person", sage_line_number: 4 }])
+    expect(await database.prepare("SELECT entity_id FROM sage_contact_snapshots WHERE sage_record_id = 'linked-sage-person'").first())
+      .toEqual({ entity_id: "existing-person" })
   })
 
   it("does not create a directory person after an uncertain Sage API attempt", async () => {

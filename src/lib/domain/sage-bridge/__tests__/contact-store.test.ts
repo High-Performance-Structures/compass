@@ -292,7 +292,7 @@ describe("Sage contact store: Add claim and result", () => {
       ["boom", now, now, "p1", "org-1", "t1"],
     ))
     expect(statementShape(sageContactCreateSucceededStatement(d1, claim, {
-      canonicalTable: "vendor_contacts", sageContactId: "sc1", sageLineNumber: 3,
+      canonicalTable: "vendor_contacts", sageContactId: "sc1", sageLineNumber: 3, personId: "p1",
     }))).toEqual(expectedShape(
       `UPDATE sage_contact_create_proposals SET status = 'succeeded',
        sage_contact_id = ?, sage_line_number = ?, completed_at = ?, updated_at = ?

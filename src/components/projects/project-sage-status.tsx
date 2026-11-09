@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconCirclePlus, IconCircleCheck, IconRefresh, IconSend } from "@tabler/icons-react"
+import { IconAlertTriangle, IconCirclePlus, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { createProjectInSage, sendProjectToSage } from "@/app/actions/project-sage-send"
@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import { Button } from "@/components/ui/button"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import type {
@@ -67,10 +68,7 @@ export function ProjectSageStatusLine({
   if (status.kind === "linked") {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <Badge variant="secondary" className="gap-1">
-          <IconCircleCheck className="size-3.5" />
-          Sage job #{status.jobNumber}
-        </Badge>
+        <SageNumberBadge label="Sage job" number={status.jobNumber} />
         {status.statusName ? <span className="text-muted-foreground">{status.statusName}</span> : null}
       </div>
     )

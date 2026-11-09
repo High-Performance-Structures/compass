@@ -4,15 +4,19 @@ import {
   sqliteTable,
   text,
   uniqueIndex,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
 import {
   SAGE_AR_INVOICE_EXPORT_STATUSES,
   SAGE_CHANGE_ORDER_EXPORT_STATUSES,
+  SAGE_DIRECTORY_ADD_KINDS,
+  SAGE_DIRECTORY_ADD_STATUSES,
   SAGE_ESTIMATE_EXPORT_STATUSES,
   SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
 } from "../lib/domain/sage-bridge/statuses"
+import { VENDOR_1099_STATUSES } from "../lib/domain/contacts/statuses"
 import { PAY_APPLICATION_SAGE_CHECK_STATUSES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "../lib/domain/budget/statuses"
 import { customers, organizations, projectBudgetApplications, projectChangeOrders, projectContractDeposits, projects, users, vendors } from "./schema"
 import { projectEstimates } from "./schema-estimates"
@@ -56,6 +60,10 @@ export const sageClientProjectWriteOperations = sqliteTable(
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    /** The vendor an "ensure_vendor" add is for. */
+    vendorId: text("vendor_id").references(() => vendors.id, {
+      onDelete: "set null",
+    }),
     requestedByUserId: text("requested_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -70,6 +78,8 @@ export const sageClientProjectWriteOperations = sqliteTable(
     sageClientNumber: text("sage_client_number"),
     sageJobId: text("sage_job_id"),
     sageJobNumber: text("sage_job_number"),
+    sageVendorId: text("sage_vendor_id"),
+    sageVendorNumber: text("sage_vendor_number"),
     resolvedClientStatusNumber: integer("resolved_client_status_number"),
     resolvedJobStatusNumber: integer("resolved_job_status_number"),
     resolvedJobTypeNumber: integer("resolved_job_type_number"),
@@ -96,6 +106,7 @@ export const sageClientProjectWriteOperations = sqliteTable(
       table.status
     ),
     index("sage_client_project_write_operations_organization_id_idx").on(table.organizationId),
+    index("sage_client_project_write_operations_vendor_id_idx").on(table.vendorId),
   ]
 )
 
@@ -301,6 +312,8 @@ export const sageContactCreateProposals = sqliteTable(
     requestedAt: text("requested_at").notNull(),
     completedAt: text("completed_at"),
     updatedAt: text("updated_at").notNull(),
+    /** The Compass person this Add is for; Sage's new contact links to it instead of a copy. */
+    compassPersonId: text("compass_person_id"),
   },
   (table) => [
     uniqueIndex("sage_contact_create_active_dedupe_unique")
@@ -938,5 +951,59 @@ export const sageDepositArExports = sqliteTable(
     index("sage_deposit_ar_exports_project_idx").on(table.projectId, table.status),
     index("sage_deposit_ar_exports_organization_id_idx").on(table.organizationId),
     index("sage_deposit_ar_exports_requested_by_user_id_idx").on(table.requestedByUserId),
+  ]
+)
+
+/**
+ * Staff requests to add a vendor, client, or one of their people to Sage.
+ * Compass checks for duplicates (`duplicatesJson`, the close look-alikes the
+ * approver sees); the company's approver decides; approved companies go
+ * through the client/job writer queue and people through Sage contact Adds
+ * (`writeOperationId` names that row).
+ */
+export const sageDirectoryAddRequests = sqliteTable(
+  "sage_directory_add_requests",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: SAGE_DIRECTORY_ADD_KINDS }).notNull(),
+    // polymorphic: vendor, customer, vendor contact or customer contact id, by kind
+    entityId: text("entity_id").notNull(),
+    /** The company's own request when a person and their company were asked for together. */
+    parentRequestId: text("parent_request_id").references((): AnySQLiteColumn => sageDirectoryAddRequests.id, {
+      onDelete: "set null",
+    }),
+    // json: the name, address, phone and email sent to Sage
+    fieldsJson: text("fields_json").notNull(),
+    /** Sage vendor type name (vendors only). */
+    vendorType: text("vendor_type"),
+    form1099: text("form_1099", { enum: VENDOR_1099_STATUSES }),
+    // json: close look-alikes found when it was requested
+    duplicatesJson: text("duplicates_json").notNull().default("[]"),
+    status: text("status", { enum: SAGE_DIRECTORY_ADD_STATUSES }).notNull().default("pending"),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    requestedAt: text("requested_at").notNull(),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: text("reviewed_at"),
+    reviewNote: text("review_note"),
+    // polymorphic: sage_client_project_write_operations.id (companies) or sage_contact_create_proposals.id (people)
+    writeOperationId: text("write_operation_id"),
+    sageRecordId: text("sage_record_id"),
+    sageRecordNumber: text("sage_record_number"),
+    errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_directory_add_requests_active_unique")
+      .on(table.organizationId, table.kind, table.entityId)
+      .where(sql`${table.status} IN ('pending', 'approved', 'sent')`),
+    index("sage_directory_add_requests_org_status_idx").on(table.organizationId, table.status, table.requestedAt),
+    index("sage_directory_add_requests_operation_idx").on(table.writeOperationId),
+    index("sage_directory_add_requests_parent_request_id_idx").on(table.parentRequestId),
+    index("sage_directory_add_requests_requested_by_user_id_idx").on(table.requestedByUserId),
+    index("sage_directory_add_requests_reviewed_by_user_id_idx").on(table.reviewedByUserId),
   ]
 )

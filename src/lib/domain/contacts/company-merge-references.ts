@@ -114,6 +114,10 @@ export const COMPANY_REFERENCES: readonly CompanyReference[] = [
     handling: keep("Sage certificate sync state belongs to the vendor's own Sage identity (one row per vendor); a queued or running sync blocks the merge, and the kept vendor's sync is requested again after its trade docs change"),
   },
   { side: "vendor", table: "sage_contact_create_proposals", column: "vendor_id", handling: keep(SAGE_CREATE) },
+  {
+    side: "vendor", table: "sage_client_project_write_operations", column: "vendor_id",
+    handling: keep("a Sage vendor add made for the archived record and stamped with the Sage vendor it created; moving it would put a second Sage vendor on the kept record"),
+  },
   { side: "vendor", table: "buildertrend_staging_access_candidates", column: "matched_vendor_id", handling: keep(IMPORT_STAGING) },
 
   // Clients
@@ -140,6 +144,14 @@ export const COMPANY_REFERENCES: readonly CompanyReference[] = [
     { side, table: "sage_contact_read_requests", column: "entity_id", handling: keep(SAGE_REVIEW) },
     { side, table: "sage_contact_change_proposals", column: "entity_id", handling: keep(SAGE_REVIEW) },
     { side, table: "sage_contact_snapshots", column: "entity_id", handling: keep(SAGE_REVIEW) },
+    {
+      side, table: "sage_directory_add_requests", column: "entity_id",
+      handling: keep("a request to add the archived record itself to Sage; the kept record gets its own request if it still needs one"),
+    },
+    {
+      side, table: "sage_contact_create_proposals", column: "compass_person_id",
+      handling: keep("names the person a Sage contact Add was made for, never a company"),
+    },
     { side, table: "contact_merge_events", column: "source_id", handling: keep(MERGE_HISTORY) },
     { side, table: "contact_merge_events", column: "destination_id", handling: keep(MERGE_HISTORY) },
     {

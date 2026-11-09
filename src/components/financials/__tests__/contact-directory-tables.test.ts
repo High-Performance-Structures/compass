@@ -34,6 +34,8 @@ function vendor(index: number): VendorDirectoryRow {
     syncStatus: "manual",
     peopleCount: 1,
     primaryPersonName: `Person ${index}`,
+    sageVendorNumber: null,
+    sageAddRequested: false,
   }
 }
 const ALL = Array.from({ length: 120 }, (_, index) => vendor(index))

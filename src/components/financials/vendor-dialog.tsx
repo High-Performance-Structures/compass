@@ -29,6 +29,7 @@ import {
 } from "@/components/contacts/sage-linked-edit"
 import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import { toast } from "sonner"
 
 /** Company fields shared with Sage, edited inline on a Sage-linked vendor. */
@@ -70,6 +71,8 @@ interface VendorDialogProps {
   onSageLinkCompany?: () => void
   onLinkAccount?: (contactId: string, name: string, userId: string | null) => void
   onMergePeople?: (people: readonly [VendorContactItem, VendorContactItem]) => void
+  /** "Request add to Sage" for this vendor or one of its people not in Sage. */
+  onRequestSageAdd?: (kind: "vendor_company" | "vendor_person", entityId: string) => void
   readOnly?: boolean
 }
 
@@ -85,6 +88,7 @@ export function VendorDialog({
   onSageLinkCompany,
   onLinkAccount,
   onMergePeople,
+  onRequestSageAdd,
   readOnly = false,
 }: VendorDialogProps) {
   const [name, setName] = React.useState("")
@@ -294,6 +298,7 @@ export function VendorDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
+          {initialData?.sageVendorNumber ? <SageNumberBadge number={initialData.sageVendorNumber} className="mb-3" /> : null}
           {sageLinked && initialData ? (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
@@ -499,6 +504,11 @@ export function VendorDialog({
                             Verify Sage link
                           </Button>
                         ) : null}
+                        {contact.id && onRequestSageAdd && !initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => onRequestSageAdd("vendor_person", contact.id ?? "")}>
+                            Request add to Sage
+                          </Button>
+                        ) : null}
                         {contact.id && onLinkAccount ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => onLinkAccount(contact.id ?? "", contact.name, initialData?.contacts.find((saved) => saved.id === contact.id)?.userId ?? null)}>
                             Compass account
@@ -580,6 +590,9 @@ export function VendorDialog({
           </Button>
           {initialData && !sageVerified && onSageLinkCompany ? (
             <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
+          ) : null}
+          {initialData && !sageLinked && onRequestSageAdd ? (
+            <Button type="button" variant="outline" onClick={() => onRequestSageAdd("vendor_company", initialData.id)}>Request add to Sage</Button>
           ) : null}
           {sageLinked && !readOnly ? (
             <Button type="submit" className="h-9" disabled={saving}>Save</Button>

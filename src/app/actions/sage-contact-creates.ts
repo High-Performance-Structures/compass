@@ -20,7 +20,7 @@ import { sageContactReviewerAllowed } from "@/lib/feature-settings/sage-contact-
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
-import { planSageContactCreate, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
+import { planSageContactCreate, sageContactCreateDedupeKey, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
 import { requireUserContext } from "@/lib/server/action-context"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 
@@ -52,17 +52,6 @@ function directoryFeature(kind: "client_person" | "vendor_person"): "customers" 
   return kind === "client_person" ? "customers" : "vendors"
 }
 
-async function dedupeKey(
-  kind: "client_person" | "vendor_person",
-  parentId: string,
-  fields: SageContactCreateFields
-): Promise<string> {
-  // The key blocks a duplicate while an uncertain Sage Add awaits reconciliation.
-  const canonical = [kind, parentId, fields.name.toLocaleLowerCase("en-US"),
-    fields.email?.toLocaleLowerCase("en-US") ?? ""].join("\u0000")
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical))
-  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")
-}
 
 export async function proposeSageContactCreate(
   kindInput: string,
@@ -107,7 +96,7 @@ export async function proposeSageContactCreate(
         vendorId: kind.data === "vendor_person" ? companyId : null,
         parentSageRecordId: company.sageRecordId,
         fieldsJson: JSON.stringify(plan.fields),
-        dedupeKey: await dedupeKey(kind.data, company.sageRecordId, plan.fields),
+        dedupeKey: await sageContactCreateDedupeKey(kind.data, company.sageRecordId, plan.fields),
         status: "pending", requestedByUserId: user.id,
         requestedAt: now, updatedAt: now,
       }),

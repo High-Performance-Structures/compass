@@ -6,7 +6,7 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
 import { sageContactCreateProposals } from "@/db/schema-sage"
-import { insertSageCreatedPersonStatement } from "@/lib/domain/contacts/store"
+import { insertSageCreatedPersonStatement, updateCustomerPerson, updateVendorPersonStatement } from "@/lib/domain/contacts/store"
 import {
   sageContactCreateFailedStatement,
   sageContactCreateOutcomeEventStatement,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/domain/sage-bridge/contact-store"
 import { readbackConfirmsCreateFields, sageContactCreateResultSchema, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, sageContactProposalFields } from "@/lib/sage/contact-change-proposal"
+import { recordSageAddOutcome } from "@/lib/sage/directory-add-service"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
@@ -45,6 +46,10 @@ async function finishUncertain(
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
     return Response.json({ error: "Sage Add claim changed concurrently" }, { status: 409 })
   }
+  await recordSageAddOutcome(getDb(database), {
+    operationId: proposal.id, organizationId: proposal.organizationId, outcome: "failed",
+    sageRecordId: null, sageRecordNumber: null, error: `Needs a check in Sage: ${reason}`, now,
+  })
   return accepted("needs_reconciliation")
 }
 
@@ -76,6 +81,10 @@ export async function handleSageContactCreateResult(
     if (updated[0]?.meta.changes !== 1 || updated[1]?.meta.changes !== 1) {
       return Response.json({ error: "Sage Add claim changed concurrently" }, { status: 409 })
     }
+    await recordSageAddOutcome(db, {
+      operationId: proposal.id, organizationId: proposal.organizationId, outcome: "failed",
+      sageRecordId: null, sageRecordNumber: null, error: result.error, now,
+    })
     return accepted("failed")
   }
 
@@ -117,6 +126,12 @@ export async function handleSageContactCreateResult(
       "Parent directory Sage link changed after Add.", snapshot.sageRecordId, lineNumber)
   }
 
+  // Requested from an existing Compass person ("Request add to Sage"): that
+  // person takes the Sage contact; no copy is made.
+  if (proposal.compassPersonId) {
+    return linkExistingPerson(database, proposal, proposal.compassPersonId, kind.data, snapshot, lineNumber, result.claimToken, now)
+  }
+
   const canonicalInsert = kind.data === "client_person"
     ? insertSageCreatedPersonStatement(database, kind.data, [proposal.id, proposal.customerId, snapshot.fields.name,
         snapshot.fields.title, snapshot.fields.email, snapshot.fields.phone,
@@ -140,7 +155,7 @@ export async function handleSageContactCreateResult(
       revision: snapshot.revision, fieldsJson: JSON.stringify(snapshot.fields), now,
     }),
     sageContactCreateSucceededStatement(database, claim, {
-      canonicalTable, sageContactId: snapshot.sageRecordId, sageLineNumber: lineNumber,
+      canonicalTable, sageContactId: snapshot.sageRecordId, sageLineNumber: lineNumber, personId: proposal.id,
     }),
     sageContactCreateOutcomeEventStatement(database, claim, "succeeded", JSON.stringify({ sageContactId: snapshot.sageRecordId,
       sageLineNumber: lineNumber })),
@@ -150,5 +165,48 @@ export async function handleSageContactCreateResult(
       "Sage child was added but Compass directory reconciliation did not complete.",
       snapshot.sageRecordId, lineNumber)
   }
+  return accepted("succeeded")
+}
+
+async function linkExistingPerson(
+  database: D1Database,
+  proposal: typeof sageContactCreateProposals.$inferSelect,
+  personId: string,
+  kind: "client_person" | "vendor_person",
+  snapshot: Extract<CreateResult, { readonly outcome: "succeeded" }>["snapshot"],
+  lineNumber: number,
+  claimToken: string,
+  now: string
+): Promise<Response> {
+  const db = getDb(database)
+  const parentId = kind === "client_person" ? proposal.customerId : proposal.vendorId
+  if (!parentId) {
+    return finishUncertain(database, proposal, claimToken, now, "The Add has no company.", snapshot.sageRecordId, lineNumber)
+  }
+  const link = { sageContactId: snapshot.sageRecordId, sageLineNumber: lineNumber, updatedAt: now }
+  if (kind === "client_person") await updateCustomerPerson(db, { personId, values: link })
+  else await updateVendorPersonStatement(db, { vendorId: parentId, personId, values: link })
+  const canonicalTable = kind === "client_person" ? "customer_contacts" : "vendor_contacts"
+  const claim = { proposalId: proposal.id, organizationId: proposal.organizationId, claimToken, now }
+  const applied = await database.batch([
+    sageCreatedPersonSnapshotStatement(database, {
+      canonicalTable, organizationId: proposal.organizationId, kind, personId,
+      sageRecordId: snapshot.sageRecordId, parentSageRecordId: proposal.parentSageRecordId,
+      revision: snapshot.revision, fieldsJson: JSON.stringify(snapshot.fields), now,
+    }),
+    sageContactCreateSucceededStatement(database, claim, {
+      canonicalTable, sageContactId: snapshot.sageRecordId, sageLineNumber: lineNumber, personId,
+    }),
+    sageContactCreateOutcomeEventStatement(database, claim, "succeeded", JSON.stringify({ sageContactId: snapshot.sageRecordId,
+      sageLineNumber: lineNumber, compassPersonId: personId })),
+  ])
+  if (applied.some((item) => item.meta.changes !== 1)) {
+    return finishUncertain(database, proposal, claimToken, now,
+      "Sage contact was added but the Compass person could not be linked to it.", snapshot.sageRecordId, lineNumber)
+  }
+  await recordSageAddOutcome(db, {
+    operationId: proposal.id, organizationId: proposal.organizationId, outcome: "succeeded",
+    sageRecordId: snapshot.sageRecordId, sageRecordNumber: String(lineNumber), error: null, now,
+  })
   return accepted("succeeded")
 }

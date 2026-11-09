@@ -50,6 +50,22 @@ namespace CompassSageClientProjectWriter
             public JobPayload job { get; set; }
             public ContactPayload contact { get; set; }
             public TaxDistrictPayload taxDistrict { get; set; }
+            public VendorPayload vendor { get; set; }
+        }
+        public sealed class VendorPayload
+        {
+            public string compassVendorId { get; set; }
+            public string name { get; set; }
+            public string shortName { get; set; }
+            public string addressLine1 { get; set; }
+            public string addressLine2 { get; set; }
+            public string city { get; set; }
+            public string state { get; set; }
+            public string postalCode { get; set; }
+            public string phone { get; set; }
+            public string email { get; set; }
+            public string vendorType { get; set; }
+            public bool print1099 { get; set; }
         }
         public sealed class TaxDistrictPayload
         {
@@ -104,12 +120,15 @@ namespace CompassSageClientProjectWriter
             public int ClientNumber;
             public string Name;
             public string Email;
+            public DateTime? AddedAt;
         }
         private sealed class WriteOutcome
         {
             public WriteRequest Request;
             public SageRecord Client;
             public SageRecord Job;
+            public SageRecord Vendor;
+            public bool Print1099Applied;
             public int ClientStatus;
             public int JobStatus;
             public int JobType;
@@ -325,7 +344,21 @@ namespace CompassSageClientProjectWriter
             // Reported, not required: without the field only the tax district write is refused.
             string taxDistrictField = JobTaxDistrictField();
             if (taxDistrictField != null) BuildJobTaxDistrictModXml(user, 1, 1);
-            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " clientModifyRequest=ClientModRq jobRequest=" + jobRequestName + " jobTaxDistrictField=" + (taxDistrictField ?? "none"));
+            // Reported, not required: without a vendor add request only "ensure_vendor" writes fail.
+            string vendorRequestName = "none";
+            string vendor1099Field = "none";
+            try
+            {
+                vendorRequestName = FindRequestName(VendorAddRequests);
+                XmlSchemaElement field1099 = Vendor1099Field(vendorRequestName);
+                if (field1099 != null) vendor1099Field = String.IsNullOrWhiteSpace(field1099.Name) ? field1099.RefName.Name : field1099.Name;
+                BuildVendorXml(vendorRequestName, user, new VendorPayload {
+                    name = "Compass Diagnostic", shortName = "Compass Diagnostic", addressLine1 = "1 Diagnostic Way", city = "Denver",
+                    state = "CO", postalCode = "80202", phone = "555-0100", email = "diagnostic@example.invalid", vendorType = "Subcontractor", print1099 = true
+                }, 1, field1099);
+            }
+            catch (Exception error) { vendorRequestName = "unavailable (" + error.Message + ")"; }
+            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " clientModifyRequest=ClientModRq jobRequest=" + jobRequestName + " jobTaxDistrictField=" + (taxDistrictField ?? "none") + " vendorRequest=" + vendorRequestName + " vendor1099Field=" + vendor1099Field);
         }
 
         private static int CatalogCount(string table)
@@ -363,6 +396,12 @@ namespace CompassSageClientProjectWriter
                     PostFailure(outcome.Request, outcome.Error.Message);
                     continue;
                 }
+                if (outcome.Vendor != null)
+                {
+                    PostVendorSuccess(outcome.Request, outcome.Vendor, outcome.Print1099Applied);
+                    WriteLog("INFO", outcome.Request.id + " SUCCEEDED vendor=" + outcome.Vendor.Number + " print1099Applied=" + outcome.Print1099Applied);
+                    continue;
+                }
                 PostSuccess(outcome.Request, outcome.Client, outcome.Job, outcome.ClientStatus, outcome.JobStatus, outcome.JobType);
                 WriteLog("INFO", outcome.Request.id + " SUCCEEDED client=" + outcome.Client.Number + (outcome.Job == null ? "" : " job=" + outcome.Job.Number));
             }
@@ -377,6 +416,8 @@ namespace CompassSageClientProjectWriter
             // The only operation without a client: the job's own client is read from Sage.
             if (String.Equals(request.payload.operationType, "set_job_tax_district", StringComparison.Ordinal))
                 return ProcessSetJobTaxDistrict(request);
+            if (String.Equals(request.payload.operationType, "ensure_vendor", StringComparison.Ordinal))
+                return ProcessEnsureVendor(request);
             if (request.payload.client == null)
                 throw new InvalidOperationException("Compass payload is incomplete.");
             if (!String.Equals(request.payload.operationType, "ensure_client", StringComparison.Ordinal) &&
@@ -455,6 +496,93 @@ namespace CompassSageClientProjectWriter
                 JobStatus = jobStatus,
                 JobType = jobType
             };
+        }
+
+        // Adds one vendor that staff asked for and the company's approver
+        // approved in Compass. Sage assigns the number. Refuses a name Sage
+        // already has, checked again right before the add; only this write's own
+        // add, read back on a retry (same email, added in the last two days), counts as done.
+        private static WriteOutcome ProcessEnsureVendor(WriteRequest request)
+        {
+            if (!String.Equals(Environment.GetEnvironmentVariable("SAGE_VENDOR_CREATE_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Local Sage vendor-add switch is off; no write was attempted.");
+            VendorPayload vendor = request.payload.vendor;
+            if (vendor == null || String.IsNullOrWhiteSpace(vendor.name) || String.IsNullOrWhiteSpace(vendor.vendorType))
+                throw new InvalidOperationException("Compass vendor payload is incomplete; no write was attempted.");
+            int vendorType = ResolveCatalog("vndtyp", "typnme", vendor.vendorType);
+            SageRecord existing = RunStage("check Sage for a vendor with this name", delegate { return FindVendorByName(vendor.name); });
+            if (existing != null)
+            {
+                bool sameEmail = !String.IsNullOrWhiteSpace(vendor.email) &&
+                    String.Equals((existing.Email ?? "").Trim(), vendor.email.Trim(), StringComparison.OrdinalIgnoreCase);
+                bool recent = existing.AddedAt.HasValue && existing.AddedAt.Value > DateTime.Now.AddDays(-2);
+                if (sameEmail && recent)
+                    return new WriteOutcome { Request = request, Vendor = existing, Print1099Applied = !vendor.print1099 || Vendor1099Field(FindRequestName(VendorAddRequests)) != null };
+                throw new InvalidOperationException("Sage already has vendor #" + existing.Number + " named " + vendor.name + "; link it in Compass instead of adding another. No write was attempted.");
+            }
+            string user = Required("SAGE_API_USER");
+            string password = Required("SAGE_API_PASSWORD");
+            string requestName = FindRequestName(VendorAddRequests);
+            XmlSchemaElement field1099 = Vendor1099Field(requestName);
+            RunStage("submit Sage vendor add", delegate { Submit(BuildVendorXml(requestName, user, vendor, vendorType, field1099), password); });
+            SageRecord added = RunStage("read Sage vendor after add", delegate { return FindVendorByName(vendor.name); });
+            if (added == null) throw new InvalidOperationException("Sage returned success but the vendor could not be read back.");
+            return new WriteOutcome { Request = request, Vendor = added, Print1099Applied = !vendor.print1099 || field1099 != null };
+        }
+
+        private static readonly string[] VendorAddRequests = new string[] { "VendorAddNextRq", "VendorAddRq" };
+
+        private static SageRecord FindVendorByName(string name)
+        {
+            List<SageRecord> rows = new List<SageRecord>();
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT CONVERT(varchar(36), _idnum), recnum, e_mail, insdte FROM dbo.actpay WHERE LOWER(LTRIM(RTRIM(vndnme))) = LOWER(LTRIM(RTRIM(@name)))", connection))
+            {
+                command.Parameters.AddWithValue("@name", name);
+                using (SqlDataReader reader = command.ExecuteReader())
+                    while (reader.Read()) rows.Add(new SageRecord {
+                        Id = Convert.ToString(reader[0]),
+                        Number = Convert.ToInt32(reader[1]),
+                        Email = reader.IsDBNull(2) ? null : Convert.ToString(reader[2]),
+                        AddedAt = reader.IsDBNull(3) ? (DateTime?)null : Convert.ToDateTime(reader[3])
+                    });
+            }
+            if (rows.Count > 1) throw new InvalidOperationException("Sage has more than one vendor named " + name + "; no write was attempted.");
+            return rows.Count == 1 ? rows[0] : null;
+        }
+
+        // The vendor add's 1099 checkbox (actpay.prt199), when this Sage version's
+        // mbxml.xsd has one. Missing never blocks the add; Compass is told to set it by hand.
+        private static XmlSchemaElement Vendor1099Field(string requestName)
+        {
+            string[] names = new string[] { "print1099", "print1099s", "prt199", "issue1099", "form1099", "vendor1099", "is1099", "uses1099" };
+            foreach (XmlSchemaElement field in RequestFields(requestName))
+            {
+                string key = Normalize(String.IsNullOrWhiteSpace(field.Name) ? field.RefName.Name : field.Name);
+                if (Array.IndexOf(names, key) >= 0) return field;
+            }
+            return null;
+        }
+
+        private static string BuildVendorXml(string requestName, string user, VendorPayload vendor, int vendorType, XmlSchemaElement field1099)
+        {
+            Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                { "name", vendor.name }, { "vendorname", vendor.name }, { "shortname", vendor.shortName },
+                { "address1", vendor.addressLine1 }, { "addressline1", vendor.addressLine1 }, { "address2", vendor.addressLine2 }, { "addressline2", vendor.addressLine2 },
+                { "city", vendor.city }, { "state", vendor.state }, { "zip", vendor.postalCode }, { "zipcode", vendor.postalCode }, { "postalcode", vendor.postalCode },
+                { "phone", vendor.phone }, { "phone1", vendor.phone }, { "phonenumber", vendor.phone },
+                { "email", vendor.email }, { "email1", vendor.email }, { "primaryemail", vendor.email }
+            };
+            if (field1099 != null && vendor.print1099)
+            {
+                string key = Normalize(String.IsNullOrWhiteSpace(field1099.Name) ? field1099.RefName.Name : field1099.Name);
+                XmlSchemaSimpleType simple = field1099.ElementSchemaType as XmlSchemaSimpleType;
+                values[key] = simple != null && simple.TypeCode == XmlTypeCode.Boolean ? "true" : "1";
+            }
+            Dictionary<string, int> references = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                { "type", vendorType }, { "typeref", vendorType }, { "vendortype", vendorType }, { "vendortyperef", vendorType }
+            };
+            return BuildXml(requestName, user, values, references);
         }
 
         // Gives an existing Sage job its client (jobs carried over from NetSuite
@@ -1048,6 +1176,12 @@ namespace CompassSageClientProjectWriter
             Dictionary<string, object> result = BaseResult(request, "succeeded");
             result["client"] = new Dictionary<string, object> { { "id", client.Id }, { "number", client.Number.ToString() }, { "statusNumber", clientStatus } };
             result["job"] = job == null ? null : (object)new Dictionary<string, object> { { "id", job.Id }, { "number", job.Number.ToString() }, { "statusNumber", jobStatus }, { "typeNumber", jobType } };
+            Send("POST", ResultsTarget, Json.Serialize(result));
+        }
+        private static void PostVendorSuccess(WriteRequest request, SageRecord vendor, bool print1099Applied)
+        {
+            Dictionary<string, object> result = BaseResult(request, "succeeded");
+            result["vendor"] = new Dictionary<string, object> { { "id", vendor.Id }, { "number", vendor.Number.ToString() }, { "print1099Applied", print1099Applied } };
             Send("POST", ResultsTarget, Json.Serialize(result));
         }
         private static void PostFailure(WriteRequest request, string error)

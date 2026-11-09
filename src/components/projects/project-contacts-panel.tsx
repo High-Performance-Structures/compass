@@ -21,6 +21,7 @@ import { ProjectContactEditor } from "@/components/projects/project-contact-mana
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import {
   projectContactCanInvite,
   projectContactNeedsPersonForInvitation,
@@ -165,6 +166,7 @@ function ContactCard({
               <Badge variant="outline">{csiLabel(contact)}</Badge>
             )}
           </div>
+          <SageNumberBadge number={contact.sageNumber} className="mt-1" />
           {contact.welcomeEmail && contact.welcomeEmail.status !== "sent" && (
             <p className="mt-1 text-xs text-muted-foreground" role="status">
               {contact.welcomeEmail.status === "queued" || contact.welcomeEmail.status === "retrying" || contact.welcomeEmail.status === "sending"

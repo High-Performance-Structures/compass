@@ -10,6 +10,7 @@ import type { RecordPage, RecordPageQuery } from "@/lib/record-page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SourceTag } from "@/components/shared/source-tag"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,6 +104,7 @@ export function customerColumns(
             </button>
           ) : <span className="block font-medium">{row.original.name}</span>}
           {row.original.company ? <span className="block text-xs text-muted-foreground">{row.original.company}</span> : null}
+          <SageNumberBadge number={row.original.sageClientNumber} requested={row.original.sageAddRequested} className="mt-1" />
         </div>
       ),
     },

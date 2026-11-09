@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { requestSageLinkedCustomerChanges } from "@/app/actions/sage-linked-edits"
 import { updateCustomer } from "@/app/actions/customers"
 import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-dialog"
+import { SageNumberBadge } from "@/components/sage-number-badge"
 import {
   announceSageOutcomes,
   SageFieldNote,
@@ -74,6 +75,8 @@ interface CustomerDialogProps {
   onSageLinkCompany?: () => void
   /** After a Sage-linked client saves inline: refresh the directory. */
   onSageLinkedSaved?: () => void
+  /** "Request add to Sage" for a client not in Sage. */
+  onRequestSageAdd?: () => void
   canEdit?: boolean
 }
 
@@ -85,6 +88,7 @@ export function CustomerDialog({
   onManagePeople,
   onSageLinkCompany,
   onSageLinkedSaved,
+  onRequestSageAdd,
   canEdit = true,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
@@ -201,6 +205,7 @@ export function CustomerDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
+          {initialData?.sageClientNumber ? <SageNumberBadge number={initialData.sageClientNumber} className="mb-3" /> : null}
           {sageLinked && initialData ? (
             <div className="space-y-3">
               <SagePendingNotice kind="client_company" entityId={initialData.id} pending={sageState?.pending[initialData.id]}
@@ -389,6 +394,9 @@ export function CustomerDialog({
           ) : null}
           {initialData && !sageVerified && onSageLinkCompany ? (
             <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
+          ) : null}
+          {initialData && !sageLinked && onRequestSageAdd ? (
+            <Button type="button" variant="outline" onClick={onRequestSageAdd}>Request add to Sage</Button>
           ) : null}
           {sageLinked ? (
             canEdit ? <Button type="submit" className="h-9" disabled={saving}>Save</Button> : null

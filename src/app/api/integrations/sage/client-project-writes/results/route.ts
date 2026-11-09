@@ -1,11 +1,11 @@
 import { and, eq, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { customers } from "@/db/schema"
+import { customers, vendors } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
-import { sageClientWriteResultCustomerStatement } from "@/lib/domain/contacts/store"
+import { sageClientWriteResultCustomerStatement, updateVendorById } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
 import {
   sageClientProjectWriteSucceededStatement,
@@ -20,6 +20,7 @@ import {
   sageClientProjectWriteResultSchema,
   sageClientProjectWritesEnabled,
 } from "@/lib/sage/client-project-write"
+import { recordSageAddOutcome } from "@/lib/sage/directory-add-service"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
 import { recordSageJobTaxDistrictResult } from "@/lib/sage/job-tax-district"
 
@@ -99,7 +100,21 @@ export async function POST(request: Request): Promise<Response> {
       eq(sageClientProjectWriteOperations.id, operation.id)
     )
     await recordTaxDistrictResult(db, operation, result.error, now)
+    await recordSageAddOutcome(db, {
+      operationId: operation.id, organizationId: operation.organizationId, outcome: "failed",
+      sageRecordId: null, sageRecordNumber: null, error: result.error, now,
+    })
     return Response.json({ success: true, status: "failed" }, { status: 202 })
+  }
+
+  if ("vendor" in result) {
+    if (operation.operationType !== "ensure_vendor") {
+      return Response.json({ error: "A vendor result answered a non-vendor write" }, { status: 400 })
+    }
+    return recordVendorAdded(db, operation, result.vendor, now)
+  }
+  if (operation.operationType === "ensure_vendor") {
+    return Response.json({ error: "The vendor write returned no vendor" }, { status: 400 })
   }
 
   const statements = [
@@ -144,6 +159,47 @@ export async function POST(request: Request): Promise<Response> {
     await recordClientOnDuplicateCustomer(db, operation, result.client, now)
   }
   await recordTaxDistrictResult(db, operation, null, now)
+  await recordSageAddOutcome(db, {
+    operationId: operation.id, organizationId: operation.organizationId, outcome: "succeeded",
+    sageRecordId: result.client.id, sageRecordNumber: result.client.number, error: null, now,
+  })
+  return Response.json({ success: true, status: "succeeded" })
+}
+
+/**
+ * An approved "Request add to Sage" vendor is in Sage: the write is finished
+ * and the Compass vendor takes the Sage vendor's id and number, so Sage's
+ * daily vendor list updates it instead of offering it as new.
+ */
+async function recordVendorAdded(
+  db: ReturnType<typeof getDb>,
+  operation: typeof sageClientProjectWriteOperations.$inferSelect,
+  vendor: { readonly id: string; readonly number: string; readonly print1099Applied: boolean },
+  now: string
+): Promise<Response> {
+  await updateSageClientProjectWriteOperations(
+    db,
+    { status: "succeeded", sageVendorId: vendor.id, sageVendorNumber: vendor.number, completedAt: now, updatedAt: now },
+    eq(sageClientProjectWriteOperations.id, operation.id)
+  )
+  let linkError: string | null = null
+  if (operation.vendorId) {
+    const holder = await db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(and(
+      eq(vendors.organizationId, operation.organizationId),
+      or(eq(vendors.sageVendorNumber, vendor.number), sql`upper(${vendors.sageVendorId}) = upper(${vendor.id})`),
+    )).get()
+    if (holder && holder.id !== operation.vendorId) {
+      linkError = `Sage vendor #${vendor.number} already belongs to ${holder.name} in Compass; merge the two vendors.`
+    } else if (!holder) {
+      await updateVendorById(db, { vendorId: operation.vendorId, values: { sageVendorId: vendor.id, sageVendorNumber: vendor.number, updatedAt: now } })
+    }
+  }
+  await recordSageAddOutcome(db, {
+    operationId: operation.id, organizationId: operation.organizationId, outcome: "succeeded",
+    sageRecordId: vendor.id, sageRecordNumber: vendor.number,
+    error: linkError ?? (vendor.print1099Applied ? null : "Sage added the vendor, but its 1099 box must be set in Sage by hand."),
+    now,
+  })
   return Response.json({ success: true, status: "succeeded" })
 }
 

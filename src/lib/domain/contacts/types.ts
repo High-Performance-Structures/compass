@@ -47,6 +47,8 @@ export type ProjectContactItem = {
   readonly accessStatus: ProjectContactAccessStatus
   readonly compassAccountStatus: ProjectContactCompassAccountStatus
   readonly identityManagedByActiveUser: boolean
+  /** The Sage number of the contact's vendor or client company, when it is in Sage. */
+  readonly sageNumber: string | null
 }
 
 export type ProjectContactGroup = {

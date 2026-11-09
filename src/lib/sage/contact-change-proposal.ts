@@ -63,6 +63,21 @@ export type SageContactCreateFields = Readonly<{
   cellPhone: string | null
 }>
 
+/**
+ * Blocks a second Add of the same person under one Sage company while an
+ * uncertain Add awaits reconciliation (sage_contact_create_proposals.dedupe_key).
+ */
+export async function sageContactCreateDedupeKey(
+  kind: "client_person" | "vendor_person",
+  parentSageRecordId: string,
+  fields: Pick<SageContactCreateFields, "name" | "email">
+): Promise<string> {
+  const canonical = [kind, parentSageRecordId, fields.name.toLocaleLowerCase("en-US"),
+    fields.email?.toLocaleLowerCase("en-US") ?? ""].join("\u0000")
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical))
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
 type CreatePlanResult =
   | { readonly success: true; readonly fields: SageContactCreateFields }
   | { readonly success: false; readonly error: string }
