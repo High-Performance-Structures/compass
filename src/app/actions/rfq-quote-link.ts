@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { projectOperations } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { fillSelectionChoicePrices } from "@/lib/domain/selections/choice-rfq-server"
 import { updateOperations, updateRfqQuoteLinkById } from "@/lib/domain/operations/store"
 import { getCloudflareContext } from "@/lib/db"
 import { notifyRfqResponseReceivedByLink } from "@/lib/notifications/events"
@@ -101,8 +102,10 @@ export async function submitRfqQuoteByLink(token: string, input: SubmitQuoteByLi
     } catch (notificationError) {
       console.error("[rfq-quote-link] notification error", notificationError)
     }
+    await fillSelectionChoicePrices(db, link.projectId, rfq.id, now)
     revalidatePath(`/dashboard/projects/${link.projectId}/rfqs`)
     revalidatePath(`/dashboard/projects/${link.projectId}/estimate`)
+    revalidatePath(`/dashboard/projects/${link.projectId}/selections`)
     return { success: true }
   } catch (error) {
     console.error("[rfq-quote-link] submit failed", error)

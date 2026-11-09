@@ -14,6 +14,7 @@ import {
   projectSelectionProcurementLinks as links,
 } from "@/db/schema-selection-decisions"
 import { selectionAccess } from "@/lib/domain/selections/access"
+import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
 import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
@@ -364,6 +365,12 @@ export async function approveSelectionDecision(
       throw new Error(
         "The selection or its approval conditions changed. Refresh before approving."
       )
+    // Approved: staff get an "Order" to-do (the approval is already saved).
+    try {
+      await ensureSelectionTodo(db, { projectId, selectionId, selectionName: row.name, step: "order", actorId: user.id, now })
+    } catch (todoError) {
+      console.error("[selections] order to-do failed", todoError)
+    }
     revalidate(projectId)
     return { success: true }
   } catch (error) {

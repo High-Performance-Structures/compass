@@ -24,9 +24,21 @@ import {
   projectSelectionIds,
   selectionChoiceIds,
   selectionInProject,
+  selectionApprovedByOwner,
   selectionPublishedToOwner,
   type SelectionChoicesPanel,
 } from "@/lib/domain/selections/choices-read"
+import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
+import {
+  loadDraftRfqOptions,
+  loadSelectionRfqs,
+  loadSelectionSheet,
+  loadSupplierOptions,
+  type DraftRfqOption,
+  type SelectionRfqView,
+  type SupplierOption,
+} from "@/lib/domain/selections/selection-sheet-read"
+import { ensureSelectionTodo, loadSelectionTodos, type SelectionTodoView } from "@/lib/domain/selections/selection-todos"
 import {
   deleteSelectionChoice as deleteChoiceRow,
   deleteSelectionComment as deleteCommentRow,
@@ -42,6 +54,7 @@ import {
   updateSelectionChoice,
 } from "@/lib/domain/selections/choices-store"
 import { fetchLinkPreview, normalizeSupplierUrl } from "@/lib/selections/link-preview"
+import type { SelectionSheetRow } from "@/lib/selections/sheet"
 
 /*
  * Choices, supplier links, photo links, comments and follow-up selections
@@ -102,6 +115,29 @@ export async function getSelectionChoicesPanel(
   }
 }
 
+export type SelectionDetail = {
+  readonly panel: SelectionChoicesPanel
+  readonly todos: readonly SelectionTodoView[]
+  readonly rfqs: readonly SelectionRfqView[]
+  readonly draftRfqs: readonly DraftRfqOption[]
+}
+
+/** Everything the staff detail panel shows for one selection. */
+export async function getSelectionDetail(projectId: string, selectionId: string): Promise<ActionResult<SelectionDetail>> {
+  try {
+    const { db, userId } = await audienceAccess(projectId, selectionId, "staff", false)
+    const [panel, todos, rfqs, draftRfqs] = await Promise.all([
+      loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
+      loadSelectionTodos(db, projectId, selectionId),
+      loadSelectionRfqs(db, projectId, selectionId),
+      loadDraftRfqOptions(db, projectId),
+    ])
+    return { success: true, data: { panel, todos, rfqs, draftRfqs } }
+  } catch (error) {
+    return failure(error, "Unable to load the selection.")
+  }
+}
+
 /** Recent project photos staff can attach to a selection or choice. */
 export async function getAttachableSelectionPhotos(
   projectId: string,
@@ -127,7 +163,8 @@ export async function saveSelectionChoice(
     if (!parsed.ok) return { success: false, error: parsed.error }
     const context = await staffSelectionContext(projectId, "update")
     const { db } = context
-    if (!(await selectionInProject(db, projectId, selectionId))) return { success: false, error: "Selection not found" }
+    const selection = await selectionInProject(db, projectId, selectionId)
+    if (!selection) return { success: false, error: "Selection not found" }
     const value = parsed.value
     if (value.vendorId && !(await activeVendorInOrganization(db, context.organizationId, value.vendorId))) {
       return { success: false, error: "Supplier not found." }
@@ -151,6 +188,10 @@ export async function saveSelectionChoice(
       createdAt: now,
       updatedAt: now,
     })
+    // An unpriced choice needs pricing: one open "Price choices" to-do per selection.
+    if (value.priceCents === null) {
+      await ensureSelectionTodo(db, { projectId, selectionId, selectionName: selection.name, step: "price_choices", actorId: context.user.id, now })
+    }
     refresh(projectId)
     return { success: true, data: { id } }
   } catch (error) {
@@ -185,9 +226,24 @@ export async function reorderSelectionChoices(projectId: string, selectionId: st
   }
 }
 
-/** Marks the choice the owner went with (clearing any other), or clears it. */
-export async function setSelectionChoiceChosen(projectId: string, choiceId: string, chosen: boolean): Promise<Done> {
+/**
+ * Marks the choice the owner went with (clearing any other), or clears it.
+ * Staff can set it at any time; the owner can change their pick on a
+ * selection published to them until it is approved.
+ */
+export async function setSelectionChoiceChosen(projectId: string, choiceId: string, chosen: boolean, audience: Audience = "staff"): Promise<Done> {
   try {
+    if (audience === "owner") {
+      const access = await selectionAccess(projectId, "owner", true)
+      const choice = await choiceInProject(access.db, projectId, choiceId)
+      if (!choice || !(await selectionPublishedToOwner(access.db, projectId, choice.selectionId))) return { success: false, error: "Choice not found" }
+      if (await selectionApprovedByOwner(access.db, projectId, choice.selectionId)) {
+        return { success: false, error: "This selection is already approved. Ask your builder to reopen it." }
+      }
+      await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString())
+      refresh(projectId)
+      return { success: true, data: { id: choiceId } }
+    }
     const { db, choice } = await staffChoice(projectId, choiceId)
     await setChosenRow(db, choice.selectionId, choiceId, chosen, new Date().toISOString())
     refresh(projectId)
@@ -345,6 +401,13 @@ export async function addSelectionComment(
     const { db, userId } = await audienceAccess(projectId, selectionId, audience, true)
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
+    // Staff are told through a to-do; it carries the selection link.
+    if (audience === "owner") {
+      const selection = await selectionInProject(db, projectId, selectionId)
+      if (selection) {
+        await ensureSelectionTodo(db, { projectId, selectionId, selectionName: selection.name, step: "owner_question", actorId: userId, now })
+      }
+    }
     await insertSelectionComment(db, {
       id,
       projectId,
@@ -378,4 +441,24 @@ export async function deleteSelectionComment(projectId: string, selectionId: str
   } catch (error) {
     return failure(error, "Unable to delete the comment.")
   }
+}
+
+// ---- page reads
+
+export type SelectionSheetData = {
+  readonly rows: readonly SelectionSheetRow[]
+  readonly suppliers: readonly SupplierOption[]
+}
+
+/** The staff Selections sheet: every selection on the job plus the supplier list. Throws the access errors. */
+export async function getSelectionSheet(projectId: string): Promise<SelectionSheetData> {
+  const { db, organizationId } = await staffSelectionContext(projectId, "read")
+  const [rows, suppliers] = await Promise.all([loadSelectionSheet(db, projectId), loadSupplierOptions(db, organizationId)])
+  return { rows, suppliers }
+}
+
+/** The owner's choosing view (staff may preview it). Throws the access errors. */
+export async function getOwnerChoiceBoard(projectId: string): Promise<readonly OwnerBoardSelection[]> {
+  const { db, user } = await selectionAccess(projectId, "owner")
+  return loadOwnerChoiceBoard(db, projectId, user.id)
 }

@@ -1,5 +1,9 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
+import { getSelectionSheet, type SelectionSheetData } from "@/app/actions/selection-choices"
+import { SelectionsSheet } from "@/components/selections/selections-sheet"
+import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
+import { parseSelectionListFilter } from "@/lib/selections/sheet"
 import { PageHeader } from "@/components/page-header"
 import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
@@ -53,18 +57,23 @@ function projectLabel(
 
 export default async function ProjectSelectionsPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly status?: string }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
+  const query = await searchParams
   const id = decodeProjectRouteId(rawProjectId)
   let summary: ProjectSelectionsSummary
   let selectionOptions: ProjectSelectionOptions
+  let sheet: SelectionSheetData
 
   try {
-    ;[summary, selectionOptions] = await Promise.all([
+    ;[summary, selectionOptions, sheet] = await Promise.all([
       getProjectSelections(id),
       getProjectSelectionOptions(id),
+      getSelectionSheet(id),
     ])
   } catch (error) {
     if (hasDigest(error)) throw error
@@ -129,6 +138,18 @@ export default async function ProjectSelectionsPage({
       >
         Open owner selections preview →
       </Link>
+      <SelectionsSheet
+        projectId={id}
+        rows={sheet.rows}
+        suppliers={sheet.suppliers}
+        initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
+      />
+      <div className="mt-8 border-t pt-6">
+        <h2 className="text-lg font-semibold">Publish to the owner</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Set the allowance, owner price terms and due date, and publish each selection for the owner to choose.
+        </p>
+      </div>
       <SelectionDecisionWorkspace
         workspace={await getSelectionWorkspace(id, "staff")}
       />

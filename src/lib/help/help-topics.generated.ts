@@ -499,6 +499,16 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "finish-selections",
     "sectionId": "add-selection"
   },
+  "selections.choices": {
+    "guideId": "selections",
+    "guideSlug": "finish-selections",
+    "sectionId": "choices"
+  },
+  "selections.owner-choosing": {
+    "guideId": "selections",
+    "guideSlug": "finish-selections",
+    "sectionId": "owner-choosing"
+  },
   "selections.divisions-cost-codes": {
     "guideId": "selections",
     "guideSlug": "finish-selections",

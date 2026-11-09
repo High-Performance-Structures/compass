@@ -2,6 +2,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { fillSelectionChoicePrices } from "@/lib/domain/selections/choice-rfq-server"
 
 import { projectOperations, projects } from "@/db/schema"
 import {
@@ -216,7 +217,9 @@ export async function saveManualProjectRfqResponse(
     if (!saved || saved.updatedAt !== now) {
       return { success: false, error: "This RFQ changed. Refresh before recording the response." }
     }
+    await fillSelectionChoicePrices(db, projectId, rfqId, now)
     revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
     return { success: true, id: eventId }
   } catch (error) {

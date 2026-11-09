@@ -11,6 +11,11 @@ const selectionSpecificationSchema = z.object({
   colorFinish: z.string().nullable(),
   supplierName: z.string().nullable(),
   productUrl: z.string().nullable(),
+  /**
+   * On an RFQ's procurement link: which RFQ scope line asked the supplier to
+   * price which choice of the selection (part of the snapshot of what was sent).
+   */
+  choiceLines: z.array(z.object({ choiceId: z.string(), lineNumber: z.number().int().positive() })).optional(),
 })
 export type SelectionSpecification = z.infer<
   typeof selectionSpecificationSchema

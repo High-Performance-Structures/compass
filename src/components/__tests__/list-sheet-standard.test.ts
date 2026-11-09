@@ -20,6 +20,7 @@ import { conversationColumns } from "@/components/correspondence/correspondence-
 import { dailyLogColumns } from "@/components/projects/daily-log/daily-log-record-table"
 import { dutyLogColumns } from "@/components/projects/duty-log-record-table"
 import { changeOrderColumns } from "@/components/projects/project-change-order-record-table"
+import { selectionColumns } from "@/components/selections/selections-sheet"
 import { financialQueueColumns } from "@/components/projects/project-financial-queue-table"
 import { rfiColumns } from "@/components/projects/project-rfi-record-table"
 import { rfqColumns } from "@/components/projects/project-rfq-record-table"
@@ -121,6 +122,7 @@ describe("list sheet standard", () => {
       "daily-logs.job": () => dailyLogColumns(new Set(), noop, noop),
       "duty-log.workspace": () => dutyLogColumns({ canChange: () => true, pending: false, onEdit: noop, onDelete: noop }),
       "change-orders.job": () => changeOrderColumns(() => "/"),
+      "selections.job": () => selectionColumns(),
       "financials.queue": () => financialQueueColumns({ href: () => null, projectDriveUrl: null, developerModeEnabled: true }),
       "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),

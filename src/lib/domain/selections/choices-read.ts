@@ -3,8 +3,8 @@
  * photos, comments and follow-up selections, shaped for staff or the owner.
  * Callers resolve access first; every query is scoped to the project.
  *
- * Owners see the selection's choices without supplier or supplier price
- * (owner pricing goes through the published decision terms), only
+ * Owners see the selection's choices with the owner price staff set (supplier
+ * price plus builder fee), never the supplier or the supplier price, only
  * owner-visible photos, and only owner-visible comments.
  */
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
@@ -23,7 +23,7 @@ import type { Db } from "@/lib/server/action-context"
 import { commentVisibleTo } from "./choice-rules"
 import type { SelectionAuthorAudience, SelectionChoiceStatus, SelectionCommentVisibility } from "./statuses"
 
-type SelectionLinkView = {
+export type SelectionLinkView = {
   readonly id: string
   readonly choiceId: string | null
   readonly url: string
@@ -34,7 +34,7 @@ type SelectionLinkView = {
   readonly addedByAudience: SelectionAuthorAudience
 }
 
-type SelectionPhotoView = {
+export type SelectionPhotoView = {
   readonly linkId: string
   readonly photoId: string
   readonly choiceId: string | null
@@ -43,12 +43,14 @@ type SelectionPhotoView = {
   readonly driveUrl: string | null
 }
 
-type SelectionChoiceView = {
+export type SelectionChoiceView = {
   readonly id: string
   readonly title: string
   readonly description: string | null
   /** Null for owners (supplier price stays staff-only) and when unpriced. */
   readonly priceCents: number | null
+  /** What the owner sees; null until staff price it for the owner. */
+  readonly ownerPriceCents: number | null
   readonly leadTimeDays: number | null
   readonly vendorId: string | null
   readonly vendorName: string | null
@@ -62,7 +64,7 @@ type SelectionChoiceView = {
   readonly dependentSelectionIds: readonly string[]
 }
 
-type SelectionCommentView = {
+export type SelectionCommentView = {
   readonly id: string
   readonly body: string
   readonly visibility: SelectionCommentVisibility
@@ -129,14 +131,30 @@ export async function loadSelectionChoicesPanel(
   audience: "staff" | "owner",
   viewerUserId: string,
 ): Promise<SelectionChoicesPanel> {
+  const panels = await loadChoicePanels(db, projectId, [selectionId], audience, viewerUserId)
+  return panels[0] ?? { selectionId, choices: [], selectionLinks: [], selectionPhotos: [], comments: [] }
+}
+
+/** Panels for several selections of one project, in the order given, with one query per kind of row. */
+export async function loadChoicePanels(
+  db: Db,
+  projectId: string,
+  selectionIds: readonly string[],
+  audience: "staff" | "owner",
+  viewerUserId: string,
+): Promise<readonly SelectionChoicesPanel[]> {
+  if (selectionIds.length === 0) return []
+  const ids = [...selectionIds]
   const staff = audience === "staff"
   const [choices, links, photos, comments, dependents] = await Promise.all([
     db
       .select({
         id: projectSelectionChoices.id,
+        selectionId: projectSelectionChoices.selectionId,
         title: projectSelectionChoices.title,
         description: projectSelectionChoices.description,
         priceCents: projectSelectionChoices.priceCents,
+        ownerPriceCents: projectSelectionChoices.ownerPriceCents,
         leadTimeDays: projectSelectionChoices.leadTimeDays,
         vendorId: projectSelectionChoices.vendorId,
         vendorName: vendors.name,
@@ -148,16 +166,17 @@ export async function loadSelectionChoicesPanel(
       })
       .from(projectSelectionChoices)
       .leftJoin(vendors, eq(vendors.id, projectSelectionChoices.vendorId))
-      .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.selectionId, selectionId)))
+      .where(and(eq(projectSelectionChoices.projectId, projectId), inArray(projectSelectionChoices.selectionId, ids)))
       .orderBy(asc(projectSelectionChoices.sortOrder), asc(projectSelectionChoices.createdAt)),
     db
       .select()
       .from(projectSelectionLinks)
-      .where(and(eq(projectSelectionLinks.projectId, projectId), eq(projectSelectionLinks.selectionId, selectionId)))
+      .where(and(eq(projectSelectionLinks.projectId, projectId), inArray(projectSelectionLinks.selectionId, ids)))
       .orderBy(asc(projectSelectionLinks.createdAt)),
     db
       .select({
         linkId: projectSelectionPhotos.id,
+        selectionId: projectSelectionPhotos.selectionId,
         photoId: projectSelectionPhotos.photoId,
         choiceId: projectSelectionPhotos.choiceId,
         fileName: dailyLogPhotos.fileName,
@@ -167,11 +186,12 @@ export async function loadSelectionChoicesPanel(
       })
       .from(projectSelectionPhotos)
       .innerJoin(dailyLogPhotos, eq(dailyLogPhotos.id, projectSelectionPhotos.photoId))
-      .where(and(eq(projectSelectionPhotos.projectId, projectId), eq(projectSelectionPhotos.selectionId, selectionId)))
+      .where(and(eq(projectSelectionPhotos.projectId, projectId), inArray(projectSelectionPhotos.selectionId, ids)))
       .orderBy(asc(projectSelectionPhotos.sortOrder), asc(projectSelectionPhotos.createdAt)),
     db
       .select({
         id: projectSelectionComments.id,
+        selectionId: projectSelectionComments.selectionId,
         body: projectSelectionComments.body,
         visibility: projectSelectionComments.visibility,
         authorAudience: projectSelectionComments.authorAudience,
@@ -184,16 +204,17 @@ export async function loadSelectionChoicesPanel(
       })
       .from(projectSelectionComments)
       .leftJoin(users, eq(users.id, projectSelectionComments.authorUserId))
-      .where(and(eq(projectSelectionComments.projectId, projectId), eq(projectSelectionComments.selectionId, selectionId)))
+      .where(and(eq(projectSelectionComments.projectId, projectId), inArray(projectSelectionComments.selectionId, ids)))
       .orderBy(asc(projectSelectionComments.createdAt)),
     db
       .select({ choiceId: projectSelectionChoiceDependents.choiceId, selectionId: projectSelectionChoiceDependents.selectionId })
       .from(projectSelectionChoiceDependents)
       .innerJoin(projectSelectionChoices, eq(projectSelectionChoices.id, projectSelectionChoiceDependents.choiceId))
-      .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.selectionId, selectionId))),
+      .where(and(eq(projectSelectionChoices.projectId, projectId), inArray(projectSelectionChoices.selectionId, ids))),
   ])
 
-  const linkViews = links.map((link): SelectionLinkView => ({
+  const linkViews = links.map((link): SelectionLinkView & { readonly selectionId: string } => ({
+    selectionId: link.selectionId,
     id: link.id,
     choiceId: link.choiceId,
     url: link.url,
@@ -205,7 +226,8 @@ export async function loadSelectionChoicesPanel(
   }))
   const photoViews = photos
     .filter((photo) => staff || photo.ownerVisible)
-    .map((photo): SelectionPhotoView => ({
+    .map((photo): SelectionPhotoView & { readonly selectionId: string } => ({
+      selectionId: photo.selectionId,
       linkId: photo.linkId,
       photoId: photo.photoId,
       choiceId: photo.choiceId,
@@ -214,9 +236,9 @@ export async function loadSelectionChoicesPanel(
       driveUrl: photo.driveUrl,
     }))
 
-  return {
+  return ids.map((selectionId) => ({
     selectionId,
-    choices: choices.map((choice): SelectionChoiceView => ({
+    choices: choices.filter((choice) => choice.selectionId === selectionId).map((choice): SelectionChoiceView => ({
       ...choice,
       priceCents: staff ? choice.priceCents : null,
       vendorId: staff ? choice.vendorId : null,
@@ -226,10 +248,10 @@ export async function loadSelectionChoicesPanel(
       photos: photoViews.filter((photo) => photo.choiceId === choice.id),
       dependentSelectionIds: dependents.filter((row) => row.choiceId === choice.id).map((row) => row.selectionId),
     })),
-    selectionLinks: linkViews.filter((link) => link.choiceId === null),
-    selectionPhotos: photoViews.filter((photo) => photo.choiceId === null),
+    selectionLinks: linkViews.filter((link) => link.choiceId === null && link.selectionId === selectionId),
+    selectionPhotos: photoViews.filter((photo) => photo.choiceId === null && photo.selectionId === selectionId),
     comments: comments
-      .filter((comment) => commentVisibleTo(audience, comment.visibility))
+      .filter((comment) => comment.selectionId === selectionId && commentVisibleTo(audience, comment.visibility))
       .map((comment): SelectionCommentView => ({
         id: comment.id,
         body: comment.body,
@@ -240,7 +262,7 @@ export async function loadSelectionChoicesPanel(
         createdAt: comment.createdAt,
         canDelete: staff || (comment.authorUserId === viewerUserId && comment.sourceSystem === "compass"),
       })),
-  }
+  }))
 }
 
 /** Project photos a staff member can attach (newest first, capped). */
@@ -323,4 +345,14 @@ export async function selectionPublishedToOwner(db: Db, projectId: string, selec
     .where(and(eq(projectSelectionDecisions.selectionId, selectionId), eq(projectSelectionDecisions.projectId, projectId)))
     .get()
   return row?.published === true
+}
+
+/** Whether the owner has approved the selection's published decision. */
+export async function selectionApprovedByOwner(db: Db, projectId: string, selectionId: string): Promise<boolean> {
+  const row = await db
+    .select({ approvedAt: projectSelectionDecisions.approvedAt })
+    .from(projectSelectionDecisions)
+    .where(and(eq(projectSelectionDecisions.selectionId, selectionId), eq(projectSelectionDecisions.projectId, projectId)))
+    .get()
+  return Boolean(row?.approvedAt)
 }
