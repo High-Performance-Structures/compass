@@ -22,6 +22,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireUserContext } from "@/lib/server/action-context"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import {
   allowedWorkflowRoleIds,
@@ -537,7 +538,8 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           projectLabel: label,
           projectName: project.name,
           fileName: photo.fileName,
-          imageUrl,
+          // Dashboard tiles are small; they load the thumbnail copy.
+          imageUrl: photoThumbnailSrc(imageUrl),
           driveUrl: photo.driveUrl,
           caption: photo.caption,
           capturedAt: photo.capturedAt ?? photo.createdAt,

@@ -296,6 +296,49 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
+  it.each(["admin", "client"])("serves a grid thumbnail after %s authorization", async (viewerRole) => {
+    configureDb({ viewerRole, membershipRole: "client", visiblePhoto: photo })
+    const response = await getPhoto("owner", undefined, "thumb")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("print-jpeg")
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=86400")
+    expect(mocks.downloadThumbnail).toHaveBeenCalledWith("drive@example.com", "https://drive.google.com/thumbnail=s220", 400)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("does not fetch a thumbnail of a photo the audience cannot see", async () => {
+    configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: null })
+    expect((await getPhoto("owner", undefined, "thumb")).status).toBe(404)
+    expect(mocks.getFile).not.toHaveBeenCalled()
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("streams the original for an unknown size value", async () => {
+    const response = await getPhoto(undefined, undefined, "huge")
+    expect(await response.text()).toBe("jpeg-bytes")
+    expect(mocks.getFile).not.toHaveBeenCalled()
+    expect(mocks.downloadThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("lets browsers keep original photo bytes for a day", async () => {
+    const response = await getPhoto()
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=86400")
+  })
+
+  it("never caches photo bytes in a staff preview", async () => {
+    mocks.headers.mockResolvedValue(new Headers({ "x-compass-audience-scope": JSON.stringify({ projectId: "project-1", audience: "owner", targetUserId: "invite:inv-1" }) }))
+    mocks.resolveProjectAudienceViewer.mockResolvedValue({
+      actor: { ...baseUser, id: "staff-1", role: "admin", organizationType: "internal" },
+      viewer: { ...baseUser, id: "invite:inv-1", role: "owner" },
+      organizationId: project.organizationId,
+      projectId: project.id,
+      audience: "owner",
+      isPreview: true,
+    })
+    const response = await getPhoto("owner", undefined, "thumb")
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store")
+  })
+
   it("does not fetch a print rendition of a photo the audience cannot see", async () => {
     configureDb({ viewerRole: "client", membershipRole: "client", visiblePhoto: null })
     expect((await getPhoto("owner", undefined, "print")).status).toBe(404)

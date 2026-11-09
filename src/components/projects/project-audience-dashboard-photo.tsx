@@ -24,7 +24,10 @@ import { ProjectAudienceDashboardPlaceholder } from "@/components/projects/proje
 
 export type AudienceDashboardPhoto = {
   readonly id: string
+  /** The original photo, for the larger viewer. */
   readonly src: string
+  /** A small copy for the slideshow and film strip (see photo-rendition.ts). */
+  readonly thumbnailSrc: string
   readonly alt: string
   /** Shown under the photo in the larger viewer, e.g. "Oct 9, 2026". */
   readonly dateLabel: string
@@ -96,7 +99,7 @@ export function ProjectAudienceDashboardPhoto({
           {slides.map((photo, photoIndex) => (
             <Image
               key={photo.id}
-              src={photo.src}
+              src={photo.thumbnailSrc}
               alt={photo.alt}
               fill
               sizes="(min-width: 640px) 240px, 100vw"
@@ -287,7 +290,7 @@ function ProjectPhotoViewer({
                     )}
                   >
                     <Image
-                      src={photo.src}
+                      src={photo.thumbnailSrc}
                       alt=""
                       fill
                       sizes="80px"

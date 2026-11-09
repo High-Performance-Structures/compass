@@ -6,7 +6,27 @@ const KEY_LENGTH = 256
 const IV_LENGTH = 12
 const TAG_LENGTH = 128
 
-async function deriveKey(
+// Deriving the AES key runs 100,000 PBKDF2 rounds, which is a noticeable chunk
+// of CPU. Routes that decrypt the same secret on every request (for example the
+// Google service-account key behind every photo download) would repeat that
+// work hundreds of times a minute, so each isolate keeps the derived key for
+// its lifetime. The key is non-extractable and never leaves this module.
+const MAX_CACHED_DERIVED_KEYS = 16
+const derivedKeyCache = new Map<string, Promise<CryptoKey>>()
+
+function deriveKey(secret: string, salt: string): Promise<CryptoKey> {
+  const cacheKey = `${salt}\u0000${secret}`
+  const cached = derivedKeyCache.get(cacheKey)
+  if (cached) return cached
+  if (derivedKeyCache.size >= MAX_CACHED_DERIVED_KEYS) derivedKeyCache.clear()
+  const derived = deriveKeyUncached(secret, salt)
+  derivedKeyCache.set(cacheKey, derived)
+  // A failed derivation must not stay cached.
+  void derived.catch(() => derivedKeyCache.delete(cacheKey))
+  return derived
+}
+
+async function deriveKeyUncached(
   secret: string,
   salt: string
 ): Promise<CryptoKey> {

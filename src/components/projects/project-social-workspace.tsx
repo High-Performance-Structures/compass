@@ -39,6 +39,8 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { projectInternalPhotoUrl } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import { PageHeader } from "@/components/page-header"
 
 function platformIcon(platform: string): React.ReactElement {
@@ -357,7 +359,7 @@ export function ProjectSocialWorkspace({
                     />
                     <div className="relative aspect-square bg-muted">
                       <Image
-                        src={`/api/projects/${workspace.project.id}/photos/${photo.id}`}
+                        src={photoThumbnailSrc(projectInternalPhotoUrl(workspace.project.id, photo.id))}
                         alt={photo.caption ?? photo.fileName}
                         fill
                         sizes="(max-width: 640px) 50vw, 180px"

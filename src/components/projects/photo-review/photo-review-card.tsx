@@ -71,7 +71,7 @@ export function PhotoReviewCard({
     photo.id
   )
   const href = photoLinkHref(internalUrl)
-  const { resolvedImage, retryAttempt, imageSrc } = images.imageFor(photo)
+  const { resolvedImage, retryAttempt, imageSrc } = images.imageFor(photo, "thumbnail")
   const sourceName = sourceLabel(photo.sourceSystem)
 
   return (

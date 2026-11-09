@@ -20,6 +20,7 @@ import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { photoThumbnailSrc } from "@/lib/photos/photo-rendition"
 import { comparePhotoDates } from "@/lib/photos/date"
 import {
   audienceDashboardDateLabel,
@@ -117,6 +118,7 @@ export function ProjectAudienceDashboardView({
         ? [{
             id: photo.id,
             src: source,
+            thumbnailSrc: photoThumbnailSrc(source),
             alt: photo.caption ?? photo.fileName,
             dateLabel: photoDateLabel(photo.photoDate),
           }]
