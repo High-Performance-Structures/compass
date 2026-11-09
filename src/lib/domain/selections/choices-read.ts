@@ -1,0 +1,326 @@
+/**
+ * Reads for the rows under a finish selection: choices, supplier links,
+ * photos, comments and follow-up selections, shaped for staff or the owner.
+ * Callers resolve access first; every query is scoped to the project.
+ *
+ * Owners see the selection's choices without supplier or supplier price
+ * (owner pricing goes through the published decision terms), only
+ * owner-visible photos, and only owner-visible comments.
+ */
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
+
+import { dailyLogPhotos, projectFinishSelections, users, vendors } from "@/db/schema"
+import {
+  projectSelectionChoiceDependents,
+  projectSelectionChoices,
+  projectSelectionComments,
+  projectSelectionLinks,
+  projectSelectionPhotos,
+} from "@/db/schema-selection-choices"
+import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
+import type { Db } from "@/lib/server/action-context"
+
+import { commentVisibleTo } from "./choice-rules"
+import type { SelectionAuthorAudience, SelectionChoiceStatus, SelectionCommentVisibility } from "./statuses"
+
+type SelectionLinkView = {
+  readonly id: string
+  readonly choiceId: string | null
+  readonly url: string
+  readonly title: string | null
+  readonly imageUrl: string | null
+  readonly priceCents: number | null
+  readonly siteName: string | null
+  readonly addedByAudience: SelectionAuthorAudience
+}
+
+type SelectionPhotoView = {
+  readonly linkId: string
+  readonly photoId: string
+  readonly choiceId: string | null
+  readonly fileName: string
+  readonly thumbnailUrl: string | null
+  readonly driveUrl: string | null
+}
+
+type SelectionChoiceView = {
+  readonly id: string
+  readonly title: string
+  readonly description: string | null
+  /** Null for owners (supplier price stays staff-only) and when unpriced. */
+  readonly priceCents: number | null
+  readonly leadTimeDays: number | null
+  readonly vendorId: string | null
+  readonly vendorName: string | null
+  readonly supplierName: string | null
+  readonly sortOrder: number
+  readonly chosen: boolean
+  readonly status: SelectionChoiceStatus
+  readonly sourceSystem: string
+  readonly links: readonly SelectionLinkView[]
+  readonly photos: readonly SelectionPhotoView[]
+  readonly dependentSelectionIds: readonly string[]
+}
+
+type SelectionCommentView = {
+  readonly id: string
+  readonly body: string
+  readonly visibility: SelectionCommentVisibility
+  readonly authorAudience: SelectionAuthorAudience
+  readonly authorName: string
+  readonly sourceSystem: string
+  readonly createdAt: string
+  /** Staff may delete any comment; an owner only their own. */
+  readonly canDelete: boolean
+}
+
+export type SelectionChoicesPanel = {
+  readonly selectionId: string
+  readonly choices: readonly SelectionChoiceView[]
+  /** Links and photos on the selection itself, not on one choice. */
+  readonly selectionLinks: readonly SelectionLinkView[]
+  readonly selectionPhotos: readonly SelectionPhotoView[]
+  readonly comments: readonly SelectionCommentView[]
+}
+
+/** The selection's id when it belongs to the project, else null. */
+export async function selectionInProject(db: Db, projectId: string, selectionId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+  const row = await db
+    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
+    .get()
+  return row ?? null
+}
+
+/** The choice with its selection, when it belongs to the project. */
+export async function choiceInProject(
+  db: Db,
+  projectId: string,
+  choiceId: string,
+): Promise<{ readonly id: string; readonly selectionId: string } | null> {
+  const row = await db
+    .select({ id: projectSelectionChoices.id, selectionId: projectSelectionChoices.selectionId })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
+    .get()
+  return row ?? null
+}
+
+export async function selectionChoiceIds(db: Db, selectionId: string): Promise<readonly string[]> {
+  const rows = await db
+    .select({ id: projectSelectionChoices.id })
+    .from(projectSelectionChoices)
+    .where(eq(projectSelectionChoices.selectionId, selectionId))
+    .orderBy(asc(projectSelectionChoices.sortOrder))
+  return rows.map((row) => row.id)
+}
+
+/** The next sort_order at the end of a selection's choices. */
+export async function nextChoiceSortOrder(db: Db, selectionId: string): Promise<number> {
+  const ids = await selectionChoiceIds(db, selectionId)
+  return ids.length
+}
+
+export async function loadSelectionChoicesPanel(
+  db: Db,
+  projectId: string,
+  selectionId: string,
+  audience: "staff" | "owner",
+  viewerUserId: string,
+): Promise<SelectionChoicesPanel> {
+  const staff = audience === "staff"
+  const [choices, links, photos, comments, dependents] = await Promise.all([
+    db
+      .select({
+        id: projectSelectionChoices.id,
+        title: projectSelectionChoices.title,
+        description: projectSelectionChoices.description,
+        priceCents: projectSelectionChoices.priceCents,
+        leadTimeDays: projectSelectionChoices.leadTimeDays,
+        vendorId: projectSelectionChoices.vendorId,
+        vendorName: vendors.name,
+        supplierName: projectSelectionChoices.supplierName,
+        sortOrder: projectSelectionChoices.sortOrder,
+        chosen: projectSelectionChoices.chosen,
+        status: projectSelectionChoices.status,
+        sourceSystem: projectSelectionChoices.sourceSystem,
+      })
+      .from(projectSelectionChoices)
+      .leftJoin(vendors, eq(vendors.id, projectSelectionChoices.vendorId))
+      .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.selectionId, selectionId)))
+      .orderBy(asc(projectSelectionChoices.sortOrder), asc(projectSelectionChoices.createdAt)),
+    db
+      .select()
+      .from(projectSelectionLinks)
+      .where(and(eq(projectSelectionLinks.projectId, projectId), eq(projectSelectionLinks.selectionId, selectionId)))
+      .orderBy(asc(projectSelectionLinks.createdAt)),
+    db
+      .select({
+        linkId: projectSelectionPhotos.id,
+        photoId: projectSelectionPhotos.photoId,
+        choiceId: projectSelectionPhotos.choiceId,
+        fileName: dailyLogPhotos.fileName,
+        thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+        driveUrl: dailyLogPhotos.driveUrl,
+        ownerVisible: dailyLogPhotos.ownerVisible,
+      })
+      .from(projectSelectionPhotos)
+      .innerJoin(dailyLogPhotos, eq(dailyLogPhotos.id, projectSelectionPhotos.photoId))
+      .where(and(eq(projectSelectionPhotos.projectId, projectId), eq(projectSelectionPhotos.selectionId, selectionId)))
+      .orderBy(asc(projectSelectionPhotos.sortOrder), asc(projectSelectionPhotos.createdAt)),
+    db
+      .select({
+        id: projectSelectionComments.id,
+        body: projectSelectionComments.body,
+        visibility: projectSelectionComments.visibility,
+        authorAudience: projectSelectionComments.authorAudience,
+        authorUserId: projectSelectionComments.authorUserId,
+        authorDisplayName: users.displayName,
+        authorEmail: users.email,
+        authorNameSnapshot: projectSelectionComments.authorNameSnapshot,
+        sourceSystem: projectSelectionComments.sourceSystem,
+        createdAt: projectSelectionComments.createdAt,
+      })
+      .from(projectSelectionComments)
+      .leftJoin(users, eq(users.id, projectSelectionComments.authorUserId))
+      .where(and(eq(projectSelectionComments.projectId, projectId), eq(projectSelectionComments.selectionId, selectionId)))
+      .orderBy(asc(projectSelectionComments.createdAt)),
+    db
+      .select({ choiceId: projectSelectionChoiceDependents.choiceId, selectionId: projectSelectionChoiceDependents.selectionId })
+      .from(projectSelectionChoiceDependents)
+      .innerJoin(projectSelectionChoices, eq(projectSelectionChoices.id, projectSelectionChoiceDependents.choiceId))
+      .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.selectionId, selectionId))),
+  ])
+
+  const linkViews = links.map((link): SelectionLinkView => ({
+    id: link.id,
+    choiceId: link.choiceId,
+    url: link.url,
+    title: link.title,
+    imageUrl: link.imageUrl,
+    priceCents: link.priceCents,
+    siteName: link.siteName,
+    addedByAudience: link.addedByAudience,
+  }))
+  const photoViews = photos
+    .filter((photo) => staff || photo.ownerVisible)
+    .map((photo): SelectionPhotoView => ({
+      linkId: photo.linkId,
+      photoId: photo.photoId,
+      choiceId: photo.choiceId,
+      fileName: photo.fileName,
+      thumbnailUrl: photo.thumbnailUrl,
+      driveUrl: photo.driveUrl,
+    }))
+
+  return {
+    selectionId,
+    choices: choices.map((choice): SelectionChoiceView => ({
+      ...choice,
+      priceCents: staff ? choice.priceCents : null,
+      vendorId: staff ? choice.vendorId : null,
+      vendorName: staff ? choice.vendorName : null,
+      supplierName: staff ? choice.supplierName : null,
+      links: linkViews.filter((link) => link.choiceId === choice.id),
+      photos: photoViews.filter((photo) => photo.choiceId === choice.id),
+      dependentSelectionIds: dependents.filter((row) => row.choiceId === choice.id).map((row) => row.selectionId),
+    })),
+    selectionLinks: linkViews.filter((link) => link.choiceId === null),
+    selectionPhotos: photoViews.filter((photo) => photo.choiceId === null),
+    comments: comments
+      .filter((comment) => commentVisibleTo(audience, comment.visibility))
+      .map((comment): SelectionCommentView => ({
+        id: comment.id,
+        body: comment.body,
+        visibility: comment.visibility,
+        authorAudience: comment.authorAudience,
+        authorName: comment.authorDisplayName ?? comment.authorNameSnapshot ?? comment.authorEmail ?? "Unknown",
+        sourceSystem: comment.sourceSystem,
+        createdAt: comment.createdAt,
+        canDelete: staff || (comment.authorUserId === viewerUserId && comment.sourceSystem === "compass"),
+      })),
+  }
+}
+
+/** Project photos a staff member can attach (newest first, capped). */
+export async function loadAttachablePhotos(
+  db: Db,
+  projectId: string,
+  limit = 200,
+): Promise<readonly { readonly id: string; readonly fileName: string; readonly thumbnailUrl: string | null }[]> {
+  return db
+    .select({ id: dailyLogPhotos.id, fileName: dailyLogPhotos.fileName, thumbnailUrl: dailyLogPhotos.thumbnailUrl })
+    .from(dailyLogPhotos)
+    .where(eq(dailyLogPhotos.projectId, projectId))
+    .orderBy(desc(dailyLogPhotos.createdAt))
+    .limit(limit)
+}
+
+/** Which of these photo ids belong to the project. */
+export async function projectPhotoIds(db: Db, projectId: string, photoIds: readonly string[]): Promise<ReadonlySet<string>> {
+  if (photoIds.length === 0) return new Set()
+  const rows = await db
+    .select({ id: dailyLogPhotos.id })
+    .from(dailyLogPhotos)
+    .where(and(eq(dailyLogPhotos.projectId, projectId), inArray(dailyLogPhotos.id, [...photoIds])))
+  return new Set(rows.map((row) => row.id))
+}
+
+/** Which of these selection ids belong to the project. */
+export async function projectSelectionIds(db: Db, projectId: string, selectionIds: readonly string[]): Promise<ReadonlySet<string>> {
+  if (selectionIds.length === 0) return new Set()
+  const rows = await db
+    .select({ id: projectFinishSelections.id })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.id, [...selectionIds])))
+  return new Set(rows.map((row) => row.id))
+}
+
+/** A vendor of the organization that has not been merged away, or null. */
+export async function activeVendorInOrganization(db: Db, organizationId: string, vendorId: string): Promise<string | null> {
+  const row = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.id, vendorId), eq(vendors.organizationId, organizationId), isNull(vendors.mergedIntoVendorId)))
+    .get()
+  return row?.id ?? null
+}
+
+/** The comment's author and origin, scoped to the project. */
+export async function commentInProject(
+  db: Db,
+  projectId: string,
+  commentId: string,
+): Promise<{ readonly authorUserId: string | null; readonly sourceSystem: string } | null> {
+  const row = await db
+    .select({ authorUserId: projectSelectionComments.authorUserId, sourceSystem: projectSelectionComments.sourceSystem })
+    .from(projectSelectionComments)
+    .where(and(eq(projectSelectionComments.id, commentId), eq(projectSelectionComments.projectId, projectId)))
+    .get()
+  return row ?? null
+}
+
+/** The link's author audience and user, scoped to the project. */
+export async function linkInProject(
+  db: Db,
+  projectId: string,
+  linkId: string,
+): Promise<{ readonly addedByUserId: string | null } | null> {
+  const row = await db
+    .select({ addedByUserId: projectSelectionLinks.addedByUserId })
+    .from(projectSelectionLinks)
+    .where(and(eq(projectSelectionLinks.id, linkId), eq(projectSelectionLinks.projectId, projectId)))
+    .get()
+  return row ?? null
+}
+
+/** Owners only reach a selection's rows once staff have published it to them. */
+export async function selectionPublishedToOwner(db: Db, projectId: string, selectionId: string): Promise<boolean> {
+  const row = await db
+    .select({ published: projectSelectionDecisions.published })
+    .from(projectSelectionDecisions)
+    .where(and(eq(projectSelectionDecisions.selectionId, selectionId), eq(projectSelectionDecisions.projectId, projectId)))
+    .get()
+  return row?.published === true
+}
