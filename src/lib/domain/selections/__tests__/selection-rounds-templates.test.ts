@@ -97,7 +97,7 @@ describe("rounds", () => {
     expect(mocks.notify).not.toHaveBeenCalled()
     await setSelectionChoiceChosen("p1", faucetChoice, true)
     expect(mocks.notify).toHaveBeenCalledTimes(1)
-    expect(mocks.notify.mock.calls[0]?.[0]).toMatchObject({ projectId: "p1", eventType: "selection_round_ready", title: "Rough-in selections ready to finalize" })
+    expect(mocks.notify.mock.calls[0]?.[0]).toMatchObject({ projectId: "p1", eventType: "selection_round_ready", title: "Selection Phase Rough-in ready to finalize" })
     sheet = await getSelectionSheet("p1")
     expect(sheet.rounds[0]).toMatchObject({ chosen: 2, ready: true, alerted: true })
 

@@ -36,7 +36,7 @@ export function SelectionRoundCards({
   const [signing, setSigning] = React.useState<RoundCard | null>(null)
   if (rounds.length === 0) return null
   return (
-    <div className="flex flex-wrap gap-3" role="group" aria-label="Selection rounds">
+    <div className="flex flex-wrap gap-3" role="group" aria-label="Selection Phases">
       {rounds.map((round) => {
         const percent = round.total ? Math.round((round.chosen / round.total) * 100) : 0
         const active = selected === round.key
@@ -82,11 +82,11 @@ export function SelectionRoundCards({
               <span className="flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm">
                   <a
-                    href={printPreviewHref({ projectId, document: "selections-round", params: { round: round.key }, number: `${round.name} selections` })}
+                    href={printPreviewHref({ projectId, document: "selections-round", params: { round: round.key }, number: `${round.name} Selection Phase` })}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Print round
+                    Print Selection Phase
                   </a>
                 </Button>
                 <Button type="button" size="sm" onClick={() => setSigning(round)}>
@@ -107,7 +107,7 @@ export function SelectionRoundCards({
             selected === "" && "border-2 border-primary",
           )}
         >
-          <span className="font-semibold">No round</span>
+          <span className="font-semibold">No Selection Phase</span>
           <span className="text-muted-foreground">{unassigned} selection{unassigned === 1 ? "" : "s"}</span>
         </button>
       )}

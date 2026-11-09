@@ -53,7 +53,7 @@ export async function assignSelectionRound(projectId: string, selectionIds: read
     if (ids.length === 0 || ids.length > 90) return { success: false, error: "Choose between 1 and 90 selections." }
     if (roundKey !== null) {
       const settings = await readFeatureSettings(context.db, context.organizationId, "selections")
-      if (!settings.rounds.some((round) => round.id === roundKey)) return { success: false, error: "That round isn't in Settings › Selections." }
+      if (!settings.rounds.some((round) => round.id === roundKey)) return { success: false, error: "That Selection Phase isn't in Settings › Selections." }
     }
     const result = await updateFinishSelections(
       context.db,
@@ -64,7 +64,7 @@ export async function assignSelectionRound(projectId: string, selectionIds: read
     refresh(projectId)
     return { success: true, data: { count: result.meta.changes } }
   } catch (error) {
-    return failure(error, "Unable to change the round.")
+    return failure(error, "Unable to change the Selection Phase.")
   }
 }
 

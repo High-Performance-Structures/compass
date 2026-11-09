@@ -12,7 +12,7 @@ export const PRINT_DOCUMENTS = {
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
   "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },
   "meeting-transcript": { title: "Meeting transcript", render: "page", params: ["meetingId"], landscape: false },
-  "selections-round": { title: "Selections round", render: "page", params: ["round", "signatureId"], landscape: false },
+  "selections-round": { title: "Selection Phase", render: "page", params: ["round", "signatureId"], landscape: false },
   "daily-logs": { title: "Daily logs", render: "pdf", params: ["logIds", "start", "end", "author"], landscape: false },
   "sage-export-preview": { title: "Sage export preview", render: "page", params: ["applicationId"], landscape: true },
   "sage-billing-checklist": { title: "Enter in Sage", render: "page", params: ["applicationId"], landscape: true },

@@ -56,7 +56,7 @@ describe("buildRoundDocument", () => {
   it("can't be signed until every selection has a priced pick", () => {
     expect(buildRoundDocument([line({ choiceId: null, choiceTitle: null, selectionName: "Faucet" })], "cost_plus", 10).blocker).toBe("Faucet doesn't have the owner's pick yet.")
     expect(buildRoundDocument([line({ ownerPriceCents: null })], "cost_plus", 10).blocker).toBe("Tile: set the owner price for the picked choice.")
-    expect(buildRoundDocument([line({ signedEarlier: true })], "cost_plus", 10).blocker).toBe("Every pick in this round is already signed for.")
-    expect(buildRoundDocument([], "cost_plus", 10).blocker).toBe("This round has no selections.")
+    expect(buildRoundDocument([line({ signedEarlier: true })], "cost_plus", 10).blocker).toBe("Every pick in this Selection Phase is already signed for.")
+    expect(buildRoundDocument([], "cost_plus", 10).blocker).toBe("This Selection Phase has no selections.")
   })
 })

@@ -6,7 +6,7 @@ function kindLabel(kind: EsignDocumentKind): string {
   if (kind === "contract") return "Contract"
   if (kind === "change_order") return "Change order"
   if (kind === "trade_letter") return "Letter"
-  if (kind === "selections_round") return "Selections round"
+  if (kind === "selections_round") return "Selection Phase"
   return "Estimate"
 }
 

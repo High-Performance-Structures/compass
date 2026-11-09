@@ -83,7 +83,7 @@ export function SelectionSettingsSection(): React.ReactElement {
     }
     const checked = selectionSettingsSchema.safeParse(value)
     if (!checked.success) {
-      toast.error("Check the rounds, lead times and percents: names are required, days are 0-730, percents can't be negative.")
+      toast.error("Check the Selection Phases, lead times and percents: names are required, days are 0-730, percents can't be negative.")
       return
     }
     startTransition(async () => {
@@ -121,10 +121,10 @@ export function SelectionSettingsSection(): React.ReactElement {
       {loaded ? (
         <form onSubmit={save} className="space-y-6">
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Rounds</legend>
+            <legend className="text-sm font-medium">Selection Phases</legend>
             <p className="text-xs text-muted-foreground">
-              Selections are released to the owner in rounds. A round is due the given number of days before the first schedule item whose
-              title contains the text you enter (for example &quot;Drywall&quot;). Leave the schedule item blank for a round without a date.
+              Selections are released to the owner in Selection Phases. A Selection Phase is due the given number of days before the first schedule
+              item whose title contains the text you enter (for example &quot;Drywall&quot;). Leave the schedule item blank for a Selection Phase without a date.
             </p>
             {rounds.map((round, index) => (
               <div key={round.id} className="grid items-end gap-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_7rem_auto]">
@@ -139,7 +139,7 @@ export function SelectionSettingsSection(): React.ReactElement {
                   </Button>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`round-name-${round.id}`}>Round name</Label>
+                  <Label htmlFor={`round-name-${round.id}`}>Selection Phase name</Label>
                   <Input id={`round-name-${round.id}`} value={round.name} maxLength={80} disabled={disabled} onChange={(event) => updateRound(index, { name: event.target.value })} />
                 </div>
                 <div className="space-y-1">
@@ -160,8 +160,8 @@ export function SelectionSettingsSection(): React.ReactElement {
             ))}
             {canEdit && (
               <Button type="button" variant="outline" size="sm" disabled={pending || rounds.length >= 20}
-                onClick={() => setRounds((current) => [...current, { id: newRoundId(`round-${current.length + 1}`, current.map((round) => round.id)), name: `Round ${current.length + 1}`, scheduleItem: "", bufferDays: 21 }])}>
-                <IconPlus className="size-4" /> Add round
+                onClick={() => setRounds((current) => [...current, { id: newRoundId(`round-${current.length + 1}`, current.map((round) => round.id)), name: `Selection Phase ${current.length + 1}`, scheduleItem: "", bufferDays: 21 }])}>
+                <IconPlus className="size-4" /> Add Selection Phase
               </Button>
             )}
           </fieldset>

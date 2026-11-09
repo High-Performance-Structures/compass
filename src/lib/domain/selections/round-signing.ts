@@ -257,8 +257,8 @@ async function createRoundChangeOrder(
       projectId: input.projectId,
       changeOrderNumber: number,
       recordType: "change_order",
-      title: `${input.roundName} selections`,
-      scope: `Selections in ${input.roundName} ${amountCents >= 0 ? "over" : "under"} the allowance.`,
+      title: `${input.roundName} Selection Phase`,
+      scope: `Selections in the ${input.roundName} Selection Phase ${amountCents >= 0 ? "over" : "under"} the allowance.`,
       reason: "The owner's selections differ from the allowance.",
       amountCents,
       status: "signature_pending",
@@ -303,7 +303,7 @@ async function createRoundChangeOrder(
       actorUserId: input.actor.id,
       actorName: input.actor.name.slice(0, 200),
       actorRole: input.actor.role.slice(0, 80),
-      note: `Created for the owner's ${input.roundName} selections signature.`,
+      note: `Created for the owner's signature on the ${input.roundName} Selection Phase.`,
       metadataJson: JSON.stringify({ selectionRoundSignatureId: input.signatureId, amountCents }),
       createdAt: input.now,
     }),
@@ -350,12 +350,12 @@ export async function prepareRoundSignature(input: {
 }): Promise<PreparedRoundSignature> {
   const { db, env, projectId, actor } = input
   const view = await loadRoundSigningView(db, projectId, input.organizationId, input.roundKey)
-  if (!view) throw new Error("Round not found.")
+  if (!view) throw new Error("Selection Phase not found.")
   if (view.document.blocker) throw new Error(view.document.blocker)
   if (input.signers.length === 0) throw new Error("Choose at least one owner to sign.")
   if (input.signers.length > 4) throw new Error("Send to no more than four signers.")
   const out = view.signatures.find((signature) => signature.status === "sent")
-  if (out) throw new Error("This round is already out for signature. Cancel it in Foxit before sending a new one.")
+  if (out) throw new Error("This Selection Phase is already out for signature. Cancel it in Foxit before sending a new one.")
   const now = new Date().toISOString()
   // An unsent preparation is replaced by this one.
   for (const stale of view.signatures.filter((signature) => signature.status === "preparing")) {
@@ -373,8 +373,8 @@ export async function prepareRoundSignature(input: {
       db,
       projectId,
       actor,
-      title: `${view.roundName} selections`,
-      scope: `Selections in ${view.roundName} ${view.document.deltaCents >= 0 ? "over" : "under"} the allowance.`,
+      title: `${view.roundName} Selection Phase`,
+      scope: `Selections in the ${view.roundName} Selection Phase ${view.document.deltaCents >= 0 ? "over" : "under"} the allowance.`,
       reason: "The owner's selections differ from the allowance.",
       // Priced at owner prices (fee included), so approving it adds no builder fee.
       source: { type: SELECTION_ROUND_VARIANCE_SOURCE, recordId: signatureId },
@@ -421,7 +421,7 @@ export async function prepareRoundSignature(input: {
     const envelope = await createFoxitPreparedEnvelope({
       clientId: env.FOXIT_ESIGN_CLIENT_ID,
       clientSecret: env.FOXIT_ESIGN_CLIENT_SECRET,
-      folderName: `${view.project.projectNumber ?? view.project.name} ${view.roundName} selections`.slice(0, 120),
+      folderName: `${view.project.projectNumber ?? view.project.name} ${view.roundName} Selection Phase`.slice(0, 120),
       pdfBase64: pdf.pdfBase64,
       parties: input.signers.map((signer, index) => ({ name: signer.name, email: signer.email, sequence: index + 1 })),
       fields: pdf.fields,
@@ -497,7 +497,7 @@ async function fileSignedRoundPdf(db: Db, env: CloudflareEnv, signature: Signatu
     envelopeId: signature.foxitEnvelopeId,
   })
   if (!download.ok) throw new Error(`Foxit did not return the signed selections (${download.status}).`)
-  const name = `${project.projectNumber ?? ""} ${signature.roundNameSnapshot} selections signed ${now.slice(0, 10)}`.replace(/[\\/:*?"<>|]+/g, "-").trim()
+  const name = `${project.projectNumber ?? ""} ${signature.roundNameSnapshot} Selection Phase signed ${now.slice(0, 10)}`.replace(/[\\/:*?"<>|]+/g, "-").trim()
   const file = await drive.client.uploadFile(drive.googleEmail, {
     name: `${name}.pdf`,
     parentId: folder.folderId,
@@ -535,7 +535,7 @@ export async function handleRoundSignatureEvent(input: {
       outcome: input.event === "folder_declined" ? "declined" : "cancelled",
       recordId: signature.id,
       number: signature.roundNameSnapshot,
-      title: "selections",
+      title: "",
       changeOrderId: null,
       sentBy: signature.createdBy,
     })
@@ -571,7 +571,7 @@ export async function handleRoundSignatureEvent(input: {
         status: "executed",
         executedAt: now,
         executedDocumentUrl: evidenceUrl,
-        executedDocumentLabel: `${signature.roundNameSnapshot} selections signed`,
+        executedDocumentLabel: `${signature.roundNameSnapshot} Selection Phase signed`,
         foxitStatus: "completed",
         updatedAt: now,
       }),
@@ -604,7 +604,7 @@ export async function handleRoundSignatureEvent(input: {
     outcome: "signed",
     recordId: signature.id,
     number: signature.roundNameSnapshot,
-    title: "selections",
+    title: "",
     changeOrderId: signature.changeOrderId,
     sentBy: signature.createdBy,
   })

@@ -215,7 +215,7 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     columns: [
       { id: "selection", label: "Selection", kind: "text", required: true },
       { id: "room", label: "Room", kind: "text" },
-      { id: "round", label: "Round", kind: "text" },
+      { id: "round", label: "Selection Phase", kind: "text" },
       { id: "costCode", label: "Cost code", kind: "text" },
       { id: "choices", label: "Choices", kind: "number" },
       { id: "pick", label: "Owner's pick", kind: "text" },

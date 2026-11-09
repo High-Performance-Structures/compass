@@ -80,13 +80,13 @@ export function buildRoundDocument(
   const missingPrice = toSign.find((line) => line.ownerPriceCents === null)
   const blocker =
     lines.length === 0
-      ? "This round has no selections."
+      ? "This Selection Phase has no selections."
       : missingPick
         ? `${missingPick.selectionName} doesn't have the owner's pick yet.`
         : missingPrice
           ? `${missingPrice.selectionName}: set the owner price for the picked choice.`
           : toSign.length === 0
-            ? "Every pick in this round is already signed for."
+            ? "Every pick in this Selection Phase is already signed for."
             : null
   return {
     lines,

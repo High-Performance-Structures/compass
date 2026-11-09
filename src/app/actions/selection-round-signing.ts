@@ -19,9 +19,9 @@ export async function getRoundSigning(projectId: string, roundKey: string): Prom
   try {
     const { db, organizationId } = await staffSelectionContext(projectId, "read")
     const view = await loadRoundSigningView(db, projectId, organizationId, roundKey)
-    return view ? { success: true, data: view } : actionFailure("Round not found.")
+    return view ? { success: true, data: view } : actionFailure("Selection Phase not found.")
   } catch (error) {
-    return actionFailure(errorMessage(error, "Unable to load the round."))
+    return actionFailure(errorMessage(error, "Unable to load the Selection Phase."))
   }
 }
 
@@ -38,7 +38,7 @@ export async function sendRoundForSignature(
     const context = await staffSelectionContext(projectId, "update")
     const { db, env, organizationId, user } = context
     const view = await loadRoundSigningView(db, projectId, organizationId, roundKey)
-    if (!view) return actionFailure("Round not found.")
+    if (!view) return actionFailure("Selection Phase not found.")
     const wanted = new Set(signerEmails.map((email) => email.trim().toLocaleLowerCase()))
     const signers: RoundSigner[] = view.ownerContacts.filter((contact) => wanted.has(contact.email.toLocaleLowerCase()))
     if (signers.length !== wanted.size) return actionFailure("Signers must be the job's owner contacts with an email address.")
@@ -53,7 +53,7 @@ export async function sendRoundForSignature(
       action: "selections_round_signature_prepared",
       entityType: "selection_round_signature",
       entityId: prepared.signatureId,
-      summary: `${view.roundName} selections prepared for signature by ${signers.map((signer) => signer.name).join(", ")}.`,
+      summary: `${view.roundName} Selection Phase prepared for signature by ${signers.map((signer) => signer.name).join(", ")}.`,
       metadata: { roundKey, signers: signers.map((signer) => signer.email) },
     })
     revalidatePath(`/dashboard/projects/${projectId}/selections`)

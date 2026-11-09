@@ -48,7 +48,7 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
 export const SELECTION_SETTINGS_GROUP = {
   label: "Selections",
   description:
-    "Selection rounds and the schedule items that set their due dates, default lead times by category, the markup that fills in owner prices, and when a variance becomes a change order.",
+    "Selection Phases and the schedule items that set their due dates, default lead times by category, the markup that fills in owner prices, and when a variance becomes a change order.",
   defaults: DEFAULT_SELECTION_SETTINGS,
   schema: selectionSettingsSchema,
 }

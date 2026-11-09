@@ -1,8 +1,8 @@
 "use client"
 
 /*
- * A round's owner signature, from its round card: the totals and what the
- * difference becomes (change order or variance), Print round, the owners to
+ * A Selection Phase's owner signature (a "round" in code), from its card: the
+ * totals and what the difference becomes (change order or variance), Print Selection Phase, the owners to
  * sign (the shared recipient picker, limited to the job's owner contacts),
  * and the round's signatures so far. Sending prepares the Foxit envelope
  * and opens Foxit to review and send it; Foxit emails the signers.
@@ -67,12 +67,12 @@ export function SelectionRoundSigningDialog({
 
   const doc = view?.document ?? null
   const outForSignature = view?.signatures.some((signature) => signature.status === "sent") ?? false
-  const printHref = printPreviewHref({ projectId, document: "selections-round", params: { round: roundKey }, number: `${roundName} selections` })
+  const printHref = printPreviewHref({ projectId, document: "selections-round", params: { round: roundKey }, number: `${roundName} Selection Phase` })
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{roundName} selections: owner signature</DialogTitle>
+          <DialogTitle>{roundName} Selection Phase: owner signature</DialogTitle>
           <DialogDescription>
             The owner signs one document listing each selection with its photo, link and price, the total against the allowance, and the change order or
             variance for the difference.
@@ -105,7 +105,7 @@ export function SelectionRoundSigningDialog({
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline" size="sm">
                 <a href={printHref} target="_blank" rel="noopener noreferrer">
-                  Print round
+                  Print Selection Phase
                 </a>
               </Button>
             </div>

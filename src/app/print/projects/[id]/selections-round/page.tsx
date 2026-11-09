@@ -40,9 +40,9 @@ export default async function SelectionRoundPrintPage({
   return (
     <>
       <DocumentReportActions
-        title={`${view.roundName} selections`}
+        title={`${view.roundName} Selection Phase`}
         documentNumber={view.roundName}
-        pdfHref={printPdfHref({ projectId, document: "selections-round", params: { round: view.roundKey, signatureId: query.signatureId }, number: `${view.roundName} selections` })}
+        pdfHref={printPdfHref({ projectId, document: "selections-round", params: { round: view.roundKey, signatureId: query.signatureId }, number: `${view.roundName} Selection Phase` })}
       />
       <main className="mx-auto my-4 max-w-[8.5in] border bg-report-paper p-8 text-report-ink print:my-0 print:max-w-none print:border-0 print:p-0">
         <style>{"@page { size: letter; margin: 0.55in; } @media print { body { background: white !important; } .selection-round-signature-page { break-before: page; } }"}</style>

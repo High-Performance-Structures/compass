@@ -66,7 +66,7 @@ export function SelectionRoundDocument({
           </div>
         </div>
         <div className="text-right">
-          <h1 className="text-xl font-bold">{roundName} selections</h1>
+          <h1 className="text-xl font-bold">{roundName} Selection Phase</h1>
           <p className="mt-1 text-sm">{project.projectNumber ? `${project.projectNumber} · ${project.name}` : project.name}</p>
           {project.clientName && <p className="text-sm">Prepared for {project.clientName}</p>}
           {project.address && <p className="whitespace-pre-line text-xs">{project.address}</p>}
@@ -154,7 +154,7 @@ export function SelectionRoundDocument({
       <section className="selection-round-signature-page break-inside-avoid pt-2">
         <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">Owner approval</h2>
         <p className="mt-2 text-xs text-report-secondary">
-          By signing, you approve the {roundName.toLowerCase()} selections above{changeOrder ? ` and ${changeOrder.number}` : ""}. Dated {formatDate(new Date().toISOString())}.
+          By signing, you approve the selections above in the {roundName} Selection Phase{changeOrder ? ` and ${changeOrder.number}` : ""}. Dated {formatDate(new Date().toISOString())}.
         </p>
         <div className="mt-5 grid grid-cols-2 gap-x-10 gap-y-5 text-sm">
           {(signers.length > 0 ? signers : [{ name: "Owner", email: "" }]).map((signer, index) => (

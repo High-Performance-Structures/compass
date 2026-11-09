@@ -232,7 +232,7 @@ const WORKFLOW_AREAS = [
   { value: "trade-docs", label: "Trade docs", description: "What each kind of vendor must have on file, when documents expire, the certificate check, and bills while documents are missing." },
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
-  { value: "selections", label: "Selections", description: "Selection rounds and their schedule due dates, default lead times by category, the owner-price markup, and when a variance becomes a change order." },
+  { value: "selections", label: "Selections", description: "Selection Phases and their schedule due dates, default lead times by category, the owner-price markup, and when a variance becomes a change order." },
   { value: "variances", label: "Variances", description: "The default contract type for jobs, and how project liability insurance follows variances and change orders." },
   { value: "simple-invoices", label: "Simple invoices", description: "The mailbox invoices are emailed from, which departments invoice from the job's estimate, and when Square may be used." },
   { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
