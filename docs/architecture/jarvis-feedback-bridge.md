@@ -624,7 +624,9 @@ Rollout checklist
 13. Start the requester lifecycle notifier, submit one test request per
     enabled source, and confirm each receipt returns only through its original
     source.
-14. Deploy the custom worker and confirm the `*/10 * * * *` trigger is listed.
+14. Deploy the custom worker and confirm the `* * * * *` trigger is listed
+    (feedback reconciliation runs every 10 minutes from
+    `src/lib/operations/schedule.ts`).
 15. Run **Reconcile now** and confirm missing historical links appear in the
     GitHub review preview without creating issues.
 16. Map known existing work, approve one genuinely untracked request, run

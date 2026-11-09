@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs"
 
 import { describe, expect, it } from "vitest"
 
+import { SCHEDULED_JOBS } from "@/lib/operations/schedule"
+
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8")
 }
@@ -102,19 +104,12 @@ describe("Sage Square payment writer boundary", () => {
     expect(maintenanceRoute).toContain("reconcileSageSquareAttentionEvents")
   })
 
-  it("runs Square recovery every minute without multiplying unrelated maintenance", () => {
-    expect(wranglerSource).toContain(
-      '"crons": ["* * * * *", "*/10 * * * *"]'
-    )
-    expect(customWorkerSource).toContain(
-      'SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"'
-    )
-    expect(customWorkerSource).toContain(
-      "controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON"
-    )
-    expect(customWorkerSource.indexOf("if (controller.cron")).toBeLessThan(
-      customWorkerSource.indexOf('runMaintenanceJob("feedback reconciliation"')
-    )
+  it("runs Square recovery from the shared schedule table, one job at a time", () => {
+    expect(wranglerSource).toContain('"crons": ["* * * * *"]')
+    expect(customWorkerSource).toContain("jobsDueAt(")
+    expect(customWorkerSource).not.toContain("Promise.all")
+    const receipts = SCHEDULED_JOBS.find((job) => job.path === "/api/operations/sage/square-receipts")
+    expect(receipts?.everyMinutes).toBe(5)
   })
 
   it("scopes receipt notifications to the matched organization and project", () => {

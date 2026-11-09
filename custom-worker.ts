@@ -5,32 +5,13 @@ import {
   getJarvisEnvValue,
 } from "./src/lib/jarvis/auth"
 import { ListeningRoomCoordinator } from "./src/cloudflare/listening-room-coordinator"
+import {
+  jobsDueAt,
+  type ScheduledJob,
+} from "./src/lib/operations/schedule"
 
 export { ListeningRoomCoordinator }
 
-const RECONCILE_TARGET = "/api/operations/feedback/reconcile"
-const INVITATION_RETRY_TARGET = "/api/operations/email/retry-invitations"
-const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
-const GOTO_MESSAGE_RECOVERY_TARGET =
-  "/api/operations/goto/recover-message-bodies"
-const SAGE_BRIDGE_HEALTH_TARGET = "/api/operations/sage/health"
-const SQUARE_AUTH_HEALTH_TARGET = "/api/operations/square/auth-health"
-const STAFF_MESSAGE_STALE_REMINDER_TARGET =
-  "/api/operations/staff-message-desk/stale-reminders"
-const PROJECT_OVERDUE_REMINDER_TARGET =
-  "/api/operations/project-follow-up/overdue-reminders"
-const DAILY_LOG_REMINDER_TARGET =
-  "/api/operations/daily-logs/missing-reminders"
-const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
-const WEATHER_REFRESH_TARGET = "/api/operations/weather/refresh"
-const MY_COMPASS_CALENDAR_TARGET = "/api/operations/my-compass-calendar/sync"
-const PROJECT_CALENDARS_TARGET = "/api/operations/project-calendars/sync"
-const MORNING_PLAN_TARGET = "/api/operations/morning-plan/sweep"
-const CLIENT_MEETING_TRANSCRIPTS_TARGET =
-  "/api/operations/client-meetings/transcripts"
-const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
-  "/api/operations/sage/square-receipts"
-const SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"
 const LISTENING_ROOM_SOCKET_TARGET = "/api/listening-room-sync"
 const LISTENING_ROOM_AUTH_TARGET = "/api/listening-room/sync-authorize"
 
@@ -101,50 +82,50 @@ async function handleListeningRoomSocket(
   )
 }
 
-async function reconcile(env: CloudflareEnv): Promise<void> {
-  const body = JSON.stringify({ source: "cron" })
+const FEEDBACK_RECONCILE_BODY = JSON.stringify({ source: "cron" })
+
+function selfReference(
+  env: CloudflareEnv
+): NonNullable<CloudflareEnv["WORKER_SELF_REFERENCE"]> {
+  const self = env.WORKER_SELF_REFERENCE
+  if (!self) throw new Error("WORKER_SELF_REFERENCE is required")
+  return self
+}
+
+/** Signed POST, the same signature the Jarvis bridge uses. */
+async function postSigned(
+  env: CloudflareEnv,
+  path: string,
+  body: string
+): Promise<Response> {
   const timestamp = String(Math.floor(Date.now() / 1_000))
   const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
   if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
-  const signature = await createJarvisSignature(
-    secret,
-    timestamp,
-    "POST",
-    RECONCILE_TARGET,
-    body,
-  )
-  const worker = env.WORKER_SELF_REFERENCE
-  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
-  const response = await worker.fetch(
-    `https://compass.internal${RECONCILE_TARGET}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Compass-Timestamp": timestamp,
-        "X-Compass-Signature": signature,
-      },
-      body,
-    },
-  )
-  if (!response.ok) {
-    throw new Error(`Feedback reconciliation failed with ${response.status}`)
+  const signature = await createJarvisSignature(secret, timestamp, "POST", path, body)
+  const headers: Record<string, string> = {
+    "X-Compass-Timestamp": timestamp,
+    "X-Compass-Signature": signature,
   }
+  if (body) headers["Content-Type"] = "application/json"
+  return selfReference(env).fetch(`https://compass.internal${path}`, {
+    method: "POST",
+    headers,
+    body,
+  })
 }
 
-async function syncInboundEmail(env: CloudflareEnv): Promise<void> {
+async function syncInboundEmail(env: CloudflareEnv, path: string): Promise<void> {
   const secret = getJarvisEnvValue(env, "COMPASS_EMAIL_SYNC_SECRET")
   if (!secret) throw new Error("COMPASS_EMAIL_SYNC_SECRET is required")
-  const worker = env.WORKER_SELF_REFERENCE
-  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
-  const response = await worker.fetch(
-    `https://compass.internal${EMAIL_SYNC_TARGET}`,
+  const response = await selfReference(env).fetch(
+    `https://compass.internal${path}`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}` },
     },
   )
   if (!response.ok) {
+    await response.body?.cancel()
     throw new Error(`Inbound email sync failed with ${response.status}`)
   }
   const payload: unknown = await response.json()
@@ -167,95 +148,18 @@ async function syncInboundEmail(env: CloudflareEnv): Promise<void> {
   }
 }
 
-async function recoverGotoMessageBodies(env: CloudflareEnv): Promise<void> {
-  const body = ""
-  const timestamp = String(Math.floor(Date.now() / 1_000))
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
-  const signature = await createJarvisSignature(
-    secret,
-    timestamp,
-    "POST",
-    GOTO_MESSAGE_RECOVERY_TARGET,
-    body
+/** Runs one row of the schedule table (src/lib/operations/schedule.ts). */
+async function runScheduledJob(env: CloudflareEnv, job: ScheduledJob): Promise<void> {
+  if (job.call === "gmail") return syncInboundEmail(env, job.path)
+  const response = await postSigned(
+    env,
+    job.path,
+    job.call === "feedback" ? FEEDBACK_RECONCILE_BODY : ""
   )
-  const worker = env.WORKER_SELF_REFERENCE
-  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
-  const response = await worker.fetch(
-    `https://compass.internal${GOTO_MESSAGE_RECOVERY_TARGET}`,
-    {
-      method: "POST",
-      headers: {
-        "X-Compass-Timestamp": timestamp,
-        "X-Compass-Signature": signature,
-      },
-      body,
-    }
-  )
+  // Drop the body unread so the isolate never buffers job summaries.
+  await response.body?.cancel()
   if (!response.ok) {
-    throw new Error(`GoTo message recovery failed with ${response.status}`)
-  }
-}
-
-async function checkBridgeHealth(env: CloudflareEnv, target: string): Promise<void> {
-  const body = ""
-  const timestamp = String(Math.floor(Date.now() / 1_000))
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
-  const signature = await createJarvisSignature(
-    secret,
-    timestamp,
-    "POST",
-    target,
-    body
-  )
-  const worker = env.WORKER_SELF_REFERENCE
-  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
-  const response = await worker.fetch(
-    `https://compass.internal${target}`,
-    {
-      method: "POST",
-      headers: {
-        "X-Compass-Timestamp": timestamp,
-        "X-Compass-Signature": signature,
-      },
-      body,
-    }
-  )
-  if (!response.ok) {
-    throw new Error(`Bridge health check failed with ${response.status}`)
-  }
-}
-
-async function reconcileSageSquareReceipts(env: CloudflareEnv): Promise<void> {
-  const body = ""
-  const timestamp = String(Math.floor(Date.now() / 1_000))
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
-  const signature = await createJarvisSignature(
-    secret,
-    timestamp,
-    "POST",
-    SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET,
-    body
-  )
-  const worker = env.WORKER_SELF_REFERENCE
-  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
-  const response = await worker.fetch(
-    `https://compass.internal${SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET}`,
-    {
-      method: "POST",
-      headers: {
-        "X-Compass-Timestamp": timestamp,
-        "X-Compass-Signature": signature,
-      },
-      body,
-    }
-  )
-  if (!response.ok) {
-    throw new Error(
-      `Sage Square receipt reconciliation failed with ${response.status}`
-    )
+    throw new Error(`${job.name} failed with ${response.status}`)
   }
 }
 
@@ -269,11 +173,24 @@ async function runMaintenanceJob(
   name: string,
   job: () => Promise<void>
 ): Promise<void> {
+  const started = Date.now()
   try {
     await job()
+    console.log(`[scheduled] ${name} ok in ${Date.now() - started} ms`)
   } catch (error) {
     // Jobs are independent; log only the error class/status to avoid leaking data.
-    console.error(`[scheduled] ${name} failed: ${maintenanceErrorLabel(error)}`)
+    console.error(`[scheduled] ${name} failed after ${Date.now() - started} ms: ${maintenanceErrorLabel(error)}`)
+  }
+}
+
+/**
+ * Runs this minute's jobs one after another (never in parallel) so one
+ * isolate is never holding several big job responses at once. A failing
+ * job is logged and the next one still runs.
+ */
+async function runDueJobs(env: CloudflareEnv, scheduledTime: number): Promise<void> {
+  for (const job of jobsDueAt(new Date(scheduledTime))) {
+    await runMaintenanceJob(job.name, () => runScheduledJob(env, job))
   }
 }
 
@@ -286,62 +203,8 @@ export default {
     return worker.fetch(request, env, ctx)
   },
   async scheduled(controller, env, ctx): Promise<void> {
-    if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
-      ctx.waitUntil(
-        Promise.all([
-          runMaintenanceJob("invitation email recovery", () => checkBridgeHealth(env, INVITATION_RETRY_TARGET)),
-          // Import tracked replies every minute so project conversations stay current.
-          runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
-          runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),
-          runMaintenanceJob("Square authentication health", () => checkBridgeHealth(env, SQUARE_AUTH_HEALTH_TARGET)),
-          // Every minute: refreshes Drive copies of records edited at least the
-          // company's quiet period ago. Idle runs cost one indexed query.
-          runMaintenanceJob("project paper trail", () => checkBridgeHealth(env, PAPER_TRAIL_TARGET)),
-          // Every minute: refreshes a few people's My Compass calendars; each
-          // person is refreshed at most every 5 minutes.
-          runMaintenanceJob("My Compass calendars", () => checkBridgeHealth(env, MY_COMPASS_CALENDAR_TARGET)),
-          // Every minute: refreshes the project calendars synced longest ago;
-          // each job is refreshed at most every 5 minutes.
-          runMaintenanceJob("project calendars", () => checkBridgeHealth(env, PROJECT_CALENDARS_TARGET)),
-        ]).then(() => undefined)
-      )
-      return
-    }
-    ctx.waitUntil(
-      Promise.all([
-        runMaintenanceJob("feedback reconciliation", () => reconcile(env)),
-        runMaintenanceJob("GoTo message recovery", () =>
-          recoverGotoMessageBodies(env)
-        ),
-        runMaintenanceJob("Sage bridge health", () =>
-          checkBridgeHealth(env, SAGE_BRIDGE_HEALTH_TARGET)
-        ),
-        // Same signed empty-body POST as the health checks.
-        runMaintenanceJob("Message Desk stale reminders", () =>
-          checkBridgeHealth(env, STAFF_MESSAGE_STALE_REMINDER_TARGET)
-        ),
-        runMaintenanceJob("Project follow-up overdue reminders", () =>
-          checkBridgeHealth(env, PROJECT_OVERDUE_REMINDER_TARGET)
-        ),
-        // Every 10 minutes; each person is reminded once a day at their time.
-        runMaintenanceJob("Missing daily log reminders", () =>
-          checkBridgeHealth(env, DAILY_LOG_REMINDER_TARGET)
-        ),
-        // Every 10 minutes: saves finished client Meet transcripts to Drive.
-        runMaintenanceJob("Client meeting transcripts", () =>
-          checkBridgeHealth(env, CLIENT_MEETING_TRANSCRIPTS_TARGET)
-        ),
-        // Every 10 minutes: each person's daily plan at their hour, and an
-        // overload warning at most once a week.
-        runMaintenanceJob("Today's plan", () =>
-          checkBridgeHealth(env, MORNING_PLAN_TARGET)
-        ),
-        // Every 10 minutes: map weather warnings, wildfires and the site
-        // forecasts someone has looked at recently, a few per run.
-        runMaintenanceJob("Weather and fire", () =>
-          checkBridgeHealth(env, WEATHER_REFRESH_TARGET)
-        ),
-      ]).then(() => undefined)
-    )
+    // One cron, every minute. Which jobs run when is the table in
+    // src/lib/operations/schedule.ts.
+    ctx.waitUntil(runDueJobs(env, controller.scheduledTime))
   },
 } satisfies ExportedHandler<CloudflareEnv>

@@ -15,6 +15,7 @@ import { join, relative } from "node:path"
 import { computeArchitectureMetrics } from "../architecture-metrics.mjs"
 import { neutralize } from "./neutral.mjs"
 import { buildSchemaModel, type TableModel } from "./schema-model"
+import { SCHEDULED_JOBS, type ScheduledJob } from "../../src/lib/operations/schedule"
 
 const ROOT = process.cwd()
 const OUT = join(ROOT, "docs/manual")
@@ -454,17 +455,13 @@ function environment(): string {
   const source = (name: string): string =>
     secrets.includes(name) ? "secret (required)" : vars.includes(name) ? "var (`wrangler.jsonc`)" : secretLike(name) ? "secret (optional)" : "var / build-time (optional)"
   const crons: string[] = wrangler.triggers?.crons ?? []
-  const worker = readFileSync(join(ROOT, "custom-worker.ts"), "utf8")
-  const targets = new Map<string, string>()
-  for (const match of worker.matchAll(/const\s+([A-Z_]+_TARGET)\s*=\s*\n?\s*"([^"]+)"/g)) targets.set(match[1], match[2])
-  const jobs: string[] = []
-  const scheduled = worker.slice(worker.indexOf("async scheduled("))
-  const everyMinute = scheduled.slice(0, scheduled.indexOf("return\n"))
-  for (const match of scheduled.matchAll(/runMaintenanceJob\(\s*"([^"]+)",[\s\S]*?\(\s*env\s*(?:,\s*([A-Z_]+_TARGET))?\s*\)/g)) {
-    const minute = everyMinute.includes(match[0])
-    const target = match[2] ? targets.get(match[2]) : match[1].includes("feedback") ? targets.get("RECONCILE_TARGET") : match[1].includes("inbound email") ? targets.get("EMAIL_SYNC_TARGET") : match[1].includes("GoTo") ? targets.get("GOTO_MESSAGE_RECOVERY_TARGET") : match[1].includes("receipts") ? targets.get("SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET") : undefined
-    jobs.push(`| ${n(match[1])} | ${minute ? "`* * * * *`" : "`*/10 * * * *`"} | \`${target ?? "see custom-worker.ts"}\` |`)
+  const cadence = (job: ScheduledJob): string => {
+    if (job.everyMinutes === 1) return "every minute"
+    const minutes = Array.from({ length: 60 / job.everyMinutes }, (_, i) => job.offsetMinute + i * job.everyMinutes)
+    const shown = minutes.slice(0, 3).map((minute) => `:${String(minute).padStart(2, "0")}`).join(" ")
+    return `every ${job.everyMinutes} min (${shown}${minutes.length > 3 ? " ..." : ""})`
   }
+  const jobs = SCHEDULED_JOBS.map((job) => `| ${n(job.name)} | ${cadence(job)} | \`${job.path}\` | ${cell(job.why)} |`)
   return [
     "# Appendix C. Environment variables, bindings and cron triggers",
     "",
@@ -481,12 +478,12 @@ function environment(): string {
     "",
     "## C.2 Cron triggers",
     "",
-    `\`wrangler.jsonc\` declares ${crons.length} cron expressions (${crons.map((c) => `\`${c}\``).join(", ")}); the \`demo\` environment declares none. ` +
-      "`custom-worker.ts` `scheduled()` fans each tick out to independent jobs. Every job is a signed `POST` to the worker's own API route through `WORKER_SELF_REFERENCE`, " +
+    `\`wrangler.jsonc\` declares ${crons.length} cron ${crons.length === 1 ? "expression" : "expressions"} (${crons.map((c) => `\`${c}\``).join(", ")}); the \`demo\` environment declares none. ` +
+      "Each minute `custom-worker.ts` `scheduled()` runs the jobs due in that minute one after another, using the table in `src/lib/operations/schedule.ts` (edit cadences there). Every job is a signed `POST` to the worker's own API route through `WORKER_SELF_REFERENCE`, " +
       "so the real work runs in the normal request path; a failing job logs only its error class and status.",
     "",
-    "| Job | Schedule | Route |",
-    "|---|---|---|",
+    "| Job | Schedule (UTC minutes) | Route | Why |",
+    "|---|---|---|---|",
     ...jobs,
     "",
     `## C.3 Environment variables and secrets (${allNames.length})`,

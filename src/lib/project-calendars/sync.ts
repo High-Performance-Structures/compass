@@ -56,8 +56,12 @@ const OPEN_PROJECT_STATUSES = ["OPEN", "WARRANTY"] as const
 const PROJECTS_PER_RUN = 20
 const WRITES_PER_RUN = 400
 const WRITES_PER_PROJECT = 150
-/** A project is re-synced at most this often. */
-const RESYNC_MS = 5 * 60_000
+/**
+ * A project is re-synced at most this often. Just under the job's 5-minute
+ * cadence (src/lib/operations/schedule.ts) so a project synced last run is
+ * due again this run.
+ */
+const RESYNC_MS = 4 * 60_000
 
 export type ProjectCalendarRow = typeof compassProjectCalendars.$inferSelect
 

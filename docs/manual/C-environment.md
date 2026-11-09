@@ -19,28 +19,28 @@ Names only. Values live in the Cloudflare dashboard (secrets), `wrangler.jsonc` 
 
 ## C.2 Cron triggers
 
-`wrangler.jsonc` declares 2 cron expressions (`* * * * *`, `*/10 * * * *`); the `demo` environment declares none. `custom-worker.ts` `scheduled()` fans each tick out to independent jobs. Every job is a signed `POST` to the worker's own API route through `WORKER_SELF_REFERENCE`, so the real work runs in the normal request path; a failing job logs only its error class and status.
+`wrangler.jsonc` declares 1 cron expression (`* * * * *`); the `demo` environment declares none. Each minute `custom-worker.ts` `scheduled()` runs the jobs due in that minute one after another, using the table in `src/lib/operations/schedule.ts` (edit cadences there). Every job is a signed `POST` to the worker's own API route through `WORKER_SELF_REFERENCE`, so the real work runs in the normal request path; a failing job logs only its error class and status.
 
-| Job | Schedule | Route |
-|---|---|---|
-| invitation email recovery | `* * * * *` | `/api/operations/email/retry-invitations` |
-| inbound email sync | `* * * * *` | `/api/email/gmail-sync` |
-| Sage Square manual receipts | `* * * * *` | `/api/operations/sage/square-receipts` |
-| Square authentication health | `* * * * *` | `/api/operations/square/auth-health` |
-| project paper trail | `* * * * *` | `/api/operations/paper-trail/run` |
-| My Compass calendars | `* * * * *` | `/api/operations/my-compass-calendar/sync` |
-| project calendars | `* * * * *` | `/api/operations/project-calendars/sync` |
-| feedback reconciliation | `*/10 * * * *` | `/api/operations/feedback/reconcile` |
-| GoTo message recovery | `*/10 * * * *` | `/api/operations/goto/recover-message-bodies` |
-| Sage bridge health | `*/10 * * * *` | `/api/operations/sage/health` |
-| Message Desk stale reminders | `*/10 * * * *` | `/api/operations/staff-message-desk/stale-reminders` |
-| Project follow-up overdue reminders | `*/10 * * * *` | `/api/operations/project-follow-up/overdue-reminders` |
-| Missing daily log reminders | `*/10 * * * *` | `/api/operations/daily-logs/missing-reminders` |
-| Client meeting transcripts | `*/10 * * * *` | `/api/operations/client-meetings/transcripts` |
-| Today's plan | `*/10 * * * *` | `/api/operations/morning-plan/sweep` |
-| Weather and fire | `*/10 * * * *` | `/api/operations/weather/refresh` |
+| Job | Schedule (UTC minutes) | Route | Why |
+|---|---|---|---|
+| inbound email sync | every minute | `/api/email/gmail-sync` | Replies to project conversations should appear within a minute. |
+| project paper trail | every 5 min (:00 :05 :10 ...) | `/api/operations/paper-trail/run` | Drive copies already wait the company's quiet period; 5 minutes more is unnoticeable. |
+| My Compass calendars | every 5 min (:01 :06 :11 ...) | `/api/operations/my-compass-calendar/sync` | Each person's Google calendar was already refreshed at most every 5 minutes. |
+| invitation email recovery | every 5 min (:02 :07 :12 ...) | `/api/operations/email/retry-invitations` | Only retries invitations whose first send failed; the first send is immediate. |
+| project calendars | every 5 min (:03 :08 :13 ...) | `/api/operations/project-calendars/sync` | Each job calendar was already refreshed at most every 5 minutes. |
+| Sage Square manual receipts | every 5 min (:04 :09 :14 ...) | `/api/operations/sage/square-receipts` | Accounting checks receipts during the day; reminders recheck every 10 minutes anyway. |
+| GoTo message recovery | every 10 min (:01 :11 :21 ...) | `/api/operations/goto/recover-message-bodies` | Back-fills old text-message bodies; nobody is waiting on it. |
+| Weather and fire | every 10 min (:02 :12 :22 ...) | `/api/operations/weather/refresh` | Weather warnings change on a 10-minute scale; a few forecasts per run. |
+| Message Desk stale reminders | every 10 min (:03 :13 :23 ...) | `/api/operations/staff-message-desk/stale-reminders` | Reminds about messages left unanswered for hours; 10 minutes is close enough. |
+| Today's plan | every 10 min (:04 :14 :24 ...) | `/api/operations/morning-plan/sweep` | Sends each person's plan once a day at their hour, within 10 minutes of it. |
+| Project follow-up overdue reminders | every 10 min (:06 :16 :26 ...) | `/api/operations/project-follow-up/overdue-reminders` | Follow-ups are due by the day; 10 minutes late is unnoticeable. |
+| Client meeting transcripts | every 10 min (:07 :17 :27 ...) | `/api/operations/client-meetings/transcripts` | Google needs about 10 minutes after a meeting before the transcript is ready. |
+| Missing daily log reminders | every 10 min (:08 :18 :28 ...) | `/api/operations/daily-logs/missing-reminders` | Each person once a day, within 10 minutes after their reminder time. |
+| feedback reconciliation | every 10 min (:09 :19 :29 ...) | `/api/operations/feedback/reconcile` | Tidies the Feedback Desk; the admin page calls it stale after 15 minutes. |
+| Sage bridge health | every 15 min (:05 :20 :35 ...) | `/api/operations/sage/health` | Alerts admins when the Sage bridge on the office PC stops; 15 minutes is soon enough. |
+| Square authentication health | every 15 min (:10 :25 :40 ...) | `/api/operations/square/auth-health` | Alerts if the Square login is rejected; a rare event, 15 minutes is soon enough. |
 
-## C.3 Environment variables and secrets (99)
+## C.3 Environment variables and secrets (104)
 
 | Name | Kind | Read in |
 |---|---|---|
@@ -94,7 +94,7 @@ Names only. Values live in the Cloudflare dashboard (secrets), `wrangler.jsonc` 
 | `GOTO_SMS_ORC_FROM_NUMBER` | var / build-time (optional) | `src/lib/goto/numbers.ts` |
 | `GOTO_WEBHOOK_SECRET` | secret (required) | `src/lib/goto/webhook-security.ts` |
 | `JARVIS_AGENT_BRIDGE_ENABLED` | var (`wrangler.jsonc`) | `src/lib/jarvis/agent-relay.ts` |
-| `JARVIS_BRIDGE_ORGANIZATION_ID` | secret (required) | `src/app/api/feedback/route.ts`, `src/app/api/integrations/jarvis/events/route.ts`, `src/app/api/integrations/jarvis/feedback/[id]/status/route.ts` +3 more |
+| `JARVIS_BRIDGE_ORGANIZATION_ID` | secret (required) | `src/app/api/feedback/route.ts`, `src/app/api/integrations/jarvis/events/route.ts`, `src/app/api/integrations/jarvis/feedback/[id]/status/route.ts` +4 more |
 | `JARVIS_BRIDGE_SECONDARY_SECRET` | secret (optional) | `src/lib/jarvis/auth.ts` |
 | `JARVIS_BRIDGE_SECRET` | secret (required) | `custom-worker.ts`, `src/lib/cloudflare-context.ts`, `src/lib/jarvis/auth.ts` |
 | `JARVIS_SERVICE_USER_ID` | secret (required) | `src/app/api/integrations/jarvis/replies/route.ts` |
@@ -115,15 +115,17 @@ Names only. Values live in the Cloudflare dashboard (secrets), `wrangler.jsonc` 
 | `PROVIDER_KEY_ENCRYPTION_KEY` | secret (optional) | `src/app/actions/anthropic-oauth.ts`, `src/app/actions/provider-config.ts`, `src/lib/agent/provider-config.ts` |
 | `REALTIMEKIT_APP_ID` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `RESEND_API_KEY` | secret (optional) | `src/lib/email/compass-email.ts` |
+| `SAGE_AR_INVOICE_WRITES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/ar-invoice-write.ts` |
 | `SAGE_BRIDGE_SECRET` | secret (required) | `src/lib/sage/config.ts` |
+| `SAGE_CHANGE_ORDER_WRITES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/change-order-write.ts` |
 | `SAGE_CLIENT_PROJECT_WRITES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SAGE_CONTACT_BRIDGE_SECRET` | secret (required) | declared in `wrangler.jsonc` only |
 | `SAGE_CONTACT_CREATES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SAGE_CONTACT_ORGANIZATION_ID` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SAGE_CONTACT_WRITES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
+| `SAGE_ESTIMATE_WRITES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/estimate-write.ts` |
 | `SAGE_INVOICE_CREATOR_USER_MAP` | var / build-time (optional) | `src/lib/sage/square-creator-alerts.ts` |
 | `SAGE_PAY_APPLICATION_BRIDGE_SECRET` | secret (required) | `src/lib/sage/config.ts` |
-| `SAGE_VENDOR_CREATES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/client-project-write.ts` |
 | `SAGE_READ_ONLY` | var / build-time (optional) | `src/lib/sage/config.ts` |
 | `SAGE_SQUARE_CREATOR_ALERTS_FROM` | var / build-time (optional) | `src/lib/sage/square-creator-alerts.ts` |
 | `SAGE_SQUARE_ORGANIZATION_ID` | var (`wrangler.jsonc`) | `src/app/api/integrations/square/auth-health/route.ts`, `src/app/api/operations/square/auth-health/route.ts`, `src/lib/sage/square-creator-alerts.ts` +1 more |
@@ -131,10 +133,12 @@ Names only. Values live in the Cloudflare dashboard (secrets), `wrangler.jsonc` 
 | `SAGE_SQUARE_PAYMENT_TEST_OPERATION_IDS` | var / build-time (optional) | `src/lib/sage/square-payment.ts` |
 | `SAGE_SQUARE_PAYMENT_WEBHOOK_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/square-webhook-auth.ts` |
 | `SAGE_SQUARE_PAYMENT_WRITES_ENABLED` | var (`wrangler.jsonc`) | `src/lib/sage/square-payment.ts` |
+| `SAGE_VENDOR_CERTIFICATE_WRITES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
+| `SAGE_VENDOR_CREATES_ENABLED` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SOCIAL_PUBLIC_BASE_URL` | var (`wrangler.jsonc`) | declared in `wrangler.jsonc` only |
 | `SOCIAL_TOKEN_ENCRYPTION_KEY` | secret (required) | declared in `wrangler.jsonc` only |
 | `SQUARE_AUTH_NOTIFICATION_USER_ID` | var (`wrangler.jsonc`) | `src/lib/sage/square-alert-recipients.ts` |
-| `SQUARE_PRODUCTION_ACCESS_TOKEN` | secret (required) | `src/lib/sage/square-auth-health.ts`, `src/lib/sage/square-payment.ts` |
+| `SQUARE_PRODUCTION_ACCESS_TOKEN` | secret (required) | `src/lib/sage/square-auth-health.ts`, `src/lib/sage/square-invoice-create.ts`, `src/lib/sage/square-payment.ts` |
 | `SQUARE_WEBHOOK_SIGNATURE_KEY` | secret (required) | `src/lib/sage/square-webhook-auth.ts` |
 | `WORKOS_API_KEY` | secret (required) | `src/app/actions/project-contacts.ts`, `src/app/actions/users.ts`, `src/lib/auth-config.ts` +2 more |
 | `WORKOS_CLIENT_ID` | secret (required) | `src/app/actions/users.ts`, `src/app/api/auth/callback/route.ts`, `src/app/api/auth/login/route.ts` +4 more |

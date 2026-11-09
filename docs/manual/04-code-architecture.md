@@ -239,7 +239,7 @@ Use this checklist in every feature pull request. It follows the order of the wo
 11. **Add the delete.** Provide a permission-appropriate delete or void with confirmation, dependency handling and audit. Financial records follow their own void or reversal rules.
 12. **Handle outside parties.** If the feature emails or notifies them, use `sendTrackedEmail`, register the record kind, use `EmailRecipientPicker`, notify staff, log Activity and show the replies on the record.
 13. **Handle audiences.** If owners or vendors can see the data, add explicit visibility flags and filter reads by audience on the server. Check the result in staff preview mode.
-14. **Background work.** Add a scheduled job only if needed. It must be a signed `/api/operations/*` route that is idempotent, works within a time budget, keeps a cursor, and is added to `custom-worker.ts` and the public-path allowlist.
+14. **Background work.** Add a scheduled job only if needed. It must be a signed `/api/operations/*` route that is idempotent, works within a time budget, keeps a cursor, and is added as a row in `src/lib/operations/schedule.ts` and to the public-path allowlist.
 15. **Polling.** Any live data uses `useVisibleInterval`, through a shared provider.
 16. **Tests.** Write unit tests for the rules, store tests against the SQLite test harness (`src/lib/domain/__tests__/sqlite-d1.ts`), and an E2E journey if the feature adds a page.
 17. **Help.** Update or add a guide in `docs/help/guides/` and run `bun run help:generate`.
