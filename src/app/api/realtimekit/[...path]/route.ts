@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { canUseOfficeTalk } from "@/lib/permissions"
 import { decideRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-gate"
-import { isRealtimeKitLogUpload } from "@/lib/realtimekit/log-upload-throttle"
+import { realtimeKitDiagnosticUploadKind } from "@/lib/realtimekit/log-upload-throttle"
 
 const REALTIMEKIT_API_ORIGIN = "https://api.realtime.cloudflare.com"
 // content-encoding: the SDK gzips its log and telemetry uploads; without this
@@ -72,11 +72,12 @@ async function realtimeKitProxy(
   const { path } = await context.params
   const method = request.method.toUpperCase()
 
-  // The SDK's diagnostic log uploads are throttled (see
+  // The SDK's diagnostic log and telemetry uploads are throttled (see
   // src/lib/realtimekit/log-upload-throttle.ts): most get a 204 here without
   // reading the body or calling Cloudflare.
-  if (isRealtimeKitLogUpload(method, path)) {
-    const decision = await decideRealtimeKitLogUpload(request)
+  const diagnosticKind = realtimeKitDiagnosticUploadKind(method, path)
+  if (diagnosticKind) {
+    const decision = await decideRealtimeKitLogUpload(request, diagnosticKind)
     if (decision !== "forward") return decision
   } else {
     const user = await getCurrentUser()

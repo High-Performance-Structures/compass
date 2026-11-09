@@ -12,7 +12,8 @@ import {
   URGENT_LOG_UPLOADS_PER_FAILURE,
   URGENT_LOG_WINDOW_MS,
   isOfficeTalkFailureDiagnostic,
-  isRealtimeKitLogUpload,
+  realtimeKitDiagnosticUploadKind,
+  DIAGNOSTIC_UPLOAD_MARKER_KEYS,
   isUrgentLogUpload,
   nextRoutineLogForwardAt,
   routineLogForwardDue,
@@ -30,12 +31,18 @@ describe("RealtimeKit log upload throttle", () => {
     expect(LOG_FORWARD_INTERVAL_MS).toBe(12 * HOUR)
   })
 
-  it("recognizes only the SDK's POST /logs upload", () => {
-    expect(isRealtimeKitLogUpload("POST", ["logs"])).toBe(true)
-    expect(isRealtimeKitLogUpload("post", ["logs"])).toBe(true)
-    expect(isRealtimeKitLogUpload("GET", ["logs"])).toBe(false)
-    expect(isRealtimeKitLogUpload("POST", ["v2", "logs"])).toBe(false)
-    expect(isRealtimeKitLogUpload("POST", ["v2", "meetings", "m1", "active-transcript"])).toBe(false)
+  it("recognizes only the SDK's POST /logs and POST /telemetry uploads", () => {
+    expect(realtimeKitDiagnosticUploadKind("POST", ["logs"])).toBe("logs")
+    expect(realtimeKitDiagnosticUploadKind("post", ["logs"])).toBe("logs")
+    expect(realtimeKitDiagnosticUploadKind("POST", ["telemetry"])).toBe("telemetry")
+    expect(realtimeKitDiagnosticUploadKind("GET", ["logs"])).toBeNull()
+    expect(realtimeKitDiagnosticUploadKind("GET", ["telemetry"])).toBeNull()
+    expect(realtimeKitDiagnosticUploadKind("POST", ["v2", "logs"])).toBeNull()
+    expect(realtimeKitDiagnosticUploadKind("POST", ["v2", "meetings", "m1", "active-transcript"])).toBeNull()
+  })
+
+  it("keeps a separate twice-a-day window for logs and telemetry", () => {
+    expect(DIAGNOSTIC_UPLOAD_MARKER_KEYS.logs).not.toBe(DIAGNOSTIC_UPLOAD_MARKER_KEYS.telemetry)
   })
 
   it("reads the urgent header", () => {
@@ -105,7 +112,7 @@ describe("browser proxy urgent log header", () => {
     globalThis.fetch = realFetch
   })
 
-  it("adds the header to log uploads only after Office Talk fails", async () => {
+  it("adds the header to log and telemetry uploads only after Office Talk fails", async () => {
     const seen: { readonly url: string; readonly urgent: string | null }[] = []
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       seen.push({
@@ -121,6 +128,7 @@ describe("browser proxy urgent log header", () => {
       noteRealtimeKitDiagnostic("open-failed", {})
       await fetch("https://api.realtime.cloudflare.com/v2/meetings", init)
       await fetch("https://api.realtime.cloudflare.com/logs", init)
+      await fetch("https://api.realtime.cloudflare.com/telemetry", init)
     } finally {
       uninstall()
     }
@@ -128,6 +136,7 @@ describe("browser proxy urgent log header", () => {
       { url: "/api/realtimekit/logs", urgent: null },
       { url: "/api/realtimekit/v2/meetings", urgent: null },
       { url: "/api/realtimekit/logs", urgent: URGENT_LOG_HEADER_VALUE },
+      { url: "/api/realtimekit/telemetry", urgent: URGENT_LOG_HEADER_VALUE },
     ])
   })
 })
