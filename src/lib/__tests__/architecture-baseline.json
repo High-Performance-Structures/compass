@@ -991,13 +991,12 @@
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-purchase-order-create-form.tsx": 1059,
     "src/components/projects/project-rfq-edit-form.tsx": 1002,
-    "src/components/projects/projects-hub.tsx": 1670,
+    "src/components/projects/projects-hub.tsx": 877,
     "src/components/schedule/work-calendar-event-dialog.tsx": 815,
     "src/components/schedule/work-calendar.tsx": 830,
     "src/components/settings/ai-model-tab.tsx": 1379,
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
-    "src/lib/agent/render/registry.tsx": 1809,
     "src/lib/auth.ts": 807,
     "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1039,
@@ -1007,8 +1006,7 @@
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1333,
-    "src/lib/sync/engine.ts": 864,
-    "src/lib/theme/presets.ts": 1942
+    "src/lib/sync/engine.ts": 864
   },
   "localHelpers": {
     "src/app/actions/cherish-cards.ts": 1,
@@ -1419,7 +1417,6 @@
     "src/lib/agent/provider-config.ts": 1,
     "src/lib/agent/render/actions.ts": 14,
     "src/lib/agent/render/compass-renderer.tsx": 2,
-    "src/lib/agent/render/registry.tsx": 7,
     "src/lib/auth.ts": 2,
     "src/lib/change-orders/version-difference.ts": 2,
     "src/lib/cloudflare-context.ts": 12,

@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils"
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string
-  language: BundledLanguage
+  // Any language name; ones the highlighter does not load show as plain text.
+  language: BundledLanguage | (string & {})
   showLineNumbers?: boolean
 }
 
@@ -106,7 +107,7 @@ function getHighlighter(): Promise<HighlighterCore> {
   return highlighterPromise
 }
 
-function supportedLanguage(language: BundledLanguage): SupportedLanguage | null {
+function supportedLanguage(language: string): SupportedLanguage | null {
   if (language === "sh" || language === "shell" || language === "zsh") return "bash"
   if (language === "js") return "javascript"
   if (language === "md") return "markdown"
@@ -146,7 +147,7 @@ function plainCodeHtml(code: string, showLineNumbers: boolean): string {
 
 export async function highlightCode(
   code: string,
-  language: BundledLanguage,
+  language: BundledLanguage | (string & {}),
   showLineNumbers = false,
 ) {
   const normalizedLanguage = supportedLanguage(language)

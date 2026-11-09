@@ -84,6 +84,11 @@ visibility, members, linked jobs and job families.
   `rfqs`, `selections`, `change-orders`, `warranty`, `messages` and more)
 - Components: `src/components/projects/`, `src/components/dashboard/`
   (dashboard, portfolio map)
+- The Projects list page: `src/components/projects/projects-hub.tsx`, with
+  its parts beside it: `projects-hub-model.ts` (departments, status filters,
+  search; pure functions), `projects-hub-departments.tsx`,
+  `projects-hub-project-card.tsx`, `projects-hub-department-lane.tsx`,
+  `projects-hub-department-landing.tsx`, `projects-hub-registry-fields.tsx`
 - Docs: [portfolio map](../modules/portfolio-map.md),
   [multi-tenancy](multi-tenancy.md)
 
@@ -340,6 +345,8 @@ Company settings (everything under Settings) and per-person preferences.
 - Page: `src/app/dashboard/settings/page.tsx`
 - Components: `src/components/settings/` (`settings-page.tsx` plus one
   `*-settings-section.tsx` per group)
+- Theme presets: `src/lib/theme/presets/` (one file per built-in theme,
+  `index.ts` lists them)
 - Docs: [theming](../development/theming.md)
 
 ### Sign-in, users, teams and permissions
@@ -373,6 +380,12 @@ Company settings (everything under Settings) and per-person preferences.
   `src/app/api/integrations/jarvis/`, `src/app/api/bridge/`
 - Components: `src/components/agent/`, `src/components/ai/`,
   `src/components/feedback/`
+- Jarvis on-screen UI (json-render): `src/lib/agent/render/catalog.ts` (the
+  components Jarvis may use), `src/lib/agent/render/registry.tsx` (maps each
+  one to React code), with the renderers grouped by kind in
+  `src/lib/agent/render/registry/` (`layout.tsx`, `form-fields.tsx`,
+  `form-controls.tsx`, `data-display.tsx`, `charts.tsx`, `code.tsx`,
+  `skeletons.tsx`)
 - Docs: [AI agent](ai-agent.md),
   [Jarvis feedback bridge](jarvis-feedback-bridge.md)
 
