@@ -469,6 +469,29 @@ columns, indexes, triggers); D1 cannot safely drop or rebuild a table. See
 its snapshot files in `drizzle/meta/` stopped being updated long ago.
 
 
+Scheduled jobs
+---
+
+Background jobs (inbound email, calendars, paper trail, reminders, weather,
+health checks) are listed in one table:
+**`src/lib/operations/schedule.ts`**. Each row has a plain name, the route it
+calls, how often it runs (`everyMinutes`), which minute in that cycle
+(`offsetMinute`), whether it is heavy, and one line on why.
+
+- `wrangler.jsonc` has a single `* * * * *` cron. Every minute,
+  `custom-worker.ts` `scheduled()` asks the table which jobs are due and runs
+  them **one after another**, never in parallel, so one Worker never holds
+  several big jobs in memory at once (see [server bundle](server-bundle.md)).
+- To change how often a job runs, edit its row. `everyMinutes` must divide 60
+  and `offsetMinute` must be below it.
+- `src/lib/operations/__tests__/schedule.test.ts` fails if a minute gets more
+  than inbound email plus two jobs, or two heavy jobs share a minute.
+- Each run logs `[scheduled] <name> ok in N ms` (or `failed`), visible in
+  `npx wrangler tail compass --format json`.
+- A new job needs a signed `/api/operations/*` route (on the public-path
+  allowlist) and one row in the table.
+
+
 How deploys work
 ---
 

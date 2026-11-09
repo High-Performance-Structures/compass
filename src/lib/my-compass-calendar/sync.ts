@@ -42,10 +42,14 @@ const OPEN_PROJECT_STATUSES = ["OPEN", "WARRANTY"] as const
 const OPEN_TODO_STATUSES = ["incomplete", "open", "in_progress"] as const
 const TODO_RECORD_TYPES = ["todo", "staff_task", "task"] as const
 /** People synced per run, and Google writes per person per run. */
-const USERS_PER_RUN = 6
+const USERS_PER_RUN = 8
 const WRITES_PER_USER = 120
-/** A person is re-synced at most this often. */
-const RESYNC_MS = 5 * 60_000
+/**
+ * A person is re-synced at most this often. Just under the job's 5-minute
+ * cadence (src/lib/operations/schedule.ts) so a person synced last run is
+ * due again this run.
+ */
+const RESYNC_MS = 4 * 60_000
 
 export type MyCompassSweepSummary = {
   readonly synced: number

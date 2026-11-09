@@ -75,24 +75,22 @@ The rest of the application depends only on the `AuthUser` type and on `getCurre
 
 ## 3.5 Scheduled jobs
 
-`wrangler.jsonc` declares two cron triggers, `* * * * *` and `*/10 * * * *`. `custom-worker.ts` `scheduled()` fans each tick out to independent jobs with `Promise.all` inside `ctx.waitUntil`:
+`wrangler.jsonc` declares one cron trigger, `* * * * *`. The schedule itself is a plain table in `src/lib/operations/schedule.ts`: one row per job with its name, route, how often it runs (`everyMinutes`), which minute of that cycle (`offsetMinute`), whether it is heavy, and why it needs that cadence. Each minute `custom-worker.ts` `scheduled()` runs the jobs due in that minute one after another inside `ctx.waitUntil`:
 
 - each job is a signed POST to an `/api/operations/*` route (or `/api/email/gmail-sync`) through `WORKER_SELF_REFERENCE`;
-- a job's failure is logged by error class and status only, and never stops the others;
-- there is no retry inside a run, because the next tick is the retry;
+- jobs run sequentially, never in parallel, so one isolate never holds several heavy responses at once (the 128 MB memory limit);
+- a job's failure is logged by error class and status only, and never stops the others; each run logs its duration;
+- there is no retry inside a run, because the next run is the retry;
 - jobs budget their own time (for example, the weather refresh stops at 18 seconds) and keep their own cursors ("refreshed at most every 5 minutes per person").
 
-| Every minute | Every 10 minutes |
+| Cadence | Jobs |
 |---|---|
-| Invitation email recovery | Feedback-desk reconciliation |
-| Inbound tracked-email sync | SMS message-body recovery |
-| Card-payment receipt reconciliation | Accounting-bridge health |
-| Payments-credential health | Message-desk stale reminders |
-| Paper-trail Drive copies | Project follow-up overdue reminders |
-| Personal calendars | Missing daily-log reminders |
-| Project calendars | Meeting-transcript capture |
-| | Today's plan and overload warnings |
-| | Weather and wildfire refresh |
+| Every minute | Inbound tracked-email sync |
+| Every 5 minutes | Paper-trail Drive copies, personal calendars, invitation email recovery, project calendars, card-payment receipt reconciliation |
+| Every 10 minutes | SMS message-body recovery, weather and wildfire refresh, message-desk stale reminders, today's plan, project follow-up overdue reminders, meeting-transcript capture, missing daily-log reminders, feedback-desk reconciliation |
+| Every 15 minutes | Accounting-bridge health, payments-credential health |
+
+Offsets keep each minute to inbound email plus at most two other jobs, and never two heavy jobs together; `src/lib/operations/__tests__/schedule.test.ts` enforces it.
 
 Appendix C maps each job to its route. Section 9.3 explains how to check that each job is still writing.
 

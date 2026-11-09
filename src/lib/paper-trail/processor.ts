@@ -20,12 +20,17 @@ import { internalDomainSet, listFolderFiles, resolveRecordFolder, type PaperTrai
 import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
 import { sweepPaperTrailChanges } from "@/lib/paper-trail/sweep"
 import { renderRecordCopyPdf } from "@/lib/paper-trail/render"
+import { scheduledEveryMinutes } from "@/lib/operations/schedule"
 
 type Db = ReturnType<typeof getDb>
 
-/** Records written per run. Each costs one PDF render and one or two Drive calls. */
-const MAX_RECORDS_PER_RUN = 4
-const MAX_SNAPSHOTS_PER_RUN = 2
+/**
+ * Records written per run. Each costs one PDF render and one or two Drive
+ * calls. The job runs every 5 minutes (src/lib/operations/schedule.ts), so
+ * this is about 70 records an hour.
+ */
+const MAX_RECORDS_PER_RUN = 6
+const MAX_SNAPSHOTS_PER_RUN = 3
 /** How far ahead to look for due rows; extra rows are deferred, not worked. */
 const CANDIDATE_LIMIT = 25
 /** Rows the company has switched off are re-checked this often. */
@@ -38,7 +43,7 @@ const MAX_SNAPSHOT_ATTEMPTS = 6
  * record and uploading a second copy.
  */
 const CLAIM_LEASE_MS = 10 * 60 * 1000
-/** The change sweep runs on minutes divisible by this. */
+/** The change sweep runs once in each 10-minute window (:00-:09, :10-:19, ...). */
 const SWEEP_EVERY_MINUTES = 10
 
 const MILESTONE_LABELS: Readonly<Record<string, string>> = {
@@ -329,10 +334,12 @@ async function runSnapshots(
 /**
  * One scheduled pass. Picks up records whose last edit is older than the
  * company's quiet period, writes at most a few, and leaves the rest for the
- * next minute. Idle runs cost one indexed query.
+ * next run. Idle runs cost one indexed query.
  */
 export async function runPaperTrail(db: Db, env: CloudflareEnv, now = new Date()): Promise<PaperTrailRunSummary> {
-  if (now.getUTCMinutes() % SWEEP_EVERY_MINUTES === 0) {
+  // The first run inside each 10-minute window sweeps, whatever minute the
+  // schedule table gives this job.
+  if (now.getUTCMinutes() % SWEEP_EVERY_MINUTES < scheduledEveryMinutes("project paper trail")) {
     // Only companies that have saved paper-trail settings can have it on.
     const configured = await db
       .select({ organizationId: organizationFeatureSettings.organizationId, value: organizationFeatureSettings.value })

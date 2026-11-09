@@ -221,7 +221,11 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
             ),
           })),
         health: healthRows.map((row) => {
-          const staleAfterMinutes = row.serviceName === "feedback-reconciler" ? 15 : 2
+          // Compass's own checks run on the schedule in src/lib/operations/schedule.ts.
+          const staleAfterMinutes =
+            row.serviceName === "feedback-reconciler" ? 15
+            : row.serviceName === "square-compass-auth" ? 20
+            : 2
           return {
             serviceName: row.serviceName,
             status: row.status,

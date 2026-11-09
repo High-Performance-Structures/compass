@@ -66,6 +66,13 @@ When the isolate goes over, Cloudflare stops it and the request fails with an
 `npx wrangler tail compass --format json` these show as
 `"outcome": "exceededMemory"`. Bigger bundle = less room for requests.
 
+Background jobs count too. Until 2026-11-09 the cron fired 7 jobs every minute
+(16 on every tenth minute) with `Promise.all`, and 42 requests died in one
+minute. Jobs now run one after another, spread over the hour by the table in
+`src/lib/operations/schedule.ts` (see "Scheduled jobs" in the
+[code map](code-map.md)). Keep heavy jobs (PDF renders, Google calls, big
+downloads) on different minutes when adding one.
+
 
 Why `scripts/ascii-worker-bundle.mjs` exists
 ---

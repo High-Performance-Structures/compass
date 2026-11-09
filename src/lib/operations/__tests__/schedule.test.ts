@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest"
+
+import {
+  jobsDueAt,
+  SCHEDULED_JOBS,
+  scheduledEveryMinutes,
+} from "@/lib/operations/schedule"
+
+function at(minute: number): Date {
+  return new Date(Date.UTC(2026, 10, 9, 15, minute))
+}
+
+function namesAt(minute: number): string[] {
+  return jobsDueAt(at(minute)).map((job) => job.name)
+}
+
+const ALWAYS = "inbound email sync"
+
+describe("scheduled job table", () => {
+  it("has valid, unique rows", () => {
+    const names = new Set<string>()
+    const paths = new Set<string>()
+    for (const job of SCHEDULED_JOBS) {
+      expect(60 % job.everyMinutes, `${job.name}: everyMinutes must divide 60`).toBe(0)
+      expect(job.offsetMinute, `${job.name}: offset`).toBeGreaterThanOrEqual(0)
+      expect(job.offsetMinute, `${job.name}: offset`).toBeLessThan(job.everyMinutes)
+      expect(Number.isInteger(job.offsetMinute)).toBe(true)
+      expect(job.why.trim().length, `${job.name}: explain why`).toBeGreaterThan(0)
+      names.add(job.name)
+      paths.add(job.path)
+    }
+    expect(names.size).toBe(SCHEDULED_JOBS.length)
+    expect(paths.size).toBe(SCHEDULED_JOBS.length)
+  })
+
+  it("runs every job the expected number of times an hour", () => {
+    const counts = new Map<string, number>()
+    for (let minute = 0; minute < 60; minute += 1) {
+      for (const name of namesAt(minute)) counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    for (const job of SCHEDULED_JOBS) {
+      expect(counts.get(job.name), job.name).toBe(60 / job.everyMinutes)
+    }
+  })
+
+  it("keeps every minute to inbound email plus at most two jobs", () => {
+    for (let minute = 0; minute < 60; minute += 1) {
+      const others = namesAt(minute).filter((name) => name !== ALWAYS)
+      expect(others.length, `minute :${minute} runs ${others.join(", ")}`).toBeLessThanOrEqual(2)
+    }
+  })
+
+  it("never runs two heavy jobs in the same minute besides inbound email", () => {
+    for (let minute = 0; minute < 60; minute += 1) {
+      const heavy = jobsDueAt(at(minute)).filter((job) => job.heavy && job.name !== ALWAYS)
+      expect(heavy.length, `minute :${minute} runs ${heavy.map((job) => job.name).join(", ")}`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it("lists which jobs run in sample minutes", () => {
+    expect(namesAt(0)).toEqual([ALWAYS, "project paper trail"])
+    expect(namesAt(1)).toEqual([ALWAYS, "My Compass calendars", "GoTo message recovery"])
+    expect(namesAt(2)).toEqual([ALWAYS, "invitation email recovery", "Weather and fire"])
+    expect(namesAt(5)).toEqual([ALWAYS, "project paper trail", "Sage bridge health"])
+    expect(namesAt(10)).toEqual([ALWAYS, "project paper trail", "Square authentication health"])
+    expect(namesAt(15)).toEqual([ALWAYS, "project paper trail"])
+    expect(namesAt(17)).toEqual([ALWAYS, "invitation email recovery", "Client meeting transcripts"])
+    expect(namesAt(59)).toEqual([ALWAYS, "Sage Square manual receipts", "feedback reconciliation"])
+  })
+
+  it("looks up a job's cadence by name", () => {
+    expect(scheduledEveryMinutes("project paper trail")).toBe(5)
+    expect(() => scheduledEveryMinutes("no such job")).toThrow()
+  })
+
+  it("sweeps paper trail changes exactly once per 10-minute window", () => {
+    const every = scheduledEveryMinutes("project paper trail")
+    const sweeps = Array.from({ length: 60 }, (_, minute) => minute)
+      .filter((minute) => namesAt(minute).includes("project paper trail"))
+      .filter((minute) => minute % 10 < every)
+    expect(sweeps.map((minute) => Math.floor(minute / 10))).toEqual([0, 1, 2, 3, 4, 5])
+  })
+})

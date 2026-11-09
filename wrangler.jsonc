@@ -19,8 +19,10 @@
 			"custom_domain": true
 		}
 	],
+	// One wake-up per minute. Which jobs run in which minute is the table in
+	// src/lib/operations/schedule.ts; change schedules there, not here.
 	"triggers": {
-		"crons": ["* * * * *", "*/10 * * * *"]
+		"crons": ["* * * * *"]
 	},
 	"assets": {
 		"binding": "ASSETS",
