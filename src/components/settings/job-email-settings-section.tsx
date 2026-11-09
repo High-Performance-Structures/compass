@@ -4,6 +4,7 @@ import * as React from "react"
 import { toast } from "sonner"
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
+import { JobEmailDeliverySettings } from "@/components/settings/job-email-delivery-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -97,7 +98,7 @@ export function JobEmailSettingsSection(): React.ReactElement {
       <details key={key} className="border-b py-2">
         <summary className="cursor-pointer text-sm">
           {template.label}
-          <span className="ml-2 text-xs text-muted-foreground">{template.audience === "client" ? "to the client" : "to others"}</span>
+          <span className="ml-2 text-xs text-muted-foreground">{template.audience === "client" ? "to the client" : template.audience === "insurance_agent" ? "to the insurance agent" : "to others"}</span>
           {changed ? <span className="ml-2 text-xs text-primary">Custom</span> : null}
         </summary>
         <div className="mt-2 space-y-2">
@@ -133,42 +134,45 @@ export function JobEmailSettingsSection(): React.ReactElement {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {!loaded && !error ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {loaded ? (
-        <form onSubmit={save} className="space-y-4">
-          <div role="tablist" aria-label="Department" className="flex flex-wrap border-b">
-            {EMAIL_DEPARTMENTS.map((code) => (
-              <button
-                key={code}
-                type="button"
-                role="tab"
-                aria-selected={active === code}
-                onClick={() => setActive(code)}
-                className={cn(
-                  "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
-                  active === code ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {profiles[code].shortName}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Sent from the department&apos;s mailbox when one is set in Settings → Company, otherwise from the sender&apos;s own
-            address. Merge fields fill in from the job: {JOB_EMAIL_MERGE_FIELDS.map((field) => `{{${field.name}}}`).join(" ")}
-          </p>
-          <div>{(JOB_EMAIL_TEMPLATES[active] ?? []).map(editor)}</div>
-          <div className="flex flex-wrap items-center gap-2">
-            {canEdit ? (
-              <>
-                <Button type="submit" size="sm" disabled={pending}>Save</Button>
-                {customized ? (
-                  <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={reset}>Reset to built-in wording</Button>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">Only admins can change job emails.</p>
-            )}
-          </div>
-        </form>
+        <>
+          <JobEmailDeliverySettings canEdit={canEdit} />
+          <form onSubmit={save} className="space-y-4">
+            <div role="tablist" aria-label="Department" className="flex flex-wrap border-b">
+              {EMAIL_DEPARTMENTS.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  role="tab"
+                  aria-selected={active === code}
+                  onClick={() => setActive(code)}
+                  className={cn(
+                    "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+                    active === code ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {profiles[code].shortName}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sent from the department&apos;s mailbox when one is set in Settings → Company, otherwise from the sender&apos;s own
+              address. Merge fields fill in from the job: {JOB_EMAIL_MERGE_FIELDS.map((field) => `{{${field.name}}}`).join(" ")}
+            </p>
+            <div>{(JOB_EMAIL_TEMPLATES[active] ?? []).map(editor)}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit ? (
+                <>
+                  <Button type="submit" size="sm" disabled={pending}>Save</Button>
+                  {customized ? (
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={reset}>Reset to built-in wording</Button>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">Only admins can change job emails.</p>
+              )}
+            </div>
+          </form>
+        </>
       ) : null}
     </section>
   )

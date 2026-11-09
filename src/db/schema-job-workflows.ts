@@ -1,4 +1,4 @@
-import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { blob, index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
 
 /**
@@ -30,3 +30,13 @@ export const projectWorkflowChecks = sqliteTable(
     index("project_workflow_checks_carried_from_project_id_idx").on(table.carriedFromProjectId),
   ],
 )
+
+/** Private documents and delivery settings for the scope-of-work job emails. */
+export const jobEmailDeliverySettings = sqliteTable("job_email_delivery_settings", {
+  organizationId: text("organization_id").primaryKey().notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  insuranceAgentEmail: text("insurance_agent_email"),
+  w9Version: text("w9_version"),
+  w9Filename: text("w9_filename"),
+  w9Pdf: blob("w9_pdf", { mode: "buffer" }),
+})

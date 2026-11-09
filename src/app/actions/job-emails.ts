@@ -11,10 +11,15 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import { addressLines } from "@/lib/department-profiles"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
+import { jobEmailDeliverySettings } from "@/db/schema-job-workflows"
+import { normalizeRecipientEmail, type EmailRecipientOption } from "@/lib/email/recipient-options"
 import { projectEmailRecipientOptions } from "@/lib/email/project-recipient-options"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { resolveStaffEmailSender } from "@/lib/email/staff-sender"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { REQUEST_COI_TEMPLATE, SEND_W9_TEMPLATE } from "@/lib/job-workflows/email-delivery"
+import { readJobEmailDeliverySettings } from "@/lib/job-workflows/email-delivery-server"
+import { createNotificationEvent, projectInternalRecipients } from "@/lib/notifications/events"
 import {
   jobEmailTemplate,
   jobEmailTemplateText,
@@ -35,7 +40,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function jobEmailContext(projectId: string, action: "read" | "update") {
   const { user, db, env } = await requireUserContext()
-  if (!isInternalStaffRole(user.role)) throw new Error("Job emails are available to office staff.")
+  if (!user.isActive || !isInternalStaffRole(user.role)) throw new Error("Job emails are available to office staff.")
   await requireFeaturePermission(user, "project-hub", action)
   const organizationId = requireOrg(user)
   const access = await getProjectAccessRecord(db, user, projectId)
@@ -69,6 +74,7 @@ async function jobEmailContext(projectId: string, action: "read" | "update") {
   const context: JobEmailContext = {
     clientFirstName: clientName.trim().split(/\s+/)[0] ?? "",
     clientName,
+    clientEmail: client?.email ?? "",
     projectNumber: project.projectNumber ?? "",
     projectName: project.name,
     jobAddress: project.address ?? "",
@@ -92,16 +98,49 @@ export async function getJobEmailDraft(projectId: string, templateId: string): P
     const template = jobEmailTemplate(ctx.department, templateId)
     if (!template) return { success: false, error: "Unknown email template." }
     const rendered = renderJobEmail(jobEmailTemplateText(ctx.department, template, ctx.settings.templates), ctx.context)
-    const audience = template.audience === "client" ? "the client" : "the recipients you choose"
+    const requestsCoi = template.id === REQUEST_COI_TEMPLATE
+    const sendsW9 = template.id === SEND_W9_TEMPLATE
+    const deliverySettings = requestsCoi || sendsW9 ? await readJobEmailDeliverySettings(ctx.db, ctx.organizationId) : null
+    const agent = deliverySettings?.insuranceAgentEmail
+    const w9 = deliverySettings?.w9Version && deliverySettings.w9Filename
+      ? { filename: deliverySettings.w9Filename, version: deliverySettings.w9Version }
+      : null
+    if (requestsCoi && !agent) {
+      return { success: false, error: "Add the insurance agent email in Settings → Workflows → Job emails." }
+    }
+    if (sendsW9 && !w9) {
+      return { success: false, error: "Upload the company W-9 in Settings → Workflows → Job emails." }
+    }
+
+    const contacts = await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email])
+    const clientOptions = contacts.filter((option) => option.category === "client")
+    if (sendsW9 && clientOptions.length === 0) {
+      return { success: false, error: "Add an active client contact with an email address to this job before sending the W-9." }
+    }
+    const recipientOptions: readonly EmailRecipientOption[] = requestsCoi && agent
+      ? [{ id: "insurance-agent", email: agent, displayName: "Insurance agent", companyName: null, category: "vendor", recommended: true }]
+      : sendsW9 ? clientOptions : contacts
+    const defaultClientEmail = sendsW9
+      ? clientOptions.find((option) => option.email === normalizeRecipientEmail(ctx.client?.email ?? ""))?.email ?? ""
+      : ctx.client?.email
+    const to = requestsCoi && agent ? [agent] : template.audience === "client" && defaultClientEmail ? [defaultClientEmail] : []
+    const audience = requestsCoi ? "the insurance agent" : template.audience === "client" ? "the client" : "the recipients you choose"
     return {
       success: true,
       data: {
         templateId: template.id,
         label: template.label,
-        description: `To ${audience}, from ${ctx.sender.address || "your company mailbox after verification"}.${template.audience === "client" ? " Sending logs it as a client contact." : ""}`,
-        to: template.audience === "client" && ctx.client?.email ? [ctx.client.email] : [],
+        description: `To ${audience}, from ${ctx.sender.address || "your company mailbox after verification"}.${requestsCoi
+          ? " Confirm the client’s details and add any certificate holder or coverage instructions."
+          : template.audience === "client" ? " Sending logs it as a client contact." : ""}`,
+        to,
         cc: [],
-        recipientOptions: await projectEmailRecipientOptions(ctx.db, projectId, [ctx.client?.email]),
+        recipientOptions,
+        ...(requestsCoi || sendsW9 ? {
+          contactRecipientsOnly: true,
+          ccOptions: contacts.filter((option) => option.category === "internal" || (sendsW9 && option.category === "client")),
+        } : {}),
+        ...(sendsW9 && w9 ? { requiredAttachment: w9 } : {}),
         subject: rendered.subject,
         body: rendered.body,
         missing: rendered.missing,
@@ -147,8 +186,45 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
     const template = jobEmailTemplate(ctx.department, templateId)
     if (!template) return { success: false, error: "Unknown email template." }
 
+    const requestsCoi = template.id === REQUEST_COI_TEMPLATE
+    const sendsW9 = template.id === SEND_W9_TEMPLATE
+    let clientContactId = ctx.client?.id ?? null
+    if (requestsCoi || sendsW9) {
+      const contacts = await projectEmailRecipientOptions(ctx.db, projectId)
+      const allowedCc = new Set(contacts.filter((option) => option.category === "internal" || (sendsW9 && option.category === "client")).map((option) => option.email))
+      if (cc.some((address) => !allowedCc.has(normalizeRecipientEmail(address)))) {
+        return { success: false, error: "Choose Cc recipients from the contacts offered for this email." }
+      }
+      if (requestsCoi) {
+        const { insuranceAgentEmail } = await readJobEmailDeliverySettings(ctx.db, ctx.organizationId)
+        if (!insuranceAgentEmail || to.length !== 1 || normalizeRecipientEmail(to[0] ?? "") !== insuranceAgentEmail) {
+          return { success: false, error: "Use the configured insurance agent as the only To recipient. Reopen the draft if the address changed." }
+        }
+      } else {
+        const clients = new Map(contacts.filter((option) => option.category === "client").map((option) => [option.email, option.id]))
+        if (to.some((address) => !clients.has(normalizeRecipientEmail(address)))) {
+          return { success: false, error: "Send the W-9 to active client contacts on this job." }
+        }
+        clientContactId = clients.get(normalizeRecipientEmail(to[0] ?? "")) ?? null
+      }
+    }
+
+    let w9Attachment = null
+    if (sendsW9) {
+      const version = formData.get("w9Version")
+      if (typeof version !== "string" || !version) return { success: false, error: "Reopen the email to attach the company W-9." }
+      const w9 = await ctx.db.select({ filename: jobEmailDeliverySettings.w9Filename, pdf: jobEmailDeliverySettings.w9Pdf })
+        .from(jobEmailDeliverySettings)
+        .where(and(eq(jobEmailDeliverySettings.organizationId, ctx.organizationId), eq(jobEmailDeliverySettings.w9Version, version)))
+        .get()
+      if (!w9?.filename || !w9.pdf?.length) {
+        return { success: false, error: "The company W-9 changed or was removed. Reopen the email to check the attachment." }
+      }
+      w9Attachment = { filename: w9.filename, contentType: "application/pdf", content: new Uint8Array(w9.pdf) }
+    }
+
     const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0)
-    if (files.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_BYTES) {
+    if (files.reduce((sum, file) => sum + file.size, w9Attachment?.content.byteLength ?? 0) > MAX_ATTACHMENT_BYTES) {
       return { success: false, error: "Attachments are limited to 15 MB in total." }
     }
     const attachments = await Promise.all(
@@ -158,6 +234,8 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
         content: new Uint8Array(await file.arrayBuffer()),
       })),
     )
+
+    if (w9Attachment) attachments.push(w9Attachment)
 
     // Replies come back to this job in Compass and still reach the sending mailbox.
     const delivery = await sendTrackedEmail({
@@ -187,7 +265,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
 
     const now = new Date().toISOString()
     const loggedContact = template.audience === "client"
-    await ctx.db.batch([
+    const recorded = await ctx.db.batch([
       recordProjectAudit(ctx.db, {
         organizationId: ctx.organizationId,
         projectId,
@@ -196,7 +274,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
         entityType: "project",
         entityId: projectId,
         beforeJson: null,
-        afterJson: JSON.stringify({ templateId, from: ctx.sender.address, to, cc, subject: subject.trim(), attachments: files.map((file) => file.name) }),
+        afterJson: JSON.stringify({ templateId, from: ctx.sender.address, to, cc, subject: subject.trim(), attachments: attachments.map((attachment) => attachment.filename) }),
         createdAt: now,
       }),
       ...(loggedContact
@@ -205,7 +283,7 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
               id: crypto.randomUUID(),
               organizationId: ctx.organizationId,
               projectId,
-              projectContactId: ctx.client?.id ?? null,
+              projectContactId: clientContactId,
               interactionType: "email",
               direction: "outbound",
               summary: `${template.label}: ${subject.trim()}`,
@@ -221,8 +299,11 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
             }),
           ]
         : []),
-    ])
-    if (loggedContact) {
+    ]).then(() => true).catch((error: unknown) => {
+      console.error("Job email was sent but its audit or client contact could not be recorded", error)
+      return false
+    })
+    if (loggedContact && recorded) {
       // Logged contact ends any overdue follow-up stretch; clear its reminder.
       await clearOverdueFollowUpReminders(ctx.db, [projectId]).catch((error: unknown) => {
         console.error("Unable to clear overdue follow-up reminders", error)
@@ -238,11 +319,35 @@ export async function sendJobEmail(formData: FormData): Promise<Result<{ readonl
       entityType: "project",
       entityId: projectId,
       summary: `Emailed "${subject.trim()}" (${template.label}) to ${[...to, ...cc].join(", ")}.`.slice(0, 500),
-      metadata: { templateId, attachments: files.length, from: ctx.sender.address, sentBy: activityActorName(ctx.user) },
+      metadata: { templateId, attachments: attachments.length, from: ctx.sender.address, sentBy: activityActorName(ctx.user) },
     })
+    if (requestsCoi || sendsW9) {
+      try {
+        const recipients = await projectInternalRecipients(ctx.db, ctx.organizationId, projectId, ctx.user.id)
+        if (recipients.length > 0) {
+          await createNotificationEvent({
+            organizationId: ctx.organizationId,
+            projectId,
+            eventType: requestsCoi ? "job_email.coi_requested" : "job_email.w9_sent",
+            sourceType: "job_email",
+            sourceId: projectId,
+            title: requestsCoi ? "Certificate of insurance requested" : "W-9 emailed to client",
+            body: `${activityActorName(ctx.user)} sent the email for ${ctx.context.projectName}.`,
+            href: `/dashboard/projects/${projectId}/information`,
+            priority: "normal",
+            audience: "project_team",
+            createdBy: ctx.user.id,
+            recipients,
+            delivery: { inApp: true, email: true, push: true },
+          })
+        }
+      } catch (error) {
+        console.error("Unable to notify project staff about the sent job email", error)
+      }
+    }
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/information`)
-    return { success: true, data: { loggedContact } }
+    return { success: true, data: { loggedContact: loggedContact && recorded } }
   } catch (error) {
     console.error("Job email failed", error)
     return { success: false, error: error instanceof Error ? error.message : "Unable to send the email." }

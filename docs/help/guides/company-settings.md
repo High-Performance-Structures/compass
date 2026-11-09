@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-08"
+  "lastReviewed": "2026-11-09"
 }
 ---
 
@@ -27,6 +27,12 @@ Save before choosing **Check sending mailbox**. This asks Google whether Compass
 Admins use **Settings → Workflows** for **Staff Message Desk** thresholds, stale reminders, **Project aging**, **Nu-Tech emails**, the catalog link, and **Project paper trail**. Follow-up thresholds use business days. Project aging measures time since logged client contact and must have an overdue threshold later than its follow-up-due threshold.
 
 Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. Department profiles supply the sending mailbox and office identity. Use [Conversations and notifications](/dashboard/help/conversations-and-notifications#message-desk), [Navigating projects](/dashboard/help/navigating-projects#project-follow-up), and [Nu-Tech orders](/dashboard/help/nutech-orders) for the operational steps.
+
+## Set Up Certificate Requests and W-9 Delivery {#job-emails}
+
+Open **Settings → Workflows → Job emails**. Enter the insurance agent's email address, upload the company's W-9 as a PDF (up to 1 MB), and choose **Save delivery settings**. Replace an outdated PDF by uploading the new one, or choose **Remove W-9** to clear the attachment. Clear and save the agent address to disable certificate requests.
+
+In the same section, choose the scope-of-work department to edit the subject and message for each email. **Reset to built-in wording** resets templates and keeps the delivery settings.
 
 ## Staff Email Addresses and Company Domains {#staff-email}
 

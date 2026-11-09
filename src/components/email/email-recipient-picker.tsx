@@ -69,6 +69,7 @@ export function EmailRecipientPicker({
   excludedEmails = [],
   placeholder = "Choose a contact or enter an email...",
   required = false,
+  allowManual = true,
 }: {
   readonly id: string
   readonly label: string
@@ -78,6 +79,7 @@ export function EmailRecipientPicker({
   readonly excludedEmails?: readonly string[]
   readonly placeholder?: string
   readonly required?: boolean
+  readonly allowManual?: boolean
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
@@ -95,6 +97,7 @@ export function EmailRecipientPicker({
   )
   const manualEmail = normalizeRecipientEmail(query)
   const canAddManual =
+    allowManual &&
     isValidRecipientEmail(manualEmail) &&
     !selected.has(manualEmail) &&
     !excluded.has(manualEmail)
@@ -212,11 +215,11 @@ export function EmailRecipientPicker({
               <CommandInput
                 value={query}
                 onValueChange={setQuery}
-                placeholder="Search contacts or type an email..."
+                placeholder={allowManual ? "Search contacts or type an email..." : "Search contacts..."}
               />
               <CommandList>
                 <CommandEmpty>
-                  {query.trim()
+                  {allowManual && query.trim()
                     ? "Enter a complete email address to add it."
                     : "No email contacts found."}
                 </CommandEmpty>

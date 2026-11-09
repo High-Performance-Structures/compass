@@ -7,6 +7,7 @@ import { DEPARTMENT_CODES } from "@/lib/department-profiles"
 const CONTEXT: JobEmailContext = {
   clientFirstName: "Pat",
   clientName: "Pat Lee",
+  clientEmail: "pat@example.com",
   projectNumber: "H-1-1",
   projectName: "Ridge Road",
   jobAddress: "1 Ridge Rd",

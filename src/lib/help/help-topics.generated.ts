@@ -159,6 +159,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "company-settings",
     "sectionId": "workflows"
   },
+  "settings.company.job-emails": {
+    "guideId": "settings.company",
+    "guideSlug": "company-settings",
+    "sectionId": "job-emails"
+  },
   "settings.company.staff-email": {
     "guideId": "settings.company",
     "guideSlug": "company-settings",
@@ -623,6 +628,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideId": "projects.navigation",
     "guideSlug": "navigating-projects",
     "sectionId": "open-project"
+  },
+  "projects.navigation.job-document-emails": {
+    "guideId": "projects.navigation",
+    "guideSlug": "navigating-projects",
+    "sectionId": "job-document-emails"
   },
   "projects.navigation.project-financials": {
     "guideId": "projects.navigation",

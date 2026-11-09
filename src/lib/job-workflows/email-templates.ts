@@ -1,3 +1,4 @@
+import { REQUEST_COI_TEMPLATE, SEND_W9_TEMPLATE } from "@/lib/job-workflows/email-delivery"
 import type { ProjectDepartment } from "@/lib/project-branding"
 
 /**
@@ -8,7 +9,7 @@ import type { ProjectDepartment } from "@/lib/project-branding"
  */
 
 /** Who a template goes to: the client (logged as client contact) or someone else on the job. */
-type JobEmailAudience = "client" | "other"
+type JobEmailAudience = "client" | "other" | "insurance_agent"
 
 export type JobEmailTemplate = {
   /** Unique within its department. */
@@ -25,6 +26,7 @@ export type JobEmailTemplate = {
 export const JOB_EMAIL_MERGE_FIELDS = [
   { name: "clientFirstName", label: "Client first name" },
   { name: "clientName", label: "Client full name" },
+  { name: "clientEmail", label: "Client email" },
   { name: "projectNumber", label: "Job number" },
   { name: "projectName", label: "Job name" },
   { name: "jobAddress", label: "Job site address" },
@@ -107,6 +109,37 @@ ${SIGNATURE}`,
 Thank you for choosing {{companyName}}. Attached are the agreement for the scope of work at {{jobAddress}} and the deposit invoice.
 
 Once the signed agreement and the deposit are in, we'll confirm a start date and order materials.
+
+Thank you,
+${SIGNATURE}`,
+  },
+  {
+    id: REQUEST_COI_TEMPLATE,
+    label: "Request certificate from insurance agent",
+    audience: "insurance_agent",
+    steps: [],
+    subject: "Certificate of insurance request for {{projectName}}",
+    body: `Hello,
+
+Please issue a certificate of insurance for {{legalName}} and send it directly to the client below. Please confirm once it has been sent.
+
+Client: {{clientName}}
+Client email: {{clientEmail}}
+Project: {{projectName}} ({{projectNumber}})
+Job site: {{jobAddress}}
+
+Thank you,
+${SIGNATURE}`,
+  },
+  {
+    id: SEND_W9_TEMPLATE,
+    label: "Email W-9 to client",
+    audience: "client",
+    steps: [],
+    subject: "W-9 for {{legalName}}",
+    body: `Hello {{clientFirstName}},
+
+Attached is the W-9 for {{legalName}} for your records on {{projectName}}.
 
 Thank you,
 ${SIGNATURE}`,

@@ -10,6 +10,9 @@ export type TemplateEmailDraft = {
   readonly cc: readonly string[]
   /** The job's contacts, offered in the To and Cc pickers. */
   readonly recipientOptions: readonly EmailRecipientOption[]
+  readonly ccOptions?: readonly EmailRecipientOption[]
+  readonly contactRecipientsOnly?: boolean
+  readonly requiredAttachment?: { readonly filename: string; readonly version: string }
   readonly subject: string
   readonly body: string
   /** Merge fields that were empty, to fill in before sending. */
