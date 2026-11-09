@@ -17,7 +17,7 @@ import { TalkSetup } from "@/components/voice/talk-setup"
 import { TalkPreview } from "@/components/voice/talk-preview"
 import { TalkNotesPanel } from "@/components/voice/talk-notes-panel"
 import { useTalkSettings } from "@/hooks/use-talk-settings"
-import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
+import { installRealtimeKitBrowserApiProxy, noteRealtimeKitDiagnostic } from "@/lib/realtimekit/browser-api-proxy"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 import { useMutedSpeechHint } from "@/hooks/use-muted-speech-hint"
 
@@ -31,7 +31,6 @@ type ScreenShareStatus =
 
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
 type MeetingMediaKind = "audio" | "video"
-
 
 function errorMessageForCause(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -101,6 +100,7 @@ function recordRealtimeKitDiagnostic(
     ].slice(-MAX_REALTIMEKIT_DIAGNOSTICS)
     Reflect.set(window, "__compassRealtimeKitDiagnostics", nextDiagnostics)
   }
+  noteRealtimeKitDiagnostic(event, payload)
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
 }
 

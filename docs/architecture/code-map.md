@@ -383,7 +383,7 @@ Company settings (everything under Settings) and per-person preferences.
 | CHERISH board and greeting cards | `src/db/schema-cherish.ts`, `src/lib/cherish/`, `src/lib/greeting-cards/`, `src/app/actions/cherish-*.ts`, `src/components/cherish/`; [greeting cards](../modules/cherish-cards.md) |
 | Weather and fire map layers | `src/db/schema-weather.ts`, `src/lib/weather/`, `src/lib/domain/weather/`, `src/app/api/operations/weather/` |
 | Social posts | `src/db/schema-social.ts`, `src/lib/social/`, `src/app/api/social/`; [social publishing](../modules/social-publishing.md) |
-| Listening Room and Office Talk | `src/lib/listening-room*.ts`, `src/lib/realtimekit/`, `src/components/voice/`, `src/app/api/realtimekit/` |
+| Listening Room and Office Talk | `src/lib/listening-room*.ts`, `src/lib/realtimekit/`, `src/components/voice/`, `src/app/api/realtimekit/`. The RealtimeKit SDK's diagnostic log uploads are throttled to about one per company every 12 hours (immediately, capped, after an Office Talk join or connection failure): rule in `src/lib/realtimekit/log-upload-throttle.ts`, gate in `log-upload-gate.ts` |
 | Internal workspaces and duties | `src/db/schema-internal-duties.ts`, `src/lib/domain/duties/`; [internal workspaces](../modules/internal-workspaces.md) |
 | Desktop app | `electron/`; [desktop](../modules/desktop.md) |
 | NetSuite (legacy) | `src/lib/netsuite/`; [NetSuite](../modules/netsuite.md) |

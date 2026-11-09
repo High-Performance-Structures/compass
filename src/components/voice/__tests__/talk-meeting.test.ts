@@ -109,7 +109,8 @@ vi.mock("@cloudflare/realtimekit-react-ui", async () => {
   }
 })
 vi.mock("@/lib/realtimekit/browser-api-proxy", () => ({
-  installRealtimeKitBrowserApiProxy: () => () => {}
+  installRealtimeKitBrowserApiProxy: () => () => {},
+  noteRealtimeKitDiagnostic: () => {}
 }))
 vi.mock("@/app/actions/chat-messages", () => ({ sendMessage: vi.fn() }))
 vi.mock("@/app/actions/voice-sessions", () => ({

@@ -9,7 +9,7 @@
  * who is asking. Functions named `…Statement` return a statement for the
  * caller's `db.batch`, so writes that must land together stay in one batch.
  */
-import { and, eq, inArray, or, sql } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { DrizzleD1Database } from "drizzle-orm/d1"
 
@@ -80,6 +80,35 @@ export async function deleteOrganizationFeatureSetting(db: Db, organizationId: s
 
 export function deleteOrganizationFeatureSettingStatement(db: Db, organizationId: string, featureKey: string): Statement {
   return featureSettingDelete(db, organizationId, featureKey)
+}
+
+/**
+ * Claims a once-per-window company marker stored as a feature setting: writes
+ * `claimedAt` and returns true only when there is no marker yet or the stored
+ * one is older than `staleBefore` (both ISO UTC times). One conditional
+ * upsert, so two Workers racing for the same window cannot both win.
+ */
+export async function claimOrganizationFeatureSettingWindow(
+  db: Db,
+  input: {
+    readonly organizationId: string
+    readonly featureKey: string
+    readonly claimedAt: string
+    readonly staleBefore: string
+    readonly updatedBy: string
+  }
+): Promise<boolean> {
+  const { claimedAt, updatedBy } = input
+  const rows = await db
+    .insert(organizationFeatureSettings)
+    .values({ organizationId: input.organizationId, featureKey: input.featureKey, value: claimedAt, updatedAt: claimedAt, updatedBy })
+    .onConflictDoUpdate({
+      target: [organizationFeatureSettings.organizationId, organizationFeatureSettings.featureKey],
+      set: { value: claimedAt, updatedAt: claimedAt, updatedBy },
+      setWhere: lt(organizationFeatureSettings.value, input.staleBefore),
+    })
+    .returning({ featureKey: organizationFeatureSettings.featureKey })
+  return rows.length > 0
 }
 
 // ---------------------------------------------------------------------------
