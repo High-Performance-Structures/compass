@@ -1,3 +1,5 @@
+// Contacts domain: the directory and Sage people offered when adding a contact
+// to a project. Read only.
 import { and, eq, isNull } from "drizzle-orm"
 
 import { customerContacts, customers, internalContacts, projectContacts, vendorContacts, vendors } from "@/db/schema"

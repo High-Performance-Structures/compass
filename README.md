@@ -28,6 +28,11 @@ bun run db:migrate:local
 bun dev
 ```
 
+New to the code? Start with the [code map](docs/architecture/code-map.md):
+where each business area (projects, estimates, pay requests, Sage, contacts,
+daily logs, Nu-Tech, settings, ...) lives, and how to add a setting, add a
+migration, and deploy.
+
 See [docs/](docs/README.md) for detailed setup, environment
 variables, and deployment options.
 
@@ -51,6 +56,7 @@ variables, and deployment options.
 
 ## Links
 
+- [Code map](docs/architecture/code-map.md)
 - [Documentation](docs/README.md)
 - [Issues](https://github.com/High-Performance-Structures/compass/issues)
 - [Discussions](https://github.com/High-Performance-Structures/compass/discussions)

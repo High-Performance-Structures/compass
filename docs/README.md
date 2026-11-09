@@ -20,6 +20,8 @@ architecture
 
 How the core platform works.
 
+- [code map](architecture/code-map.md) -- **start here**: where every business area lives (schema, domain module, actions, API, pages, components), folder conventions, adding a setting or migration, deploying
+- [server bundle](architecture/server-bundle.md) -- how OpenNext turns the build into one Worker file, the 128 MB memory limit, the ASCII bundle step, and `bun run bundle:report`
 - [overview](architecture/overview.md) -- the two-layer architecture, tech stack, project structure, how everything connects
 - [data layer](architecture/data-layer.md) -- Drizzle ORM on Cloudflare D1, schema conventions, migration workflow
 - [server actions](architecture/server-actions.md) -- the data mutation pattern, auth checks, error handling, revalidation

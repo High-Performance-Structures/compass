@@ -1,3 +1,5 @@
+// Contacts domain: the people offered in assignee pickers (to-dos, schedule
+// items, purchase order site contacts), built from project contacts and staff.
 import { and, asc, eq, isNull } from "drizzle-orm"
 
 import { customers, organizationMembers, projectContacts, users, vendorContacts, vendors } from "@/db/schema"

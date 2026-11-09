@@ -1,3 +1,6 @@
+// Conversations domain: automatically links imported (Buildertrend) message
+// participants to known Compass people by matching names and emails;
+// legal-hold projects stay staff only.
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm"
 
 import { importedVendorContactId } from "../../../../scripts/import-buildertrend-participants.mjs"

@@ -1,3 +1,5 @@
+// Database entry point: combines every src/db/schema*.ts file into one Drizzle
+// schema and exports getDb() plus the platform database providers.
 import { drizzle } from "drizzle-orm/d1"
 import * as schema from "./schema"
 import * as netsuiteSchema from "./schema-netsuite"

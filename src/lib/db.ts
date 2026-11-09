@@ -1,3 +1,5 @@
+// Gets the Cloudflare context (env bindings such as the D1 database) on the
+// server, with a local fallback for development and E2E tests.
 import { isE2ETest } from "@/lib/auth-config"
 
 type CompassCloudflareContext = {
