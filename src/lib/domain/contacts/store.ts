@@ -3,13 +3,12 @@
  * client, vendor and internal directories, directory people, and the
  * project-contact source links (architecture standard, section 1).
  *
- * No auth logic lives here; callers resolve access first. Functions named
- * `...Statement` return an unexecuted statement for a caller's `db.batch`
- * so a multi-table write stays atomic.
+ * No auth logic lives here; callers resolve access first. `...Statement`
+ * functions return an unexecuted statement for a caller's atomic `db.batch`.
  *
  * It also owns the read model `resolvedProjectContacts`: a project contact
- * linked to a directory record reads its name, company, email, phone and
- * address from that record. The copied columns are only a fallback.
+ * reads name, company, email, phone and address from its directory record
+ * (copies are a fallback). New ones must link: insertableProjectContacts.
  */
 import { and, asc, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
@@ -19,6 +18,7 @@ import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
+import { insertableProjectContacts } from "./rules"
 import { resolvedAddress, resolvedCompanyName, resolvedDisplayName, resolvedEmail, resolvedPhone } from "./resolved-columns"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 
@@ -151,16 +151,16 @@ export async function resolvedProjectContacts(
 // ---------------------------------------------------------------------------
 
 export function insertProjectContactStatement(db: Db, values: ProjectContactInsert): Statement {
-  return db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS))
+  return db.insert(projectContacts).values(insertableProjectContacts(values))
 }
 
 export async function insertProjectContact(db: Db, values: ProjectContactInsert): Promise<void> {
-  await db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS))
+  await db.insert(projectContacts).values(insertableProjectContacts(values))
 }
 
 /** One project contact, left alone when a row with its id already exists. */
 export function insertProjectContactIfMissingStatement(db: Db, values: ProjectContactInsert): Statement {
-  return db.insert(projectContacts).values(checkedListFields("project_contacts", values, PROJECT_CONTACT_LISTS)).onConflictDoNothing()
+  return db.insert(projectContacts).values(insertableProjectContacts(values)).onConflictDoNothing()
 }
 
 /**
@@ -173,7 +173,7 @@ export async function insertProjectContactsIfMissing(
   values: readonly ProjectContactInsert[]
 ): Promise<readonly { readonly id: string }[]> {
   const [first, ...rest] = chunkD1InsertRows(projectContacts, values).map((rows) =>
-    db.insert(projectContacts).values(checkedListFields("project_contacts", rows, PROJECT_CONTACT_LISTS)).onConflictDoNothing().returning({ id: projectContacts.id })
+    db.insert(projectContacts).values(insertableProjectContacts(rows)).onConflictDoNothing().returning({ id: projectContacts.id })
   )
   if (!first) return []
   const results = await db.batch([first, ...rest])

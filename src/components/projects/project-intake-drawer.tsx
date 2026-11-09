@@ -472,9 +472,9 @@ export function ProjectIntakeDrawer({
                     label: assignee.name,
                     description: assignee.email,
                   }))}
-                  placeholder="Choose staff or type a name..."
-                  emptyMessage="No matching staff member."
-                  manualInputLabel="Use typed name"
+                  placeholder="Choose staff..."
+                  emptyMessage="No matching staff member. Add new staff in Contacts first."
+                  allowManualInput={false}
                 />
               </Field>
               <Field label="Referred by" htmlFor="project-intake-referral">

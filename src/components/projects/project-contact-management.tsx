@@ -81,6 +81,7 @@ export function ProjectContactEditor({
     selectedDirectory,
     identityManagedByActiveUser,
     signInEmailLocked,
+    needsDirectorySelection,
     resetEditor,
     applyDirectoryOption,
     submit,
@@ -108,7 +109,9 @@ export function ProjectContactEditor({
                 ? "Contact details are managed in Contacts; Sage-linked changes require review. Project role and visibility remain editable here."
                 : selectedDirectory
                   ? "Phone, email, and address stay synchronized with the linked directory record."
-                  : "Add a project contact or link an existing directory record."}
+                  : isEditing
+                    ? "This contact is not linked to Contacts yet. Link it to a directory record so later changes reach every job."
+                    : "Choose someone from Contacts. Not listed? Add them to the directory below, then finish adding them to this job."}
             </SheetDescription>
           </SheetHeader>
 
@@ -161,6 +164,7 @@ export function ProjectContactEditor({
                   <p className="text-xs text-muted-foreground">
                     Internal contacts are shared across projects. People already
                     on this project remain visible but cannot be added twice.
+                    Not listed? Add them to the internal directory in Contacts first.
                   </p>
                 </div>
               )
@@ -209,6 +213,7 @@ export function ProjectContactEditor({
               type="submit"
               disabled={
                 isPending ||
+                needsDirectorySelection ||
                 !input.displayName.trim() ||
                 (isVendorContactType(input.contactType) && !input.vendorId)
               }

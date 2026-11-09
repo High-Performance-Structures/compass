@@ -11,9 +11,9 @@ import type {
 } from "@/lib/project-contact-access-status"
 import { isCanonicalDirectoryAssignment } from "@/lib/project-contact-directory-identity"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
-import { isListValue } from "@/lib/shared/statuses"
+import { checkedListFields, isListValue } from "@/lib/shared/statuses"
 
-import { PROJECT_CONTACT_TYPES } from "./statuses"
+import { PROJECT_CONTACT_LISTS, PROJECT_CONTACT_TYPES } from "./statuses"
 
 import type {
   ProjectContactCsiGroup,
@@ -421,4 +421,50 @@ export function nextVendorLink(input: {
   if (!input.existingVendorId) return null
   const before = normalizeDirectoryKey(input.existingName)
   return before.length > 0 && before === normalizeDirectoryKey(input.nextName) ? input.existingVendorId : null
+}
+
+/**
+ * Job contacts come from the directory: every new project contact names a
+ * client, client person, vendor, vendor person, staff member or Compass user.
+ * Someone not yet in Contacts is added there first and then to the job, so
+ * later directory edits reach every job they are on.
+ */
+export const PROJECT_CONTACT_DIRECTORY_REQUIRED =
+  "Add this person in Contacts first, then add them to the job from the directory."
+
+/**
+ * Imported rows that may still arrive unlinked: they land in Contacts →
+ * Unassigned / Needs review, where staff connect them to a directory record.
+ * Kept open pending an owner decision on whether imports must link first.
+ */
+export const UNLINKED_IMPORT_SOURCE_SYSTEMS: readonly string[] = ["buildertrend"]
+
+const LINKED_SOURCE_ENTITY_TYPES: readonly string[] = ["customer", "vendor", "user"]
+
+type ProjectContactInsert = typeof projectContacts.$inferInsert
+type ProjectContactLinkFields = Pick<
+  ProjectContactInsert,
+  "sourceSystem" | "sourceEntityType" | "sourceEntityId" | "customerId" | "customerContactId" | "vendorId" | "vendorContactId" | "internalContactId"
+>
+
+/** Whether a project contact row points at a directory record. */
+export function hasProjectContactDirectoryLink(row: ProjectContactLinkFields): boolean {
+  if (row.customerId || row.customerContactId || row.vendorId || row.vendorContactId || row.internalContactId) return true
+  return Boolean(row.sourceEntityId && row.sourceEntityType && LINKED_SOURCE_ENTITY_TYPES.includes(row.sourceEntityType))
+}
+
+/** A new project contact may be written: linked, or an import awaiting review. */
+export function mayInsertProjectContact(row: ProjectContactLinkFields): boolean {
+  return hasProjectContactDirectoryLink(row) || UNLINKED_IMPORT_SOURCE_SYSTEMS.includes(row.sourceSystem ?? "")
+}
+
+/**
+ * The store's check before any project contact insert: list fields are valid
+ * and every row is linked (or an import awaiting review). Callers check first
+ * and return a friendly failure; reaching this throw is a code bug.
+ */
+export function insertableProjectContacts<Rows extends ProjectContactInsert | ProjectContactInsert[]>(rows: Rows): Rows {
+  const list: readonly ProjectContactInsert[] = Array.isArray(rows) ? rows : [rows]
+  if (!list.every(mayInsertProjectContact)) throw new Error(PROJECT_CONTACT_DIRECTORY_REQUIRED)
+  return checkedListFields("project_contacts", rows, PROJECT_CONTACT_LISTS)
 }

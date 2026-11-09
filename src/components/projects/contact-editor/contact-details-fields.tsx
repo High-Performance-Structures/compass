@@ -31,7 +31,6 @@ export function ContactDetailsFields({
   const {
     input,
     updateInput,
-    selectedDirectory,
     customRoleSelected,
     setCustomRoleSelected,
     identityReadOnly,
@@ -56,7 +55,7 @@ export function ContactDetailsFields({
                     required
                     value={input.displayName}
                     onChange={(event) => updateInput("displayName", event.target.value)}
-                    readOnly={selectedDirectory !== null}
+                    readOnly={identityReadOnly}
                   />
                 </div>
               )}
@@ -67,7 +66,7 @@ export function ContactDetailsFields({
                     id="project-contact-company"
                     value={input.companyName}
                     onChange={(event) => updateInput("companyName", event.target.value)}
-                    readOnly={selectedDirectory !== null}
+                    readOnly={identityReadOnly}
                   />
                 </div>
               )}

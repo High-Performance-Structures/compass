@@ -16,6 +16,8 @@ import {
   isVendorContactType,
   matchingCustomerOptions,
 } from "@/components/projects/contact-editor/contact-editor-rules"
+import { projectContactInputError } from "@/lib/domain/contacts/save-contact"
+import { PROJECT_CONTACT_DIRECTORY_REQUIRED } from "@/lib/domain/contacts/rules"
 import type {
   ProjectContactDirectoryOption,
   ProjectContactSageOptions,
@@ -145,5 +147,22 @@ describe("contact editor draft changes", () => {
     expect(matchingCustomerOptions(options, { name: "Other", email: " sam@x.test ", company: "" }).map((option) => option.id)).toEqual(["c1"])
     expect(matchingCustomerOptions(options, { name: "lee family", email: "", company: "LEE TRUST" }).map((option) => option.id)).toEqual(["c2"])
     expect(matchingCustomerOptions(options, { name: "Nobody", email: "", company: "" })).toEqual([])
+  })
+})
+
+describe("new contact comes from the directory", () => {
+  it("cannot be saved typed, and saves once the directory record (new or existing) is selected", () => {
+    const typed = { ...initialInput("p1", null), contactType: "owner" as const, displayName: "Typed Name" }
+    expect(projectContactInputError(typed)).toBe(PROJECT_CONTACT_DIRECTORY_REQUIRED)
+
+    // "Add new client company" creates the record, then selects it back into the job form.
+    const created = directory({ id: "c-new", sourceType: "customer", displayName: "New Client", suggestedContactType: "owner", vendorContacts: [] })
+    const selected = inputWithDirectoryOption(typed, created)
+    expect(selected).toMatchObject({ directorySourceType: "customer", directorySourceId: "c-new" })
+    expect(projectContactInputError(selected)).toBeNull()
+  })
+
+  it("leaves an existing unlinked contact editable", () => {
+    expect(projectContactInputError({ ...initialInput("p1", null), contactId: "legacy-1", contactType: "owner" })).toBeNull()
   })
 })
