@@ -225,7 +225,9 @@ contacts, invitations to the owner and vendor portals, duplicate merges.
 - Schema: `src/db/schema-operations.ts` (`project_operations` holds to-dos
   and purchase orders; purchase order lines, RFIs),
   `src/db/schema-selections.ts` (finish selections),
-  `src/db/schema-selection-decisions.ts`, `src/db/schema-warranty.ts`,
+  `src/db/schema-selection-decisions.ts`, `src/db/schema-selection-choices.ts`
+  (choices, supplier links, photo links, comments, follow-up selections),
+  `src/db/schema-warranty.ts`,
   `src/db/schema-trade-docs.ts`
 - Domain: `src/lib/domain/operations/`, `src/lib/domain/rfis/`,
   `src/lib/domain/selections/`, `src/lib/domain/warranty/`,

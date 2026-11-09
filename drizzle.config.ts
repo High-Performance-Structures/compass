@@ -16,6 +16,7 @@ export default defineConfig({
     "./src/db/schema-calendars.ts",
     "./src/db/schema-operations.ts",
     "./src/db/schema-selections.ts",
+    "./src/db/schema-selection-choices.ts",
     "./src/db/schema-financials.ts",
     "./src/db/schema-change-orders.ts",
     "./src/db/schema-notifications.ts",

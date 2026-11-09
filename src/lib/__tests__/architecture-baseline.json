@@ -617,6 +617,21 @@
     "projectSavedViews": [
       "src/lib/domain/settings/store.ts"
     ],
+    "projectSelectionChoiceDependents": [
+      "src/lib/domain/selections/choices-store.ts"
+    ],
+    "projectSelectionChoices": [
+      "src/lib/domain/selections/choices-store.ts"
+    ],
+    "projectSelectionComments": [
+      "src/lib/domain/selections/choices-store.ts"
+    ],
+    "projectSelectionLinks": [
+      "src/lib/domain/selections/choices-store.ts"
+    ],
+    "projectSelectionPhotos": [
+      "src/lib/domain/selections/choices-store.ts"
+    ],
     "projectSelectionProcurementLinks": [
       "src/app/actions/project-operations.ts"
     ],

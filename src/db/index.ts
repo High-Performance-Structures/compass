@@ -35,6 +35,7 @@ import * as correspondenceEmailSchema from "./schema-correspondence-email"
 import * as correspondenceSourceSchema from "./schema-correspondence-source"
 
 import * as selectionDecisionSchema from "./schema-selection-decisions"
+import * as selectionChoiceSchema from "./schema-selection-choices"
 import * as internalDutySchema from "./schema-internal-duties"
 import * as shopTicketSchema from "./schema-shop-tickets"
 import * as projectLinkSchema from "./schema-project-links"
@@ -48,6 +49,7 @@ const allSchemas = {
   ...equipmentSchema,
   ...paperTrailSchema,
   ...selectionDecisionSchema,
+  ...selectionChoiceSchema,
   ...correspondenceSchema,
   ...correspondenceEmailSchema,
   ...correspondenceSourceSchema,

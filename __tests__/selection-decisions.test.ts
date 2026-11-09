@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
+import { projectSelectionComments } from "@/db/schema-selection-choices"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { eq } from "drizzle-orm"
 import {
@@ -114,6 +115,7 @@ beforeEach(async () => {
     projectFinishSelections,
     projectOperations,
     projectChangeOrders,
+    projectSelectionComments,
   ])
     createTable(table)
   testDb.sqlite.exec(
