@@ -30,6 +30,8 @@ declare module "better-sqlite3" {
     transaction<T>(fn: () => T): () => T
     pragma(query: string, options?: PragmaOptions): unknown
     close(): void
+    /** The whole database as a buffer; `new Database(buffer)` opens a copy. */
+    serialize(): Buffer
     readonly name: string
     readonly open: boolean
     readonly readonly: boolean

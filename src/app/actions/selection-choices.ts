@@ -10,8 +10,11 @@ import {
   parseCommentBody,
   parseSelectionChoiceInput,
   validChoiceOrder,
+  withSelectionDefaults,
   type SelectionChoiceInput,
 } from "@/lib/domain/selections/choice-rules"
+import { categoryLeadTimeDays } from "@/lib/feature-settings/selection-settings"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   activeVendorInOrganization,
   choiceInProject,
@@ -165,7 +168,12 @@ export async function saveSelectionChoice(
     const { db } = context
     const selection = await selectionInProject(db, projectId, selectionId)
     if (!selection) return { success: false, error: "Selection not found" }
-    const value = parsed.value
+    const settings = await readFeatureSettings(db, context.organizationId, "selections")
+    const value = withSelectionDefaults(parsed.value, {
+      ownerMarkupPercent: settings.ownerMarkupPercent,
+      categoryLeadTimeDays: categoryLeadTimeDays(settings, selection.category),
+      isNew: choiceId === null,
+    })
     if (value.vendorId && !(await activeVendorInOrganization(db, context.organizationId, value.vendorId))) {
       return { success: false, error: "Supplier not found." }
     }

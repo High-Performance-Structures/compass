@@ -40,6 +40,8 @@ In the detail panel:
 
 Records imported from another system show a small source tag.
 
+Admins set the company defaults in **Settings › Workflows › Selections**: the selection rounds and the schedule item that sets each round's due date, default lead times by category (new choices start with them), the owner-price markup (a blank owner price is filled in from the supplier price, including prices returned on an RFQ; staff can change it), and the over-budget percent at which a variance is handled as a change order.
+
 ## Owner Choosing {#owner-choosing}
 
 Once a selection is published, the owner sees its choices as photo cards with the owner price, how far over or under the allowance each one is, and a link to the supplier's page. The owner taps a card to pick it and can change their pick until the selection is approved. Owners can **Suggest an item (paste a link)** and **Ask a question**; their questions appear in the selection's comments.

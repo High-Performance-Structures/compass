@@ -35,6 +35,7 @@ import { SageChangeOrderSettingsSection } from "@/components/settings/sage-chang
 import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate-settings-section"
 import { SageContactReviewSettingsSection } from "@/components/settings/sage-contact-review-settings-section"
 import { SageAddRequestSettingsSection } from "@/components/settings/sage-add-request-settings-section"
+import { SelectionSettingsSection } from "@/components/settings/selection-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -231,6 +232,7 @@ const WORKFLOW_AREAS = [
   { value: "trade-docs", label: "Trade docs", description: "What each kind of vendor must have on file, when documents expire, the certificate check, and bills while documents are missing." },
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "pay-applications", label: "Pay applications", description: "How much detail clients see on a pay application: division percent, division or cost code." },
+  { value: "selections", label: "Selections", description: "Selection rounds and their schedule due dates, default lead times by category, the owner-price markup, and when a variance becomes a change order." },
   { value: "variances", label: "Variances", description: "The default contract type for jobs, and how project liability insurance follows variances and change orders." },
   { value: "simple-invoices", label: "Simple invoices", description: "The mailbox invoices are emailed from, which departments invoice from the job's estimate, and when Square may be used." },
   { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
@@ -328,6 +330,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <SageContactReviewSettingsSection />
     case "sage-add-requests":
       return <SageAddRequestSettingsSection />
+    case "selections":
+      return <SelectionSettingsSection />
     case "change-order-acceptance":
       return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":

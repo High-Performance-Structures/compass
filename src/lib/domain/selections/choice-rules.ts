@@ -2,6 +2,7 @@
  * Pure rules for selection choices, supplier links and comments: input
  * validation and what each audience may see. No database or network access.
  */
+import { ownerPriceFromMarkup } from "@/lib/feature-settings/selection-settings"
 import { toCents } from "@/lib/format"
 
 import {
@@ -70,6 +71,20 @@ function moneyInput(value: string | null | undefined): number | null | "invalid"
  */
 export function allowanceDeltaCents(priceCents: number | null, allowanceCents: number | null): number | null {
   return priceCents === null || allowanceCents === null ? null : priceCents - allowanceCents
+}
+
+/**
+ * Company defaults from Settings > Selections: a blank owner price is filled
+ * from the supplier price plus the markup, and a new choice with no lead
+ * time takes its category's default. Anything staff typed wins.
+ */
+export function withSelectionDefaults(
+  value: ParsedSelectionChoice,
+  defaults: { readonly ownerMarkupPercent: number | null; readonly categoryLeadTimeDays: number | null; readonly isNew: boolean },
+): ParsedSelectionChoice {
+  const ownerPriceCents = value.ownerPriceCents ?? ownerPriceFromMarkup(value.priceCents, defaults.ownerMarkupPercent)
+  const leadTimeDays = value.leadTimeDays ?? (defaults.isNew ? defaults.categoryLeadTimeDays : null)
+  return { ...value, ownerPriceCents, leadTimeDays }
 }
 
 export function parseSelectionChoiceInput(input: SelectionChoiceInput): Parsed<ParsedSelectionChoice> {
