@@ -34,7 +34,8 @@ Only ever apply the seed to `compass-demo-db`.
 
 ```bash
 bun scripts/run-with-deployment-id.mjs opennextjs-cloudflare build
-bunx opennextjs-cloudflare deploy --env demo
+bun scripts/ascii-worker-bundle.mjs
+node scripts/deploy-with-update-window.mjs --env demo
 bunx wrangler d1 migrations apply compass-demo-db --env demo --remote
 ```
 

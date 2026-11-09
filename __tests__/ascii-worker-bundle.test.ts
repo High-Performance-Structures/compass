@@ -28,8 +28,11 @@ describe("asciiEscapeJavaScript", () => {
 
   it("runs between the OpenNext build and every upload", () => {
     const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts
-    for (const name of ["deploy", "upload", "preview"]) {
+    for (const name of ["deploy:direct", "upload", "preview"]) {
       expect(scripts[name]).toMatch(/opennextjs-cloudflare build && bun scripts\/ascii-worker-bundle\.mjs && opennextjs-cloudflare /)
     }
+    // `deploy` uploads through the update-window script (it runs
+    // `opennextjs-cloudflare upload` itself).
+    expect(scripts.deploy).toMatch(/opennextjs-cloudflare build && bun scripts\/ascii-worker-bundle\.mjs && node scripts\/deploy-with-update-window\.mjs$/)
   })
 })

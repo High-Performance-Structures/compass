@@ -523,8 +523,15 @@ PR merges:
    UI standards, help check, build, unit tests, E2E).
 2. From a clean checkout of the latest `main`, run
    `NODE_OPTIONS=--max-old-space-size=8192 bun run deploy`. This builds with
-   OpenNext, escapes non-ASCII characters in the bundle, and uploads the
-   Worker (`wrangler.jsonc`, Worker name `compass`).
+   OpenNext, escapes non-ASCII characters in the bundle, uploads the Worker
+   as a new version (`wrangler.jsonc`, Worker name `compass`) and puts it live
+   with the previous version kept at 0% for tabs that are already open.
+   Always deploy this way (and set any automated deploy command to
+   `bun run deploy`): open tabs then get a two-minute "Compass will update"
+   countdown during which Save keeps working, followed by a refresh prompt.
+   How it works, the limits, and where the 2-minute constant lives
+   (`src/lib/deployment/update-window.ts`) are in
+   [server bundle: Updates and open tabs](server-bundle.md#updates-and-open-tabs).
 3. Apply any new migrations (`bun run db:migrate:prod`) before or right after
    deploying, depending on whether the old code tolerates the new columns.
 4. Check the site loads (`/login` returns 200) and watch live errors for a few
