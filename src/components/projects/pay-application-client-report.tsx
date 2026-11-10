@@ -137,7 +137,8 @@ export function PayApplicationClientReport({
   return (
     <>
       <style>{`
-        @page { size: letter landscape; margin: 0; }
+        /* The bottom margin holds the PDF's "Page X of N" footer, clear of the document. */
+        @page { size: letter landscape; margin: 0.3in 0 0.4in; }
         .pay-app-report {
           --muted-foreground: var(--report-secondary);
           --border: var(--report-rule);
@@ -175,7 +176,7 @@ export function PayApplicationClientReport({
         @media print {
           body { background: white !important; }
           .document-report-actions { display: none !important; }
-          .pay-app-page { margin: 0; border: 0; break-after: page; }
+          .pay-app-page { margin: 0; border: 0; break-after: page; min-height: 0; padding: 0.15in 0.5in 0; }
           .pay-app-page:last-child { break-after: auto; }
           .pay-app-g703 thead { display: table-header-group; }
           .pay-app-g703 tr { break-inside: avoid; }
