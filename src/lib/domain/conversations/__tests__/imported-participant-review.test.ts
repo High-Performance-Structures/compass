@@ -207,12 +207,12 @@ describe("pick person", () => {
 })
 
 describe("split into people", () => {
-  it("lets staff keep a match, pick anyone, or add a new uninvited person for each name", async () => {
+  it("lets staff keep a match or pick anyone in the directory for each name", async () => {
     const result = await resolve("p-literal", { type: "split", pieces: [
       { text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } },
-      { text: "Bob Smith <bob@example.com>", choice: { type: "new" } },
+      { text: "Bob Smith <bob@example.com>", choice: { type: "person", ref: "vendor_contact:vc-dan" } },
     ] })
-    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true, pieces: [{ piece: "Jane Doe", outcome: "linked" }, { piece: "Bob Smith <bob@example.com>", outcome: "new_contact" }] } })
+    expect(result).toMatchObject({ success: true, data: { changed: true, stillStaffOnly: true, pieces: [{ piece: "Jane Doe", outcome: "linked" }, { piece: "Bob Smith <bob@example.com>", outcome: "linked" }] } })
     // The original literal is kept exactly as written.
     expect(rows("SELECT source_contact_name, identity_status, review_status FROM project_source_record_participants WHERE id = 'p-literal'")[0])
       .toEqual({ source_contact_name: LITERAL, identity_status: "boundary_split", review_status: "reviewed" })
@@ -222,14 +222,15 @@ describe("split into people", () => {
       { source_participant_id: "owner:email:bob@example.com", project_contact_id: expect.stringMatching(/^bt-contact-/), participant_role: "to", active: 0 },
       { source_participant_id: "owner:name:jane doe", project_contact_id: "pc-jane", participant_role: "to", active: 0 },
     ])
-    expect(rows("SELECT source_entity_type, display_name, email, owner_portal_visible, sub_vendor_portal_visible FROM project_contacts WHERE id LIKE 'bt-contact-%'"))
-      .toEqual([{ source_entity_type: "buildertrend_new_person", display_name: "Bob Smith", email: "bob@example.com", owner_portal_visible: 0, sub_vendor_portal_visible: 0 }])
+    // The contact added to the project is the directory person, never an unlinked row.
+    expect(rows("SELECT vendor_id, vendor_contact_id, owner_portal_visible, sub_vendor_portal_visible FROM project_contacts WHERE id LIKE 'bt-contact-%'"))
+      .toEqual([{ vendor_id: "vendor-vogel", vendor_contact_id: "vc-dan", owner_portal_visible: 0, sub_vendor_portal_visible: 0 }])
     expect(rows("SELECT audience FROM channels WHERE id = 'channel-t-2'")).toEqual([{ audience: "staff" }])
     expect(nothingSent()).toEqual([{ n: 0 }])
 
     // Idempotent: the same split again adds nothing.
     const before = rows("SELECT count(*) AS n FROM project_source_record_participants")
-    expect(await resolve("p-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "new" } }] })).toMatchObject({ success: true, data: { changed: false } })
+    expect(await resolve("p-literal", { type: "split", pieces: [{ text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } }] })).toMatchObject({ success: true, data: { changed: false } })
     expect(rows("SELECT count(*) AS n FROM project_source_record_participants")).toEqual(before)
   })
 
@@ -256,10 +257,21 @@ describe("split into people", () => {
   it("splits a sender into several people, including names typed in full", async () => {
     expect(await resolve("p-sender-literal", { type: "split", pieces: [
       { text: "Jane Doe", choice: { type: "person", ref: "project_contact:pc-jane" } },
-      { text: "Someone Typed In Full", choice: { type: "new" } },
-    ] })).toMatchObject({ success: true, data: { people: ["Jane Doe", "Someone Typed In Full"] } })
+      { text: "Someone Typed In Full", choice: { type: "person", ref: "vendor_contact:vc-dan" } },
+    ] })).toMatchObject({ success: true, data: { people: ["Jane Doe", "Dan Vogel"] } })
     expect(rows("SELECT project_contact_id, review_status FROM project_source_record_participants WHERE id = 'p-sender-plain'"))
       .toEqual([{ project_contact_id: null, review_status: "reviewed" }])
+  })
+})
+
+describe("contacts outside the directory", () => {
+  it("never copies another project's unlinked contact onto this project", async () => {
+    // Another project's unlinked contact is not offered, and picking it by reference is refused.
+    const search = await reviewPeopleSearch(db, ORG, "p-dan", "pat lee")
+    expect(search.success && search.data.map((person) => person.ref)).toEqual([])
+    expect(await resolve("p-dan", { type: "pick", ref: "project_contact:pc-lacasse-a" })).toMatchObject({ success: false })
+    expect(rows("SELECT count(*) AS n FROM project_contacts WHERE id LIKE 'bt-contact-%'")).toEqual([{ n: 0 }])
+    expect(rows("SELECT review_status FROM project_source_record_participants WHERE id = 'p-dan'")).toEqual([{ review_status: "unreviewed" }])
   })
 })
 

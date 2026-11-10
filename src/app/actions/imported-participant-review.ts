@@ -95,10 +95,8 @@ const decisionInput = z.discriminatedUnion("type", [
     type: z.literal("split"),
     pieces: z.array(z.object({
       text: z.string().max(300),
-      choice: z.discriminatedUnion("type", [
-        z.object({ type: z.literal("person"), ref: z.string().trim().min(1).max(300) }),
-        z.object({ type: z.literal("new") }),
-      ]),
+      // Every name links to a directory person; someone new is added in Contacts first.
+      choice: z.object({ type: z.literal("person"), ref: z.string().trim().min(1).max(300) }),
     })).min(1).max(30),
   }),
   z.object({ type: z.literal("leave") }),

@@ -3,8 +3,6 @@ import { and, eq, inArray, sql, type AnyColumn } from "drizzle-orm"
 import {
   importedContactId,
   importedProjectContactRow,
-  normalizeEmail,
-  normalizeName,
   participantKey,
 } from "../../../../scripts/import-buildertrend-participants.mjs"
 import { projectContacts } from "@/db/schema"
@@ -16,6 +14,7 @@ import {
   searchDirectoryPeople,
   type DirectoryPerson,
 } from "@/lib/domain/contacts/people-search"
+import { PROJECT_CONTACT_DIRECTORY_REQUIRED } from "@/lib/domain/contacts/rules"
 import { insertProjectContactIfMissingStatement } from "@/lib/domain/contacts/store"
 import { PROJECT_CONTACT_TYPES } from "@/lib/domain/contacts/statuses"
 import {
@@ -47,9 +46,10 @@ import {
  * - Pick person: any staff account or internal contact (archived ones too),
  *   vendor person, client person, or unassigned / project-only contact.
  * - Split into people: staff mark the names; for each one they keep the
- *   suggested person, pick anyone, or add a new uninvited, unassigned
- *   contact. Staff may type any name (the literal is only a guide) and a
- *   sender may resolve to several people (owner decision 2026-11-03).
+ *   suggested person or pick anyone. Staff may type any name (the literal is
+ *   only a guide) and a sender may resolve to several people (owner decision
+ *   2026-11-03). Someone not in the directory is added in Contacts first:
+ *   job contacts always come from the directory (owner decision 2026-11-10).
  * - Leave as is: reviewed, no person.
  *
  * The original literal is never edited. Resolution is written on the
@@ -63,8 +63,8 @@ import {
  * here: a repeat of the same decision is a no-op, a different one is refused.
  */
 
-/** A name line of a split: a directory person, or a new unassigned contact. */
-export type SplitChoice = { readonly type: "person"; readonly ref: string } | { readonly type: "new" }
+/** A name line of a split: always a directory person. */
+export type SplitChoice = { readonly type: "person"; readonly ref: string }
 
 export type ReviewDecision =
   | { readonly type: "pick"; readonly ref: string }
@@ -83,7 +83,7 @@ export type ReviewPerson = {
 type SplitPieceOutcome = {
   readonly piece: string
   readonly name: string
-  readonly outcome: "linked" | "new_contact"
+  readonly outcome: "linked"
 }
 
 type ReviewOutcome = {
@@ -240,22 +240,25 @@ function newContact(db: Db, key: string, entry: Entry, projectId: string, now: s
  * The chosen directory person as a participant of this project (adds them to
  * the project when needed, uninvited). `known`, when given, answers which
  * project contact already stands for the person (a bulk decision preloads it).
+ * Every added project contact is linked to the directory; a person who is only
+ * an unlinked contact on another project is refused (add them in Contacts first).
  */
-export async function resolvePerson(db: Db, key: string, person: DirectoryPerson, projectId: string, now: string, known?: KnownProjectContacts): Promise<Resolved> {
+export async function resolvePerson(db: Db, key: string, person: DirectoryPerson, projectId: string, now: string, known?: KnownProjectContacts): Promise<ActionResult<Resolved>> {
   const common = { key, name: person.name, ref: person.ref }
-  const withContact = async (kind: string, type: ContactLinkType, entry: Entry): Promise<Resolved> => {
+  const ok = (resolved: Resolved): ActionResult<Resolved> => ({ success: true, data: resolved })
+  const withContact = async (kind: string, type: ContactLinkType, entry: Entry): Promise<ActionResult<Resolved>> => {
     const existing = known ? known.get(knownContactKey(projectId, type, person.id)) ?? null : await existingProjectContact(db, projectId, type, person.id)
-    if (existing) return { ...common, kind, userId: person.userId, contactId: existing, contactStatement: null }
+    if (existing) return ok({ ...common, kind, userId: person.userId, contactId: existing, contactStatement: null })
     const created = newContact(db, key, entry, projectId, now)
-    return { ...common, kind, userId: person.userId, contactId: created.id, contactStatement: created.statement }
+    return ok({ ...common, kind, userId: person.userId, contactId: created.id, contactStatement: created.statement })
   }
   const named = { displayName: person.name, email: person.email, companyName: null }
   switch (person.type) {
     case "user":
-      return { ...common, kind: "staff", userId: person.id, contactId: null, contactStatement: null }
+      return ok({ ...common, kind: "staff", userId: person.id, contactId: null, contactStatement: null })
     case "internal":
       // A staff account is the person; an archived contact without one is a former employee.
-      if (person.userId) return { ...common, kind: "staff", userId: person.userId, contactId: null, contactStatement: null }
+      if (person.userId) return ok({ ...common, kind: "staff", userId: person.userId, contactId: null, contactStatement: null })
       return withContact("former_staff", "internal", { ...named, kind: "former_staff", identity: `internal:${person.id}`, links: { internalContactId: person.id } })
     case "vendor_contact":
       return withContact("vendor", "vendor_contact", { ...named, kind: "vendor", identity: `person:vendor_contact:${person.id}`, links: { vendorId: person.vendorId, vendorContactId: person.id } })
@@ -263,24 +266,12 @@ export async function resolvePerson(db: Db, key: string, person: DirectoryPerson
       return withContact("owner", "customer_contact", { ...named, kind: "owner", identity: `person:customer_contact:${person.id}`, links: { customerId: person.customerId, customerContactId: person.id } })
     case "project_contact": {
       const kind = person.contactType === "owner" ? "owner" : person.contactType === "internal" ? "former_staff" : "vendor"
-      if (person.projectId === projectId) return { ...common, kind, userId: null, contactId: person.id, contactStatement: null }
-      // An unassigned person from another project: the same person, added to this one.
-      const created = newContact(db, key, { ...named, kind, unassigned: true, identity: person.sourceEntityId ?? `project_contact:${person.id}`, links: {} }, projectId, now)
-      return { ...common, kind, userId: null, contactId: created.id, contactStatement: created.statement }
+      // This project's own contact row is reused as is; nothing is inserted.
+      if (person.projectId === projectId) return ok({ ...common, kind, userId: null, contactId: person.id, contactStatement: null })
+      // Copying an unlinked contact onto another project would add a contact outside the directory.
+      return fail(PROJECT_CONTACT_DIRECTORY_REQUIRED)
     }
   }
-}
-
-/** A name staff chose to add as a new, uninvited, unassigned contact (keyed as the importer keys new people). */
-function resolveNewPerson(db: Db, key: string, piece: { readonly displayName: string | null; readonly email: string | null }, namespace: string, projectId: string, now: string): Resolved {
-  const emailValue: unknown = normalizeEmail(piece.email)
-  const email = typeof emailValue === "string" ? emailValue : null
-  const nameValue: unknown = normalizeName(piece.displayName)
-  const identity = email ? `new:email:${email}` : `new:name:${typeof nameValue === "string" ? nameValue : key}`
-  const displayName = piece.displayName ?? email ?? key
-  const kind = namespace === "owner" ? "owner" : "vendor"
-  const created = newContact(db, key, { kind, unassigned: true, identity, displayName, email, companyName: null, links: {} }, projectId, now)
-  return { key, name: displayName, ref: null, kind, userId: null, contactId: created.id, contactStatement: created.statement }
 }
 
 // ---- Writes -------------------------------------------------------------------
@@ -384,7 +375,9 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
     // Any person in this organization's directory; a reference from another company is not found.
     const chosen = await findDirectoryPerson(db, organizationId, projectId, decision.ref)
     if (!chosen) return fail("That person was not found in this company's directory.")
-    const person = await resolvePerson(db, group.anchor.participantKey, chosen, projectId, now)
+    const resolved = await resolvePerson(db, group.anchor.participantKey, chosen, projectId, now)
+    if (!resolved.success) return resolved
+    const person = resolved.data
     if (unreviewed.length === 0) {
       // Idempotent: the same person again changes nothing; anything else is refused.
       const same = recordedDecision(group) === "pick" && group.rows.every((row) => row.userId === person.userId && row.projectContactId === person.contactId)
@@ -412,21 +405,18 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
   const people: Resolved[] = []
   const outcomes: SplitPieceOutcome[] = []
   for (const [index, piece] of checked.entries()) {
-    const choice = decision.pieces[index]?.choice ?? { type: "new" }
+    // Every name is a directory person; someone new is added in Contacts first.
+    const choice = decision.pieces[index]?.choice
+    if (!choice) return fail(`Choose a person for "${piece}". ${PROJECT_CONTACT_DIRECTORY_REQUIRED}`)
     const parsed = parsePiece(piece)
     const keyValue: unknown = participantKey({ participantId: null, namespace, email: parsed.email, displayName: parsed.displayName })
     const key = typeof keyValue === "string" ? keyValue : `${namespace}:name:${piece.toLowerCase()}`
-    if (choice.type === "person") {
-      const chosen = await findDirectoryPerson(db, organizationId, projectId, choice.ref)
-      if (!chosen) return fail(`The person chosen for "${piece}" was not found in this company's directory.`)
-      const person = await resolvePerson(db, key, chosen, projectId, now)
-      people.push(person)
-      outcomes.push({ piece, name: person.name, outcome: "linked" })
-    } else {
-      const person = resolveNewPerson(db, key, parsed, namespace, projectId, now)
-      people.push(person)
-      outcomes.push({ piece, name: person.name, outcome: "new_contact" })
-    }
+    const chosen = await findDirectoryPerson(db, organizationId, projectId, choice.ref)
+    if (!chosen) return fail(`The person chosen for "${piece}" was not found in this company's directory.`)
+    const resolved = await resolvePerson(db, key, chosen, projectId, now)
+    if (!resolved.success) return fail(`"${piece}": ${resolved.error}`)
+    people.push(resolved.data)
+    outcomes.push({ piece, name: resolved.data.name, outcome: "linked" })
   }
 
   const contactStatements = new Map<string, Statement>()

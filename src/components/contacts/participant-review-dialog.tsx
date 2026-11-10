@@ -48,7 +48,7 @@ type Chosen = { readonly ref: string; readonly name: string }
 type Line = {
   readonly text: string
   readonly suggestions: Suggestions
-  /** null: a new uninvited contact. */
+  /** null: nobody chosen yet (every name must link to a directory person). */
   readonly person: Chosen | null
   readonly searching: boolean
 }
@@ -124,6 +124,19 @@ function CompanySuggestions({ list, selectedId, onSelect }: {
   )
 }
 
+/** Someone new is never added from here: they go into Contacts first, then the search finds them. */
+function NotInDirectoryHint(): React.ReactElement {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Not in the directory?{" "}
+      <Link href="/dashboard/contacts" target="_blank" rel="noopener" className="underline underline-offset-2">
+        Add them in Contacts
+      </Link>
+      , then use Pick someone else… to find them here.
+    </p>
+  )
+}
+
 /** Anyone in the company directory, through the server-side people search. */
 function PeopleSearch({ rowId, selectedRef, onSelect }: {
   readonly rowId: string
@@ -142,7 +155,7 @@ function PeopleSearch({ rowId, selectedRef, onSelect }: {
     <CompanySearchPicker
       find={find}
       label="Find anyone in the directory"
-      idleText="Type a name, email or phone to find staff, vendors, clients or unassigned people."
+      idleText="Type a name, email or phone to find staff, vendors or clients."
       emptyText="Nobody in the directory matches this search."
       selectedId={selectedRef}
       onSelect={(choice) => onSelect({ ref: choice.id, name: choice.name })}
@@ -155,8 +168,10 @@ function PeopleSearch({ rowId, selectedRef, onSelect }: {
  * choose anyone in the directory; people whose exact name or email matches
  * are suggested first. "Split into people" lets staff mark the names (one
  * per line; staff may type full names the imported text cut short) and choose, for each, a suggested
- * person, anyone else, or a new uninvited contact. After saving, a
- * staff-only conversation stays staff-only, and the dialog says so.
+ * person or anyone else in the directory. Someone not in the directory is
+ * added in Contacts first (job contacts always come from the directory), then
+ * found here with the search. After saving, a staff-only conversation stays
+ * staff-only, and the dialog says so.
  */
 export function ParticipantReviewDialog({
   row,
@@ -243,7 +258,7 @@ export function ParticipantReviewDialog({
     const decision = action === "pick"
       ? company ? { type: "vendor" as const, vendorId: company.vendorId } : { type: "pick" as const, ref: picked?.ref ?? "" }
       : action === "split"
-        ? { type: "split" as const, pieces: (lines ?? []).map((line) => ({ text: line.text, choice: line.person ? { type: "person" as const, ref: line.person.ref } satisfies SplitChoice : { type: "new" as const } })) }
+        ? { type: "split" as const, pieces: (lines ?? []).flatMap((line) => line.person ? [{ text: line.text, choice: { type: "person" as const, ref: line.person.ref } satisfies SplitChoice }] : []) }
         : { type: "leave" as const }
     setSaving(true)
     setError(null)
@@ -259,7 +274,7 @@ export function ParticipantReviewDialog({
   }
 
   const heldOnly = row?.readOnlyReason !== null && row?.readOnlyReason !== undefined
-  const canSave = !saving && (!heldOnly || includeStaffOnly) && (action === "leave" || (action === "pick" && (picked !== null || company !== null)) || (action === "split" && lines !== null && lines.length > 0))
+  const canSave = !saving && (!heldOnly || includeStaffOnly) && (action === "leave" || (action === "pick" && (picked !== null || company !== null)) || (action === "split" && lines !== null && lines.length > 0 && lines.every((line) => line.person !== null)))
 
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
@@ -294,6 +309,7 @@ export function ParticipantReviewDialog({
             <SuggestedPeople suggestions={suggestions} selectedRef={picked?.ref ?? null} onSelect={choosePerson} />
             <CompanySuggestions list={companies} selectedId={company?.vendorId ?? null} onSelect={(choice) => { setCompany(choice); setPicked(null) }} />
             <PeopleSearch rowId={rowId} selectedRef={picked?.ref ?? null} onSelect={choosePerson} />
+            {picked || company ? null : <NotInDirectoryHint />}
             {picked ? <p className="text-sm">Selected: <span className="font-medium">{picked.name}</span></p> : null}
             {company ? <p className="text-sm">Selected: <span className="font-medium">new contact of {company.vendorName}</span></p> : null}
           </div>
@@ -313,17 +329,15 @@ export function ParticipantReviewDialog({
               {lines.map((line, index) => (
                 <li key={line.text} className="space-y-2 border-b pb-3 last:border-b-0">
                   <p className="text-sm"><span className="font-medium">{line.text}</span>
-                    <span className="text-muted-foreground"> — {line.person ? `links to ${line.person.name}` : "new contact, not invited"}</span>
+                    <span className="text-muted-foreground"> — {line.person ? `links to ${line.person.name}` : "choose a person"}</span>
                   </p>
                   <SuggestedPeople suggestions={line.suggestions} selectedRef={line.person?.ref ?? null} onSelect={(person) => updateLine(index, { person })} />
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant="outline" onClick={() => updateLine(index, { searching: !line.searching })}>
                       {line.searching ? "Hide search" : "Pick someone else…"}
                     </Button>
-                    <Button type="button" size="sm" variant={line.person ? "outline" : "secondary"} onClick={() => updateLine(index, { person: null, searching: false })}>
-                      New contact (not invited)
-                    </Button>
                   </div>
+                  {line.person ? null : <NotInDirectoryHint />}
                   {line.searching ? <PeopleSearch rowId={rowId} selectedRef={line.person?.ref ?? null} onSelect={(person) => updateLine(index, { person })} /> : null}
                 </li>
               ))}
