@@ -11,14 +11,7 @@ import {
   type RecordPaymentOptions,
 } from "@/app/actions/received-payments"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -142,16 +135,18 @@ export function RecordPaymentDialog({
   }
 
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{applyMode ? "Apply unapplied payment" : "Record payment"}</DialogTitle>
-          <DialogDescription>
-            {options?.customerName ? `From ${options.customerName}. ` : ""}
-            Apply it to this item and, if it covers more, to the customer&apos;s other open items on this project.
-            Compass does not post receipts to Sage; enter the receipt there as usual.
-          </DialogDescription>
-        </DialogHeader>
+    <RecordDrawer
+      open={target !== null}
+      onOpenChange={onOpenChange}
+      title={applyMode ? "Apply unapplied payment" : "Record payment"}
+      description={
+        <>
+          {options?.customerName ? `From ${options.customerName}. ` : ""}
+          Apply it to this item and, if it covers more, to the customer&apos;s other open items on this project.
+          Compass does not post receipts to Sage; enter the receipt there as usual.
+        </>
+      }
+    >
         {loadError ? (
           <p role="alert" className="text-sm text-destructive">{loadError}</p>
         ) : !options ? (
@@ -266,17 +261,16 @@ export function RecordPaymentDialog({
             </div>
 
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <DialogFooter>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
                 Cancel
               </Button>
               <Button type="submit" disabled={pending || appliedCents <= 0 || unappliedCents < 0}>
                 {applyMode ? "Apply payment" : "Record payment"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+    </RecordDrawer>
   )
 }

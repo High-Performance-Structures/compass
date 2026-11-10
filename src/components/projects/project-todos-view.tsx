@@ -21,13 +21,7 @@ import { ProjectTodoBulkActions } from "@/components/projects/project-todo-bulk-
 import { projectTodoColumns } from "@/components/projects/project-todo-table-columns"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Input } from "@/components/ui/input"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { PageHeader } from "@/components/page-header"
 
 export function ProjectTodosView({
@@ -174,19 +168,15 @@ export function ProjectTodosView({
             }}
           />
         ) : (
-          <Dialog
+          <RecordDrawer
             open
             onOpenChange={(open) => {
               if (!open) setEditingItem(null)
             }}
+            title={editingItem.title}
+            description={editingItem.sourceRecordNumber ?? "Project to-do"}
           >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editingItem.title}</DialogTitle>
-                <DialogDescription>
-                  {editingItem.sourceRecordNumber ?? "Project to-do"}
-                </DialogDescription>
-              </DialogHeader>
+            <div className="grid gap-4">
               <p className="whitespace-pre-wrap break-words text-sm">
                 {editingItem.description || "No description."}
               </p>
@@ -200,8 +190,8 @@ export function ProjectTodosView({
                 <dt>Author</dt>
                 <dd>{editingItem.authorName ?? "Not recorded"}</dd>
               </dl>
-            </DialogContent>
-          </Dialog>
+            </div>
+          </RecordDrawer>
         ))}
     </div>
   )

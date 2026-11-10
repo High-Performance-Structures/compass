@@ -4,16 +4,9 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RecordDrawer } from "@/components/record-drawer"
 
 export type PersonEditField<Key extends string> = {
   readonly key: Key
@@ -29,7 +22,7 @@ export type PersonEditSaveResult =
   | { readonly success: false; readonly error: string }
 
 /**
- * One person's contact information, edited in a small dialog. Used by the
+ * One person's contact information, edited in the record drawer. Used by the
  * Contacts tabs whose people had no edit form (Unassigned, Internal). The
  * caller's save action decides what may change; this only collects values.
  * Mount it per person (with a key) so it starts from that person's values.
@@ -77,38 +70,37 @@ export function PersonEditDialog<Key extends string>({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {fields.map((field) => (
-              <div key={field.key} className="space-y-1">
-                <Label htmlFor={`person-edit-${field.key}`}>{field.label}</Label>
-                <Input
-                  id={`person-edit-${field.key}`}
-                  type={field.type ?? "text"}
-                  required={field.required}
-                  disabled={Boolean(field.lockedReason)}
-                  value={values[field.key]}
-                  onChange={(event) => {
-                    const next = event.target.value
-                    setValues((current) => ({ ...current, [field.key]: next }))
-                  }}
-                />
-                {field.lockedReason ? <p className="text-xs text-muted-foreground">{field.lockedReason}</p> : null}
-              </div>
-            ))}
+    <RecordDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="person-edit-form" disabled={busy}>Save</Button>
+        </>
+      }
+    >
+      <form id="person-edit-form" onSubmit={(event) => void submit(event)} className="grid gap-3 sm:grid-cols-2">
+        {fields.map((field) => (
+          <div key={field.key} className="space-y-1">
+            <Label htmlFor={`person-edit-${field.key}`}>{field.label}</Label>
+            <Input
+              id={`person-edit-${field.key}`}
+              type={field.type ?? "text"}
+              required={field.required}
+              disabled={Boolean(field.lockedReason)}
+              value={values[field.key]}
+              onChange={(event) => {
+                const next = event.target.value
+                setValues((current) => ({ ...current, [field.key]: next }))
+              }}
+            />
+            {field.lockedReason ? <p className="text-xs text-muted-foreground">{field.lockedReason}</p> : null}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy}>Save</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        ))}
+      </form>
+    </RecordDrawer>
   )
 }

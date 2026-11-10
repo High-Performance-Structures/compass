@@ -13,15 +13,8 @@ import { ProjectAssigneePicker } from "@/components/projects/project-assignee-pi
 import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
+import { Slot } from "radix-ui"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -137,22 +130,25 @@ export function WorkCalendarTodoDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger asChild>
+    <>
+      <Slot.Root onClick={() => changeOpen(true)}>
         <Button type="button" size="sm">
           <IconClipboardPlus className="size-4" />
           Add to-do
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      </Slot.Root>
+      <RecordDrawer
+        open={open}
+        onOpenChange={changeOpen}
+        title="Add to-do"
+        description={
+          <>
+            Create project work directly without starting from a log,
+            schedule item, or RFI.
+          </>
+        }
+      >
         <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Add to-do</DialogTitle>
-            <DialogDescription>
-              Create project work directly without starting from a log,
-              schedule item, or RFI.
-            </DialogDescription>
-          </DialogHeader>
           <div className="grid gap-4 py-5">
             <div className="grid gap-2">
               <Label htmlFor="calendar-todo-project">Project</Label>
@@ -249,7 +245,7 @@ export function WorkCalendarTodoDialog({
               />
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"
@@ -264,9 +260,9 @@ export function WorkCalendarTodoDialog({
             >
               {pending ? "Saving…" : "Add to-do"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }

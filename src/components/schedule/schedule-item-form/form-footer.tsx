@@ -17,7 +17,7 @@ export function ScheduleItemFormFooter({
   readonly onOpenChange: (open: boolean) => void
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-5 py-3 border-t shrink-0">
+    <div className="sticky bottom-0 -mx-5 -mb-6 flex items-center justify-between gap-3 border-t bg-background px-5 py-3">
       {isEditing ? (
         <Button
           type="button"

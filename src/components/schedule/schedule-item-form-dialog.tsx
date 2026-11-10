@@ -4,7 +4,7 @@ import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import {
   Form,
   FormControl,
@@ -242,17 +242,14 @@ export function ScheduleItemFormDialog({
     predecessors.existingPredecessors.length > 0 || predecessors.pendingPredecessors.length > 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden p-0 gap-0">
-        <DialogHeader className="px-5 pt-4 pb-3 shrink-0">
-          <DialogTitle className="text-base font-semibold">
-            {isEditing ? "Edit Schedule Item" : "New Schedule Item"}
-          </DialogTitle>
-        </DialogHeader>
-
+    <RecordDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? "Edit Schedule Item" : "New Schedule Item"}
+    >
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
-            <div className="overflow-y-auto flex-1 min-h-0 px-5 pb-4 space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col">
+            <div className="space-y-4 pb-4">
               {/* === ESSENTIAL FIELDS === */}
 
               {!isEditing && (
@@ -330,7 +327,6 @@ export function ScheduleItemFormDialog({
             />
           </form>
         </Form>
-      </DialogContent>
       <DeleteScheduleItemDialog
         open={confirmDeleteOpen}
         onOpenChange={setConfirmDeleteOpen}
@@ -340,6 +336,6 @@ export function ScheduleItemFormDialog({
           onDeleted?.(taskId)
         }}
       />
-    </Dialog>
+    </RecordDrawer>
   )
 }
