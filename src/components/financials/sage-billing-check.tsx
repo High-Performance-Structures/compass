@@ -1,5 +1,6 @@
 import { IconAlertTriangle, IconCircleCheck, IconClock } from "@tabler/icons-react"
 
+import { PayRequestFold } from "@/components/financials/pay-request-fold"
 import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import type { SageBillingCheckView } from "@/lib/financials/sage-billing-check"
 import type { Taxability } from "@/lib/domain/budget/sage-billing-check-rules"
@@ -194,6 +195,13 @@ function SageCheckResult({ view }: { readonly view: SageBillingCheckView }): Rea
   )
 }
 
+const CHECK_SUMMARY: Readonly<Record<SageBillingCheckView["check"]["status"], string>> = {
+  matches: "Matches Sage",
+  needs_attention: "Needs attention",
+  unavailable: "Posted; invoice not checked yet",
+  not_posted: "Not posted yet",
+}
+
 /** The pay request page's "Enter in Sage" section, for companies whose pay requests are created in Sage. */
 export function SageBillingCheckSection({
   projectId,
@@ -204,28 +212,30 @@ export function SageBillingCheckSection({
   readonly applicationId: string
   readonly view: SageBillingCheckView
 }): React.ReactElement {
+  const notPosted = view.check.status === "not_posted"
   return (
-    <section aria-labelledby={`sage-billing-check-${applicationId}`} className="mt-6 space-y-4 border-y p-4 print:hidden">
+    <PayRequestFold
+      id={`sage-billing-check-${applicationId}`}
+      title="Enter in Sage"
+      summary={CHECK_SUMMARY[view.check.status]}
+      // Open while there's still something to enter, or something to fix.
+      defaultOpen={notPosted || view.check.status === "needs_attention"}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id={`sage-billing-check-${applicationId}`} className="text-base font-semibold">
-            Enter in Sage
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            What to enter in Sage&apos;s progress billing before you post it, and the check of the invoice Sage creates.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          What to enter in Sage&apos;s progress billing before you post it, and the check of the invoice Sage creates.
+        </p>
         <PrintPreviewButton
           link={{ projectId, document: "sage-billing-checklist", params: { applicationId }, number: `Enter in Sage ${view.applicationNumber}` }}
         />
       </div>
       <SageCheckResult view={view} />
-      <details open={view.check.status === "not_posted"}>
+      <details open={notPosted}>
         <summary className="cursor-pointer text-sm font-semibold">Checklist</summary>
         <div className="mt-3">
           <SageBillingChecklistDocument view={view} />
         </div>
       </details>
-    </section>
+    </PayRequestFold>
   )
 }
