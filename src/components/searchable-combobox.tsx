@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
+import { creatableComboboxText, reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
 import { cn } from "@/lib/utils"
 
 export type SearchableComboboxOption = {
@@ -51,6 +51,12 @@ export type SearchableComboboxProps = {
   readonly required?: boolean
   readonly className?: string
   readonly popoverClassName?: string
+  /**
+   * Accept values that are not in the list: typing text that matches no
+   * option shows "Add “text”", which uses the text as typed. The value is
+   * kept and shown even when it is not an option.
+   */
+  readonly creatable?: boolean
 }
 export function SearchableCombobox({
   options,
@@ -71,6 +77,7 @@ export function SearchableCombobox({
   required = false,
   className,
   popoverClassName,
+  creatable = false,
 }: SearchableComboboxProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
@@ -82,11 +89,16 @@ export function SearchableCombobox({
   const visibleOptions = browsing ? options.filter((option) => browseSet.has(option.value)) : options
   const selectedOption =
     options.find((option) => option.value === value) ?? null
+  // A creatable field may hold a typed value that is not an option; show it as is.
+  const customValue = creatable && selectedOption === null && value !== "" ? value : null
+  const createText = creatable ? creatableComboboxText(options, search) : null
+  const itemClassName = creatable ? "min-h-11" : undefined
 
   React.useEffect(() => {
+    if (creatable) return
     const nextValue = reconcileSearchableComboboxValue(options, value)
     if (nextValue !== value) onValueChange(nextValue)
-  }, [onValueChange, options, value])
+  }, [creatable, onValueChange, options, value])
   return (
     <Popover open={open} onOpenChange={(nextOpen) => {
       setOpen(nextOpen)
@@ -102,7 +114,7 @@ export function SearchableCombobox({
           aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
           aria-required={required}
-          disabled={disabled || options.length === 0}
+          disabled={disabled || (options.length === 0 && !creatable)}
           className={cn(
             "h-10 w-full min-w-0 justify-between px-3 text-left font-normal",
             className
@@ -112,11 +124,13 @@ export function SearchableCombobox({
             className={cn(
               "truncate",
               selectedOption === null &&
+                customValue === null &&
                 (placeholderClassName ?? "text-muted-foreground")
             )}
           >
             {selectedOption?.selectedLabel ??
               selectedOption?.label ??
+              customValue ??
               placeholder}
           </span>
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
@@ -133,11 +147,12 @@ export function SearchableCombobox({
           <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
           {effectiveHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{effectiveHint}</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            {createText === null && <CommandEmpty>{emptyMessage}</CommandEmpty>}
             <CommandGroup heading={browsing ? browseHeading ?? (budgetBrowsing ? options.find((option) => option.onBudget)?.browseGroup ?? "On this job’s budget" : groupHeading) : groupHeading}>
               {visibleOptions.map((option) => (
                 <CommandItem
                   key={option.value}
+                  className={itemClassName}
                   value={`${option.label} ${option.description ?? ""} ${option.keywords ?? ""} ${option.value}`}
                   onSelect={() => {
                     onValueChange(option.value)
@@ -163,6 +178,25 @@ export function SearchableCombobox({
                 </CommandItem>
               ))}
             </CommandGroup>
+            {createText !== null && (
+              <CommandGroup>
+                {/* forceMount: always listed, whatever the filter scores the text. */}
+                <CommandItem
+                  forceMount
+                  value={`__create__ ${createText}`}
+                  className={itemClassName}
+                  onSelect={() => {
+                    onValueChange(createText)
+                    setOpen(false)
+                  }}
+                >
+                  <Plus className="size-4" />
+                  <span className="min-w-0 flex-1 truncate">
+                    Add “{createText}”
+                  </span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -197,6 +231,13 @@ export function SearchableComboboxField({
 
   return (
     <>
+      {/* The button comes first so a wrapping <label> opens the list. */}
+      <SearchableCombobox
+        {...props}
+        value={value}
+        onValueChange={handleValueChange}
+        required={required}
+      />
       {required ? (
         // A hidden input skips constraint validation, so a required field
         // posts through a visually hidden text input instead. The browser
@@ -213,12 +254,6 @@ export function SearchableComboboxField({
       ) : (
         <input type="hidden" name={name} value={value} />
       )}
-      <SearchableCombobox
-        {...props}
-        value={value}
-        onValueChange={handleValueChange}
-        required={required}
-      />
     </>
   )
 }

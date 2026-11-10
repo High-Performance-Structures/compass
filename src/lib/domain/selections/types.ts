@@ -87,6 +87,8 @@ export type ProjectSelectionOptions = {
   readonly costCodes: readonly ProjectSelectionCostCodeOption[]
   /** The company's selection status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
+  /** Room suggestions: this job's rooms first, then the company's (room-options.ts). */
+  readonly rooms: readonly string[]
 }
 
 export type CreateProjectSelectionInput = {

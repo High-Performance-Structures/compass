@@ -4,7 +4,7 @@
  */
 import { and, asc, eq } from "drizzle-orm"
 
-import { projectContacts, projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
+import { projectContacts, projectFinishSelectionRooms, projectFinishSelections, projects } from "@/db/schema"
 import {
   projectTemplateContentItems,
   projectTemplates,
@@ -16,6 +16,7 @@ import { buildProjectTemplateContentApplication } from "@/lib/templates/project-
 import { parseTemplateChoiceOptions } from "@/lib/templates/template-creation-import"
 
 import { buildSelectionOptions, summarizeSelections, toSelectionItem } from "./rules"
+import { mergeRoomNames, ROOM_OPTION_LIMIT } from "./room-options"
 import { readProjectSelectionStatusLabels } from "./status-labels-server"
 import type { ProjectSelectionOptions, ProjectSelectionsSummary } from "./types"
 
@@ -54,9 +55,10 @@ export async function loadProjectSelections(
 
 export async function loadProjectSelectionOptions(
   db: Db,
-  projectId: string
+  projectId: string,
+  organizationId: string
 ): Promise<ProjectSelectionOptions> {
-  const [costCodes, contacts, selections, statusLabels] = await Promise.all([
+  const [costCodes, contacts, selections, statusLabels, rooms] = await Promise.all([
     loadProjectCostCodeChoices(db, projectId),
     db
       .select({
@@ -79,9 +81,50 @@ export async function loadProjectSelectionOptions(
       })
       .from(projectFinishSelections)
       .where(eq(projectFinishSelections.projectId, projectId)),
-    readProjectSelectionStatusLabels(db, projectId)
+    readProjectSelectionStatusLabels(db, projectId),
+    loadSelectionRoomOptions(db, projectId, organizationId)
   ])
-  return { ...buildSelectionOptions({ costCodes, contacts, selections }), statusLabels }
+  return { ...buildSelectionOptions({ costCodes, contacts, selections }), statusLabels, rooms }
+}
+
+/**
+ * Room suggestions for the selection forms: this job's rooms (rooms list and
+ * selections), then the rooms used on the company's other jobs (at most
+ * ROOM_OPTION_LIMIT distinct names each). Small DISTINCT reads only.
+ */
+export async function loadSelectionRoomOptions(
+  db: Db,
+  projectId: string,
+  organizationId: string
+): Promise<readonly string[]> {
+  const [jobRoomRows, jobSelectionRows, companyRoomRows] = await Promise.all([
+    db
+      .select({ roomName: projectFinishSelectionRooms.roomName })
+      .from(projectFinishSelectionRooms)
+      .where(
+        and(
+          eq(projectFinishSelectionRooms.projectId, projectId),
+          eq(projectFinishSelectionRooms.active, true)
+        )
+      )
+      .limit(ROOM_OPTION_LIMIT),
+    db
+      .selectDistinct({ roomName: projectFinishSelections.roomName })
+      .from(projectFinishSelections)
+      .where(eq(projectFinishSelections.projectId, projectId))
+      .limit(ROOM_OPTION_LIMIT),
+    db
+      .selectDistinct({ roomName: projectFinishSelections.roomName })
+      .from(projectFinishSelections)
+      .innerJoin(projects, eq(projects.id, projectFinishSelections.projectId))
+      .where(eq(projects.organizationId, organizationId))
+      .orderBy(asc(projectFinishSelections.roomName))
+      .limit(ROOM_OPTION_LIMIT)
+  ])
+  return mergeRoomNames(
+    [...jobRoomRows, ...jobSelectionRows].map((row) => row.roomName),
+    companyRoomRows.map((row) => row.roomName)
+  )
 }
 
 export type PublishedTemplateSelection = {

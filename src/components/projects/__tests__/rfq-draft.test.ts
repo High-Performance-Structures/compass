@@ -35,6 +35,7 @@ const selectionOptions: ProjectSelectionOptions = {
   divisions: [],
   costCodes: costCodes.map((code) => ({ ...code, source: "sage", needsSageReview: false })),
   statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
+  rooms: [],
 }
 
 function selection(overrides: Partial<ProjectSelectionItem> = {}): ProjectSelectionItem {

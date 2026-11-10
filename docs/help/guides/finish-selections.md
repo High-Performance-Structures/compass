@@ -22,7 +22,7 @@ Open project **Selections** and review the room list before adding products. Use
 
 ## Add a Selection {#add-selection}
 
-Choose **Add selection** at the top of the **Selections** sheet, next to the status buttons (or **Add** on a room further down to start with that room filled in). The form opens in a drawer on the right. Record the room, category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. A product link supplements identifying details; web content can change.
+Choose **Add selection** at the top of the **Selections** sheet, next to the status buttons (or **Add** on a room further down to start with that room filled in). The form opens in a drawer on the right. Record the room, category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. **Room** is a drop-down list of the rooms already used on your company's jobs (this job's first); type to search, and if the room isn't there choose **Add “…”** to use what you typed. A product link supplements identifying details; web content can change.
 
 ## Choices, Links and Follow-ups {#choices}
 
