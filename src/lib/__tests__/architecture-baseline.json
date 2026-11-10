@@ -368,6 +368,9 @@
     "nuTechProducts": [
       "src/lib/domain/nutech/store.ts"
     ],
+    "organizationAccessRequests": [
+      "src/lib/domain/access-requests/store.ts"
+    ],
     "organizationCalendarSettings": [
       "src/lib/domain/work-calendar/store.ts"
     ],

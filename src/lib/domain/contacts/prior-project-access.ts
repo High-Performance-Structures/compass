@@ -183,6 +183,101 @@ async function contactOnProject(db: Db, input: {
 }
 
 /**
+ * Opens one project to a person through their contact on it: shows the
+ * contact in the owner or vendor portal, makes an active account a project
+ * member, adds them to the project's owner or vendor conversation, and
+ * records the access on project_access_invitations. A pending account gets
+ * a "sent" row that is claimed at sign-in. No email is sent here; the
+ * caller's own invitation or approval email covers it. Used by an
+ * invitation's extra Buildertrend projects and by approved access requests.
+ */
+export async function grantProjectContactAccess(db: Db, input: {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly projectContactId: string
+  /** Normalized (trimmed, lowercase) sign-in email. */
+  readonly email: string
+  /** Project role: owner, client, subcontractor or supplier. */
+  readonly role: string
+  readonly activeUserId: string | null
+  readonly workosInvitationId: string | null
+  readonly workosExpiresAt: string | null
+  readonly invitedBy: string
+  readonly now: string
+}): Promise<void> {
+  const audience = input.role === "owner" || input.role === "client"
+    ? "owner"
+    : input.role === "subcontractor" || input.role === "supplier" ? "sub_vendor" : null
+  const contactId = input.projectContactId
+  await updateProjectContactById(db, {
+    contactId,
+    values: audience === "owner"
+      ? { ownerPortalVisible: true, updatedAt: input.now }
+      : { subVendorPortalVisible: true, updatedAt: input.now },
+  })
+  const open = await db
+    .select({ id: projectAccessInvitations.id })
+    .from(projectAccessInvitations)
+    .where(and(
+      eq(projectAccessInvitations.projectId, input.projectId),
+      eq(projectAccessInvitations.status, "sent"),
+      sql`lower(trim(${projectAccessInvitations.email})) = ${input.email}`,
+    ))
+    .get()
+  if (input.activeUserId) {
+    const membership = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, input.activeUserId)))
+      .get()
+    if (!membership) {
+      await insertProjectMember(db, {
+        id: crypto.randomUUID(),
+        projectId: input.projectId,
+        userId: input.activeUserId,
+        role: input.role,
+        assignedAt: input.now,
+      })
+    } else {
+      await updateProjectMembers(db, eq(projectMembers.id, membership.id), { role: input.role })
+    }
+  }
+  if (audience) {
+    await ensureProjectAudienceConversation({
+      db,
+      projectId: input.projectId,
+      organizationId: input.organizationId,
+      audience,
+      contactId: audience === "owner" ? null : contactId,
+      importedContactId: contactId,
+      externalUserId: input.activeUserId,
+      createdBy: input.invitedBy,
+      now: input.now,
+    })
+  }
+  if (!open || input.activeUserId) {
+    await insertProjectAccessInvitation(db, {
+      id: crypto.randomUUID(),
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      projectContactId: contactId,
+      email: input.email,
+      role: input.role,
+      status: input.activeUserId ? "accepted" : "sent",
+      workosInvitationId: input.workosInvitationId,
+      workosExpiresAt: input.workosExpiresAt,
+      emailStatus: INCLUDED_INVITATION_EMAIL_STATUS,
+      invitedBy: input.invitedBy,
+      invitedAt: input.now,
+      acceptedBy: input.activeUserId,
+      acceptedAt: input.activeUserId ? input.now : null,
+      createdAt: input.now,
+      updatedAt: input.now,
+    })
+  }
+}
+
+/**
  * Grant the ticked Buildertrend projects alongside one invitation. The main
  * invitation carries the only email; these rows are claimed with it at sign-in
  * (pending) or take effect now (active account).
@@ -212,9 +307,6 @@ export async function grantPriorProjectAccess(db: Db, input: {
     vendorId: input.source.vendorId,
   })).filter((project) => requested.has(project.projectId) && !project.locked)
 
-  const audience = input.role === "owner" || input.role === "client"
-    ? "owner"
-    : input.role === "subcontractor" || input.role === "supplier" ? "sub_vendor" : null
   let granted = 0
   for (const project of allowed) {
     const contactId = await contactOnProject(db, {
@@ -224,72 +316,18 @@ export async function grantPriorProjectAccess(db: Db, input: {
       email: input.email,
       now: input.now,
     })
-    await updateProjectContactById(db, {
-      contactId,
-      values: audience === "owner"
-        ? { ownerPortalVisible: true, updatedAt: input.now }
-        : { subVendorPortalVisible: true, updatedAt: input.now },
+    await grantProjectContactAccess(db, {
+      organizationId: input.organizationId,
+      projectId: project.projectId,
+      projectContactId: contactId,
+      email: input.email,
+      role: input.role,
+      activeUserId: input.activeUserId,
+      workosInvitationId: input.workosInvitationId,
+      workosExpiresAt: input.workosExpiresAt,
+      invitedBy: input.invitedBy,
+      now: input.now,
     })
-    const open = await db
-      .select({ id: projectAccessInvitations.id })
-      .from(projectAccessInvitations)
-      .where(and(
-        eq(projectAccessInvitations.projectId, project.projectId),
-        eq(projectAccessInvitations.status, "sent"),
-        sql`lower(trim(${projectAccessInvitations.email})) = ${input.email}`,
-      ))
-      .get()
-    if (input.activeUserId) {
-      const membership = await db
-        .select({ id: projectMembers.id })
-        .from(projectMembers)
-        .where(and(eq(projectMembers.projectId, project.projectId), eq(projectMembers.userId, input.activeUserId)))
-        .get()
-      if (!membership) {
-        await insertProjectMember(db, {
-          id: crypto.randomUUID(),
-          projectId: project.projectId,
-          userId: input.activeUserId,
-          role: input.role,
-          assignedAt: input.now,
-        })
-      } else {
-        await updateProjectMembers(db, eq(projectMembers.id, membership.id), { role: input.role })
-      }
-    }
-    if (audience) {
-      await ensureProjectAudienceConversation({
-        db,
-        projectId: project.projectId,
-        organizationId: input.organizationId,
-        audience,
-        contactId: audience === "owner" ? null : contactId,
-        importedContactId: contactId,
-        externalUserId: input.activeUserId,
-        createdBy: input.invitedBy,
-        now: input.now,
-      })
-    }
-    if (!open || input.activeUserId) {
-      await insertProjectAccessInvitation(db, {
-        id: crypto.randomUUID(),
-        organizationId: input.organizationId,
-        projectId: project.projectId,
-        projectContactId: contactId,
-        email: input.email,
-        role: input.role,
-        status: input.activeUserId ? "accepted" : "sent",
-        workosInvitationId: input.workosInvitationId,
-        workosExpiresAt: input.workosExpiresAt,
-        emailStatus: INCLUDED_INVITATION_EMAIL_STATUS,
-        invitedBy: input.invitedBy,
-        invitedAt: input.now,
-        acceptedBy: input.activeUserId,
-        acceptedAt: input.activeUserId ? input.now : null,
-        createdAt: input.now,
-        updatedAt: input.now,
-      })
-    }
     await recordActivityEvent({
       db,
       organizationId: input.organizationId,

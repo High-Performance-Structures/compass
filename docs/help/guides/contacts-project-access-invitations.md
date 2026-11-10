@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-08"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -46,6 +46,18 @@ For an unlinked contact, **Verify Sage link** looks up the exact Sage number wit
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
 
 Linking a person to a Compass account is a separate, deliberate administrator action. Use **Compass account** beside the named person and choose the exact login. Never decide a match by email alone; the account link does not grant project access by itself.
+
+## Access Requests {#access-requests}
+
+Someone who signs up for Compass without an invitation can ask to join a company instead of waiting. They choose **Request access** (shown in place of the dashboard until they belong to a company, and in the company menu at the top left), pick the company, say whether they are a client, a trade partner or vendor, or an employee, and give their phone and job name or address. Only companies that turned on **Allow access requests** in **Settings > People** are listed; it is off until an admin turns it on.
+
+Admins are notified of each request and review it in **Settings > People > Access requests**. Choose **Review**, then:
+
+1. For a client or vendor, search the directory and select the exact person. People whose email matches the requester's are suggested, but nothing is linked until you select one. If they are not in the directory yet, add them in **Contacts** first, then search again. For a vendor, also choose **Subcontractor** or **Supplier**.
+2. For an employee, choose their staff role. Administrator access is never given from a request.
+3. Select **Approve**. Compass links the directory person to their login, adds them to the company with that role, and opens every job that directory person is on, the same way **Grant project access** does. Jobs kept staff-only are not opened; invite them from the job if they should see it. The person gets an email from you saying they're approved.
+
+Select **Decline** to send a short, polite email instead; nothing is shared. Each decision records who made it and when, and appears in Activity.
 
 ## Verify Access {#verify-access}
 

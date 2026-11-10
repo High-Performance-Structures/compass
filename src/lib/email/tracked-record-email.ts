@@ -3,7 +3,7 @@
  * reply address, so the reply comes back onto its record (or job) instead of
  * landing in one person's inbox. See docs/development/email-workflows.md.
  */
-const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs", "invoice"] as const
+const TRACKED_RECORD_KINDS = ["rfi", "rfq", "purchase_order", "job_email", "nutech_email", "trade_docs", "invoice", "access_request"] as const
 
 export type TrackedRecordKind = (typeof TRACKED_RECORD_KINDS)[number]
 
@@ -18,6 +18,7 @@ export function trackedRecordLabel(kind: TrackedRecordKind): string {
   if (kind === "nutech_email") return "Nu-Tech email"
   if (kind === "trade_docs") return "Trade docs request"
   if (kind === "invoice") return "Invoice"
+  if (kind === "access_request") return "Access request"
   return "Purchase order"
 }
 
@@ -39,8 +40,15 @@ export function trackedRecordReplyEventType(kind: TrackedRecordKind): string {
   if (kind === "nutech_email") return "nutech_email.reply"
   if (kind === "trade_docs") return "trade_docs.email_reply"
   if (kind === "invoice") return "invoice.email_reply"
+  if (kind === "access_request") return "access_request.email_reply"
   return "po.email_reply"
 }
+
+/**
+ * Where a company's access requests are reviewed. Access request emails
+ * belong to no job, so a reply waits in the inbound email review queue.
+ */
+export const ACCESS_REQUESTS_HREF = "/dashboard/settings?section=people"
 
 /** Where a vendor's trade docs open. */
 export function vendorTradeDocsHref(vendorId: string): string {
@@ -53,6 +61,7 @@ export function trackedRecordHref(input: {
   readonly recordId: string
 }): string {
   if (input.kind === "trade_docs") return vendorTradeDocsHref(input.recordId)
+  if (input.kind === "access_request") return ACCESS_REQUESTS_HREF
   const project = `/dashboard/projects/${encodeURIComponent(input.projectId)}`
   const record = encodeURIComponent(input.recordId)
   if (input.kind === "rfi") return `${project}/rfis?item=${record}#rfi-${record}`

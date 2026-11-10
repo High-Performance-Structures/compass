@@ -8,6 +8,7 @@ import {
   IconCheck,
   IconSelector,
   IconUser,
+  IconUserPlus,
 } from "@tabler/icons-react"
 
 import {
@@ -91,7 +92,8 @@ export function OrgSwitcher({
   const hasOrgs = orgs.length > 1
 
   // The header names the product; the company line (without the legal
-  // suffix) doubles as the organization switcher when there is a choice.
+  // suffix) doubles as the organization menu: switch companies when there
+  // is a choice, or ask another company for access.
   const companyLine = displayName.replace(/,?\s+Inc\.?$/i, "").toUpperCase()
 
   return (
@@ -113,17 +115,17 @@ export function OrgSwitcher({
               Compass
             </Link>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild disabled={!hasOrgs}>
+              <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label={hasOrgs ? `${displayName}, switch organization` : displayName}
+                  aria-label={hasOrgs ? `${displayName}, switch organization or request access` : `${displayName}, request access`}
                   className={cn(
                     "flex min-w-0 items-center gap-1 rounded-sm text-left font-mono text-xs tracking-[0.16em] text-sidebar-foreground/60",
-                    hasOrgs ? "hover:text-sidebar-foreground" : "cursor-default",
+                    "hover:text-sidebar-foreground",
                   )}
                 >
                   <span className="truncate">{companyLine}</span>
-                  {hasOrgs ? <IconSelector className="size-3 shrink-0 opacity-60" aria-hidden="true" /> : null}
+                  <IconSelector className="size-3 shrink-0 opacity-60" aria-hidden="true" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -158,6 +160,13 @@ export function OrgSwitcher({
                   </React.Fragment>
                 )
               })}
+                {orgs.length > 0 ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuItem asChild className="gap-2 px-2 py-1.5">
+                  <Link href="/dashboard/request-access">
+                    <IconUserPlus className="size-4 shrink-0 opacity-60" />
+                    <span className="font-medium">Request access</span>
+                  </Link>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
