@@ -62,7 +62,8 @@ export function ProjectChangeOrderDetail({
   sagePanel = null,
 }: {
   readonly item: ProjectChangeOrderItem
-  readonly backHref: string
+  /** The full page's back link; null in the record drawer. */
+  readonly backHref: string | null
   readonly internal: boolean
   readonly formOptions: ProjectChangeOrderFormOptions
   /** Staff pages pass the Drive copy status line; previews leave it out. */
@@ -77,7 +78,7 @@ export function ProjectChangeOrderDetail({
     <div className="space-y-5">
       <PageHeader
         className="mb-0 border-b pb-4"
-        back={{ href: backHref, label: "Change orders" }}
+        back={backHref ? { href: backHref, label: "Change orders" } : undefined}
         eyebrow={variance ? `Variance ${item.changeOrderNumber}${item.formerChangeOrderNumber ? ` (was ${item.formerChangeOrderNumber})` : ""}` : item.changeOrderNumber}
         title={item.title}
         // Who asked for it is a record fact, so it stays with the title.

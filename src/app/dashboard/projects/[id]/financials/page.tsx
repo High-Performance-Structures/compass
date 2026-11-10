@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
+import Link from "next/link"
 import { IconFileDollar } from "@tabler/icons-react"
 
 import {
   getProjectFinancialCodingOptions,
   getProjectFinancialWorkflowItems,
+  getProjectOwnerPayApplicationDraft,
   type ProjectFinancialCodingOptions,
   type ProjectFinancialWorkflowItem,
 } from "@/app/actions/project-financial-workflows"
@@ -29,6 +31,9 @@ import { ProjectContextSwitcher } from "@/components/projects/project-context-sw
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectContractDepositsPanel } from "@/components/projects/project-contract-deposits-panel"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
+import { PayApplicationQuickLook } from "@/components/projects/pay-application-quick-look"
+import { RouteRecordDrawer } from "@/components/record-drawer"
+import { Button } from "@/components/ui/button"
 import { getSagePayRequestPanel } from "@/app/actions/sage-pay-requests"
 import { getProjectInvoicesPanel } from "@/app/actions/project-invoice-views"
 import { ProjectInvoicesPanel } from "@/components/financials/project-invoices-panel"
@@ -42,11 +47,18 @@ export default async function ProjectFinancialsPage({
   readonly searchParams: Promise<{
     readonly squareReceipt?: string | readonly string[]
     readonly recordPayment?: string | readonly string[]
+    /** A pay application opened in the Quick look drawer. */
+    readonly item?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const query = await searchParams
   const id = decodeProjectRouteId(rawProjectId)
+  const quickLookId = (Array.isArray(query.item) ? query.item[0] : query.item) ?? null
+  // A failure (or someone without access) just leaves the drawer closed.
+  const quickLookApplication = quickLookId
+    ? await getProjectOwnerPayApplicationDraft(id, quickLookId).catch(() => null)
+    : null
   let items: readonly ProjectFinancialWorkflowItem[] = []
   let codingOptions: ProjectFinancialCodingOptions = {
     phases: [],
@@ -140,6 +152,23 @@ export default async function ProjectFinancialsPage({
             costCodeOptions={codingOptions.costCodes}
             projectDriveFolderId={projectDriveFolderId}
           />
+          {quickLookApplication ? (
+            <RouteRecordDrawer
+              key={quickLookApplication.id}
+              closeHref={`/dashboard/projects/${encodeURIComponent(id)}/financials`}
+              eyebrow="Quick look · G702 / G703"
+              title={`Pay application ${quickLookApplication.applicationNumber}`}
+              footer={
+                <Button asChild variant="link" className="px-0">
+                  <Link href={`/dashboard/projects/${encodeURIComponent(id)}/financials/pay-applications/${encodeURIComponent(quickLookApplication.id)}`}>
+                    Open full page to edit lines →
+                  </Link>
+                </Button>
+              }
+            >
+              <PayApplicationQuickLook projectId={id} application={quickLookApplication} />
+            </RouteRecordDrawer>
+          ) : null}
         </div>
       </div>
     </ProjectContextWatermarkShell>

@@ -159,9 +159,12 @@ export function ProjectChangeOrderRecordTable({
   items,
   detailBaseHref,
   initialFilter,
+  openInDrawer = false,
 }: {
   readonly items: readonly ProjectChangeOrderItem[]
   readonly detailBaseHref: string
+  /** Staff open a change order in the record drawer (`?item=`) over the list. */
+  readonly openInDrawer?: boolean
   /** The filter the sheet opens on (the company's choice in Settings › Lists). */
   readonly initialFilter: ChangeOrderListFilter
 }): React.ReactElement {
@@ -172,8 +175,11 @@ export function ProjectChangeOrderRecordTable({
     [items, filter, query]
   )
   const href = React.useCallback(
-    (item: ProjectChangeOrderItem) => `${detailBaseHref}/${encodeURIComponent(item.id)}`,
-    [detailBaseHref]
+    (item: ProjectChangeOrderItem) =>
+      openInDrawer
+        ? `${detailBaseHref}?item=${encodeURIComponent(item.id)}`
+        : `${detailBaseHref}/${encodeURIComponent(item.id)}`,
+    [detailBaseHref, openInDrawer]
   )
   const columns = React.useMemo(() => changeOrderColumns(href), [href])
   const filterLabel = useListSheetFilterLabel("change-orders.job")

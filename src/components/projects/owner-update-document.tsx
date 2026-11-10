@@ -49,8 +49,14 @@ export function OwnerUpdateDocument({
   document,
   previewMode,
   profiles,
+  inDrawer = false,
 }: {
   readonly document: OwnerProjectUpdateDocument
+  /**
+   * Shown in the owner update list's record drawer: no page wrapper, no back
+   * link and no draft composer (drafts are written on the full page).
+   */
+  readonly inDrawer?: boolean
   /** The company's department profiles; the built-in defaults when omitted. */
   readonly profiles?: DepartmentProfiles
   readonly previewMode?: {
@@ -75,10 +81,9 @@ export function OwnerUpdateDocument({
   })
 
   return (
-    <main className="min-h-screen bg-muted/30 print:bg-white">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 print:max-w-none print:px-0">
+    <OwnerUpdateFrame inDrawer={inDrawer}>
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <Button asChild variant="ghost" size="sm">
+          {inDrawer ? null : <Button asChild variant="ghost" size="sm">
             <Link
               href={
                 previewMode?.homeHref ??
@@ -88,7 +93,7 @@ export function OwnerUpdateDocument({
               <IconArrowLeft className="size-4" />
               {previewMode ? "Owner Compass" : "Project"}
             </Link>
-          </Button>
+          </Button>}
             <OwnerUpdateActions
               canManage={!previewMode && document.canManage}
               printOnly={Boolean(previewMode)}
@@ -106,12 +111,24 @@ export function OwnerUpdateDocument({
         </div>
 
         {!previewMode &&
+          !inDrawer &&
           document.canManage &&
           document.update.status !== "published" && (
           <OwnerUpdateDraftEditor document={document} />
         )}
 
         <OwnerUpdatePrintable document={document} brand={brand} label={label} previewMode={previewMode} />
+    </OwnerUpdateFrame>
+  )
+}
+
+/** The full page's wrapper, or a plain stack inside the record drawer. */
+function OwnerUpdateFrame({ inDrawer, children }: { readonly inDrawer: boolean; readonly children: React.ReactNode }): React.ReactElement {
+  if (inDrawer) return <div className="flex flex-col gap-4">{children}</div>
+  return (
+    <main className="min-h-screen bg-muted/30 print:bg-white">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 print:max-w-none print:px-0">
+        {children}
       </div>
     </main>
   )
