@@ -1,17 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { FEATURE_SETTINGS, projectDuplicateSettingsSchema } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const GROUP = FEATURE_SETTINGS["project-duplicates"]
 const DEPARTMENTS = ["O", "H", "N", "D"] as const
@@ -20,32 +15,17 @@ type Department = (typeof DEPARTMENTS)[number]
 /** Which departments' customers place repeat orders, for the duplicate project check. */
 export function ProjectDuplicateSettingsSection(): React.ReactElement {
   const profiles = useDepartmentProfiles()
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
   const [repeatOrders, setRepeatOrders] = React.useState<ReadonlySet<Department>>(
     new Set(GROUP.defaults.repeatOrderDepartments),
   )
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("project-duplicates")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = projectDuplicateSettingsSchema.safeParse(result.data.settings)
-    const settings = parsed.success ? parsed.data : GROUP.defaults
-    setRepeatOrders(new Set(settings.repeatOrderDepartments))
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, save: saveSettings, reset } = useFeatureSettingsEditor(
+    "project-duplicates",
+    {
+      savedMessage: "Duplicate project check saved.",
+      resetMessage: "Duplicate project check reset to defaults.",
+      onLoaded: (settings) => setRepeatOrders(new Set(settings.repeatOrderDepartments))
+    },
+  )
 
   function toggle(department: Department, checked: boolean): void {
     setRepeatOrders((current) => {
@@ -58,29 +38,7 @@ export function ProjectDuplicateSettingsSection(): React.ReactElement {
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("project-duplicates", {
-        repeatOrderDepartments: DEPARTMENTS.filter((department) => repeatOrders.has(department)),
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Duplicate project check saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("project-duplicates")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Duplicate project check reset to defaults.")
-      await load()
-    })
+    saveSettings({ repeatOrderDepartments: DEPARTMENTS.filter((department) => repeatOrders.has(department)) })
   }
 
   const disabled = pending || !canEdit

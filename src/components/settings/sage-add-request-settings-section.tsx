@@ -1,15 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { getUsers } from "@/app/actions/users"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
-import { sageAddRequestSettingsSchema, type SageAddRequestSettings } from "@/lib/feature-settings/sage-add-request-settings"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 
 const GROUP = FEATURE_SETTINGS["sage-add-requests"]
@@ -19,59 +17,25 @@ type Person = { readonly id: string; readonly name: string }
 
 /** Settings → Workflows → Adding to Sage: the one person who approves new Sage records. */
 export function SageAddRequestSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<SageAddRequestSettings>(GROUP.defaults)
   const [people, setPeople] = React.useState<readonly Person[]>([])
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const [result, users] = await Promise.all([getFeatureSettingsForEditor("sage-add-requests"), getUsers()])
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    // Approving needs admin-level judgment; only active admins are offered.
-    setPeople(users
-      .filter((user) => user.isActive && canManageUserAccessRole(user.role))
-      .map((user) => ({ id: user.id, name: user.displayName || user.email }))
-      .sort((a, b) => a.name.localeCompare(b.name)))
-    const parsed = sageAddRequestSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } =
+    useFeatureSettingsEditor("sage-add-requests", {
+      savedMessage: "Sage approver saved.",
+      resetMessage: "Sage approver reset to any admin."
+    })
 
   React.useEffect(() => {
-    void load()
-  }, [load])
+    void getUsers().then((users) =>
+      // Approving needs admin-level judgment; only active admins are offered.
+      setPeople(users
+        .filter((user) => user.isActive && canManageUserAccessRole(user.role))
+        .map((user) => ({ id: user.id, name: user.displayName || user.email }))
+        .sort((a, b) => a.name.localeCompare(b.name))))
+  }, [])
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("sage-add-requests", value)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage approver saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("sage-add-requests")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage approver reset to any admin.")
-      await load()
-    })
+    saveSettings(value)
   }
 
   return (

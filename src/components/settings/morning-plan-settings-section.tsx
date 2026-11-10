@@ -3,85 +3,46 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import {
   FEATURE_SETTINGS,
-  morningPlanSettingsSchema,
-  type MorningPlanSettings,
-} from "@/lib/feature-settings/registry"
+  morningPlanSettingsSchema
+  } from "@/lib/feature-settings/registry"
 
 const KEY = "morning-plan"
 const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
 
 /** Company settings for Today's plan and weekly overload warnings. */
 export function MorningPlanSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [settings, setSettings] = React.useState<MorningPlanSettings>(DEFAULTS)
+  // Numbers are typed into text boxes, so they keep their own state.
   const [threshold, setThreshold] = React.useState(String(DEFAULTS.overloadThresholdPercent))
   const [todoWorkdays, setTodoWorkdays] = React.useState(String(DEFAULTS.todoWorkdays))
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = morningPlanSettingsSchema.safeParse(result.data.settings)
-    const value = parsed.success ? parsed.data : DEFAULTS
-    setSettings(value)
-    setThreshold(String(value.overloadThresholdPercent))
-    setTodoWorkdays(String(value.todoWorkdays))
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
-
-  const disabled = !canEdit || pending
+  const { settings, setSettings, loaded, canEdit, customized, error, pending, disabled, save: saveSettings, reset } =
+    useFeatureSettingsEditor(KEY, {
+      savedMessage: "Today's plan settings saved",
+      resetMessage: "Today's plan settings reset",
+      onLoaded: (value) => {
+        setThreshold(String(value.overloadThresholdPercent))
+        setTodoWorkdays(String(value.todoWorkdays))
+      }
+    })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const parsed = morningPlanSettingsSchema.safeParse({
       ...settings,
       overloadThresholdPercent: Number(threshold),
-      todoWorkdays: Number(todoWorkdays),
+      todoWorkdays: Number(todoWorkdays)
     })
     if (!parsed.success) {
       toast.error("Use a threshold from 50% to 300%, and 0 to 2 workdays per to-do.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Today's plan settings saved")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Today's plan settings reset")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   const switches = [

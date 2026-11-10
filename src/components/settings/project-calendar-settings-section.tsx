@@ -1,9 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { getMyCompassCalendarStaffOptions } from "@/app/actions/my-compass-calendar"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
@@ -12,10 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
-  FEATURE_SETTINGS,
-  projectCalendarSettingsSchema,
-  type ProjectCalendarSettings,
-} from "@/lib/feature-settings/registry"
+  FEATURE_SETTINGS
+  } from "@/lib/feature-settings/registry"
 
 const KEY = "project-calendars"
 const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
@@ -31,63 +28,29 @@ type StaffOption = { readonly value: string; readonly label: string }
 
 /** Company settings for per-job Google calendars. */
 export function ProjectCalendarSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [settings, setSettings] = React.useState<ProjectCalendarSettings>(DEFAULTS)
   const [daysBack, setDaysBack] = React.useState(String(DEFAULTS.daysBack))
   const [daysAhead, setDaysAhead] = React.useState(String(DEFAULTS.daysAhead))
   const [staff, setStaff] = React.useState<readonly StaffOption[]>([])
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const [result, people] = await Promise.all([getFeatureSettingsForEditor(KEY), getMyCompassCalendarStaffOptions()])
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = projectCalendarSettingsSchema.safeParse(result.data.settings)
-    const value = parsed.success ? parsed.data : DEFAULTS
-    setSettings(value)
-    setDaysBack(String(value.daysBack))
-    setDaysAhead(String(value.daysAhead))
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setStaff(people.success ? people.data : [])
-    setLoaded(true)
-  }, [])
+  const { settings, setSettings, loaded, canEdit, customized, error, pending, disabled, save: saveSettings, reset } =
+    useFeatureSettingsEditor(KEY, {
+      savedMessage: "Project calendar settings saved",
+      resetMessage: "Project calendar settings reset",
+      // The day counts are typed into text boxes, so they keep their own state.
+      onLoaded: (value) => {
+        setDaysBack(String(value.daysBack))
+        setDaysAhead(String(value.daysAhead))
+      }
+    })
 
   React.useEffect(() => {
-    void load()
-  }, [load])
+    void getMyCompassCalendarStaffOptions().then((people) => setStaff(people.success ? people.data : []))
+  }, [])
 
-  const disabled = !canEdit || pending
   const staffLabel = (id: string): string => staff.find((person) => person.value === id)?.label ?? id
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, { ...settings, daysBack: Number(daysBack), daysAhead: Number(daysAhead) })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Project calendar settings saved")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Project calendar settings reset")
-      await load()
-    })
+    saveSettings({ ...settings, daysBack: Number(daysBack), daysAhead: Number(daysAhead) })
   }
 
   return (

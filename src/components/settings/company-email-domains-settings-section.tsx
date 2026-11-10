@@ -1,68 +1,33 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { companyEmailDomainsSettingsSchema } from "@/lib/feature-settings/company-email-domains-settings"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const GROUP = FEATURE_SETTINGS["company-email-domains"]
 
 /** Settings → Workflows → Company email domains: the company's own domains, old ones too. */
 export function CompanyEmailDomainsSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  // Edited as text, one domain per line.
   const [text, setText] = React.useState("")
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("company-email-domains")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = companyEmailDomainsSettingsSchema.safeParse(result.data.settings)
-    setText(parsed.success ? parsed.data.domains.join("\n") : "")
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, save: saveSettings, reset } = useFeatureSettingsEditor(
+    "company-email-domains",
+    {
+      savedMessage: "Company email domains saved.",
+      resetMessage: "Company email domains cleared.",
+      onLoaded: (settings) => setText(settings.domains.join("\n"))
+    },
+  )
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     // One domain per line; a pasted address keeps only its domain.
     const domains = [...new Set(text.split(/[\s,;]+/).map((value) => value.trim().toLowerCase().replace(/^.*@/, "")).filter(Boolean))]
-    startTransition(async () => {
-      const result = await saveFeatureSettings("company-email-domains", { domains })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Company email domains saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("company-email-domains")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Company email domains cleared.")
-      await load()
-    })
+    saveSettings({ domains })
   }
 
   return (

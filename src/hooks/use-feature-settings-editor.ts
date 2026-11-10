@@ -30,8 +30,8 @@ export function useFeatureSettingsEditor<K extends FeatureSettingsKey>(
   }: {
     /** Toast after a save, such as "Daily log reminder settings saved." */
     readonly savedMessage: string
-    /** Toast after "Reset to defaults". */
-    readonly resetMessage: string
+    /** Toast after "Reset to defaults" (for sections that offer it). */
+    readonly resetMessage?: string
     /** For sections that keep extra input state (text boxes for numbers). */
     readonly onLoaded?: (value: FeatureSettingsValue<K>) => void
   },
@@ -91,7 +91,7 @@ export function useFeatureSettingsEditor<K extends FeatureSettingsKey>(
         toast.error(result.error)
         return
       }
-      toast.success(resetMessage)
+      toast.success(resetMessage ?? "Back to the defaults.")
       await load()
     })
   }
